@@ -15,6 +15,7 @@ export default function HomePage() {
     createTask,
     selectTab,
     closeTab,
+    updateTask,
   } = useTasks();
 
   return (
@@ -27,7 +28,7 @@ export default function HomePage() {
         onSelectTab={selectTab}
         onCloseTab={closeTab}
       />
-      <Container activeTask={activeTask} />
+      <Container activeTask={activeTask} onUpdateTask={updateTask} />
       <Footer />
     </div>
   );

@@ -1,13 +1,26 @@
 'use client';
 
 import React from 'react';
-import { Task } from '@/types';
+import { Task, ChatTaskContent } from '@/types';
+import ChatInterface from './chat/ChatInterface';
 
 interface ContainerProps {
   activeTask: Task | null;
+  onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
 }
 
-const Container: React.FC<ContainerProps> = ({ activeTask }) => {
+const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
+  const handleUpdateChatContent = (content: ChatTaskContent) => {
+    if (activeTask && onUpdateTask) {
+      onUpdateTask(activeTask.id, { 
+        content,
+        updatedAt: new Date(),
+        status: 'active' as const,
+      });
+      console.log(`Updated chat content for task: ${activeTask.id}`);
+    }
+  };
+
   if (!activeTask) {
     return (
       <div className="flex-1 bg-white flex items-center justify-center">
@@ -61,12 +74,35 @@ const Container: React.FC<ContainerProps> = ({ activeTask }) => {
               <h3 className="font-medium text-gray-900 mb-1">Brainstorming</h3>
               <p className="text-gray-600">Creative ideation and inspiration</p>
             </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mb-3">
+                <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <h3 className="font-medium text-gray-900 mb-1">AI Chat</h3>
+              <p className="text-gray-600">Intelligent conversation and assistance</p>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  // Handle chat task type
+  if (activeTask.type === 'chat') {
+    return (
+      <div className="flex-1 flex flex-col">
+        <ChatInterface
+          taskId={activeTask.id}
+          content={activeTask.content as ChatTaskContent | null}
+          onUpdateContent={handleUpdateChatContent}
+        />
+      </div>
+    );
+  }
+
+  // Handle other task types (existing functionality)
   return (
     <div className="flex-1 bg-white p-6">
       <div className="max-w-4xl mx-auto">
