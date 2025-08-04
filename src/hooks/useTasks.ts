@@ -1,0 +1,133 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { Task, Tab, TaskType, AppState } from '@/types';
+
+export const useTasks = () => {
+  const [appState, setAppState] = useState<AppState>({
+    tasks: [],
+    tabs: [],
+    activeTabId: null,
+  });
+
+  const createTask = useCallback((type: TaskType) => {
+    const now = new Date();
+    const taskId = `task-${Date.now()}`;
+    const tabId = `tab-${Date.now()}`;
+    
+    const taskTypeNames = {
+      content: 'Content Creation',
+      video: 'Video Editing',
+      audio: 'Voice Synthesis',
+      brainstorm: 'Brainstorming',
+    };
+
+    const newTask: Task = {
+      id: taskId,
+      title: `${taskTypeNames[type]} ${appState.tasks.filter(t => t.type === type).length + 1}`,
+      type,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+      content: null,
+    };
+
+    const newTab: Tab = {
+      id: tabId,
+      taskId,
+      title: newTask.title,
+      isActive: true,
+      type,
+    };
+
+    setAppState(prev => ({
+      tasks: [...prev.tasks, newTask],
+      tabs: prev.tabs.map(tab => ({ ...tab, isActive: false })).concat(newTab),
+      activeTabId: tabId,
+    }));
+
+    console.log(`Created new ${type} task: ${newTask.title}`);
+  }, [appState.tasks]);
+
+  const selectTab = useCallback((tabId: string) => {
+    setAppState(prev => ({
+      ...prev,
+      tabs: prev.tabs.map(tab => ({
+        ...tab,
+        isActive: tab.id === tabId,
+      })),
+      activeTabId: tabId,
+    }));
+
+    const selectedTab = appState.tabs.find(tab => tab.id === tabId);
+    if (selectedTab) {
+      console.log(`Selected tab: ${selectedTab.title}`);
+    }
+  }, [appState.tabs]);
+
+  const closeTab = useCallback((tabId: string) => {
+    const tabToClose = appState.tabs.find(tab => tab.id === tabId);
+    
+    setAppState(prev => {
+      const remainingTabs = prev.tabs.filter(tab => tab.id !== tabId);
+      let newActiveTabId = prev.activeTabId;
+
+      // If we're closing the active tab, select another one
+      if (prev.activeTabId === tabId && remainingTabs.length > 0) {
+        const tabIndex = prev.tabs.findIndex(tab => tab.id === tabId);
+        const nextTab = remainingTabs[Math.min(tabIndex, remainingTabs.length - 1)];
+        newActiveTabId = nextTab.id;
+        
+        // Update isActive for the new active tab
+        remainingTabs.forEach(tab => {
+          tab.isActive = tab.id === newActiveTabId;
+        });
+      } else if (remainingTabs.length === 0) {
+        newActiveTabId = null;
+      }
+
+      return {
+        ...prev,
+        tabs: remainingTabs,
+        activeTabId: newActiveTabId,
+      };
+    });
+
+    if (tabToClose) {
+      console.log(`Closed tab: ${tabToClose.title}`);
+    }
+  }, [appState.tabs]);
+
+  const getActiveTask = useCallback(() => {
+    if (!appState.activeTabId) return null;
+    
+    const activeTab = appState.tabs.find(tab => tab.id === appState.activeTabId);
+    if (!activeTab) return null;
+    
+    return appState.tasks.find(task => task.id === activeTab.taskId) || null;
+  }, [appState.activeTabId, appState.tabs, appState.tasks]);
+
+  const updateTask = useCallback((taskId: string, updates: Partial<Task>) => {
+    setAppState(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, ...updates, updatedAt: new Date() }
+          : task
+      ),
+    }));
+
+    console.log(`Updated task: ${taskId}`);
+  }, []);
+
+  return {
+    tasks: appState.tasks,
+    tabs: appState.tabs,
+    activeTabId: appState.activeTabId,
+    activeTask: getActiveTask(),
+    createTask,
+    selectTab,
+    closeTab,
+    updateTask,
+  };
+};
