@@ -91,8 +91,10 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
 
   // Handle chat task type
   if (activeTask.type === 'chat') {
+    // 聊天任务界面渲染
+    
     return (
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <ChatInterface
           taskId={activeTask.id}
           content={activeTask.content as ChatTaskContent | null}
