@@ -251,8 +251,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     conv => conv.id === chatContent.activeConversationId
   );
 
+  // 聊天界面渲染
+
   return (
-    <div className="flex h-full bg-gray-50">
+    <div className="flex h-full bg-gray-50 min-h-0">
       {/* Left Sidebar - Conversation List */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         <ConversationList
@@ -265,7 +267,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       {/* Right Side - Chat Window */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         <ChatWindow
           conversation={activeConversation}
           onSendMessage={handleSendMessage}

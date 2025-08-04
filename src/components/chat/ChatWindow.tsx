@@ -18,14 +18,69 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // 检查用户是否在消息底部附近
+  const isNearBottom = () => {
+    if (!messagesContainerRef.current) return true;
+    const container = messagesContainerRef.current;
+    const threshold = 100; // 100px threshold
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
   };
 
+  // 滚动到底部
+  const scrollToBottom = (force = false) => {
+    if (!shouldAutoScroll && !force) return;
+    
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // 处理用户滚动事件
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    
+    const nearBottom = isNearBottom();
+    
+    // 更新自动滚动状态
+    setShouldAutoScroll(nearBottom);
+    
+    // 更新用户滚动状态
+    if (nearBottom && isUserScrolling) {
+      setIsUserScrolling(false);
+    } else if (!nearBottom && !isUserScrolling) {
+      setIsUserScrolling(true);
+    }
+  };
+
+  // 检查是否有正在流式传输的消息
+  const hasStreamingMessage = conversation?.messages.some(msg => msg.isStreaming) || false;
+
   useEffect(() => {
-    scrollToBottom();
-  }, [conversation?.messages]);
+    // 新消息时自动滚动到底部
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [conversation?.messages, shouldAutoScroll]);
+
+  // 流式传输时实时滚动到底部
+  useEffect(() => {
+    if (!hasStreamingMessage) return;
+
+    const intervalId = setInterval(() => {
+      // 只有在用户在底部附近且允许自动滚动时才滚动
+      if (shouldAutoScroll) {
+        scrollToBottom();
+      }
+    }, 100); // 每100ms检查一次，确保跟上流式传输的速度
+
+    return () => clearInterval(intervalId);
+  }, [hasStreamingMessage, shouldAutoScroll]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +91,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+      // 发送消息后强制滚动到底部
+      setShouldAutoScroll(true);
+      setTimeout(() => scrollToBottom(true), 100);
     }
   };
 
@@ -100,9 +158,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white min-h-0">
       {/* Chat Header */}
-      <div className="px-6 py-4 border-b border-gray-100 bg-white">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -119,7 +177,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0"
+        onScroll={handleScroll}
+      >
         {conversation.messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -141,7 +203,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="px-6 py-4 border-t border-gray-100 bg-white">
+      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-white">
         <form onSubmit={handleSubmit} className="flex items-end space-x-3">
           <div className="flex-1 relative">
             <textarea
