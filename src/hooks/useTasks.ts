@@ -20,6 +20,7 @@ export const useTasks = () => {
       video: 'Video Editing',
       audio: 'Voice Synthesis',
       brainstorm: 'Brainstorming',
+      chat: 'AI Chat',
     };
 
     const newTask: Task = {
