@@ -377,7 +377,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      // TODO: 可以添加用户友好的错误提示，比如toast通知
       alert(`脚本生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsGeneratingScript(false);
