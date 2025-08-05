@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { VideoEditingTaskContent } from '@/types';
+import { VideoEditingTaskContent, ScriptSegment } from '@/types';
+import ScriptPanel from './ScriptPanel';
 import '../../styles/video-editing.css';
 
 // 动态导入MD编辑器以避免SSR问题
@@ -32,10 +33,109 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Mock数据 - 文本脚本片段
+  const mockScriptSegments: ScriptSegment[] = [
+    {
+      id: 'segment-1',
+      title: '开场介绍',
+      duration: 15,
+      sentences: [
+        {
+          id: 'sentence-1-1',
+          text: '大家好，欢迎来到今天的视频教程。',
+          startTime: 0,
+          endTime: 3
+        },
+        {
+          id: 'sentence-1-2',
+          text: '今天我们要学习如何使用这个强大的视频编辑工具。',
+          startTime: 3,
+          endTime: 8
+        },
+        {
+          id: 'sentence-1-3',
+          text: '这个工具可以帮助我们快速创建专业级的视频内容。',
+          startTime: 8,
+          endTime: 15
+        }
+      ]
+    },
+    {
+      id: 'segment-2',
+      title: '功能演示',
+      duration: 25,
+      sentences: [
+        {
+          id: 'sentence-2-1',
+          text: '首先，我们来看看界面的基本布局。',
+          startTime: 15,
+          endTime: 20
+        },
+        {
+          id: 'sentence-2-2',
+          text: '左侧是我们的项目文档编辑区域，可以记录项目相关信息。',
+          startTime: 20,
+          endTime: 27
+        },
+        {
+          id: 'sentence-2-3',
+          text: '右侧是视频预览和脚本显示区域。',
+          startTime: 27,
+          endTime: 32
+        },
+        {
+          id: 'sentence-2-4',
+          text: '这样的布局设计让我们能够同时处理文档和视频内容。',
+          startTime: 32,
+          endTime: 40
+        }
+      ]
+    },
+    {
+      id: 'segment-3',
+      title: '实际操作',
+      duration: 30,
+      sentences: [
+        {
+          id: 'sentence-3-1',
+          text: '现在让我们开始实际操作演示。',
+          startTime: 40,
+          endTime: 45
+        },
+        {
+          id: 'sentence-3-2',
+          text: '我们可以在左侧编辑器中输入项目相关的文档内容。',
+          startTime: 45,
+          endTime: 52
+        },
+        {
+          id: 'sentence-3-3',
+          text: '同时，右侧的脚本面板会显示对应的文本内容。',
+          startTime: 52,
+          endTime: 58
+        },
+        {
+          id: 'sentence-3-4',
+          text: '这种设计让内容创作变得更加高效和直观。',
+          startTime: 58,
+          endTime: 65
+        },
+        {
+          id: 'sentence-3-5',
+          text: '每个脚本片段都对应着视频中的一个具体段落。',
+          startTime: 65,
+          endTime: 70
+        }
+      ]
+    }
+  ];
+
   console.log('[VideoEditingInterface] 组件初始化', {
     taskId,
     hasContent: !!content,
     markdownLength: markdownValue.length,
+    scriptSegmentsCount: content?.scriptSegments?.length || mockScriptSegments.length,
+    totalScriptSentences: (content?.scriptSegments || mockScriptSegments).reduce((sum, segment) => sum + segment.sentences.length, 0),
     timestamp: new Date().toISOString()
   });
 
@@ -230,6 +330,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   console.log('[VideoEditingInterface] 渲染界面', {
     taskId,
     markdownLength: markdownValue.length,
+    scriptSegmentsCount: content?.scriptSegments?.length || mockScriptSegments.length,
+    usingMockData: !content?.scriptSegments,
     renderTimestamp: new Date().toISOString()
   });
 
@@ -321,30 +423,41 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           </div>
         </div>
 
-        {/* 右侧面板 - 预留给未来功能 */}
-        <div className="video-editing-right-panel flex items-center justify-center bg-white border-l border-gray-200">
-          <div className="text-center text-gray-500 max-w-sm mx-auto px-6">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Video Preview</h3>
-            <p className="text-gray-600 mb-4">
-              Video preview and editing tools will be available here in future updates.
-            </p>
-            <div className="space-y-2 text-sm text-gray-500">
-              <div className="flex items-center justify-center space-x-2">
-                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                <span>Timeline Editor</span>
+        {/* 右侧面板 - Video Preview 区域，内部分为左右布局 */}
+        <div className="video-editing-right-panel flex bg-white border-l border-gray-200">
+          {/* 脚本面板 - 占右侧面板的20%宽度 */}
+          <div className="video-editing-script-panel bg-gray-50 border-r border-gray-200">
+            <ScriptPanel 
+              segments={content?.scriptSegments || mockScriptSegments} 
+              className="h-full"
+            />
+          </div>
+          
+          {/* 视频预览区域 - 占右侧面板的80%宽度 */}
+          <div className="video-editing-preview-panel flex items-center justify-center">
+            <div className="text-center text-gray-500 max-w-sm mx-auto px-6">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
               </div>
-              <div className="flex items-center justify-center space-x-2">
-                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                <span>Effects Library</span>
-              </div>
-              <div className="flex items-center justify-center space-x-2">
-                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                <span>Export Options</span>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Video Preview</h3>
+              <p className="text-gray-600 mb-4">
+                Video preview and editing tools will be available here in future updates.
+              </p>
+              <div className="space-y-2 text-sm text-gray-500">
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                  <span>Timeline Editor</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                  <span>Effects Library</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                  <span>Export Options</span>
+                </div>
               </div>
             </div>
           </div>

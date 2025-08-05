@@ -48,9 +48,25 @@ export interface ChatTaskContent {
 }
 
 // Video Editing related types
+export interface ScriptSentence {
+  id: string;
+  text: string;
+  startTime?: number; // 预留给未来的时间轴功能
+  endTime?: number;
+}
+
+export interface ScriptSegment {
+  id: string;
+  title: string; // 视频片段标题
+  sentences: ScriptSentence[];
+  duration?: number; // 预留给未来的时长信息
+  thumbnail?: string; // 预留给未来的缩略图
+}
+
 export interface VideoEditingTaskContent {
   markdownContent: string;
   lastModified: Date;
+  scriptSegments?: ScriptSegment[]; // 文本脚本片段数据
 }
 
 export interface LLMConfig {

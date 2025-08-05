@@ -31,9 +31,42 @@
   overflow: hidden !important;
 }
 
-/* 右侧面板 */
+/* 右侧面板 - 现在是flex容器 */
 .video-editing-right-panel {
   width: 75%;
+  height: 100%;
+}
+
+/* 脚本面板 - 占右侧面板的20%宽度 */
+.video-editing-script-panel {
+  width: 20%;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* 视频预览面板 - 占右侧面板的80%宽度 */
+.video-editing-preview-panel {
+  width: 80%;
+  height: 100%;
+  flex: 1;
+}
+
+/* 脚本片段样式 */
+.script-segment {
+  transition: all 0.2s ease-in-out;
+}
+
+.script-segment:hover {
+  transform: translateY(-1px);
+}
+
+.script-sentence {
+  transition: background-color 0.15s ease-in-out;
+}
+
+.script-sentence:hover {
+  background-color: #f8fafc;
 }
 
 /* MD编辑器样式优化 - 增强约束 */
@@ -135,4 +168,33 @@
 .video-editing-markdown-section .flex-1 {
   min-height: 0 !important;
   overflow: hidden !important;
+}
+
+/* 响应式设计 - 小屏幕适配 */
+@media (max-width: 1024px) {
+  .video-editing-script-panel {
+    width: 25%;
+  }
+  
+  .video-editing-preview-panel {
+    width: 75%;
+  }
+}
+
+@media (max-width: 768px) {
+  .video-editing-right-panel {
+    flex-direction: column;
+  }
+  
+  .video-editing-script-panel {
+    width: 100%;
+    height: 40%;
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .video-editing-preview-panel {
+    width: 100%;
+    height: 60%;
+  }
 } 
