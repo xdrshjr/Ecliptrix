@@ -181,6 +181,89 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [content, markdownValue, taskId]);
 
+  // 新增：布局变化监控和性能追踪
+  useEffect(() => {
+    const layoutObserver = new ResizeObserver((entries) => {
+      entries.forEach((entry) => {
+        const { target, contentRect } = entry;
+        const className = target.className;
+        
+        // 记录关键面板的尺寸变化
+        if (className.includes('video-editing-preview-panel')) {
+          console.log('[VideoEditingInterface] 视频预览面板尺寸变化', {
+            taskId,
+            panelType: 'preview-panel',
+            dimensions: {
+              width: contentRect.width,
+              height: contentRect.height
+            },
+            timestamp: new Date().toISOString()
+          });
+        } else if (className.includes('video-editing-materials-panel')) {
+          console.log('[VideoEditingInterface] 素材管理面板尺寸变化', {
+            taskId,
+            panelType: 'materials-panel',
+            dimensions: {
+              width: contentRect.width,
+              height: contentRect.height
+            },
+            timestamp: new Date().toISOString()
+          });
+        } else if (className.includes('video-editing-composition-panel')) {
+          console.log('[VideoEditingInterface] 视频合成播放面板尺寸变化', {
+            taskId,
+            panelType: 'composition-panel',
+            dimensions: {
+              width: contentRect.width,
+              height: contentRect.height
+            },
+            timestamp: new Date().toISOString()
+          });
+        } else if (className.includes('video-editing-preview-lower')) {
+          console.log('[VideoEditingInterface] 下方容器尺寸变化', {
+            taskId,
+            panelType: 'preview-lower',
+            dimensions: {
+              width: contentRect.width,
+              height: contentRect.height
+            },
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+    });
+
+    // 监控所有新增的面板
+    const previewPanel = document.querySelector('.video-editing-preview-panel');
+    const materialsPanel = document.querySelector('.video-editing-materials-panel');
+    const compositionPanel = document.querySelector('.video-editing-composition-panel');
+    const lowerPanel = document.querySelector('.video-editing-preview-lower');
+
+    if (previewPanel) layoutObserver.observe(previewPanel);
+    if (materialsPanel) layoutObserver.observe(materialsPanel);
+    if (compositionPanel) layoutObserver.observe(compositionPanel);
+    if (lowerPanel) layoutObserver.observe(lowerPanel);
+
+    console.log('[VideoEditingInterface] 布局监控器已启动', {
+      taskId,
+      monitoredPanels: {
+        previewPanel: !!previewPanel,
+        materialsPanel: !!materialsPanel,
+        compositionPanel: !!compositionPanel,
+        lowerPanel: !!lowerPanel
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    return () => {
+      layoutObserver.disconnect();
+      console.log('[VideoEditingInterface] 布局监控器已清理', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+    };
+  }, [taskId]);
+
   // 处理AI助手消息发送
   const handleSendMessage = useCallback(async (message: string) => {
     if (!message.trim() || isLoading) return;
@@ -435,6 +518,44 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     renderTimestamp: new Date().toISOString()
   });
 
+  // 新增：记录新布局结构的初始化信息
+  console.log('[VideoEditingInterface] 初始化新布局结构', {
+    taskId,
+    layoutVersion: '2.0',
+    previewPanelStructure: {
+      upperContainer: {
+        height: '70%',
+        leftPanel: '素材管理 - 50%宽度',
+        rightPanel: '视频合成播放 - 50%宽度'
+      },
+      lowerContainer: {
+        height: '30%',
+        content: '时间轴和工具栏'
+      }
+    },
+    panelConfiguration: {
+      leftPanel: {
+        width: '25%宽度',
+        components: 'MD编辑器和AI助手',
+        newFeatures: '新增项目文档编辑标题头部'
+      },
+      rightPanel: {
+        totalWidth: '75%宽度',
+        scriptPanel: '20%宽度',
+        previewPanel: '80%宽度 - 新的上下分割布局'
+      }
+    },
+    initTimestamp: new Date().toISOString(),
+    headerAlignment: {
+      leftPanel: 'markdown-panel-header - 项目文档编辑',
+      middlePanel: 'script-panel-header - 文本脚本',
+      rightUpperLeft: 'materials-panel-header - 素材管理',
+      rightUpperRight: 'composition-panel-header - 视频合成播放',
+      allPanelsAligned: true,
+      headerHeight: '60px (16px padding + border)'
+    }
+  });
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* 视频编辑工作区 - 左右布局 */}
@@ -443,6 +564,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         <div className="video-editing-left-panel flex flex-col">
           {/* MD编辑器区域 */}
           <div className="video-editing-markdown-section">
+            {/* MD编辑器标题头部 */}
+            <div className="markdown-panel-header">
+              <div className="flex items-center space-x-2">
+                <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900">项目文档编辑</h3>
+              </div>
+            </div>
             <div className="video-editing-markdown-container">
               <MDEditor
                 value={markdownValue}
@@ -536,30 +668,126 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             />
           </div>
           
-          {/* 视频预览区域 - 占右侧面板的80%宽度 */}
-          <div className="video-editing-preview-panel flex items-center justify-center">
-            <div className="text-center text-gray-500 max-w-sm mx-auto px-6">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
+          {/* 视频预览区域 - 占右侧面板的80%宽度，新的上下分割布局 */}
+          <div className="video-editing-preview-panel flex flex-col">
+            {/* 上方容器 - 70%高度，左右分割 */}
+            <div className="video-editing-preview-upper flex">
+              {/* 素材管理面板 - 左侧50% */}
+              <div className="video-editing-materials-panel border-r border-gray-200">
+                <div className="materials-panel-header">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-900">素材管理</h3>
+                  </div>
+                </div>
+                <div className="materials-panel-content">
+                  <div className="space-y-3">
+                    <div className="text-center text-gray-500 py-8">
+                      <div className="w-12 h-12 bg-gray-100 rounded-xl mx-auto mb-3 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 011 1v1a1 1 0 01-1 1h-1v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7H3a1 1 0 01-1-1V5a1 1 0 011-1h4z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">素材库</p>
+                      <p className="text-xs text-gray-500">视频、音频、图片素材将在此管理</p>
+                      <div className="mt-4 space-y-2 text-xs text-gray-400">
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                          <span>拖拽上传</span>
+                        </div>
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                          <span>素材预览</span>
+                        </div>
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                          <span>分类管理</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Video Preview</h3>
-              <p className="text-gray-600 mb-4">
-                Video preview and editing tools will be available here in future updates.
-              </p>
-              <div className="space-y-2 text-sm text-gray-500">
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                  <span>Timeline Editor</span>
+
+              {/* 视频合成播放面板 - 右侧50% */}
+              <div className="video-editing-composition-panel">
+                <div className="composition-panel-header">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-900">视频合成播放</h3>
+                  </div>
                 </div>
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                  <span>Effects Library</span>
+                <div className="composition-panel-content">
+                  <div className="text-center text-gray-500">
+                    <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <h4 className="text-base font-medium text-gray-900 mb-2">视频预览播放器</h4>
+                    <p className="text-sm text-gray-600 mb-4">
+                      实时预览合成后的视频效果
+                    </p>
+                    <div className="space-y-2 text-xs text-gray-500">
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                        <span>实时预览</span>
+                      </div>
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                        <span>播放控制</span>
+                      </div>
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                        <span>质量设置</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                  <span>Export Options</span>
+              </div>
+            </div>
+
+            {/* 下方容器 - 30%高度 */}
+            <div className="video-editing-preview-lower border-t border-gray-200">
+              <div className="preview-lower-content">
+                <div className="flex items-center space-x-2 mb-4">
+                  <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-semibold text-gray-900">时间轴和工具栏</h3>
+                </div>
+                <div className="text-center text-gray-500 py-6">
+                  <div className="w-12 h-12 bg-gray-100 rounded-xl mx-auto mb-3 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-2">编辑时间轴</p>
+                  <p className="text-xs text-gray-500">拖拽编辑、剪切、特效等工具将在此显示</p>
+                  <div className="mt-4 grid grid-cols-3 gap-4 text-xs text-gray-400">
+                    <div className="flex flex-col items-center space-y-1">
+                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                      <span>时间轴编辑</span>
+                    </div>
+                    <div className="flex flex-col items-center space-y-1">
+                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                      <span>特效库</span>
+                    </div>
+                    <div className="flex flex-col items-center space-y-1">
+                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
+                      <span>导出选项</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -13,14 +13,33 @@
   overflow: hidden !important;
   flex-shrink: 0 !important;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-/* MD编辑器容器 - 确保不超出父容器 */
+/* MD编辑器标题头部样式 */
+.markdown-panel-header {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+  flex-shrink: 0;
+}
+
+/* 脚本面板标题头部样式 - 与其他面板保持一致 */
+.script-panel-header {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+  flex-shrink: 0;
+}
+
+/* MD编辑器容器 - 确保不超出父容器，减去标题头部高度 */
 .video-editing-markdown-container {
-  height: 100% !important;
-  max-height: 100% !important;
+  height: calc(100% - 60px) !important;
+  max-height: calc(100% - 60px) !important;
   width: 100%;
   overflow: hidden !important;
+  flex: 1;
 }
 
 /* AI助手区域 - 紧凑自适应高度 */
@@ -196,5 +215,149 @@
   .video-editing-preview-panel {
     width: 100%;
     height: 60%;
+  }
+}
+
+/* 新增：视频预览面板上方容器 - 70%高度 */
+.video-editing-preview-upper {
+  height: 70%;
+  overflow: hidden;
+}
+
+/* 新增：视频预览面板下方容器 - 30%高度 */
+.video-editing-preview-lower {
+  height: 30%;
+  overflow: hidden;
+  background-color: #f9fafb;
+}
+
+/* 新增：素材管理面板 - 上方容器左侧50% */
+.video-editing-materials-panel {
+  width: 50%;
+  height: 100%;
+  overflow-y: auto;
+  background-color: #ffffff;
+}
+
+/* 新增：视频合成播放面板 - 上方容器右侧50% */
+.video-editing-composition-panel {
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #ffffff;
+}
+
+/* 素材管理面板内部样式 */
+.materials-panel-header {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+}
+
+.materials-panel-content {
+  padding: 16px;
+  height: calc(100% - 60px);
+  overflow-y: auto;
+}
+
+/* 视频合成播放面板内部样式 */
+.composition-panel-header {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+}
+
+.composition-panel-content {
+  padding: 16px;
+  height: calc(100% - 60px);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 下方容器内部样式 */
+.preview-lower-content {
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* 滚动条样式优化 - 应用到新面板 */
+.video-editing-materials-panel::-webkit-scrollbar,
+.video-editing-preview-lower::-webkit-scrollbar {
+  width: 6px;
+}
+
+.video-editing-materials-panel::-webkit-scrollbar-track,
+.video-editing-preview-lower::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.video-editing-materials-panel::-webkit-scrollbar-thumb,
+.video-editing-preview-lower::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.video-editing-materials-panel::-webkit-scrollbar-thumb:hover,
+.video-editing-preview-lower::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 响应式设计更新 */
+@media (max-width: 1024px) {
+  .video-editing-script-panel {
+    width: 25%;
+  }
+  
+  .video-editing-preview-panel {
+    width: 75%;
+  }
+  
+  /* 调整新面板在中等屏幕的显示 */
+  .video-editing-materials-panel,
+  .video-editing-composition-panel {
+    width: 50%;
+  }
+}
+
+@media (max-width: 768px) {
+  .video-editing-right-panel {
+    flex-direction: column;
+  }
+  
+  .video-editing-script-panel {
+    width: 100%;
+    height: 30%;
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .video-editing-preview-panel {
+    width: 100%;
+    height: 70%;
+  }
+  
+  /* 小屏幕下上方容器改为垂直布局 */
+  .video-editing-preview-upper {
+    flex-direction: column;
+    height: 60%;
+  }
+  
+  .video-editing-preview-lower {
+    height: 40%;
+  }
+  
+  .video-editing-materials-panel,
+  .video-editing-composition-panel {
+    width: 100%;
+    height: 50%;
+    border-right: none;
+  }
+  
+  .video-editing-materials-panel {
+    border-bottom: 1px solid #e5e7eb;
   }
 } 

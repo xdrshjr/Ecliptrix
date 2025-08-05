@@ -28,6 +28,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     hasGenerateCallback: !!onGenerateScript,
     hasUpdateCallback: !!onUpdateSegments,
     editingSentenceId,
+    layoutVersion: '2.1 - 标题样式已更新，边距已优化',
+    headerStyle: '新增图标和统一样式',
+    paddingOptimization: {
+      contentArea: '从p-4减少到p-2 (16px -> 8px)',
+      scriptSegments: '从p-4减少到p-3 (16px -> 12px)',
+      segmentSpacing: '从space-y-4减少到space-y-3',
+      emptyState: '从p-6减少到p-4 (24px -> 16px)'
+    },
     timestamp: new Date().toISOString()
   });
 
@@ -112,9 +120,16 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   if (segments.length === 0) {
     return (
       <div className={`flex flex-col h-full ${className}`}>
-        <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-gray-50">
+        <div className="script-panel-header">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">文本脚本</h3>
+            <div className="flex items-center space-x-2">
+              <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
+            </div>
             {onGenerateScript && (
               <button
                 onClick={handleGenerateScript}
@@ -141,7 +156,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             )}
           </div>
         </div>
-        <div className="flex-1 flex items-center justify-center p-6">
+        <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center text-gray-500">
             <div className="w-12 h-12 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
               <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,10 +175,17 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      {/* 标题栏 */}
-      <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-gray-700">文本脚本</h3>
+      {/* 标题栏 - 与其他面板保持一致的样式 */}
+      <div className="script-panel-header">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
+              <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
+          </div>
           {onGenerateScript && (
             <button
               onClick={handleGenerateScript}
@@ -195,11 +217,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       </div>
 
       {/* 脚本内容区域 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-2 space-y-3">
         {segments.map((segment, segmentIndex) => (
           <div 
             key={segment.id} 
-            className="script-segment bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow duration-200"
+            className="script-segment bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow duration-200"
           >
             {/* 片段标题 */}
             <div className="flex items-center justify-between mb-3">
