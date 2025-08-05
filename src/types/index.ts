@@ -47,8 +47,8 @@ export interface ChatTaskContent {
   activeConversationId: string | null;
 }
 
-// Video editing task content interface
-export interface VideoTaskContent {
+// Video Editing related types
+export interface VideoEditingTaskContent {
   markdownContent: string;
   lastModified: Date;
 }
