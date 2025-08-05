@@ -1,0 +1,144 @@
+/* Video Editing Workspace Styles */
+
+/* 左侧面板主容器 */
+.video-editing-left-panel {
+  border-right: 1px solid #e5e7eb;
+  height: 100%;
+  width: 50%;
+}
+
+/* MD编辑器区域 - 强制固定高度，绝对不允许扩展 */
+.video-editing-markdown-section {
+  height: 71.4% !important;
+  max-height: 71.4% !important;
+  min-height: 71.4% !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  position: relative;
+}
+
+/* MD编辑器容器 - 确保不超出父容器 */
+.video-editing-markdown-container {
+  height: 100% !important;
+  max-height: 100% !important;
+  width: 100%;
+  overflow: hidden !important;
+}
+
+/* AI助手区域 - 同样强制固定高度 */
+.video-editing-ai-assistant-section {
+  height: 28.6% !important;
+  max-height: 28.6% !important;
+  min-height: 28.6% !important;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  overflow: hidden !important;
+}
+
+/* 右侧面板 */
+.video-editing-right-panel {
+  width: 50%;
+}
+
+/* MD编辑器样式优化 - 增强约束 */
+.video-editing-markdown-editor.md-editor.wmde-markdown-var {
+  height: 100% !important;
+  max-height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.video-editing-markdown-editor.md-editor.wmde-markdown-var .w-md-editor-text-container {
+  flex: 1 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: 100% !important;
+}
+
+.video-editing-markdown-editor.md-editor.wmde-markdown-var .w-md-editor-text {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  flex: 1 !important;
+}
+
+.video-editing-markdown-editor.md-editor.wmde-markdown-var .w-md-editor-text-textarea,
+.video-editing-markdown-editor.md-editor.wmde-markdown-var .w-md-editor-text-pre {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  resize: none !important;
+  min-height: 100% !important;
+}
+
+.video-editing-markdown-editor.md-editor.wmde-markdown-var .w-md-editor-preview {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  flex: 1 !important;
+}
+
+/* 确保编辑器工具栏不占用过多空间 */
+.video-editing-markdown-editor.md-editor.wmde-markdown-var .w-md-editor-toolbar {
+  flex-shrink: 0 !important;
+}
+
+/* 滚动条样式优化 */
+.video-editing-markdown-editor .w-md-editor-text-textarea::-webkit-scrollbar,
+.video-editing-markdown-editor .w-md-editor-text-pre::-webkit-scrollbar,
+.video-editing-markdown-editor .w-md-editor-preview::-webkit-scrollbar {
+  width: 6px;
+}
+
+.video-editing-markdown-editor .w-md-editor-text-textarea::-webkit-scrollbar-track,
+.video-editing-markdown-editor .w-md-editor-text-pre::-webkit-scrollbar-track,
+.video-editing-markdown-editor .w-md-editor-preview::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.video-editing-markdown-editor .w-md-editor-text-textarea::-webkit-scrollbar-thumb,
+.video-editing-markdown-editor .w-md-editor-text-pre::-webkit-scrollbar-thumb,
+.video-editing-markdown-editor .w-md-editor-preview::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.video-editing-markdown-editor .w-md-editor-text-textarea::-webkit-scrollbar-thumb:hover,
+.video-editing-markdown-editor .w-md-editor-text-pre::-webkit-scrollbar-thumb:hover,
+.video-editing-markdown-editor .w-md-editor-preview::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 修复特定class的高度问题 - 增强约束 */
+/* md-editor-content 固定高度，绝对不能被内部撑的更高 */
+.video-editing-markdown-editor .md-editor-content {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 100% !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* md-editor-content-editor 高度为100%，也不能变得更高 */
+.video-editing-markdown-editor .md-editor-content-editor {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  flex: 1 !important;
+}
+
+/* 额外的强制约束 - 确保任何内部元素都不能突破容器 */
+.video-editing-markdown-section * {
+  box-sizing: border-box !important;
+}
+
+.video-editing-markdown-section .flex-1 {
+  min-height: 0 !important;
+  overflow: hidden !important;
+} 
