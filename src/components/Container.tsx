@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Task, ChatTaskContent, VideoTaskContent } from '@/types';
+import { Task, ChatTaskContent, VideoEditingTaskContent } from '@/types';
 import ChatInterface from './chat/ChatInterface';
 import VideoEditingInterface from './video/VideoEditingInterface';
 
@@ -18,22 +18,34 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
         updatedAt: new Date(),
         status: 'active' as const,
       });
-      console.log(`Updated chat content for task: ${activeTask.id}`);
+      console.log(`[Container] Updated chat content for task: ${activeTask.id}`, {
+        conversationsCount: content.conversations.length,
+        activeConversationId: content.activeConversationId,
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
-  const handleUpdateVideoContent = (content: VideoTaskContent) => {
+  const handleUpdateVideoEditingContent = (content: VideoEditingTaskContent) => {
     if (activeTask && onUpdateTask) {
-      onUpdateTask(activeTask.id, {
+      onUpdateTask(activeTask.id, { 
         content,
         updatedAt: new Date(),
         status: 'active' as const,
       });
-      console.log(`Updated video editing content for task: ${activeTask.id} - markdown length: ${content.markdownContent.length}`);
+      console.log(`[Container] Updated video editing content for task: ${activeTask.id}`, {
+        markdownLength: content.markdownContent.length,
+        lastModified: content.lastModified.toISOString(),
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
   if (!activeTask) {
+    console.log('[Container] 显示欢迎界面 - 无活动任务', {
+      timestamp: new Date().toISOString()
+    });
+    
     return (
       <div className="flex-1 bg-white flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-6">
@@ -103,7 +115,11 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
 
   // Handle chat task type
   if (activeTask.type === 'chat') {
-    // 聊天任务界面渲染
+    console.log(`[Container] 渲染聊天任务界面`, {
+      taskId: activeTask.id,
+      taskTitle: activeTask.title,
+      timestamp: new Date().toISOString()
+    });
     
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -118,21 +134,32 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
 
   // Handle video editing task type
   if (activeTask.type === 'video') {
-    // 视频编辑任务界面渲染
-    console.log(`Rendering video editing interface for task: ${activeTask.id}`);
+    console.log(`[Container] 渲染视频编辑任务界面`, {
+      taskId: activeTask.id,
+      taskTitle: activeTask.title,
+      hasContent: !!activeTask.content,
+      timestamp: new Date().toISOString()
+    });
     
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <VideoEditingInterface
           taskId={activeTask.id}
-          content={activeTask.content as VideoTaskContent | null}
-          onUpdateContent={handleUpdateVideoContent}
+          content={activeTask.content as VideoEditingTaskContent | null}
+          onUpdateContent={handleUpdateVideoEditingContent}
         />
       </div>
     );
   }
 
   // Handle other task types (existing functionality)
+  console.log(`[Container] 渲染通用任务界面`, {
+    taskId: activeTask.id,
+    taskType: activeTask.type,
+    taskTitle: activeTask.title,
+    timestamp: new Date().toISOString()
+  });
+
   return (
     <div className="flex-1 bg-white p-6">
       <div className="max-w-4xl mx-auto">
