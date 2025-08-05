@@ -265,7 +265,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           {/* AI助手区域 - 对话输入界面 */}
           <div className="video-editing-ai-assistant-section flex flex-col bg-gray-50 border-t border-gray-200">
             {/* 输入区域 */}
-            <div className="flex-1 flex flex-col justify-end p-4">
+            <div className="flex flex-col p-4">
               {/* AI Assistant标题 */}
               <div className="mb-3">
                 <div className="flex items-center space-x-2 mb-2">
@@ -317,11 +317,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                   )}
                 </button>
               </form>
-              
-              {/* 提示文本 */}
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                Ask questions about video editing, request content suggestions, or get help with your project workflow
-              </p>
             </div>
           </div>
         </div>

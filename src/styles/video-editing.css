@@ -4,17 +4,14 @@
 .video-editing-left-panel {
   border-right: 1px solid #e5e7eb;
   height: 100%;
-  width: 50%;
+  width: 25%;
 }
 
-/* MD编辑器区域 - 强制固定高度，绝对不允许扩展 */
+/* MD编辑器区域 - 扩展占用更多空间 */
 .video-editing-markdown-section {
-  height: 71.4% !important;
-  max-height: 71.4% !important;
-  min-height: 71.4% !important;
+  flex: 1 !important;
   overflow: hidden !important;
   flex-shrink: 0 !important;
-  flex-grow: 0 !important;
   position: relative;
 }
 
@@ -26,20 +23,17 @@
   overflow: hidden !important;
 }
 
-/* AI助手区域 - 同样强制固定高度 */
+/* AI助手区域 - 紧凑自适应高度 */
 .video-editing-ai-assistant-section {
-  height: 28.6% !important;
-  max-height: 28.6% !important;
-  min-height: 28.6% !important;
-  border-top: 1px solid #e5e7eb;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
+  border-top: 1px solid #e5e7eb;
   overflow: hidden !important;
 }
 
 /* 右侧面板 */
 .video-editing-right-panel {
-  width: 50%;
+  width: 75%;
 }
 
 /* MD编辑器样式优化 - 增强约束 */
