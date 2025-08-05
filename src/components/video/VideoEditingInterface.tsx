@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { VideoEditingTaskContent, ScriptSegment } from '@/types';
+import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import '../../styles/video-editing.css';
 
@@ -35,6 +35,128 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 脚本生成相关状态
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  
+  // 素材管理相关状态
+  const [selectedMaterialType, setSelectedMaterialType] = useState<MaterialType | 'all'>('all');
+  const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Mock数据 - 素材库
+  const mockMaterials: MaterialItem[] = [
+    {
+      id: 'video-1',
+      name: '演示视频',
+      type: 'video',
+      format: 'mp4',
+      size: 2621440, // 2.5MB
+      duration: 45,
+      width: 1920,
+      height: 1080,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmMGY5ZmYiLz48cGF0aCBkPSJNNDAgMjBMMTYgMzVWMjVMNDAgMjBaIiBmaWxsPSIjMzMzIi8+PC9zdmc+',
+      url: '/mock/video1.mp4',
+      createdAt: new Date('2024-01-15'),
+      tags: ['演示', '教程'],
+      description: '产品功能演示视频'
+    },
+    {
+      id: 'audio-1',
+      name: '背景音乐',
+      type: 'audio',
+      format: 'mp3',
+      size: 1887437, // 1.8MB
+      duration: 120,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZWY5ZTciLz48cGF0aCBkPSJNMzUgMjBWNDBNNDAgMTVWNDVNNDUgMjVWMzVNNTAgMThWNDJNNTUgMjJWMzhNNjAgMTZWNDQiIHN0cm9rZT0iIzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+',
+      url: '/mock/audio1.mp3',
+      createdAt: new Date('2024-01-16'),
+      tags: ['背景', '音乐'],
+      description: '轻松愉快的背景音乐'
+    },
+    {
+      id: 'image-1',
+      name: '封面图片',
+      type: 'image',
+      format: 'jpg',
+      size: 460800, // 450KB
+      width: 1920,
+      height: 1080,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmM2Y0ZjYiLz48Y2lyY2xlIGN4PSI3NSIgY3k9IjE1IiByPSI4IiBmaWxsPSIjZmZkNzAwIi8+PHBhdGggZD0iTTIwIDQ1TDM1IDMwTDUwIDM1TDgwIDIwVjQ1SDIwWiIgZmlsbD0iIzY2NjYiLz48L3N2Zz4=',
+      url: '/mock/cover.jpg',
+      createdAt: new Date('2024-01-17'),
+      tags: ['封面', '设计'],
+      description: '视频封面设计图'
+    },
+    {
+      id: 'video-2',
+      name: '教程视频',
+      type: 'video',
+      format: 'mp4',
+      size: 5452595, // 5.2MB
+      duration: 180,
+      width: 1920,
+      height: 1080,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNlZGY0ZmYiLz48cGF0aCBkPSJNNDAgMjBMNjAgMzBMNDAgNDBWMjBaIiBmaWxsPSIjMzMzIi8+PC9zdmc+',
+      url: '/mock/tutorial.mp4',
+      createdAt: new Date('2024-01-18'),
+      tags: ['教程', '详细'],
+      description: '详细的操作教程视频'
+    },
+    {
+      id: 'audio-2',
+      name: '转场音效',
+      type: 'audio',
+      format: 'wav',
+      size: 327680, // 320KB
+      duration: 3,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZWZiZWEiLz48cGF0aCBkPSJNMzAgMzBIMzVMMzggMjVMNDIgMzVMNDUgMjBMNDkgNDBMNTIgMTVMNTYgNDVMNTkgMjVMNjIgMzVMNjUgMzBINzAiIHN0cm9rZT0iIzMzMyIgc3Ryb2tlLXdpZHRoPSIyIiBmaWxsPSJub25lIi8+PC9zdmc+',
+      url: '/mock/transition.wav',
+      createdAt: new Date('2024-01-19'),
+      tags: ['转场', '音效'],
+      description: '视频转场音效'
+    },
+    {
+      id: 'image-2',
+      name: 'Logo图标',
+      type: 'image',
+      format: 'png',
+      size: 128000, // 125KB
+      width: 512,
+      height: 512,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmOWZhZmIiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjMwIiByPSIxNSIgZmlsbD0iIzMzNzNkYyIvPjx0ZXh0IHg9IjUwIiB5PSIzNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiIGZvbnQtc2l6ZT0iMTQiPkw8L3RleHQ+PC9zdmc+',
+      url: '/mock/logo.png',
+      createdAt: new Date('2024-01-20'),
+      tags: ['logo', '品牌'],
+      description: '品牌Logo图标'
+    },
+    {
+      id: 'video-3',
+      name: '片尾视频',
+      type: 'video',
+      format: 'mov',
+      size: 1887437, // 1.8MB
+      duration: 10,
+      width: 1920,
+      height: 1080,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZmY3ZWQiLz48cGF0aCBkPSJNNDAgMjBMNjAgMzBMNDAgNDBWMjBaIiBmaWxsPSIjZjU5ZTBiIi8+PHRleHQgeD0iNzAiIHk9IjM1IiBmaWxsPSIjMzMzIiBmb250LXNpemU9IjEwIj5FTkQ8L3RleHQ+PC9zdmc+',
+      url: '/mock/ending.mov',
+      createdAt: new Date('2024-01-21'),
+      tags: ['片尾', '结束'],
+      description: '视频片尾动画'
+    },
+    {
+      id: 'audio-3',
+      name: '开场音乐',
+      type: 'audio',
+      format: 'aac',
+      size: 2202009, // 2.1MB
+      duration: 30,
+      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmMGZkZjQiLz48cGF0aCBkPSJNMzAgMjBWNDBNMzUgMTVWNDVNNDAgMjVWMzVNNDUgMThWNDJNNTAgMjJWMzhNNTUgMTZWNDRNNjAgMjBWNDBNNjUgMTJWNDgiIHN0cm9rZT0iIzEwYjk4MSIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+',
+      url: '/mock/opening.aac',
+      createdAt: new Date('2024-01-22'),
+      tags: ['开场', '音乐'],
+      description: '激动人心的开场音乐'
+    }
+  ];
 
   // Mock数据 - 文本脚本片段
   const mockScriptSegments: ScriptSegment[] = [
@@ -510,6 +632,211 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   };
 
+  // 素材管理事件处理函数
+  
+  // 处理素材类型筛选
+  const handleMaterialTypeFilter = useCallback((type: MaterialType | 'all') => {
+    console.log('[VideoEditingInterface] 素材类型筛选', {
+      taskId,
+      previousType: selectedMaterialType,
+      newType: type,
+      timestamp: new Date().toISOString()
+    });
+    
+    setSelectedMaterialType(type);
+    
+    // 清除当前选中的素材（因为筛选后可能不可见）
+    setSelectedMaterials(new Set());
+  }, [taskId, selectedMaterialType]);
+
+  // 处理素材选择/取消选择
+  const handleMaterialSelect = useCallback((materialId: string, isSelected: boolean) => {
+    console.log('[VideoEditingInterface] 素材选择变更', {
+      taskId,
+      materialId,
+      isSelected,
+      previousSelectionCount: selectedMaterials.size,
+      timestamp: new Date().toISOString()
+    });
+
+    const newSelection = new Set(selectedMaterials);
+    if (isSelected) {
+      newSelection.add(materialId);
+    } else {
+      newSelection.delete(materialId);
+    }
+    
+    setSelectedMaterials(newSelection);
+    
+    console.log('[VideoEditingInterface] 素材选择状态更新', {
+      taskId,
+      newSelectionCount: newSelection.size,
+      selectedIds: Array.from(newSelection),
+      timestamp: new Date().toISOString()
+    });
+  }, [taskId, selectedMaterials]);
+
+  // 处理全选/取消全选
+  const handleSelectAll = useCallback(() => {
+    const filteredMaterials = selectedMaterialType === 'all' 
+      ? mockMaterials 
+      : mockMaterials.filter(material => material.type === selectedMaterialType);
+    
+    const isAllSelected = filteredMaterials.every(material => selectedMaterials.has(material.id));
+    
+    console.log('[VideoEditingInterface] 全选操作', {
+      taskId,
+      isAllSelected,
+      filteredCount: filteredMaterials.length,
+      previousSelectionCount: selectedMaterials.size,
+      timestamp: new Date().toISOString()
+    });
+
+    if (isAllSelected) {
+      // 取消选择当前筛选的所有素材
+      const newSelection = new Set(selectedMaterials);
+      filteredMaterials.forEach(material => newSelection.delete(material.id));
+      setSelectedMaterials(newSelection);
+    } else {
+      // 选择当前筛选的所有素材
+      const newSelection = new Set(selectedMaterials);
+      filteredMaterials.forEach(material => newSelection.add(material.id));
+      setSelectedMaterials(newSelection);
+    }
+  }, [taskId, selectedMaterialType, selectedMaterials, mockMaterials]);
+
+  // 处理素材播放/预览
+  const handleMaterialPlay = useCallback((material: MaterialItem) => {
+    console.log('[VideoEditingInterface] 素材播放/预览', {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      materialFormat: material.format,
+      materialSize: material.size,
+      timestamp: new Date().toISOString()
+    });
+
+    // Mock播放功能 - 显示提示
+    const actionText = material.type === 'image' ? '预览' : '播放';
+    alert(`${actionText}素材: ${material.name}\n类型: ${material.type}\n格式: ${material.format}\n大小: ${(material.size / 1024 / 1024).toFixed(2)}MB`);
+  }, [taskId]);
+
+  // 处理素材下载
+  const handleMaterialDownload = useCallback((material: MaterialItem) => {
+    console.log('[VideoEditingInterface] 素材下载', {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      materialUrl: material.url,
+      timestamp: new Date().toISOString()
+    });
+
+    // Mock下载功能 - 显示提示
+    alert(`下载素材: ${material.name}\nURL: ${material.url}\n大小: ${(material.size / 1024 / 1024).toFixed(2)}MB`);
+  }, [taskId]);
+
+  // 处理素材删除
+  const handleMaterialDelete = useCallback((materialIds: string[]) => {
+    console.log('[VideoEditingInterface] 素材删除', {
+      taskId,
+      materialIds,
+      deleteCount: materialIds.length,
+      timestamp: new Date().toISOString()
+    });
+
+    const materialNames = materialIds.map(id => {
+      const material = mockMaterials.find(m => m.id === id);
+      return material ? material.name : id;
+    });
+
+    const confirmDelete = confirm(`确认删除以下素材吗？\n${materialNames.join('\n')}`);
+    
+    if (confirmDelete) {
+      // Mock删除功能 - 清除选中状态
+      const newSelection = new Set(selectedMaterials);
+      materialIds.forEach(id => newSelection.delete(id));
+      setSelectedMaterials(newSelection);
+      
+      console.log('[VideoEditingInterface] 素材删除确认', {
+        taskId,
+        deletedIds: materialIds,
+        remainingSelectionCount: newSelection.size,
+        timestamp: new Date().toISOString()
+      });
+      
+      alert(`已删除 ${materialIds.length} 个素材`);
+    } else {
+      console.log('[VideoEditingInterface] 素材删除取消', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [taskId, selectedMaterials, mockMaterials]);
+
+  // 处理素材上传
+  const handleMaterialUpload = useCallback(() => {
+    console.log('[VideoEditingInterface] 素材上传触发', {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+
+    if (isUploading) {
+      console.log('[VideoEditingInterface] 上传正在进行中，忽略新的上传请求', {
+        taskId,
+        currentProgress: uploadProgress,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Mock上传功能 - 模拟文件选择和上传过程
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'video/*,audio/*,image/*';
+    
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement)?.files;
+      if (!files || files.length === 0) return;
+
+      console.log('[VideoEditingInterface] 开始模拟上传', {
+        taskId,
+        fileCount: files.length,
+        fileNames: Array.from(files).map(f => f.name),
+        timestamp: new Date().toISOString()
+      });
+
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      // 模拟上传进度
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          const newProgress = prev + Math.random() * 20;
+          if (newProgress >= 100) {
+            clearInterval(progressInterval);
+            setIsUploading(false);
+            setUploadProgress(0);
+            
+            console.log('[VideoEditingInterface] 模拟上传完成', {
+              taskId,
+              fileCount: files.length,
+              timestamp: new Date().toISOString()
+            });
+            
+            alert(`成功上传 ${files.length} 个文件`);
+            return 100;
+          }
+          return newProgress;
+        });
+      }, 200);
+    };
+
+    input.click();
+  }, [taskId, isUploading, uploadProgress]);
+
   console.log('[VideoEditingInterface] 渲染界面', {
     taskId,
     markdownLength: markdownValue.length,
@@ -675,38 +1002,209 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               {/* 素材管理面板 - 左侧50% */}
               <div className="video-editing-materials-panel border-r border-gray-200">
                 <div className="materials-panel-header">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                      </div>
+                      <h3 className="text-sm font-semibold text-gray-900">素材管理</h3>
                     </div>
-                    <h3 className="text-sm font-semibold text-gray-900">素材管理</h3>
+                    <button
+                      onClick={handleMaterialUpload}
+                      disabled={isUploading}
+                      className="flex items-center space-x-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="上传素材"
+                    >
+                      {isUploading ? (
+                        <>
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>{uploadProgress.toFixed(0)}%</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <span>上传</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
                 <div className="materials-panel-content">
-                  <div className="space-y-3">
-                    <div className="text-center text-gray-500 py-8">
-                      <div className="w-12 h-12 bg-gray-100 rounded-xl mx-auto mb-3 flex items-center justify-center">
-                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 011 1v1a1 1 0 01-1 1h-1v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7H3a1 1 0 01-1-1V5a1 1 0 011-1h4z" />
-                        </svg>
+                  {/* 素材类型筛选标签 */}
+                  <div className="flex space-x-1 mb-4 p-1 bg-gray-100 rounded-lg">
+                    {(['all', 'video', 'audio', 'image'] as const).map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => handleMaterialTypeFilter(type)}
+                        className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                          selectedMaterialType === type
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        {type === 'all' ? '全部' : 
+                         type === 'video' ? '视频' :
+                         type === 'audio' ? '音频' : '图片'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 素材网格 */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {mockMaterials
+                      .filter(material => selectedMaterialType === 'all' || material.type === selectedMaterialType)
+                      .map((material) => {
+                        const isSelected = selectedMaterials.has(material.id);
+                        const formatSize = (bytes: number) => {
+                          if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+                          return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+                        };
+                        
+                        const getTypeIcon = (type: MaterialType) => {
+                          switch (type) {
+                            case 'video':
+                              return (
+                                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              );
+                            case 'audio':
+                              return (
+                                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M9 12h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              );
+                            case 'image':
+                              return (
+                                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              );
+                          }
+                        };
+
+                        return (
+                          <div
+                            key={material.id}
+                            className={`relative bg-white border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer ${
+                              isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                            }`}
+                            onClick={() => handleMaterialSelect(material.id, !isSelected)}
+                          >
+                            {/* 选择指示器 */}
+                            <div className="absolute top-2 left-2">
+                              <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center ${
+                                isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                              }`}>
+                                {isSelected && (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 缩略图 */}
+                            <div className="w-full h-16 bg-gray-100 rounded mb-2 flex items-center justify-center overflow-hidden">
+                              {material.thumbnailUrl ? (
+                                <img 
+                                  src={material.thumbnailUrl} 
+                                  alt={material.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                getTypeIcon(material.type)
+                              )}
+                            </div>
+
+                            {/* 素材信息 */}
+                            <div className="space-y-1">
+                              <div className="flex items-center space-x-1">
+                                {getTypeIcon(material.type)}
+                                <h4 className="text-xs font-medium text-gray-900 truncate">{material.name}</h4>
+                              </div>
+                              <p className="text-xs text-gray-500">{formatSize(material.size)}</p>
+                              {material.duration && (
+                                <p className="text-xs text-gray-500">{material.duration}s</p>
+                              )}
+                            </div>
+
+                            {/* 操作按钮 */}
+                            <div className="flex space-x-1 mt-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMaterialPlay(material);
+                                }}
+                                className="flex-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
+                                title={material.type === 'image' ? '预览' : '播放'}
+                              >
+                                {material.type === 'image' ? (
+                                  <svg className="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                )}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMaterialDownload(material);
+                                }}
+                                className="flex-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
+                                title="下载"
+                              >
+                                <svg className="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* 底部操作栏 */}
+                  <div className="border-t pt-3 mt-auto">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={handleSelectAll}
+                          className="flex items-center space-x-1 text-gray-600 hover:text-gray-900"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>全选</span>
+                        </button>
+                        {selectedMaterials.size > 0 && (
+                          <button
+                            onClick={() => handleMaterialDelete(Array.from(selectedMaterials))}
+                            className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>删除选中</span>
+                          </button>
+                        )}
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">素材库</p>
-                      <p className="text-xs text-gray-500">视频、音频、图片素材将在此管理</p>
-                      <div className="mt-4 space-y-2 text-xs text-gray-400">
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                          <span>拖拽上传</span>
-                        </div>
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                          <span>素材预览</span>
-                        </div>
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                          <span>分类管理</span>
-                        </div>
+                      <div className="text-gray-500">
+                        {mockMaterials.filter(m => selectedMaterialType === 'all' || m.type === selectedMaterialType).length}个素材 
+                        ({(mockMaterials
+                          .filter(m => selectedMaterialType === 'all' || m.type === selectedMaterialType)
+                          .reduce((sum, m) => sum + m.size, 0) / 1024 / 1024).toFixed(1)}MB)
                       </div>
                     </div>
                   </div>

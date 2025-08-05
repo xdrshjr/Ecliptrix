@@ -258,6 +258,147 @@
   padding: 16px;
   height: calc(100% - 60px);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 素材卡片样式增强 */
+.material-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid transparent;
+}
+
+.material-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.material-card.selected {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+/* 素材类型筛选标签样式 */
+.material-type-filter {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.material-type-filter button {
+  transition: all 0.2s ease-in-out;
+  border-radius: 8px;
+  font-weight: 500;
+  position: relative;
+}
+
+.material-type-filter button.active {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  color: #1f2937;
+}
+
+.material-type-filter button:not(.active):hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 素材缩略图样式 */
+.material-thumbnail {
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  position: relative;
+}
+
+.material-thumbnail::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease-in-out;
+}
+
+.material-card:hover .material-thumbnail::before {
+  transform: translateX(100%);
+}
+
+/* 操作按钮样式增强 */
+.material-action-btn {
+  transition: all 0.2s ease-in-out;
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.material-action-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.material-action-btn:active {
+  transform: scale(0.95);
+}
+
+/* 上传按钮样式增强 */
+.upload-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  transition: all 0.2s ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.upload-btn:disabled {
+  background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%);
+  cursor: not-allowed;
+}
+
+/* 选择指示器样式增强 */
+.selection-indicator {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 4px;
+}
+
+.selection-indicator.selected {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* 底部操作栏样式 */
+.materials-footer {
+  border-top: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  padding: 12px 0;
+  margin-top: auto;
+}
+
+.materials-footer button {
+  transition: all 0.2s ease-in-out;
+}
+
+.materials-footer button:hover {
+  transform: translateY(-1px);
+}
+
+/* 统计信息样式 */
+.materials-stats {
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 /* 视频合成播放面板内部样式 */
@@ -285,24 +426,28 @@
 
 /* 滚动条样式优化 - 应用到新面板 */
 .video-editing-materials-panel::-webkit-scrollbar,
-.video-editing-preview-lower::-webkit-scrollbar {
+.video-editing-preview-lower::-webkit-scrollbar,
+.materials-panel-content::-webkit-scrollbar {
   width: 6px;
 }
 
 .video-editing-materials-panel::-webkit-scrollbar-track,
-.video-editing-preview-lower::-webkit-scrollbar-track {
+.video-editing-preview-lower::-webkit-scrollbar-track,
+.materials-panel-content::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 3px;
 }
 
 .video-editing-materials-panel::-webkit-scrollbar-thumb,
-.video-editing-preview-lower::-webkit-scrollbar-thumb {
+.video-editing-preview-lower::-webkit-scrollbar-thumb,
+.materials-panel-content::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 3px;
 }
 
 .video-editing-materials-panel::-webkit-scrollbar-thumb:hover,
-.video-editing-preview-lower::-webkit-scrollbar-thumb:hover {
+.video-editing-preview-lower::-webkit-scrollbar-thumb:hover,
+.materials-panel-content::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
 
@@ -320,6 +465,11 @@
   .video-editing-materials-panel,
   .video-editing-composition-panel {
     width: 50%;
+  }
+  
+  /* 素材网格在中等屏幕调整为单列 */
+  .materials-panel-content .grid-cols-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
 
@@ -360,4 +510,51 @@
   .video-editing-materials-panel {
     border-bottom: 1px solid #e5e7eb;
   }
+  
+  /* 小屏幕下素材类型筛选标签调整 */
+  .material-type-filter {
+    margin-bottom: 12px;
+  }
+  
+  .material-type-filter button {
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+}
+
+/* 加载和动画效果 */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* 拖拽上传区域样式 */
+.drag-drop-area {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  transition: all 0.2s ease-in-out;
+}
+
+.drag-drop-area.drag-over {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+  transform: scale(1.02);
+}
+
+/* 进度条样式 */
+.upload-progress {
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+  border-radius: 4px;
+  height: 4px;
+  transition: width 0.3s ease-in-out;
 } 
