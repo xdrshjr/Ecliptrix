@@ -3,7 +3,7 @@
 import React from 'react';
 import { Task, ChatTaskContent, VideoTaskContent } from '@/types';
 import ChatInterface from './chat/ChatInterface';
-import VideoEditingWorkspace from './video/VideoEditingWorkspace';
+import VideoEditingInterface from './video/VideoEditingInterface';
 
 interface ContainerProps {
   activeTask: Task | null;
@@ -13,7 +13,7 @@ interface ContainerProps {
 const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
   const handleUpdateChatContent = (content: ChatTaskContent) => {
     if (activeTask && onUpdateTask) {
-      onUpdateTask(activeTask.id, {
+      onUpdateTask(activeTask.id, { 
         content,
         updatedAt: new Date(),
         status: 'active' as const,
@@ -29,10 +29,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
         updatedAt: new Date(),
         status: 'active' as const,
       });
-      console.log(`Updated video content for task: ${activeTask.id}`, {
-        markdownLength: content.markdownContent.length,
-        timestamp: new Date().toISOString(),
-      });
+      console.log(`Updated video editing content for task: ${activeTask.id} - markdown length: ${content.markdownContent.length}`);
     }
   };
 
@@ -121,41 +118,16 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
 
   // Handle video editing task type
   if (activeTask.type === 'video') {
-    console.log('Container: 渲染Video Editing任务', {
-      taskId: activeTask.id,
-      taskTitle: activeTask.title,
-      hasContent: !!activeTask.content,
-    });
+    // 视频编辑任务界面渲染
+    console.log(`Rendering video editing interface for task: ${activeTask.id}`);
     
     return (
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-white">
-        {/* Task Header */}
-        <div className="px-6 py-4 bg-white border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">{activeTask.title}</h1>
-              <p className="text-sm text-gray-600">
-                Created {activeTask.createdAt.toLocaleDateString()} • Last updated {activeTask.updatedAt.toLocaleDateString()}
-              </p>
-            </div>
-            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-              {activeTask.status}
-            </span>
-          </div>
-        </div>
-
-        {/* Video Editing Workspace - 占满剩余空间 */}
-        <div className="flex-1 min-h-0">
-          <VideoEditingWorkspace
-            content={activeTask.content as VideoTaskContent}
-            onContentChange={handleUpdateVideoContent}
-          />
-        </div>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <VideoEditingInterface
+          taskId={activeTask.id}
+          content={activeTask.content as VideoTaskContent | null}
+          onUpdateContent={handleUpdateVideoContent}
+        />
       </div>
     );
   }

@@ -47,10 +47,10 @@ export interface ChatTaskContent {
   activeConversationId: string | null;
 }
 
-// Video Editing related types
+// Video editing task content interface
 export interface VideoTaskContent {
   markdownContent: string;
-  rightPanelContent?: unknown; // 预留给未来的右侧面板内容
+  lastModified: Date;
 }
 
 export interface LLMConfig {
