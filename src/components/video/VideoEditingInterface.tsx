@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType } from '@/types';
 import ScriptPanel from './ScriptPanel';
+import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
 
 // 动态导入MD编辑器以避免SSR问题
@@ -41,6 +42,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // 视频播放相关状态
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(45); // 当前播放时间（秒）
+  const [volume, setVolume] = useState(0.8); // 音量 (0-1)
+  const [playbackRate, setPlaybackRate] = useState(1.0); // 播放速度
+  const [previewQuality, setPreviewQuality] = useState<'low' | 'medium' | 'high' | 'original'>('high');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
   // Mock数据 - 素材库
   const mockMaterials: MaterialItem[] = [
@@ -158,6 +168,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   ];
 
+  // Mock数据 - 视频预览信息
+  const mockVideoPreview = {
+    title: '产品演示视频 v2.1',
+    duration: 150, // 2分30秒
+    resolution: { width: 1920, height: 1080 },
+    frameRate: 30,
+    format: 'MP4',
+    fileSize: 45.6, // MB
+    codec: 'H.264',
+    bitrate: '4.2 Mbps',
+    thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDMyMCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjMyMCIgaGVpZ2h0PSIxODAiIGZpbGw9IiMxMTE4MjciLz48Y2lyY2xlIGN4PSIxNjAiIGN5PSI5MCIgcj0iMzAiIGZpbGw9IiM2MzY2ZjEiLz48cGF0aCBkPSJNMTUwIDc1TDE3NSA5MEwxNTAgMTA1Vjc1WiIgZmlsbD0id2hpdGUiLz48L3N2Zz4='
+  };
+
   // Mock数据 - 文本脚本片段
   const mockScriptSegments: ScriptSegment[] = [
     {
@@ -261,6 +284,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     markdownLength: markdownValue.length,
     scriptSegmentsCount: content?.scriptSegments?.length || mockScriptSegments.length,
     totalScriptSentences: (content?.scriptSegments || mockScriptSegments).reduce((sum, segment) => sum + segment.sentences.length, 0),
+    videoPreview: {
+      title: mockVideoPreview.title,
+      duration: mockVideoPreview.duration,
+      resolution: `${mockVideoPreview.resolution.width}×${mockVideoPreview.resolution.height}`,
+      format: mockVideoPreview.format,
+      isPlaying,
+      currentTime,
+      volume,
+      playbackRate,
+      previewQuality
+    },
     timestamp: new Date().toISOString()
   });
 
@@ -302,6 +336,164 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       setMarkdownValue(content.markdownContent);
     }
   }, [content, markdownValue, taskId]);
+
+  // 视频播放控制事件处理函数
+  const handlePlayPause = useCallback(() => {
+    console.log('[VideoEditingInterface] 播放/暂停切换', {
+      taskId,
+      previousState: isPlaying ? 'playing' : 'paused',
+      newState: !isPlaying ? 'playing' : 'paused',
+      currentTime,
+      timestamp: new Date().toISOString()
+    });
+    setIsPlaying(!isPlaying);
+  }, [taskId, isPlaying, currentTime]);
+
+  const handleTimeSeek = useCallback((newTime: number) => {
+    console.log('[VideoEditingInterface] 视频时间跳转', {
+      taskId,
+      previousTime: currentTime,
+      newTime,
+      duration: mockVideoPreview.duration,
+      timestamp: new Date().toISOString()
+    });
+    setCurrentTime(Math.max(0, Math.min(newTime, mockVideoPreview.duration)));
+  }, [taskId, currentTime, mockVideoPreview.duration]);
+
+  const handleVolumeChange = useCallback((newVolume: number) => {
+    console.log('[VideoEditingInterface] 音量调节', {
+      taskId,
+      previousVolume: volume,
+      newVolume,
+      timestamp: new Date().toISOString()
+    });
+    setVolume(Math.max(0, Math.min(1, newVolume)));
+  }, [taskId, volume]);
+
+  const handlePlaybackRateChange = useCallback((rate: number) => {
+    console.log('[VideoEditingInterface] 播放速度变更', {
+      taskId,
+      previousRate: playbackRate,
+      newRate: rate,
+      timestamp: new Date().toISOString()
+    });
+    setPlaybackRate(rate);
+  }, [taskId, playbackRate]);
+
+  const handleQualityChange = useCallback((quality: 'low' | 'medium' | 'high' | 'original') => {
+    console.log('[VideoEditingInterface] 预览质量变更', {
+      taskId,
+      previousQuality: previewQuality,
+      newQuality: quality,
+      timestamp: new Date().toISOString()
+    });
+    setPreviewQuality(quality);
+  }, [taskId, previewQuality]);
+
+  const handleFullscreenToggle = useCallback(() => {
+    console.log('[VideoEditingInterface] 全屏模式切换', {
+      taskId,
+      previousState: isFullscreen ? 'fullscreen' : 'normal',
+      newState: !isFullscreen ? 'fullscreen' : 'normal',
+      timestamp: new Date().toISOString()
+    });
+    setIsFullscreen(!isFullscreen);
+  }, [taskId, isFullscreen]);
+
+  // 格式化时间显示
+  const formatTime = useCallback((seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  // 模拟视频播放时间更新
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    
+    if (isPlaying) {
+      console.log('[VideoEditingInterface] 开始视频播放模拟', {
+        taskId,
+        startTime: currentTime,
+        playbackRate,
+        timestamp: new Date().toISOString()
+      });
+      
+      intervalId = setInterval(() => {
+        setCurrentTime(prevTime => {
+          const newTime = prevTime + playbackRate;
+          if (newTime >= mockVideoPreview.duration) {
+            console.log('[VideoEditingInterface] 视频播放结束', {
+              taskId,
+              finalTime: mockVideoPreview.duration,
+              timestamp: new Date().toISOString()
+            });
+            setIsPlaying(false);
+            return mockVideoPreview.duration;
+          }
+          return newTime;
+        });
+      }, 1000);
+    } else {
+      console.log('[VideoEditingInterface] 视频播放暂停', {
+        taskId,
+        pausedAt: currentTime,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isPlaying, playbackRate, taskId, mockVideoPreview.duration]);
+
+  // 键盘快捷键支持
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      // 只在视频播放面板获得焦点时响应快捷键
+      const target = event.target as HTMLElement;
+      if (target.closest('.video-editing-composition-panel')) {
+        switch (event.code) {
+          case 'Space':
+            event.preventDefault();
+            handlePlayPause();
+            console.log('[VideoEditingInterface] 键盘快捷键 - 空格键播放/暂停', {
+              taskId,
+              action: isPlaying ? 'pause' : 'play',
+              timestamp: new Date().toISOString()
+            });
+            break;
+          case 'ArrowLeft':
+            event.preventDefault();
+            handleTimeSeek(Math.max(0, currentTime - 10));
+            console.log('[VideoEditingInterface] 键盘快捷键 - 左箭头后退10秒', {
+              taskId,
+              previousTime: currentTime,
+              newTime: Math.max(0, currentTime - 10),
+              timestamp: new Date().toISOString()
+            });
+            break;
+          case 'ArrowRight':
+            event.preventDefault();
+            handleTimeSeek(Math.min(mockVideoPreview.duration, currentTime + 10));
+            console.log('[VideoEditingInterface] 键盘快捷键 - 右箭头前进10秒', {
+              taskId,
+              previousTime: currentTime,
+              newTime: Math.min(mockVideoPreview.duration, currentTime + 10),
+              timestamp: new Date().toISOString()
+            });
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [taskId, isPlaying, currentTime, handlePlayPause, handleTimeSeek, mockVideoPreview.duration]);
 
   // 新增：布局变化监控和性能追踪
   useEffect(() => {
@@ -853,7 +1045,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       upperContainer: {
         height: '70%',
         leftPanel: '素材管理 - 50%宽度',
-        rightPanel: '视频合成播放 - 50%宽度'
+        rightPanel: '视频合成播放 - 50%宽度',
+        videoPlayer: {
+          isPlaying,
+          currentTime,
+          duration: mockVideoPreview.duration,
+          volume,
+          playbackRate,
+          previewQuality
+        }
       },
       lowerContainer: {
         height: '30%',
@@ -1212,7 +1412,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               </div>
 
               {/* 视频合成播放面板 - 右侧50% */}
-              <div className="video-editing-composition-panel">
+              <div 
+                className="video-editing-composition-panel"
+                tabIndex={0}
+                aria-label="视频合成播放面板"
+              >
                 <div className="composition-panel-header">
                   <div className="flex items-center space-x-2">
                     <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
@@ -1224,28 +1428,195 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                   </div>
                 </div>
                 <div className="composition-panel-content">
-                  <div className="text-center text-gray-500">
-                    <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
+                  {/* 视频播放器容器 */}
+                  <div className="video-player-container">
+                    {/* 视频预览窗口 - 16:9比例 */}
+                    <div className="video-preview-window">
+                      <img 
+                        src={mockVideoPreview.thumbnailUrl}
+                        alt="视频预览帧"
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      {/* 播放状态覆盖层 */}
+                      <div className="video-overlay">
+                        <button
+                          onClick={handlePlayPause}
+                          className="play-pause-btn"
+                          title={isPlaying ? '暂停' : '播放'}
+                        >
+                          {isPlaying ? (
+                            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          )}
+                        </button>
+                        {/* 加载指示器 */}
+                        {isPlaying && (
+                          <div className="loading-indicator">
+                            <div className="loading-spinner"></div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <h4 className="text-base font-medium text-gray-900 mb-2">视频预览播放器</h4>
-                    <p className="text-sm text-gray-600 mb-4">
-                      实时预览合成后的视频效果
-                    </p>
-                    <div className="space-y-2 text-xs text-gray-500">
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                        <span>实时预览</span>
+
+                    {/* 播放控制栏 */}
+                    <div className="video-controls">
+                      {/* 进度条 */}
+                      <div className="progress-container">
+                        <div className="progress-bar">
+                          <div 
+                            className="progress-filled"
+                            style={{ width: `${(currentTime / mockVideoPreview.duration) * 100}%` }}
+                          ></div>
+                          <input
+                            type="range"
+                            min="0"
+                            max={mockVideoPreview.duration}
+                            value={currentTime}
+                            onChange={(e) => handleTimeSeek(Number(e.target.value))}
+                            className="progress-slider"
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                        <span>播放控制</span>
+
+                      {/* 控制按钮组 */}
+                      <div className="controls-row">
+                        {/* 左侧：播放按钮和时间 */}
+                        <div className="controls-left">
+                          <button
+                            onClick={handlePlayPause}
+                            className="control-btn play-btn"
+                            title={isPlaying ? '暂停' : '播放'}
+                          >
+                            {isPlaying ? (
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z"/>
+                              </svg>
+                            )}
+                          </button>
+                          <span className="time-display">
+                            {formatTime(currentTime)} / {formatTime(mockVideoPreview.duration)}
+                          </span>
+                        </div>
+
+                        {/* 右侧：音量、速度、全屏 */}
+                        <div className="controls-right">
+                          {/* 播放速度 */}
+                          <div className="speed-control">
+                            <select
+                              value={playbackRate}
+                              onChange={(e) => handlePlaybackRateChange(Number(e.target.value))}
+                              className="speed-select"
+                            >
+                              <option value={0.5}>0.5x</option>
+                              <option value={1.0}>1.0x</option>
+                              <option value={1.25}>1.25x</option>
+                              <option value={1.5}>1.5x</option>
+                              <option value={2.0}>2.0x</option>
+                            </select>
+                          </div>
+
+                          {/* 音量控制 */}
+                          <div 
+                            className="volume-control"
+                            onMouseEnter={() => setShowVolumeSlider(true)}
+                            onMouseLeave={() => setShowVolumeSlider(false)}
+                          >
+                            <button className="control-btn volume-btn" title="音量">
+                              {volume === 0 ? (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                                </svg>
+                              ) : volume < 0.5 ? (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                </svg>
+                              )}
+                            </button>
+                            {showVolumeSlider && (
+                              <div className="volume-slider-container">
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="1"
+                                  step="0.1"
+                                  value={volume}
+                                  onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                                  className="volume-slider"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 全屏按钮 */}
+                          <button
+                            onClick={handleFullscreenToggle}
+                            className="control-btn fullscreen-btn"
+                            title="全屏"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                        <span>质量设置</span>
+                    </div>
+
+                    {/* 视频信息面板 */}
+                    <div className="video-info-panel">
+                      <div className="info-row">
+                        <div className="info-item">
+                          <span className="info-label">分辨率:</span>
+                          <span className="info-value">{mockVideoPreview.resolution.width}×{mockVideoPreview.resolution.height}</span>
+                        </div>
+                        <div className="info-item">
+                          <span className="info-label">帧率:</span>
+                          <span className="info-value">{mockVideoPreview.frameRate}fps</span>
+                        </div>
+                        <div className="info-item">
+                          <span className="info-label">格式:</span>
+                          <span className="info-value">{mockVideoPreview.format}</span>
+                        </div>
+                      </div>
+                      <div className="info-row">
+                        <div className="info-item">
+                          <span className="info-label">编码:</span>
+                          <span className="info-value">{mockVideoPreview.codec}</span>
+                        </div>
+                        <div className="info-item">
+                          <span className="info-label">码率:</span>
+                          <span className="info-value">{mockVideoPreview.bitrate}</span>
+                        </div>
+                        <div className="info-item">
+                          <span className="info-label">大小:</span>
+                          <span className="info-value">{mockVideoPreview.fileSize}MB</span>
+                        </div>
+                      </div>
+                      <div className="quality-control">
+                        <span className="info-label">预览质量:</span>
+                        <select
+                          value={previewQuality}
+                          onChange={(e) => handleQualityChange(e.target.value as any)}
+                          className="quality-select"
+                        >
+                          <option value="low">低画质 (360p)</option>
+                          <option value="medium">标清 (720p)</option>
+                          <option value="high">高清 (1080p)</option>
+                          <option value="original">原画质</option>
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1255,39 +1626,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
             {/* 下方容器 - 30%高度 */}
             <div className="video-editing-preview-lower border-t border-gray-200">
-              <div className="preview-lower-content">
-                <div className="flex items-center space-x-2 mb-4">
-                  <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                    </svg>
-                  </div>
-                  <h3 className="text-sm font-semibold text-gray-900">时间轴和工具栏</h3>
-                </div>
-                <div className="text-center text-gray-500 py-6">
-                  <div className="w-12 h-12 bg-gray-100 rounded-xl mx-auto mb-3 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">编辑时间轴</p>
-                  <p className="text-xs text-gray-500">拖拽编辑、剪切、特效等工具将在此显示</p>
-                  <div className="mt-4 grid grid-cols-3 gap-4 text-xs text-gray-400">
-                    <div className="flex flex-col items-center space-y-1">
-                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                      <span>时间轴编辑</span>
-                    </div>
-                    <div className="flex flex-col items-center space-y-1">
-                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                      <span>特效库</span>
-                    </div>
-                    <div className="flex flex-col items-center space-y-1">
-                      <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
-                      <span>导出选项</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <TimelinePanel className="h-full" />
             </div>
           </div>
         </div>
