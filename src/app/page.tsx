@@ -4,7 +4,6 @@ import React from 'react';
 import Header from '@/components/Header';
 import Taskbar from '@/components/Taskbar';
 import Container from '@/components/Container';
-import Footer from '@/components/Footer';
 import { useTasks } from '@/hooks/useTasks';
 
 export default function HomePage() {
@@ -18,6 +17,10 @@ export default function HomePage() {
     updateTask,
   } = useTasks();
 
+  console.log('HomePage: 页面渲染开始');
+  console.log('HomePage: 当前活跃任务:', activeTask?.title || '无');
+  console.log('HomePage: 标签页数量:', tabs.length);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <Header />
@@ -29,7 +32,6 @@ export default function HomePage() {
         onCloseTab={closeTab}
       />
       <Container activeTask={activeTask} onUpdateTask={updateTask} />
-      <Footer />
     </div>
   );
 } 
