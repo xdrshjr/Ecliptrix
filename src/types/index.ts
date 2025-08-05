@@ -67,6 +67,32 @@ export interface VideoEditingTaskContent {
   markdownContent: string;
   lastModified: Date;
   scriptSegments?: ScriptSegment[]; // 文本脚本片段数据
+  materials?: MaterialItem[]; // 素材数据
+}
+
+// Materials Management related types
+export type MaterialType = 'video' | 'audio' | 'image';
+
+export interface MaterialItem {
+  id: string;
+  name: string;
+  type: MaterialType;
+  format: string; // 文件格式 (mp4, mp3, jpg, etc.)
+  size: number; // 文件大小（字节）
+  duration?: number; // 时长（秒），仅用于视频和音频
+  width?: number; // 宽度（像素），仅用于视频和图片
+  height?: number; // 高度（像素），仅用于视频和图片
+  thumbnailUrl?: string; // 缩略图URL
+  url: string; // 文件URL
+  createdAt: Date;
+  tags?: string[]; // 标签
+  description?: string; // 描述
+}
+
+export interface MaterialsData {
+  items: MaterialItem[];
+  totalSize: number; // 总大小（字节）
+  totalCount: number; // 总数量
 }
 
 export interface LLMConfig {
