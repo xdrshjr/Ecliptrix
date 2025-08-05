@@ -32,6 +32,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // AI助手相关状态
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 脚本生成相关状态
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
 
   // Mock数据 - 文本脚本片段
   const mockScriptSegments: ScriptSegment[] = [
@@ -305,6 +308,104 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [taskId, markdownValue, handleMarkdownChange, isLoading]);
 
+  // 处理脚本生成
+  const handleGenerateScript = useCallback(async () => {
+    if (!markdownValue.trim() || isGeneratingScript) {
+      console.log('[VideoEditingInterface] 脚本生成被跳过', {
+        markdownEmpty: !markdownValue.trim(),
+        isGenerating: isGeneratingScript,
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    setIsGeneratingScript(true);
+    console.log('[VideoEditingInterface] 开始生成脚本', {
+      taskId,
+      markdownLength: markdownValue.length,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const response = await fetch('/api/video-script-generation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          markdownContent: markdownValue,
+          taskId: taskId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('[VideoEditingInterface] 脚本生成成功', {
+        taskId,
+        segmentCount: result.metadata?.segmentCount,
+        totalSentences: result.metadata?.totalSentences,
+        timestamp: new Date().toISOString()
+      });
+
+      if (result.success && result.segments) {
+        // 更新content，添加生成的脚本片段
+        const updatedContent: VideoEditingTaskContent = {
+          markdownContent: markdownValue,
+          lastModified: new Date(),
+          scriptSegments: result.segments,
+        };
+
+        onUpdateContent(updatedContent);
+        console.log('[VideoEditingInterface] 脚本内容已更新到任务中', {
+          taskId,
+          segmentCount: result.segments.length,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        throw new Error('Invalid response format from script generation API');
+      }
+
+    } catch (error) {
+      console.error('[VideoEditingInterface] 脚本生成失败', {
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+
+      // TODO: 可以添加用户友好的错误提示，比如toast通知
+      alert(`脚本生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsGeneratingScript(false);
+      console.log('[VideoEditingInterface] 脚本生成流程结束', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [markdownValue, taskId, isGeneratingScript, onUpdateContent]);
+
+  // 处理脚本片段更新
+  const handleUpdateSegments = useCallback((updatedSegments: ScriptSegment[]) => {
+    console.log('[VideoEditingInterface] 更新脚本片段', {
+      taskId,
+      segmentCount: updatedSegments.length,
+      totalSentences: updatedSegments.reduce((sum, segment) => sum + segment.sentences.length, 0),
+      timestamp: new Date().toISOString()
+    });
+
+    const updatedContent: VideoEditingTaskContent = {
+      markdownContent: markdownValue,
+      lastModified: new Date(),
+      scriptSegments: updatedSegments,
+    };
+
+    onUpdateContent(updatedContent);
+  }, [markdownValue, taskId, onUpdateContent]);
+
   // 处理输入框提交
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -430,6 +531,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             <ScriptPanel 
               segments={content?.scriptSegments || mockScriptSegments} 
               className="h-full"
+              onGenerateScript={handleGenerateScript}
+              isGenerating={isGeneratingScript}
+              onUpdateSegments={handleUpdateSegments}
             />
           </div>
           
