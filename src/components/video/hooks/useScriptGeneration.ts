@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { ScriptSegment, VideoEditingTaskContent } from '@/types';
 import { UseScriptGenerationReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
+import { createScriptService, ScriptService } from '../services';
 
 /**
  * useScriptGeneration Hook
@@ -17,11 +18,13 @@ export const useScriptGeneration = (
   markdownContent: string,
   onUpdateContent: (content: VideoEditingTaskContent) => void
 ): UseScriptGenerationReturn => {
-  // 初始化日志器
+  // 初始化日志器和脚本服务
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
     component: 'useScriptGeneration'
   }), [taskId]);
+
+  const scriptService = useMemo(() => createScriptService(taskId), [taskId]);
 
   // 脚本生成状态
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
@@ -44,11 +47,6 @@ export const useScriptGeneration = (
     setGenerationProgress(0);
     setGenerationError(null);
 
-    logger.apiCall('开始生成脚本', '/api/video-script-generation', {
-      markdownLength: markdownContent.length,
-      wordCount: markdownContent.split(/\s+/).length
-    });
-
     try {
       // 模拟进度更新
       const progressInterval = setInterval(() => {
@@ -58,34 +56,14 @@ export const useScriptGeneration = (
         });
       }, 500);
 
-      const response = await fetch('/api/video-script-generation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          markdownContent: markdownContent,
-          taskId: taskId,
-        }),
+      // 使用脚本服务生成脚本
+      const result = await scriptService.generateScript({
+        markdownContent: markdownContent,
+        taskId: taskId
       });
 
       clearInterval(progressInterval);
       setGenerationProgress(100);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      const endTime = performance.now();
-
-      logger.apiComplete('脚本生成', '/api/video-script-generation', true, endTime - startTime, {
-        segmentCount: result.metadata?.segmentCount,
-        totalSentences: result.metadata?.totalSentences,
-        averageSegmentDuration: result.metadata?.averageSegmentDuration,
-        totalScriptDuration: result.metadata?.totalDuration
-      });
 
       if (result.success && result.segments) {
         // 更新content，添加生成的脚本片段
@@ -101,19 +79,19 @@ export const useScriptGeneration = (
           segmentCount: result.segments.length,
           totalSentences: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0),
           totalDuration: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + (segment.duration || 0), 0),
-          averageSegmentLength: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0) / result.segments.length
+          averageSegmentLength: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0) / result.segments.length,
+          metadata: result.metadata
         });
       } else {
-        throw new Error('Invalid response format from script generation API');
+        throw new Error(result.error || 'Script generation failed');
       }
 
     } catch (error) {
-      const endTime = performance.now();
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      logger.apiError('脚本生成', '/api/video-script-generation', error as Error, {
-        responseTime: endTime - startTime,
-        markdownLength: markdownContent.length
+      logger.error('脚本生成失败', error as Error, {
+        markdownLength: markdownContent.length,
+        totalTime: performance.now() - startTime
       });
 
       setGenerationError(errorMessage);
@@ -132,7 +110,7 @@ export const useScriptGeneration = (
         totalTime: performance.now() - startTime
       });
     }
-  }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger]);
+  }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger, scriptService]);
 
   // 处理脚本片段更新
   const handleUpdateSegments = useCallback((updatedSegments: ScriptSegment[]) => {

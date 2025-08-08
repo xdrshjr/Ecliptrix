@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
 import { UseVideoSearchReturn, SearchOrientation } from '../types';
 import { VideoEditingLogger } from '../utils';
+import { createVideoSearchService, VideoSearchService, VideoSearchResult } from '../services';
 
 export const useVideoSearch = (
   taskId: string,
@@ -12,11 +13,13 @@ export const useVideoSearch = (
     component: 'useVideoSearch'
   }), [taskId]);
 
+  const videoSearchService = useMemo(() => createVideoSearchService(taskId), [taskId]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOrientation, setSearchOrientation] = useState<SearchOrientation>('mixed');
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
   const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
 
   const openSearchModal = useCallback(() => {
@@ -38,51 +41,37 @@ export const useVideoSearch = (
       return;
     }
 
-    const startTime = performance.now();
-    logger.apiCall('开始视频搜索', '/api/video-search', {
-      query: searchQuery,
-      orientation: searchOrientation
-    });
-
     setIsSearching(true);
     setSearchResults([]);
 
     try {
-      const response = await fetch('/api/video-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-          max_videos: 20,
-          orientation: searchOrientation,
-        }),
+      // 使用视频搜索服务进行搜索
+      const result = await videoSearchService.searchVideos({
+        query: searchQuery,
+        maxVideos: 20,
+        orientation: searchOrientation
       });
 
-      const data = await response.json();
-      const endTime = performance.now();
-
-      logger.apiComplete('视频搜索', '/api/video-search', data.success, endTime - startTime, {
-        totalFound: data.total_found,
-        videosCount: data.videos?.length || 0
-      });
-
-      if (data.success && data.videos) {
-        setSearchResults(data.videos);
+      if (result.success && result.videos) {
+        setSearchResults(result.videos);
+        logger.info('视频搜索成功', {
+          totalFound: result.total_found,
+          videosCount: result.videos.length
+        });
       } else {
-        alert(data.message || '搜索失败，请稍后重试');
+        alert(result.error || result.message || '搜索失败，请稍后重试');
+        logger.warn('视频搜索无结果', {
+          error: result.error,
+          message: result.message
+        });
       }
     } catch (error) {
-      const endTime = performance.now();
-      logger.apiError('视频搜索', '/api/video-search', error as Error, {
-        responseTime: endTime - startTime
-      });
+      logger.error('视频搜索异常', error as Error);
       alert('搜索失败，请检查网络连接');
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery, searchOrientation, logger]);
+  }, [searchQuery, searchOrientation, logger, videoSearchService]);
 
   const handleSearchResultSelect = useCallback((videoId: number, isSelected: boolean) => {
     const newSelection = new Set(selectedResults);
@@ -113,21 +102,8 @@ export const useVideoSearch = (
       return;
     }
 
-    const newMaterials: MaterialItem[] = selectedVideos.map(video => ({
-      id: `pexels-${video.id}`,
-      name: video.title,
-      type: 'video' as MaterialType,
-      format: 'mp4',
-      size: 0,
-      duration: video.duration || 0,
-      width: video.width,
-      height: video.height,
-      thumbnailUrl: video.thumbnail,
-      url: video.video_url,
-      createdAt: new Date(),
-      tags: ['PEXELS', '在线素材', video.author],
-      description: `来自PEXELS的视频素材，作者：${video.author}`
-    }));
+    // 使用视频搜索服务将视频转换为素材项
+    const newMaterials = videoSearchService.convertToMaterials(selectedVideos);
 
     onAddMaterials(newMaterials);
 
@@ -135,7 +111,7 @@ export const useVideoSearch = (
     setIsModalOpen(false);
     setSearchQuery('');
     setSearchResults([]);
-  }, [searchResults, selectedResults, onAddMaterials]);
+  }, [searchResults, selectedResults, onAddMaterials, videoSearchService]);
 
   return {
     isModalOpen,
