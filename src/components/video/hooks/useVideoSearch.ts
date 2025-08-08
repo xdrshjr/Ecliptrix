@@ -144,14 +144,31 @@ export const useVideoSearch = (
       actualAddedCount: addedCount
     });
 
+    // 清除选择状态并关闭模态框
     setSelectedResults(new Set());
     setIsModalOpen(false);
     setSearchQuery('');
     setSearchResults([]);
     setPreviewVideo(null);
     
-    logger.info('视频搜索模态框重置完成');
+    logger.info('视频添加完成，模态框已关闭', {
+      addedVideosCount: addedCount,
+      modalClosed: true
+    });
   }, [searchResults, selectedResults, onAddMaterials, videoSearchService, logger]);
+
+  const handleClearSelection = useCallback(() => {
+    logger.info('用户清除所有选择', {
+      previousSelectionCount: selectedResults.size,
+      selectedVideoIds: Array.from(selectedResults)
+    });
+    
+    setSelectedResults(new Set());
+    
+    logger.info('选择状态已清除', {
+      currentSelectionCount: 0
+    });
+  }, [selectedResults, logger]);
 
   return {
     isModalOpen,
@@ -167,7 +184,9 @@ export const useVideoSearch = (
     handleSearchResultSelect,
     handleVideoPreview,
     handleAddSelectedVideos,
+    handleClearSelection,
     setSearchQuery,
-    setSearchOrientation
+    setSearchOrientation,
+    taskId
   };
 };
