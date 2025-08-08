@@ -8,8 +8,17 @@ from .base_models import (
     ErrorResponse
 )
 
+from .video_models import (
+    VideoSearchRequest,
+    VideoInfo,
+    VideoSearchResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
-    "ErrorResponse"
+    "ErrorResponse",
+    "VideoSearchRequest",
+    "VideoInfo",
+    "VideoSearchResponse"
 ] 

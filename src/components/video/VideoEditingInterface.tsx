@@ -52,121 +52,16 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
-  // Mock数据 - 素材库
-  const mockMaterials: MaterialItem[] = [
-    {
-      id: 'video-1',
-      name: '演示视频',
-      type: 'video',
-      format: 'mp4',
-      size: 2621440, // 2.5MB
-      duration: 45,
-      width: 1920,
-      height: 1080,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmMGY5ZmYiLz48cGF0aCBkPSJNNDAgMjBMMTYgMzVWMjVMNDAgMjBaIiBmaWxsPSIjMzMzIi8+PC9zdmc+',
-      url: '/mock/video1.mp4',
-      createdAt: new Date('2024-01-15'),
-      tags: ['演示', '教程'],
-      description: '产品功能演示视频'
-    },
-    {
-      id: 'audio-1',
-      name: '背景音乐',
-      type: 'audio',
-      format: 'mp3',
-      size: 1887437, // 1.8MB
-      duration: 120,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZWY5ZTciLz48cGF0aCBkPSJNMzUgMjBWNDBNNDAgMTVWNDVNNDUgMjVWMzVNNTAgMThWNDJNNTUgMjJWMzhNNjAgMTZWNDQiIHN0cm9rZT0iIzMzMyIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+',
-      url: '/mock/audio1.mp3',
-      createdAt: new Date('2024-01-16'),
-      tags: ['背景', '音乐'],
-      description: '轻松愉快的背景音乐'
-    },
-    {
-      id: 'image-1',
-      name: '封面图片',
-      type: 'image',
-      format: 'jpg',
-      size: 460800, // 450KB
-      width: 1920,
-      height: 1080,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmM2Y0ZjYiLz48Y2lyY2xlIGN4PSI3NSIgY3k9IjE1IiByPSI4IiBmaWxsPSIjZmZkNzAwIi8+PHBhdGggZD0iTTIwIDQ1TDM1IDMwTDUwIDM1TDgwIDIwVjQ1SDIwWiIgZmlsbD0iIzY2NjYiLz48L3N2Zz4=',
-      url: '/mock/cover.jpg',
-      createdAt: new Date('2024-01-17'),
-      tags: ['封面', '设计'],
-      description: '视频封面设计图'
-    },
-    {
-      id: 'video-2',
-      name: '教程视频',
-      type: 'video',
-      format: 'mp4',
-      size: 5452595, // 5.2MB
-      duration: 180,
-      width: 1920,
-      height: 1080,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNlZGY0ZmYiLz48cGF0aCBkPSJNNDAgMjBMNjAgMzBMNDAgNDBWMjBaIiBmaWxsPSIjMzMzIi8+PC9zdmc+',
-      url: '/mock/tutorial.mp4',
-      createdAt: new Date('2024-01-18'),
-      tags: ['教程', '详细'],
-      description: '详细的操作教程视频'
-    },
-    {
-      id: 'audio-2',
-      name: '转场音效',
-      type: 'audio',
-      format: 'wav',
-      size: 327680, // 320KB
-      duration: 3,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZWZiZWEiLz48cGF0aCBkPSJNMzAgMzBIMzVMMzggMjVMNDIgMzVMNDUgMjBMNDkgNDBMNTIgMTVMNTYgNDVMNTkgMjVMNjIgMzVMNjUgMzBINzAiIHN0cm9rZT0iIzMzMyIgc3Ryb2tlLXdpZHRoPSIyIiBmaWxsPSJub25lIi8+PC9zdmc+',
-      url: '/mock/transition.wav',
-      createdAt: new Date('2024-01-19'),
-      tags: ['转场', '音效'],
-      description: '视频转场音效'
-    },
-    {
-      id: 'image-2',
-      name: 'Logo图标',
-      type: 'image',
-      format: 'png',
-      size: 128000, // 125KB
-      width: 512,
-      height: 512,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmOWZhZmIiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjMwIiByPSIxNSIgZmlsbD0iIzMzNzNkYyIvPjx0ZXh0IHg9IjUwIiB5PSIzNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiIGZvbnQtc2l6ZT0iMTQiPkw8L3RleHQ+PC9zdmc+',
-      url: '/mock/logo.png',
-      createdAt: new Date('2024-01-20'),
-      tags: ['logo', '品牌'],
-      description: '品牌Logo图标'
-    },
-    {
-      id: 'video-3',
-      name: '片尾视频',
-      type: 'video',
-      format: 'mov',
-      size: 1887437, // 1.8MB
-      duration: 10,
-      width: 1920,
-      height: 1080,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmZmY3ZWQiLz48cGF0aCBkPSJNNDAgMjBMNjAgMzBMNDAgNDBWMjBaIiBmaWxsPSIjZjU5ZTBiIi8+PHRleHQgeD0iNzAiIHk9IjM1IiBmaWxsPSIjMzMzIiBmb250LXNpemU9IjEwIj5FTkQ8L3RleHQ+PC9zdmc+',
-      url: '/mock/ending.mov',
-      createdAt: new Date('2024-01-21'),
-      tags: ['片尾', '结束'],
-      description: '视频片尾动画'
-    },
-    {
-      id: 'audio-3',
-      name: '开场音乐',
-      type: 'audio',
-      format: 'aac',
-      size: 2202009, // 2.1MB
-      duration: 30,
-      thumbnailUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMTAwIDYwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmMGZkZjQiLz48cGF0aCBkPSJNMzAgMjBWNDBNMzUgMTVWNDVNNDAgMjVWMzVNNDUgMThWNDJNNTAgMjJWMzhNNTUgMTZWNDRNNjAgMjBWNDBNNjUgMTJWNDgiIHN0cm9rZT0iIzEwYjk4MSIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+',
-      url: '/mock/opening.aac',
-      createdAt: new Date('2024-01-22'),
-      tags: ['开场', '音乐'],
-      description: '激动人心的开场音乐'
-    }
-  ];
+  // 视频搜索相关状态
+  const [isVideoSearchModalOpen, setIsVideoSearchModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOrientation, setSearchOrientation] = useState<'landscape' | 'portrait' | 'mixed'>('mixed');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedSearchResults, setSelectedSearchResults] = useState<Set<number>>(new Set());
+
+  // 素材库状态 - 开始时为空，用户可以通过搜索添加视频
+  const [materials, setMaterials] = useState<MaterialItem[]>([]);
 
   // Mock数据 - 视频预览信息
   const mockVideoPreview = {
@@ -871,8 +766,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 处理全选/取消全选
   const handleSelectAll = useCallback(() => {
     const filteredMaterials = selectedMaterialType === 'all' 
-      ? mockMaterials 
-      : mockMaterials.filter(material => material.type === selectedMaterialType);
+      ? materials 
+      : materials.filter((material: MaterialItem) => material.type === selectedMaterialType);
     
     const isAllSelected = filteredMaterials.every(material => selectedMaterials.has(material.id));
     
@@ -895,7 +790,172 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       filteredMaterials.forEach(material => newSelection.add(material.id));
       setSelectedMaterials(newSelection);
     }
-  }, [taskId, selectedMaterialType, selectedMaterials, mockMaterials]);
+  }, [taskId, selectedMaterialType, selectedMaterials, materials]);
+
+  // 处理视频搜索
+  const handleVideoSearch = useCallback(() => {
+    console.log('[VideoEditingInterface] 打开视频搜索模态框', {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+    setIsVideoSearchModalOpen(true);
+  }, [taskId]);
+
+  // 处理视频搜索提交
+  const handleVideoSearchSubmit = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      alert('请输入搜索关键词');
+      return;
+    }
+
+    console.log('[VideoEditingInterface] 开始视频搜索', {
+      taskId,
+      query: searchQuery,
+      orientation: searchOrientation,
+      timestamp: new Date().toISOString()
+    });
+
+    setIsSearching(true);
+    setSearchResults([]);
+
+    try {
+      const response = await fetch('/api/video-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: searchQuery,
+          max_videos: 20,
+          orientation: searchOrientation,
+        }),
+      });
+
+      const data = await response.json();
+
+      console.log('[VideoEditingInterface] 视频搜索结果', {
+        taskId,
+        success: data.success,
+        totalFound: data.total_found,
+        videosCount: data.videos?.length || 0,
+        timestamp: new Date().toISOString()
+      });
+
+      if (data.success && data.videos) {
+        setSearchResults(data.videos);
+      } else {
+        alert(data.message || '搜索失败，请稍后重试');
+      }
+    } catch (error) {
+      console.error('[VideoEditingInterface] 视频搜索错误', {
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+      alert('搜索失败，请检查网络连接');
+    } finally {
+      setIsSearching(false);
+    }
+  }, [taskId, searchQuery, searchOrientation]);
+
+  // 处理搜索结果选择
+  const handleSearchResultSelect = useCallback((videoId: number, isSelected: boolean) => {
+    const newSelection = new Set(selectedSearchResults);
+    if (isSelected) {
+      newSelection.add(videoId);
+    } else {
+      newSelection.delete(videoId);
+    }
+    setSelectedSearchResults(newSelection);
+
+    console.log('[VideoEditingInterface] 搜索结果选择', {
+      taskId,
+      videoId,
+      isSelected,
+      totalSelected: newSelection.size,
+      timestamp: new Date().toISOString()
+    });
+  }, [taskId, selectedSearchResults]);
+
+  // 处理添加选中的搜索结果到素材库
+  const handleAddSelectedVideos = useCallback(() => {
+    const selectedVideos = searchResults.filter(video => selectedSearchResults.has(video.id));
+    
+    console.log('[VideoEditingInterface] 添加选中视频到素材库', {
+      taskId,
+      selectedCount: selectedVideos.length,
+      videoIds: selectedVideos.map(v => v.id),
+      timestamp: new Date().toISOString()
+    });
+
+    if (selectedVideos.length === 0) {
+      alert('请先选择要添加的视频');
+      return;
+    }
+
+    // 将搜索结果转换为MaterialItem格式
+    const newMaterials: MaterialItem[] = selectedVideos.map(video => ({
+      id: `pexels-${video.id}`,
+      name: video.title,
+      type: 'video' as MaterialType,
+      format: 'mp4',
+      size: 0, // PEXELS API不提供文件大小信息
+      duration: video.duration || 0,
+      width: video.width,
+      height: video.height,
+      thumbnailUrl: video.thumbnail,
+      url: video.video_url,
+      createdAt: new Date(),
+      tags: ['PEXELS', '在线素材', video.author],
+      description: `来自PEXELS的视频素材，作者：${video.author}`
+    }));
+
+    // 检查是否有重复的素材
+    const existingIds = new Set(materials.map(m => m.id));
+    const uniqueNewMaterials = newMaterials.filter(material => !existingIds.has(material.id));
+
+    if (uniqueNewMaterials.length === 0) {
+      alert('选中的视频已经存在于素材库中');
+      return;
+    }
+
+    // 添加新素材到材料库
+    setMaterials(prevMaterials => [...prevMaterials, ...uniqueNewMaterials]);
+
+    console.log('[VideoEditingInterface] 视频素材添加完成', {
+      taskId,
+      addedCount: uniqueNewMaterials.length,
+      skippedCount: selectedVideos.length - uniqueNewMaterials.length,
+      newMaterialIds: uniqueNewMaterials.map(m => m.id),
+      timestamp: new Date().toISOString()
+    });
+
+    // 显示成功消息
+    const message = uniqueNewMaterials.length === selectedVideos.length 
+      ? `成功添加 ${uniqueNewMaterials.length} 个视频到素材库`
+      : `成功添加 ${uniqueNewMaterials.length} 个视频到素材库，${selectedVideos.length - uniqueNewMaterials.length} 个视频已存在`;
+    
+    alert(message);
+    
+    // 重置状态
+    setSelectedSearchResults(new Set());
+    setIsVideoSearchModalOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  }, [taskId, searchResults, selectedSearchResults, materials]);
+
+  // 关闭视频搜索模态框
+  const handleCloseVideoSearchModal = useCallback(() => {
+    setIsVideoSearchModalOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedSearchResults(new Set());
+    
+    console.log('[VideoEditingInterface] 关闭视频搜索模态框', {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+  }, [taskId]);
 
   // 处理素材播放/预览
   const handleMaterialPlay = useCallback((material: MaterialItem) => {
@@ -939,7 +999,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
 
     const materialNames = materialIds.map(id => {
-      const material = mockMaterials.find(m => m.id === id);
+      const material = materials.find((m: MaterialItem) => m.id === id);
       return material ? material.name : id;
     });
 
@@ -965,7 +1025,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timestamp: new Date().toISOString()
       });
     }
-  }, [taskId, selectedMaterials, mockMaterials]);
+  }, [taskId, selectedMaterials, materials]);
 
   // 处理素材上传
   const handleMaterialUpload = useCallback(() => {
@@ -1257,10 +1317,43 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                   </div>
 
                   {/* 素材网格 */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    {mockMaterials
-                      .filter(material => selectedMaterialType === 'all' || material.type === selectedMaterialType)
-                      .map((material) => {
+                  <div className="mb-4">
+                    {(() => {
+                      const filteredMaterials = materials.filter((material: MaterialItem) => selectedMaterialType === 'all' || material.type === selectedMaterialType);
+                      
+                      if (filteredMaterials.length === 0) {
+                        return (
+                          <div className="flex flex-col items-center justify-center py-12 px-4">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">暂无素材</h3>
+                                                         <p className="text-sm text-gray-500 text-center mb-6 max-w-sm">
+                               {materials.length === 0 
+                                 ? "素材库为空，点击下方「搜索视频」按钮来添加高质量的视频素材"
+                                 : `当前没有${selectedMaterialType === 'video' ? '视频' : selectedMaterialType === 'audio' ? '音频' : selectedMaterialType === 'image' ? '图片' : ''}素材`
+                               }
+                             </p>
+                            {materials.length === 0 && (
+                              <button
+                                onClick={handleVideoSearch}
+                                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                <span>搜索视频</span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="grid grid-cols-2 gap-3">
+                          {filteredMaterials.map((material) => {
                         const isSelected = selectedMaterials.has(material.id);
                         const formatSize = (bytes: number) => {
                           if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
@@ -1373,12 +1466,25 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                           </div>
                         );
                       })}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* 底部操作栏 */}
                   <div className="border-t pt-3 mt-auto">
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center space-x-3">
+                        <button
+                          onClick={handleVideoSearch}
+                          className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                          title="搜索在线视频"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          <span>搜索视频</span>
+                        </button>
                         <button
                           onClick={handleSelectAll}
                           className="flex items-center space-x-1 text-gray-600 hover:text-gray-900"
@@ -1401,10 +1507,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                         )}
                       </div>
                       <div className="text-gray-500">
-                        {mockMaterials.filter(m => selectedMaterialType === 'all' || m.type === selectedMaterialType).length}个素材 
-                        ({(mockMaterials
-                          .filter(m => selectedMaterialType === 'all' || m.type === selectedMaterialType)
-                          .reduce((sum, m) => sum + m.size, 0) / 1024 / 1024).toFixed(1)}MB)
+                        {materials.filter((m: MaterialItem) => selectedMaterialType === 'all' || m.type === selectedMaterialType).length}个素材 
+                        ({(materials
+                          .filter((m: MaterialItem) => selectedMaterialType === 'all' || m.type === selectedMaterialType)
+                          .reduce((sum: number, m: MaterialItem) => sum + m.size, 0) / 1024 / 1024).toFixed(1)}MB)
                       </div>
                     </div>
                   </div>
@@ -1631,6 +1737,194 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 视频搜索模态框 */}
+    {isVideoSearchModalOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-5/6 flex flex-col">
+          {/* 模态框头部 */}
+          <div className="flex items-center justify-between p-6 border-b">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900">搜索在线视频</h2>
+            </div>
+            <button
+              onClick={handleCloseVideoSearchModal}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* 搜索控制区 */}
+          <div className="p-6 border-b bg-gray-50">
+            <div className="flex items-center space-x-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="输入搜索关键词，如：自然风景、商务办公、人物肖像..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleVideoSearchSubmit()}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  disabled={isSearching}
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-700">方向:</label>
+                <select
+                  value={searchOrientation}
+                  onChange={(e) => setSearchOrientation(e.target.value as 'landscape' | 'portrait' | 'mixed')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  disabled={isSearching}
+                >
+                  <option value="mixed">混合</option>
+                  <option value="landscape">横屏</option>
+                  <option value="portrait">竖屏</option>
+                </select>
+              </div>
+              <button
+                onClick={handleVideoSearchSubmit}
+                disabled={isSearching || !searchQuery.trim()}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+              >
+                {isSearching ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>搜索中...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <span>搜索</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* 搜索结果区域 */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {searchResults.length > 0 && (
+              <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  找到 {searchResults.length} 个视频，已选择 {selectedSearchResults.size} 个
+                </div>
+                <button
+                  onClick={handleAddSelectedVideos}
+                  disabled={selectedSearchResults.size === 0}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>添加选中视频 ({selectedSearchResults.size})</span>
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {isSearching ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="text-center">
+                    <svg className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p className="text-gray-600">正在搜索视频...</p>
+                  </div>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {searchResults.map((video) => {
+                    const isSelected = selectedSearchResults.has(video.id);
+                    return (
+                      <div
+                        key={video.id}
+                        className={`relative bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer ${
+                          isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                        }`}
+                        onClick={() => handleSearchResultSelect(video.id, !isSelected)}
+                      >
+                        {/* 选择指示器 */}
+                        <div className="absolute top-2 left-2 z-10">
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'
+                          }`}>
+                            {isSelected && (
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 视频缩略图 */}
+                        <div className="aspect-video bg-gray-100 relative overflow-hidden">
+                          {video.thumbnail ? (
+                            <img 
+                              src={video.thumbnail} 
+                              alt={video.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          
+                          {/* 播放按钮覆盖层 */}
+                          <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 flex items-center justify-center transition-all">
+                            <svg className="w-12 h-12 text-white opacity-0 hover:opacity-100 transition-opacity" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        </div>
+
+                        {/* 视频信息 */}
+                        <div className="p-3">
+                          <h4 className="text-sm font-medium text-gray-900 truncate mb-1">{video.title}</h4>
+                          <p className="text-xs text-gray-500 mb-2">作者: {video.author}</p>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>{video.width} × {video.height}</span>
+                            {video.duration && (
+                              <span>{Math.floor(video.duration / 60)}:{(video.duration % 60).toString().padStart(2, '0')}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-64">
+                  <div className="text-center">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <p className="text-gray-500 text-lg mb-2">输入关键词开始搜索</p>
+                    <p className="text-gray-400 text-sm">搜索高质量的免费视频素材</p>
+                  </div>
+                </div>
+              )}
+            </div>
+                     </div>
+         </div>
+       </div>
+     )}
     </div>
   );
 };
