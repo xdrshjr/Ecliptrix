@@ -35,6 +35,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
   }, []);
 
+  // 监听 materials 变化
+  useEffect(() => {
+    logger.info('素材列表更新 - 4列紧凑布局', {
+      materialsCount: materials.length,
+      layoutType: 'grid-cols-4-compact',
+      materials: materials.map(m => ({
+        id: m.id,
+        name: m.name,
+        type: m.type
+      }))
+    });
+  }, [materials]);
+
   const handleTypeFilter = (type: MaterialType | 'all') => {
     logger.info('素材类型筛选', {
       previousType: selectedMaterialType,
@@ -145,8 +158,71 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {/* Material cards would go here */}
+            <div className="grid grid-cols-4 gap-2">
+              {materials
+                .filter(material => selectedMaterialType === 'all' || material.type === selectedMaterialType)
+                .map((material) => (
+                <div
+                  key={material.id}
+                  className="bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => {
+                    logger.info('素材项点击', {
+                      materialId: material.id,
+                      materialName: material.name,
+                      materialType: material.type
+                    });
+                  }}
+                >
+                  {/* 缩略图区域 */}
+                  <div className="aspect-video bg-gray-100 relative">
+                    {material.thumbnailUrl ? (
+                      <img 
+                        src={material.thumbnailUrl} 
+                        alt={material.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    )}
+                    
+                    {/* 类型标识 */}
+                    <div className="absolute top-1 left-1">
+                      <span className={`px-1 py-0.5 text-xs font-medium rounded ${
+                        material.type === 'video' ? 'bg-blue-100 text-blue-800' :
+                        material.type === 'audio' ? 'bg-green-100 text-green-800' :
+                        'bg-purple-100 text-purple-800'
+                      }`}>
+                        {material.type === 'video' ? '视频' :
+                         material.type === 'audio' ? '音频' : '图片'}
+                      </span>
+                    </div>
+                    
+                    {/* 时长显示 */}
+                    {material.duration && (
+                      <div className="absolute bottom-1 right-1">
+                        <span className="px-1 py-0.5 bg-black bg-opacity-75 text-white text-xs rounded">
+                          {Math.floor(material.duration / 60)}:{(material.duration % 60).toString().padStart(2, '0')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* 素材信息 */}
+                  <div className="p-1.5">
+                    <h4 className="text-xs font-medium text-gray-900 truncate mb-1" title={material.name}>{material.name}</h4>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      {material.width && material.height && (
+                        <span className="text-xs">{material.width}×{material.height}</span>
+                      )}
+                      <span className="text-blue-600 text-xs">{material.format?.toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

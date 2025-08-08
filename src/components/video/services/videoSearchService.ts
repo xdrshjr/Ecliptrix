@@ -323,11 +323,31 @@ export class VideoSearchServiceImpl implements VideoSearchService {
    * @returns MaterialItem[] - 素材项数组
    */
   convertToMaterials(videos: VideoSearchResult[]): MaterialItem[] {
-    this.logger.info('开始转换视频为素材项', { videoCount: videos.length });
+    this.logger.info('开始转换视频为素材项', { 
+      videoCount: videos.length,
+      videosDetail: videos.map(v => ({
+        id: v.id,
+        title: v.title,
+        hasVideoUrl: !!v.video_url,
+        videoUrl: v.video_url
+      }))
+    });
 
-    const materials: MaterialItem[] = videos
-      .filter(video => video.video_url) // 只处理有URL的视频
-      .map(video => ({
+    const videosWithUrl = videos.filter(video => video.video_url);
+    const videosWithoutUrl = videos.filter(video => !video.video_url);
+
+    if (videosWithoutUrl.length > 0) {
+      this.logger.warn('发现无视频URL的视频，将被跳过', {
+        skippedCount: videosWithoutUrl.length,
+        skippedVideos: videosWithoutUrl.map(v => ({
+          id: v.id,
+          title: v.title
+        }))
+      });
+    }
+
+    const materials: MaterialItem[] = videosWithUrl.map(video => {
+      const material = {
         id: `pexels-${video.id}`,
         name: video.title,
         type: 'video' as MaterialType,
@@ -341,12 +361,34 @@ export class VideoSearchServiceImpl implements VideoSearchService {
         createdAt: new Date(),
         tags: ['PEXELS', '在线素材', video.author],
         description: `来自PEXELS的视频素材，作者：${video.author}`
-      }));
+      };
+
+      this.logger.debug('单个视频转换完成', {
+        originalVideo: {
+          id: video.id,
+          title: video.title,
+          videoUrl: video.video_url
+        },
+        convertedMaterial: {
+          id: material.id,
+          name: material.name,
+          url: material.url
+        }
+      });
+
+      return material;
+    });
 
     this.logger.info('视频转换为素材项完成', {
       originalCount: videos.length,
       convertedCount: materials.length,
-      materials: materials.map(m => ({ id: m.id, name: m.name, author: m.tags?.[2] }))
+      skippedCount: videos.length - materials.length,
+      materials: materials.map(m => ({ 
+        id: m.id, 
+        name: m.name, 
+        author: m.tags?.[2],
+        hasUrl: !!m.url 
+      }))
     });
 
     return materials;

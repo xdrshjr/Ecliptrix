@@ -70,10 +70,12 @@ export interface UseVideoSearchReturn {
   isSearching: boolean;
   searchResults: any[];
   selectedResults: Set<number>;
+  previewVideo: any | null;
   openSearchModal: () => void;
   closeSearchModal: () => void;
   handleSearch: () => Promise<void>;
   handleSearchResultSelect: (videoId: number, isSelected: boolean) => void;
+  handleVideoPreview: (video: any) => void;
   handleAddSelectedVideos: () => void;
   setSearchQuery: (query: string) => void;
   setSearchOrientation: (orientation: SearchOrientation) => void;

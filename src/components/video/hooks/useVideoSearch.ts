@@ -21,6 +21,7 @@ export const useVideoSearch = (
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
   const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
+  const [previewVideo, setPreviewVideo] = useState<VideoSearchResult | null>(null);
 
   const openSearchModal = useCallback(() => {
     logger.userAction('打开视频搜索模态框', 'searchButton');
@@ -32,7 +33,20 @@ export const useVideoSearch = (
     setSearchQuery('');
     setSearchResults([]);
     setSelectedResults(new Set());
+    setPreviewVideo(null);
     logger.userAction('关闭视频搜索模态框', 'closeButton');
+  }, [logger]);
+
+  const handleVideoPreview = useCallback((video: VideoSearchResult) => {
+    setPreviewVideo(video);
+    logger.userAction('预览视频', 'videoPreview', {
+      videoId: video.id,
+      videoTitle: video.title,
+      videoAuthor: video.author,
+      videoDimensions: `${video.width}x${video.height}`,
+      videoDuration: video.duration,
+      hasVideoUrl: !!video.video_url
+    });
   }, [logger]);
 
   const handleSearch = useCallback(async () => {
@@ -41,8 +55,9 @@ export const useVideoSearch = (
       return;
     }
 
-    setIsSearching(true);
+          setIsSearching(true);
     setSearchResults([]);
+    setPreviewVideo(null);
 
     try {
       // 使用视频搜索服务进行搜索
@@ -92,26 +107,51 @@ export const useVideoSearch = (
   const handleAddSelectedVideos = useCallback(() => {
     const selectedVideos = searchResults.filter(video => selectedResults.has(video.id));
     
-    logger.info('添加选中视频到素材库', {
+    logger.info('开始添加选中视频到素材库', {
       selectedCount: selectedVideos.length,
-      videoIds: selectedVideos.map(v => v.id)
+      videoIds: selectedVideos.map(v => v.id),
+      selectedVideosDetail: selectedVideos.map(v => ({
+        id: v.id,
+        title: v.title,
+        hasVideoUrl: !!v.video_url
+      }))
     });
 
     if (selectedVideos.length === 0) {
       alert('请先选择要添加的视频');
+      logger.warn('添加视频失败 - 未选择任何视频');
       return;
     }
 
     // 使用视频搜索服务将视频转换为素材项
     const newMaterials = videoSearchService.convertToMaterials(selectedVideos);
+    
+    logger.info('视频转换为素材项完成', {
+      convertedCount: newMaterials.length,
+      materialsDetail: newMaterials.map(m => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        hasUrl: !!m.url
+      }))
+    });
 
-    onAddMaterials(newMaterials);
+    // 调用回调函数添加素材
+    const addedCount = onAddMaterials(newMaterials);
+    
+    logger.info('素材添加回调完成', {
+      attemptedCount: newMaterials.length,
+      actualAddedCount: addedCount
+    });
 
     setSelectedResults(new Set());
     setIsModalOpen(false);
     setSearchQuery('');
     setSearchResults([]);
-  }, [searchResults, selectedResults, onAddMaterials, videoSearchService]);
+    setPreviewVideo(null);
+    
+    logger.info('视频搜索模态框重置完成');
+  }, [searchResults, selectedResults, onAddMaterials, videoSearchService, logger]);
 
   return {
     isModalOpen,
@@ -120,10 +160,12 @@ export const useVideoSearch = (
     isSearching,
     searchResults,
     selectedResults,
+    previewVideo,
     openSearchModal,
     closeSearchModal,
     handleSearch,
     handleSearchResultSelect,
+    handleVideoPreview,
     handleAddSelectedVideos,
     setSearchQuery,
     setSearchOrientation
