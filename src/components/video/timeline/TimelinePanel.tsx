@@ -309,66 +309,294 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
     });
   }, [timelineState.selectedItems, addToHistory]);
 
-  const handleMoveItem = useCallback((itemId: string, newStartTime: number) => {
-    console.log(`[TimelinePanel] 移动素材`, {
-      itemId,
-      newStartTime: newStartTime.toFixed(2),
+  // 计算非重叠位置的辅助函数
+  const calculateNonOverlappingPosition = useCallback((
+    targetItem: TimelineItem, 
+    newStartTime: number, 
+    trackItems: TimelineItem[]
+  ): number => {
+    const targetEndTime = newStartTime + targetItem.duration;
+    const otherItems = trackItems.filter(item => item.id !== targetItem.id);
+    
+    console.log(`[TimelinePanel] 开始碰撞检测`, {
+      itemId: targetItem.id,
+      requestedStartTime: newStartTime.toFixed(2),
+      requestedEndTime: targetEndTime.toFixed(2),
+      otherItemsCount: otherItems.length,
       timestamp: new Date().toISOString()
     });
 
-    setTimelineState(prev => ({
-      ...prev,
-      tracks: prev.tracks.map(track => ({
-        ...track,
-        items: track.items.map(item => 
-          item.id === itemId ? { ...item, startTime: newStartTime } : item
-        )
-      }))
-    }));
+    // 检查是否与其他素材重叠
+    for (const otherItem of otherItems) {
+      const otherEndTime = otherItem.startTime + otherItem.duration;
+      
+      // 检查重叠：目标素材的开始时间在其他素材范围内，或目标素材的结束时间在其他素材范围内
+      const isOverlapping = (
+        (newStartTime >= otherItem.startTime && newStartTime < otherEndTime) ||
+        (targetEndTime > otherItem.startTime && targetEndTime <= otherEndTime) ||
+        (newStartTime <= otherItem.startTime && targetEndTime >= otherEndTime)
+      );
+
+      if (isOverlapping) {
+        console.log(`[TimelinePanel] 检测到重叠`, {
+          targetItemId: targetItem.id,
+          overlappingItemId: otherItem.id,
+          otherItemStart: otherItem.startTime.toFixed(2),
+          otherItemEnd: otherEndTime.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
+
+        // 计算调整后的位置：如果往右移动重叠，则放到其他素材前面；如果往左移动重叠，则放到其他素材后面
+        let adjustedStartTime: number;
+        
+        if (newStartTime >= targetItem.startTime) {
+          // 往右移动，放到重叠素材的前面
+          adjustedStartTime = Math.max(0, otherItem.startTime - targetItem.duration);
+        } else {
+          // 往左移动，放到重叠素材的后面
+          adjustedStartTime = otherEndTime;
+        }
+
+        console.log(`[TimelinePanel] 调整位置避免重叠`, {
+          originalStartTime: newStartTime.toFixed(2),
+          adjustedStartTime: adjustedStartTime.toFixed(2),
+          adjustmentReason: newStartTime >= targetItem.startTime ? 'moved_right' : 'moved_left',
+          timestamp: new Date().toISOString()
+        });
+
+        // 递归检查调整后的位置是否还有重叠
+        return calculateNonOverlappingPosition(targetItem, adjustedStartTime, trackItems);
+      }
+    }
+
+    console.log(`[TimelinePanel] 位置检查通过`, {
+      finalStartTime: newStartTime.toFixed(2),
+      finalEndTime: targetEndTime.toFixed(2),
+      timestamp: new Date().toISOString()
+    });
+
+    return Math.max(0, newStartTime); // 确保不小于0
+  }, []);
+
+  // 计算非重叠resize位置的辅助函数
+  const calculateNonOverlappingResizeParams = useCallback((
+    targetItem: TimelineItem,
+    newDuration: number,
+    resizeType: 'start' | 'end',
+    trackItems: TimelineItem[]
+  ): { duration: number; startTime: number } => {
+    const otherItems = trackItems.filter(item => item.id !== targetItem.id);
+    
+    console.log(`[TimelinePanel] 开始resize碰撞检测`, {
+      itemId: targetItem.id,
+      resizeType,
+      currentStartTime: targetItem.startTime.toFixed(2),
+      currentDuration: targetItem.duration.toFixed(2),
+      requestedDuration: newDuration.toFixed(2),
+      otherItemsCount: otherItems.length,
+      timestamp: new Date().toISOString()
+    });
+
+    if (resizeType === 'end') {
+      // 调整结束时间：检查新的结束位置是否与后面的素材重叠
+      const newEndTime = targetItem.startTime + newDuration;
+      
+      // 找到最近的后续素材
+      const nextItem = otherItems
+        .filter(item => item.startTime >= targetItem.startTime)
+        .sort((a, b) => a.startTime - b.startTime)[0];
+      
+      if (nextItem && newEndTime > nextItem.startTime) {
+        const maxAllowedDuration = nextItem.startTime - targetItem.startTime;
+        const adjustedDuration = Math.max(0.1, maxAllowedDuration);
+        
+        console.log(`[TimelinePanel] End resize受限于后续素材`, {
+          itemId: targetItem.id,
+          nextItemId: nextItem.id,
+          nextItemStart: nextItem.startTime.toFixed(2),
+          requestedDuration: newDuration.toFixed(2),
+          adjustedDuration: adjustedDuration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
+        
+        return { duration: adjustedDuration, startTime: targetItem.startTime };
+      }
+      
+      return { duration: newDuration, startTime: targetItem.startTime };
+      
+    } else {
+      // 调整开始时间：检查新的开始位置是否与前面的素材重叠
+      const originalEndTime = targetItem.startTime + targetItem.duration;
+      const newStartTime = originalEndTime - newDuration;
+      
+      // 找到最近的前置素材
+      const prevItem = otherItems
+        .filter(item => item.startTime + item.duration <= targetItem.startTime)
+        .sort((a, b) => (b.startTime + b.duration) - (a.startTime + a.duration))[0];
+      
+      if (prevItem && newStartTime < prevItem.startTime + prevItem.duration) {
+        const minAllowedStartTime = prevItem.startTime + prevItem.duration;
+        const adjustedDuration = Math.max(0.1, originalEndTime - minAllowedStartTime);
+        
+        console.log(`[TimelinePanel] Start resize受限于前置素材`, {
+          itemId: targetItem.id,
+          prevItemId: prevItem.id,
+          prevItemEnd: (prevItem.startTime + prevItem.duration).toFixed(2),
+          requestedStartTime: newStartTime.toFixed(2),
+          adjustedStartTime: minAllowedStartTime.toFixed(2),
+          adjustedDuration: adjustedDuration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
+        
+        return { duration: adjustedDuration, startTime: minAllowedStartTime };
+      }
+      
+      // 还要检查不能超过时间轴开始位置
+      const finalStartTime = Math.max(0, newStartTime);
+      const finalDuration = originalEndTime - finalStartTime;
+      
+      return { duration: Math.max(0.1, finalDuration), startTime: finalStartTime };
+    }
+  }, []);
+
+  const handleMoveItem = useCallback((itemId: string, newStartTime: number) => {
+    console.log(`[TimelinePanel] 移动素材开始`, {
+      itemId,
+      requestedStartTime: newStartTime.toFixed(2),
+      timestamp: new Date().toISOString()
+    });
+
+    setTimelineState(prev => {
+      // 找到目标素材和所在轨道
+      let targetItem: TimelineItem | null = null;
+      let targetTrack: Track | null = null;
+
+      for (const track of prev.tracks) {
+        const item = track.items.find(item => item.id === itemId);
+        if (item) {
+          targetItem = item;
+          targetTrack = track;
+          break;
+        }
+      }
+
+      if (!targetItem || !targetTrack) {
+        console.warn(`[TimelinePanel] 未找到目标素材`, { itemId });
+        return prev;
+      }
+
+      // 计算防重叠的位置
+      const finalStartTime = calculateNonOverlappingPosition(targetItem, newStartTime, targetTrack.items);
+
+      console.log(`[TimelinePanel] 移动素材完成`, {
+        itemId,
+        originalStartTime: targetItem.startTime.toFixed(2),
+        requestedStartTime: newStartTime.toFixed(2),
+        finalStartTime: finalStartTime.toFixed(2),
+        positionAdjusted: Math.abs(finalStartTime - newStartTime) > 0.01,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        ...prev,
+        tracks: prev.tracks.map(track => ({
+          ...track,
+          items: track.items.map(item => 
+            item.id === itemId ? { ...item, startTime: finalStartTime } : item
+          )
+        }))
+      };
+    });
 
     addToHistory({
       type: 'MOVE_ITEM',
       payload: { itemId, newStartTime },
       timestamp: new Date()
     });
-  }, [addToHistory]);
+  }, [addToHistory, calculateNonOverlappingPosition]);
 
   const handleResizeItem = useCallback((itemId: string, newDuration: number, resizeType: 'start' | 'end') => {
-    console.log(`[TimelinePanel] 调整素材大小`, {
+    console.log(`[TimelinePanel] 调整素材大小开始`, {
       itemId,
       newDuration: newDuration.toFixed(2),
       resizeType,
       timestamp: new Date().toISOString()
     });
 
-    setTimelineState(prev => ({
-      ...prev,
-      tracks: prev.tracks.map(track => ({
-        ...track,
-        items: track.items.map(item => {
-          if (item.id === itemId) {
-            if (resizeType === 'start') {
-              const deltaTime = item.duration - newDuration;
+    setTimelineState(prev => {
+      // 找到目标素材和所在轨道
+      let targetItem: TimelineItem | null = null;
+      let targetTrack: Track | null = null;
+
+      for (const track of prev.tracks) {
+        const item = track.items.find(item => item.id === itemId);
+        if (item) {
+          targetItem = item;
+          targetTrack = track;
+          break;
+        }
+      }
+
+      if (!targetItem || !targetTrack) {
+        console.warn(`[TimelinePanel] 未找到目标素材进行大小调整`, { itemId });
+        return prev;
+      }
+
+      // 使用碰撞检测计算最终的参数
+      const resizeParams = calculateNonOverlappingResizeParams(
+        targetItem, 
+        newDuration, 
+        resizeType, 
+        targetTrack.items
+      );
+
+      console.log(`[TimelinePanel] 调整素材大小详情`, {
+        itemId,
+        resizeType,
+        originalStartTime: targetItem.startTime.toFixed(2),
+        originalDuration: targetItem.duration.toFixed(2),
+        requestedDuration: newDuration.toFixed(2),
+        finalDuration: resizeParams.duration.toFixed(2),
+        finalStartTime: resizeParams.startTime.toFixed(2),
+        wasAdjusted: Math.abs(resizeParams.duration - newDuration) > 0.01 || 
+                     Math.abs(resizeParams.startTime - targetItem.startTime) > 0.01,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        ...prev,
+        tracks: prev.tracks.map(track => ({
+          ...track,
+          items: track.items.map(item => {
+            if (item.id === itemId) {
+              console.log(`[TimelinePanel] 应用resize结果`, {
+                itemId,
+                resizeType,
+                beforeStartTime: item.startTime.toFixed(2),
+                beforeDuration: item.duration.toFixed(2),
+                afterStartTime: resizeParams.startTime.toFixed(2),
+                afterDuration: resizeParams.duration.toFixed(2),
+                timestamp: new Date().toISOString()
+              });
+              
               return { 
                 ...item, 
-                duration: newDuration,
-                startTime: item.startTime + deltaTime
+                duration: resizeParams.duration,
+                startTime: resizeParams.startTime
               };
-            } else {
-              return { ...item, duration: newDuration };
             }
-          }
-          return item;
-        })
-      }))
-    }));
+            return item;
+          })
+        }))
+      };
+    });
 
     addToHistory({
       type: 'UPDATE_ITEM',
       payload: { itemId, newDuration, resizeType },
       timestamp: new Date()
     });
-  }, [addToHistory]);
+  }, [addToHistory, calculateNonOverlappingResizeParams]);
 
   // 轨道操作处理函数
   const handleToggleTrackMute = useCallback((trackId: string) => {

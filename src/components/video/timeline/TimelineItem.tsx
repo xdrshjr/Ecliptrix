@@ -24,7 +24,11 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<'start' | 'end' | null>(null);
-  const [dragStart, setDragStart] = useState({ x: 0, startTime: 0 });
+  const [dragStart, setDragStart] = useState({ 
+    x: 0, 
+    startTime: 0, 
+    duration: 0 // 添加初始duration记录
+  });
   const itemRef = useRef<HTMLDivElement>(null);
 
   // 计算项目的位置和尺寸
@@ -52,13 +56,34 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       
       if (relativeX <= resizeThreshold) {
         setIsResizing('start');
-        console.log(`[TimelineItem] 开始调整素材起始时间`, { itemId: item.id });
+        setDragStart({ x: e.clientX, startTime: item.startTime, duration: item.duration });
+        console.log(`[TimelineItem] 开始调整素材起始时间`, { 
+          itemId: item.id,
+          startX: e.clientX,
+          startTime: item.startTime.toFixed(2),
+          duration: item.duration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
       } else if (relativeX >= width - resizeThreshold) {
         setIsResizing('end');
-        console.log(`[TimelineItem] 开始调整素材结束时间`, { itemId: item.id });
+        setDragStart({ x: e.clientX, startTime: item.startTime, duration: item.duration });
+        console.log(`[TimelineItem] 开始调整素材结束时间`, { 
+          itemId: item.id,
+          startX: e.clientX,
+          startTime: item.startTime.toFixed(2),
+          duration: item.duration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
       } else {
         setIsDragging(true);
-        setDragStart({ x: e.clientX, startTime: item.startTime });
+        setDragStart({ x: e.clientX, startTime: item.startTime, duration: item.duration });
+        console.log(`[TimelineItem] 开始拖拽素材`, { 
+          itemId: item.id,
+          startX: e.clientX,
+          startTime: item.startTime.toFixed(2),
+          duration: item.duration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
       }
     }
 
@@ -68,7 +93,17 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
   // 处理鼠标移动
   useEffect(() => {
+    let lastUpdateTime = 0;
+    const throttleDelay = 16; // 约60fps的更新频率
+    
     const handleMouseMove = (e: MouseEvent) => {
+      const now = performance.now();
+      
+      // 节流处理，避免过于频繁的更新
+      if (now - lastUpdateTime < throttleDelay) {
+        return;
+      }
+      lastUpdateTime = now;
       if (isDragging) {
         const deltaX = e.clientX - dragStart.x;
         const deltaTime = deltaX / pixelsPerSecond;
@@ -76,8 +111,12 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         
         console.log(`[TimelineItem] 拖拽移动素材`, {
           itemId: item.id,
+          mouseX: e.clientX,
+          dragStartX: dragStart.x,
+          deltaX: deltaX.toFixed(2),
+          deltaTime: deltaTime.toFixed(2),
           newStartTime: newStartTime.toFixed(2),
-          deltaTime: deltaTime.toFixed(2)
+          timestamp: new Date().toISOString()
         });
         
         onMove(item.id, newStartTime);
@@ -85,22 +124,66 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         const deltaX = e.clientX - dragStart.x;
         const deltaTime = deltaX / pixelsPerSecond;
         
+        console.log(`[TimelineItem] 调整素材大小 - 鼠标移动`, {
+          itemId: item.id,
+          resizeType: isResizing,
+          mouseX: e.clientX,
+          dragStartX: dragStart.x,
+          deltaX: deltaX.toFixed(2),
+          deltaTime: deltaTime.toFixed(2),
+          currentStartTime: item.startTime.toFixed(2),
+          currentDuration: item.duration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
+        
         if (isResizing === 'end') {
-          const newDuration = Math.max(0.1, item.duration + deltaTime);
-          console.log(`[TimelineItem] 调整素材时长`, {
+          // 调整结束时间：改变duration，startTime不变
+          // 始终基于初始duration计算，避免累积误差
+          const minDuration = 0.1; // 最小时长0.1秒
+          const requestedDuration = dragStart.duration + deltaTime;
+          const newDuration = Math.max(minDuration, requestedDuration);
+          
+          console.log(`[TimelineItem] 调整素材结束时间`, {
             itemId: item.id,
+            initialDuration: dragStart.duration.toFixed(2),
+            requestedDuration: requestedDuration.toFixed(2),
             newDuration: newDuration.toFixed(2),
-            resizeType: 'end'
+            deltaTime: deltaTime.toFixed(2),
+            resizeType: 'end',
+            limitedByMinDuration: requestedDuration < minDuration,
+            timestamp: new Date().toISOString()
           });
           onResize(item.id, newDuration, 'end');
         } else if (isResizing === 'start') {
-          const newDuration = Math.max(0.1, item.duration - deltaTime);
-          console.log(`[TimelineItem] 调整素材起始时间`, {
+          // 调整开始时间：改变startTime和duration
+          // 始终基于初始值计算，避免累积误差
+          const minDuration = 0.1; // 最小时长0.1秒
+          const originalEndTime = dragStart.startTime + dragStart.duration; // 原始结束时间固定
+          
+          // 计算新的开始时间，但不能超过原始结束时间
+          const requestedStartTime = dragStart.startTime + deltaTime;
+          const maxAllowedStartTime = originalEndTime - minDuration; // 确保至少有最小时长
+          const newStartTime = Math.max(0, Math.min(requestedStartTime, maxAllowedStartTime));
+          
+          // 基于新的开始时间计算duration
+          const adjustedDuration = originalEndTime - newStartTime;
+          
+          console.log(`[TimelineItem] 调整素材开始时间`, {
             itemId: item.id,
-            newDuration: newDuration.toFixed(2),
-            resizeType: 'start'
+            initialStartTime: dragStart.startTime.toFixed(2),
+            initialDuration: dragStart.duration.toFixed(2),
+            originalEndTime: originalEndTime.toFixed(2),
+            requestedStartTime: requestedStartTime.toFixed(2),
+            newStartTime: newStartTime.toFixed(2),
+            adjustedDuration: adjustedDuration.toFixed(2),
+            deltaTime: deltaTime.toFixed(2),
+            resizeType: 'start',
+            limitedByBoundary: requestedStartTime !== newStartTime,
+            timestamp: new Date().toISOString()
           });
-          onResize(item.id, newDuration, 'start');
+          
+          // 对于start类型调整，我们需要同时更新startTime和duration
+          onResize(item.id, adjustedDuration, 'start');
         }
       }
     };
@@ -129,7 +212,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragStart, item, pixelsPerSecond, onMove, onResize]);
+  }, [isDragging, isResizing, dragStart, pixelsPerSecond, onMove, onResize]);
 
   // 根据类型获取样式
   const getItemStyles = () => {
