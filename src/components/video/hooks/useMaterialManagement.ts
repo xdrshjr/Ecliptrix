@@ -247,16 +247,52 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
 
   // Add materials function for external use (e.g., from video search)
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
+    logger.info('接收到新素材添加请求', {
+      receivedCount: newMaterials.length,
+      currentMaterialsCount: materials.length,
+      receivedMaterials: newMaterials.map(m => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        hasUrl: !!m.url
+      }))
+    });
+
     const existingIds = new Set(materials.map(m => m.id));
     const uniqueNewMaterials = newMaterials.filter(material => !existingIds.has(material.id));
 
+    logger.info('素材去重处理完成', {
+      originalCount: newMaterials.length,
+      uniqueCount: uniqueNewMaterials.length,
+      duplicateCount: newMaterials.length - uniqueNewMaterials.length,
+      existingIds: Array.from(existingIds),
+      uniqueMaterialIds: uniqueNewMaterials.map(m => m.id)
+    });
+
     if (uniqueNewMaterials.length > 0) {
-      setMaterials(prevMaterials => [...prevMaterials, ...uniqueNewMaterials]);
+      setMaterials(prevMaterials => {
+        const updatedMaterials = [...prevMaterials, ...uniqueNewMaterials];
+        logger.info('素材状态更新', {
+          previousCount: prevMaterials.length,
+          newCount: updatedMaterials.length,
+          addedMaterials: uniqueNewMaterials.map(m => ({
+            id: m.id,
+            name: m.name
+          }))
+        });
+        return updatedMaterials;
+      });
       
-      logger.info('新素材添加到库中', {
+      logger.info('新素材成功添加到库中', {
         addedCount: uniqueNewMaterials.length,
         skippedCount: newMaterials.length - uniqueNewMaterials.length,
-        newMaterialIds: uniqueNewMaterials.map(m => m.id)
+        newMaterialIds: uniqueNewMaterials.map(m => m.id),
+        totalMaterialsAfterAdd: materials.length + uniqueNewMaterials.length
+      });
+    } else {
+      logger.warn('没有新素材被添加', {
+        reason: 'all_materials_already_exist',
+        attemptedCount: newMaterials.length
       });
     }
 
