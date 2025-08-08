@@ -1,0 +1,230 @@
+"""
+Main FastAPI application for the Basic Service.
+"""
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+import time
+import traceback
+
+from app.config import settings
+from app.logger import get_logger, setup_logging
+from app.routers import api_router
+from app.models import ErrorResponse
+
+
+# Initialize logging
+setup_logging()
+logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """
+    Application lifespan manager for startup and shutdown events.
+    
+    Args:
+        app: FastAPI application instance
+    """
+    # Startup
+    logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+    logger.info(f"Debug mode: {settings.debug}")
+    logger.info(f"Log level: {settings.log_level}")
+    logger.info(f"Server will run on {settings.host}:{settings.port}")
+    
+    # Validate critical configuration
+    if not settings.llm_api_key:
+        logger.warning("LLM_API_KEY is not set - some features may not work")
+    if not settings.llm_api_url:
+        logger.warning("LLM_API_URL is not set - some features may not work")
+    
+    logger.info("Application startup completed")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down application")
+    logger.info("Application shutdown completed")
+
+
+# Create FastAPI application
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description="A basic FastAPI service with comprehensive logging and configuration management",
+    lifespan=lifespan,
+    debug=settings.debug,
+)
+
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure appropriately for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    """
+    Middleware for logging HTTP requests and responses.
+    
+    Args:
+        request: HTTP request
+        call_next: Next middleware/endpoint function
+        
+    Returns:
+        HTTP response
+    """
+    start_time = time.time()
+    
+    # Log request
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.debug(f"Request headers: {dict(request.headers)}")
+    
+    try:
+        # Process request
+        response = await call_next(request)
+        
+        # Calculate processing time
+        process_time = time.time() - start_time
+        
+        # Log response
+        logger.info(f"Response: {response.status_code} - {process_time:.3f}s")
+        
+        # Add processing time header
+        response.headers["X-Process-Time"] = str(process_time)
+        
+        return response
+        
+    except Exception as e:
+        # Log error
+        process_time = time.time() - start_time
+        logger.error(f"Request failed after {process_time:.3f}s: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Return error response
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                success=False,
+                message="Internal server error",
+                error_code="INTERNAL_ERROR",
+                error_details={"detail": str(e) if settings.debug else "Internal server error"}
+            ).model_dump()
+        )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """
+    Handle HTTP exceptions with proper logging.
+    
+    Args:
+        request: HTTP request that caused the exception
+        exc: HTTP exception
+        
+    Returns:
+        JSON error response
+    """
+    logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            success=False,
+            message=exc.detail,
+            error_code=f"HTTP_{exc.status_code}",
+            error_details={"status_code": exc.status_code}
+        ).model_dump()
+    )
+
+
+@app.exception_handler(HTTPException)
+async def fastapi_http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Handle FastAPI HTTP exceptions with proper logging.
+    
+    Args:
+        request: HTTP request that caused the exception
+        exc: HTTP exception
+        
+    Returns:
+        JSON error response
+    """
+    logger.warning(f"FastAPI HTTP exception: {exc.status_code} - {exc.detail}")
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            success=False,
+            message=exc.detail,
+            error_code=f"HTTP_{exc.status_code}",
+            error_details={"status_code": exc.status_code}
+        ).model_dump()
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle request validation errors with proper logging.
+    
+    Args:
+        request: HTTP request that caused the exception
+        exc: Validation error
+        
+    Returns:
+        JSON error response
+    """
+    logger.warning(f"Validation error: {exc.errors()}")
+    
+    return JSONResponse(
+        status_code=422,
+        content=ErrorResponse(
+            success=False,
+            message="Validation error",
+            error_code="VALIDATION_ERROR",
+            error_details={"errors": exc.errors()}
+        ).model_dump()
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """
+    Handle general exceptions with proper logging.
+    
+    Args:
+        request: HTTP request that caused the exception
+        exc: General exception
+        
+    Returns:
+        JSON error response
+    """
+    logger.error(f"Unhandled exception: {str(exc)}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            success=False,
+            message="Internal server error",
+            error_code="UNHANDLED_EXCEPTION",
+            error_details={"detail": str(exc) if settings.debug else "Internal server error"}
+        ).model_dump()
+    )
+
+
+# Include routers
+app.include_router(api_router.router, tags=["Basic Service"])
+
+logger.info("FastAPI application configured successfully") 
