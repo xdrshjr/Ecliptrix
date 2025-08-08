@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { UseAIAssistantReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
+import { createAIService, AIService } from '../services';
 
 /**
  * useAIAssistant Hook
@@ -18,11 +19,13 @@ export const useAIAssistant = (
 ): UseAIAssistantReturn => {
   const defaultContent = '# Video Editing Project\n\nStart editing your video project documentation here...\n\n## Notes\n- Add your project notes\n- Document your editing workflow\n- Track your progress\n\n## Resources\n- List your video assets\n- Note important timestamps\n- Reference materials';
 
-  // 初始化日志器
+  // 初始化日志器和AI服务
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
     component: 'useAIAssistant'
   }), [taskId]);
+
+  const aiService = useMemo(() => createAIService(taskId), [taskId]);
 
   // AI助手状态
   const [inputMessage, setInputMessage] = useState('');
@@ -39,46 +42,16 @@ export const useAIAssistant = (
       return;
     }
 
-    const startTime = performance.now();
-    logger.apiCall('发送AI助手消息', '/api/video-editing-chat', {
-      messageLength: message.length,
-      currentContentLength: currentContent.length
-    });
-
     setIsLoading(true);
     
     try {
-      // 调用视频编辑聊天API
-      const response = await fetch('/api/video-editing-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: message.trim(),
-          currentContent: currentContent,
-          taskId: taskId,
-        }),
+      // 使用AI服务发送消息
+      const stream = await aiService.sendMessage({
+        message: message.trim(),
+        currentContent: currentContent,
+        taskId: taskId
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      logger.info('开始接收AI助手流式响应', {
-        responseStatus: response.status,
-        responseHeaders: {
-          contentType: response.headers.get('content-type'),
-          contentLength: response.headers.get('content-length')
-        }
-      });
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No reader available');
-      }
-
-      let accumulatedContent = '';
       let originalContent = currentContent;
       
       // 如果当前内容是默认placeholder内容，则清除它
@@ -96,67 +69,35 @@ export const useAIAssistant = (
       // 立即更新MD编辑器显示前缀
       onContentUpdate(updatedContent);
       
-      let chunkCount = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      let accumulatedContent = '';
 
-        chunkCount++;
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split('\n').filter(line => line.trim());
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              logger.info('AI助手响应完成', {
-                totalResponseLength: accumulatedContent.length,
-                totalChunks: chunkCount,
-                responseTime: performance.now() - startTime
-              });
-              break;
-            }
-            
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                accumulatedContent += parsed.content;
-                
-                // 实时更新MD编辑器内容
-                const newContent = originalContent + aiResponsePrefix + accumulatedContent;
-                onContentUpdate(newContent);
-                
-                // 定期记录流式更新进度
-                if (accumulatedContent.length % 50 === 0) {
-                  logger.debug('AI流式响应进度', {
-                    accumulatedLength: accumulatedContent.length,
-                    chunkCount,
-                    averageChunkSize: accumulatedContent.length / chunkCount
-                  });
-                }
-              }
-            } catch (e) {
-              logger.error('解析AI响应数据错误', e as Error, {
-                rawData: data,
-                lineContent: line
-              });
-            }
-          }
+      // 使用AI服务处理流式响应
+      await aiService.processStreamResponse(
+        stream,
+        (content) => {
+          // 处理每个数据块
+          accumulatedContent += content;
+          const newContent = originalContent + aiResponsePrefix + accumulatedContent;
+          onContentUpdate(newContent);
+        },
+        () => {
+          // 响应完成
+          logger.info('AI助手响应完成', {
+            finalResponseLength: accumulatedContent.length,
+            finalContentLength: (originalContent + aiResponsePrefix + accumulatedContent).length
+          });
+        },
+        (error) => {
+          // 处理流式响应错误
+          logger.error('AI助手流式响应错误', error);
+          const errorMessage = `\n\n## AI Assistant Error\n\nSorry, I encountered an error while processing your request. Please try again.\n\nError: ${error.message}\n\n`;
+          const errorContent = originalContent + aiResponsePrefix + errorMessage;
+          onContentUpdate(errorContent);
         }
-      }
-
-      const endTime = performance.now();
-      logger.apiComplete('AI助手对话', '/api/video-editing-chat', true, endTime - startTime, {
-        finalResponseLength: accumulatedContent.length,
-        finalContentLength: (originalContent + aiResponsePrefix + accumulatedContent).length,
-        totalChunks: chunkCount,
-        averageResponseSpeed: accumulatedContent.length / ((endTime - startTime) / 1000) // 字符/秒
-      });
+      );
       
     } catch (error) {
-      const endTime = performance.now();
-      logger.apiError('AI助手请求', '/api/video-editing-chat', error as Error, {
-        responseTime: endTime - startTime,
+      logger.error('AI助手请求失败', error as Error, {
         messageLength: message.length
       });
       
@@ -168,7 +109,7 @@ export const useAIAssistant = (
     } finally {
       setIsLoading(false);
     }
-  }, [taskId, currentContent, onContentUpdate, isLoading, logger]);
+  }, [taskId, currentContent, onContentUpdate, isLoading, logger, aiService]);
 
   // 处理表单提交
   const handleSubmit = useCallback((e: React.FormEvent) => {
