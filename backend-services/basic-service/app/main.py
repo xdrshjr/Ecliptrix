@@ -227,4 +227,8 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(api_router.router, tags=["Basic Service"])
 
+# Import and include video router
+from app.routers import video_router
+app.include_router(video_router.router)
+
 logger.info("FastAPI application configured successfully") 

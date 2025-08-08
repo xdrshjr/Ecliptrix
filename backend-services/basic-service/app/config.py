@@ -3,7 +3,7 @@ Configuration management for the Basic Service application.
 """
 
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 from dotenv import load_dotenv
 
@@ -17,6 +17,9 @@ class Settings(BaseModel):
     # LLM Configuration
     llm_api_key: str = Field(..., description="LLM API key")
     llm_api_url: str = Field(..., description="LLM API base URL")
+    
+    # PEXELS API Configuration
+    pexels_api_keys: List[str] = Field(default=[], description="PEXELS API keys (comma-separated)")
     
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
@@ -38,9 +41,14 @@ class Settings(BaseModel):
 
 def get_settings() -> Settings:
     """Get application settings from environment variables."""
+    # Parse PEXELS API keys from comma-separated string
+    pexels_api_key_str = os.getenv("PEXELS_API_KEY", "")
+    pexels_api_keys = [key.strip() for key in pexels_api_key_str.split(",") if key.strip()]
+    
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
+        pexels_api_keys=pexels_api_keys,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
