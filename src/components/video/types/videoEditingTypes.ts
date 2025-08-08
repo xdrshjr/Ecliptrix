@@ -77,8 +77,10 @@ export interface UseVideoSearchReturn {
   handleSearchResultSelect: (videoId: number, isSelected: boolean) => void;
   handleVideoPreview: (video: any) => void;
   handleAddSelectedVideos: () => void;
+  handleClearSelection: () => void;
   setSearchQuery: (query: string) => void;
   setSearchOrientation: (orientation: SearchOrientation) => void;
+  taskId: string;
 }
 
 // Video preview types
