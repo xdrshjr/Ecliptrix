@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 interface TimelineRulerProps {
   currentTime: number;
@@ -22,7 +22,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   isPlaying
 }) => {
   const rulerRef = useRef<HTMLDivElement>(null);
+  const controlPanelRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   console.log(`[TimelineRuler] 渲染时间刻度尺`, {
     currentTime: currentTime.toFixed(2),
@@ -32,6 +34,23 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     isPlaying,
     timestamp: new Date().toISOString()
   });
+
+  // 动态计算控制面板宽度
+  const getControlPanelWidth = (): number => {
+    if (controlPanelRef.current) {
+      const width = controlPanelRef.current.getBoundingClientRect().width;
+      console.log(`[TimelineRuler] 动态获取控制面板宽度`, {
+        width: width.toFixed(2),
+        timestamp: new Date().toISOString()
+      });
+      return width;
+    }
+    // 回退到默认值，但记录警告
+    console.warn(`[TimelineRuler] 无法获取控制面板宽度，使用默认值192px`, {
+      timestamp: new Date().toISOString()
+    });
+    return 192;
+  };
 
   // 格式化时间显示
   const formatTime = (seconds: number): string => {
@@ -54,8 +73,19 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     
     const rect = rulerRef.current?.getBoundingClientRect();
     if (rect) {
-      const x = e.clientX - rect.left - 192; // 减去轨道标签宽度
+      // 修复：rulerRef指向的是时间刻度区域，其left已经是正确的起始位置
+      const x = e.clientX - rect.left;
       const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
+      
+      console.log(`[TimelineRuler] 播放头点击定位`, {
+        mouseX: e.clientX,
+        rectLeft: rect.left.toFixed(2),
+        relativeX: x.toFixed(2),
+        calculatedTime: time.toFixed(2),
+        pixelsPerSecond: pixelsPerSecond.toFixed(2),
+        timestamp: new Date().toISOString()
+      });
+      
       onTimeChange(time);
     }
   };
@@ -65,13 +95,17 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging.current && rulerRef.current) {
         const rect = rulerRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left - 192; // 减去轨道标签宽度
+        // 修复：rulerRef指向的是时间刻度区域，其left已经是正确的起始位置
+        const x = e.clientX - rect.left;
         const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
         
-        console.log(`[TimelineRuler] 拖拽播放头到`, {
+        console.log(`[TimelineRuler] 拖拽播放头移动`, {
           newTime: time.toFixed(2),
           mouseX: e.clientX,
-          relativeX: x
+          rectLeft: rect.left.toFixed(2),
+          relativeX: x.toFixed(2),
+          pixelsPerSecond: pixelsPerSecond.toFixed(2),
+          timestamp: new Date().toISOString()
         });
         
         onTimeChange(time);
@@ -159,12 +193,50 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     onZoomChange(1.0);
   };
 
+  // 处理时间轴图标的鼠标事件
+  const handleTimelineIconMouseEnter = () => {
+    setShowTooltip(true);
+    console.log(`[TimelineRuler] 显示时间轴图标提示`, {
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  const handleTimelineIconMouseLeave = () => {
+    setShowTooltip(false);
+    console.log(`[TimelineRuler] 隐藏时间轴图标提示`, {
+      timestamp: new Date().toISOString()
+    });
+  };
+
   return (
     <div className="timeline-ruler h-8 bg-gray-50 border-b border-gray-200 flex relative select-none">
       {/* 左侧控制区域 */}
-      <div className="w-48 bg-gray-100 border-r border-gray-200 flex items-center justify-between px-3">
+      <div 
+        ref={controlPanelRef}
+        className="w-48 bg-gray-100 border-r border-gray-200 flex items-center justify-between px-3"
+      >
         <div className="flex items-center space-x-2">
-          <span className="text-xs font-medium text-gray-700">时间轴</span>
+          {/* 时间轴图标，替换原来的文字 */}
+          <div 
+            className="relative flex items-center space-x-2"
+            onMouseEnter={handleTimelineIconMouseEnter}
+            onMouseLeave={handleTimelineIconMouseLeave}
+          >
+            <div className="text-gray-600 cursor-help">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+              </svg>
+            </div>
+            
+            {/* 工具提示 */}
+            {showTooltip && (
+              <div className="absolute left-0 top-6 bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
+                时间轴
+                <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-800 transform rotate-45"></div>
+              </div>
+            )}
+          </div>
+          
           <span className="text-xs text-gray-500 font-mono">
             {formatTime(currentTime)}
           </span>
