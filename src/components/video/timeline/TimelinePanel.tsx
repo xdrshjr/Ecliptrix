@@ -8,9 +8,10 @@ import TrackContainer from './TrackContainer';
 
 interface TimelinePanelProps {
   className?: string;
+  onTimelineStateChange?: (timelineState: TimelineState) => void;
 }
 
-const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
+const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '', onTimelineStateChange }) => {
   // 创建初始空轨道状态
   const createInitialTimelineState = (): TimelineState => {
     const initialTracks: Track[] = [
@@ -89,6 +90,19 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
   const [activeTool, setActiveTool] = useState<TimelineToolType>('select');
   const [history, setHistory] = useState<TimelineAction[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // 通知父组件时间轴状态变化
+  useEffect(() => {
+    if (onTimelineStateChange) {
+      console.log(`[TimelinePanel] 通知父组件时间轴状态变化`, {
+        totalDuration: timelineState.totalDuration,
+        tracksCount: timelineState.tracks.length,
+        itemsCount: timelineState.tracks.reduce((total, track) => total + track.items.length, 0),
+        timestamp: new Date().toISOString()
+      });
+      onTimelineStateChange(timelineState);
+    }
+  }, [timelineState, onTimelineStateChange]);
 
   // 生成唯一ID的辅助函数
   const generateId = () => `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

@@ -11,7 +11,8 @@ import {
   useAIAssistant,
   useScriptGeneration,
   useMaterialManagement,
-  useVideoSearch
+  useVideoSearch,
+  useTimelineComposition
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
 import {
@@ -40,6 +41,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
   const materialManagement = useMaterialManagement(taskId);
   const videoSearch = useVideoSearch(taskId, materialManagement.addMaterials);
+  
+  // 添加时间轴组合播放功能
+  const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -86,12 +90,20 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 {...videoPlayback}
                 videoPreview={mockVideoPreview}
                 taskId={taskId}
+                compositionPlayback={timelineComposition.compositionPlayback}
+                onCompositionPlayPause={timelineComposition.handleCompositionPlay}
+                onCompositionSeek={timelineComposition.handleCompositionSeek}
+                onNextSequence={timelineComposition.handleNextSequence}
+                onCompositionTimeUpdate={timelineComposition.handleCompositionTimeUpdate}
               />
             </div>
 
             {/* 下方容器 - 30%高度 */}
             <div className="video-editing-preview-lower border-t border-gray-200">
-              <TimelinePanel className="h-full" />
+              <TimelinePanel 
+                className="h-full" 
+                onTimelineStateChange={timelineComposition.handleTimelineStateChange}
+              />
             </div>
           </div>
         </div>

@@ -1,13 +1,20 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { UseVideoPlaybackReturn, VideoPreview } from '../../types';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
 import { VideoEditingLogger } from '../../utils/logger';
 
 interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   videoPreview: VideoPreview;
   taskId: string;
   className?: string;
+  // Add composition support
+  compositionPlayback?: CompositionPlayback;
+  onCompositionPlayPause?: () => void;
+  onCompositionSeek?: (time: number) => void;
+  // 新增：处理下一个序列
+  onNextSequence?: () => boolean;
+  onCompositionTimeUpdate?: (currentTime: number) => void;
 }
 
 const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
@@ -23,12 +30,25 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   formatTime,
   videoPreview,
   taskId,
-  className = ''
+  className = '',
+  compositionPlayback,
+  onCompositionPlayPause,
+  onCompositionSeek,
+  onNextSequence,
+  onCompositionTimeUpdate
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
     component: 'VideoPlayerPanel'
   });
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
+  const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
+
+  // 当前播放模式：preview 或 composition
+  const playbackMode = compositionPlayback?.isCompositionMode && compositionPlayback.videoSequences.length > 0 
+    ? 'composition' : 'preview';
 
   useEffect(() => {
     logger.info('组件初始化', {
@@ -37,20 +57,214 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       volume,
       playbackRate,
       videoTitle: videoPreview.title,
-      videoDuration: videoPreview.duration
+      videoDuration: videoPreview.duration,
+      playbackMode,
+      compositionSequencesCount: compositionPlayback?.videoSequences.length || 0
     });
   }, []);
 
-  const handlePlayPauseClick = () => {
-    logger.info('播放/暂停按钮点击', {
-      currentState: isPlaying ? '播放中' : '已暂停',
-      newState: isPlaying ? '暂停' : '播放',
-      currentTime,
-      duration: videoPreview.duration
-    });
-    
-    handlePlayPause();
+  // 组合播放时的视频切换逻辑
+  const handleVideoEnded = useCallback(() => {
+    if (playbackMode === 'composition' && compositionPlayback && onNextSequence) {
+      const currentIndex = compositionPlayback.currentSequenceIndex;
+      const nextIndex = currentIndex + 1;
+      
+      logger.info('视频播放结束，尝试切换到下一个', {
+        currentIndex,
+        nextIndex,
+        totalSequences: compositionPlayback.videoSequences.length,
+        currentSequence: compositionPlayback.videoSequences[currentIndex]?.name
+      });
+
+      // 检查是否有下一个视频
+      if (nextIndex < compositionPlayback.videoSequences.length) {
+        const nextSequence = compositionPlayback.videoSequences[nextIndex];
+        
+        // 先切换状态
+        const hasNext = onNextSequence();
+        
+        if (hasNext && nextSequence && videoRef.current) {
+          logger.info('加载下一个视频', {
+            nextIndex,
+            sequenceName: nextSequence.name,
+            sequenceUrl: nextSequence.url
+          });
+          
+          // 直接使用nextSequence，因为我们知道它是下一个
+          videoRef.current.src = nextSequence.url;
+          videoRef.current.currentTime = 0; // 重置到开头
+          videoRef.current.play().catch(error => {
+            logger.error('自动播放下一个视频失败', error, {
+              nextIndex,
+              sequenceName: nextSequence.name
+            });
+          });
+        }
+      } else {
+        // 所有视频播放完毕
+        logger.info('组合播放完毕', {
+          totalSequencesPlayed: compositionPlayback.videoSequences.length,
+          totalDuration: compositionPlayback.totalCompositionDuration
+        });
+        setIsCompositionPlaying(false);
+        if (onCompositionPlayPause) {
+          onCompositionPlayPause();
+        }
+      }
+    }
+  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, logger]);
+
+  // 更新组合播放时间
+  const handleTimeUpdate = useCallback(() => {
+    if (playbackMode === 'composition' && compositionPlayback && videoRef.current) {
+      const videoCurrentTime = videoRef.current.currentTime;
+      
+      // 计算组合播放的总时间
+      let accumulatedTime = 0;
+      for (let i = 0; i < compositionPlayback.currentSequenceIndex; i++) {
+        accumulatedTime += compositionPlayback.videoSequences[i].duration;
+      }
+      accumulatedTime += videoCurrentTime;
+      
+      setCompositionCurrentTime(accumulatedTime);
+      
+      // 通知父组件时间更新
+      if (onCompositionTimeUpdate) {
+        onCompositionTimeUpdate(accumulatedTime);
+      }
+    }
+  }, [playbackMode, compositionPlayback, onCompositionTimeUpdate]);
+
+  // 处理播放/暂停点击
+  const handlePlayPauseClick = useCallback(() => {
+    if (playbackMode === 'composition') {
+      logger.userAction('组合播放/暂停切换', 'compositionPlayPauseButton', {
+        currentState: isCompositionPlaying ? '播放中' : '已暂停',
+        newState: isCompositionPlaying ? '暂停' : '播放',
+        currentSequenceIndex: compositionPlayback?.currentSequenceIndex,
+        currentTime: compositionCurrentTime,
+        totalSequences: compositionPlayback?.videoSequences.length
+      });
+
+      if (videoRef.current) {
+        if (isCompositionPlaying) {
+          videoRef.current.pause();
+        } else {
+          // 开始组合播放
+          if (compositionPlayback && compositionPlayback.videoSequences.length > 0) {
+            const currentSequence = compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex];
+            if (currentSequence) {
+              logger.info('开始组合播放，加载第一个视频', {
+                sequenceIndex: compositionPlayback.currentSequenceIndex,
+                sequenceName: currentSequence.name,
+                sequenceUrl: currentSequence.url
+              });
+              
+              videoRef.current.src = currentSequence.url;
+              videoRef.current.currentTime = 0; // 确保从头开始
+              videoRef.current.play().catch(error => {
+                logger.error('开始播放组合视频失败', error, {
+                  sequenceIndex: compositionPlayback.currentSequenceIndex,
+                  sequenceName: currentSequence.name
+                });
+              });
+            }
+          }
+        }
+        setIsCompositionPlaying(!isCompositionPlaying);
+      }
+      
+      if (onCompositionPlayPause) {
+        onCompositionPlayPause();
+      }
+    } else {
+      // 原有的预览模式播放逻辑
+      logger.userAction('预览播放/暂停切换', 'previewPlayPauseButton', {
+        currentState: isPlaying ? '播放中' : '已暂停',
+        newState: isPlaying ? '暂停' : '播放',
+        currentTime,
+        duration: videoPreview.duration
+      });
+      
+      handlePlayPause();
+    }
+  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, logger]);
+
+  // 处理时间跳转
+  const handleTimeSeekClick = useCallback((newTime: number) => {
+    if (playbackMode === 'composition' && compositionPlayback) {
+      logger.userAction('组合播放时间跳转', 'compositionTimeSeek', {
+        previousTime: compositionCurrentTime,
+        newTime,
+        totalDuration: compositionPlayback.totalCompositionDuration
+      });
+
+      // 计算应该跳转到哪个视频序列
+      let targetSequenceIndex = 0;
+      let accumulatedTime = 0;
+      let targetVideoTime = newTime;
+
+      for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+        const sequence = compositionPlayback.videoSequences[i];
+        if (accumulatedTime + sequence.duration > newTime) {
+          targetSequenceIndex = i;
+          targetVideoTime = newTime - accumulatedTime;
+          break;
+        }
+        accumulatedTime += sequence.duration;
+      }
+
+      const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
+      if (targetSequence && videoRef.current) {
+        videoRef.current.src = targetSequence.url;
+        videoRef.current.currentTime = targetVideoTime;
+        setCompositionCurrentTime(newTime);
+      }
+
+      if (onCompositionSeek) {
+        onCompositionSeek(newTime);
+      }
+    } else {
+      // 原有的预览模式时间跳转
+      handleTimeSeek(newTime);
+    }
+  }, [playbackMode, compositionPlayback, compositionCurrentTime, onCompositionSeek, handleTimeSeek, logger]);
+
+  // 获取当前显示的时长和当前时间
+  const getCurrentTime = () => {
+    return playbackMode === 'composition' ? compositionCurrentTime : currentTime;
   };
+
+  const getTotalDuration = () => {
+    return playbackMode === 'composition' 
+      ? (compositionPlayback?.totalCompositionDuration || 0)
+      : videoPreview.duration;
+  };
+
+  const getCurrentlyPlaying = () => {
+    return playbackMode === 'composition' ? isCompositionPlaying : isPlaying;
+  };
+
+  // 获取当前显示的视频信息
+  const getCurrentVideoInfo = () => {
+    if (playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0) {
+      const currentSequence = compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex];
+      return {
+        title: `组合播放 (${compositionPlayback.currentSequenceIndex + 1}/${compositionPlayback.videoSequences.length}): ${currentSequence?.name || '未知'}`,
+        resolution: videoPreview.resolution, // 使用默认分辨率
+        frameRate: videoPreview.frameRate,
+        format: videoPreview.format
+      };
+    }
+    return {
+      title: videoPreview.title,
+      resolution: videoPreview.resolution,
+      frameRate: videoPreview.frameRate,
+      format: videoPreview.format
+    };
+  };
+
+  const currentVideoInfo = getCurrentVideoInfo();
 
   return (
     <div 
@@ -65,110 +279,148 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h3 className="text-sm font-semibold text-gray-900">视频合成播放</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            {playbackMode === 'composition' ? '视频合成播放' : '视频预览播放'}
+          </h3>
+          {playbackMode === 'composition' && (
+            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+              {compositionPlayback?.videoSequences.length || 0} 个视频
+            </span>
+          )}
         </div>
       </div>
       
       <div className="composition-panel-content">
         <div className="video-player-container">
-          <div className="video-preview-window">
-            <img 
-              src={videoPreview.thumbnailUrl}
-              alt="视频预览帧"
-              className="w-full h-full object-cover rounded-lg"
-            />
-            <div className="video-overlay">
-              <button
-                onClick={handlePlayPauseClick}
-                className="play-pause-btn"
-                title={isPlaying ? '暂停' : '播放'}
-              >
-                {isPlaying ? (
-                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+          {/* 视频播放器区域 */}
+          <div className="video-player-wrapper">
+            {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
+              // 组合播放模式
+              <div className="aspect-video bg-black rounded-xl overflow-hidden">
+                                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-contain"
+                    onEnded={handleVideoEnded}
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadStart={() => {
+                      logger.info('组合视频开始加载', {
+                        sequenceIndex: compositionPlayback.currentSequenceIndex,
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name
+                      });
+                    }}
+                    onCanPlay={() => {
+                      logger.info('组合视频可播放', {
+                        sequenceIndex: compositionPlayback.currentSequenceIndex,
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name
+                      });
+                    }}
+                    onLoadedData={() => {
+                      logger.info('组合视频数据加载完成', {
+                        sequenceIndex: compositionPlayback.currentSequenceIndex,
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
+                        duration: videoRef.current?.duration
+                      });
+                    }}
+                    onError={(e) => {
+                      logger.error('组合视频加载失败', new Error('Video load error'), {
+                        sequenceIndex: compositionPlayback.currentSequenceIndex,
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
+                        error: e.currentTarget.error?.message
+                      });
+                    }}
+                  />
+              </div>
+            ) : (
+              // 原有的预览模式
+              <div className="video-placeholder">
+                <div className="placeholder-content">
+                  <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                ) : (
-                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                )}
-              </button>
-            </div>
+                  <p className="text-gray-500 text-center">
+                    {playbackMode === 'composition' 
+                      ? '时间轴中没有视频素材\n请在时间轴中添加视频素材后播放'
+                      : '点击播放按钮预览视频'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* 播放控制栏 */}
           <div className="video-controls">
-            <div className="progress-container">
-              <div className="progress-bar">
-                <div 
-                  className="progress-filled"
-                  style={{ width: `${(currentTime / videoPreview.duration) * 100}%` }}
-                ></div>
-                <input
-                  type="range"
-                  min="0"
-                  max={videoPreview.duration}
-                  value={currentTime}
-                  onChange={(e) => handleTimeSeek(Number(e.target.value))}
-                  className="progress-slider"
-                />
-              </div>
-            </div>
-
             <div className="controls-row">
-              <div className="controls-left">
+              <div className="left-controls">
                 <button
                   onClick={handlePlayPauseClick}
-                  className="control-btn play-btn"
-                  title={isPlaying ? '暂停' : '播放'}
+                  className="control-btn play-pause-btn"
+                  title={getCurrentlyPlaying() ? "暂停" : "播放"}
                 >
-                  {isPlaying ? (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                  {getCurrentlyPlaying() ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M8 5v14l11-7z"/>
                     </svg>
                   )}
                 </button>
-                <span className="time-display">
-                  {formatTime(currentTime)} / {formatTime(videoPreview.duration)}
-                </span>
+
+                <div className="time-display">
+                  <span className="current-time">{formatTime(getCurrentTime())}</span>
+                  <span className="time-separator">/</span>
+                  <span className="total-time">{formatTime(getTotalDuration())}</span>
+                </div>
               </div>
 
-              <div className="controls-right">
-                <div className="speed-control">
-                  <select
-                    value={playbackRate}
-                    onChange={(e) => handlePlaybackRateChange(Number(e.target.value))}
-                    className="speed-select"
+              <div className="center-controls">
+                <div className="progress-container">
+                  <input
+                    type="range"
+                    min="0"
+                    max={getTotalDuration()}
+                    value={getCurrentTime()}
+                    onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
+                    className="progress-slider"
+                  />
+                </div>
+              </div>
+
+              <div className="right-controls">
+                <div className="volume-control">
+                  <button
+                    className="control-btn volume-btn"
+                    title="音量"
                   >
-                    <option value={0.5}>0.5x</option>
-                    <option value={1.0}>1.0x</option>
-                    <option value={1.25}>1.25x</option>
-                    <option value={1.5}>1.5x</option>
-                    <option value={2.0}>2.0x</option>
-                  </select>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6.343 6.343A8 8 0 004.222 12a8 8 0 002.121 5.657l1.414-1.414A6 6 0 016.222 12a6 6 0 011.535-4.243l-1.414-1.414zM12 6l-2 2H7a1 1 0 00-1 1v6a1 1 0 001 1h3l2 2V6z" />
+                    </svg>
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={volume}
+                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                    className="volume-slider"
+                  />
                 </div>
 
-                <div className="volume-control">
-                  <button 
-                    className="control-btn volume-btn" 
-                    title="音量"
-                    onClick={() => handleVolumeChange(volume === 0 ? 0.8 : 0)}
-                  >
-                    {volume === 0 ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
+                <select
+                  value={playbackRate}
+                  onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
+                  className="speed-select"
+                  title="播放速度"
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={0.75}>0.75x</option>
+                  <option value={1}>1x</option>
+                  <option value={1.25}>1.25x</option>
+                  <option value={1.5}>1.5x</option>
+                  <option value={2}>2x</option>
+                </select>
 
                 <button
                   onClick={handleFullscreenToggle}
@@ -186,16 +438,22 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           <div className="video-info-panel">
             <div className="info-row">
               <div className="info-item">
+                <span className="info-label">标题:</span>
+                <span className="info-value">{currentVideoInfo.title}</span>
+              </div>
+            </div>
+            <div className="info-row">
+              <div className="info-item">
                 <span className="info-label">分辨率:</span>
-                <span className="info-value">{videoPreview.resolution.width}×{videoPreview.resolution.height}</span>
+                <span className="info-value">{currentVideoInfo.resolution.width}×{currentVideoInfo.resolution.height}</span>
               </div>
               <div className="info-item">
                 <span className="info-label">帧率:</span>
-                <span className="info-value">{videoPreview.frameRate}fps</span>
+                <span className="info-value">{currentVideoInfo.frameRate}fps</span>
               </div>
               <div className="info-item">
                 <span className="info-label">格式:</span>
-                <span className="info-value">{videoPreview.format}</span>
+                <span className="info-value">{currentVideoInfo.format}</span>
               </div>
             </div>
           </div>

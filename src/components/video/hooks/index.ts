@@ -3,4 +3,5 @@ export { useVideoPlayback } from './useVideoPlayback';
 export { useAIAssistant } from './useAIAssistant';
 export { useScriptGeneration } from './useScriptGeneration';
 export { useMaterialManagement } from './useMaterialManagement';
-export { useVideoSearch } from './useVideoSearch'; 
+export { useVideoSearch } from './useVideoSearch';
+export { useTimelineComposition } from './useTimelineComposition'; 
