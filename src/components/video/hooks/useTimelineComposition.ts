@@ -210,6 +210,20 @@ export const useTimelineComposition = (
     }));
   }, []);
 
+  // 新增：更新当前序列索引
+  const handleSequenceIndexUpdate = useCallback((sequenceIndex: number) => {
+    logger.info('更新当前播放序列索引', {
+      previousIndex: compositionPlayback.currentSequenceIndex,
+      newIndex: sequenceIndex,
+      sequenceName: compositionPlayback.videoSequences[sequenceIndex]?.name
+    });
+    
+    setCompositionPlayback(prev => ({
+      ...prev,
+      currentSequenceIndex: sequenceIndex
+    }));
+  }, [compositionPlayback.currentSequenceIndex, compositionPlayback.videoSequences, logger]);
+
   return {
     compositionPlayback,
     handleTimelineStateChange,
@@ -219,6 +233,7 @@ export const useTimelineComposition = (
     getVideoSequencesFromTimeline,
     // 新增的方法
     handleNextSequence,
-    handleCompositionTimeUpdate
+    handleCompositionTimeUpdate,
+    handleSequenceIndexUpdate
   };
 }; 

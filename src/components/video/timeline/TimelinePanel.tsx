@@ -9,9 +9,17 @@ import TrackContainer from './TrackContainer';
 interface TimelinePanelProps {
   className?: string;
   onTimelineStateChange?: (timelineState: TimelineState) => void;
+  // 新增：外部控制当前时间
+  externalCurrentTime?: number;
+  onCurrentTimeChange?: (time: number) => void;
 }
 
-const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '', onTimelineStateChange }) => {
+const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
+  className = '', 
+  onTimelineStateChange, 
+  externalCurrentTime, 
+  onCurrentTimeChange 
+}) => {
   // 创建初始空轨道状态
   const createInitialTimelineState = (): TimelineState => {
     const initialTracks: Track[] = [
@@ -103,6 +111,23 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '', onTimelin
       onTimelineStateChange(timelineState);
     }
   }, [timelineState, onTimelineStateChange]);
+
+  // 处理外部时间同步
+  useEffect(() => {
+    if (externalCurrentTime !== undefined && externalCurrentTime !== timelineState.currentTime) {
+      console.log(`[TimelinePanel] 外部时间同步`, {
+        previousTime: timelineState.currentTime.toFixed(2),
+        externalTime: externalCurrentTime.toFixed(2),
+        timeDiff: Math.abs(externalCurrentTime - timelineState.currentTime).toFixed(2),
+        timestamp: new Date().toISOString()
+      });
+      
+      setTimelineState(prev => ({
+        ...prev,
+        currentTime: externalCurrentTime
+      }));
+    }
+  }, [externalCurrentTime, timelineState.currentTime]);
 
   // 生成唯一ID的辅助函数
   const generateId = () => `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -251,9 +276,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '', onTimelin
 
   // 时间轴操作处理函数
   const handleTimeChange = useCallback((time: number) => {
-    console.log(`[TimelinePanel] 时间变更`, {
+    console.log(`[TimelinePanel] 用户拖拽游标时间变更`, {
       oldTime: timelineState.currentTime.toFixed(2),
       newTime: time.toFixed(2),
+      source: 'user_interaction',
       timestamp: new Date().toISOString()
     });
     
@@ -261,7 +287,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '', onTimelin
       ...prev,
       currentTime: time
     }));
-  }, [timelineState.currentTime]);
+
+    // 通知外部组件时间变化（用于同步到视频播放器）
+    if (onCurrentTimeChange) {
+      console.log(`[TimelinePanel] 通知外部组件时间变化`, {
+        newTime: time.toFixed(2),
+        timestamp: new Date().toISOString()
+      });
+      onCurrentTimeChange(time);
+    }
+  }, [timelineState.currentTime, onCurrentTimeChange]);
 
   const handleZoomChange = useCallback((zoomLevel: number) => {
     console.log(`[TimelinePanel] 缩放变更`, {
