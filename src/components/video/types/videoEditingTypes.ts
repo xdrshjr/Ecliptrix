@@ -1,8 +1,40 @@
-import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType } from '@/types';
+import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem } from '@/types';
 
 // Video playback types
 export type PreviewQuality = 'low' | 'medium' | 'high' | 'original';
 export type SearchOrientation = 'landscape' | 'portrait' | 'mixed';
+
+// Timeline Composition types
+export interface VideoSequenceItem {
+  id: string;
+  name: string;
+  url: string;
+  startTime: number;
+  duration: number;
+  thumbnailUrl?: string;
+  materialId?: string;
+  trackId: string;
+}
+
+export interface CompositionPlayback {
+  isCompositionMode: boolean;
+  videoSequences: VideoSequenceItem[];
+  currentSequenceIndex: number;
+  totalCompositionDuration: number;
+  compositionCurrentTime: number;
+}
+
+export interface UseTimelineCompositionReturn {
+  compositionPlayback: CompositionPlayback;
+  handleTimelineStateChange: (timelineState: TimelineState) => void;
+  handleCompositionPlay: () => void;
+  handleCompositionPause: () => void;
+  handleCompositionSeek: (time: number) => void;
+  getVideoSequencesFromTimeline: (timelineState: TimelineState) => VideoSequenceItem[];
+  // 新增方法
+  handleNextSequence: () => boolean;
+  handleCompositionTimeUpdate: (currentTime: number) => void;
+}
 
 // Hook return types
 export interface UseDocumentStateReturn {
@@ -28,6 +60,10 @@ export interface UseVideoPlaybackReturn {
   handleQualityChange: (quality: PreviewQuality) => void;
   handleFullscreenToggle: () => void;
   formatTime: (seconds: number) => string;
+  // Add composition support
+  compositionPlayback?: CompositionPlayback;
+  handleCompositionPlayPause?: () => void;
+  handleCompositionSeek?: (time: number) => void;
 }
 
 export interface UseAIAssistantReturn {
