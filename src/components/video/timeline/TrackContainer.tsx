@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Track as TrackType, TimelineState } from '@/types';
+import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
 import Track from './Track';
 
 interface TrackContainerProps {
@@ -15,6 +15,7 @@ interface TrackContainerProps {
   onAddTrack: (type: 'video' | 'audio' | 'subtitle') => void;
   onRemoveTrack: (trackId: string) => void;
   onReorderTracks: (sourceIndex: number, destinationIndex: number) => void;
+  onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -27,7 +28,8 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onToggleTrackVisibility,
   onAddTrack,
   onRemoveTrack,
-  onReorderTracks
+  onReorderTracks,
+  onMaterialDrop
 }) => {
   const { tracks, selectedItems, totalDuration, zoomLevel } = timelineState;
   const pixelsPerSecond = zoomLevel * 50; // 基础像素比例
@@ -85,6 +87,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
               onToggleMute={onToggleTrackMute}
               onToggleLock={onToggleTrackLock}
               onToggleVisibility={onToggleTrackVisibility}
+              onMaterialDrop={onMaterialDrop}
               totalDuration={totalDuration}
             />
           ))
