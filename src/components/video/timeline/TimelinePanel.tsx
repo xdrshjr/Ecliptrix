@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction } from '@/types';
+import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
@@ -11,9 +11,9 @@ interface TimelinePanelProps {
 }
 
 const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
-  // 创建丰富的Mock数据
-  const createMockTimelineState = (): TimelineState => {
-    const mockTracks: Track[] = [
+  // 创建初始空轨道状态
+  const createInitialTimelineState = (): TimelineState => {
+    const initialTracks: Track[] = [
       {
         id: 'video-track-1',
         name: '视频轨道 1',
@@ -23,47 +23,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
         isMuted: false,
         isVisible: true,
         order: 0,
-        items: [
-          {
-            id: 'video-item-1',
-            name: '开场介绍.mp4',
-            type: 'video',
-            startTime: 0,
-            duration: 5.5,
-            trackId: 'video-track-1',
-            color: '#3b82f6',
-            thumbnailUrl: 'https://via.placeholder.com/120x68/3b82f6/ffffff?text=Video',
-            materialId: 'material-1',
-            volume: 1.0,
-            opacity: 1.0
-          },
-          {
-            id: 'video-item-2',
-            name: '主要内容.mp4',
-            type: 'video',
-            startTime: 6,
-            duration: 12.3,
-            trackId: 'video-track-1',
-            color: '#2563eb',
-            thumbnailUrl: 'https://via.placeholder.com/120x68/2563eb/ffffff?text=Main',
-            materialId: 'material-2',
-            volume: 1.0,
-            opacity: 1.0
-          },
-          {
-            id: 'video-item-3',
-            name: '结尾总结.mp4',
-            type: 'video',
-            startTime: 19,
-            duration: 4.2,
-            trackId: 'video-track-1',
-            color: '#1d4ed8',
-            thumbnailUrl: 'https://via.placeholder.com/120x68/1d4ed8/ffffff?text=End',
-            materialId: 'material-3',
-            volume: 1.0,
-            opacity: 1.0
-          }
-        ]
+        items: []
       },
       {
         id: 'video-track-2',
@@ -74,84 +34,29 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
         isMuted: false,
         isVisible: true,
         order: 1,
-        items: [
-          {
-            id: 'video-item-4',
-            name: '画中画.mp4',
-            type: 'video',
-            startTime: 8,
-            duration: 6.8,
-            trackId: 'video-track-2',
-            color: '#7c3aed',
-            thumbnailUrl: 'https://via.placeholder.com/120x68/7c3aed/ffffff?text=PIP',
-            materialId: 'material-4',
-            volume: 0.8,
-            opacity: 0.9
-          }
-        ]
+        items: []
       },
       {
         id: 'audio-track-1',
-        name: '背景音乐',
+        name: '音频轨道 1',
         type: 'audio',
         height: 60,
         isLocked: false,
         isMuted: false,
         isVisible: true,
         order: 2,
-        items: [
-          {
-            id: 'audio-item-1',
-            name: '背景音乐.mp3',
-            type: 'audio',
-            startTime: 0,
-            duration: 25,
-            trackId: 'audio-track-1',
-            color: '#10b981',
-            waveformData: Array.from({ length: 100 }, () => Math.random() * 0.8 + 0.2),
-            materialId: 'material-5',
-            volume: 0.3,
-            opacity: 1.0
-          }
-        ]
+        items: []
       },
       {
         id: 'audio-track-2',
-        name: '音效轨道',
+        name: '音频轨道 2',
         type: 'audio',
         height: 60,
         isLocked: false,
         isMuted: false,
         isVisible: true,
         order: 3,
-        items: [
-          {
-            id: 'audio-item-2',
-            name: '开场音效.wav',
-            type: 'audio',
-            startTime: 0,
-            duration: 2.1,
-            trackId: 'audio-track-2',
-            color: '#059669',
-            waveformData: Array.from({ length: 20 }, () => Math.random() * 1.0),
-            materialId: 'material-6',
-            volume: 0.7,
-            opacity: 1.0
-          },
-          {
-            id: 'audio-item-3',
-            name: '转场音效.wav',
-            type: 'audio',
-            startTime: 5.5,
-            duration: 1.5,
-            trackId: 'audio-track-2',
-            color: '#047857',
-            waveformData: Array.from({ length: 15 }, () => Math.random() * 0.9),
-            materialId: 'material-7',
-            volume: 0.5,
-            opacity: 1.0
-          }
-        ]
+        items: []
       },
       {
         id: 'subtitle-track-1',
@@ -162,53 +67,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
         isMuted: false,
         isVisible: true,
         order: 4,
-        items: [
-          {
-            id: 'subtitle-item-1',
-            name: '开场字幕',
-            type: 'subtitle',
-            startTime: 1,
-            duration: 4,
-            trackId: 'subtitle-track-1',
-            color: '#f59e0b',
-            text: '欢迎观看本期视频内容',
-            materialId: 'subtitle-1',
-            opacity: 1.0
-          },
-          {
-            id: 'subtitle-item-2',
-            name: '主要内容字幕',
-            type: 'subtitle',
-            startTime: 7,
-            duration: 10,
-            trackId: 'subtitle-track-1',
-            color: '#d97706',
-            text: '接下来我们将详细介绍...',
-            materialId: 'subtitle-2',
-            opacity: 1.0
-          },
-          {
-            id: 'subtitle-item-3',
-            name: '结尾字幕',
-            type: 'subtitle',
-            startTime: 20,
-            duration: 3,
-            trackId: 'subtitle-track-1',
-            color: '#b45309',
-            text: '感谢您的观看，记得点赞关注！',
-            materialId: 'subtitle-3',
-            opacity: 1.0
-          }
-        ]
+        items: []
       }
     ];
 
     return {
-      currentTime: 8.5,
-      totalDuration: 25,
-      zoomLevel: 1.2,
-      selectedItems: ['video-item-2'],
-      tracks: mockTracks,
+      currentTime: 0,
+      totalDuration: 0,
+      zoomLevel: 1.0,
+      selectedItems: [],
+      tracks: initialTracks,
       playbackRate: 1.0,
       isPlaying: false,
       snapToGrid: true,
@@ -217,35 +85,155 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
   };
 
   // 状态管理
-  const [timelineState, setTimelineState] = useState<TimelineState>(createMockTimelineState());
+  const [timelineState, setTimelineState] = useState<TimelineState>(createInitialTimelineState());
   const [activeTool, setActiveTool] = useState<TimelineToolType>('select');
   const [history, setHistory] = useState<TimelineAction[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  console.log(`[TimelinePanel] 时间轴面板初始化`, {
-    trackCount: timelineState.tracks.length,
-    totalItems: timelineState.tracks.reduce((sum, track) => sum + track.items.length, 0),
-    currentTime: timelineState.currentTime.toFixed(2),
-    totalDuration: timelineState.totalDuration.toFixed(2),
-    selectedItemsCount: timelineState.selectedItems.length,
-    activeTool,
-    timestamp: new Date().toISOString()
-  });
+  // 生成唯一ID的辅助函数
+  const generateId = () => `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-  // 添加历史记录
-  const addToHistory = useCallback((action: TimelineAction) => {
-    console.log(`[TimelinePanel] 添加历史记录`, {
-      actionType: action.type,
-      timestamp: action.timestamp.toISOString()
+  // 根据素材类型获取颜色
+  const getMaterialColor = (materialType: string): string => {
+    switch (materialType) {
+      case 'video': return '#3b82f6';
+      case 'audio': return '#10b981';
+      case 'image': return '#8b5cf6';
+      default: return '#6b7280';
+    }
+  };
+
+  // 计算轨道中最后一个素材的结束时间
+  const getTrackEndTime = (trackItems: TimelineItem[]): number => {
+    if (trackItems.length === 0) return 0;
+    return Math.max(...trackItems.map(item => item.startTime + item.duration));
+  };
+
+  // 处理从素材面板拖拽的素材
+  const handleMaterialDrop = useCallback((material: MaterialItem, targetTrackId?: string) => {
+    console.log(`[TimelinePanel] 处理素材拖拽放置`, {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      targetTrackId,
+      timestamp: new Date().toISOString()
     });
-    
+
+    setTimelineState(prev => {
+      // 找到合适的轨道
+      let targetTrack: Track | null = null;
+      
+      if (targetTrackId) {
+        // 如果指定了目标轨道，直接使用
+        targetTrack = prev.tracks.find(track => track.id === targetTrackId) || null;
+      } else {
+        // 根据素材类型自动选择轨道
+        const compatibleTracks = prev.tracks.filter(track => {
+          // 视频可以放在视频轨道，音频可以放在音频轨道，图片可以放在视频轨道
+          if (material.type === 'video') return track.type === 'video';
+          if (material.type === 'audio') return track.type === 'audio';
+          if (material.type === 'image') return track.type === 'video'; // 图片放在视频轨道
+          return false;
+        });
+
+        // 选择第一个可用的轨道
+        targetTrack = compatibleTracks[0] || null;
+      }
+
+      if (!targetTrack) {
+        console.warn(`[TimelinePanel] 未找到合适的轨道`, {
+          materialType: material.type,
+          availableTracks: prev.tracks.map(t => ({ id: t.id, type: t.type }))
+        });
+        return prev;
+      }
+
+      // 计算新素材的开始时间（追加到轨道末尾）
+      const startTime = getTrackEndTime(targetTrack.items);
+      const duration = material.duration || 5; // 如果没有时长信息，默认5秒
+
+      // 创建新的时间轴项目
+      const newTimelineItem: TimelineItem = {
+        id: generateId(),
+        name: material.name,
+        type: material.type === 'image' ? 'video' : material.type as 'video' | 'audio' | 'subtitle',
+        startTime,
+        duration,
+        trackId: targetTrack.id,
+        color: getMaterialColor(material.type),
+        materialId: material.id,
+        volume: 1.0,
+        opacity: 1.0,
+        thumbnailUrl: material.thumbnailUrl,
+        waveformData: material.type === 'audio' ? Array.from({ length: 50 }, () => Math.random() * 0.8 + 0.2) : undefined
+      };
+
+      console.log(`[TimelinePanel] 创建新时间轴项目`, {
+        itemId: newTimelineItem.id,
+        trackId: targetTrack.id,
+        startTime: startTime.toFixed(2),
+        duration: duration.toFixed(2),
+        materialType: material.type,
+        timestamp: new Date().toISOString()
+      });
+
+      // 更新轨道和总时长
+      const newTracks = prev.tracks.map(track => {
+        if (track.id === targetTrack!.id) {
+          return {
+            ...track,
+            items: [...track.items, newTimelineItem]
+          };
+        }
+        return track;
+      });
+
+      // 计算新的总时长
+      const newTotalDuration = Math.max(
+        prev.totalDuration,
+        startTime + duration,
+        ...newTracks.flatMap(track => 
+          track.items.map(item => item.startTime + item.duration)
+        )
+      );
+
+      return {
+        ...prev,
+        tracks: newTracks,
+        totalDuration: newTotalDuration
+      };
+    });
+
+    // 添加到历史记录
+    addToHistory({
+      type: 'ADD_ITEM',
+      payload: { materialId: material.id, materialName: material.name },
+      timestamp: new Date()
+    });
+  }, []);
+
+  // 历史记录管理
+  const addToHistory = useCallback((action: TimelineAction) => {
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(action);
       return newHistory.slice(-50); // 保留最近50个操作
     });
-    setHistoryIndex(prev => Math.min(prev + 1, 49));
+    setHistoryIndex(prev => prev + 1);
   }, [historyIndex]);
+
+  // 初始化日志记录
+  useEffect(() => {
+    console.log(`[TimelinePanel] 时间轴面板初始化`, {
+      trackCount: timelineState.tracks.length,
+      totalItems: timelineState.tracks.reduce((sum, track) => sum + track.items.length, 0),
+      currentTime: timelineState.currentTime.toFixed(2),
+      totalDuration: timelineState.totalDuration.toFixed(2),
+      selectedItemsCount: timelineState.selectedItems.length,
+      activeTool,
+      timestamp: new Date().toISOString()
+    });
+  }, [timelineState.tracks, timelineState.currentTime, timelineState.totalDuration, timelineState.selectedItems, activeTool]);
 
   // 时间轴操作处理函数
   const handleTimeChange = useCallback((time: number) => {
@@ -842,6 +830,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({ className = '' }) => {
         onAddTrack={handleAddTrack}
         onRemoveTrack={handleRemoveTrack}
         onReorderTracks={handleReorderTracks}
+        onMaterialDrop={handleMaterialDrop}
       />
     </div>
   );

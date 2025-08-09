@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Track as TrackType, TimelineItem as TimelineItemType } from '@/types';
+import React, { useState } from 'react';
+import { Track as TrackType, TimelineItem as TimelineItemType, MaterialItem } from '@/types';
 import TimelineItem from './TimelineItem';
 
 interface TrackProps {
@@ -14,6 +14,7 @@ interface TrackProps {
   onToggleMute: (trackId: string) => void;
   onToggleLock: (trackId: string) => void;
   onToggleVisibility: (trackId: string) => void;
+  onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
   totalDuration: number;
 }
 
@@ -27,8 +28,11 @@ const Track: React.FC<TrackProps> = ({
   onToggleMute,
   onToggleLock,
   onToggleVisibility,
+  onMaterialDrop,
   totalDuration
 }) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+
   console.log(`[Track] 渲染轨道`, {
     trackId: track.id,
     trackName: track.name,
@@ -39,6 +43,100 @@ const Track: React.FC<TrackProps> = ({
     isVisible: track.isVisible,
     timestamp: new Date().toISOString()
   });
+
+  // 检查素材类型是否与轨道兼容
+  const isMaterialCompatible = (materialType: string): boolean => {
+    switch (materialType) {
+      case 'video':
+      case 'image':
+        return track.type === 'video';
+      case 'audio':
+        return track.type === 'audio';
+      default:
+        return false;
+    }
+  };
+
+  // 拖拽进入处理
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (track.isLocked) return;
+
+    try {
+      const data = e.dataTransfer.getData('application/json');
+      if (data) {
+        const dragData = JSON.parse(data);
+        if (dragData.type === 'material' && isMaterialCompatible(dragData.material?.type)) {
+          setIsDragOver(true);
+          console.log(`[Track] 素材拖拽进入兼容轨道`, {
+            trackId: track.id,
+            trackType: track.type,
+            materialType: dragData.material?.type,
+            materialName: dragData.material?.name
+          });
+        }
+      }
+    } catch (error) {
+      // 忽略解析错误，可能是其他类型的拖拽
+    }
+  };
+
+  // 拖拽悬停处理
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (track.isLocked) return;
+    
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  // 拖拽离开处理
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  // 拖拽放置处理
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    if (track.isLocked) {
+      console.warn(`[Track] 轨道已锁定，无法放置素材`, { trackId: track.id });
+      return;
+    }
+
+    try {
+      const data = e.dataTransfer.getData('application/json');
+      if (!data) return;
+
+      const dragData = JSON.parse(data);
+      if (dragData.type === 'material' && dragData.material) {
+        const material = dragData.material as MaterialItem;
+        
+        if (!isMaterialCompatible(material.type)) {
+          console.warn(`[Track] 素材类型不兼容`, {
+            trackId: track.id,
+            trackType: track.type,
+            materialType: material.type
+          });
+          return;
+        }
+
+        console.log(`[Track] 处理素材放置到轨道`, {
+          trackId: track.id,
+          materialId: material.id,
+          materialName: material.name,
+          materialType: material.type
+        });
+
+        if (onMaterialDrop) {
+          onMaterialDrop(material, track.id);
+        }
+      }
+    } catch (error) {
+      console.error('[Track] 拖拽数据解析失败:', error);
+    }
+  };
 
   // 获取轨道类型对应的图标
   const getTrackIcon = () => {
@@ -112,50 +210,31 @@ const Track: React.FC<TrackProps> = ({
   };
 
   return (
-    <div 
-      className="timeline-track flex border-b border-gray-200"
-      style={{ height: `${track.height}px` }}
-    >
-      {/* 轨道标签区域 */}
-      <div className="track-label flex-shrink-0 w-48 bg-gray-50 border-r border-gray-200 flex items-center justify-between px-3 py-2">
-        <div className="flex items-center space-x-2 min-w-0">
-          <div className={`${getTrackColor()} flex-shrink-0`}>
-            {getTrackIcon()}
+    <div className="track flex border-b border-gray-100 last:border-b-0">
+      {/* 轨道控制区域 */}
+      <div className="track-controls w-48 bg-gray-50 border-r border-gray-200 flex flex-col">
+        {/* 轨道标题和控制按钮 */}
+        <div className="flex items-center justify-between p-3 border-b border-gray-200">
+          <div className="flex items-center space-x-2 flex-1 min-w-0">
+            <div className="text-gray-600">
+              {getTrackIcon()}
+            </div>
+            <span className="text-sm font-medium text-gray-900 truncate" title={track.name}>
+              {track.name}
+            </span>
           </div>
-          <span className="text-sm font-medium text-gray-900 truncate">
-            {track.name}
-          </span>
         </div>
-        
-        {/* 轨道控制按钮 */}
-        <div className="flex items-center space-x-1 flex-shrink-0">
-          {/* 可见性切换 */}
-          <button
-            onClick={handleVisibilityClick}
-            className={`p-1 rounded transition-colors ${
-              track.isVisible 
-                ? 'text-gray-600 hover:text-gray-800 hover:bg-gray-200' 
-                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-            }`}
-            title={track.isVisible ? '隐藏轨道' : '显示轨道'}
-          >
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-              {track.isVisible ? (
-                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
-              ) : (
-                <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-              )}
-            </svg>
-          </button>
 
-          {/* 静音切换（仅音频轨道） */}
+        {/* 轨道操作按钮 */}
+        <div className="flex items-center justify-center space-x-1 p-2">
+          {/* 静音按钮（仅音频轨道） */}
           {track.type === 'audio' && (
             <button
-              onClick={handleMuteClick}
-              className={`p-1 rounded transition-colors ${
+              onClick={() => onToggleMute(track.id)}
+              className={`p-1.5 rounded transition-colors ${
                 track.isMuted 
-                  ? 'text-red-500 hover:text-red-700 hover:bg-red-50' 
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                  ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
               title={track.isMuted ? '取消静音' : '静音'}
             >
@@ -169,34 +248,61 @@ const Track: React.FC<TrackProps> = ({
             </button>
           )}
 
-          {/* 锁定切换 */}
+          {/* 锁定按钮 */}
           <button
-            onClick={handleLockClick}
-            className={`p-1 rounded transition-colors ${
+            onClick={() => onToggleLock(track.id)}
+            className={`p-1.5 rounded transition-colors ${
               track.isLocked 
-                ? 'text-red-500 hover:text-red-700 hover:bg-red-50' 
-                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
             title={track.isLocked ? '解锁轨道' : '锁定轨道'}
           >
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
               {track.isLocked ? (
-                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z"/>
               ) : (
-                <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/>
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/>
+              )}
+            </svg>
+          </button>
+
+          {/* 可见性按钮 */}
+          <button
+            onClick={() => onToggleVisibility(track.id)}
+            className={`p-1.5 rounded transition-colors ${
+              track.isVisible 
+                ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
+                : 'bg-gray-300 text-gray-500 hover:bg-gray-400'
+            }`}
+            title={track.isVisible ? '隐藏轨道' : '显示轨道'}
+          >
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+              {track.isVisible ? (
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              ) : (
+                <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
               )}
             </svg>
           </button>
         </div>
+
       </div>
 
       {/* 轨道内容区域 */}
       <div 
-        className="track-content flex-1 relative bg-white"
+        className={`track-content flex-1 relative ${
+          isDragOver ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-white'
+        }`}
         style={{ 
           opacity: track.isVisible ? 1 : 0.3,
-          pointerEvents: track.isLocked ? 'none' : 'auto'
+          pointerEvents: track.isLocked ? 'none' : 'auto',
+          minHeight: `${track.height}px`
         }}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         {/* 背景网格线 */}
         <div className="absolute inset-0 pointer-events-none">
@@ -225,12 +331,33 @@ const Track: React.FC<TrackProps> = ({
 
         {/* 拖拽放置区域提示 */}
         {track.items.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm pointer-events-none">
+          <div className={`absolute inset-0 flex items-center justify-center text-gray-400 text-sm pointer-events-none ${
+            isDragOver ? 'text-blue-600' : ''
+          }`}>
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4">
                 {getTrackIcon()}
               </div>
-              <span>拖拽{track.type === 'video' ? '视频' : track.type === 'audio' ? '音频' : '字幕'}素材到此轨道</span>
+              <span>
+                {isDragOver 
+                  ? `放置${track.type === 'video' ? '视频/图片' : track.type === 'audio' ? '音频' : '字幕'}素材`
+                  : `拖拽${track.type === 'video' ? '视频/图片' : track.type === 'audio' ? '音频' : '字幕'}素材到此轨道`
+                }
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 拖拽悬停提示 */}
+        {isDragOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-blue-50 bg-opacity-90 pointer-events-none">
+            <div className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <span>放置到 {track.name}</span>
+              </div>
             </div>
           </div>
         )}

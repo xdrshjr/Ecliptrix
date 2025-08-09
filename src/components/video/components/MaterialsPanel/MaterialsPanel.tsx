@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UseMaterialManagementReturn } from '../../types';
-import { MaterialType } from '@/types';
+import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
@@ -26,6 +26,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     taskId,
     component: 'MaterialsPanel'
   });
+
+  const [draggedMaterial, setDraggedMaterial] = useState<MaterialItem | null>(null);
 
   useEffect(() => {
     logger.info('组件初始化', {
@@ -70,10 +72,57 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const handleSearchClick = () => {
     logger.info('用户点击搜索视频按钮', {
       materialsCount: materials.length,
-      currentFilter: selectedMaterialType
     });
     
     onSearchVideos();
+  };
+
+  // 拖拽开始处理
+  const handleDragStart = (e: React.DragEvent, material: MaterialItem) => {
+    logger.info('开始拖拽素材', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      materialDuration: material.duration || 0
+    });
+
+    setDraggedMaterial(material);
+    
+    // 设置拖拽数据
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'material',
+      material: material
+    }));
+    
+    // 设置拖拽效果
+    e.dataTransfer.effectAllowed = 'copy';
+    
+    // 设置拖拽图像（可选）
+    if (material.thumbnailUrl) {
+      const img = new Image();
+      img.src = material.thumbnailUrl;
+      e.dataTransfer.setDragImage(img, 50, 50);
+    }
+  };
+
+  // 拖拽结束处理
+  const handleDragEnd = (e: React.DragEvent, material: MaterialItem) => {
+    logger.info('拖拽素材结束', {
+      materialId: material.id,
+      materialName: material.name,
+      dropEffect: e.dataTransfer.dropEffect
+    });
+
+    setDraggedMaterial(null);
+  };
+
+  // 素材项点击处理
+  const handleMaterialClick = (material: MaterialItem) => {
+    logger.info('素材项点击', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type
+    });
   };
 
   return (
@@ -164,14 +213,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 .map((material) => (
                 <div
                   key={material.id}
-                  className="bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => {
-                    logger.info('素材项点击', {
-                      materialId: material.id,
-                      materialName: material.name,
-                      materialType: material.type
-                    });
-                  }}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, material)}
+                  onDragEnd={(e) => handleDragEnd(e, material)}
+                  className={`bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${
+                    draggedMaterial?.id === material.id ? 'opacity-50 scale-95' : ''
+                  }`}
+                  onClick={() => handleMaterialClick(material)}
                 >
                   {/* 缩略图区域 */}
                   <div className="aspect-video bg-gray-100 relative">
@@ -179,7 +227,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       <img 
                         src={material.thumbnailUrl} 
                         alt={material.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover pointer-events-none"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -209,6 +257,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         </span>
                       </div>
                     )}
+
+                    {/* 拖拽指示器 */}
+                    <div className="absolute top-1 right-1">
+                      <div className="w-4 h-4 bg-white bg-opacity-80 rounded flex items-center justify-center">
+                        <svg className="w-3 h-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
                   
                   {/* 素材信息 */}
