@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { VideoEditingTaskContent } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
@@ -34,9 +34,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   content,
   onUpdateContent,
 }) => {
+  // 新增：时间同步状态管理
+  const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
+  
+  // 处理从视频播放器到timeline的时间同步
+  const handleVideoTimeUpdate = useCallback((currentTime: number) => {
+    console.log(`[VideoEditingInterface] 视频时间更新同步到timeline`, {
+      currentTime: currentTime.toFixed(2),
+      previousTimelineTime: timelineCurrentTime.toFixed(2),
+      timestamp: new Date().toISOString()
+    });
+    setTimelineCurrentTime(currentTime);
+  }, [timelineCurrentTime]);
+
   // 使用自定义钩子管理各个功能域的状态
   const documentState = useDocumentState(content, onUpdateContent, taskId);
-  const videoPlayback = useVideoPlayback(taskId);
+  const videoPlayback = useVideoPlayback(taskId, handleVideoTimeUpdate, timelineCurrentTime);
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
   const materialManagement = useMaterialManagement(taskId);
@@ -44,6 +57,24 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加时间轴组合播放功能
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
+
+  // 处理从timeline到视频播放器的时间同步
+  const handleTimelineTimeChange = useCallback((time: number) => {
+    console.log(`[VideoEditingInterface] Timeline时间变化同步到视频播放器`, {
+      newTime: time.toFixed(2),
+      previousTime: timelineCurrentTime.toFixed(2),
+      timestamp: new Date().toISOString()
+    });
+    setTimelineCurrentTime(time);
+    
+    // 如果是组合播放模式，同步到组合播放器
+    if (timelineComposition.compositionPlayback?.isCompositionMode) {
+      timelineComposition.handleCompositionSeek(time);
+    } else {
+      // 预览模式，同步到普通播放器
+      videoPlayback.handleTimeSeek(time);
+    }
+  }, [timelineCurrentTime, timelineComposition, videoPlayback]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -95,6 +126,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onCompositionSeek={timelineComposition.handleCompositionSeek}
                 onNextSequence={timelineComposition.handleNextSequence}
                 onCompositionTimeUpdate={timelineComposition.handleCompositionTimeUpdate}
+                onTimelineTimeUpdate={handleVideoTimeUpdate}
+                currentTimelineTime={timelineCurrentTime}
+                onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
               />
             </div>
 
@@ -103,6 +137,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               <TimelinePanel 
                 className="h-full" 
                 onTimelineStateChange={timelineComposition.handleTimelineStateChange}
+                externalCurrentTime={timelineCurrentTime}
+                onCurrentTimeChange={handleTimelineTimeChange}
               />
             </div>
           </div>

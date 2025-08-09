@@ -8,9 +8,14 @@ import { mockVideoPreview } from '../data';
  * 管理视频播放状态和控制
  * 
  * @param taskId - 任务ID，用于日志记录
+ * @param onTimeUpdate - 时间更新回调，用于同步到timeline
  * @returns 视频播放相关的状态和控制方法
  */
-export const useVideoPlayback = (taskId: string): UseVideoPlaybackReturn => {
+export const useVideoPlayback = (
+  taskId: string, 
+  onTimeUpdate?: (currentTime: number) => void,
+  currentTimelineTime?: number
+): UseVideoPlaybackReturn => {
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
@@ -52,11 +57,22 @@ export const useVideoPlayback = (taskId: string): UseVideoPlaybackReturn => {
     logger.userAction('播放/暂停切换', 'playPauseButton', {
       previousState: isPlaying ? 'playing' : 'paused',
       newState: newPlayingState ? 'playing' : 'paused',
-      currentTime
+      currentTime,
+      timelineTime: currentTimelineTime
     });
 
+    // 如果开始播放且提供了timeline时间，则从timeline时间开始
+    if (newPlayingState && currentTimelineTime !== undefined && currentTimelineTime !== currentTime) {
+      logger.info('从timeline当前位置开始预览播放', {
+        previousTime: currentTime.toFixed(2),
+        timelineTime: currentTimelineTime.toFixed(2),
+        timeDifference: (currentTimelineTime - currentTime).toFixed(2)
+      });
+      setCurrentTime(currentTimelineTime);
+    }
+
     setIsPlaying(newPlayingState);
-  }, [isPlaying, currentTime, logger]);
+  }, [isPlaying, currentTime, currentTimelineTime, logger]);
 
   // 时间跳转
   const handleTimeSeek = useCallback((newTime: number) => {
@@ -149,6 +165,16 @@ export const useVideoPlayback = (taskId: string): UseVideoPlaybackReturn => {
             setIsPlaying(false);
             return mockVideoPreview.duration;
           }
+          
+          // 同步时间到timeline（预览模式）
+          if (onTimeUpdate) {
+            logger.info('预览模式时间同步到timeline', {
+              currentTime: newTime.toFixed(2),
+              playbackRate
+            });
+            onTimeUpdate(newTime);
+          }
+          
           return newTime;
         });
       }, 1000);

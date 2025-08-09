@@ -15,6 +15,12 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   // 新增：处理下一个序列
   onNextSequence?: () => boolean;
   onCompositionTimeUpdate?: (currentTime: number) => void;
+  // 新增：同步时间到timeline
+  onTimelineTimeUpdate?: (currentTime: number) => void;
+  // 新增：当前timeline时间，用于从游标位置开始播放
+  currentTimelineTime?: number;
+  // 新增：更新序列索引
+  onSequenceIndexUpdate?: (sequenceIndex: number) => void;
 }
 
 const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
@@ -35,7 +41,10 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   onCompositionPlayPause,
   onCompositionSeek,
   onNextSequence,
-  onCompositionTimeUpdate
+  onCompositionTimeUpdate,
+  onTimelineTimeUpdate,
+  currentTimelineTime,
+  onSequenceIndexUpdate
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
@@ -118,22 +127,80 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const handleTimeUpdate = useCallback(() => {
     if (playbackMode === 'composition' && compositionPlayback && videoRef.current) {
       const videoCurrentTime = videoRef.current.currentTime;
+      const currentVideoSrc = videoRef.current.src;
       
-      // 计算组合播放的总时间
+      // 根据当前播放的视频URL找到正确的序列索引，避免状态更新延迟问题
+      let actualSequenceIndex = 0;
+      let foundSequence = false;
+      
+      for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+        const sequence = compositionPlayback.videoSequences[i];
+        if (currentVideoSrc.includes(sequence.url) || sequence.url.includes(currentVideoSrc.split('/').pop() || '')) {
+          actualSequenceIndex = i;
+          foundSequence = true;
+          break;
+        }
+      }
+      
+      // 如果没有找到匹配的序列，使用状态中的索引作为后备
+      if (!foundSequence) {
+        actualSequenceIndex = compositionPlayback.currentSequenceIndex;
+        logger.warn('未找到匹配的视频序列，使用状态中的索引', {
+          currentVideoSrc,
+          fallbackIndex: actualSequenceIndex
+        });
+      }
+      
+      // 计算组合播放的总时间，使用实际的序列索引
       let accumulatedTime = 0;
-      for (let i = 0; i < compositionPlayback.currentSequenceIndex; i++) {
+      for (let i = 0; i < actualSequenceIndex; i++) {
         accumulatedTime += compositionPlayback.videoSequences[i].duration;
       }
       accumulatedTime += videoCurrentTime;
       
       setCompositionCurrentTime(accumulatedTime);
       
+      logger.info('组合播放时间更新', {
+        videoCurrentTime: videoCurrentTime.toFixed(2),
+        stateSequenceIndex: compositionPlayback.currentSequenceIndex,
+        actualSequenceIndex: actualSequenceIndex,
+        accumulatedTime: accumulatedTime.toFixed(2),
+        totalSequences: compositionPlayback.videoSequences.length,
+        foundSequence
+      });
+      
       // 通知父组件时间更新
       if (onCompositionTimeUpdate) {
         onCompositionTimeUpdate(accumulatedTime);
       }
+
+      // 同步时间到timeline（关键修改）
+      if (onTimelineTimeUpdate) {
+        logger.info('同步时间到timeline', {
+          currentTime: accumulatedTime.toFixed(2),
+          playbackMode: 'composition',
+          actualSequenceIndex
+        });
+        onTimelineTimeUpdate(accumulatedTime);
+      }
+    } else if (playbackMode === 'preview' && videoRef.current) {
+      // 预览模式下也需要同步时间到timeline
+      const videoCurrentTime = videoRef.current.currentTime;
+      
+      logger.info('预览播放时间更新', {
+        videoCurrentTime: videoCurrentTime.toFixed(2),
+        playbackMode: 'preview'
+      });
+
+      if (onTimelineTimeUpdate) {
+        logger.info('同步时间到timeline', {
+          currentTime: videoCurrentTime.toFixed(2),
+          playbackMode: 'preview'
+        });
+        onTimelineTimeUpdate(videoCurrentTime);
+      }
     }
-  }, [playbackMode, compositionPlayback, onCompositionTimeUpdate]);
+  }, [playbackMode, compositionPlayback, onCompositionTimeUpdate, onTimelineTimeUpdate, logger]);
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(() => {
@@ -152,20 +219,56 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         } else {
           // 开始组合播放
           if (compositionPlayback && compositionPlayback.videoSequences.length > 0) {
-            const currentSequence = compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex];
-            if (currentSequence) {
-              logger.info('开始组合播放，加载第一个视频', {
-                sequenceIndex: compositionPlayback.currentSequenceIndex,
-                sequenceName: currentSequence.name,
-                sequenceUrl: currentSequence.url
+            // 使用timeline当前时间确定播放起始位置
+            const startTime = currentTimelineTime || 0;
+            
+            // 计算应该播放哪个视频序列和序列内的时间
+            let targetSequenceIndex = 0;
+            let accumulatedTime = 0;
+            let targetVideoTime = startTime;
+
+            for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+              const sequence = compositionPlayback.videoSequences[i];
+              if (accumulatedTime + sequence.duration > startTime) {
+                targetSequenceIndex = i;
+                targetVideoTime = startTime - accumulatedTime;
+                break;
+              }
+              accumulatedTime += sequence.duration;
+            }
+
+            const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
+            if (targetSequence) {
+              logger.info('开始组合播放，从timeline当前位置开始', {
+                timelineCurrentTime: startTime.toFixed(2),
+                targetSequenceIndex,
+                targetSequenceName: targetSequence.name,
+                targetSequenceUrl: targetSequence.url,
+                targetVideoTime: targetVideoTime.toFixed(2),
+                accumulatedTime: accumulatedTime.toFixed(2)
               });
               
-              videoRef.current.src = currentSequence.url;
-              videoRef.current.currentTime = 0; // 确保从头开始
+              videoRef.current.src = targetSequence.url;
+              videoRef.current.currentTime = Math.max(0, targetVideoTime); // 从计算的时间开始
+              setCompositionCurrentTime(startTime);
+              
+              // 更新当前序列索引
+              if (compositionPlayback.currentSequenceIndex !== targetSequenceIndex) {
+                logger.info('播放开始时切换视频序列', {
+                  previousSequenceIndex: compositionPlayback.currentSequenceIndex,
+                  newSequenceIndex: targetSequenceIndex
+                });
+                
+                if (onSequenceIndexUpdate) {
+                  onSequenceIndexUpdate(targetSequenceIndex);
+                }
+              }
+              
               videoRef.current.play().catch(error => {
                 logger.error('开始播放组合视频失败', error, {
-                  sequenceIndex: compositionPlayback.currentSequenceIndex,
-                  sequenceName: currentSequence.name
+                  sequenceIndex: targetSequenceIndex,
+                  sequenceName: targetSequence.name,
+                  startTime: targetVideoTime.toFixed(2)
                 });
               });
             }

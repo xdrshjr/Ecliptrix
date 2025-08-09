@@ -34,6 +34,7 @@ export interface UseTimelineCompositionReturn {
   // 新增方法
   handleNextSequence: () => boolean;
   handleCompositionTimeUpdate: (currentTime: number) => void;
+  handleSequenceIndexUpdate: (sequenceIndex: number) => void;
 }
 
 // Hook return types
