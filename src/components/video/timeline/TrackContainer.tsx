@@ -34,15 +34,6 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   const { tracks, selectedItems, totalDuration, zoomLevel } = timelineState;
   const pixelsPerSecond = zoomLevel * 50; // 基础像素比例
 
-  console.log(`[TrackContainer] 渲染轨道容器`, {
-    trackCount: tracks.length,
-    selectedItemsCount: selectedItems.length,
-    totalDuration: totalDuration.toFixed(2),
-    zoomLevel: zoomLevel.toFixed(2),
-    pixelsPerSecond: pixelsPerSecond.toFixed(2),
-    timestamp: new Date().toISOString()
-  });
-
   // 按顺序排序轨道
   const sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
 

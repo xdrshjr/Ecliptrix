@@ -9,13 +9,6 @@ export class VideoEditingLogger {
 
   constructor(config: LoggerConfig) {
     this.config = config;
-    
-    // 记录日志器初始化
-    console.log(`[${this.config.component}] 日志器初始化`, {
-      taskId: this.config.taskId,
-      component: this.config.component,
-      timestamp: new Date().toISOString()
-    });
   }
 
   /**

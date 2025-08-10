@@ -38,13 +38,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddSubtitle,
   onExport
 }) => {
-  console.log(`[TimelineToolbar] 渲染工具栏`, {
-    activeTool,
-    selectedItemsCount,
-    canUndo,
-    canRedo,
-    timestamp: new Date().toISOString()
-  });
 
   // 工具按钮配置
   const toolButtons = [

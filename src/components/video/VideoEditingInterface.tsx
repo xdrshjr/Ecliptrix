@@ -104,6 +104,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onGenerateScript={scriptGeneration.handleGenerateScript}
               isGenerating={scriptGeneration.isGeneratingScript}
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
+              onAddMaterial={(material) => materialManagement.addMaterials([material])}
+              taskId={taskId}
             />
           </div>
           

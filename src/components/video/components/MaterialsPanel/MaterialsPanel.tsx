@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { UseMaterialManagementReturn } from '../../types';
 import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
@@ -28,6 +28,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   });
 
   const [draggedMaterial, setDraggedMaterial] = useState<MaterialItem | null>(null);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     logger.info('组件初始化', {
@@ -123,6 +125,75 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       materialName: material.name,
       materialType: material.type
     });
+    
+    // 如果是音频文件，播放/暂停音频
+    if (material.type === 'audio') {
+      handleAudioPlayPause(material);
+    } else {
+      // 实现其他类型素材的点击处理逻辑（预览、编辑等）
+    }
+  };
+
+  const handleAudioPlayPause = (material: MaterialItem) => {
+    if (playingAudio === material.id) {
+      // 暂停当前播放的音频
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setPlayingAudio(null);
+      
+      logger.info('暂停音频播放', {
+        materialId: material.id,
+        materialName: material.name
+      });
+    } else {
+      // 停止其他音频并播放新音频
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      
+      const audio = new Audio(material.url);
+      audioRef.current = audio;
+      
+      audio.onplay = () => {
+        setPlayingAudio(material.id);
+        logger.info('开始音频播放', {
+          materialId: material.id,
+          materialName: material.name,
+          duration: material.duration
+        });
+      };
+      
+      audio.onpause = () => {
+        if (playingAudio === material.id) {
+          setPlayingAudio(null);
+        }
+      };
+      
+      audio.onended = () => {
+        setPlayingAudio(null);
+        logger.info('音频播放完成', {
+          materialId: material.id,
+          materialName: material.name
+        });
+      };
+      
+      audio.onerror = (event) => {
+        setPlayingAudio(null);
+        logger.error('音频播放失败', new Error('Audio playback failed'), {
+          materialId: material.id,
+          materialName: material.name,
+          url: material.url
+        });
+      };
+      
+      audio.play().catch(error => {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        logger.error('音频播放启动失败', errorObj, {
+          materialId: material.id
+        });
+      });
+    }
   };
 
   return (
@@ -216,9 +287,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   draggable={true}
                   onDragStart={(e) => handleDragStart(e, material)}
                   onDragEnd={(e) => handleDragEnd(e, material)}
-                  className={`bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${
+                  className={`group bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${
                     draggedMaterial?.id === material.id ? 'opacity-50 scale-95' : ''
-                  }`}
+                  } ${material.type === 'audio' ? 'cursor-pointer' : ''}`}
                   onClick={() => handleMaterialClick(material)}
                 >
                   {/* 缩略图区域 */}
@@ -231,9 +302,38 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
+                        {material.type === 'audio' ? (
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6z" />
+                          </svg>
+                        ) : material.type === 'image' ? (
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 音频播放控制覆盖层 */}
+                    {material.type === 'audio' && (
+                      <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                        <div className={`w-10 h-10 rounded-full bg-white bg-opacity-90 flex items-center justify-center transition-all duration-200 ${
+                          playingAudio === material.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}>
+                          {playingAudio === material.id ? (
+                            <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 text-gray-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          )}
+                        </div>
                       </div>
                     )}
                     

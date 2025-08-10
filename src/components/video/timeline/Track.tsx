@@ -33,17 +33,6 @@ const Track: React.FC<TrackProps> = ({
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
-  console.log(`[Track] 渲染轨道`, {
-    trackId: track.id,
-    trackName: track.name,
-    trackType: track.type,
-    itemCount: track.items.length,
-    isLocked: track.isLocked,
-    isMuted: track.isMuted,
-    isVisible: track.isVisible,
-    timestamp: new Date().toISOString()
-  });
-
   // 检查素材类型是否与轨道兼容
   const isMaterialCompatible = (materialType: string): boolean => {
     switch (materialType) {
