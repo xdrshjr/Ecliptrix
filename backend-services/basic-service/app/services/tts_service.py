@@ -7,6 +7,7 @@ import uuid
 import json
 import base64
 import time
+import subprocess
 from typing import Dict, Any, Optional
 from datetime import datetime
 import requests
@@ -18,8 +19,9 @@ from app.models.tts_models import VoiceType, VoiceTypeInfo
 
 logger = get_logger(__name__)
 
-# 模拟模式开关 - 当TTS凭据无效时使用
-MOCK_MODE = False
+# 是否启用模拟模式（用于开发测试）
+MOCK_MODE = getattr(settings, 'tts_mock_mode', False)
+
 
 class TTSClient:
     """Volcano TTS API client."""
@@ -239,6 +241,124 @@ class TTSService:
         
         # 确保音频目录存在
         os.makedirs(self.audio_dir, exist_ok=True)
+        
+        # 检查ffmpeg可用性
+        self._check_ffmpeg()
+    
+    def _check_ffmpeg(self) -> bool:
+        """检查ffmpeg是否可用"""
+        try:
+            subprocess.run(['ffmpeg', '-version'], 
+                         capture_output=True, check=True)
+            logger.info("ffmpeg is available for audio duration detection")
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("ffmpeg not found - audio duration detection will use estimation")
+            return False
+    
+    def _get_ffmpeg_path(self) -> Optional[str]:
+        """获取ffmpeg可执行文件路径"""
+        try:
+            subprocess.run(['ffmpeg', '-version'], 
+                         capture_output=True, check=True)
+            return 'ffmpeg'
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("ffmpeg not available for audio duration detection")
+            return None
+    
+    def _get_audio_duration_with_ffmpeg(self, audio_file_path: str) -> Optional[float]:
+        """
+        使用ffmpeg获取音频文件的实际时长
+        
+        Args:
+            audio_file_path: 音频文件路径
+            
+        Returns:
+            Optional[float]: 音频时长（秒），如果获取失败则返回None
+        """
+        ffmpeg_path = self._get_ffmpeg_path()
+        if not ffmpeg_path:
+            logger.warning("ffmpeg不可用，无法获取音频实际时长", {
+                "audio_file": os.path.basename(audio_file_path)
+            })
+            return None
+        
+        try:
+            # 使用ffprobe（通常与ffmpeg一起安装）获取音频时长
+            cmd = [
+                'ffprobe',
+                '-v', 'quiet',
+                '-show_entries', 'format=duration',
+                '-of', 'csv=p=0',
+                audio_file_path
+            ]
+            
+            logger.info("使用ffprobe获取音频时长", {
+                "audio_file": os.path.basename(audio_file_path),
+                "command": ' '.join(cmd)
+            })
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            duration_str = result.stdout.strip()
+            
+            if duration_str:
+                duration = float(duration_str)
+                logger.info("成功获取音频实际时长", {
+                    "audio_file": os.path.basename(audio_file_path),
+                    "duration": duration
+                })
+                return duration
+            else:
+                logger.warning("ffprobe返回空时长", {
+                    "audio_file": os.path.basename(audio_file_path)
+                })
+                return None
+                
+        except subprocess.CalledProcessError as e:
+            logger.error("ffprobe执行失败", {
+                "audio_file": os.path.basename(audio_file_path),
+                "error": str(e),
+                "stderr": e.stderr if hasattr(e, 'stderr') else None
+            })
+            return None
+        except (ValueError, TypeError) as e:
+            logger.error("解析音频时长失败", {
+                "audio_file": os.path.basename(audio_file_path),
+                "duration_str": duration_str if 'duration_str' in locals() else None,
+                "error": str(e)
+            })
+            return None
+        except Exception as e:
+            logger.error("获取音频时长时发生未知错误", {
+                "audio_file": os.path.basename(audio_file_path),
+                "error": str(e)
+            })
+            return None
+    
+    def _estimate_audio_duration(self, text_length: int, speed_ratio: float = 1.0) -> float:
+        """
+        估算音频时长（备用方案）
+        
+        Args:
+            text_length: 文本长度
+            speed_ratio: 语速比例
+            
+        Returns:
+            float: 估算的音频时长（秒）
+        """
+        # 基础估算：每个字符约0.15秒
+        base_duration = text_length * 0.15
+        # 根据语速调整
+        estimated_duration = base_duration / speed_ratio
+        
+        logger.info("使用估算方式计算音频时长", {
+            "text_length": text_length,
+            "speed_ratio": speed_ratio,
+            "base_duration": base_duration,
+            "estimated_duration": estimated_duration
+        })
+        
+        return estimated_duration
     
     def validate_config(self) -> None:
         """验证TTS配置是否完整"""
@@ -328,6 +448,16 @@ class TTSService:
                 if file_size == 0:
                     raise Exception("音频文件为空")
 
+                # 获取音频实际时长
+                actual_duration = self._get_audio_duration_with_ffmpeg(output_path)
+                if actual_duration is None:
+                    # 如果ffmpeg获取失败，使用估算方式
+                    actual_duration = self._estimate_audio_duration(len(text), speed_ratio)
+                    logger.info("使用估算时长作为备用方案", {
+                        "segment_id": segment_id,
+                        "estimated_duration": actual_duration
+                    })
+
                 # 构造返回数据
                 audio_url = f"/api/audio/generated/{filename}"
                 
@@ -336,6 +466,7 @@ class TTSService:
                     "file_path": output_path,
                     "file_name": filename,
                     "file_size": file_size,
+                    "duration": actual_duration,  # 添加实际时长
                     "voice_type": voice_type.value,
                     "text_length": len(text),
                     "speed_ratio": speed_ratio,
@@ -343,7 +474,8 @@ class TTSService:
                     "created_at": datetime.now().isoformat(),
                     "segment_id": segment_id,
                     "task_id": task_id,
-                    "mock_mode": MOCK_MODE
+                    "mock_mode": MOCK_MODE,
+                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated"  # 标记时长获取方式
                 }
 
                 logger.info("TTS转换成功", result)

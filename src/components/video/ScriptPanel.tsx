@@ -213,7 +213,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             type: 'audio',
             format: 'mp3',
             size: response.data.file_size,
-            duration: Math.ceil(response.data.text_length * 0.15), // 估算时长（每字符0.15秒）
+            duration: response.data.duration || Math.ceil(response.data.text_length * 0.15), // 使用服务器返回的实际时长，备用估算
             url: localUrl, // 使用本地URL
             serverUrl: response.data.audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
@@ -223,7 +223,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               text_length: response.data.text_length,
               segment_id: segment.id,
               task_id: taskId,
-              server_file_name: fileName // 保存服务器文件名
+              server_file_name: fileName, // 保存服务器文件名
+              actual_duration: response.data.duration, // 保存实际时长
+              duration_method: response.data.duration_method, // 保存时长获取方式
+              originalUrl: response.data.audio_url // 保存原始URL
             }
           };
 
@@ -233,6 +236,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             materialId: audioMaterial.id,
             materialName: audioMaterial.name,
             materialSize: audioMaterial.size,
+            actualDuration: response.data.duration,
+            durationMethod: response.data.duration_method,
             segmentId: segment.id
           });
 

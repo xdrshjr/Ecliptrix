@@ -2,7 +2,15 @@
 
 ## Overview
 
-The TTS API provides text-to-speech conversion services using the Volcano TTS engine. It supports multiple voice types, speed control, and generates high-quality MP3 audio files.
+The TTS API provides text-to-speech conversion services using the Volcano TTS engine. It supports multiple voice types, speed control, and generates high-quality MP3 audio files. The service automatically detects audio duration using ffmpeg for accurate timing information.
+
+## Key Features
+
+- **Accurate Duration Detection**: Uses ffmpeg to get precise audio duration instead of estimation
+- **Fallback Mechanism**: Falls back to text-based estimation if ffmpeg is unavailable
+- **Multiple Voice Types**: Supports various Chinese and English voices
+- **Speed Control**: Adjustable speech speed from 0.5x to 2.0x
+- **Detailed Logging**: Comprehensive logging for debugging and monitoring
 
 ## Base URL
 
@@ -57,13 +65,16 @@ Converts text to speech and returns an audio file URL.
     "audio_url": "/api/audio/generated/tts_segment_001_20240115_143022_a1b2c3d4.mp3",
     "file_name": "tts_segment_001_20240115_143022_a1b2c3d4.mp3",
     "file_size": 248576,
+    "duration": 15.5,
+    "duration_method": "ffmpeg",
     "voice_type": "zh_female_wanqudashu_moon_bigtts",
     "text_length": 45,
     "speed_ratio": 1.0,
     "request_id": "req_67890",
     "created_at": "2024-01-15T14:30:22.123456",
     "segment_id": "segment_001",
-    "task_id": "task_123"
+    "task_id": "task_123",
+    "mock_mode": false
   }
 }
 ```
@@ -83,11 +94,40 @@ Converts text to speech and returns an audio file URL.
 }
 ```
 
+#### Response Data Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| audio_url | string | URL to access the generated audio file |
+| file_name | string | Name of the generated audio file |
+| file_size | integer | Size of the audio file in bytes |
+| duration | float | **Actual audio duration in seconds** (detected using ffmpeg) |
+| duration_method | string | Method used to determine duration: "ffmpeg" or "estimated" |
+| voice_type | string | Voice type used for synthesis |
+| text_length | integer | Length of the input text in characters |
+| speed_ratio | float | Speech speed ratio used |
+| request_id | string | Unique identifier for this request |
+| created_at | string | ISO timestamp when the audio was created |
+| segment_id | string | Script segment ID (if provided) |
+| task_id | string | Task ID (if provided) |
+| mock_mode | boolean | Whether the service is running in mock mode |
+
 #### Status Codes
 
 - `200 OK`: Conversion successful
 - `400 Bad Request`: Invalid input parameters
 - `500 Internal Server Error`: Configuration error or service failure
+
+#### Duration Detection
+
+The service uses a two-tier approach for audio duration detection:
+
+1. **Primary Method (ffmpeg)**: Uses ffprobe to get the exact duration from the generated audio file
+2. **Fallback Method (estimation)**: Uses text length × 0.15 seconds per character / speed_ratio if ffmpeg is unavailable
+
+The `duration_method` field indicates which method was used:
+- `"ffmpeg"`: Precise duration obtained from the audio file
+- `"estimated"`: Fallback estimation based on text length
 
 ### 2. Get Available Voice Types
 
