@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { ScriptSegment, ScriptSentence, MaterialItem } from '@/types';
-import { convertTextToSpeech, TTSRequest } from '@/lib/api/tts';
+import { convertTextToSpeech, TTSRequest, downloadAudioFile } from '@/lib/api/tts';
 import VoiceSelector from './components/VoiceSelector';
+import localAudioManager from '@/lib/utils/localAudioManager';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -163,28 +164,96 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       setTtsProgress(prev => ({ ...prev, [segment.id]: 100 }));
 
       if (response.success && onAddMaterial) {
-        // 创建音频材料项
-        const audioMaterial: MaterialItem = {
-          id: `audio_${segment.id}_${Date.now()}`,
-          name: `${segment.title} - 语音`,
-          type: 'audio',
-          format: 'mp3',
-          size: response.data.file_size,
-          duration: Math.ceil(response.data.text_length * 0.15), // 估算时长（每字符0.15秒）
-          url: response.data.audio_url,
-          createdAt: new Date(),
-          description: `由"${segment.title}"片段转换生成的语音`,
-          tags: ['TTS', '语音转换', segment.title]
-        };
-
-        console.log('[ScriptPanel] 语音转换成功，添加到素材面板', {
+        // 提取文件名（从URL中获取）
+        const audioUrl = response.data.audio_url;
+        const fileName = audioUrl.split('/').pop() || `audio_${segment.id}_${Date.now()}.mp3`;
+        
+        console.log('[ScriptPanel] 语音转换成功，开始下载到本地', {
           segmentId: segment.id,
           audioUrl: response.data.audio_url,
-          fileSize: response.data.file_size,
-          materialId: audioMaterial.id
+          fileName: fileName,
+          fileSize: response.data.file_size
         });
 
-        onAddMaterial(audioMaterial);
+        try {
+          // 下载音频文件到本地
+          const audioBlob = await downloadAudioFile(fileName);
+          const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
+
+          console.log('[ScriptPanel] 音频文件下载并存储成功', {
+            segmentId: segment.id,
+            fileName: fileName,
+            localUrl: localUrl,
+            blobSize: audioBlob.size
+          });
+
+          // 创建音频材料项（使用本地URL）
+          const audioMaterial: MaterialItem = {
+            id: `audio_${segment.id}_${Date.now()}`,
+            name: `${segment.title} - 语音`,
+            type: 'audio',
+            format: 'mp3',
+            size: response.data.file_size,
+            duration: Math.ceil(response.data.text_length * 0.15), // 估算时长（每字符0.15秒）
+            url: localUrl, // 使用本地URL
+            createdAt: new Date(),
+            description: `由"${segment.title}"片段转换生成的语音`,
+            tags: ['TTS', '语音转换', segment.title],
+            // 添加额外信息用于fallback
+            metadata: {
+              originalUrl: audioUrl,
+              fileName: fileName,
+              isLocalFile: true
+            }
+          };
+
+          console.log('[ScriptPanel] 语音转换和下载完成，添加到素材面板', {
+            segmentId: segment.id,
+            audioUrl: audioUrl,
+            localUrl: localUrl,
+            fileSize: response.data.file_size,
+            materialId: audioMaterial.id
+          });
+
+          onAddMaterial(audioMaterial);
+
+        } catch (downloadError) {
+          const downloadErrorMsg = downloadError instanceof Error ? downloadError.message : '下载失败';
+          console.error('[ScriptPanel] 音频文件下载失败，使用远程URL', {
+            segmentId: segment.id,
+            fileName: fileName,
+            downloadError: downloadErrorMsg
+          });
+
+          // 下载失败时，仍然创建材料项但使用远程URL
+          const audioMaterial: MaterialItem = {
+            id: `audio_${segment.id}_${Date.now()}`,
+            name: `${segment.title} - 语音`,
+            type: 'audio',
+            format: 'mp3',
+            size: response.data.file_size,
+            duration: Math.ceil(response.data.text_length * 0.15),
+            url: response.data.audio_url, // 使用远程URL作为fallback
+            createdAt: new Date(),
+            description: `由"${segment.title}"片段转换生成的语音`,
+            tags: ['TTS', '语音转换', segment.title],
+            metadata: {
+              originalUrl: response.data.audio_url,
+              fileName: fileName,
+              isLocalFile: false,
+              downloadError: downloadErrorMsg
+            }
+          };
+
+          console.log('[ScriptPanel] 使用远程URL添加到素材面板', {
+            segmentId: segment.id,
+            audioUrl: response.data.audio_url,
+            materialId: audioMaterial.id,
+            downloadError: downloadErrorMsg
+          });
+
+          onAddMaterial(audioMaterial);
+        }
 
         // 显示成功状态一段时间后清除
         setTimeout(() => {

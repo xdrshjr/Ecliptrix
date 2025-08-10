@@ -302,5 +302,101 @@ class TestTTSService:
         assert voice_info.gender == "female"
 
 
+@pytest.fixture
+def create_mock_audio_file():
+    """Create a mock audio file for testing."""
+    def _create_file(file_name: str, content: str = "mock audio content") -> str:
+        audio_dir = "static/audio/generated"
+        os.makedirs(audio_dir, exist_ok=True)
+        file_path = os.path.join(audio_dir, file_name)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        return file_path
+    
+    return _create_file
+
+
+class TestTTSDownloadEndpoint:
+    """Test TTS audio file download endpoint."""
+    
+    def test_download_existing_audio_file(self, create_mock_audio_file):
+        """Test downloading an existing audio file."""
+        # Create a mock audio file
+        file_name = "test_audio_download.mp3"
+        file_path = create_mock_audio_file(file_name, "Test audio content for download")
+        
+        # Test download endpoint
+        response = client.get(f"/api/tts/download/{file_name}")
+        
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "audio/mpeg"
+        assert f"attachment; filename={file_name}" in response.headers.get("content-disposition", "")
+        assert "no-cache" in response.headers.get("cache-control", "")
+        
+        # Verify file content
+        assert len(response.content) > 0
+        
+        # Clean up
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    
+    def test_download_nonexistent_audio_file(self):
+        """Test downloading a non-existent audio file."""
+        file_name = "nonexistent_audio.mp3"
+        
+        response = client.get(f"/api/tts/download/{file_name}")
+        
+        assert response.status_code == 404
+        response_data = response.json()
+        # Check message field instead of detail
+        assert "音频文件不存在" in response_data.get("message", "")
+    
+    def test_download_empty_audio_file(self, create_mock_audio_file):
+        """Test downloading an empty audio file."""
+        file_name = "empty_audio.mp3"
+        file_path = create_mock_audio_file(file_name, "")  # Empty content
+        
+        response = client.get(f"/api/tts/download/{file_name}")
+        
+        assert response.status_code == 500
+        response_data = response.json()
+        assert "音频文件已损坏" in response_data.get("message", "")
+        
+        # Clean up
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    
+    def test_download_with_special_characters_in_filename(self, create_mock_audio_file):
+        """Test downloading file with special characters in filename."""
+        file_name = "tts_segment_001_20241201_120000_12345678.mp3"
+        file_path = create_mock_audio_file(file_name, "Audio content with special filename")
+        
+        response = client.get(f"/api/tts/download/{file_name}")
+        
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "audio/mpeg"
+        assert f"attachment; filename={file_name}" in response.headers.get("content-disposition", "")
+        
+        # Clean up
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    
+    def test_download_file_security(self):
+        """Test that download endpoint prevents path traversal attacks."""
+        # Try to access files outside the audio directory
+        malicious_filenames = [
+            "../../../etc/passwd",
+            "..\\..\\..\\windows\\system32\\config\\sam",
+            "%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd"
+        ]
+        
+        for filename in malicious_filenames:
+            response = client.get(f"/api/tts/download/{filename}")
+            # Should return 404 for non-existent files (security through obscurity)
+            assert response.status_code in [404, 500]
+
+
 if __name__ == "__main__":
     pytest.main([__file__]) 

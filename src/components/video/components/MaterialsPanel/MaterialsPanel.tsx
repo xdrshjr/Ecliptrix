@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { UseMaterialManagementReturn } from '../../types';
 import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
+import localAudioManager from '@/lib/utils/localAudioManager';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -152,7 +153,31 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         audioRef.current.pause();
       }
       
-      const audio = new Audio(material.url);
+      // 确定要使用的音频URL
+      let audioUrl = material.url;
+      let isLocalFile = false;
+      
+      // 检查是否有本地文件可用
+      if (material.metadata?.fileName) {
+        const localUrl = localAudioManager.getAudioFileUrl(material.metadata.fileName);
+        if (localUrl) {
+          audioUrl = localUrl;
+          isLocalFile = true;
+          logger.info('使用本地音频文件', {
+            materialId: material.id,
+            fileName: material.metadata.fileName,
+            localUrl: localUrl
+          });
+        } else {
+          logger.info('本地音频文件不可用，使用远程URL', {
+            materialId: material.id,
+            fileName: material.metadata.fileName,
+            originalUrl: material.metadata.originalUrl || material.url
+          });
+        }
+      }
+      
+      const audio = new Audio(audioUrl);
       audioRef.current = audio;
       
       audio.onplay = () => {
@@ -160,7 +185,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         logger.info('开始音频播放', {
           materialId: material.id,
           materialName: material.name,
-          duration: material.duration
+          duration: material.duration,
+          isLocalFile: isLocalFile,
+          audioUrl: audioUrl
         });
       };
       
@@ -174,23 +201,50 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         setPlayingAudio(null);
         logger.info('音频播放完成', {
           materialId: material.id,
-          materialName: material.name
+          materialName: material.name,
+          isLocalFile: isLocalFile
         });
       };
       
       audio.onerror = (event) => {
         setPlayingAudio(null);
+        
+        // 如果本地文件播放失败，尝试使用远程URL
+        if (isLocalFile && material.metadata?.originalUrl) {
+          logger.error('本地音频播放失败，尝试远程URL', new Error('Local audio playback failed'), {
+            materialId: material.id,
+            materialName: material.name,
+            localUrl: audioUrl,
+            originalUrl: material.metadata.originalUrl
+          });
+          
+          // 递归调用，但这次强制使用远程URL
+          const materialWithRemoteUrl = {
+            ...material,
+            url: material.metadata.originalUrl,
+            metadata: {
+              ...material.metadata,
+              fileName: undefined // 清除fileName以避免再次尝试本地文件
+            }
+          };
+          handleAudioPlayPause(materialWithRemoteUrl);
+          return;
+        }
+        
         logger.error('音频播放失败', new Error('Audio playback failed'), {
           materialId: material.id,
           materialName: material.name,
-          url: material.url
+          url: audioUrl,
+          isLocalFile: isLocalFile
         });
       };
       
       audio.play().catch(error => {
         const errorObj = error instanceof Error ? error : new Error(String(error));
         logger.error('音频播放启动失败', errorObj, {
-          materialId: material.id
+          materialId: material.id,
+          isLocalFile: isLocalFile,
+          audioUrl: audioUrl
         });
       });
     }
