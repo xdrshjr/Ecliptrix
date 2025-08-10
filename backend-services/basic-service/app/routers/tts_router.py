@@ -2,9 +2,10 @@
 Text-to-Speech API routes.
 """
 
+import os
 from typing import Union
 from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from app.models.tts_models import (
     TTSRequest, 
@@ -202,4 +203,94 @@ async def tts_health_check():
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error_info
+        ) 
+
+
+@router.get(
+    "/download/{file_name}",
+    summary="下载音频文件",
+    description="下载指定的音频文件到客户端本地",
+    responses={
+        200: {"description": "音频文件下载成功", "content": {"audio/mpeg": {}}},
+        404: {"description": "音频文件不存在"},
+        500: {"description": "下载失败"}
+    }
+)
+async def download_audio_file(file_name: str):
+    """
+    下载音频文件到客户端本地
+    
+    Args:
+        file_name: 音频文件名（包含扩展名）
+    
+    Returns:
+        FileResponse: 音频文件的二进制流
+    """
+    try:
+        logger.info("收到音频文件下载请求", {
+            "file_name": file_name,
+            "request_type": "download"
+        })
+        
+        # 构建文件路径
+        audio_dir = "static/audio/generated"
+        file_path = os.path.join(audio_dir, file_name)
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            logger.error("音频文件不存在", {
+                "file_name": file_name,
+                "file_path": file_path
+            })
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"音频文件不存在: {file_name}"
+            )
+        
+        # 检查文件是否为空
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            logger.error("音频文件为空", {
+                "file_name": file_name,
+                "file_path": file_path,
+                "file_size": file_size
+            })
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"音频文件已损坏: {file_name}"
+            )
+        
+        logger.info("音频文件下载成功", {
+            "file_name": file_name,
+            "file_size": file_size,
+            "file_path": file_path
+        })
+        
+        # 返回文件响应
+        return FileResponse(
+            path=file_path,
+            media_type="audio/mpeg",
+            filename=file_name,
+            headers={
+                "Content-Disposition": f"attachment; filename={file_name}",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+        
+    except HTTPException as e:
+        # FastAPI HTTPException，直接抛出
+        raise e
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error("音频文件下载异常", {
+            "file_name": file_name,
+            "error": error_msg
+        })
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"音频文件下载失败: {error_msg}"
         ) 

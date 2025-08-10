@@ -87,6 +87,13 @@ export interface MaterialItem {
   createdAt: Date;
   tags?: string[]; // 标签
   description?: string; // 描述
+  metadata?: { // 额外元数据
+    originalUrl?: string; // 原始远程URL
+    fileName?: string; // 文件名
+    isLocalFile?: boolean; // 是否为本地文件
+    downloadError?: string; // 下载错误信息
+    [key: string]: any; // 允许其他自定义属性
+  };
 }
 
 export interface MaterialsData {

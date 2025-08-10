@@ -122,6 +122,45 @@ export async function getVoiceTypes(): Promise<VoiceTypesResponse> {
 }
 
 /**
+ * Download audio file to local client
+ */
+export async function downloadAudioFile(fileName: string): Promise<Blob> {
+  try {
+    console.log('[TTS API] 开始下载音频文件', {
+      fileName,
+      timestamp: new Date().toISOString()
+    });
+
+    const response = await fetch(`${API_BASE_URL}/api/tts/download/${fileName}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'audio/mpeg',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+
+    console.log('[TTS API] 音频文件下载成功', {
+      fileName,
+      fileSize: blob.size,
+      fileType: blob.type
+    });
+
+    return blob;
+  } catch (error) {
+    console.error('[TTS API] 音频文件下载失败', {
+      fileName,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
+
+/**
  * Check TTS service health
  */
 export async function checkTTSHealth(): Promise<any> {

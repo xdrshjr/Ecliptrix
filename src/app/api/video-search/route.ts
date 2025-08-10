@@ -72,9 +72,9 @@ export async function POST(request: NextRequest) {
     logRequest(requestData);
 
     // 调用后端服务
-    console.log(`[Video Search API] Calling backend service: ${BACKEND_URL}/video/search`);
+    console.log(`[Video Search API] Calling backend service: ${BACKEND_URL}/api/video/search`);
     
-    const backendResponse = await fetch(`${BACKEND_URL}/video/search`, {
+    const backendResponse = await fetch(`${BACKEND_URL}/api/video/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -154,7 +154,7 @@ export async function GET() {
     console.log('[Video Search API] Health check requested');
     
     // 检查后端服务是否可用
-    const backendHealthResponse = await fetch(`${BACKEND_URL}/video/search/health`, {
+    const backendHealthResponse = await fetch(`${BACKEND_URL}/api/video/search/health`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
