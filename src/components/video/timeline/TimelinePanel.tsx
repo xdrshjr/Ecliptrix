@@ -233,13 +233,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       });
 
       // 计算新的总时长
-      const newTotalDuration = Math.max(
-        prev.totalDuration,
-        startTime + duration,
-        ...newTracks.flatMap(track => 
-          track.items.map(item => item.startTime + item.duration)
-        )
+      const allItemEndTimes = newTracks.flatMap(track => 
+        track.items.map(item => item.startTime + item.duration)
       );
+      const maxItemEndTime = Math.max(...allItemEndTimes, startTime + duration);
+      const newTotalDuration = Math.max(prev.totalDuration, maxItemEndTime);
+      
+      console.log(`[TimelinePanel] 总时长计算`, {
+        previousTotalDuration: prev.totalDuration,
+        newItemEndTime: startTime + duration,
+        allItemEndTimes: allItemEndTimes,
+        maxItemEndTime: maxItemEndTime,
+        newTotalDuration: newTotalDuration,
+        materialName: material.name,
+        timestamp: new Date().toISOString()
+      });
 
       return {
         ...prev,
@@ -949,15 +957,36 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         return;
       }
 
+      // 计算各轨道的最大结束时间用于验证
+      const videoEndTimes = videoItems.map(item => item.start_time + item.duration);
+      const audioEndTimes = audioItems.map(item => item.start_time + item.duration);
+      const maxVideoEndTime = videoEndTimes.length > 0 ? Math.max(...videoEndTimes) : 0;
+      const maxAudioEndTime = audioEndTimes.length > 0 ? Math.max(...audioEndTimes) : 0;
+      const calculatedTotalDuration = Math.max(maxVideoEndTime, maxAudioEndTime);
+
       console.log(`[TimelinePanel] 准备导出内容`, {
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
         totalDuration: timelineState.totalDuration,
+        calculatedTotalDuration: calculatedTotalDuration,
+        maxVideoEndTime: maxVideoEndTime,
+        maxAudioEndTime: maxAudioEndTime,
+        durationMatch: Math.abs(timelineState.totalDuration - calculatedTotalDuration) < 0.1,
+        videoItems: videoItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          start_time: item.start_time,
+          duration: item.duration,
+          end_time: item.start_time + item.duration
+        })),
         audioItems: audioItems.map(item => ({
           id: item.id,
           name: item.name,
           url: item.url,
+          start_time: item.start_time,
+          duration: item.duration,
+          end_time: item.start_time + item.duration,
           isServerUrl: item.url.includes('/api/audio/generated/')
         }))
       });

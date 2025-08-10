@@ -5,9 +5,11 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **FIXED**: Video truncation issue when audio is shorter than video content
 - Enhanced audio processing to support multiple audio tracks with proper mixing
 - Added support for server-side audio file URLs (e.g., TTS generated audio)
 - Improved error handling and logging for audio processing
+- Audio tracks are now properly extended/padded to match total video duration
 
 ## Base URL
 
@@ -78,6 +80,18 @@ Compose a video from timeline data containing video, audio, and subtitle items.
   "output_format": "mp4"
 }
 ```
+
+#### Important: total_duration Parameter
+
+The `total_duration` parameter is **critical** for proper video composition:
+
+- **Purpose**: Defines the final duration of the composed video in seconds
+- **Calculation**: Should be the maximum end time (`start_time + duration`) across all video and audio items in all tracks
+- **Audio Handling**: Audio tracks are automatically extended/padded with silence to match this duration
+- **Video Preservation**: Video content is never truncated - the full video timeline is preserved
+- **Fix Applied**: Removed video truncation when audio tracks are shorter than video content
+
+**Example**: If you have a 25-second video timeline with a 13-second audio track, set `total_duration: 25.0` to preserve the full video length.
 
 #### Audio URL Formats
 
