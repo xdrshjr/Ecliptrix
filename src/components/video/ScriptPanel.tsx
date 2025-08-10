@@ -283,7 +283,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         return newProgress;
       });
 
-      // TODO: 显示错误提示给用户
       alert(`语音转换失败: ${errorMsg}`);
 
     } finally {
