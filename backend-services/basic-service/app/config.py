@@ -21,6 +21,11 @@ class Settings(BaseModel):
     # PEXELS API Configuration
     pexels_api_keys: List[str] = Field(default=[], description="PEXELS API keys (comma-separated)")
     
+    # Volcano TTS Configuration
+    volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID")
+    volcano_tts_access_token: str = Field(default="", description="Volcano TTS Access Token")
+    volcano_tts_secret_key: str = Field(default="", description="Volcano TTS Secret Key")
+    
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
     
@@ -49,6 +54,9 @@ def get_settings() -> Settings:
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
         pexels_api_keys=pexels_api_keys,
+        volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
+        volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
+        volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),

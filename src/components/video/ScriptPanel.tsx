@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ScriptSegment, ScriptSentence } from '@/types';
+import { ScriptSegment, ScriptSentence, MaterialItem } from '@/types';
+import { convertTextToSpeech, TTSRequest } from '@/lib/api/tts';
+import VoiceSelector from './components/VoiceSelector';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -9,6 +11,8 @@ interface ScriptPanelProps {
   onGenerateScript?: () => void;
   isGenerating?: boolean;
   onUpdateSegments?: (segments: ScriptSegment[]) => void;
+  onAddMaterial?: (material: MaterialItem) => void; // 添加素材到材料面板
+  taskId?: string;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -16,28 +20,19 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   className = '',
   onGenerateScript,
   isGenerating = false,
-  onUpdateSegments
+  onUpdateSegments,
+  onAddMaterial,
+  taskId
 }) => {
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
+  
+  // TTS相关状态
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('zh_female_wanqudashu_moon_bigtts');
+  const [convertingSegments, setConvertingSegments] = useState<Set<string>>(new Set());
+  const [ttsProgress, setTtsProgress] = useState<Record<string, number>>({});
 
-  console.log('[ScriptPanel] 渲染脚本面板', {
-    segmentsCount: segments.length,
-    totalSentences: segments.reduce((sum, segment) => sum + segment.sentences.length, 0),
-    isGenerating,
-    hasGenerateCallback: !!onGenerateScript,
-    hasUpdateCallback: !!onUpdateSegments,
-    editingSentenceId,
-    layoutVersion: '2.1 - 标题样式已更新，边距已优化',
-    headerStyle: '新增图标和统一样式',
-    paddingOptimization: {
-      contentArea: '从p-4减少到p-2 (16px -> 8px)',
-      scriptSegments: '从p-4减少到p-3 (16px -> 12px)',
-      segmentSpacing: '从space-y-4减少到space-y-3',
-      emptyState: '从p-6减少到p-4 (24px -> 16px)'
-    },
-    timestamp: new Date().toISOString()
-  });
+
 
   const handleStartEdit = (sentence: ScriptSentence) => {
     console.log('[ScriptPanel] 开始编辑句子', {
@@ -115,6 +110,129 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       });
       onGenerateScript();
     }
+  };
+
+  // TTS转换处理
+  const handleConvertToSpeech = async (segment: ScriptSegment) => {
+    if (convertingSegments.has(segment.id)) {
+      console.warn('[ScriptPanel] 该片段正在转换中，忽略重复请求', {
+        segmentId: segment.id
+      });
+      return;
+    }
+
+    try {
+      console.log('[ScriptPanel] 开始转换语音', {
+        segmentId: segment.id,
+        segmentTitle: segment.title,
+        sentencesCount: segment.sentences.length,
+        voiceId: selectedVoiceId,
+        taskId
+      });
+
+      // 标记为转换中
+      setConvertingSegments(prev => new Set([...Array.from(prev), segment.id]));
+      setTtsProgress(prev => ({ ...prev, [segment.id]: 0 }));
+
+      // 合并所有句子的文本
+      const fullText = segment.sentences.map(sentence => sentence.text).join(' ');
+
+      if (!fullText.trim()) {
+        throw new Error('片段文本为空');
+      }
+
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setTtsProgress(prev => ({
+          ...prev,
+          [segment.id]: Math.min((prev[segment.id] || 0) + 10, 90)
+        }));
+      }, 200);
+
+      const request: TTSRequest = {
+        text: fullText,
+        voice_type: selectedVoiceId,
+        speed_ratio: 1.0,
+        segment_id: segment.id,
+        task_id: taskId
+      };
+
+      const response = await convertTextToSpeech(request);
+
+      clearInterval(progressInterval);
+      setTtsProgress(prev => ({ ...prev, [segment.id]: 100 }));
+
+      if (response.success && onAddMaterial) {
+        // 创建音频材料项
+        const audioMaterial: MaterialItem = {
+          id: `audio_${segment.id}_${Date.now()}`,
+          name: `${segment.title} - 语音`,
+          type: 'audio',
+          format: 'mp3',
+          size: response.data.file_size,
+          duration: Math.ceil(response.data.text_length * 0.15), // 估算时长（每字符0.15秒）
+          url: response.data.audio_url,
+          createdAt: new Date(),
+          description: `由"${segment.title}"片段转换生成的语音`,
+          tags: ['TTS', '语音转换', segment.title]
+        };
+
+        console.log('[ScriptPanel] 语音转换成功，添加到素材面板', {
+          segmentId: segment.id,
+          audioUrl: response.data.audio_url,
+          fileSize: response.data.file_size,
+          materialId: audioMaterial.id
+        });
+
+        onAddMaterial(audioMaterial);
+
+        // 显示成功状态一段时间后清除
+        setTimeout(() => {
+          setTtsProgress(prev => {
+            const newProgress = { ...prev };
+            delete newProgress[segment.id];
+            return newProgress;
+          });
+        }, 2000);
+
+      } else {
+        throw new Error(response.message || '语音转换失败');
+      }
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '未知错误';
+      console.error('[ScriptPanel] 语音转换失败', {
+        segmentId: segment.id,
+        error: errorMsg,
+        voiceId: selectedVoiceId
+      });
+
+      // 清除进度状态
+      setTtsProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[segment.id];
+        return newProgress;
+      });
+
+      // TODO: 显示错误提示给用户
+      alert(`语音转换失败: ${errorMsg}`);
+
+    } finally {
+      // 清除转换中状态
+      setConvertingSegments(prev => {
+        const newSet = new Set(Array.from(prev));
+        newSet.delete(segment.id);
+        return newSet;
+      });
+    }
+  };
+
+  const handleVoiceChange = (voiceId: string) => {
+    console.log('[ScriptPanel] 用户更换音色', {
+      previousVoice: selectedVoiceId,
+      newVoice: voiceId
+    });
+    setSelectedVoiceId(voiceId);
   };
 
   if (segments.length === 0) {
@@ -231,12 +349,55 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 </span>
                 {segment.title}
               </h4>
-              {segment.duration && (
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                  {segment.duration}s
-                </span>
-              )}
+              <div className="flex items-center space-x-2">
+                {/* 转换语音按钮 */}
+                <button
+                  onClick={() => handleConvertToSpeech(segment)}
+                  disabled={convertingSegments.has(segment.id)}
+                  className="flex items-center space-x-1 px-2 py-1 text-xs font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                >
+                  {convertingSegments.has(segment.id) ? (
+                    <>
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>转换中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6zM9 9a3 3 0 000 6 3 3 0 000-6z" />
+                      </svg>
+                      <span>转换语音</span>
+                    </>
+                  )}
+                </button>
+                
+                {/* 时长显示 */}
+                {segment.duration && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                    {segment.duration}s
+                  </span>
+                )}
+              </div>
             </div>
+
+            {/* 转换进度显示 */}
+            {ttsProgress[segment.id] !== undefined && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                  <span>语音转换进度</span>
+                  <span>{ttsProgress[segment.id]}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div 
+                    className="bg-purple-500 h-1.5 rounded-full transition-all duration-300" 
+                    style={{ width: `${ttsProgress[segment.id]}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
 
             {/* 句子列表 */}
             <div className="space-y-2">
@@ -309,6 +470,25 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             </div>
           </div>
         ))}
+      </div>
+
+      {/* 底部音色设置 */}
+      <div className="border-t border-gray-200 p-3 bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6z" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">当前音色</span>
+          </div>
+          <div className="flex-1 max-w-xs">
+            <VoiceSelector
+              selectedVoiceId={selectedVoiceId}
+              onVoiceChange={handleVoiceChange}
+              className="w-full"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

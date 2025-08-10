@@ -26,15 +26,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const isDragging = useRef(false);
   const [showTooltip, setShowTooltip] = useState(false);
 
-  console.log(`[TimelineRuler] 渲染时间刻度尺`, {
-    currentTime: currentTime.toFixed(2),
-    totalDuration: totalDuration.toFixed(2),
-    pixelsPerSecond: pixelsPerSecond.toFixed(2),
-    zoomLevel: zoomLevel.toFixed(2),
-    isPlaying,
-    timestamp: new Date().toISOString()
-  });
-
   // 动态计算控制面板宽度
   const getControlPanelWidth = (): number => {
     if (controlPanelRef.current) {

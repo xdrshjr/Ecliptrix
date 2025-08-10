@@ -14,11 +14,26 @@ from .video_models import (
     VideoSearchResponse
 )
 
+from .tts_models import (
+    TTSRequest,
+    TTSResponse,
+    VoiceType,
+    TTSErrorResponse,
+    VoiceTypeInfo,
+    VoiceTypesResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
     "ErrorResponse",
     "VideoSearchRequest",
     "VideoInfo",
-    "VideoSearchResponse"
+    "VideoSearchResponse",
+    "TTSRequest",
+    "TTSResponse",
+    "VoiceType",
+    "TTSErrorResponse",
+    "VoiceTypeInfo",
+    "VoiceTypesResponse"
 ] 
