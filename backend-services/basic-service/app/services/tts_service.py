@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.logger import get_logger
 from app.models.tts_models import VoiceType, VoiceTypeInfo
+from app.services.supabase_service import supabase_service
 
 logger = get_logger(__name__)
 
@@ -142,11 +143,64 @@ class TTSClient:
             # base64解码并保存文件
             audio_data = base64.b64decode(audio_data_b64)
             
+            # 验证解码后的音频数据
+            if len(audio_data) == 0:
+                logger.error("解码后的音频数据为空", {"request_id": req_id})
+                return False
+            
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
             
-            with open(output_file, "wb") as f:
-                f.write(audio_data)
+            try:
+                # 写入音频文件并确保完全写入
+                with open(output_file, "wb") as f:
+                    f.write(audio_data)
+                    f.flush()  # 确保数据写入磁盘
+                    os.fsync(f.fileno())  # 强制同步到磁盘
+                
+                # 验证文件是否正确写入
+                if not os.path.exists(output_file):
+                    logger.error("音频文件写入失败 - 文件不存在", {
+                        "request_id": req_id,
+                        "output_file": output_file
+                    })
+                    return False
+                
+                # 验证文件大小
+                written_size = os.path.getsize(output_file)
+                if written_size != len(audio_data):
+                    logger.error("音频文件写入失败 - 文件大小不匹配", {
+                        "request_id": req_id,
+                        "output_file": output_file,
+                        "expected_size": len(audio_data),
+                        "written_size": written_size
+                    })
+                    return False
+                
+                # 验证文件内容（读取前几个字节检查）
+                with open(output_file, "rb") as f:
+                    first_bytes = f.read(10)
+                    if len(first_bytes) == 0:
+                        logger.error("音频文件写入失败 - 无法读取文件内容", {
+                            "request_id": req_id,
+                            "output_file": output_file
+                        })
+                        return False
+                
+                logger.debug("音频文件写入验证成功", {
+                    "request_id": req_id,
+                    "output_file": output_file,
+                    "file_size": written_size,
+                    "first_bytes": first_bytes.hex()
+                })
+                
+            except Exception as write_error:
+                logger.error("音频文件写入异常", {
+                    "request_id": req_id,
+                    "output_file": output_file,
+                    "error": str(write_error)
+                })
+                return False
 
             # 记录成功信息
             duration = result.get("addition", {}).get("duration", "未知")
@@ -154,6 +208,7 @@ class TTSClient:
                 "request_id": req_id,
                 "output_file": output_file,
                 "file_size": len(audio_data),
+                "written_size": written_size,
                 "duration_ms": duration
             })
 
@@ -458,8 +513,95 @@ class TTSService:
                         "estimated_duration": actual_duration
                     })
 
+                # 尝试上传到Supabase
+                supabase_url = None
+                supabase_upload_success = False
+                
+                try:
+                    # 在上传前验证文件完整性
+                    if not os.path.exists(output_path):
+                        logger.error("音频文件不存在，无法上传到Supabase", {
+                            "audio_file": output_path,
+                            "segment_id": segment_id,
+                            "task_id": task_id
+                        })
+                        raise Exception(f"音频文件不存在: {output_path}")
+                    
+                    file_size = os.path.getsize(output_path)
+                    if file_size == 0:
+                        logger.error("音频文件为空，无法上传到Supabase", {
+                            "audio_file": output_path,
+                            "file_size": file_size,
+                            "segment_id": segment_id,
+                            "task_id": task_id
+                        })
+                        raise Exception(f"音频文件为空: {output_path}")
+                    
+                    # 验证文件可读性
+                    try:
+                        with open(output_path, "rb") as test_file:
+                            first_bytes = test_file.read(10)
+                            if len(first_bytes) == 0:
+                                logger.error("音频文件无法读取，无法上传到Supabase", {
+                                    "audio_file": output_path,
+                                    "segment_id": segment_id,
+                                    "task_id": task_id
+                                })
+                                raise Exception(f"音频文件无法读取: {output_path}")
+                    except Exception as read_error:
+                        logger.error("音频文件读取测试失败", {
+                            "audio_file": output_path,
+                            "error": str(read_error),
+                            "segment_id": segment_id,
+                            "task_id": task_id
+                        })
+                        raise Exception(f"音频文件读取测试失败: {str(read_error)}")
+                    
+                    logger.info("开始上传音频文件到Supabase", {
+                        "audio_file": output_path,
+                        "file_size": file_size,
+                        "segment_id": segment_id,
+                        "task_id": task_id,
+                        "voice_type": voice_type.value
+                    })
+                    
+                    upload_result = supabase_service.upload_audio_file(
+                        audio_file_path=output_path,
+                        segment_id=segment_id,
+                        task_id=task_id,
+                        voice_type=voice_type.value
+                    )
+                    
+                    if upload_result["success"]:
+                        supabase_url = upload_result["audio_url"]
+                        supabase_upload_success = True
+                        logger.info("音频文件上传到Supabase成功并获取到访问URL", {
+                            "supabase_url": supabase_url,
+                            "file_size": upload_result["file_size"],
+                            "segment_id": segment_id,
+                            "task_id": task_id,
+                            "upload_success": True,
+                            "url_accessible": True,
+                            "is_signed_url": "signed" in supabase_url.lower() or "token" in supabase_url.lower(),
+                            "message": f"音频文件已成功上传到Supabase，{'签名URL' if ('signed' in supabase_url.lower() or 'token' in supabase_url.lower()) else '公共URL'}可正常访问"
+                        })
+                    else:
+                        logger.warning("音频文件上传到Supabase失败，使用本地URL", {
+                            "error": upload_result["message"],
+                            "segment_id": segment_id,
+                            "task_id": task_id
+                        })
+                        
+                except Exception as e:
+                    logger.warning("上传到Supabase时发生异常，使用本地URL", {
+                        "error": str(e),
+                        "segment_id": segment_id,
+                        "task_id": task_id
+                    })
+                
                 # 构造返回数据
-                audio_url = f"/api/audio/generated/{filename}"
+                # 优先使用Supabase URL，如果上传失败则使用本地URL
+                audio_url = supabase_url if supabase_upload_success else f"/api/audio/generated/{filename}"
                 
                 result = {
                     "audio_url": audio_url,
@@ -475,10 +617,19 @@ class TTSService:
                     "segment_id": segment_id,
                     "task_id": task_id,
                     "mock_mode": MOCK_MODE,
-                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated"  # 标记时长获取方式
+                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",  # 标记时长获取方式
+                    "supabase_upload": supabase_upload_success,  # 标记是否成功上传到Supabase
+                    "supabase_url": supabase_url  # Supabase URL
                 }
 
-                logger.info("TTS转换成功", result)
+                logger.info("TTS转换成功", {
+                    "audio_url": result["audio_url"],
+                    "file_size": result["file_size"],
+                    "duration": result["duration"],
+                    "supabase_upload": supabase_upload_success,
+                    "segment_id": segment_id,
+                    "task_id": task_id
+                })
                 return result
 
             except Exception as e:

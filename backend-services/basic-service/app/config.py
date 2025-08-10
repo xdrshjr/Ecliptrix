@@ -44,6 +44,14 @@ class BatchTTSConfig(BaseModel):
     limits: BatchTTSLimitsConfig = BatchTTSLimitsConfig()
 
 
+class SupabaseConfig(BaseModel):
+    """Supabase configuration."""
+    url: str = Field(..., description="Supabase URL")
+    anon_key: str = Field(..., description="Supabase anonymous key")
+    bucket: str = Field(..., description="Supabase storage bucket name")
+    environment: str = Field(default="development", description="Environment")
+
+
 class Settings(BaseModel):
     """Application settings configuration."""
     
@@ -58,6 +66,9 @@ class Settings(BaseModel):
     volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID")
     volcano_tts_access_token: str = Field(default="", description="Volcano TTS Access Token")
     volcano_tts_secret_key: str = Field(default="", description="Volcano TTS Secret Key")
+    
+    # Supabase Configuration
+    supabase: SupabaseConfig = Field(..., description="Supabase configuration")
     
     # Batch TTS Configuration
     batch_tts: BatchTTSConfig = BatchTTSConfig()
@@ -116,6 +127,14 @@ def get_settings() -> Settings:
             limits=BatchTTSLimitsConfig(**batch_tts_data.get('limits', {}))
         )
     
+    # Create Supabase configuration
+    supabase_config = SupabaseConfig(
+        url=os.getenv("SUPABASE_URL", ""),
+        anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
+        bucket=os.getenv("SUPABASE_BUCKET", ""),
+        environment=os.getenv("ENVIRONMENT", "development")
+    )
+    
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
@@ -123,6 +142,7 @@ def get_settings() -> Settings:
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
+        supabase=supabase_config,
         batch_tts=batch_tts_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),

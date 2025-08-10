@@ -34,6 +34,16 @@ from .tts_models import (
     BatchTTSSegmentResult
 )
 
+from .supabase_models import (
+    SupabaseUploadRequest,
+    SupabaseUploadResponse,
+    SupabaseUploadErrorResponse,
+    AudioUploadRequest,
+    AudioUploadResponse,
+    BatchAudioUploadRequest,
+    BatchAudioUploadResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -57,5 +67,12 @@ __all__ = [
     "BatchTTSRequest",
     "BatchTTSResponse",
     "BatchTTSSegmentRequest",
-    "BatchTTSSegmentResult"
+    "BatchTTSSegmentResult",
+    "SupabaseUploadRequest",
+    "SupabaseUploadResponse",
+    "SupabaseUploadErrorResponse",
+    "AudioUploadRequest",
+    "AudioUploadResponse",
+    "BatchAudioUploadRequest",
+    "BatchAudioUploadResponse"
 ] 

@@ -8,6 +8,10 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 python-multipart==0.0.6
 
+# Supabase dependencies
+supabase==2.3.4
+mutagen==1.47.0
+
 # Video composition dependencies with NumPy compatibility
 numpy<2.0.0
 opencv-python==4.8.1.78
