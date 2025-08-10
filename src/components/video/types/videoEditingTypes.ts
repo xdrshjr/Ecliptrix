@@ -14,6 +14,11 @@ export interface VideoSequenceItem {
   thumbnailUrl?: string;
   materialId?: string;
   trackId: string;
+  
+  // 新增：视频剪辑属性，用于支持时间轴上的素材缩放和裁剪播放
+  clipStart?: number;      // 原始素材中的开始时间（秒）
+  clipEnd?: number;        // 原始素材中的结束时间（秒）
+  originalDuration?: number; // 原始素材的总时长（秒）
 }
 
 export interface CompositionPlayback {

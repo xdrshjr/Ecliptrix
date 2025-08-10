@@ -241,47 +241,76 @@ class VideoCompositionService:
         logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
         logger.info(f"Total composition duration: {request.total_duration}s")
         
-        # 确保所有项目按照时间线位置（start_time）正确排序
-        # 这是一个保障措施，确保即使前端没有正确排序，后端也能保证正确的合成顺序
-        original_video_order = [(i, item.start_time) for i, item in enumerate(request.video_items)]
-        original_audio_order = [(i, item.start_time) for i, item in enumerate(request.audio_items)]
-        original_subtitle_order = [(i, item.start_time) for i, item in enumerate(request.subtitle_items)]
-        
-        request.video_items.sort(key=lambda x: x.start_time)
-        request.audio_items.sort(key=lambda x: x.start_time)
-        request.subtitle_items.sort(key=lambda x: x.start_time)
-        
-        sorted_video_order = [(i, item.start_time) for i, item in enumerate(request.video_items)]
-        sorted_audio_order = [(i, item.start_time) for i, item in enumerate(request.audio_items)]
-        sorted_subtitle_order = [(i, item.start_time) for i, item in enumerate(request.subtitle_items)]
-        
-        # 记录排序结果
-        video_reordered = original_video_order != sorted_video_order
-        audio_reordered = original_audio_order != sorted_audio_order
-        subtitle_reordered = original_subtitle_order != sorted_subtitle_order
-        
-        logger.info(f"Timeline order verification completed", extra={
-            "video_items_reordered": video_reordered,
-            "audio_items_reordered": audio_reordered, 
-            "subtitle_items_reordered": subtitle_reordered,
-            "original_video_order": original_video_order,
-            "sorted_video_order": sorted_video_order,
-            "original_audio_order": original_audio_order,
-            "sorted_audio_order": sorted_audio_order
+        # 前端已确保正确的时间轴顺序，后端直接按接收到的顺序处理
+        # 记录接收到的项目顺序以便调试
+        logger.info("接收到的视频项目顺序（前端已排序）", extra={
+            "video_items_order": [
+                {
+                    "index": i,
+                    "id": item.id,
+                    "name": item.name,
+                    "start_time": item.start_time,
+                    "duration": item.duration,
+                    "track_id": item.track_id
+                }
+                for i, item in enumerate(request.video_items)
+            ],
+            "audio_items_order": [
+                {
+                    "index": i,
+                    "id": item.id,
+                    "name": item.name,
+                    "start_time": item.start_time,
+                    "duration": item.duration,
+                    "track_id": item.track_id
+                }
+                for i, item in enumerate(request.audio_items)
+            ]
         })
-        
-        if video_reordered:
-            logger.warning("Video items were reordered by backend - frontend should ensure proper timeline order")
-        if audio_reordered:
-            logger.warning("Audio items were reordered by backend - frontend should ensure proper timeline order")
-        if subtitle_reordered:
-            logger.warning("Subtitle items were reordered by backend - frontend should ensure proper timeline order")
         
         # Log individual video and audio items for debugging
         for i, video_item in enumerate(request.video_items):
-            logger.info(f"Video item {i+1}: start={video_item.start_time}s, duration={video_item.duration}s, end={video_item.start_time + video_item.duration}s")
+            # 增强日志：包含裁剪信息
+            clip_start = video_item.clip_start if hasattr(video_item, 'clip_start') else 0.0
+            clip_end = video_item.clip_end if hasattr(video_item, 'clip_end') else video_item.duration
+            is_trimmed = clip_start > 0.0 or clip_end != video_item.duration
+            
+            logger.info(f"Video item {i+1} (裁剪详情): "
+                       f"timeline_start={video_item.start_time}s, "
+                       f"timeline_duration={video_item.duration}s, "
+                       f"timeline_end={video_item.start_time + video_item.duration}s, "
+                       f"clip_start={clip_start}s, "
+                       f"clip_end={clip_end}s, "
+                       f"clip_duration={clip_end - clip_start}s, "
+                       f"is_trimmed={is_trimmed}, "
+                       f"url={video_item.url}")
+                       
         for i, audio_item in enumerate(request.audio_items):
-            logger.info(f"Audio item {i+1}: start={audio_item.start_time}s, duration={audio_item.duration}s, end={audio_item.start_time + audio_item.duration}s")
+            # 增强日志：包含音频裁剪信息  
+            clip_start = audio_item.clip_start if hasattr(audio_item, 'clip_start') else 0.0
+            clip_end = audio_item.clip_end if hasattr(audio_item, 'clip_end') else audio_item.duration
+            is_trimmed = clip_start > 0.0 or clip_end != audio_item.duration
+            
+            logger.info(f"Audio item {i+1} (裁剪详情): "
+                       f"timeline_start={audio_item.start_time}s, "
+                       f"timeline_duration={audio_item.duration}s, "
+                       f"timeline_end={audio_item.start_time + audio_item.duration}s, "
+                       f"clip_start={clip_start}s, "
+                       f"clip_end={clip_end}s, "
+                       f"clip_duration={clip_end - clip_start}s, "
+                       f"is_trimmed={is_trimmed}, "
+                       f"url={audio_item.url}")
+                       
+        # 统计裁剪信息
+        trimmed_video_count = sum(1 for item in request.video_items 
+                                if (hasattr(item, 'clip_start') and item.clip_start > 0.0) or
+                                   (hasattr(item, 'clip_end') and item.clip_end != item.duration))
+        trimmed_audio_count = sum(1 for item in request.audio_items 
+                                if (hasattr(item, 'clip_start') and item.clip_start > 0.0) or
+                                   (hasattr(item, 'clip_end') and item.clip_end != item.duration))
+                                   
+        logger.info(f"裁剪统计: {trimmed_video_count}/{len(request.video_items)} 视频片段被裁剪, "
+                   f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪")
         
         # Store composition info
         self.compositions[composition_id] = {
@@ -319,13 +348,27 @@ class VideoCompositionService:
                     for i, url in enumerate(video_urls)
                 }
                 
+                # 收集结果并保持原始顺序
+                results = {}
                 for future in as_completed(futures):
+                    original_index = futures[future]
                     result = future.result()
                     if result['success']:
-                        downloaded_videos.append(result['output_path'])
-                        logger.info(f"Downloaded video {len(downloaded_videos)}/{len(video_urls)}")
+                        results[original_index] = result['output_path']
+                        logger.info(f"Downloaded video {len(results)}/{len(video_urls)} (index: {original_index})")
                     else:
-                        raise Exception(f"Video download failed: {result['error']}")
+                        raise Exception(f"Video download failed at index {original_index}: {result['error']}")
+                
+                # 按原始顺序添加到列表
+                for i in range(len(video_urls)):
+                    downloaded_videos.append(results[i])
+                    
+            logger.info(f"Video download completed in correct order", extra={
+                "downloaded_order": [
+                    {"index": i, "path": path.split('/')[-1]} 
+                    for i, path in enumerate(downloaded_videos)
+                ]
+            })
             
             # Update progress
             self.compositions[composition_id]["progress"] = 0.4
@@ -366,13 +409,27 @@ class VideoCompositionService:
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {executor.submit(self._normalize_video, task): task['index'] for task in video_tasks}
                 
+                # 收集结果并保持原始顺序
+                norm_results = {}
                 for future in as_completed(futures):
+                    original_index = futures[future]
                     result = future.result()
                     if result['success']:
-                        normalized_videos.append(result['normalized_path'])
-                        logger.info(f"Normalized video {len(normalized_videos)}/{len(video_tasks)}")
+                        norm_results[original_index] = result['normalized_path']
+                        logger.info(f"Normalized video {len(norm_results)}/{len(video_tasks)} (index: {original_index})")
                     else:
-                        raise Exception(f"Video normalization failed: {result['error']}")
+                        raise Exception(f"Video normalization failed at index {original_index}: {result['error']}")
+                
+                # 按原始顺序添加到列表
+                for i in range(len(video_tasks)):
+                    normalized_videos.append(norm_results[i])
+                    
+            logger.info(f"Video normalization completed in correct order", extra={
+                "normalized_order": [
+                    {"index": i, "path": path.split('/')[-1]} 
+                    for i, path in enumerate(normalized_videos)
+                ]
+            })
             
             # Update progress
             self.compositions[composition_id]["progress"] = 0.7

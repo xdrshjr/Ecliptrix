@@ -55,6 +55,11 @@ export const useTimelineComposition = (
             // 找到对应的素材
             const material = materials.find(m => m.id === item.materialId);
             if (material && material.type === 'video') {
+              // 提取裁剪信息
+              const clipStart = item.clipStart ?? 0;
+              const clipEnd = item.clipEnd ?? item.originalDuration ?? item.duration;
+              const originalDuration = item.originalDuration ?? item.duration;
+              
               const videoSequence: VideoSequenceItem = {
                 id: item.id,
                 name: item.name,
@@ -63,15 +68,25 @@ export const useTimelineComposition = (
                 duration: item.duration,
                 thumbnailUrl: item.thumbnailUrl || material.thumbnailUrl,
                 materialId: item.materialId,
-                trackId: item.trackId
+                trackId: item.trackId,
+                // 新增：传递裁剪信息
+                clipStart,
+                clipEnd,
+                originalDuration
               };
               allVideoItems.push(videoSequence);
               
-              logger.info('添加视频序列项目', {
+              // 详细日志记录裁剪信息
+              logger.info('添加视频序列项目（包含裁剪信息）', {
                 itemId: item.id,
                 itemName: item.name,
-                startTime: item.startTime,
-                duration: item.duration,
+                timelineStartTime: item.startTime,
+                timelineDuration: item.duration,
+                clipStart: clipStart.toFixed(2),
+                clipEnd: clipEnd.toFixed(2),
+                originalDuration: originalDuration.toFixed(2),
+                isTrimmed: clipStart > 0 || clipEnd < originalDuration,
+                trimmedDuration: (clipEnd - clipStart).toFixed(2),
                 materialUrl: material.url,
                 trackId: item.trackId
               });
@@ -84,13 +99,26 @@ export const useTimelineComposition = (
     // 按开始时间排序
     const sortedVideoItems = allVideoItems.sort((a, b) => a.startTime - b.startTime);
     
-    logger.info('视频序列提取完成', {
+    // 统计裁剪信息
+    const trimmedCount = sortedVideoItems.filter(seq => 
+      (seq.clipStart && seq.clipStart > 0) || 
+      (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
+    ).length;
+    
+    logger.info('视频序列提取完成（包含裁剪统计）', {
       totalVideoSequences: sortedVideoItems.length,
+      trimmedSequences: trimmedCount,
+      untrimmedSequences: sortedVideoItems.length - trimmedCount,
       sequences: sortedVideoItems.map(seq => ({
         id: seq.id,
         name: seq.name,
-        startTime: seq.startTime,
-        duration: seq.duration
+        timelineStartTime: seq.startTime,
+        timelineDuration: seq.duration,
+        clipStart: seq.clipStart?.toFixed(2) || '0.00',
+        clipEnd: seq.clipEnd?.toFixed(2) || 'N/A',
+        originalDuration: seq.originalDuration?.toFixed(2) || 'N/A',
+        isTrimmed: (seq.clipStart && seq.clipStart > 0) || 
+                  (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
       }))
     });
 
