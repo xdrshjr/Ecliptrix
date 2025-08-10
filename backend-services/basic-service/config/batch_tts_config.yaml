@@ -1,0 +1,40 @@
+# Batch Text-to-Speech Configuration
+# 批量语音转换配置
+
+batch_tts:
+  # 并发线程数配置
+  # Number of concurrent threads for batch processing
+  concurrent_threads: 3
+  
+  # 最大并发线程数限制
+  # Maximum concurrent threads limit
+  max_concurrent_threads: 10
+  
+  # 单个请求超时时间（秒）
+  # Timeout for individual TTS request (seconds)
+  request_timeout: 30
+  
+  # 批量处理总超时时间（秒）
+  # Total timeout for batch processing (seconds)
+  batch_timeout: 300
+  
+  # 重试配置
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    delay_seconds: 1
+    backoff_factor: 2
+  
+  # 日志配置
+  # Logging configuration
+  logging:
+    enable_detailed_logs: true
+    log_progress_interval: 1  # Log progress every N segments
+    log_level: "INFO"
+  
+  # 资源限制
+  # Resource limits
+  limits:
+    max_segments_per_batch: 50
+    max_text_length_per_segment: 5000
+    max_total_text_length: 100000 

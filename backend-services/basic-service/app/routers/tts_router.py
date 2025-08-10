@@ -11,14 +11,20 @@ from app.models.tts_models import (
     TTSRequest, 
     TTSResponse, 
     TTSErrorResponse,
-    VoiceTypesResponse
+    VoiceTypesResponse,
+    BatchTTSRequest,
+    BatchTTSResponse
 )
 from app.services.tts_service import tts_service
+from app.services.batch_tts_service import BatchTTSService
 from app.logger import get_logger
 
 # Initialize router and logger
 router = APIRouter(prefix="/tts", tags=["Text-to-Speech"])
 logger = get_logger(__name__)
+
+# Initialize batch TTS service
+batch_tts_service = BatchTTSService()
 
 
 @router.post(
@@ -92,12 +98,75 @@ async def convert_text_to_speech(request: TTSRequest) -> Union[TTSResponse, TTSE
         return TTSErrorResponse(
             success=False,
             message=f"语音转换失败: {error_msg}",
-            error_code="CONVERSION_FAILED",
-            details={
-                "segment_id": request.segment_id,
-                "task_id": request.task_id,
-                "voice_type": request.voice_type.value
-            }
+            error_code="CONVERSION_FAILED"
+        )
+
+
+@router.post(
+    "/convert-batch",
+    response_model=BatchTTSResponse,
+    summary="批量文本转语音",
+    description="批量将多个文本段落转换为语音文件，支持并发处理"
+)
+async def convert_batch_text_to_speech(request: BatchTTSRequest) -> BatchTTSResponse:
+    """
+    批量将文本转换为语音文件
+    
+    Args:
+        request: 批量TTS转换请求，包含多个文本段落和配置参数
+    
+    Returns:
+        BatchTTSResponse: 批量转换响应，包含每个段落的处理结果
+    """
+    try:
+        logger.info("收到批量TTS转换请求", {
+            "segments_count": len(request.segments),
+            "voice_type": request.voice_type.value,
+            "speed_ratio": request.speed_ratio,
+            "task_id": request.task_id,
+            "concurrent_threads": request.concurrent_threads,
+            "total_text_length": sum(len(seg.text) for seg in request.segments)
+        })
+        
+        # 调用批量TTS服务进行转换
+        result = batch_tts_service.convert_batch(request)
+        
+        logger.info("批量TTS转换请求处理完成", {
+            "success": result.success,
+            "total_segments": result.total_segments,
+            "successful_segments": result.successful_segments,
+            "failed_segments": result.failed_segments,
+            "total_processing_time": result.total_processing_time,
+            "task_id": request.task_id
+        })
+        
+        return result
+        
+    except HTTPException as e:
+        # FastAPI HTTPException，直接抛出
+        logger.error("批量TTS转换HTTP异常", {
+            "status_code": e.status_code,
+            "detail": e.detail,
+            "task_id": request.task_id
+        })
+        raise e
+        
+    except Exception as e:
+        # 其他异常，包装为BatchTTSResponse
+        error_msg = str(e)
+        logger.error("批量TTS转换未知错误", {
+            "error": error_msg,
+            "task_id": request.task_id
+        })
+        
+        return BatchTTSResponse(
+            success=False,
+            message=f"批量语音转换失败: {error_msg}",
+            total_segments=len(request.segments),
+            successful_segments=0,
+            failed_segments=len(request.segments),
+            total_processing_time=0.0,
+            results=[]
         )
 
 

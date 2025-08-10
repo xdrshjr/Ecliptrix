@@ -20,7 +20,11 @@ from .tts_models import (
     VoiceType,
     TTSErrorResponse,
     VoiceTypeInfo,
-    VoiceTypesResponse
+    VoiceTypesResponse,
+    BatchTTSRequest,
+    BatchTTSResponse,
+    BatchTTSSegmentRequest,
+    BatchTTSSegmentResult
 )
 
 __all__ = [
@@ -35,5 +39,9 @@ __all__ = [
     "VoiceType",
     "TTSErrorResponse",
     "VoiceTypeInfo",
-    "VoiceTypesResponse"
+    "VoiceTypesResponse",
+    "BatchTTSRequest",
+    "BatchTTSResponse",
+    "BatchTTSSegmentRequest",
+    "BatchTTSSegmentResult"
 ] 
