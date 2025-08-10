@@ -11,7 +11,14 @@ from .base_models import (
 from .video_models import (
     VideoSearchRequest,
     VideoInfo,
-    VideoSearchResponse
+    VideoSearchResponse,
+    VideoCompositionItem,
+    AudioCompositionItem,
+    SubtitleCompositionItem,
+    VideoCompositionRequest,
+    VideoCompositionResponse,
+    VideoDownloadRequest,
+    VideoDownloadResponse
 )
 
 from .tts_models import (
@@ -34,6 +41,13 @@ __all__ = [
     "VideoSearchRequest",
     "VideoInfo",
     "VideoSearchResponse",
+    "VideoCompositionItem",
+    "AudioCompositionItem", 
+    "SubtitleCompositionItem",
+    "VideoCompositionRequest",
+    "VideoCompositionResponse",
+    "VideoDownloadRequest",
+    "VideoDownloadResponse",
     "TTSRequest",
     "TTSResponse",
     "VoiceType",

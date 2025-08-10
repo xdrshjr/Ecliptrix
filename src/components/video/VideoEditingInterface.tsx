@@ -141,6 +141,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onTimelineStateChange={timelineComposition.handleTimelineStateChange}
                 externalCurrentTime={timelineCurrentTime}
                 onCurrentTimeChange={handleTimelineTimeChange}
+                materials={materialManagement.materials}
               />
             </div>
           </div>

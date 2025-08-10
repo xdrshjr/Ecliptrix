@@ -12,13 +12,16 @@ interface TimelinePanelProps {
   // 新增：外部控制当前时间
   externalCurrentTime?: number;
   onCurrentTimeChange?: (time: number) => void;
+  // 新增：素材列表，用于导出功能
+  materials?: MaterialItem[];
 }
 
 const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
   className = '', 
   onTimelineStateChange, 
-  externalCurrentTime, 
-  onCurrentTimeChange 
+  externalCurrentTime,
+  onCurrentTimeChange,
+  materials = []
 }) => {
   // 创建初始空轨道状态
   const createInitialTimelineState = (): TimelineState => {
@@ -826,14 +829,164 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     // 实现添加字幕逻辑
   }, []);
 
-  const handleExport = useCallback(() => {
-    console.log(`[TimelinePanel] 导出视频`, {
+  const handleExport = useCallback(async () => {
+    console.log(`[TimelinePanel] 开始导出视频`, {
       totalDuration: timelineState.totalDuration.toFixed(2),
       trackCount: timelineState.tracks.length,
       timestamp: new Date().toISOString()
     });
-    // 实现导出逻辑
-  }, [timelineState]);
+
+    try {
+      // Import the video composition API
+      const { videoCompositionAPI } = await import('@/lib/api/videoComposition');
+      
+      // Extract video items from timeline
+      const videoItems: any[] = [];
+      const audioItems: any[] = [];
+      const subtitleItems: any[] = [];
+
+      // Process each track
+      timelineState.tracks.forEach(track => {
+        if (!track.isVisible || track.isLocked) {
+          console.log(`[TimelinePanel] 跳过轨道 ${track.id} (不可见或已锁定)`);
+          return;
+        }
+
+        track.items.forEach(item => {
+          if (item.type === 'video') {
+            // Find the material to get the URL
+            const material = materials?.find(m => m.id === item.materialId);
+            if (material) {
+              videoItems.push({
+                id: item.id,
+                name: item.name,
+                url: material.url,
+                start_time: item.startTime,
+                duration: item.duration,
+                track_id: track.id,
+                volume: item.volume || 1.0,
+                opacity: item.opacity || 1.0
+              });
+              console.log(`[TimelinePanel] 添加视频项目: ${item.name}`);
+            } else {
+              console.warn(`[TimelinePanel] 未找到素材 ${item.materialId} 对应的URL`);
+            }
+          } else if (item.type === 'audio') {
+            // Find the material to get the URL
+            const material = materials?.find(m => m.id === item.materialId);
+            if (material) {
+              audioItems.push({
+                id: item.id,
+                name: item.name,
+                url: material.url,
+                start_time: item.startTime,
+                duration: item.duration,
+                track_id: track.id,
+                volume: item.volume || 1.0
+              });
+              console.log(`[TimelinePanel] 添加音频项目: ${item.name}`);
+            }
+          } else if (item.type === 'subtitle') {
+            subtitleItems.push({
+              id: item.id,
+              name: item.name,
+              text: item.text || item.name, // Use text if available, otherwise use name
+              start_time: item.startTime,
+              duration: item.duration,
+              track_id: track.id,
+              font_size: 24,
+              font_color: '#FFFFFF',
+              position: 'bottom'
+            });
+            console.log(`[TimelinePanel] 添加字幕项目: ${item.name}`);
+          }
+        });
+      });
+
+      // Validate we have content to export
+      if (videoItems.length === 0) {
+        console.warn(`[TimelinePanel] 没有视频内容可导出`);
+        alert('没有视频内容可导出，请先添加视频素材到时间轴');
+        return;
+      }
+
+      console.log(`[TimelinePanel] 准备导出内容`, {
+        videoItemsCount: videoItems.length,
+        audioItemsCount: audioItems.length,
+        subtitleItemsCount: subtitleItems.length,
+        totalDuration: timelineState.totalDuration
+      });
+
+      // Create composition request
+      const compositionRequest = {
+        task_id: `export_${Date.now()}`, // Generate a unique task ID
+        video_items: videoItems,
+        audio_items: audioItems,
+        subtitle_items: subtitleItems,
+        total_duration: timelineState.totalDuration,
+        output_resolution: {
+          width: 1920,
+          height: 1080
+        },
+        output_fps: 30,
+        output_format: 'mp4'
+      };
+
+      // Show loading state (you might want to add a loading UI here)
+      console.log(`[TimelinePanel] 发送合成请求...`);
+      
+      // Start video composition
+      const compositionResponse = await videoCompositionAPI.composeVideo(compositionRequest);
+      
+      if (!compositionResponse.success || !compositionResponse.composition_id) {
+        throw new Error(compositionResponse.message || '视频合成请求失败');
+      }
+
+      console.log(`[TimelinePanel] 合成开始`, {
+        compositionId: compositionResponse.composition_id,
+        status: compositionResponse.status
+      });
+
+      // If composition is already completed (unlikely but possible)
+      if (compositionResponse.status === 'completed') {
+        console.log(`[TimelinePanel] 合成立即完成，开始下载`);
+        await videoCompositionAPI.triggerDownload(
+          compositionResponse.composition_id,
+          compositionRequest.task_id,
+          `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
+        );
+        return;
+      }
+
+      // Poll for completion and show progress
+      console.log(`[TimelinePanel] 开始轮询合成状态...`);
+      
+      await videoCompositionAPI.pollCompositionStatus(
+        compositionResponse.composition_id,
+        (status) => {
+          console.log(`[TimelinePanel] 合成进度更新`, {
+            progress: (status.progress * 100).toFixed(1) + '%',
+            status: status.status
+          });
+          // Here you could update a progress UI
+        }
+      );
+
+      // Download completed video
+      console.log(`[TimelinePanel] 合成完成，开始自动下载...`);
+      await videoCompositionAPI.triggerDownload(
+        compositionResponse.composition_id,
+        compositionRequest.task_id,
+        `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
+      );
+
+      console.log(`[TimelinePanel] 视频导出完成`);
+      
+    } catch (error) {
+      console.error(`[TimelinePanel] 导出失败`, error);
+      alert(`视频导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }, [timelineState, materials]);
 
   return (
     <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
