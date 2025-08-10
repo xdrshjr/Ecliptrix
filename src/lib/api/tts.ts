@@ -22,6 +22,14 @@ export interface TTSResponse {
     voice_type: string;
     text_length: number;
     request_id: string;
+    file_name?: string;
+    file_path?: string;
+    speed_ratio?: number;
+    segment_id?: string;
+    task_id?: string;
+    mock_mode?: boolean;
+    duration_method?: string; // 时长获取方式：'ffmpeg' 或 'estimated'
+    created_at?: string;
   };
 }
 

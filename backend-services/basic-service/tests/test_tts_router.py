@@ -4,6 +4,7 @@ Tests for TTS (Text-to-Speech) router endpoints.
 
 import pytest
 import os
+import subprocess
 from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 
@@ -256,9 +257,199 @@ class TestTTSRouter:
             assert data["success"] is True
             assert data["data"]["text_length"] == 5000
 
+    @patch('app.services.tts_service.tts_service.convert_text_to_speech')
+    def test_convert_text_to_speech_with_ffmpeg_duration(self, mock_convert):
+        """Test TTS conversion with ffmpeg duration detection."""
+        # Mock the service response with ffmpeg duration
+        mock_convert.return_value = {
+            "audio_url": "/api/audio/generated/test_audio.mp3",
+            "file_name": "test_audio.mp3",
+            "file_size": 12345,
+            "duration": 5.7,  # Actual duration from ffmpeg
+            "duration_method": "ffmpeg",
+            "voice_type": "zh_female_wanqudashu_moon_bigtts",
+            "text_length": 20,
+            "speed_ratio": 1.0,
+            "request_id": "test_req_123",
+            "created_at": "2024-01-15T10:30:00",
+            "segment_id": "test_segment",
+            "task_id": "test_task",
+            "mock_mode": False
+        }
+        
+        request_data = {
+            "text": "这是一个测试文本。",
+            "voice_type": "zh_female_wanqudashu_moon_bigtts",
+            "speed_ratio": 1.0,
+            "segment_id": "test_segment",
+            "task_id": "test_task"
+        }
+        
+        response = client.post("/api/tts/convert", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["success"] is True
+        assert data["message"] == "语音转换成功"
+        assert data["data"]["duration"] == 5.7
+        assert data["data"]["duration_method"] == "ffmpeg"
+        assert data["data"]["file_name"] == "test_audio.mp3"
+        
+        # Verify the service was called with correct parameters
+        mock_convert.assert_called_once_with(
+            text="这是一个测试文本。",
+            voice_type=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
+            speed_ratio=1.0,
+            segment_id="test_segment",
+            task_id="test_task"
+        )
+
+    @patch('app.services.tts_service.tts_service.convert_text_to_speech')
+    def test_convert_text_to_speech_with_estimated_duration(self, mock_convert):
+        """Test TTS conversion with estimated duration (ffmpeg unavailable)."""
+        # Mock the service response with estimated duration
+        mock_convert.return_value = {
+            "audio_url": "/api/audio/generated/test_audio.mp3",
+            "file_name": "test_audio.mp3",
+            "file_size": 12345,
+            "duration": 3.0,  # Estimated duration
+            "duration_method": "estimated",
+            "voice_type": "zh_female_wanqudashu_moon_bigtts",
+            "text_length": 20,
+            "speed_ratio": 1.0,
+            "request_id": "test_req_123",
+            "created_at": "2024-01-15T10:30:00",
+            "segment_id": "test_segment",
+            "task_id": "test_task",
+            "mock_mode": False
+        }
+        
+        request_data = {
+            "text": "这是一个测试文本。",
+            "voice_type": "zh_female_wanqudashu_moon_bigtts",
+            "speed_ratio": 1.0,
+            "segment_id": "test_segment",
+            "task_id": "test_task"
+        }
+        
+        response = client.post("/api/tts/convert", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["success"] is True
+        assert data["message"] == "语音转换成功"
+        assert data["data"]["duration"] == 3.0
+        assert data["data"]["duration_method"] == "estimated"
+        
+        mock_convert.assert_called_once()
+
 
 class TestTTSService:
-    """Test cases for TTS service functionality."""
+    """Test cases for TTS service methods."""
+    
+    @patch('subprocess.run')
+    def test_check_ffmpeg_available(self, mock_subprocess):
+        """Test ffmpeg availability check when ffmpeg is available."""
+        from app.services.tts_service import TTSService
+        
+        # Mock successful ffmpeg version check
+        mock_subprocess.return_value = Mock(returncode=0)
+        
+        service = TTSService()
+        result = service._check_ffmpeg()
+        
+        assert result is True
+        mock_subprocess.assert_called_with(['ffmpeg', '-version'], 
+                                         capture_output=True, check=True)
+
+    @patch('subprocess.run')
+    def test_check_ffmpeg_unavailable(self, mock_subprocess):
+        """Test ffmpeg availability check when ffmpeg is not available."""
+        from app.services.tts_service import TTSService
+        
+        # Mock ffmpeg not found
+        mock_subprocess.side_effect = FileNotFoundError()
+        
+        service = TTSService()
+        result = service._check_ffmpeg()
+        
+        assert result is False
+
+    @patch('subprocess.run')
+    def test_get_audio_duration_with_ffmpeg_success(self, mock_subprocess):
+        """Test successful audio duration detection with ffmpeg."""
+        from app.services.tts_service import TTSService
+        
+        # Mock successful ffprobe execution
+        mock_result = Mock()
+        mock_result.stdout = "15.5\n"
+        mock_result.returncode = 0
+        mock_subprocess.return_value = mock_result
+        
+        service = TTSService()
+        duration = service._get_audio_duration_with_ffmpeg("/path/to/audio.mp3")
+        
+        assert duration == 15.5
+        # Verify ffprobe was called with correct parameters
+        mock_subprocess.assert_called_with([
+            'ffprobe',
+            '-v', 'quiet',
+            '-show_entries', 'format=duration',
+            '-of', 'csv=p=0',
+            '/path/to/audio.mp3'
+        ], capture_output=True, text=True, check=True)
+
+    @patch('subprocess.run')
+    def test_get_audio_duration_with_ffmpeg_failure(self, mock_subprocess):
+        """Test audio duration detection when ffprobe fails."""
+        from app.services.tts_service import TTSService
+        
+        # Mock ffprobe failure
+        mock_subprocess.side_effect = subprocess.CalledProcessError(1, 'ffprobe')
+        
+        service = TTSService()
+        duration = service._get_audio_duration_with_ffmpeg("/path/to/audio.mp3")
+        
+        assert duration is None
+
+    def test_estimate_audio_duration(self):
+        """Test audio duration estimation fallback."""
+        from app.services.tts_service import TTSService
+        
+        service = TTSService()
+        
+        # Test basic estimation
+        duration = service._estimate_audio_duration(text_length=100, speed_ratio=1.0)
+        assert duration == 15.0  # 100 * 0.15
+        
+        # Test with speed adjustment
+        duration = service._estimate_audio_duration(text_length=100, speed_ratio=2.0)
+        assert duration == 7.5  # 100 * 0.15 / 2.0
+        
+        # Test with slower speed
+        duration = service._estimate_audio_duration(text_length=100, speed_ratio=0.5)
+        assert duration == 30.0  # 100 * 0.15 / 0.5
+
+    @patch('app.services.tts_service.TTSService._get_audio_duration_with_ffmpeg')
+    @patch('app.services.tts_service.TTSService._estimate_audio_duration')
+    def test_duration_detection_fallback(self, mock_estimate, mock_ffmpeg):
+        """Test that estimation is used when ffmpeg fails."""
+        from app.services.tts_service import TTSService
+        
+        # Mock ffmpeg failure and estimation success
+        mock_ffmpeg.return_value = None
+        mock_estimate.return_value = 12.0
+        
+        service = TTSService()
+        
+        # This would be called within convert_text_to_speech
+        ffmpeg_duration = service._get_audio_duration_with_ffmpeg("/path/to/audio.mp3")
+        assert ffmpeg_duration is None
+        
+        estimated_duration = service._estimate_audio_duration(80, 1.0)
+        assert estimated_duration == 12.0
 
     @patch.dict(os.environ, {
         'VOLCANO_TTS_APPID': 'test_app_id',
