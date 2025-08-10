@@ -215,13 +215,15 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             size: response.data.file_size,
             duration: Math.ceil(response.data.text_length * 0.15), // 估算时长（每字符0.15秒）
             url: localUrl, // 使用本地URL
+            serverUrl: response.data.audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
             description: `由"${segment.title}"片段转换生成的语音`,
             metadata: {
               voice_type: selectedVoiceId,
               text_length: response.data.text_length,
               segment_id: segment.id,
-              task_id: taskId
+              task_id: taskId,
+              server_file_name: fileName // 保存服务器文件名
             }
           };
 
