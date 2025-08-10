@@ -19,6 +19,8 @@ interface TimelineToolbarProps {
   onAddTransition: () => void;
   onAddSubtitle: () => void;
   onExport: () => void;
+  isExporting?: boolean; // 导出状态
+  exportProgress?: number; // 导出进度
 }
 
 const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
@@ -36,7 +38,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddEffect,
   onAddTransition,
   onAddSubtitle,
-  onExport
+  onExport,
+  isExporting = false,
+  exportProgress = 0
 }) => {
 
   // 工具按钮配置
@@ -172,13 +176,25 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       action: onExport,
-      icon: (
+      icon: isExporting ? (
+        <div className="relative w-4 h-4">
+          <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+          </svg>
+          {exportProgress > 0 && (
+            <div className="absolute -top-1 -right-1 text-xs bg-blue-500 text-white rounded-full w-3 h-3 flex items-center justify-center text-[8px]">
+              {Math.round(exportProgress)}
+            </div>
+          )}
+        </div>
+      ) : (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
         </svg>
       ),
-      label: '导出',
-      shortcut: 'Ctrl+E'
+      label: isExporting ? `导出中 ${exportProgress > 0 ? `(${Math.round(exportProgress)}%)` : ''}` : '导出',
+      shortcut: 'Ctrl+E',
+      disabled: isExporting
     }
   ];
 

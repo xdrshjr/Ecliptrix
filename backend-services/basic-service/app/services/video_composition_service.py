@@ -345,47 +345,9 @@ class VideoCompositionService:
                     # Create audio mix from audio items
                     audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
                     
-                    if len(request.audio_items) == 1:
-                        # Single audio item - just copy/convert
-                        audio_item = request.audio_items[0]
-                        audio_cmd = [
-                            ffmpeg_path,
-                            '-y',
-                            '-i', audio_item.url,
-                            '-t', str(request.total_duration),
-                            '-af', f'volume={audio_item.volume}',
-                            audio_mix_path
-                        ]
-                        
-                        result = subprocess.run(audio_cmd, capture_output=True, text=True)
-                        if result.returncode != 0:
-                            logger.warning(f"Audio processing failed: {result.stderr}")
-                        else:
-                            logger.info("Single audio track processed successfully")
-                    else:
-                        # Multiple audio items - mix them
-                        logger.info(f"Mixing {len(request.audio_items)} audio tracks")
-                        
-                        # For now, use the first audio item as base
-                        # In a full implementation, you would mix all audio tracks
-                        first_audio = request.audio_items[0]
-                        audio_cmd = [
-                            ffmpeg_path,
-                            '-y',
-                            '-i', first_audio.url,
-                            '-t', str(request.total_duration),
-                            '-af', f'volume={first_audio.volume}',
-                            audio_mix_path
-                        ]
-                        
-                        result = subprocess.run(audio_cmd, capture_output=True, text=True)
-                        if result.returncode != 0:
-                            logger.warning(f"Audio mixing failed: {result.stderr}")
-                        else:
-                            logger.info("Audio tracks mixed successfully")
+                    processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path)
                     
-                    # Add audio to final video if audio processing succeeded
-                    if os.path.exists(audio_mix_path):
+                    if processed_audio_path:
                         logger.info("Adding mixed audio to video...")
                         video_with_audio_path = str(output_path).replace('.mp4', '_with_audio.mp4')
                         
@@ -393,20 +355,46 @@ class VideoCompositionService:
                             ffmpeg_path,
                             '-y',
                             '-i', str(output_path),
-                            '-i', audio_mix_path,
+                            '-i', processed_audio_path,
                             '-c:v', 'copy',
                             '-c:a', 'aac',
+                            '-map', '0:v:0',  # Map video from first input
+                            '-map', '1:a:0',  # Map audio from second input (our processed audio)
                             '-shortest',
                             video_with_audio_path
                         ]
                         
+                        logger.info(f"Running audio-video merge command: {' '.join(audio_video_cmd)}")
+                        logger.info(f"Input video: {output_path} (exists: {os.path.exists(output_path)})")
+                        logger.info(f"Input audio: {processed_audio_path} (exists: {os.path.exists(processed_audio_path)})")
+                        logger.info(f"Output path: {video_with_audio_path}")
+                        
                         result = subprocess.run(audio_video_cmd, capture_output=True, text=True)
+                        
+                        logger.info(f"Audio-video merge result: returncode={result.returncode}")
+                        if result.stdout:
+                            logger.info(f"FFmpeg stdout: {result.stdout}")
+                        if result.stderr:
+                            logger.info(f"FFmpeg stderr: {result.stderr}")
+                        
                         if result.returncode == 0:
-                            # Replace original video with audio version
-                            os.replace(video_with_audio_path, str(output_path))
-                            logger.info("Audio successfully added to video")
+                            # Check if the output file was created and has content
+                            if os.path.exists(video_with_audio_path):
+                                output_size = os.path.getsize(video_with_audio_path)
+                                logger.info(f"Audio-video merge output file created: {output_size} bytes")
+                                
+                                # Replace original video with audio version
+                                os.replace(video_with_audio_path, str(output_path))
+                                logger.info("Audio successfully added to video")
+                                
+                                # Verify final file
+                                final_size = os.path.getsize(output_path)
+                                logger.info(f"Final video file size: {final_size} bytes")
+                            else:
+                                logger.error("Audio-video merge output file was not created")
                         else:
-                            logger.warning(f"Failed to add audio to video: {result.stderr}")
+                            logger.error(f"Failed to add audio to video: returncode={result.returncode}")
+                            logger.error(f"FFmpeg stderr: {result.stderr}")
                             
                 except Exception as e:
                     logger.warning(f"Audio processing error: {str(e)}")
@@ -508,3 +496,232 @@ class VideoCompositionService:
             "file_size": output_path.stat().st_size,
             "composition_id": composition_id
         } 
+
+    def _convert_url_to_local_path(self, url: str) -> str:
+        """
+        Convert a server URL to local file path.
+        Handles both local file paths and server URLs like /api/audio/generated/filename.mp3
+        """
+        logger.info(f"Converting URL to local path: {url}")
+        
+        if url.startswith('/api/audio/generated/'):
+            # Convert server URL to local file path
+            filename = url.replace('/api/audio/generated/', '')
+            local_path = os.path.join('static', 'audio', 'generated', filename)
+            
+            logger.info(f"Converted server URL to local path", {
+                'original_url': url,
+                'local_path': local_path,
+                'exists': os.path.exists(local_path)
+            })
+            
+            if not os.path.exists(local_path):
+                logger.warning(f"Local file does not exist: {local_path}")
+                raise FileNotFoundError(f"Audio file not found: {local_path}")
+            
+            return local_path
+        elif url.startswith('http://') or url.startswith('https://'):
+            # For HTTP URLs, return as-is (ffmpeg can handle them)
+            logger.info(f"Using HTTP URL directly: {url}")
+            return url
+        else:
+            # Assume it's already a local file path
+            logger.info(f"Using local file path: {url}")
+            if not os.path.exists(url):
+                logger.warning(f"Local file does not exist: {url}")
+                raise FileNotFoundError(f"Audio file not found: {url}")
+            return url
+
+    def _process_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str) -> Optional[str]:
+        """
+        Process multiple audio tracks and create a mixed audio file.
+        Returns the path to the mixed audio file, or None if processing failed.
+        """
+        if not request.audio_items:
+            logger.info("No audio items to process")
+            return None
+        
+        logger.info(f"Processing {len(request.audio_items)} audio tracks", {
+            'audio_items': [
+                {
+                    'id': item.id,
+                    'name': item.name,
+                    'url': item.url,
+                    'start_time': item.start_time,
+                    'duration': item.duration,
+                    'volume': item.volume
+                }
+                for item in request.audio_items
+            ]
+        })
+        
+        audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
+        
+        try:
+            if len(request.audio_items) == 1:
+                # Single audio item - process it directly
+                audio_item = request.audio_items[0]
+                local_audio_path = self._convert_url_to_local_path(audio_item.url)
+                
+                logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
+                logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
+                logger.info(f"Total video duration: {request.total_duration}s")
+                
+                # Calculate the actual duration we need
+                if audio_item.start_time > 0:
+                    # Audio starts later, need to pad with silence at the beginning
+                    logger.info("Audio starts after video beginning, creating padded audio track")
+                    
+                    # First create the audio segment
+                    temp_audio_path = os.path.join(temp_dir, "temp_audio.wav")
+                    audio_segment_cmd = [
+                        ffmpeg_path,
+                        '-y',
+                        '-i', local_audio_path,
+                        '-t', str(audio_item.duration),
+                        '-af', f'volume={audio_item.volume}',
+                        '-ar', '44100',
+                        '-ac', '2',
+                        temp_audio_path
+                    ]
+                    
+                    logger.info(f"Creating audio segment: {' '.join(audio_segment_cmd)}")
+                    result = subprocess.run(audio_segment_cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        logger.error(f"Audio segment creation failed: {result.stderr}")
+                        return None
+                    
+                    # Then create silence and combine
+                    silence_duration = audio_item.start_time
+                    final_cmd = [
+                        ffmpeg_path,
+                        '-y',
+                        '-f', 'lavfi',
+                        '-i', f'anullsrc=r=44100:cl=stereo',
+                        '-i', temp_audio_path,
+                        '-filter_complex', f'[0:a]atrim=duration={silence_duration}[silence];[silence][1:a]concat=n=2:v=0:a=1[out]',
+                        '-map', '[out]',
+                        '-t', str(request.total_duration),
+                        audio_mix_path
+                    ]
+                else:
+                    # Audio starts at the beginning, simpler processing
+                    final_cmd = [
+                        ffmpeg_path,
+                        '-y',
+                        '-i', local_audio_path,
+                        '-af', f'volume={audio_item.volume}',
+                        '-ar', '44100',
+                        '-ac', '2',
+                        '-t', str(request.total_duration),  # Ensure audio matches video duration
+                        audio_mix_path
+                    ]
+                
+                logger.info(f"Running final audio command: {' '.join(final_cmd)}")
+                result = subprocess.run(final_cmd, capture_output=True, text=True)
+                
+                logger.info(f"Audio processing result: returncode={result.returncode}")
+                if result.stdout:
+                    logger.info(f"Audio FFmpeg stdout: {result.stdout}")
+                if result.stderr:
+                    logger.info(f"Audio FFmpeg stderr: {result.stderr}")
+                
+                if result.returncode != 0:
+                    logger.error(f"Single audio processing failed", {
+                        'command': ' '.join(final_cmd),
+                        'stderr': result.stderr,
+                        'stdout': result.stdout
+                    })
+                    return None
+                else:
+                    # Verify the output file
+                    if os.path.exists(audio_mix_path):
+                        audio_size = os.path.getsize(audio_mix_path)
+                        logger.info(f"Single audio track processed successfully, output size: {audio_size} bytes")
+                        return audio_mix_path
+                    else:
+                        logger.error("Audio processing completed but output file not found")
+                        return None
+                    
+            else:
+                # Multiple audio items - create complex mix
+                logger.info(f"Mixing {len(request.audio_items)} audio tracks")
+                
+                # Create a silent base track with the total duration
+                base_audio_path = os.path.join(temp_dir, "silent_base.wav")
+                silent_cmd = [
+                    ffmpeg_path,
+                    '-y',
+                    '-f', 'lavfi',
+                    '-i', f'anullsrc=r=44100:cl=stereo',
+                    '-t', str(request.total_duration),
+                    '-ar', '44100',
+                    '-ac', '2',
+                    base_audio_path
+                ]
+                
+                logger.info(f"Creating silent base track: {' '.join(silent_cmd)}")
+                result = subprocess.run(silent_cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    logger.error(f"Failed to create silent base track: {result.stderr}")
+                    return None
+                
+                # Process each audio item and overlay on the base
+                current_mix = base_audio_path
+                
+                for i, audio_item in enumerate(request.audio_items):
+                    try:
+                        local_audio_path = self._convert_url_to_local_path(audio_item.url)
+                        temp_mix_path = os.path.join(temp_dir, f"temp_mix_{i}.wav")
+                        
+                        logger.info(f"Overlaying audio {i+1}/{len(request.audio_items)}: {audio_item.name}")
+                        
+                        # Create overlay command
+                        overlay_cmd = [
+                            ffmpeg_path,
+                            '-y',
+                            '-i', current_mix,  # Base mix
+                            '-i', local_audio_path,  # Audio to overlay
+                            '-filter_complex',
+                            f'[1:a]adelay={int(audio_item.start_time * 1000)}|{int(audio_item.start_time * 1000)},volume={audio_item.volume}[delayed];[0:a][delayed]amix=inputs=2:duration=first:dropout_transition=3[out]',
+                            '-map', '[out]',
+                            '-ar', '44100',
+                            '-ac', '2',
+                            temp_mix_path
+                        ]
+                        
+                        logger.info(f"Running overlay command: {' '.join(overlay_cmd)}")
+                        result = subprocess.run(overlay_cmd, capture_output=True, text=True)
+                        
+                        if result.returncode != 0:
+                            logger.error(f"Audio overlay failed for item {i+1}", {
+                                'command': ' '.join(overlay_cmd),
+                                'stderr': result.stderr,
+                                'audio_item': audio_item.name
+                            })
+                            continue
+                        
+                        # Update current mix to the new temp file
+                        if current_mix != base_audio_path and os.path.exists(current_mix):
+                            os.remove(current_mix)
+                        current_mix = temp_mix_path
+                        
+                        logger.info(f"Successfully overlaid audio: {audio_item.name}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process audio item {audio_item.name}: {str(e)}")
+                        continue
+                
+                # Move final mix to output path
+                if current_mix != base_audio_path:
+                    os.rename(current_mix, audio_mix_path)
+                    logger.info("Audio mixing completed successfully")
+                    return audio_mix_path
+                else:
+                    logger.warning("No audio tracks were successfully processed")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Audio processing failed with exception: {str(e)}")
+            return None 

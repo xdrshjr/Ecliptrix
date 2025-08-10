@@ -101,6 +101,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [activeTool, setActiveTool] = useState<TimelineToolType>('select');
   const [history, setHistory] = useState<TimelineAction[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isExporting, setIsExporting] = useState(false); // 导出状态
+  const [exportProgress, setExportProgress] = useState(0); // 导出进度
 
   // 通知父组件时间轴状态变化
   useEffect(() => {
@@ -836,6 +838,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       timestamp: new Date().toISOString()
     });
 
+    // 设置导出状态
+    setIsExporting(true);
+    setExportProgress(0);
+
     try {
       // Import the video composition API
       const { videoCompositionAPI } = await import('@/lib/api/videoComposition');
@@ -845,10 +851,19 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       const audioItems: any[] = [];
       const subtitleItems: any[] = [];
 
+      console.log(`[TimelinePanel] 开始处理轨道内容`, {
+        totalTracks: timelineState.tracks.length,
+        timestamp: new Date().toISOString()
+      });
+
       // Process each track
       timelineState.tracks.forEach(track => {
         if (!track.isVisible || track.isLocked) {
-          console.log(`[TimelinePanel] 跳过轨道 ${track.id} (不可见或已锁定)`);
+          console.log(`[TimelinePanel] 跳过轨道 ${track.id} (不可见或已锁定)`, {
+            trackName: track.name,
+            isVisible: track.isVisible,
+            isLocked: track.isLocked
+          });
           return;
         }
 
@@ -867,7 +882,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 volume: item.volume || 1.0,
                 opacity: item.opacity || 1.0
               });
-              console.log(`[TimelinePanel] 添加视频项目: ${item.name}`);
+              console.log(`[TimelinePanel] 添加视频项目`, {
+                itemId: item.id,
+                itemName: item.name,
+                materialUrl: material.url,
+                trackId: track.id
+              });
             } else {
               console.warn(`[TimelinePanel] 未找到素材 ${item.materialId} 对应的URL`);
             }
@@ -875,16 +895,35 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
             // Find the material to get the URL
             const material = materials?.find(m => m.id === item.materialId);
             if (material) {
+              // 优先使用服务器URL，如果没有则使用普通URL
+              const audioUrl = material.serverUrl || material.url;
+              
+              console.log(`[TimelinePanel] 处理音频项目`, {
+                itemId: item.id,
+                itemName: item.name,
+                materialUrl: material.url,
+                serverUrl: material.serverUrl,
+                finalUrl: audioUrl,
+                trackId: track.id
+              });
+
               audioItems.push({
                 id: item.id,
                 name: item.name,
-                url: material.url,
+                url: audioUrl,
                 start_time: item.startTime,
                 duration: item.duration,
                 track_id: track.id,
                 volume: item.volume || 1.0
               });
-              console.log(`[TimelinePanel] 添加音频项目: ${item.name}`);
+              console.log(`[TimelinePanel] 添加音频项目`, {
+                itemId: item.id,
+                itemName: item.name,
+                finalUrl: audioUrl,
+                trackId: track.id
+              });
+            } else {
+              console.warn(`[TimelinePanel] 未找到音频素材 ${item.materialId} 对应的URL`);
             }
           } else if (item.type === 'subtitle') {
             subtitleItems.push({
@@ -914,8 +953,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
-        totalDuration: timelineState.totalDuration
+        totalDuration: timelineState.totalDuration,
+        audioItems: audioItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          url: item.url,
+          isServerUrl: item.url.includes('/api/audio/generated/')
+        }))
       });
+
+      setExportProgress(10); // 设置初始进度
 
       // Create composition request
       const compositionRequest = {
@@ -932,6 +979,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         output_format: 'mp4'
       };
 
+      setExportProgress(20); // 更新进度
+
       // Show loading state (you might want to add a loading UI here)
       console.log(`[TimelinePanel] 发送合成请求...`);
       
@@ -947,9 +996,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         status: compositionResponse.status
       });
 
+      setExportProgress(30); // 更新进度
+
       // If composition is already completed (unlikely but possible)
       if (compositionResponse.status === 'completed') {
         console.log(`[TimelinePanel] 合成立即完成，开始下载`);
+        setExportProgress(100);
         await videoCompositionAPI.triggerDownload(
           compositionResponse.composition_id,
           compositionRequest.task_id,
@@ -964,13 +1016,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       await videoCompositionAPI.pollCompositionStatus(
         compositionResponse.composition_id,
         (status) => {
+          const progressPercent = Math.max(30, Math.min(95, 30 + (status.progress * 65)));
+          setExportProgress(progressPercent);
           console.log(`[TimelinePanel] 合成进度更新`, {
             progress: (status.progress * 100).toFixed(1) + '%',
+            displayProgress: progressPercent.toFixed(1) + '%',
             status: status.status
           });
           // Here you could update a progress UI
         }
       );
+
+      setExportProgress(95); // 设置接近完成的进度
 
       // Download completed video
       console.log(`[TimelinePanel] 合成完成，开始自动下载...`);
@@ -980,11 +1037,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
       );
 
+      setExportProgress(100); // 完成
       console.log(`[TimelinePanel] 视频导出完成`);
       
     } catch (error) {
       console.error(`[TimelinePanel] 导出失败`, error);
       alert(`视频导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      // 重置导出状态
+      setTimeout(() => {
+        setIsExporting(false);
+        setExportProgress(0);
+      }, 2000); // 2秒后重置状态
     }
   }, [timelineState, materials]);
 
@@ -1007,6 +1071,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
         onExport={handleExport}
+        isExporting={isExporting}
+        exportProgress={exportProgress}
       />
 
       {/* 时间刻度尺 */}

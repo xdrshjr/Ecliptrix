@@ -83,7 +83,8 @@ export interface MaterialItem {
   width?: number; // 宽度（像素），仅用于视频和图片
   height?: number; // 高度（像素），仅用于视频和图片
   thumbnailUrl?: string; // 缩略图URL
-  url: string; // 文件URL
+  url: string; // 文件URL（本地blob URL或远程URL）
+  serverUrl?: string; // 服务器上的文件URL，用于导出合成（主要用于TTS生成的音频文件）
   createdAt: Date;
   tags?: string[]; // 标签
   description?: string; // 描述
