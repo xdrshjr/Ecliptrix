@@ -206,6 +206,13 @@ class VideoCompositionService:
         
         logger.info(f"Starting video composition {composition_id} for task {request.task_id}")
         logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
+        logger.info(f"Total composition duration: {request.total_duration}s")
+        
+        # Log individual video and audio items for debugging
+        for i, video_item in enumerate(request.video_items):
+            logger.info(f"Video item {i+1}: start={video_item.start_time}s, duration={video_item.duration}s, end={video_item.start_time + video_item.duration}s")
+        for i, audio_item in enumerate(request.audio_items):
+            logger.info(f"Audio item {i+1}: start={audio_item.start_time}s, duration={audio_item.duration}s, end={audio_item.start_time + audio_item.duration}s")
         
         # Store composition info
         self.compositions[composition_id] = {
@@ -360,7 +367,8 @@ class VideoCompositionService:
                             '-c:a', 'aac',
                             '-map', '0:v:0',  # Map video from first input
                             '-map', '1:a:0',  # Map audio from second input (our processed audio)
-                            '-shortest',
+                            # Removed '-shortest' to prevent video truncation when audio is shorter
+                            # Audio is already processed to match video duration via total_duration
                             video_with_audio_path
                         ]
                         
