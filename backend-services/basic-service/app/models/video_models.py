@@ -98,6 +98,10 @@ class VideoCompositionItem(BaseModel):
     track_id: str = Field(..., description="ID of the track this item belongs to")
     volume: float = Field(1.0, ge=0, le=2, description="Volume level (0.0 to 2.0)")
     opacity: float = Field(1.0, ge=0, le=1, description="Opacity level (0.0 to 1.0)")
+    
+    # 新增：视频剪辑属性，用于支持时间轴上的素材缩放
+    clip_start: float = Field(0.0, ge=0, description="Start time within the source video file (seconds)")
+    clip_end: float = Field(..., gt=0, description="End time within the source video file (seconds)")
 
 
 class AudioCompositionItem(BaseModel):
@@ -111,6 +115,10 @@ class AudioCompositionItem(BaseModel):
     duration: float = Field(..., gt=0, description="Duration of the audio segment (seconds)")
     track_id: str = Field(..., description="ID of the track this item belongs to")
     volume: float = Field(1.0, ge=0, le=2, description="Volume level (0.0 to 2.0)")
+    
+    # 新增：音频剪辑属性，用于支持时间轴上的素材缩放
+    clip_start: float = Field(0.0, ge=0, description="Start time within the source audio file (seconds)")
+    clip_end: float = Field(..., gt=0, description="End time within the source audio file (seconds)")
 
 
 class SubtitleCompositionItem(BaseModel):

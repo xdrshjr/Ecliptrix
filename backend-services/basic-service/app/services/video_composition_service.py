@@ -132,7 +132,7 @@ class VideoCompositionService:
             return {"success": False, "error": f"Download error: {str(e)}"}
     
     def _normalize_video(self, video_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Normalize a single video to target specifications."""
+        """Normalize a single video to target specifications with optional clipping."""
         thread_id = threading.current_thread().ident
         video_path = video_info['video_path']
         index = video_info['index']
@@ -142,7 +142,12 @@ class VideoCompositionService:
         target_fps = video_info['target_fps']
         ffmpeg_path = video_info['ffmpeg_path']
         
+        # 新增：剪辑参数
+        clip_start = video_info.get('clip_start', 0.0)
+        clip_end = video_info.get('clip_end', None)
+        
         logger.info(f"[Thread {thread_id}] Normalizing video {index + 1}")
+        logger.info(f"[Thread {thread_id}] Clipping parameters: start={clip_start}s, end={clip_end}s")
         
         # Get video properties
         width, height, fps = self._get_video_properties(video_path)
@@ -152,19 +157,46 @@ class VideoCompositionService:
         # Get video duration
         cap = cv2.VideoCapture(video_path)
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        video_duration = frame_count / fps if fps > 0 else 0
+        original_duration = frame_count / fps if fps > 0 else 0
         cap.release()
         
-        logger.info(f"[Thread {thread_id}] Video properties: {width}x{height}, {fps:.2f}fps, {video_duration:.2f}s")
+        # 计算实际的剪辑参数
+        actual_clip_start = max(0.0, clip_start)
+        actual_clip_end = min(original_duration, clip_end) if clip_end is not None else original_duration
+        clip_duration = actual_clip_end - actual_clip_start
         
-        # Normalize video
+        logger.info(f"[Thread {thread_id}] Video properties: {width}x{height}, {fps:.2f}fps, original={original_duration:.2f}s")
+        logger.info(f"[Thread {thread_id}] Clipping: start={actual_clip_start:.2f}s, end={actual_clip_end:.2f}s, duration={clip_duration:.2f}s")
+        
+        # Validate clipping parameters
+        if clip_duration <= 0:
+            error_msg = f"Invalid clipping parameters: clip duration is {clip_duration:.2f}s"
+            logger.error(f"[Thread {thread_id}] {error_msg}")
+            return {"success": False, "error": error_msg, "index": index}
+        
+        # Normalize video with clipping
         normalized_path = os.path.join(temp_dir, f"normalized_{index}.mp4")
         vf_params = f'scale={target_width}:{target_height},setsar=1:1'
         
+        # 构建FFmpeg命令，包含剪辑参数
         normalize_cmd = [
             ffmpeg_path,
-            '-y',
-            '-i', video_path,
+            '-y'
+        ]
+        
+        # 添加剪辑参数
+        if actual_clip_start > 0:
+            normalize_cmd.extend(['-ss', str(actual_clip_start)])
+        
+        normalize_cmd.extend([
+            '-i', video_path
+        ])
+        
+        # 如果需要限制时长
+        if clip_duration < original_duration:
+            normalize_cmd.extend(['-t', str(clip_duration)])
+        
+        normalize_cmd.extend([
             '-vf', vf_params,
             '-r', str(target_fps),
             '-c:v', 'libx264',
@@ -174,9 +206,10 @@ class VideoCompositionService:
             '-movflags', '+faststart',
             '-avoid_negative_ts', 'make_zero',
             normalized_path
-        ]
+        ])
         
         try:
+            logger.info(f"[Thread {thread_id}] Running FFmpeg command: {' '.join(normalize_cmd)}")
             result = subprocess.run(normalize_cmd, capture_output=True, text=True)
             
             if result.returncode != 0:
@@ -184,11 +217,11 @@ class VideoCompositionService:
                 logger.error(f"[Thread {thread_id}] {error_msg}")
                 return {"success": False, "error": error_msg, "index": index}
             
-            logger.info(f"[Thread {thread_id}] Video {index + 1} normalized successfully")
+            logger.info(f"[Thread {thread_id}] Video {index + 1} normalized and clipped successfully")
             return {
                 "success": True,
                 "normalized_path": normalized_path,
-                "used_duration": video_duration,
+                "used_duration": clip_duration,
                 "index": index
             }
             
@@ -207,6 +240,42 @@ class VideoCompositionService:
         logger.info(f"Starting video composition {composition_id} for task {request.task_id}")
         logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
         logger.info(f"Total composition duration: {request.total_duration}s")
+        
+        # 确保所有项目按照时间线位置（start_time）正确排序
+        # 这是一个保障措施，确保即使前端没有正确排序，后端也能保证正确的合成顺序
+        original_video_order = [(i, item.start_time) for i, item in enumerate(request.video_items)]
+        original_audio_order = [(i, item.start_time) for i, item in enumerate(request.audio_items)]
+        original_subtitle_order = [(i, item.start_time) for i, item in enumerate(request.subtitle_items)]
+        
+        request.video_items.sort(key=lambda x: x.start_time)
+        request.audio_items.sort(key=lambda x: x.start_time)
+        request.subtitle_items.sort(key=lambda x: x.start_time)
+        
+        sorted_video_order = [(i, item.start_time) for i, item in enumerate(request.video_items)]
+        sorted_audio_order = [(i, item.start_time) for i, item in enumerate(request.audio_items)]
+        sorted_subtitle_order = [(i, item.start_time) for i, item in enumerate(request.subtitle_items)]
+        
+        # 记录排序结果
+        video_reordered = original_video_order != sorted_video_order
+        audio_reordered = original_audio_order != sorted_audio_order
+        subtitle_reordered = original_subtitle_order != sorted_subtitle_order
+        
+        logger.info(f"Timeline order verification completed", extra={
+            "video_items_reordered": video_reordered,
+            "audio_items_reordered": audio_reordered, 
+            "subtitle_items_reordered": subtitle_reordered,
+            "original_video_order": original_video_order,
+            "sorted_video_order": sorted_video_order,
+            "original_audio_order": original_audio_order,
+            "sorted_audio_order": sorted_audio_order
+        })
+        
+        if video_reordered:
+            logger.warning("Video items were reordered by backend - frontend should ensure proper timeline order")
+        if audio_reordered:
+            logger.warning("Audio items were reordered by backend - frontend should ensure proper timeline order")
+        if subtitle_reordered:
+            logger.warning("Subtitle items were reordered by backend - frontend should ensure proper timeline order")
         
         # Log individual video and audio items for debugging
         for i, video_item in enumerate(request.video_items):
@@ -272,6 +341,9 @@ class VideoCompositionService:
             
             video_tasks = []
             for i, video_path in enumerate(downloaded_videos):
+                # 获取对应的视频项目以获取剪辑信息
+                video_item = request.video_items[i] if i < len(request.video_items) else None
+                
                 video_info = {
                     'video_path': video_path,
                     'index': i,
@@ -279,9 +351,16 @@ class VideoCompositionService:
                     'target_width': target_width,
                     'target_height': target_height,
                     'target_fps': target_fps,
-                    'ffmpeg_path': ffmpeg_path
+                    'ffmpeg_path': ffmpeg_path,
+                    # 新增：剪辑参数
+                    'clip_start': video_item.clip_start if video_item else 0.0,
+                    'clip_end': video_item.clip_end if video_item else None
                 }
                 video_tasks.append(video_info)
+                
+                # 记录剪辑信息
+                if video_item:
+                    logger.info(f"Video {i+1} clipping: {video_item.clip_start:.2f}s - {video_item.clip_end:.2f}s")
             
             normalized_videos = []
             with ThreadPoolExecutor(max_workers=5) as executor:
@@ -573,6 +652,7 @@ class VideoCompositionService:
                 
                 logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
                 logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
+                logger.info(f"Audio clipping: start={audio_item.clip_start}s, end={audio_item.clip_end}s")
                 logger.info(f"Total video duration: {request.total_duration}s")
                 
                 # Calculate the actual duration we need
@@ -580,18 +660,32 @@ class VideoCompositionService:
                     # Audio starts later, need to pad with silence at the beginning
                     logger.info("Audio starts after video beginning, creating padded audio track")
                     
-                    # First create the audio segment
+                    # First create the audio segment with clipping
                     temp_audio_path = os.path.join(temp_dir, "temp_audio.wav")
                     audio_segment_cmd = [
                         ffmpeg_path,
-                        '-y',
-                        '-i', local_audio_path,
-                        '-t', str(audio_item.duration),
+                        '-y'
+                    ]
+                    
+                    # 添加音频剪辑参数
+                    if audio_item.clip_start > 0:
+                        audio_segment_cmd.extend(['-ss', str(audio_item.clip_start)])
+                    
+                    audio_segment_cmd.extend([
+                        '-i', local_audio_path
+                    ])
+                    
+                    # 计算实际的音频时长（考虑剪辑）
+                    clip_duration = audio_item.clip_end - audio_item.clip_start
+                    actual_duration = min(audio_item.duration, clip_duration)
+                    
+                    audio_segment_cmd.extend([
+                        '-t', str(actual_duration),
                         '-af', f'volume={audio_item.volume}',
                         '-ar', '44100',
                         '-ac', '2',
                         temp_audio_path
-                    ]
+                    ])
                     
                     logger.info(f"Creating audio segment: {' '.join(audio_segment_cmd)}")
                     result = subprocess.run(audio_segment_cmd, capture_output=True, text=True)
@@ -613,17 +707,31 @@ class VideoCompositionService:
                         audio_mix_path
                     ]
                 else:
-                    # Audio starts at the beginning, simpler processing
+                    # Audio starts at the beginning, simpler processing with clipping
                     final_cmd = [
                         ffmpeg_path,
-                        '-y',
-                        '-i', local_audio_path,
+                        '-y'
+                    ]
+                    
+                    # 添加音频剪辑参数
+                    if audio_item.clip_start > 0:
+                        final_cmd.extend(['-ss', str(audio_item.clip_start)])
+                    
+                    final_cmd.extend([
+                        '-i', local_audio_path
+                    ])
+                    
+                    # 计算实际的音频时长（考虑剪辑）
+                    clip_duration = audio_item.clip_end - audio_item.clip_start
+                    actual_duration = min(request.total_duration, clip_duration)
+                    
+                    final_cmd.extend([
                         '-af', f'volume={audio_item.volume}',
                         '-ar', '44100',
                         '-ac', '2',
-                        '-t', str(request.total_duration),  # Ensure audio matches video duration
+                        '-t', str(actual_duration),  # Use clipped duration
                         audio_mix_path
-                    ]
+                    ])
                 
                 logger.info(f"Running final audio command: {' '.join(final_cmd)}")
                 result = subprocess.run(final_cmd, capture_output=True, text=True)

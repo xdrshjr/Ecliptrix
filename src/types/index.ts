@@ -125,6 +125,11 @@ export interface TimelineItem {
   volume?: number;   // 音量 (0-1)
   opacity?: number;  // 透明度 (0-1)
   isSelected?: boolean; // 是否选中
+  
+  // 新增：视频剪辑属性，用于支持时间轴上的素材缩放
+  clipStart?: number;      // 原始素材中的开始时间（秒）
+  clipEnd?: number;        // 原始素材中的结束时间（秒）
+  originalDuration?: number; // 原始素材的总时长（秒）
 }
 
 export interface Track {
