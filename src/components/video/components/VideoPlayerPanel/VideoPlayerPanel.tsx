@@ -77,12 +77,14 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     if (playbackMode === 'composition' && compositionPlayback && onNextSequence) {
       const currentIndex = compositionPlayback.currentSequenceIndex;
       const nextIndex = currentIndex + 1;
+      const currentSequence = compositionPlayback.videoSequences[currentIndex];
       
       logger.info('视频播放结束，尝试切换到下一个', {
         currentIndex,
         nextIndex,
         totalSequences: compositionPlayback.videoSequences.length,
-        currentSequence: compositionPlayback.videoSequences[currentIndex]?.name
+        currentSequence: currentSequence?.name,
+        currentSequenceClipEnd: currentSequence?.clipEnd?.toFixed(2) || 'N/A'
       });
 
       // 检查是否有下一个视频
@@ -93,19 +95,25 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         const hasNext = onNextSequence();
         
         if (hasNext && nextSequence && videoRef.current) {
-          logger.info('加载下一个视频', {
+          // 计算下一个视频的裁剪起始位置
+          const nextClipStart = nextSequence.clipStart || 0;
+          
+          logger.info('加载下一个视频（考虑裁剪）', {
             nextIndex,
             sequenceName: nextSequence.name,
-            sequenceUrl: nextSequence.url
+            sequenceUrl: nextSequence.url,
+            clipStart: nextClipStart.toFixed(2),
+            clipEnd: nextSequence.clipEnd?.toFixed(2) || 'N/A'
           });
           
           // 直接使用nextSequence，因为我们知道它是下一个
           videoRef.current.src = nextSequence.url;
-          videoRef.current.currentTime = 0; // 重置到开头
+          videoRef.current.currentTime = nextClipStart; // 从裁剪起始位置开始
           videoRef.current.play().catch(error => {
-            logger.error('自动播放下一个视频失败', error, {
+            logger.error('自动播放下一个视频失败（裁剪模式）', error, {
               nextIndex,
-              sequenceName: nextSequence.name
+              sequenceName: nextSequence.name,
+              clipStart: nextClipStart.toFixed(2)
             });
           });
         }
@@ -132,11 +140,13 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       // 根据当前播放的视频URL找到正确的序列索引，避免状态更新延迟问题
       let actualSequenceIndex = 0;
       let foundSequence = false;
+      let currentSequence = null;
       
       for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
         const sequence = compositionPlayback.videoSequences[i];
         if (currentVideoSrc.includes(sequence.url) || sequence.url.includes(currentVideoSrc.split('/').pop() || '')) {
           actualSequenceIndex = i;
+          currentSequence = sequence;
           foundSequence = true;
           break;
         }
@@ -145,10 +155,37 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       // 如果没有找到匹配的序列，使用状态中的索引作为后备
       if (!foundSequence) {
         actualSequenceIndex = compositionPlayback.currentSequenceIndex;
+        currentSequence = compositionPlayback.videoSequences[actualSequenceIndex];
         logger.warn('未找到匹配的视频序列，使用状态中的索引', {
           currentVideoSrc,
           fallbackIndex: actualSequenceIndex
         });
+      }
+      
+      // 检查是否超出裁剪范围，如果是则自动切换到下一个视频
+      if (currentSequence) {
+        const clipEnd = currentSequence.clipEnd || currentSequence.originalDuration || currentSequence.duration;
+        if (videoCurrentTime >= clipEnd) {
+          logger.info('当前视频播放超出裁剪范围，触发切换', {
+            videoCurrentTime: videoCurrentTime.toFixed(2),
+            clipEnd: clipEnd.toFixed(2),
+            sequenceName: currentSequence.name
+          });
+          handleVideoEnded();
+          return;
+        }
+      }
+      
+      // 计算timeline上的相对时间（考虑裁剪）
+      let timelineRelativeTime = videoCurrentTime;
+      if (currentSequence) {
+        const clipStart = currentSequence.clipStart || 0;
+        const clipEnd = currentSequence.clipEnd || currentSequence.originalDuration || currentSequence.duration;
+        const clipDuration = clipEnd - clipStart;
+        
+        // 将视频实际时间映射回timeline时间
+        timelineRelativeTime = (videoCurrentTime - clipStart) * currentSequence.duration / clipDuration;
+        timelineRelativeTime = Math.max(0, Math.min(timelineRelativeTime, currentSequence.duration));
       }
       
       // 计算组合播放的总时间，使用实际的序列索引
@@ -156,17 +193,20 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       for (let i = 0; i < actualSequenceIndex; i++) {
         accumulatedTime += compositionPlayback.videoSequences[i].duration;
       }
-      accumulatedTime += videoCurrentTime;
+      accumulatedTime += timelineRelativeTime;
       
       setCompositionCurrentTime(accumulatedTime);
       
-      logger.info('组合播放时间更新', {
+      logger.info('组合播放时间更新（裁剪模式）', {
         videoCurrentTime: videoCurrentTime.toFixed(2),
+        timelineRelativeTime: timelineRelativeTime.toFixed(2),
         stateSequenceIndex: compositionPlayback.currentSequenceIndex,
         actualSequenceIndex: actualSequenceIndex,
         accumulatedTime: accumulatedTime.toFixed(2),
         totalSequences: compositionPlayback.videoSequences.length,
-        foundSequence
+        foundSequence,
+        clipStart: currentSequence?.clipStart?.toFixed(2) || '0.00',
+        clipEnd: currentSequence?.clipEnd?.toFixed(2) || 'N/A'
       });
       
       // 通知父组件时间更新
@@ -176,10 +216,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
 
       // 同步时间到timeline（关键修改）
       if (onTimelineTimeUpdate) {
-        logger.info('同步时间到timeline', {
+        logger.info('同步时间到timeline（裁剪模式）', {
           currentTime: accumulatedTime.toFixed(2),
           playbackMode: 'composition',
-          actualSequenceIndex
+          actualSequenceIndex,
+          timelineRelativeTime: timelineRelativeTime.toFixed(2)
         });
         onTimelineTimeUpdate(accumulatedTime);
       }
@@ -200,7 +241,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         onTimelineTimeUpdate(videoCurrentTime);
       }
     }
-  }, [playbackMode, compositionPlayback, onCompositionTimeUpdate, onTimelineTimeUpdate, logger]);
+  }, [playbackMode, compositionPlayback, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, logger]);
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(() => {
@@ -239,24 +280,39 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
 
             const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
             if (targetSequence) {
-              logger.info('开始组合播放，从timeline当前位置开始', {
+              // 计算在原始视频文件中的实际播放时间，考虑裁剪
+              const clipStart = targetSequence.clipStart || 0;
+              const clipEnd = targetSequence.clipEnd || targetSequence.originalDuration || targetSequence.duration;
+              const clipDuration = clipEnd - clipStart;
+              
+              // 将timeline时间映射到裁剪后的视频时间
+              const actualVideoTime = clipStart + (targetVideoTime * clipDuration / targetSequence.duration);
+              
+              logger.info('开始组合播放，从timeline当前位置开始（考虑裁剪）', {
                 timelineCurrentTime: startTime.toFixed(2),
                 targetSequenceIndex,
                 targetSequenceName: targetSequence.name,
                 targetSequenceUrl: targetSequence.url,
                 targetVideoTime: targetVideoTime.toFixed(2),
+                clipStart: clipStart.toFixed(2),
+                clipEnd: clipEnd.toFixed(2),
+                clipDuration: clipDuration.toFixed(2),
+                actualVideoTime: actualVideoTime.toFixed(2),
+                isTrimmed: clipStart > 0 || clipEnd < (targetSequence.originalDuration || targetSequence.duration),
                 accumulatedTime: accumulatedTime.toFixed(2)
               });
               
               videoRef.current.src = targetSequence.url;
-              videoRef.current.currentTime = Math.max(0, targetVideoTime); // 从计算的时间开始
+              videoRef.current.currentTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd)); // 确保在裁剪范围内
               setCompositionCurrentTime(startTime);
               
               // 更新当前序列索引
               if (compositionPlayback.currentSequenceIndex !== targetSequenceIndex) {
-                logger.info('播放开始时切换视频序列', {
+                logger.info('播放开始时切换视频序列（裁剪模式）', {
                   previousSequenceIndex: compositionPlayback.currentSequenceIndex,
-                  newSequenceIndex: targetSequenceIndex
+                  newSequenceIndex: targetSequenceIndex,
+                  clipStart: clipStart.toFixed(2),
+                  clipEnd: clipEnd.toFixed(2)
                 });
                 
                 if (onSequenceIndexUpdate) {
@@ -265,10 +321,13 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
               }
               
               videoRef.current.play().catch(error => {
-                logger.error('开始播放组合视频失败', error, {
+                logger.error('开始播放组合视频失败（裁剪模式）', error, {
                   sequenceIndex: targetSequenceIndex,
                   sequenceName: targetSequence.name,
-                  startTime: targetVideoTime.toFixed(2)
+                  startTime: targetVideoTime.toFixed(2),
+                  actualVideoTime: actualVideoTime.toFixed(2),
+                  clipStart: clipStart.toFixed(2),
+                  clipEnd: clipEnd.toFixed(2)
                 });
               });
             }

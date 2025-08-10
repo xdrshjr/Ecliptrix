@@ -938,6 +938,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 itemName: item.name,
                 materialUrl: material.url,
                 trackId: track.id,
+                startTime: item.startTime.toFixed(2),
                 clipStart: (item.clipStart || 0).toFixed(2),
                 clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
                 clipDuration: ((item.clipEnd || (item.originalDuration || item.duration)) - (item.clipStart || 0)).toFixed(2),
@@ -979,6 +980,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 itemName: item.name,
                 finalUrl: audioUrl,
                 trackId: track.id,
+                startTime: item.startTime.toFixed(2),
                 clipStart: (item.clipStart || 0).toFixed(2),
                 clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
                 clipDuration: ((item.clipEnd || (item.originalDuration || item.duration)) - (item.clipStart || 0)).toFixed(2),
@@ -999,34 +1001,34 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
               font_color: '#FFFFFF',
               position: 'bottom'
             });
-            console.log(`[TimelinePanel] 添加字幕项目: ${item.name}`);
           }
         });
       });
 
-      // 关键修复：按照时间线位置（startTime）排序所有项目，确保导出视频的正确顺序
-      // 这样可以保证最终合成的视频按照用户在时间线上从左到右摆放的顺序进行
+      // 关键修改：确保前端按照正确的timeline顺序排序，后端就不需要重新排序
+      // 按start_time排序所有项目，确保时间轴顺序正确
       videoItems.sort((a, b) => a.start_time - b.start_time);
       audioItems.sort((a, b) => a.start_time - b.start_time);
       subtitleItems.sort((a, b) => a.start_time - b.start_time);
 
-      console.log(`[TimelinePanel] 项目排序完成`, {
-        videoItemsOrder: videoItems.map((item, index) => ({
-          index: index + 1,
+      console.log(`[TimelinePanel] 完成前端排序`, {
+        videoItemsCount: videoItems.length,
+        audioItemsCount: audioItems.length,
+        subtitleItemsCount: subtitleItems.length,
+        videoOrder: videoItems.map((item, index) => ({
+          index,
           id: item.id,
           name: item.name,
           start_time: item.start_time.toFixed(2),
-          duration: item.duration.toFixed(2),
-          end_time: (item.start_time + item.duration).toFixed(2)
+          track_id: item.track_id
         })),
-        audioItemsOrder: audioItems.map((item, index) => ({
-          index: index + 1,
+        audioOrder: audioItems.map((item, index) => ({
+          index,
           id: item.id,
           name: item.name,
           start_time: item.start_time.toFixed(2),
-          duration: item.duration.toFixed(2)
-        })),
-        sortingTimestamp: new Date().toISOString()
+          track_id: item.track_id
+        }))
       });
 
       // Validate we have content to export
