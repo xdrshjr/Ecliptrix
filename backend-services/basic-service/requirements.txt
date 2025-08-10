@@ -6,4 +6,9 @@ httpx==0.25.2
 requests==2.31.0
 pytest==7.4.3
 pytest-asyncio==0.21.1
-python-multipart==0.0.6 
+python-multipart==0.0.6
+
+# Video composition dependencies with NumPy compatibility
+numpy<2.0.0
+opencv-python==4.8.1.78
+pydub==0.25.1 
