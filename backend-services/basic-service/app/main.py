@@ -237,6 +237,10 @@ app.include_router(video_router.router, prefix="/api")
 from app.routers import tts_router
 app.include_router(tts_router.router, prefix="/api")
 
+# Import and include Supabase router
+from app.routers import supabase_router
+app.include_router(supabase_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

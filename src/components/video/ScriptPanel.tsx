@@ -183,20 +183,38 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       setTtsProgress(prev => ({ ...prev, [segment.id]: 100 }));
 
       if (response.success && onAddMaterial) {
-        // 提取文件名（从URL中获取）
+        // 获取和验证音频URL
         const audioUrl = response.data.audio_url;
-        const fileName = audioUrl.split('/').pop() || `audio_${segment.id}_${Date.now()}.mp3`;
+        // 只对公共URL清理查询参数，保留签名URL的token
+        const cleanAudioUrl = audioUrl.includes('/object/sign/') ? audioUrl : audioUrl.split('?')[0];
+        const fileName = audioUrl.split('/').pop()?.split('?')[0] || `audio_${segment.id}_${Date.now()}.mp3`;
         
         console.log('[ScriptPanel] 语音转换成功，开始下载到本地', {
           segmentId: segment.id,
-          audioUrl: response.data.audio_url,
+          originalAudioUrl: response.data.audio_url,
+          cleanAudioUrl: cleanAudioUrl,
           fileName: fileName,
           fileSize: response.data.file_size
         });
 
         try {
-          // 下载音频文件到本地
-          const audioBlob = await downloadAudioFile(fileName);
+          // 直接从Supabase URL下载音频文件到本地
+          console.log('[ScriptPanel] 开始从Supabase下载音频', {
+            url: cleanAudioUrl,
+            segmentId: segment.id
+          });
+          
+          const fetchResponse = await fetch(cleanAudioUrl);
+          if (!fetchResponse.ok) {
+            console.error('[ScriptPanel] Supabase音频下载失败', {
+              url: cleanAudioUrl,
+              status: fetchResponse.status,
+              statusText: fetchResponse.statusText,
+              segmentId: segment.id
+            });
+            throw new Error(`Failed to fetch audio from Supabase: ${fetchResponse.status} ${fetchResponse.statusText}`);
+          }
+          const audioBlob = await fetchResponse.blob();
           const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
 
           console.log('[ScriptPanel] 音频文件下载并存储成功', {
@@ -352,18 +370,29 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               continue;
             }
 
-            // 提取文件名
-            const fileName = result.audio_url.split('/').pop() || `batch_audio_${result.segment_id}_${Date.now()}.mp3`;
+            // 获取和验证音频URL
+            const cleanAudioUrl = result.audio_url.includes('/object/sign/') ? result.audio_url : result.audio_url.split('?')[0];
+            const fileName = result.audio_url.split('/').pop()?.split('?')[0] || `batch_audio_${result.segment_id}_${Date.now()}.mp3`;
 
             console.log('[ScriptPanel] 下载批量转换的音频文件', {
               segmentId: result.segment_id,
               fileName,
-              audioUrl: result.audio_url,
+              originalAudioUrl: result.audio_url,
+              cleanAudioUrl: cleanAudioUrl,
               fileSize: result.file_size
             });
 
-            // 下载音频文件到本地
-            const audioBlob = await downloadAudioFile(fileName);
+            // 直接从Supabase URL下载音频文件到本地
+            console.log('[ScriptPanel] 开始批量下载Supabase音频', {
+              url: cleanAudioUrl,
+              segmentId: result.segment_id
+            });
+            
+            const fetchResponse = await fetch(cleanAudioUrl);
+            if (!fetchResponse.ok) {
+              throw new Error(`Failed to fetch audio from Supabase: ${fetchResponse.status} ${fetchResponse.statusText}`);
+            }
+            const audioBlob = await fetchResponse.blob();
             const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
 
             // 创建音频材料项
