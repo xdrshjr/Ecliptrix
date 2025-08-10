@@ -209,7 +209,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         volume: 1.0,
         opacity: 1.0,
         thumbnailUrl: material.thumbnailUrl,
-        waveformData: material.type === 'audio' ? Array.from({ length: 50 }, () => Math.random() * 0.8 + 0.2) : undefined
+        waveformData: material.type === 'audio' ? Array.from({ length: 50 }, () => Math.random() * 0.8 + 0.2) : undefined,
+        
+        // 初始化剪辑属性：默认使用完整的原始素材
+        clipStart: 0,
+        clipEnd: duration,
+        originalDuration: duration
       };
 
       console.log(`[TimelinePanel] 创建新时间轴项目`, {
@@ -629,10 +634,45 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 timestamp: new Date().toISOString()
               });
               
+              // 计算剪辑属性
+              const originalDuration = item.originalDuration || item.duration;
+              let newClipStart = item.clipStart || 0;
+              let newClipEnd = item.clipEnd || originalDuration;
+              
+              if (resizeType === 'end') {
+                // 调整结束时间：修改clipEnd
+                newClipEnd = Math.min(
+                  newClipStart + resizeParams.duration, 
+                  originalDuration
+                );
+              } else if (resizeType === 'start') {
+                // 调整开始时间：修改clipStart，保持clipEnd不变
+                const clipDuration = newClipEnd - newClipStart;
+                const durationChange = resizeParams.duration - item.duration;
+                newClipStart = Math.max(0, newClipStart - durationChange);
+                newClipEnd = Math.min(newClipStart + resizeParams.duration, originalDuration);
+              }
+              
+              console.log(`[TimelinePanel] 更新剪辑属性`, {
+                itemId,
+                resizeType,
+                originalDuration: originalDuration.toFixed(2),
+                oldClipStart: (item.clipStart || 0).toFixed(2),
+                oldClipEnd: (item.clipEnd || originalDuration).toFixed(2),
+                newClipStart: newClipStart.toFixed(2),
+                newClipEnd: newClipEnd.toFixed(2),
+                clipDuration: (newClipEnd - newClipStart).toFixed(2),
+                timelineDuration: resizeParams.duration.toFixed(2),
+                timestamp: new Date().toISOString()
+              });
+              
               return { 
                 ...item, 
                 duration: resizeParams.duration,
-                startTime: resizeParams.startTime
+                startTime: resizeParams.startTime,
+                clipStart: newClipStart,
+                clipEnd: newClipEnd,
+                originalDuration: originalDuration
               };
             }
             return item;
@@ -888,13 +928,20 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 duration: item.duration,
                 track_id: track.id,
                 volume: item.volume || 1.0,
-                opacity: item.opacity || 1.0
+                opacity: item.opacity || 1.0,
+                // 新增：剪辑信息，用于后端视频裁剪
+                clip_start: item.clipStart || 0,
+                clip_end: item.clipEnd || (item.originalDuration || item.duration)
               });
               console.log(`[TimelinePanel] 添加视频项目`, {
                 itemId: item.id,
                 itemName: item.name,
                 materialUrl: material.url,
-                trackId: track.id
+                trackId: track.id,
+                clipStart: (item.clipStart || 0).toFixed(2),
+                clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
+                clipDuration: ((item.clipEnd || (item.originalDuration || item.duration)) - (item.clipStart || 0)).toFixed(2),
+                timelineDuration: item.duration.toFixed(2)
               });
             } else {
               console.warn(`[TimelinePanel] 未找到素材 ${item.materialId} 对应的URL`);
@@ -922,13 +969,20 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 start_time: item.startTime,
                 duration: item.duration,
                 track_id: track.id,
-                volume: item.volume || 1.0
+                volume: item.volume || 1.0,
+                // 新增：剪辑信息，用于后端音频裁剪
+                clip_start: item.clipStart || 0,
+                clip_end: item.clipEnd || (item.originalDuration || item.duration)
               });
               console.log(`[TimelinePanel] 添加音频项目`, {
                 itemId: item.id,
                 itemName: item.name,
                 finalUrl: audioUrl,
-                trackId: track.id
+                trackId: track.id,
+                clipStart: (item.clipStart || 0).toFixed(2),
+                clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
+                clipDuration: ((item.clipEnd || (item.originalDuration || item.duration)) - (item.clipStart || 0)).toFixed(2),
+                timelineDuration: item.duration.toFixed(2)
               });
             } else {
               console.warn(`[TimelinePanel] 未找到音频素材 ${item.materialId} 对应的URL`);
@@ -948,6 +1002,31 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
             console.log(`[TimelinePanel] 添加字幕项目: ${item.name}`);
           }
         });
+      });
+
+      // 关键修复：按照时间线位置（startTime）排序所有项目，确保导出视频的正确顺序
+      // 这样可以保证最终合成的视频按照用户在时间线上从左到右摆放的顺序进行
+      videoItems.sort((a, b) => a.start_time - b.start_time);
+      audioItems.sort((a, b) => a.start_time - b.start_time);
+      subtitleItems.sort((a, b) => a.start_time - b.start_time);
+
+      console.log(`[TimelinePanel] 项目排序完成`, {
+        videoItemsOrder: videoItems.map((item, index) => ({
+          index: index + 1,
+          id: item.id,
+          name: item.name,
+          start_time: item.start_time.toFixed(2),
+          duration: item.duration.toFixed(2),
+          end_time: (item.start_time + item.duration).toFixed(2)
+        })),
+        audioItemsOrder: audioItems.map((item, index) => ({
+          index: index + 1,
+          id: item.id,
+          name: item.name,
+          start_time: item.start_time.toFixed(2),
+          duration: item.duration.toFixed(2)
+        })),
+        sortingTimestamp: new Date().toISOString()
       });
 
       // Validate we have content to export

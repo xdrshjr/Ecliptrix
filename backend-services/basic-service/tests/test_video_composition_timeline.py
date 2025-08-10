@@ -243,3 +243,100 @@ class TestVideoCompositionTimeline:
                     
                     # Should have silence generation for the 5-second offset
                     assert len(silence_calls) > 0, "Should generate silence for audio start time offset" 
+
+    def test_video_composition_with_clipping(self, video_service):
+        """Test video composition with clipping parameters"""
+        request = VideoCompositionRequest(
+            task_id="test_clipping_123",
+            video_items=[
+                VideoCompositionItem(
+                    id="video1",
+                    name="Test Video 1",
+                    url="http://example.com/video1.mp4",
+                    start_time=0.0,
+                    duration=10.0,
+                    track_id="video-track-1",
+                    clip_start=5.0,
+                    clip_end=15.0  # Extract 10 seconds from original video (5s-15s)
+                ),
+                VideoCompositionItem(
+                    id="video2", 
+                    name="Test Video 2",
+                    url="http://example.com/video2.mp4",
+                    start_time=10.0,
+                    duration=6.4,
+                    track_id="video-track-1", 
+                    clip_start=0.0,
+                    clip_end=6.4  # Extract first 6.4 seconds from original video
+                )
+            ],
+            audio_items=[
+                AudioCompositionItem(
+                    id="audio1",
+                    name="Test Audio",
+                    url="/api/audio/generated/test.mp3",
+                    start_time=2.0,
+                    duration=12.0,
+                    track_id="audio-track-1",
+                    volume=0.8,
+                    clip_start=1.0,
+                    clip_end=13.0  # Extract 12 seconds from original audio (1s-13s)
+                )
+            ],
+            total_duration=16.4,
+            output_resolution={"width": 1920, "height": 1080},
+            output_fps=30
+        )
+        
+        with patch('subprocess.run') as mock_subprocess:
+            # Mock successful subprocess calls
+            mock_subprocess.return_value.returncode = 0
+            mock_subprocess.return_value.stderr = ""
+            mock_subprocess.return_value.stdout = ""
+            
+            with patch.object(video_service, '_normalize_video') as mock_normalize:
+                mock_normalize.return_value = {
+                    "success": True,
+                    "normalized_path": "/tmp/normalized_0.mp4",
+                    "used_duration": 10.0,
+                    "index": 0
+                }
+                
+                with patch('os.path.exists', return_value=True):
+                    with patch('os.path.getsize', return_value=1024*1024):
+                        result = video_service.compose_video(request)
+        
+        # Verify the response
+        assert result.success == True
+        assert result.status == "completed"
+        
+        # Verify that normalize_video was called with clipping parameters
+        normalize_calls = mock_normalize.call_args_list
+        assert len(normalize_calls) == 2
+        
+        # Check first video clipping parameters
+        first_call_args = normalize_calls[0][0][0]
+        assert first_call_args['clip_start'] == 5.0
+        assert first_call_args['clip_end'] == 15.0
+        
+        # Check second video clipping parameters  
+        second_call_args = normalize_calls[1][0][0]
+        assert second_call_args['clip_start'] == 0.0
+        assert second_call_args['clip_end'] == 6.4
+        
+        # Verify audio processing includes clipping
+        audio_calls = [call for call in mock_subprocess.call_args_list 
+                       if any('-ss' in str(arg) for arg in call[0][0])]
+        assert len(audio_calls) > 0, "Audio should be processed with clipping parameters"
+        
+        # Check that audio clipping parameters are used
+        audio_command = None
+        for call in mock_subprocess.call_args_list:
+            if isinstance(call[0][0], list) and '-ss' in call[0][0]:
+                audio_command = call[0][0]
+                break
+        
+        if audio_command:
+            # Find the -ss parameter and verify it's set to clip_start (1.0)
+            ss_index = audio_command.index('-ss')
+            assert audio_command[ss_index + 1] == '1.0' 
