@@ -47,7 +47,7 @@ async def convert_text_to_speech(request: TTSRequest) -> Union[TTSResponse, TTSE
     try:
         logger.info("收到TTS转换请求", {
             "text_length": len(request.text),
-            "voice_type": request.voice_type.value,
+            "voice_type": request.voice_type,
             "speed_ratio": request.speed_ratio,
             "segment_id": request.segment_id,
             "task_id": request.task_id
@@ -121,7 +121,7 @@ async def convert_batch_text_to_speech(request: BatchTTSRequest) -> BatchTTSResp
     try:
         logger.info("收到批量TTS转换请求", {
             "segments_count": len(request.segments),
-            "voice_type": request.voice_type.value,
+            "voice_type": request.voice_type,
             "speed_ratio": request.speed_ratio,
             "task_id": request.task_id,
             "concurrent_threads": request.concurrent_threads,

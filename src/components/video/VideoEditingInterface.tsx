@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { VideoEditingTaskContent } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -21,7 +21,8 @@ import {
   MaterialsPanel,
   VideoPlayerPanel,
   VideoSearchModal,
-  ContentPolishModal
+  ContentPolishModal,
+  ScriptGenerationModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -40,6 +41,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 智能润色弹窗状态
   const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(false);
+  
+  // 脚本生成弹窗状态
+  const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(false);
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
@@ -93,6 +97,39 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsPolishModalOpen(false);
   }, [taskId, documentState.markdownValue.length, documentState.handleMarkdownChange]);
 
+  // 处理脚本生成弹窗
+  const handleScriptGenerationClick = useCallback(() => {
+    console.log(`[VideoEditingInterface] 用户点击生成脚本按钮`, {
+      taskId,
+      currentContentLength: documentState.markdownValue.length,
+      timestamp: new Date().toISOString()
+    });
+    setIsScriptGenerationModalOpen(true);
+  }, [taskId, documentState.markdownValue.length]);
+
+  const handleScriptGenerationClose = useCallback(() => {
+    console.log(`[VideoEditingInterface] 关闭脚本生成配置弹窗`, {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+    setIsScriptGenerationModalOpen(false);
+  }, [taskId]);
+
+  const handleScriptGenerate = useCallback((config: ScriptGenerationConfig) => {
+    console.log(`[VideoEditingInterface] 开始生成脚本`, {
+      taskId,
+      config,
+      contentLength: documentState.markdownValue.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 关闭弹窗
+    setIsScriptGenerationModalOpen(false);
+    
+    // 调用脚本生成服务，传入配置
+    scriptGeneration.handleGenerateScriptWithConfig(config);
+  }, [taskId, documentState.markdownValue.length, scriptGeneration]);
+
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
     console.log(`[VideoEditingInterface] Timeline时间变化同步到视频播放器`, {
@@ -127,7 +164,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             {...aiAssistant}
             taskId={taskId}
             onPolishClick={handlePolishClick}
-            onGenerateScriptClick={scriptGeneration.handleGenerateScript}
+            onGenerateScriptClick={handleScriptGenerationClick}
+            onClearContent={documentState.clearContent}
             isGeneratingScript={scriptGeneration.isGeneratingScript}
           />
         </div>
@@ -196,6 +234,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={handlePolishClose}
         onContentSelect={handlePolishContentSelect}
         originalContent={documentState.markdownValue}
+        taskId={taskId}
+      />
+
+      <ScriptGenerationModal
+        isOpen={isScriptGenerationModalOpen}
+        onClose={handleScriptGenerationClose}
+        onGenerate={handleScriptGenerate}
         taskId={taskId}
       />
     </div>

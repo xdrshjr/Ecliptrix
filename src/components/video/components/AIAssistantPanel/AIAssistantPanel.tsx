@@ -9,6 +9,7 @@ interface AIAssistantPanelProps extends UseAIAssistantReturn {
   className?: string;
   onPolishClick?: () => void;
   onGenerateScriptClick?: () => void;
+  onClearContent?: () => void;
   isGeneratingScript?: boolean;
 }
 
@@ -22,6 +23,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   className = '',
   onPolishClick,
   onGenerateScriptClick,
+  onClearContent,
   isGeneratingScript = false
 }) => {
   const logger = new VideoEditingLogger({
@@ -66,6 +68,22 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
     }
     
     handleKeyDown(e);
+  };
+
+  const handleClearContent = () => {
+    logger.info('用户点击清空按钮', {
+      timestamp: new Date().toISOString(),
+      hasContent: inputMessage.length > 0,
+      actionType: 'clear_markdown_content'
+    });
+
+    if (onClearContent) {
+      onClearContent();
+    }
+
+    logger.info('Markdown内容清空请求已发送', {
+      timestamp: new Date().toISOString()
+    });
   };
 
   return (
@@ -143,35 +161,59 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           </div>
         </div>
 
-        <form onSubmit={handleFormSubmit} className="flex items-end space-x-3">
+        <form onSubmit={handleFormSubmit} className="space-y-3">
           <div className="flex-1 relative">
             <textarea
               value={inputMessage}
               onChange={handleInputChange}
               onKeyDown={handleTextareaKeyDown}
               placeholder="Ask me anything about video editing, content creation, or project planning..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm transition-all duration-200 hover:border-gray-400"
               rows={2}
               disabled={isLoading}
               style={{ minHeight: '60px', maxHeight: '80px' }}
             />
           </div>
-          <button
-            type="submit"
-            disabled={!inputMessage.trim() || isLoading}
-            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-lg px-4 py-2 transition-colors flex items-center justify-center min-w-[60px] h-[60px]"
-          >
-            {isLoading ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
+          
+          <div className="flex items-center justify-end space-x-2">
+            {/* 清空按钮 */}
+            {onClearContent && (
+              <button
+                type="button"
+                onClick={handleClearContent}
+                className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-300 rounded-lg hover:bg-gray-100 hover:border-gray-400 transition-colors duration-200 h-8"
+                title="清空文档编辑器中的所有内容"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>清空</span>
+              </button>
             )}
-          </button>
+            
+            <button
+              type="submit"
+              disabled={!inputMessage.trim() || isLoading}
+              className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg px-3 py-1.5 transition-colors duration-200 flex items-center justify-center min-w-[70px] h-8 font-medium"
+            >
+              {isLoading ? (
+                <div className="flex items-center space-x-1">
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="text-xs">发送中</span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  <span className="text-xs">发送</span>
+                </div>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

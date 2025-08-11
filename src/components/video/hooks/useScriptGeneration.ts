@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { ScriptSegment, VideoEditingTaskContent } from '@/types';
+import { ScriptSegment, VideoEditingTaskContent, ScriptGenerationConfig } from '@/types';
 import { UseScriptGenerationReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createScriptService, ScriptService } from '../services';
@@ -31,13 +31,14 @@ export const useScriptGeneration = (
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
-  // 处理脚本生成
-  const handleGenerateScript = useCallback(async () => {
+  // 处理脚本生成（带配置）
+  const handleGenerateScriptWithConfig = useCallback(async (config: ScriptGenerationConfig) => {
     if (!markdownContent.trim() || isGeneratingScript) {
       logger.warn('脚本生成被跳过', {
         reason: !markdownContent.trim() ? 'empty_markdown' : 'already_generating',
         markdownLength: markdownContent.length,
-        isGenerating: isGeneratingScript
+        isGenerating: isGeneratingScript,
+        config
       });
       return;
     }
@@ -48,6 +49,12 @@ export const useScriptGeneration = (
     setGenerationError(null);
 
     try {
+      logger.info('开始生成脚本（带配置）', {
+        config,
+        markdownLength: markdownContent.length,
+        timestamp: new Date().toISOString()
+      });
+
       // 模拟进度更新
       const progressInterval = setInterval(() => {
         setGenerationProgress(prev => {
@@ -56,10 +63,11 @@ export const useScriptGeneration = (
         });
       }, 500);
 
-      // 使用脚本服务生成脚本
-      const result = await scriptService.generateScript({
+      // 使用脚本服务生成脚本（带配置）
+      const result = await scriptService.generateScriptWithConfig({
         markdownContent: markdownContent,
-        taskId: taskId
+        taskId: taskId,
+        config: config
       });
 
       clearInterval(progressInterval);
@@ -75,12 +83,13 @@ export const useScriptGeneration = (
 
         onUpdateContent(updatedContent);
         
-        logger.info('脚本内容已更新到任务中', {
+        logger.info('脚本内容已更新到任务中（带配置）', {
           segmentCount: result.segments.length,
           totalSentences: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0),
           totalDuration: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + (segment.duration || 0), 0),
           averageSegmentLength: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0) / result.segments.length,
-          metadata: result.metadata
+          metadata: result.metadata,
+          appliedConfig: config
         });
       } else {
         throw new Error(result.error || 'Script generation failed');
@@ -89,9 +98,10 @@ export const useScriptGeneration = (
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      logger.error('脚本生成失败', error as Error, {
+      logger.error('脚本生成失败（带配置）', error as Error, {
         markdownLength: markdownContent.length,
-        totalTime: performance.now() - startTime
+        totalTime: performance.now() - startTime,
+        config
       });
 
       setGenerationError(errorMessage);
@@ -105,12 +115,26 @@ export const useScriptGeneration = (
         setGenerationProgress(0);
       }, 2000);
 
-      logger.info('脚本生成流程结束', {
+      logger.info('脚本生成流程结束（带配置）', {
         success: !generationError,
-        totalTime: performance.now() - startTime
+        totalTime: performance.now() - startTime,
+        config
       });
     }
   }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger, scriptService]);
+
+  // 处理脚本生成（无配置，保持向后兼容）
+  const handleGenerateScript = useCallback(async () => {
+    // 使用默认配置
+    const defaultConfig: ScriptGenerationConfig = {
+      language: 'chinese',
+      consistency: 'moderate',
+      segmentCount: 5,
+      customRequirements: ''
+    };
+    
+    await handleGenerateScriptWithConfig(defaultConfig);
+  }, [handleGenerateScriptWithConfig]);
 
   // 处理脚本片段更新
   const handleUpdateSegments = useCallback((updatedSegments: ScriptSegment[]) => {
@@ -139,6 +163,7 @@ export const useScriptGeneration = (
   return {
     isGeneratingScript,
     handleGenerateScript,
+    handleGenerateScriptWithConfig,
     handleUpdateSegments,
     generationProgress,
     generationError

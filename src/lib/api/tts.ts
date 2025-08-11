@@ -82,8 +82,6 @@ export interface VoiceTypesResponse {
   data: Record<string, VoiceType>;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-
 /**
  * Convert text to speech
  */
@@ -97,7 +95,7 @@ export async function convertTextToSpeech(request: TTSRequest): Promise<TTSRespo
       task_id: request.task_id
     });
 
-    const response = await fetch(`${API_BASE_URL}/api/tts/convert`, {
+    const response = await fetch('/api/tts/convert', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -142,7 +140,7 @@ export async function convertBatchTextToSpeech(request: BatchTTSRequest): Promis
       total_text_length: request.segments.reduce((sum, seg) => sum + seg.text.length, 0)
     });
 
-    const response = await fetch(`${API_BASE_URL}/api/tts/convert-batch`, {
+    const response = await fetch('/api/tts/batch-convert', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -211,7 +209,7 @@ export async function getVoiceTypes(): Promise<VoiceTypesResponse> {
   try {
     console.log('[TTS API] 获取音色类型列表');
 
-    const response = await fetch(`${API_BASE_URL}/api/tts/voice-types`, {
+    const response = await fetch('/api/tts/voice-types', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -246,7 +244,7 @@ export async function downloadAudioFile(fileName: string): Promise<Blob> {
   try {
     console.log('[TTS API] 下载音频文件', { fileName });
 
-    const response = await fetch(`${API_BASE_URL}/api/audio/generated/${fileName}`, {
+    const response = await fetch(`/api/audio/generated/${fileName}`, {
       method: 'GET',
     });
 
@@ -279,7 +277,7 @@ export async function checkTTSHealth(): Promise<any> {
   try {
     console.log('[TTS API] 检查TTS服务健康状态');
 
-    const response = await fetch(`${API_BASE_URL}/api/tts/health`, {
+    const response = await fetch('/api/tts/health', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

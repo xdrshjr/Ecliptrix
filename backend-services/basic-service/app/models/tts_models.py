@@ -2,25 +2,70 @@
 Text-to-Speech (TTS) models for Volcano TTS API integration.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 
 class VoiceType(str, Enum):
     """Available voice types for TTS conversion."""
     
-    # Chinese Female Voices
-    ZH_FEMALE_WANQUDASHU_MOON_BIGTTS = "zh_female_wanqudashu_moon_bigtts"
-    ZH_FEMALE_SWEET = "zh_female_sweet"
-    ZH_FEMALE_GENTLE = "zh_female_gentle"
+    # 通用场景 - General Scenarios
+    ZH_MALE_SHAONIANZIXIN_MOON_BIGTTS = "zh_male_shaonianzixin_moon_bigtts"  # 少年梓辛/Brayan (男声)
+    ZH_FEMALE_LINJIANVHAI_MOON_BIGTTS = "zh_female_linjianvhai_moon_bigtts"  # 邻家女孩 (女声)
+    ZH_MALE_YUANBOXIAOSHU_MOON_BIGTTS = "zh_male_yuanboxiaoshu_moon_bigtts"  # 渊博小叔 (男声)
+    ZH_MALE_YANGGUANGQINGNIAN_MOON_BIGTTS = "zh_male_yangguangqingnian_moon_bigtts"  # 阳光青年 (男声)
+    ZH_FEMALE_SHUANGKUAISISI_MOON_BIGTTS = "zh_female_shuangkuaisisi_moon_bigtts"  # 爽快思思/Skye (女声)
+    ZH_FEMALE_TIANMEIXIAOYUAN_MOON_BIGTTS = "zh_female_tianmeixiaoyuan_moon_bigtts"  # 甜美小源 (女声)
+    ZH_FEMALE_QINGCHEZIZI_MOON_BIGTTS = "zh_female_qingchezizi_moon_bigtts"  # 清澈梓梓 (女声)
+    ZH_MALE_JIESHUOXIAOMING_MOON_BIGTTS = "zh_male_jieshuoxiaoming_moon_bigtts"  # 解说小明 (男声)
+    ZH_FEMALE_KAILANGJIEJIE_MOON_BIGTTS = "zh_female_kailangjiejie_moon_bigtts"  # 开朗姐姐 (女声)
+    ZH_MALE_LINJIANANHAI_MOON_BIGTTS = "zh_male_linjiananhai_moon_bigtts"  # 邻家男孩 (男声)
+    ZH_FEMALE_TIANMEIYUEYUE_MOON_BIGTTS = "zh_female_tianmeiyueyue_moon_bigtts"  # 甜美悦悦 (女声)
+    ZH_FEMALE_XINLINGJITANG_MOON_BIGTTS = "zh_female_xinlingjitang_moon_bigtts"  # 心灵鸡汤 (女声)
+    ZH_FEMALE_CANCAN_MARS_BIGTTS = "zh_female_cancan_mars_bigtts"  # 灿灿 (女声)
+    ZH_FEMALE_ZHIXINGNVSHENG_MARS_BIGTTS = "zh_female_zhixingnvsheng_mars_bigtts"  # 知性女声 (女声)
+    ZH_FEMALE_QINGXINNVSHENG_MARS_BIGTTS = "zh_female_qingxinnvsheng_mars_bigtts"  # 清新女声 (女声)
+    ZH_MALE_QINGSHUANGNANDA_MARS_BIGTTS = "zh_male_qingshuangnanda_mars_bigtts"  # 清爽男大 (男声)
+    ZH_FEMALE_TIEXINNVSHENG_MARS_BIGTTS = "zh_female_tiexinnvsheng_mars_bigtts"  # 贴心女声 (女声)
     
-    # Chinese Male Voices
+    # 趣味方言 - Regional Dialects
+    ZH_FEMALE_WANQUDASHU_MOON_BIGTTS = "zh_female_wanqudashu_moon_bigtts"  # 湾区大叔 (男声)
+    ZH_FEMALE_DAIMENGCHUANMEI_MOON_BIGTTS = "zh_female_daimengchuanmei_moon_bigtts"  # 呆萌川妹 (女声)
+    ZH_MALE_GUOZHOUDEGE_MOON_BIGTTS = "zh_male_guozhoudege_moon_bigtts"  # 广州德哥 (男声)
+    ZH_MALE_BEIJINGXIAOYE_MOON_BIGTTS = "zh_male_beijingxiaoye_moon_bigtts"  # 北京小爷 (男声)
+    ZH_MALE_HAOYUXIAOGE_MOON_BIGTTS = "zh_male_haoyuxiaoge_moon_bigtts"  # 浩宇小哥 (男声)
+    ZH_MALE_GUANGXIYUANZHOU_MOON_BIGTTS = "zh_male_guangxiyuanzhou_moon_bigtts"  # 广西远舟 (男声)
+    ZH_FEMALE_MEITUOJIEER_MOON_BIGTTS = "zh_female_meituojieer_moon_bigtts"  # 妹坨洁儿 (女声)
+    ZH_MALE_YUZHOUZIXUAN_MOON_BIGTTS = "zh_male_yuzhouzixuan_moon_bigtts"  # 豫州子轩 (男声)
+    ZH_MALE_JINGQIANGKANYE_MOON_BIGTTS = "zh_male_jingqiangkanye_moon_bigtts"  # 京腔侃爷/Harmony (男声)
+    
+    # 角色扮演 - Role Playing
+    ZH_FEMALE_MEILINVYOU_MOON_BIGTTS = "zh_female_meilinvyou_moon_bigtts"  # 魅力女友 (女声)
+    ZH_MALE_SHENYEBOKE_MOON_BIGTTS = "zh_male_shenyeboke_moon_bigtts"  # 深夜播客 (男声)
+    ZH_FEMALE_YUANYOUSHAOER_MOON_BIGTTS = "zh_female_yuanyoushaoer_moon_bigtts"  # 元气少儿 (女声)
+    ZH_MALE_CHENGSHUXIAOSHU_MOON_BIGTTS = "zh_male_chengshuxiaoshu_moon_bigtts"  # 成熟小叔 (男声)
+    ZH_FEMALE_KEAISHAOER_MOON_BIGTTS = "zh_female_keaishaoer_moon_bigtts"  # 可爱少儿 (女声)
+    ZH_MALE_JIATINGDADDY_MOON_BIGTTS = "zh_male_jiatingdaddy_moon_bigtts"  # 家庭Daddy (男声)
+    ZH_FEMALE_WENNUANNVSHENG_MOON_BIGTTS = "zh_female_wennuannvsheng_moon_bigtts"  # 温暖女声 (女声)
+    ZH_MALE_CIXIANGJIAZHANG_MOON_BIGTTS = "zh_male_cixiangjiazhang_moon_bigtts"  # 慈祥家长 (男声)
+    
+    # 播报解说 - Broadcasting & Commentary  
+    ZH_MALE_ZHUANYEXINWEN_MARS_BIGTTS = "zh_male_zhuanyexinwen_mars_bigtts"  # 专业新闻 (男声)
+    ZH_FEMALE_ZHUANYEXINWEN_MARS_BIGTTS = "zh_female_zhuanyexinwen_mars_bigtts"  # 专业新闻 (女声)
+    EN_FEMALE_ANNA_MARS_BIGTTS = "en_female_anna_mars_bigtts"  # Anna (女声)
+    EN_MALE_JOHN_MARS_BIGTTS = "en_male_john_mars_bigtts"  # John (男声)
+    
+    # 有声阅读 - Audio Reading
+    ZH_MALE_RUYAQINGNIAN_MARS_BIGTTS = "zh_male_ruyaqingnian_mars_bigtts"  # 儒雅青年 (男声)
+    ZH_FEMALE_WENZHIZHUREN_MARS_BIGTTS = "zh_female_wenzhizhuren_mars_bigtts"  # 文质主人 (女声)
+    
+    # 兼容旧版本的简化名称
+    ZH_FEMALE_SWEET = "zh_female_sweet"
+    ZH_FEMALE_GENTLE = "zh_female_gentle" 
     ZH_MALE_WARM = "zh_male_warm"
     ZH_MALE_POWERFUL = "zh_male_powerful"
     ZH_MALE_STEADY = "zh_male_steady"
-    
-    # English Voices
     EN_FEMALE_NATURAL = "en_female_natural"
     EN_MALE_NATURAL = "en_male_natural"
 
@@ -28,20 +73,29 @@ class VoiceType(str, Enum):
 class TTSRequest(BaseModel):
     """Request model for text-to-speech conversion."""
     
-    text: str = Field(..., description="Text to convert to speech", max_length=5000)
-    voice_type: VoiceType = Field(
-        default=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
+    text: str = Field(..., description="Text to convert to speech", max_length=10000)
+    voice_type: str = Field(
+        default="zh_male_shaonianzixin_moon_bigtts",
         description="Voice type for speech synthesis"
     )
-    speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.5, le=2.0)
+    speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.1, le=3.0)
     segment_id: Optional[str] = Field(None, description="Script segment ID for reference")
     task_id: Optional[str] = Field(None, description="Task ID for reference")
+    
+    @validator('voice_type')
+    def validate_voice_type(cls, v):
+        """验证语音类型是否有效"""
+        # 这里可以添加动态验证逻辑，从配置文件加载有效的语音类型
+        # 暂时允许所有字符串类型，由TTS服务进行实际验证
+        if not v or not isinstance(v, str):
+            raise ValueError('Voice type must be a non-empty string')
+        return v
     
     class Config:
         json_schema_extra = {
             "example": {
                 "text": "这是一段需要转换为语音的文本内容。",
-                "voice_type": "zh_female_wanqudashu_moon_bigtts",
+                "voice_type": "zh_male_shaonianzixin_moon_bigtts",
                 "speed_ratio": 1.0,
                 "segment_id": "segment_001",
                 "task_id": "task_123"
@@ -66,11 +120,11 @@ class BatchTTSRequest(BaseModel):
         min_items=1,
         max_items=50
     )
-    voice_type: VoiceType = Field(
-        default=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
+    voice_type: str = Field(
+        default="zh_male_shaonianzixin_moon_bigtts",
         description="Voice type for speech synthesis"
     )
-    speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.5, le=2.0)
+    speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.1, le=3.0)
     task_id: Optional[str] = Field(None, description="Task ID for reference")
     concurrent_threads: Optional[int] = Field(
         None, 
@@ -78,6 +132,13 @@ class BatchTTSRequest(BaseModel):
         ge=1,
         le=10
     )
+    
+    @validator('voice_type')
+    def validate_voice_type(cls, v):
+        """验证语音类型是否有效"""
+        if not v or not isinstance(v, str):
+            raise ValueError('Voice type must be a non-empty string')
+        return v
     
     class Config:
         json_schema_extra = {
@@ -94,7 +155,7 @@ class BatchTTSRequest(BaseModel):
                         "title": "功能演示"
                     }
                 ],
-                "voice_type": "zh_female_wanqudashu_moon_bigtts",
+                "voice_type": "zh_male_shaonianzixin_moon_bigtts",
                 "speed_ratio": 1.0,
                 "task_id": "task_123",
                 "concurrent_threads": 3

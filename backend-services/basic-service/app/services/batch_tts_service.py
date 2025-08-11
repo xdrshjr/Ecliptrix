@@ -68,7 +68,7 @@ class BatchTTSService:
         segment_text: str,
         segment_id: str,
         segment_title: Optional[str],
-        voice_type: VoiceType,
+        voice_type: str,
         speed_ratio: float,
         task_id: Optional[str]
     ) -> BatchTTSSegmentResult:
@@ -80,7 +80,7 @@ class BatchTTSService:
                 "segment_id": segment_id,
                 "segment_title": segment_title,
                 "text_length": len(segment_text),
-                "voice_type": voice_type.value,
+                "voice_type": voice_type,
                 "task_id": task_id
             })
             
@@ -137,7 +137,7 @@ class BatchTTSService:
         
         logger.info("开始批量TTS转换", {
             "segments_count": len(request.segments),
-            "voice_type": request.voice_type.value,
+            "voice_type": request.voice_type,
             "speed_ratio": request.speed_ratio,
             "task_id": request.task_id,
             "concurrent_threads": request.concurrent_threads or self.config.concurrent_threads
