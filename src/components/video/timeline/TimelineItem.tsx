@@ -214,26 +214,26 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   }, [isDragging, isResizing, dragStart, pixelsPerSecond, onMove, onResize]);
 
-  // 根据类型获取样式
+  // 根据类型获取样式 - 针对32px轨道高度优化
   const getItemStyles = () => {
     const baseStyles = {
       position: 'absolute' as const,
       left: `${left}px`,
       width: `${Math.max(width, 20)}px`, // 最小宽度20px
-      height: `${trackHeight - 8}px`,
-      top: '4px',
-      borderRadius: '4px',
+      borderRadius: '3px',
       cursor: isDragging ? 'grabbing' : 'grab',
       userSelect: 'none' as const,
       transition: isDragging || isResizing ? 'none' : 'all 0.2s ease',
       zIndex: isSelected ? 10 : 1,
     };
 
-    // 根据素材类型设置不同的颜色和样式
+    // 根据素材类型设置不同的颜色和样式 - 为32px轨道高度优化
     switch (item.type) {
       case 'video':
         return {
           ...baseStyles,
+          height: '24px', // 32px - 8px = 24px
+          top: '4px',
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
@@ -241,30 +241,30 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'audio':
         return {
           ...baseStyles,
+          height: '20px', // 32px - 12px = 20px  
+          top: '6px',
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
-          height: `${trackHeight - 12}px`,
-          top: '6px',
         };
       case 'subtitle':
         return {
           ...baseStyles,
+          height: '16px', // 32px - 16px = 16px
+          top: '8px',
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
-          height: `${trackHeight - 16}px`,
-          top: '8px',
         };
       default:
         return baseStyles;
     }
   };
 
-  // 渲染项目内容
+  // 渲染项目内容 - 针对紧凑高度优化
   const renderItemContent = () => {
     const contentStyle = {
-      padding: '4px 8px',
+      padding: '2px 6px', // 减少内边距以适应更小高度
       height: '100%',
       display: 'flex',
       alignItems: 'center',
@@ -276,19 +276,19 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'video':
         return (
           <div style={contentStyle}>
-            <div className="flex items-center space-x-2 min-w-0">
+            <div className="flex items-center space-x-1 min-w-0">
               {item.thumbnailUrl && (
                 <img 
                   src={item.thumbnailUrl} 
                   alt={item.name}
-                  className="w-6 h-6 rounded object-cover flex-shrink-0"
+                  className="w-4 h-4 rounded object-cover flex-shrink-0" // 缩小缩略图
                 />
               )}
               <span className="text-white text-xs font-medium truncate">
                 {item.name}
               </span>
             </div>
-            <span className="text-white text-xs opacity-75 flex-shrink-0 ml-2">
+            <span className="text-white text-xs opacity-75 flex-shrink-0 ml-1">
               {item.duration.toFixed(1)}s
             </span>
           </div>
@@ -296,8 +296,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'audio':
         return (
           <div style={contentStyle}>
-            <div className="flex items-center space-x-2 min-w-0">
-              <div className="w-4 h-4 flex-shrink-0">
+            <div className="flex items-center space-x-1 min-w-0">
+              <div className="w-3 h-3 flex-shrink-0"> {/* 缩小图标 */}
                 <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                 </svg>
@@ -306,13 +306,13 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                 {item.name}
               </span>
             </div>
-            {/* 简单的波形显示 */}
+            {/* 简化的波形显示 */}
             <div className="flex items-center space-x-0.5 flex-shrink-0">
-              {[...Array(8)].map((_, i) => (
+              {[...Array(6)].map((_, i) => ( // 减少波形条数
                 <div 
                   key={i}
                   className="w-0.5 bg-white opacity-60"
-                  style={{ height: `${Math.random() * 12 + 4}px` }}
+                  style={{ height: `${Math.random() * 8 + 2}px` }} // 减少波形高度
                 />
               ))}
             </div>
@@ -321,8 +321,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'subtitle':
         return (
           <div style={contentStyle}>
-            <div className="flex items-center space-x-2 min-w-0">
-              <div className="w-4 h-4 flex-shrink-0">
+            <div className="flex items-center space-x-1 min-w-0">
+              <div className="w-3 h-3 flex-shrink-0"> {/* 缩小图标 */}
                 <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                 </svg>
@@ -348,16 +348,16 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     >
       {renderItemContent()}
       
-      {/* 调整大小的手柄 */}
+      {/* 调整大小的手柄 - 优化为紧凑尺寸 */}
       {isSelected && (
         <>
           <div 
-            className="absolute left-0 top-0 w-2 h-full cursor-ew-resize bg-white bg-opacity-20 hover:bg-opacity-40"
-            style={{ borderRadius: '4px 0 0 4px' }}
+            className="absolute left-0 top-0 w-1.5 h-full cursor-ew-resize bg-white bg-opacity-30 hover:bg-opacity-50"
+            style={{ borderRadius: '3px 0 0 3px' }}
           />
           <div 
-            className="absolute right-0 top-0 w-2 h-full cursor-ew-resize bg-white bg-opacity-20 hover:bg-opacity-40"
-            style={{ borderRadius: '0 4px 4px 0' }}
+            className="absolute right-0 top-0 w-1.5 h-full cursor-ew-resize bg-white bg-opacity-30 hover:bg-opacity-50"
+            style={{ borderRadius: '0 3px 3px 0' }}
           />
         </>
       )}
