@@ -20,7 +20,8 @@ import {
   AIAssistantPanel,
   MaterialsPanel,
   VideoPlayerPanel,
-  VideoSearchModal
+  VideoSearchModal,
+  ContentPolishModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -36,6 +37,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 }) => {
   // 新增：时间同步状态管理
   const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
+  
+  // 智能润色弹窗状态
+  const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(false);
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
@@ -57,6 +61,37 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加时间轴组合播放功能
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
+
+  // 处理智能润色
+  const handlePolishClick = useCallback(() => {
+    console.log(`[VideoEditingInterface] 用户点击智能润色按钮`, {
+      taskId,
+      currentContentLength: documentState.markdownValue.length,
+      timestamp: new Date().toISOString()
+    });
+    setIsPolishModalOpen(true);
+  }, [taskId, documentState.markdownValue.length]);
+
+  const handlePolishClose = useCallback(() => {
+    console.log(`[VideoEditingInterface] 关闭智能润色弹窗`, {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+    setIsPolishModalOpen(false);
+  }, [taskId]);
+
+  const handlePolishContentSelect = useCallback((polishedContent: string) => {
+    console.log(`[VideoEditingInterface] 应用润色结果`, {
+      taskId,
+      originalLength: documentState.markdownValue.length,
+      polishedLength: polishedContent.length,
+      contentDelta: polishedContent.length - documentState.markdownValue.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    documentState.handleMarkdownChange(polishedContent);
+    setIsPolishModalOpen(false);
+  }, [taskId, documentState.markdownValue.length, documentState.handleMarkdownChange]);
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
@@ -91,6 +126,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           <AIAssistantPanel
             {...aiAssistant}
             taskId={taskId}
+            onPolishClick={handlePolishClick}
           />
         </div>
 
@@ -150,6 +186,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <VideoSearchModal
         {...videoSearch}
+        taskId={taskId}
+      />
+      
+      <ContentPolishModal
+        isOpen={isPolishModalOpen}
+        onClose={handlePolishClose}
+        onContentSelect={handlePolishContentSelect}
+        originalContent={documentState.markdownValue}
         taskId={taskId}
       />
     </div>
