@@ -21,6 +21,13 @@ export default function HomePage() {
   console.log('HomePage: 页面渲染开始');
   console.log('HomePage: 当前活跃任务:', activeTask?.title || '无');
   console.log('HomePage: 标签页数量:', tabs.length);
+  console.log('HomePage: Taskbar任务菜单已更新', {
+    removedTask: 'Voice Synthesis (audio类型)',
+    newOrder: ['AI Chat (第1位)', 'Video Editing (第2位)', 'Content Creation', 'Brainstorming'],
+    availableTaskTypes: ['chat', 'video', 'content', 'brainstorm'],
+    modificationReason: '用户需求：移除Voice Synthesis，AI Chat调整为第一项',
+    appliedAt: new Date().toISOString(),
+  });
   console.log('HomePage: 应用容器滚动已禁用', {
     rootLayout: 'body设置overflow-hidden',
     mainContainer: 'h-screen + overflow-hidden',

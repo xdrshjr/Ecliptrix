@@ -21,7 +21,8 @@ const Header: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation - 暂时隐藏默认导航项 */}
+        {/* 
         <nav className="hidden md:flex items-center space-x-8">
           <button className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
             Dashboard
@@ -33,6 +34,7 @@ const Header: React.FC = () => {
             Library
           </button>
         </nav>
+        */}
 
         {/* User Actions */}
         <div className="flex items-center space-x-3">

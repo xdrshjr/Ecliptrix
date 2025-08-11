@@ -29,12 +29,78 @@ class TestTTSRouter:
         assert "data" in data
         assert len(data["data"]) > 0
         
-        # Check that default voice type exists
+        # Check that at least one voice type exists and has the new category field
+        voice_ids = list(data["data"].keys())
+        first_voice_id = voice_ids[0]
+        voice_info = data["data"][first_voice_id]
+        
+        # Verify all required fields are present
+        assert "name" in voice_info
+        assert "language" in voice_info
+        assert "gender" in voice_info
+        assert "description" in voice_info
+        assert "category" in voice_info  # New field
+        
+        # Verify category is one of the expected values
+        expected_categories = ['通用场景', '趣味方言', '角色扮演', '播报解说', '有声阅读', '其他']
+        assert voice_info["category"] in expected_categories
+
+    def test_get_voice_types_with_categories(self):
+        """Test that voice types are properly categorized."""
+        response = client.get("/api/tts/voice-types")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Collect all categories from the response
+        categories = set()
+        for voice_info in data["data"].values():
+            categories.add(voice_info["category"])
+        
+        # Should have multiple categories
+        assert len(categories) >= 2
+        
+        # Count voices by category
+        category_counts = {}
+        for voice_info in data["data"].values():
+            category = voice_info["category"]
+            category_counts[category] = category_counts.get(category, 0) + 1
+        
+        # Log the category distribution for debugging
+        print(f"Voice distribution by category: {category_counts}")
+        
+        # Should have at least one voice in the general category
+        assert category_counts.get('通用场景', 0) > 0
+
+    @patch('app.services.tts_service.TTSService.get_available_voice_types')
+    def test_get_voice_types_config_file_error(self, mock_get_voices):
+        """Test voice types endpoint when config file loading fails."""
+        # Mock the service to return fallback voices
+        from app.models.tts_models import VoiceTypeInfo, VoiceType
+        
+        fallback_voices = {
+            VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value: VoiceTypeInfo(
+                id=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value,
+                name="温柔女声",
+                language="zh-CN",
+                gender="female",
+                description="温柔甜美的女性声音，适合讲解和叙述",
+                category="通用场景"
+            )
+        }
+        mock_get_voices.return_value = fallback_voices
+        
+        response = client.get("/api/tts/voice-types")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["success"] is True
+        assert len(data["data"]) == 1
         assert "zh_female_wanqudashu_moon_bigtts" in data["data"]
+        
         voice_info = data["data"]["zh_female_wanqudashu_moon_bigtts"]
-        assert voice_info["name"] == "温柔女声"
-        assert voice_info["language"] == "zh-CN"
-        assert voice_info["gender"] == "female"
+        assert voice_info["category"] == "通用场景"
 
     @patch('app.services.tts_service.tts_service.validate_config')
     def test_tts_health_check_healthy(self, mock_validate):
@@ -485,12 +551,132 @@ class TestTTSService:
         voice_types = service.get_available_voice_types()
         
         assert len(voice_types) > 0
-        assert "zh_female_wanqudashu_moon_bigtts" in voice_types
         
-        voice_info = voice_types["zh_female_wanqudashu_moon_bigtts"]
-        assert voice_info.name == "温柔女声"
-        assert voice_info.language == "zh-CN"
-        assert voice_info.gender == "female"
+        # Check that we have voices with categories
+        categories = set()
+        for voice_info in voice_types.values():
+            categories.add(voice_info.category)
+            # Verify all required fields are present
+            assert hasattr(voice_info, 'id')
+            assert hasattr(voice_info, 'name')
+            assert hasattr(voice_info, 'language')
+            assert hasattr(voice_info, 'gender')
+            assert hasattr(voice_info, 'description')
+            assert hasattr(voice_info, 'category')
+        
+        # Should have multiple categories if config file is loaded successfully
+        if len(voice_types) > 6:  # More than fallback voices
+            assert len(categories) > 1
+
+    @patch('app.services.tts_service.Path.exists')
+    @patch('builtins.open')
+    @patch('yaml.safe_load')
+    def test_voice_config_file_loading_success(self, mock_yaml_load, mock_open, mock_exists):
+        """Test successful loading of voice configuration from YAML file."""
+        from app.services.tts_service import TTSService
+        
+        # Mock config file exists
+        mock_exists.return_value = True
+        
+        # Mock YAML content
+        mock_config = {
+            'voice_types': {
+                'volcano': {
+                    'name': '语音合成引擎专业版',
+                    'voices': [
+                        {
+                            'value': 'test_voice_1',
+                            'label': '测试音色1 (女声)',
+                            'category': '通用场景',
+                            'gender': 'female',
+                            'language': 'zh-CN',
+                            'description': '测试音色描述'
+                        },
+                        {
+                            'value': 'test_voice_2',
+                            'label': '测试音色2 (男声)',
+                            'category': '角色扮演',
+                            'gender': 'male',
+                            'language': 'zh-CN',
+                            'description': '测试角色音色'
+                        }
+                    ]
+                }
+            }
+        }
+        mock_yaml_load.return_value = mock_config
+        
+        service = TTSService()
+        voice_types = service.get_available_voice_types()
+        
+        # Should have 2 voices from config
+        assert len(voice_types) == 2
+        assert 'test_voice_1' in voice_types
+        assert 'test_voice_2' in voice_types
+        
+        # Verify voice 1
+        voice1 = voice_types['test_voice_1']
+        assert voice1.name == '测试音色1 (女声)'
+        assert voice1.category == '通用场景'
+        assert voice1.gender == 'female'
+        
+        # Verify voice 2
+        voice2 = voice_types['test_voice_2']
+        assert voice2.name == '测试音色2 (男声)'
+        assert voice2.category == '角色扮演'
+        assert voice2.gender == 'male'
+
+    @patch('app.services.tts_service.Path.exists')
+    def test_voice_config_file_missing_fallback(self, mock_exists):
+        """Test fallback to hardcoded voices when config file is missing."""
+        from app.services.tts_service import TTSService
+        
+        # Mock config file doesn't exist
+        mock_exists.return_value = False
+        
+        service = TTSService()
+        voice_types = service.get_available_voice_types()
+        
+        # Should have fallback voices
+        assert len(voice_types) > 0
+        
+        # Should contain at least one fallback voice
+        fallback_voice_ids = [
+            'zh_female_wanqudashu_moon_bigtts',
+            'zh_female_sweet',
+            'zh_male_warm'
+        ]
+        
+        found_fallback = False
+        for voice_id in fallback_voice_ids:
+            if voice_id in voice_types:
+                found_fallback = True
+                # Verify it has the category field
+                assert hasattr(voice_types[voice_id], 'category')
+                break
+        
+        assert found_fallback, "Should contain at least one fallback voice"
+
+    @patch('app.services.tts_service.Path.exists')
+    @patch('builtins.open')
+    def test_voice_config_file_yaml_error_fallback(self, mock_open, mock_exists):
+        """Test fallback to hardcoded voices when YAML parsing fails."""
+        from app.services.tts_service import TTSService
+        
+        # Mock config file exists but YAML parsing fails
+        mock_exists.return_value = True
+        mock_open.side_effect = Exception("YAML parsing error")
+        
+        service = TTSService()
+        voice_types = service.get_available_voice_types()
+        
+        # Should have fallback voices
+        assert len(voice_types) > 0
+        
+        # Verify at least one fallback voice has category
+        for voice_info in voice_types.values():
+            assert hasattr(voice_info, 'category')
+            break
 
 
 @pytest.fixture

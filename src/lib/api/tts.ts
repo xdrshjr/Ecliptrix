@@ -73,6 +73,7 @@ export interface VoiceType {
   language: string;
   gender: string;
   description: string;
+  category: string;
 }
 
 export interface VoiceTypesResponse {

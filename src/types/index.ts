@@ -1,7 +1,7 @@
 export interface Task {
   id: string;
   title: string;
-  type: 'content' | 'video' | 'audio' | 'brainstorm' | 'chat';
+  type: 'content' | 'video' | 'brainstorm' | 'chat';
   status: 'active' | 'completed' | 'draft';
   createdAt: Date;
   updatedAt: Date;

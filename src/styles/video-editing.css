@@ -56,17 +56,17 @@
   height: 100%;
 }
 
-/* 脚本面板 - 占右侧面板的20%宽度 */
+/* 脚本面板 - 占右侧面板的25%宽度 */
 .video-editing-script-panel {
-  width: 20%;
+  width: 25%;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
 }
 
-/* 视频预览面板 - 占右侧面板的80%宽度 */
+/* 视频预览面板 - 占右侧面板的75%宽度 */
 .video-editing-preview-panel {
-  width: 80%;
+  width: 75%;
   height: 100%;
   flex: 1;
 }
@@ -192,11 +192,11 @@
 /* 响应式设计 - 小屏幕适配 */
 @media (max-width: 1024px) {
   .video-editing-script-panel {
-    width: 25%;
+    width: 30%;
   }
   
   .video-editing-preview-panel {
-    width: 75%;
+    width: 70%;
   }
 }
 
@@ -811,11 +811,11 @@
 /* 响应式设计更新 */
 @media (max-width: 1024px) {
   .video-editing-script-panel {
-    width: 25%;
+    width: 30%;
   }
   
   .video-editing-preview-panel {
-    width: 75%;
+    width: 70%;
   }
   
   /* 调整新面板在中等屏幕的显示 */

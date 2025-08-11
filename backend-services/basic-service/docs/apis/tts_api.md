@@ -142,19 +142,37 @@ Returns a list of all available voice types with their descriptions.
   "success": true,
   "message": "获取音色列表成功",
   "data": {
-    "zh_female_wanqudashu_moon_bigtts": {
-      "id": "zh_female_wanqudashu_moon_bigtts",
-      "name": "温柔女声",
+    "zh_male_shaonianzixin_moon_bigtts": {
+      "id": "zh_male_shaonianzixin_moon_bigtts",
+      "name": "少年梓辛/Brayan (男声)",
       "language": "zh-CN",
-      "gender": "female",
-      "description": "温柔甜美的女性声音，适合讲解和叙述"
+      "gender": "male",
+      "description": "少年梓辛，清澈的男性声音，适合年轻化内容",
+      "category": "通用场景"
     },
-    "zh_female_sweet": {
-      "id": "zh_female_sweet",
-      "name": "甜美女声",
+    "zh_female_linjianvhai_moon_bigtts": {
+      "id": "zh_female_linjianvhai_moon_bigtts",
+      "name": "邻家女孩 (女声)",
       "language": "zh-CN",
       "gender": "female",
-      "description": "清甜可爱的女性声音，适合轻松愉快的内容"
+      "description": "邻家女孩，亲切自然的女性声音",
+      "category": "通用场景"
+    },
+    "zh_female_daimengchuanmei_moon_bigtts": {
+      "id": "zh_female_daimengchuanmei_moon_bigtts",
+      "name": "呆萌川妹 (女声)",
+      "language": "zh-CN",
+      "gender": "female",
+      "description": "呆萌川妹，四川方言的可爱女性声音",
+      "category": "趣味方言"
+    },
+    "zh_female_meilinvyou_moon_bigtts": {
+      "id": "zh_female_meilinvyou_moon_bigtts",
+      "name": "魅力女友 (女声)",
+      "language": "zh-CN",
+      "gender": "female",
+      "description": "魅力女友，充满魅力的女性声音",
+      "category": "角色扮演"
     }
   }
 }
@@ -173,7 +191,7 @@ Checks the TTS service configuration and availability.
   "service": "TTS",
   "status": "healthy",
   "config_valid": true,
-  "available_voice_types": 6,
+  "available_voice_types": 60,
   "message": "TTS服务运行正常"
 }
 ```
@@ -189,16 +207,59 @@ Checks the TTS service configuration and availability.
 }
 ```
 
+## Voice Configuration
+
+The TTS service now reads voice types from a configuration file (`config/batch_tts_config.yaml`) instead of hardcoding them. This allows for easy updates and management of available voices.
+
+### Configuration Structure
+
+```yaml
+voice_types:
+  volcano:
+    name: '语音合成引擎专业版'
+    voices:
+      - value: 'zh_male_shaonianzixin_moon_bigtts'
+        label: '少年梓辛/Brayan (男声)'
+        category: '通用场景'
+        gender: 'male'
+        language: 'zh-CN'
+        description: '少年梓辛，清澈的男性声音，适合年轻化内容'
+```
+
+## Available Voice Categories
+
+The voice types are organized into the following categories:
+
+### 通用场景 (General Scenarios)
+General-purpose voices suitable for various content types including educational, explanatory, and narrative content.
+
+### 趣味方言 (Regional Dialects)
+Voices with regional characteristics and dialect features, adding cultural flavor to content.
+
+### 角色扮演 (Role Playing)
+Character voices for storytelling, gaming, and entertainment content.
+
+### 播报解说 (Broadcasting & Commentary)
+Professional voices optimized for news broadcasting, commentary, and formal presentations.
+
+### 有声阅读 (Audio Reading)
+Voices specifically designed for audiobook narration and literary content reading.
+
 ## Available Voice Types
 
-| Voice ID | Name | Language | Gender | Description |
-|----------|------|----------|---------|-------------|
-| zh_female_wanqudashu_moon_bigtts | 温柔女声 | zh-CN | female | 温柔甜美的女性声音，适合讲解和叙述 |
-| zh_female_sweet | 甜美女声 | zh-CN | female | 清甜可爱的女性声音，适合轻松愉快的内容 |
-| zh_female_gentle | 温和女声 | zh-CN | female | 温和亲切的女性声音，适合教育和介绍类内容 |
-| zh_male_warm | 温暖男声 | zh-CN | male | 温暖磁性的男性声音，适合深度内容和专业讲解 |
-| zh_male_powerful | 有力男声 | zh-CN | male | 有力坚定的男性声音，适合激励和宣传内容 |
-| zh_male_steady | 稳重男声 | zh-CN | male | 稳重可靠的男性声音，适合新闻和正式内容 |
+| Voice ID | Name | Language | Gender | Category | Description |
+|----------|------|----------|---------|----------|-------------|
+| zh_male_shaonianzixin_moon_bigtts | 少年梓辛/Brayan (男声) | zh-CN | male | 通用场景 | 少年梓辛，清澈的男性声音，适合年轻化内容 |
+| zh_female_linjianvhai_moon_bigtts | 邻家女孩 (女声) | zh-CN | female | 通用场景 | 邻家女孩，亲切自然的女性声音 |
+| zh_male_yuanboxiaoshu_moon_bigtts | 渊博小叔 (男声) | zh-CN | male | 通用场景 | 渊博小叔，知识渊博的男性声音 |
+| zh_female_daimengchuanmei_moon_bigtts | 呆萌川妹 (女声) | zh-CN | female | 趣味方言 | 呆萌川妹，四川方言的可爱女性声音 |
+| zh_male_guozhoudege_moon_bigtts | 广州德哥 (男声) | zh-CN | male | 趣味方言 | 广州德哥，粤语特色的男性声音 |
+| zh_female_meilinvyou_moon_bigtts | 魅力女友 (女声) | zh-CN | female | 角色扮演 | 魅力女友，充满魅力的女性声音 |
+| zh_male_shenyeboke_moon_bigtts | 深夜播客 (男声) | zh-CN | male | 角色扮演 | 深夜播客，深沉磁性的男性声音 |
+| en_female_anna_mars_bigtts | Anna (女声) | en-US | female | 播报解说 | Anna，专业的英语女性播报声音 |
+| zh_male_ruyaqingnian_mars_bigtts | 儒雅青年 (男声) | zh-CN | male | 有声阅读 | 儒雅青年，适合阅读的儒雅男性声音 |
+
+*Note: The complete list contains over 60 voice types across all categories. See the configuration file for the full list.*
 
 ## Error Codes
 
