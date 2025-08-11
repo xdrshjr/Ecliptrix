@@ -70,4 +70,35 @@ class BatchAudioUploadResponse(BaseModel):
     failed_uploads: int = Field(..., description="Number of failed uploads")
     results: list[AudioUploadResponse] = Field(..., description="Individual upload results")
     task_id: Optional[str] = Field(None, description="Task ID")
-    total_processing_time: float = Field(..., description="Total processing time in seconds") 
+    total_processing_time: float = Field(..., description="Total processing time in seconds")
+
+
+class VideoUploadRequest(BaseModel):
+    """Request model for video file upload to Supabase."""
+    task_id: Optional[str] = Field(None, description="Task ID associated with the video")
+    custom_filename: Optional[str] = Field(None, description="Custom filename for the uploaded file")
+    generate_thumbnail: Optional[bool] = Field(True, description="Whether to generate thumbnail for video")
+
+
+class VideoUploadResponse(BaseModel):
+    """Response model for video file upload."""
+    success: bool = Field(..., description="Whether the upload was successful")
+    message: str = Field(..., description="Response message")
+    video_url: str = Field(..., description="Public URL of the uploaded video file")
+    file_path: str = Field(..., description="Path in Supabase bucket")
+    file_size: int = Field(..., description="Size of the video file in bytes")
+    duration: Optional[float] = Field(None, description="Duration of the video in seconds")
+    width: Optional[int] = Field(None, description="Video width in pixels")
+    height: Optional[int] = Field(None, description="Video height in pixels")
+    thumbnail_url: Optional[str] = Field(None, description="URL of the generated thumbnail")
+    task_id: Optional[str] = Field(None, description="Task ID")
+    upload_time: datetime = Field(..., description="Upload timestamp")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional video metadata")
+
+
+class VideoUploadErrorResponse(BaseModel):
+    """Error response model for video upload failures."""
+    success: bool = Field(False, description="Always false for error responses")
+    message: str = Field(..., description="Error message")
+    error_code: Optional[str] = Field(None, description="Error code")
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details") 
