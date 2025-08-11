@@ -18,7 +18,6 @@ export const useTasks = () => {
     const taskTypeNames = {
       content: 'Content Creation',
       video: 'Video Editing',
-      audio: 'Voice Synthesis',
       brainstorm: 'Brainstorming',
       chat: 'AI Chat',
     };
@@ -47,7 +46,15 @@ export const useTasks = () => {
       activeTabId: tabId,
     }));
 
-    console.log(`Created new ${type} task: ${newTask.title}`);
+    console.log(`Taskbar 任务创建: 新建${type}任务 - ${newTask.title}`, {
+      taskId: newTask.id,
+      taskType: type,
+      taskTitle: newTask.title,
+      tabId: tabId,
+      timestamp: now.toISOString(),
+      availableTypes: Object.keys(taskTypeNames),
+      note: 'Voice Synthesis已从可用任务类型中移除'
+    });
   }, [appState.tasks]);
 
   const selectTab = useCallback((tabId: string) => {

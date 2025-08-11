@@ -8,10 +8,12 @@ import json
 import base64
 import time
 import subprocess
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import requests
 from fastapi import HTTPException
+from pathlib import Path
+import yaml
 
 from app.config import settings
 from app.logger import get_logger
@@ -247,7 +249,6 @@ class TTSClient:
             mock_mp3_data = base64.b64decode(
                 "SUQzBAAAAAAAI1RJVDIAAAAZAAABZm9vAFRQRTEAAAASAAABZm9vAFRBTEIAAAASAAABZm9v"
                 "AFRZRVIAAAASAAABZW9vAFRDT04AAAASAAABZW9vAP/+xGQAAP+BAACAAQABAACAAQABAAAA"
-                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -658,49 +659,113 @@ class TTSService:
                 time.sleep(2 * (attempt + 1))
     
     def get_available_voice_types(self) -> Dict[str, VoiceTypeInfo]:
-        """获取可用的音色类型列表"""
+        """获取可用的音色类型列表，从配置文件读取"""
+        try:
+            # 获取配置文件路径
+            config_path = Path(__file__).parent.parent.parent / "config" / "batch_tts_config.yaml"
+            
+            logger.info("开始从配置文件加载音色列表", {
+                "config_path": str(config_path),
+                "file_exists": config_path.exists()
+            })
+            
+            if not config_path.exists():
+                logger.error("音色配置文件不存在", {
+                    "config_path": str(config_path)
+                })
+                return self._get_fallback_voice_types()
+            
+            # 读取配置文件
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            voice_types = {}
+            volcano_config = config.get('voice_types', {}).get('volcano', {})
+            voices_list = volcano_config.get('voices', [])
+            
+            logger.info("从配置文件加载音色", {
+                "total_voices": len(voices_list),
+                "engine_name": volcano_config.get('name', 'Unknown')
+            })
+            
+            for voice in voices_list:
+                voice_id = voice.get('value')
+                if voice_id:
+                    voice_types[voice_id] = VoiceTypeInfo(
+                        id=voice_id,
+                        name=voice.get('label', voice_id),
+                        language=voice.get('language', 'zh-CN'),
+                        gender=voice.get('gender', 'unknown'),
+                        description=voice.get('description', ''),
+                        category=voice.get('category', '其他')
+                    )
+            
+            logger.info("音色列表加载成功", {
+                "loaded_voices": len(voice_types),
+                "categories": list(set(v.category for v in voice_types.values()))
+            })
+            
+            return voice_types
+            
+        except Exception as e:
+            logger.error("从配置文件加载音色列表失败", {
+                "error": str(e),
+                "config_path": str(config_path) if 'config_path' in locals() else 'unknown'
+            })
+            return self._get_fallback_voice_types()
+    
+    def _get_fallback_voice_types(self) -> Dict[str, VoiceTypeInfo]:
+        """获取备用音色类型列表（硬编码）"""
+        logger.warning("使用备用音色列表")
+        
         voice_types = {
             VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value: VoiceTypeInfo(
                 id=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value,
                 name="温柔女声",
                 language="zh-CN",
                 gender="female",
-                description="温柔甜美的女性声音，适合讲解和叙述"
+                description="温柔甜美的女性声音，适合讲解和叙述",
+                category="通用场景"
             ),
             VoiceType.ZH_FEMALE_SWEET.value: VoiceTypeInfo(
                 id=VoiceType.ZH_FEMALE_SWEET.value,
                 name="甜美女声",
                 language="zh-CN",
                 gender="female", 
-                description="清甜可爱的女性声音，适合轻松愉快的内容"
+                description="清甜可爱的女性声音，适合轻松愉快的内容",
+                category="通用场景"
             ),
             VoiceType.ZH_FEMALE_GENTLE.value: VoiceTypeInfo(
                 id=VoiceType.ZH_FEMALE_GENTLE.value,
                 name="温和女声",
                 language="zh-CN",
                 gender="female",
-                description="温和亲切的女性声音，适合教育和介绍类内容"
+                description="温和亲切的女性声音，适合教育和介绍类内容",
+                category="通用场景"
             ),
             VoiceType.ZH_MALE_WARM.value: VoiceTypeInfo(
                 id=VoiceType.ZH_MALE_WARM.value,
                 name="温暖男声",
                 language="zh-CN", 
                 gender="male",
-                description="温暖磁性的男性声音，适合深度内容和专业讲解"
+                description="温暖磁性的男性声音，适合深度内容和专业讲解",
+                category="通用场景"
             ),
             VoiceType.ZH_MALE_POWERFUL.value: VoiceTypeInfo(
                 id=VoiceType.ZH_MALE_POWERFUL.value,
                 name="有力男声",
                 language="zh-CN",
                 gender="male",
-                description="有力坚定的男性声音，适合激励和宣传内容"
+                description="有力坚定的男性声音，适合激励和宣传内容",
+                category="通用场景"
             ),
             VoiceType.ZH_MALE_STEADY.value: VoiceTypeInfo(
                 id=VoiceType.ZH_MALE_STEADY.value,
                 name="稳重男声",
                 language="zh-CN",
                 gender="male",
-                description="稳重可靠的男性声音，适合新闻和正式内容"
+                description="稳重可靠的男性声音，适合新闻和正式内容",
+                category="通用场景"
             )
         }
         

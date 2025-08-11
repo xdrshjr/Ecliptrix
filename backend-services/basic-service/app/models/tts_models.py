@@ -205,6 +205,7 @@ class VoiceTypeInfo(BaseModel):
     language: str = Field(..., description="Language code")
     gender: str = Field(..., description="Voice gender")
     description: str = Field(..., description="Voice description")
+    category: str = Field(..., description="Voice category")
     
     class Config:
         json_schema_extra = {
@@ -213,7 +214,8 @@ class VoiceTypeInfo(BaseModel):
                 "name": "温柔女声",
                 "language": "zh-CN",
                 "gender": "female",
-                "description": "温柔甜美的女性声音，适合讲解和叙述"
+                "description": "温柔甜美的女性声音，适合讲解和叙述",
+                "category": "通用场景"
             }
         }
 

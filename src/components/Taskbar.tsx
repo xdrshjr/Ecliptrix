@@ -19,11 +19,6 @@ const Taskbar: React.FC<TaskbarProps> = ({
 }) => {
   const [showTaskMenu, setShowTaskMenu] = useState(false);
 
-  const handleCreateTask = (type: TaskType) => {
-    onCreateTask(type);
-    setShowTaskMenu(false);
-  };
-
   const getTaskIcon = (type: TaskType) => {
     switch (type) {
       case 'content':
@@ -36,12 +31,6 @@ const Taskbar: React.FC<TaskbarProps> = ({
         return (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-        );
-      case 'audio':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
           </svg>
         );
       case 'brainstorm':
@@ -57,6 +46,17 @@ const Taskbar: React.FC<TaskbarProps> = ({
           </svg>
         );
     }
+  };
+
+  const handleCreateTask = (type: TaskType) => {
+    console.log(`Taskbar 任务菜单: 用户选择创建${type}任务`, {
+      taskType: type,
+      timestamp: new Date().toISOString(),
+      menuAction: 'create_task_selected',
+      note: 'Voice Synthesis选项已从菜单中移除，AI Chat已调整为第一项'
+    });
+    onCreateTask(type);
+    setShowTaskMenu(false);
   };
 
   return (
@@ -77,11 +77,11 @@ const Taskbar: React.FC<TaskbarProps> = ({
         {showTaskMenu && (
           <div className="absolute top-10 left-0 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
             <button
-              onClick={() => handleCreateTask('content')}
+              onClick={() => handleCreateTask('chat')}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
-              {getTaskIcon('content')}
-              <span className="text-sm">Content Creation</span>
+              {getTaskIcon('chat')}
+              <span className="text-sm">AI Chat</span>
             </button>
             <button
               onClick={() => handleCreateTask('video')}
@@ -91,11 +91,11 @@ const Taskbar: React.FC<TaskbarProps> = ({
               <span className="text-sm">Video Editing</span>
             </button>
             <button
-              onClick={() => handleCreateTask('audio')}
+              onClick={() => handleCreateTask('content')}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
-              {getTaskIcon('audio')}
-              <span className="text-sm">Voice Synthesis</span>
+              {getTaskIcon('content')}
+              <span className="text-sm">Content Creation</span>
             </button>
             <button
               onClick={() => handleCreateTask('brainstorm')}
@@ -103,13 +103,6 @@ const Taskbar: React.FC<TaskbarProps> = ({
             >
               {getTaskIcon('brainstorm')}
               <span className="text-sm">Brainstorming</span>
-            </button>
-            <button
-              onClick={() => handleCreateTask('chat')}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
-            >
-              {getTaskIcon('chat')}
-              <span className="text-sm">AI Chat</span>
             </button>
           </div>
         )}
