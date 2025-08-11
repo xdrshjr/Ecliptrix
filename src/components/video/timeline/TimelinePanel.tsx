@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
+import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
@@ -14,6 +15,8 @@ interface TimelinePanelProps {
   onCurrentTimeChange?: (time: number) => void;
   // 新增：素材列表，用于导出功能
   materials?: MaterialItem[];
+  // 国际化支持
+  locale?: SupportedLocale;
 }
 
 const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
@@ -21,7 +24,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onTimelineStateChange, 
   externalCurrentTime,
   onCurrentTimeChange,
-  materials = []
+  materials = [],
+  locale = defaultLocale
 }) => {
   // 创建初始空轨道状态
   const createInitialTimelineState = (): TimelineState => {
@@ -724,8 +728,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
     const trackId = `${type}-track-${Date.now()}`;
-    const trackName = `${type === 'video' ? '视频' : type === 'audio' ? '音频' : '字幕'}轨道 ${timelineState.tracks.filter(t => t.type === type).length + 1}`;
-    const trackHeight = type === 'video' ? 80 : type === 'audio' ? 60 : 50;
+    // 使用国际化轨道名称
+    const t = getTranslations(locale);
+    const baseTrackName = type === 'video' ? t.timeline.track.videoTrack : 
+                         type === 'audio' ? t.timeline.track.audioTrack : 
+                         t.timeline.track.subtitleTrack;
+    const trackName = `${baseTrackName} ${timelineState.tracks.filter(t => t.type === type).length + 1}`;
+    const trackHeight = 32; // 统一使用32px高度
     
     console.log(`[TimelinePanel] 添加新轨道`, {
       trackId,
@@ -1196,6 +1205,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onExport={handleExport}
         isExporting={isExporting}
         exportProgress={exportProgress}
+        locale={locale}
       />
 
       {/* 时间刻度尺 */}
@@ -1222,6 +1232,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onRemoveTrack={handleRemoveTrack}
         onReorderTracks={handleReorderTracks}
         onMaterialDrop={handleMaterialDrop}
+        locale={locale}
       />
     </div>
   );

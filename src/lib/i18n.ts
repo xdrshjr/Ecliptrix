@@ -29,6 +29,64 @@ export interface Translations {
     willBeImplemented: string;
     workspaceDescription: string;
   };
+  timeline: {
+    toolbar: {
+      select: string;
+      cut: string;
+      copy: string;
+      paste: string;
+      delete: string;
+      undo: string;
+      redo: string;
+      effects: string;
+      transitions: string;
+      subtitles: string;
+      export: string;
+      exporting: string;
+      exportingProgress: string;
+    };
+    shortcuts: {
+      selectShortcut: string;
+      cutShortcut: string;
+      copyShortcut: string;
+      pasteShortcut: string;
+      deleteShortcut: string;
+      undoShortcut: string;
+      redoShortcut: string;
+      effectsShortcut: string;
+      transitionsShortcut: string;
+      subtitlesShortcut: string;
+      exportShortcut: string;
+    };
+    status: {
+      selectedItems: string;
+      currentTool: string;
+    };
+    trackBar: {
+      tracks: string;
+      materials: string;
+      duration: string;
+      addTrack: string;
+      addVideoTrack: string;
+      addAudioTrack: string;
+      addSubtitleTrack: string;
+    };
+    track: {
+      videoTrack: string;
+      audioTrack: string;
+      subtitleTrack: string;
+      mute: string;
+      unmute: string;
+      lock: string;
+      unlock: string;
+      show: string;
+      hide: string;
+      dropVideoHere: string;
+      dropAudioHere: string;
+      dropSubtitleHere: string;
+      dropToTrack: string;
+    };
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -63,6 +121,64 @@ export const translations: Record<string, Translations> = {
       willBeImplemented: 'Task content will be implemented here',
       workspaceDescription: 'This is where the {type} workspace will be displayed. The specific functionality for each task type will be implemented in future iterations.',
     },
+    timeline: {
+      toolbar: {
+        select: 'Select',
+        cut: 'Cut',
+        copy: 'Copy',
+        paste: 'Paste',
+        delete: 'Delete',
+        undo: 'Undo',
+        redo: 'Redo',
+        effects: 'Effects',
+        transitions: 'Transitions',
+        subtitles: 'Subtitles',
+        export: 'Export',
+        exporting: 'Exporting',
+        exportingProgress: 'Exporting ({progress}%)',
+      },
+      shortcuts: {
+        selectShortcut: 'V',
+        cutShortcut: 'Ctrl+X',
+        copyShortcut: 'Ctrl+C',
+        pasteShortcut: 'Ctrl+V',
+        deleteShortcut: 'Del',
+        undoShortcut: 'Ctrl+Z',
+        redoShortcut: 'Ctrl+Y',
+        effectsShortcut: 'E',
+        transitionsShortcut: 'T',
+        subtitlesShortcut: 'S',
+        exportShortcut: 'Ctrl+E',
+      },
+      status: {
+        selectedItems: '{count} items selected',
+        currentTool: 'Current tool: {tool}',
+      },
+      trackBar: {
+        tracks: 'Tracks',
+        materials: 'Materials',
+        duration: 'Duration',
+        addTrack: 'Add Track',
+        addVideoTrack: 'Add Video Track',
+        addAudioTrack: 'Add Audio Track',
+        addSubtitleTrack: 'Add Subtitle Track',
+      },
+      track: {
+        videoTrack: 'Video Track',
+        audioTrack: 'Audio Track',
+        subtitleTrack: 'Subtitle Track',
+        mute: 'Mute',
+        unmute: 'Unmute',
+        lock: 'Lock Track',
+        unlock: 'Unlock Track',
+        show: 'Show Track',
+        hide: 'Hide Track',
+        dropVideoHere: 'Drag video/image materials here',
+        dropAudioHere: 'Drag audio materials here',
+        dropSubtitleHere: 'Drag subtitle materials here',
+        dropToTrack: 'Drop to {trackName}',
+      },
+    },
   },
   'zh-CN': {
     common: {
@@ -94,6 +210,64 @@ export const translations: Record<string, Translations> = {
     taskContent: {
       willBeImplemented: '任务内容将在此处实现',
       workspaceDescription: '这里将显示{type}工作区。每种任务类型的具体功能将在未来的迭代中实现。',
+    },
+    timeline: {
+      toolbar: {
+        select: '选择',
+        cut: '剪切',
+        copy: '复制',
+        paste: '粘贴',
+        delete: '删除',
+        undo: '撤销',
+        redo: '重做',
+        effects: '特效',
+        transitions: '转场',
+        subtitles: '字幕',
+        export: '导出',
+        exporting: '导出中',
+        exportingProgress: '导出中 ({progress}%)',
+      },
+      shortcuts: {
+        selectShortcut: 'V',
+        cutShortcut: 'Ctrl+X',
+        copyShortcut: 'Ctrl+C',
+        pasteShortcut: 'Ctrl+V',
+        deleteShortcut: 'Del',
+        undoShortcut: 'Ctrl+Z',
+        redoShortcut: 'Ctrl+Y',
+        effectsShortcut: 'E',
+        transitionsShortcut: 'T',
+        subtitlesShortcut: 'S',
+        exportShortcut: 'Ctrl+E',
+      },
+      status: {
+        selectedItems: '已选中 {count} 个素材',
+        currentTool: '当前工具: {tool}',
+      },
+      trackBar: {
+        tracks: '轨道',
+        materials: '素材',
+        duration: '时长',
+        addTrack: '添加轨道',
+        addVideoTrack: '添加视频轨道',
+        addAudioTrack: '添加音频轨道',
+        addSubtitleTrack: '添加字幕轨道',
+      },
+      track: {
+        videoTrack: '视频轨道',
+        audioTrack: '音频轨道',
+        subtitleTrack: '字幕轨道',
+        mute: '静音',
+        unmute: '取消静音',
+        lock: '锁定轨道',
+        unlock: '解锁轨道',
+        show: '显示轨道',
+        hide: '隐藏轨道',
+        dropVideoHere: '拖拽视频/图片素材到此轨道',
+        dropAudioHere: '拖拽音频素材到此轨道',
+        dropSubtitleHere: '拖拽字幕素材到此轨道',
+        dropToTrack: '放置到 {trackName}',
+      },
     },
   },
 };

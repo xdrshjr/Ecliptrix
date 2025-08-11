@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
+import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import Track from './Track';
 
 interface TrackContainerProps {
@@ -16,6 +17,7 @@ interface TrackContainerProps {
   onRemoveTrack: (trackId: string) => void;
   onReorderTracks: (sourceIndex: number, destinationIndex: number) => void;
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
+  locale?: SupportedLocale;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -29,8 +31,11 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onAddTrack,
   onRemoveTrack,
   onReorderTracks,
-  onMaterialDrop
+  onMaterialDrop,
+  locale = defaultLocale
 }) => {
+  // 获取国际化翻译
+  const t = getTranslations(locale);
   const { tracks, selectedItems, totalDuration, zoomLevel } = timelineState;
   const pixelsPerSecond = zoomLevel * 50; // 基础像素比例
 
@@ -80,6 +85,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
               onToggleVisibility={onToggleTrackVisibility}
               onMaterialDrop={onMaterialDrop}
               totalDuration={totalDuration}
+              locale={locale}
             />
           ))
         ) : (
@@ -129,49 +135,103 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
         )}
       </div>
 
-      {/* 底部轨道管理栏 */}
-      <div className="flex-shrink-0 h-10 bg-gray-100 border-t border-gray-200 flex items-center justify-between px-4">
+      {/* 底部轨道管理栏 - 高度与时间刻度轴一致 */}
+      <div className="flex-shrink-0 h-8 bg-gray-100 border-t border-gray-200 flex items-center justify-between px-4">
         {/* 左侧轨道信息 */}
-        <div className="flex items-center space-x-4 text-sm text-gray-600">
-          <span>轨道: {tracks.length}</span>
-          <span>素材: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
-          <span>时长: {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toFixed(0).padStart(2, '0')}</span>
+        <div className="flex items-center space-x-3 text-xs text-gray-600">
+          <span>{t.timeline.trackBar.tracks}: {tracks.length}</span>
+          <span>{t.timeline.trackBar.materials}: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
+          <span>{t.timeline.trackBar.duration}: {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toFixed(0).padStart(2, '0')}</span>
         </div>
 
         {/* 右侧添加轨道按钮 */}
         <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600">添加轨道:</span>
+          <span className="text-xs text-gray-600">{t.timeline.trackBar.addTrack}:</span>
           
           <div className="flex items-center space-x-1">
-            <button
-              onClick={() => handleAddTrack('video')}
-              className="p-1.5 rounded hover:bg-gray-200 transition-colors group"
-              title="添加视频轨道"
-            >
-              <svg className="w-4 h-4 text-blue-600 group-hover:text-blue-700" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
-              </svg>
-            </button>
+            {/* 视频轨道按钮 */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  console.log(`[TrackContainer] 添加视频轨道`, {
+                    timestamp: new Date().toISOString()
+                  });
+                  handleAddTrack('video');
+                }}
+                className="p-1.5 rounded hover:bg-gray-200 transition-colors w-6 h-6 flex items-center justify-center"
+                aria-label={t.timeline.trackBar.addVideoTrack}
+              >
+                <svg className="w-3 h-3 text-blue-600 group-hover:text-blue-700" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+                </svg>
+                
+                {/* 悬停提示 */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                    {t.timeline.trackBar.addVideoTrack}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
             
-            <button
-              onClick={() => handleAddTrack('audio')}
-              className="p-1.5 rounded hover:bg-gray-200 transition-colors group"
-              title="添加音频轨道"
-            >
-              <svg className="w-4 h-4 text-green-600 group-hover:text-green-700" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-              </svg>
-            </button>
+            {/* 音频轨道按钮 */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  console.log(`[TrackContainer] 添加音频轨道`, {
+                    timestamp: new Date().toISOString()
+                  });
+                  handleAddTrack('audio');
+                }}
+                className="p-1.5 rounded hover:bg-gray-200 transition-colors w-6 h-6 flex items-center justify-center"
+                aria-label={t.timeline.trackBar.addAudioTrack}
+              >
+                <svg className="w-3 h-3 text-green-600 group-hover:text-green-700" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                </svg>
+                
+                {/* 悬停提示 */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                    {t.timeline.trackBar.addAudioTrack}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
             
-            <button
-              onClick={() => handleAddTrack('subtitle')}
-              className="p-1.5 rounded hover:bg-gray-200 transition-colors group"
-              title="添加字幕轨道"
-            >
-              <svg className="w-4 h-4 text-amber-600 group-hover:text-amber-700" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
-              </svg>
-            </button>
+            {/* 字幕轨道按钮 */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  console.log(`[TrackContainer] 添加字幕轨道`, {
+                    timestamp: new Date().toISOString()
+                  });
+                  handleAddTrack('subtitle');
+                }}
+                className="p-1.5 rounded hover:bg-gray-200 transition-colors w-6 h-6 flex items-center justify-center"
+                aria-label={t.timeline.trackBar.addSubtitleTrack}
+              >
+                <svg className="w-3 h-3 text-amber-600 group-hover:text-amber-700" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
+                </svg>
+                
+                {/* 悬停提示 */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                    {t.timeline.trackBar.addSubtitleTrack}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
