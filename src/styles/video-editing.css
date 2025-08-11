@@ -235,7 +235,7 @@
 .video-editing-materials-panel {
   width: 50%;
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   background-color: #ffffff;
 }
 
@@ -265,9 +265,35 @@
 .materials-panel-content {
   padding: 16px;
   height: calc(100% - 60px);
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* 素材网格滚动容器 */
+.materials-grid-container {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  padding-right: 2px;
+}
+
+.materials-grid-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.materials-grid-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.materials-grid-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.materials-grid-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 /* 素材卡片样式增强 */
@@ -996,30 +1022,22 @@
   overflow-y: auto;
 }
 
-/* 滚动条样式优化 - 应用到新面板 */
-.video-editing-materials-panel::-webkit-scrollbar,
-.video-editing-preview-lower::-webkit-scrollbar,
-.materials-panel-content::-webkit-scrollbar {
+/* 滚动条样式优化 - 应用到预览面板 */
+.video-editing-preview-lower::-webkit-scrollbar {
   width: 6px;
 }
 
-.video-editing-materials-panel::-webkit-scrollbar-track,
-.video-editing-preview-lower::-webkit-scrollbar-track,
-.materials-panel-content::-webkit-scrollbar-track {
+.video-editing-preview-lower::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 3px;
 }
 
-.video-editing-materials-panel::-webkit-scrollbar-thumb,
-.video-editing-preview-lower::-webkit-scrollbar-thumb,
-.materials-panel-content::-webkit-scrollbar-thumb {
+.video-editing-preview-lower::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 3px;
 }
 
-.video-editing-materials-panel::-webkit-scrollbar-thumb:hover,
-.video-editing-preview-lower::-webkit-scrollbar-thumb:hover,
-.materials-panel-content::-webkit-scrollbar-thumb:hover {
+.video-editing-preview-lower::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
 

@@ -31,26 +31,41 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [draggedMaterial, setDraggedMaterial] = useState<MaterialItem | null>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const materialsGridRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    logger.info('组件初始化', {
+    logger.info('组件初始化 - 素材网格滚动优化版本', {
       materialsCount: materials.length,
       selectedType: selectedMaterialType,
-      isUploading
+      isUploading,
+      scrollImplementation: 'materials-grid-container'
     });
   }, []);
 
   // 监听 materials 变化
   useEffect(() => {
-    logger.info('素材列表更新 - 4列紧凑布局', {
+    logger.info('素材列表更新 - 4列紧凑布局，独立滚动容器', {
       materialsCount: materials.length,
       layoutType: 'grid-cols-4-compact',
+      scrollContainer: 'materials-grid-container',
+      scrollBehavior: 'internal-only',
       materials: materials.map(m => ({
         id: m.id,
         name: m.name,
         type: m.type
       }))
     });
+
+    // 记录滚动容器状态
+    if (materialsGridRef.current) {
+      const container = materialsGridRef.current;
+      logger.info('素材网格滚动容器状态', {
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        scrollable: container.scrollHeight > container.clientHeight,
+        scrollTop: container.scrollTop
+      });
+    }
   }, [materials]);
 
   const handleTypeFilter = (type: MaterialType | 'all') => {
@@ -250,6 +265,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   };
 
+  // 滚动事件处理
+  const handleGridScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    logger.debug('素材网格滚动事件', {
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+      scrollPercentage: Math.round((container.scrollTop / (container.scrollHeight - container.clientHeight)) * 100)
+    });
+  };
+
   return (
     <div className={`video-editing-materials-panel border-r border-gray-200 ${className}`}>
       <div className="materials-panel-header">
@@ -309,7 +335,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         </div>
 
         {/* 素材网格 */}
-        <div className="mb-4">
+        <div 
+          className="materials-grid-container"
+          ref={materialsGridRef}
+          onScroll={handleGridScroll}
+        >
           {materials.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -439,7 +469,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         </div>
 
         {/* 底部操作栏 */}
-        <div className="border-t pt-3 mt-auto">
+        <div className="border-t pt-3 flex-shrink-0">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center space-x-3">
               <button
