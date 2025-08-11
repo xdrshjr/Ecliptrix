@@ -18,12 +18,37 @@ Content-Type: application/json
 |-------|------|------|------|
 | markdownContent | string | 是 | 用户输入的Markdown内容 |
 | taskId | string | 是 | 任务唯一标识符 |
+| scriptConfig | object | 否 | 脚本生成配置选项 |
+
+#### ScriptConfig 对象结构
+| 参数名 | 类型 | 必需 | 可选值 | 描述 |
+|-------|------|------|-------|------|
+| language | string | 否 | 'chinese', 'english', 'mixed' | 脚本语言设置，默认为 'chinese' |
+| consistency | string | 否 | 'high', 'moderate', 'low' | 原文保持程度，默认为 'moderate' |
+| segmentCount | number | 否 | 1-10 | 生成的段落数量，默认为 5 |
+| customRequirements | string | 否 | - | 用户自定义要求，可选填 |
 
 ### 示例请求
+
+#### 基础请求（使用默认配置）
 ```json
 {
   "markdownContent": "# 产品介绍\n\n## 核心功能\n我们的产品具有以下特点：\n- 高效便捷\n- 安全可靠\n- 用户友好\n\n## 使用场景\n适用于各种业务场景...",
   "taskId": "task_123456"
+}
+```
+
+#### 带配置的请求
+```json
+{
+  "markdownContent": "# 产品介绍\n\n## 核心功能\n我们的产品具有以下特点：\n- 高效便捷\n- 安全可靠\n- 用户友好\n\n## 使用场景\n适用于各种业务场景...",
+  "taskId": "task_123456",
+  "scriptConfig": {
+    "language": "chinese",
+    "consistency": "moderate",
+    "segmentCount": 6,
+    "customRequirements": "请使用更加口语化的表达方式，适合年轻观众"
+  }
 }
 ```
 

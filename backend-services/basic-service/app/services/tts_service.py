@@ -427,7 +427,7 @@ class TTSService:
     def convert_text_to_speech(
         self,
         text: str,
-        voice_type: VoiceType = VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
+        voice_type: str = "zh_male_shaonianzixin_moon_bigtts",
         speed_ratio: float = 1.0,
         segment_id: Optional[str] = None,
         task_id: Optional[str] = None
@@ -477,7 +477,7 @@ class TTSService:
             try:
                 logger.info(f"开始TTS转换 (尝试 {attempt + 1}/{max_retries})", {
                     "text_length": len(text),
-                    "voice_type": voice_type.value,
+                    "voice_type": voice_type,
                     "speed_ratio": speed_ratio,
                     "segment_id": segment_id,
                     "task_id": task_id,
@@ -489,7 +489,7 @@ class TTSService:
                 success = tts_client.synthesize_speech(
                     text=text,
                     output_file=output_path,
-                    voice_type=voice_type.value,
+                    voice_type=voice_type,
                     speed_ratio=speed_ratio
                 )
                 
@@ -563,14 +563,14 @@ class TTSService:
                         "file_size": file_size,
                         "segment_id": segment_id,
                         "task_id": task_id,
-                        "voice_type": voice_type.value
+                        "voice_type": voice_type
                     })
                     
                     upload_result = supabase_service.upload_audio_file(
                         audio_file_path=output_path,
                         segment_id=segment_id,
                         task_id=task_id,
-                        voice_type=voice_type.value
+                        voice_type=voice_type
                     )
                     
                     if upload_result["success"]:
@@ -610,7 +610,7 @@ class TTSService:
                     "file_name": filename,
                     "file_size": file_size,
                     "duration": actual_duration,  # 添加实际时长
-                    "voice_type": voice_type.value,
+                    "voice_type": voice_type,
                     "text_length": len(text),
                     "speed_ratio": speed_ratio,
                     "request_id": str(uuid.uuid4()),

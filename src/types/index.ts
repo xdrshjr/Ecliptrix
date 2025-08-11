@@ -70,6 +70,14 @@ export interface VideoEditingTaskContent {
   materials?: MaterialItem[]; // 素材数据
 }
 
+// Script Generation Configuration
+export interface ScriptGenerationConfig {
+  language: 'chinese' | 'english' | 'mixed';
+  consistency: 'high' | 'moderate' | 'low';
+  segmentCount: number; // 1-10
+  customRequirements?: string;
+}
+
 // Materials Management related types
 export type MaterialType = 'video' | 'audio' | 'image';
 

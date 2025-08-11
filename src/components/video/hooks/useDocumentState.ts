@@ -87,6 +87,45 @@ export const useDocumentState = (
     });
   }, [markdownValue.length, onUpdateContent, content?.scriptSegments, logger]);
 
+  // 清空markdown内容
+  const clearContent = useCallback(() => {
+    const previousLength = markdownValue.length;
+    
+    logger.userAction('清空Markdown内容', 'clearButton', {
+      previousContentLength: previousLength,
+      timestamp: new Date().toISOString(),
+      contentPreview: markdownValue.substring(0, 100) + (markdownValue.length > 100 ? '...' : '')
+    });
+
+    // 清空为空字符串
+    const clearedContent = '';
+    
+    setMarkdownValue(clearedContent);
+    setIsContentModified(true);
+    
+    // 更新任务内容
+    const updatedContent: VideoEditingTaskContent = {
+      markdownContent: clearedContent,
+      lastModified: new Date(),
+      scriptSegments: content?.scriptSegments
+    };
+    
+    onUpdateContent(updatedContent);
+    setLastSaved(updatedContent.lastModified);
+    
+    // 短暂延迟后重置修改状态
+    setTimeout(() => {
+      setIsContentModified(false);
+    }, 1000);
+
+    logger.info('Markdown内容已清空', {
+      previousLength,
+      newLength: 0,
+      contentCleared: true,
+      lastModified: updatedContent.lastModified.toISOString()
+    });
+  }, [markdownValue, onUpdateContent, content?.scriptSegments, logger]);
+
   // 当外部content变化时同步本地状态
   useEffect(() => {
     if (content?.markdownContent !== undefined && content.markdownContent !== markdownValue) {
@@ -123,6 +162,7 @@ export const useDocumentState = (
     markdownValue,
     setMarkdownValue,
     handleMarkdownChange,
+    clearContent,
     isContentModified,
     lastSaved
   };

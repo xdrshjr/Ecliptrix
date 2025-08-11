@@ -1,4 +1,4 @@
-import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem } from '@/types';
+import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem, ScriptGenerationConfig } from '@/types';
 
 // Video playback types
 export type PreviewQuality = 'low' | 'medium' | 'high' | 'original';
@@ -47,6 +47,7 @@ export interface UseDocumentStateReturn {
   markdownValue: string;
   setMarkdownValue: (value: string) => void;
   handleMarkdownChange: (value: string) => void;
+  clearContent: () => void;
   isContentModified: boolean;
   lastSaved: Date | null;
 }
@@ -84,6 +85,7 @@ export interface UseAIAssistantReturn {
 export interface UseScriptGenerationReturn {
   isGeneratingScript: boolean;
   handleGenerateScript: () => Promise<void>;
+  handleGenerateScriptWithConfig: (config: ScriptGenerationConfig) => Promise<void>;
   handleUpdateSegments: (segments: ScriptSegment[]) => void;
   generationProgress: number;
   generationError: string | null;

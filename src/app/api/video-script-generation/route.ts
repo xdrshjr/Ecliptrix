@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ScriptSegment } from '@/types';
+import { ScriptSegment, ScriptGenerationConfig } from '@/types';
 
 // 获取环境变量配置
 const getConfig = () => {
@@ -15,7 +15,46 @@ const getConfig = () => {
 };
 
 // 构建脚本生成的提示词
-const buildScriptPrompt = (markdownContent: string) => {
+const buildScriptPrompt = (markdownContent: string, scriptConfig?: ScriptGenerationConfig) => {
+  // 设置默认配置
+  const config = scriptConfig || {
+    language: 'chinese',
+    consistency: 'moderate',
+    segmentCount: 5,
+    customRequirements: ''
+  };
+
+  // 根据语言选择设置语言要求
+  let languageInstruction = '';
+  switch (config.language) {
+    case 'chinese':
+      languageInstruction = 'Generate the script in Chinese. Use natural, conversational Chinese suitable for video narration.';
+      break;
+    case 'english':
+      languageInstruction = 'Generate the script in English. Use natural, conversational English suitable for video narration.';
+      break;
+    case 'mixed':
+      languageInstruction = 'Generate the script in a mix of Chinese and English as appropriate based on the content. Use natural language suitable for video narration.';
+      break;
+  }
+
+  // 根据保持程度设置一致性要求
+  let consistencyInstruction = '';
+  switch (config.consistency) {
+    case 'high':
+      consistencyInstruction = 'Maintain high consistency with the original content. Keep the original meaning, structure, and key phrases as much as possible.';
+      break;
+    case 'moderate':
+      consistencyInstruction = 'Moderate adaptation of the original content. Adjust for better video presentation while preserving the core message.';
+      break;
+    case 'low':
+      consistencyInstruction = 'Significant adaptation for optimal video presentation. Focus on engaging delivery and clear communication, allowing substantial changes from the original text.';
+      break;
+  }
+
+  // 自定义要求
+  const customInstructions = config.customRequirements ? `\nAdditional requirements: ${config.customRequirements}` : '';
+
   return `You are an expert video script writer. Based on the following markdown content, generate a professional video script.
 
 Markdown Content:
@@ -23,11 +62,12 @@ ${markdownContent}
 
 Please analyze the content and create a video script with the following requirements:
 
-1. Divide the content into logical segments (typically 3-8 segments)
+1. Divide the content into exactly ${config.segmentCount} logical segments
 2. Each segment should represent a coherent part of the video (like introduction, main points, conclusion)
 3. Each segment should contain 2-6 sentences that flow naturally
 4. Estimate appropriate duration for each segment (in seconds)
-5. Create engaging, conversational language suitable for video narration
+5. ${languageInstruction}
+6. ${consistencyInstruction}${customInstructions}
 
 Return the result as a JSON object with this exact structure:
 {
@@ -63,12 +103,20 @@ Important:
 };
 
 // 日志记录函数
-const logRequest = (markdownContent: string, taskId: string, config: any) => {
+const logRequest = (markdownContent: string, taskId: string, config: any, scriptConfig?: ScriptGenerationConfig) => {
   console.log(`[Video Script Generation API] ${new Date().toISOString()} - Incoming script generation request`);
   console.log(`[Video Script Generation API] Task ID: ${taskId}`);
   console.log(`[Video Script Generation API] Model: ${config.model}`);
   console.log(`[Video Script Generation API] Markdown content length: ${markdownContent.length} characters`);
   console.log(`[Video Script Generation API] Markdown preview: ${markdownContent.slice(0, 200)}...`);
+  
+  if (scriptConfig) {
+    console.log(`[Video Script Generation API] Script Configuration:`);
+    console.log(`[Video Script Generation API] - Language: ${scriptConfig.language}`);
+    console.log(`[Video Script Generation API] - Consistency: ${scriptConfig.consistency}`);
+    console.log(`[Video Script Generation API] - Segment Count: ${scriptConfig.segmentCount}`);
+    console.log(`[Video Script Generation API] - Custom Requirements: ${scriptConfig.customRequirements || 'None'}`);
+  }
 };
 
 const logResponse = (success: boolean, taskId: string, segmentCount?: number, error?: string) => {
@@ -83,9 +131,10 @@ const logResponse = (success: boolean, taskId: string, segmentCount?: number, er
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { markdownContent, taskId } = body as { 
+    const { markdownContent, taskId, scriptConfig } = body as { 
       markdownContent: string; 
       taskId: string; 
+      scriptConfig?: ScriptGenerationConfig;
     };
 
     // 验证请求参数
@@ -106,7 +155,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = getConfig();
-    logRequest(markdownContent, taskId, config);
+    logRequest(markdownContent, taskId, config, scriptConfig);
 
     // 准备请求数据
     const requestData = {
@@ -118,7 +167,7 @@ export async function POST(request: NextRequest) {
         },
         {
           role: 'user',
-          content: buildScriptPrompt(markdownContent)
+          content: buildScriptPrompt(markdownContent, scriptConfig)
         }
       ],
       temperature: 0.7,

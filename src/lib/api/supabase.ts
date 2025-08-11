@@ -3,6 +3,8 @@
  * 用于与后端Supabase服务通信的客户端函数
  */
 
+// 注意：这个文件中的API调用应该通过Next.js API路由代理
+// 如果需要直接调用后台服务，请确保使用正确的服务器地址配置
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export interface VideoUploadRequest {

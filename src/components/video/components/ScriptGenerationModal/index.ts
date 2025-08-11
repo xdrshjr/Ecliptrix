@@ -1,0 +1,1 @@
+export { default as ScriptGenerationModal } from './ScriptGenerationModal'; 

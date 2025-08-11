@@ -1,4 +1,4 @@
-import { ScriptSegment } from '@/types';
+import { ScriptSegment, ScriptGenerationConfig } from '@/types';
 import { VideoEditingLogger } from '../utils';
 
 /**
@@ -9,6 +9,12 @@ export interface ScriptService {
   generateScript(params: {
     markdownContent: string;
     taskId: string;
+  }): Promise<ScriptGenerationResult>;
+  
+  generateScriptWithConfig(params: {
+    markdownContent: string;
+    taskId: string;
+    config: ScriptGenerationConfig;
   }): Promise<ScriptGenerationResult>;
   
   validateScriptSegments(segments: ScriptSegment[]): ValidationResult;
@@ -194,6 +200,140 @@ export class ScriptServiceImpl implements ScriptService {
         responseTime: endTime - startTime,
         markdownLength: markdownContent.length,
         taskId
+      });
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
+   * 生成脚本（带配置）
+   * @param params - 生成参数（包含配置）
+   * @returns Promise<ScriptGenerationResult> - 生成结果
+   */
+  async generateScriptWithConfig(params: {
+    markdownContent: string;
+    taskId: string;
+    config: ScriptGenerationConfig;
+  }): Promise<ScriptGenerationResult> {
+    const { markdownContent, taskId, config } = params;
+
+    // 参数验证
+    if (!markdownContent.trim()) {
+      const error = 'Markdown content cannot be empty';
+      this.logger.error('脚本生成参数验证失败（带配置）', new Error(error), { 
+        reason: 'empty_markdown',
+        contentLength: markdownContent.length,
+        config
+      });
+      return {
+        success: false,
+        error
+      };
+    }
+
+    const startTime = performance.now();
+    const wordCount = markdownContent.split(/\s+/).length;
+    
+    this.logger.apiCall('开始生成脚本（带配置）', '/api/video-script-generation', {
+      markdownLength: markdownContent.length,
+      wordCount,
+      taskId,
+      config
+    });
+
+    try {
+      const response = await fetch('/api/video-script-generation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          markdownContent: markdownContent,
+          taskId: taskId,
+          scriptConfig: config,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          this.logger.error('解析错误响应失败（带配置）', parseError as Error, {
+            status: response.status,
+            statusText: response.statusText
+          });
+        }
+
+        const error = new Error(errorMessage);
+        this.logger.apiError('脚本生成请求（带配置）', '/api/video-script-generation', error, {
+          responseTime: performance.now() - startTime,
+          status: response.status,
+          statusText: response.statusText,
+          markdownLength: markdownContent.length,
+          config
+        });
+
+        return {
+          success: false,
+          error: errorMessage
+        };
+      }
+
+      const result = await response.json();
+      const endTime = performance.now();
+
+      // 验证响应格式
+      if (!result.success || !result.segments || !Array.isArray(result.segments)) {
+        const error = 'Invalid response format from script generation API';
+        this.logger.error('脚本生成响应格式错误（带配置）', new Error(error), {
+          responseData: result,
+          expectedFormat: { success: 'boolean', segments: 'Array' },
+          config
+        });
+
+        return {
+          success: false,
+          error
+        };
+      }
+
+      // 验证生成的脚本片段
+      const validationResult = this.validateScriptSegments(result.segments);
+      if (!validationResult.isValid) {
+        this.logger.error('脚本生成结果验证失败（带配置）', new Error('Invalid script segments'), {
+          validationErrors: validationResult.errors,
+          validationWarnings: validationResult.warnings,
+          config
+        });
+      }
+
+      this.logger.apiComplete('脚本生成成功（带配置）', '/api/video-script-generation', true, endTime - startTime, {
+        segmentCount: result.segments.length,
+        totalSentences: result.segments.reduce((sum: number, segment: any) => sum + (segment.sentences?.length || 0), 0),
+        validationResult: validationResult.isValid ? 'passed' : 'failed',
+        validationWarnings: validationResult.warnings.length,
+        config
+      });
+
+      return {
+        success: true,
+        segments: result.segments,
+        metadata: result.metadata
+      };
+
+    } catch (error) {
+      const endTime = performance.now();
+      this.logger.apiError('脚本生成请求异常（带配置）', '/api/video-script-generation', error as Error, {
+        responseTime: endTime - startTime,
+        markdownLength: markdownContent.length,
+        taskId,
+        config
       });
 
       return {
