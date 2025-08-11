@@ -40,10 +40,6 @@ export const useTimelineComposition = (
 
   // 从时间轴状态提取视频序列
   const getVideoSequencesFromTimeline = useCallback((timelineState: TimelineState): VideoSequenceItem[] => {
-    logger.info('从时间轴提取视频序列', {
-      tracksCount: timelineState.tracks.length,
-      totalDuration: timelineState.totalDuration
-    });
 
     // 收集所有视频轨道的视频项目
     const allVideoItems: VideoSequenceItem[] = [];
@@ -78,20 +74,22 @@ export const useTimelineComposition = (
               };
               allVideoItems.push(videoSequence);
               
-              // 详细日志记录裁剪信息
-              logger.info('添加视频序列项目（包含裁剪信息）', {
-                itemId: item.id,
-                itemName: item.name,
-                timelineStartTime: item.startTime,
-                timelineDuration: item.duration,
-                clipStart: clipStart.toFixed(2),
-                clipEnd: clipEnd.toFixed(2),
-                originalDuration: originalDuration.toFixed(2),
-                isTrimmed: clipStart > 0 || clipEnd < originalDuration,
-                trimmedDuration: (clipEnd - clipStart).toFixed(2),
-                materialUrl: material.url,
-                trackId: item.trackId
-              });
+              // 记录裁剪信息（仅在调试时启用）
+              if (process.env.NODE_ENV === 'development') {
+                logger.info('添加视频序列项目（包含裁剪信息）', {
+                  itemId: item.id,
+                  itemName: item.name,
+                  timelineStartTime: item.startTime,
+                  timelineDuration: item.duration,
+                  clipStart: clipStart.toFixed(2),
+                  clipEnd: clipEnd.toFixed(2),
+                  originalDuration: originalDuration.toFixed(2),
+                  isTrimmed: clipStart > 0 || clipEnd < originalDuration,
+                  trimmedDuration: (clipEnd - clipStart).toFixed(2),
+                  materialUrl: material.url,
+                  trackId: item.trackId
+                });
+              }
             }
           }
         });
@@ -107,46 +105,63 @@ export const useTimelineComposition = (
       (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
     ).length;
     
-    logger.info('视频序列提取完成（包含裁剪统计）', {
-      totalVideoSequences: sortedVideoItems.length,
-      trimmedSequences: trimmedCount,
-      untrimmedSequences: sortedVideoItems.length - trimmedCount,
-      sequences: sortedVideoItems.map(seq => ({
-        id: seq.id,
-        name: seq.name,
-        timelineStartTime: seq.startTime,
-        timelineDuration: seq.duration,
-        clipStart: seq.clipStart?.toFixed(2) || '0.00',
-        clipEnd: seq.clipEnd?.toFixed(2) || 'N/A',
-        originalDuration: seq.originalDuration?.toFixed(2) || 'N/A',
-        isTrimmed: (seq.clipStart && seq.clipStart > 0) || 
-                  (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
-      }))
-    });
+    // 仅在调试模式或有实际变化时记录日志
+    if (process.env.NODE_ENV === 'development' && sortedVideoItems.length > 0) {
+      logger.info('视频序列提取完成（包含裁剪统计）', {
+        totalVideoSequences: sortedVideoItems.length,
+        trimmedSequences: trimmedCount,
+        untrimmedSequences: sortedVideoItems.length - trimmedCount,
+        sequences: sortedVideoItems.map(seq => ({
+          id: seq.id,
+          name: seq.name,
+          timelineStartTime: seq.startTime,
+          timelineDuration: seq.duration,
+          clipStart: seq.clipStart?.toFixed(2) || '0.00',
+          clipEnd: seq.clipEnd?.toFixed(2) || 'N/A',
+          originalDuration: seq.originalDuration?.toFixed(2) || 'N/A',
+          isTrimmed: (seq.clipStart && seq.clipStart > 0) || 
+                    (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
+        }))
+      });
+    }
 
     return sortedVideoItems;
   }, [materials, logger]);
 
   // 处理时间轴状态变化
   const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {
-    logger.info('时间轴状态变化', {
-      totalDuration: timelineState.totalDuration,
-      isPlaying: timelineState.isPlaying,
-      currentTime: timelineState.currentTime,
-      tracksCount: timelineState.tracks.length
-    });
-
     const videoSequences = getVideoSequencesFromTimeline(timelineState);
     const totalDuration = videoSequences.reduce((total, seq) => total + seq.duration, 0);
 
-    setCompositionPlayback(prev => ({
-      ...prev,
-      videoSequences,
-      totalCompositionDuration: totalDuration,
-      isCompositionMode: videoSequences.length > 0,
-      // 重置序列索引如果视频序列发生变化
-      currentSequenceIndex: videoSequences.length > 0 ? 0 : prev.currentSequenceIndex
-    }));
+    setCompositionPlayback(prev => {
+      // 只在视频序列实际发生变化时才更新状态
+      const sequencesChanged = 
+        prev.videoSequences.length !== videoSequences.length ||
+        prev.totalCompositionDuration !== totalDuration ||
+        JSON.stringify(prev.videoSequences.map(s => s.id)) !== JSON.stringify(videoSequences.map(s => s.id));
+
+      if (!sequencesChanged) {
+        return prev; // 返回原状态，避免不必要的更新
+      }
+
+      logger.info('时间轴状态变化 - 更新组合播放状态', {
+        totalDuration: timelineState.totalDuration,
+        isPlaying: timelineState.isPlaying,
+        currentTime: timelineState.currentTime,
+        tracksCount: timelineState.tracks.length,
+        videoSequencesCount: videoSequences.length,
+        sequencesChanged
+      });
+
+      return {
+        ...prev,
+        videoSequences,
+        totalCompositionDuration: totalDuration,
+        isCompositionMode: videoSequences.length > 0,
+        // 重置序列索引如果视频序列发生变化
+        currentSequenceIndex: videoSequences.length > 0 ? 0 : prev.currentSequenceIndex
+      };
+    });
   }, [getVideoSequencesFromTimeline, logger]);
 
   // 组合播放控制

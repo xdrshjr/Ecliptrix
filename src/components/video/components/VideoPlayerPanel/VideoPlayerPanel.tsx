@@ -2,7 +2,9 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
+import { TimelineState, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
+import { useVideoExport } from '../../hooks/useVideoExport';
 
 interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   videoPreview: VideoPreview;
@@ -21,6 +23,9 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   currentTimelineTime?: number;
   // 新增：更新序列索引
   onSequenceIndexUpdate?: (sequenceIndex: number) => void;
+  // 新增：导出功能相关props
+  timelineState?: TimelineState;
+  materials?: MaterialItem[];
 }
 
 const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
@@ -44,7 +49,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   onCompositionTimeUpdate,
   onTimelineTimeUpdate,
   currentTimelineTime,
-  onSequenceIndexUpdate
+  onSequenceIndexUpdate,
+  timelineState,
+  materials
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
@@ -54,6 +61,23 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
+
+  // 使用导出hook（仅在有timelineState时启用）
+  const videoExport = useVideoExport({
+    timelineState: timelineState || {
+      currentTime: 0,
+      totalDuration: 0,
+      zoomLevel: 1,
+      selectedItems: [],
+      tracks: [],
+      playbackRate: 1,
+      isPlaying: false,
+      snapToGrid: false,
+      gridSize: 1
+    },
+    materials: materials || [],
+    taskId
+  });
 
   // 当前播放模式：preview 或 composition
   const playbackMode = compositionPlayback?.isCompositionMode && compositionPlayback.videoSequences.length > 0 
@@ -435,19 +459,72 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       aria-label="视频合成播放面板"
     >
       <div className="composition-panel-header">
-        <div className="flex items-center space-x-2">
-          <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
-            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
+              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              {playbackMode === 'composition' ? '视频合成播放' : '视频预览播放'}
+            </h3>
+            {playbackMode === 'composition' && (
+              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+                {compositionPlayback?.videoSequences.length || 0} 个视频
+              </span>
+            )}
           </div>
-          <h3 className="text-sm font-semibold text-gray-900">
-            {playbackMode === 'composition' ? '视频合成播放' : '视频预览播放'}
-          </h3>
-          {playbackMode === 'composition' && (
-            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
-              {compositionPlayback?.videoSequences.length || 0} 个视频
-            </span>
+          
+          {/* 导出视频按钮 */}
+          {timelineState && timelineState.tracks.length > 0 && (
+            <button
+              onClick={videoExport.handleExport}
+              disabled={videoExport.isExporting}
+              className={`
+                flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200
+                ${videoExport.isExporting 
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 hover:shadow-md'
+                }
+              `}
+              tabIndex={0}
+              aria-label={videoExport.isExporting ? '正在导出视频...' : '导出视频'}
+              onKeyDown={(e) => {
+                if ((e.key === 'Enter' || e.key === ' ') && !videoExport.isExporting) {
+                  e.preventDefault();
+                  videoExport.handleExport();
+                }
+              }}
+            >
+              {videoExport.isExporting ? (
+                <>
+                  <div className="relative w-3 h-3">
+                    <svg className="w-3 h-3 animate-spin" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                    </svg>
+                    {videoExport.exportProgress > 0 && (
+                      <div className="absolute -top-0.5 -right-0.5 text-[8px] bg-blue-500 text-white rounded-full w-2 h-2 flex items-center justify-center">
+                        {Math.round(videoExport.exportProgress)}
+                      </div>
+                    )}
+                  </div>
+                  <span>
+                    {videoExport.exportProgress > 0 
+                      ? `导出中 ${Math.round(videoExport.exportProgress)}%` 
+                      : '导出中...'
+                    }
+                  </span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
+                  </svg>
+                  <span>导出视频</span>
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>
