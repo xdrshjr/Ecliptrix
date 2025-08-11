@@ -6,6 +6,54 @@ import { TimelineState, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useVideoExport } from '../../hooks/useVideoExport';
 
+// 视频比例类型定义
+interface AspectRatio {
+  id: string;
+  label: string;
+  ratio: string;
+  description: string;
+  cssClass: string;
+}
+
+// 预定义的视频比例
+const ASPECT_RATIOS: AspectRatio[] = [
+  {
+    id: '16:9',
+    label: '16:9',
+    ratio: '16/9',
+    description: '横屏视频 (标准)',
+    cssClass: 'aspect-video'
+  },
+  {
+    id: '9:16',
+    label: '9:16',
+    ratio: '9/16',
+    description: '竖屏视频 (手机)',
+    cssClass: 'aspect-[9/16]'
+  },
+  {
+    id: '4:3',
+    label: '4:3',
+    ratio: '4/3',
+    description: '传统屏幕',
+    cssClass: 'aspect-[4/3]'
+  },
+  {
+    id: '1:1',
+    label: '1:1',
+    ratio: '1/1',
+    description: '正方形',
+    cssClass: 'aspect-square'
+  },
+  {
+    id: '21:9',
+    label: '21:9',
+    ratio: '21/9',
+    description: '超宽屏',
+    cssClass: 'aspect-[21/9]'
+  }
+];
+
 interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   videoPreview: VideoPreview;
   taskId: string;
@@ -61,6 +109,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
+  
+  // 新增：视频比例状态
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>(ASPECT_RATIOS[0]);
 
   // 使用导出hook（仅在有timelineState时启用）
   const videoExport = useVideoExport({
@@ -83,6 +134,29 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const playbackMode = compositionPlayback?.isCompositionMode && compositionPlayback.videoSequences.length > 0 
     ? 'composition' : 'preview';
 
+  // 处理视频比例切换
+  const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
+    logger.info('切换视频比例', {
+      fromRatio: selectedAspectRatio.id,
+      toRatio: aspectRatio.id,
+      ratioDescription: aspectRatio.description,
+      playbackMode,
+      uiLocation: '信息面板第二行的比例选择器'
+    });
+    
+    setSelectedAspectRatio(aspectRatio);
+    
+    // 记录比例切换的详细信息
+    logger.info('视频比例切换完成', {
+      newRatio: aspectRatio.id,
+      newRatioValue: aspectRatio.ratio,
+      newCssClass: aspectRatio.cssClass,
+      layoutStructure: '视频预览容器占用大部分高度，比例选择器在信息面板第二行',
+      uiDesign: '两行布局：第一行显示视频信息，第二行显示比例选择器',
+      timestamp: new Date().toISOString()
+    });
+  }, [selectedAspectRatio, playbackMode, logger]);
+
   useEffect(() => {
     logger.info('组件初始化', {
       isPlaying,
@@ -92,7 +166,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       videoTitle: videoPreview.title,
       videoDuration: videoPreview.duration,
       playbackMode,
-      compositionSequencesCount: compositionPlayback?.videoSequences.length || 0
+      compositionSequencesCount: compositionPlayback?.videoSequences.length || 0,
+      initialAspectRatio: selectedAspectRatio.id,
+      layoutStructure: '视频预览容器占用大部分高度，比例选择器在信息面板第二行',
+      uiDesign: '两行布局：第一行显示视频信息，第二行显示比例选择器，整体高度紧凑',
+      placeholderDesign: '占位符充满整个预览容器，无图标设计，仅显示文本和比例信息'
     });
   }, []);
 
@@ -531,12 +609,14 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       
       <div className="composition-panel-content">
         <div className="video-player-container">
-          {/* 视频播放器区域 */}
-          <div className="video-player-wrapper">
-            {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
-              // 组合播放模式
-              <div className="aspect-video bg-black rounded-xl overflow-hidden">
-                                  <video
+          {/* 视频播放器区域 - 固定占用70%高度 */}
+          <div className="video-player-wrapper flex-1 flex flex-col">
+            {/* 视频预览容器 - 固定高度70% */}
+            <div className="video-preview-container flex-1 flex items-center justify-center bg-gray-100 rounded-xl overflow-hidden">
+              {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
+                // 组合播放模式
+                <div className={`${selectedAspectRatio.cssClass} bg-black rounded-xl overflow-hidden shadow-lg`} style={{ maxHeight: '100%', maxWidth: '100%' }}>
+                  <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
                     onEnded={handleVideoEnded}
@@ -544,46 +624,60 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                     onLoadStart={() => {
                       logger.info('组合视频开始加载', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
-                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
+                        aspectRatio: selectedAspectRatio.id,
+                        containerHeight: '70% of upper panel'
                       });
                     }}
                     onCanPlay={() => {
                       logger.info('组合视频可播放', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
-                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
+                        aspectRatio: selectedAspectRatio.id,
+                        containerHeight: '70% of upper panel'
                       });
                     }}
                     onLoadedData={() => {
                       logger.info('组合视频数据加载完成', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
                         sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
-                        duration: videoRef.current?.duration
+                        duration: videoRef.current?.duration,
+                        aspectRatio: selectedAspectRatio.id,
+                        containerHeight: '70% of upper panel'
                       });
                     }}
                     onError={(e) => {
                       logger.error('组合视频加载失败', new Error('Video load error'), {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
                         sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
-                        error: e.currentTarget.error?.message
+                        error: e.currentTarget.error?.message,
+                        aspectRatio: selectedAspectRatio.id,
+                        containerHeight: '70% of upper panel'
                       });
                     }}
                   />
-              </div>
-            ) : (
-              // 原有的预览模式
-              <div className="video-placeholder">
-                <div className="placeholder-content">
-                  <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-gray-500 text-center">
-                    {playbackMode === 'composition' 
-                      ? '时间轴中没有视频素材\n请在时间轴中添加视频素材后播放'
-                      : '点击播放按钮预览视频'}
-                  </p>
                 </div>
-              </div>
-            )}
+              ) : (
+                // 预览模式占位符 - 充满整个容器
+                <div className="video-placeholder-container">
+                  {/* 比例预览框 */}
+                  <div className={`${selectedAspectRatio.cssClass} video-placeholder-frame`}>
+                    <div className="placeholder-content">
+                      <p className="placeholder-text">
+                        {playbackMode === 'composition' 
+                          ? '时间轴中没有视频素材\n请在时间轴中添加视频素材后播放'
+                          : '点击播放按钮预览视频'}
+                      </p>
+                      <div className="placeholder-aspect-info">
+                        当前比例: {selectedAspectRatio.label} ({selectedAspectRatio.description})
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+
           </div>
 
           {/* 播放控制栏 */}
@@ -675,24 +769,61 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           </div>
 
           <div className="video-info-panel">
-            <div className="info-row">
-              <div className="info-item">
-                <span className="info-label">标题:</span>
-                <span className="info-value">{currentVideoInfo.title}</span>
+            {/* 第一行：视频基本信息 */}
+            <div className="video-info-row">
+              <div className="video-info-group">
+                <div className="info-item-inline">
+                  <span className="info-label">标题</span>
+                  <span className="info-value info-title">{currentVideoInfo.title}</span>
+                </div>
+                <div className="info-separator"></div>
+                <div className="info-item-inline">
+                  <span className="info-label">分辨率</span>
+                  <span className="info-value">{currentVideoInfo.resolution.width}×{currentVideoInfo.resolution.height}</span>
+                </div>
+                <div className="info-separator"></div>
+                <div className="info-item-inline">
+                  <span className="info-label">帧率</span>
+                  <span className="info-value">{currentVideoInfo.frameRate}fps</span>
+                </div>
+                <div className="info-separator"></div>
+                <div className="info-item-inline">
+                  <span className="info-label">格式</span>
+                  <span className="info-value">{currentVideoInfo.format}</span>
+                </div>
               </div>
             </div>
-            <div className="info-row">
-              <div className="info-item">
-                <span className="info-label">分辨率:</span>
-                <span className="info-value">{currentVideoInfo.resolution.width}×{currentVideoInfo.resolution.height}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">帧率:</span>
-                <span className="info-value">{currentVideoInfo.frameRate}fps</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">格式:</span>
-                <span className="info-value">{currentVideoInfo.format}</span>
+            
+            {/* 第二行：视频比例选择器 */}
+            <div className="aspect-ratio-row">
+              <div className="aspect-ratio-group">
+                <span className="info-label">比例</span>
+                <div className="aspect-ratio-buttons">
+                  {ASPECT_RATIOS.map((aspectRatio) => (
+                    <button
+                      key={aspectRatio.id}
+                      onClick={() => handleAspectRatioChange(aspectRatio)}
+                      className={`
+                        aspect-ratio-btn
+                        ${selectedAspectRatio.id === aspectRatio.id
+                          ? 'aspect-ratio-btn-active'
+                          : 'aspect-ratio-btn-inactive'
+                        }
+                      `}
+                      title={aspectRatio.description}
+                      tabIndex={0}
+                      aria-label={`选择${aspectRatio.description}比例`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleAspectRatioChange(aspectRatio);
+                        }
+                      }}
+                    >
+                      {aspectRatio.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

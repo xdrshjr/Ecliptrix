@@ -6,6 +6,17 @@ module.exports = {
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  safelist: [
+    // 确保自定义视频比例类被包含在构建中
+    'aspect-video',
+    'aspect-square',
+    'aspect-[9/16]',
+    'aspect-[4/3]',
+    'aspect-[21/9]',
+    // 其他可能需要的动态类
+    'max-w-full',
+    'mx-auto',
+  ],
   theme: {
     container: {
       center: true,
@@ -15,6 +26,12 @@ module.exports = {
       },
     },
     extend: {
+      aspectRatio: {
+        // 添加自定义视频比例
+        '9/16': '9 / 16',  // 竖屏视频
+        '4/3': '4 / 3',    // 传统屏幕
+        '21/9': '21 / 9',  // 超宽屏
+      },
       colors: {
         border: "var(--border)",
         input: "var(--input)",
