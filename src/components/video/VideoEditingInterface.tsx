@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -38,6 +38,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 }) => {
   // 新增：时间同步状态管理
   const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
+  // 新增：管理时间轴状态，用于导出功能
+  const [currentTimelineState, setCurrentTimelineState] = useState<TimelineState | null>(null);
   
   // 智能润色弹窗状态
   const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(false);
@@ -148,6 +150,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [timelineCurrentTime, timelineComposition, videoPlayback]);
 
+  // 处理时间轴状态变化，用于导出功能
+  const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {
+    // 只更新本地状态，不要再次调用timelineComposition.handleTimelineStateChange
+    // 因为这会造成循环调用
+    setCurrentTimelineState(timelineState);
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* 视频编辑工作区 - 左右布局 */}
@@ -207,6 +216,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onTimelineTimeUpdate={handleVideoTimeUpdate}
                 currentTimelineTime={timelineCurrentTime}
                 onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
+                timelineState={currentTimelineState || undefined}
+                materials={materialManagement.materials}
               />
             </div>
 
@@ -214,10 +225,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             <div className="video-editing-preview-lower border-t border-gray-200">
               <TimelinePanel 
                 className="h-full" 
-                onTimelineStateChange={timelineComposition.handleTimelineStateChange}
+                onTimelineStateChange={handleTimelineStateChange}
                 externalCurrentTime={timelineCurrentTime}
                 onCurrentTimeChange={handleTimelineTimeChange}
                 materials={materialManagement.materials}
+                onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
               />
             </div>
           </div>
