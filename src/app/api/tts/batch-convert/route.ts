@@ -11,12 +11,16 @@ const logRequest = (requestData: any) => {
   console.log(`[TTS Batch Convert API] Speed ratio: ${requestData.speed_ratio}`);
   console.log(`[TTS Batch Convert API] Task ID: ${requestData.task_id || 'N/A'}`);
   console.log(`[TTS Batch Convert API] Concurrent threads: ${requestData.concurrent_threads || 'default'}`);
+  console.log(`[TTS Batch Convert API] Total text length: ${requestData.segments?.reduce((sum: number, seg: any) => sum + (seg.text?.length || 0), 0) || 0} characters`);
 };
 
-const logResponse = (success: boolean, resultCount?: number, error?: string) => {
+const logResponse = (success: boolean, data?: any, error?: string) => {
   if (success) {
     console.log(`[TTS Batch Convert API] ${new Date().toISOString()} - Batch TTS conversion completed successfully`);
-    console.log(`[TTS Batch Convert API] Converted segments: ${resultCount || 0}`);
+    console.log(`[TTS Batch Convert API] Total segments: ${data?.total_segments || 0}`);
+    console.log(`[TTS Batch Convert API] Successful segments: ${data?.successful_segments || 0}`);
+    console.log(`[TTS Batch Convert API] Failed segments: ${data?.failed_segments || 0}`);
+    console.log(`[TTS Batch Convert API] Processing time: ${data?.total_processing_time || 'N/A'}s`);
   } else {
     console.error(`[TTS Batch Convert API] ${new Date().toISOString()} - Batch TTS conversion failed: ${error}`);
   }
@@ -109,9 +113,9 @@ export async function POST(request: NextRequest) {
     logRequest(requestData);
 
     // 调用后端服务
-    console.log(`[TTS Batch Convert API] Calling backend service: ${BACKEND_URL}/api/tts/batch-convert`);
+    console.log(`[TTS Batch Convert API] Calling backend service: ${BACKEND_URL}/api/tts/convert-batch`);
     
-    const backendResponse = await fetch(`${BACKEND_URL}/api/tts/batch-convert`, {
+    const backendResponse = await fetch(`${BACKEND_URL}/api/tts/convert-batch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -145,7 +149,7 @@ export async function POST(request: NextRequest) {
     
     // 记录响应结果
     if (result.success) {
-      logResponse(true, result.data?.successful_segments);
+      logResponse(true, result.data);
     } else {
       logResponse(false, undefined, result.message);
     }
