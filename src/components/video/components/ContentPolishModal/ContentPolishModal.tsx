@@ -126,6 +126,19 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
     });
   }, [logger]);
 
+  // 记录润色按钮状态变化
+  useEffect(() => {
+    if (selectedStyles.size > 0) {
+      logger.info('润色按钮状态更新', {
+        selectedCount: selectedStyles.size,
+        selectedGoals: Array.from(selectedStyles),
+        hasContent: !!originalContent.trim(),
+        isReady: selectedStyles.size > 0 && !!originalContent.trim() && !isLoading && !configLoading,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [selectedStyles.size, originalContent, isLoading, configLoading, logger, selectedStyles]);
+
   // 处理润色请求
   const handlePolish = useCallback(async () => {
     if (!originalContent.trim()) {
@@ -367,20 +380,22 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
         <div className="flex flex-1 min-h-0">
           {/* 左侧设置区域 */}
           <div className="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col">
-            {/* 上部分：原始内容预览和选项 */}
-            <div className="flex-1 p-6 overflow-y-auto">
-              {/* 原始内容预览 */}
-              <div className="mb-6">
+            {/* 原始内容预览区域（固定高度） */}
+            <div className="p-6 border-b border-gray-200">
+              <div className="mb-0">
                 <h3 className="text-sm font-medium text-gray-900 mb-3">原始内容</h3>
-                <div className="bg-white rounded-lg border border-gray-200 p-4 max-h-32 overflow-y-auto">
+                <div className="bg-white rounded-lg border border-gray-200 p-4 max-h-24 overflow-y-auto">
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">
                     {originalContent || '无内容'}
                   </p>
                 </div>
               </div>
+            </div>
 
-              {/* 润色目标选择 */}
-              <div className="mb-6">
+            {/* 润色目标选择区域（占用约70%高度，内部可滚动） */}
+            <div className="flex-1 px-6 py-4 flex flex-col min-h-0">
+              {/* 选择润色目标标题和统计 */}
+              <div className="flex-shrink-0 mb-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-medium text-gray-900">选择润色目标</h3>
                   {selectedStyles.size > 0 && (
@@ -389,7 +404,13 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                         已选择 {selectedStyles.size} 个
                       </span>
                       <button
-                        onClick={() => setSelectedStyles(new Set())}
+                        onClick={() => {
+                          setSelectedStyles(new Set());
+                          logger.info('用户清空润色目标选择', {
+                            previousCount: selectedStyles.size,
+                            timestamp: new Date().toISOString()
+                          });
+                        }}
                         className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
                       >
                         清空
@@ -397,9 +418,12 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                     </div>
                   )}
                 </div>
-                
+              </div>
+              
+              {/* 润色目标列表容器（可滚动区域） */}
+              <div className="flex-1 overflow-y-auto pr-2 -mr-2">
                 {configLoading ? (
-                  <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center justify-center py-12">
                     <svg className="w-6 h-6 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -411,14 +435,14 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                     <p className="text-sm text-red-700">配置加载失败：{configError}</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-4 pb-2">
                     {Object.entries(groupedGoals).map(([category, goals]) => (
                       <div key={category}>
-                        <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+                        <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 sticky top-0 bg-gray-50 py-1">
                           {categoryNames[category] || category}
                         </h4>
                         {/* 使用网格布局，一行两个 */}
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2 mb-4">
                           {goals.map((goal) => {
                             const isSelected = selectedStyles.has(goal.id);
                             return (
@@ -468,7 +492,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
             </div>
 
             {/* 下部分：开始润色按钮（固定在底部） */}
-            <div className="p-6 border-t border-gray-200 bg-gray-50">
+            <div className="p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
               <button
                 onClick={handlePolish}
                 disabled={selectedStyles.size === 0 || !originalContent.trim() || isLoading || configLoading}
@@ -486,6 +510,13 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                   `开始润色 (${selectedStyles.size > 0 ? `${selectedStyles.size}种目标` : '请选择目标'})`
                 )}
               </button>
+              
+              {/* 添加详细的操作日志记录 */}
+              {selectedStyles.size > 0 && (
+                <div className="mt-2 text-xs text-gray-500 text-center">
+                  已选择 {selectedStyles.size} 个润色目标，点击开始润色
+                </div>
+              )}
             </div>
           </div>
 

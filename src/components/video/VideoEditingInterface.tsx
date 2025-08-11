@@ -127,6 +127,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             {...aiAssistant}
             taskId={taskId}
             onPolishClick={handlePolishClick}
+            onGenerateScriptClick={scriptGeneration.handleGenerateScript}
+            isGeneratingScript={scriptGeneration.isGeneratingScript}
           />
         </div>
 

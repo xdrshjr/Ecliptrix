@@ -8,6 +8,8 @@ interface AIAssistantPanelProps extends UseAIAssistantReturn {
   taskId: string;
   className?: string;
   onPolishClick?: () => void;
+  onGenerateScriptClick?: () => void;
+  isGeneratingScript?: boolean;
 }
 
 const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
@@ -18,7 +20,9 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   handleKeyDown,
   taskId,
   className = '',
-  onPolishClick
+  onPolishClick,
+  onGenerateScriptClick,
+  isGeneratingScript = false
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
@@ -89,22 +93,53 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
               )}
             </div>
             
-            {/* 智能润色按钮 */}
-            {onPolishClick && (
-              <button
-                onClick={() => {
-                  logger.info('用户点击智能润色按钮');
-                  onPolishClick();
-                }}
-                className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 hover:border-purple-300 transition-colors"
-                title="智能润色当前文档内容"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span>智能润色</span>
-              </button>
-            )}
+            {/* 智能润色按钮和生成脚本按钮 */}
+            <div className="flex items-center space-x-2">
+              {/* 智能润色按钮 */}
+              {onPolishClick && (
+                <button
+                  onClick={() => {
+                    logger.info('用户点击智能润色按钮');
+                    onPolishClick();
+                  }}
+                  className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 hover:border-purple-300 transition-colors"
+                  title="智能润色当前文档内容"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span>智能润色</span>
+                </button>
+              )}
+              
+              {/* 生成脚本按钮 */}
+              {onGenerateScriptClick && (
+                <button
+                  onClick={() => {
+                    logger.info('用户点击生成脚本按钮', {
+                      isGeneratingScript,
+                      timestamp: new Date().toISOString()
+                    });
+                    onGenerateScriptClick();
+                  }}
+                  disabled={isGeneratingScript}
+                  className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="根据当前文档内容生成视频脚本"
+                >
+                  {isGeneratingScript ? (
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  )}
+                  <span>{isGeneratingScript ? '生成中...' : '生成脚本'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
