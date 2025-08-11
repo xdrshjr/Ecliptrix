@@ -1,0 +1,400 @@
+# 智能润色目标配置文件
+# 定义各种润色风格和目标，用于内容优化
+
+polish_goals:
+  # 短视频相关
+  - id: 'short_video'
+    name: '短视频文案'
+    description: '适合抖音、快手等短视频平台的文案风格'
+    category: 'platform'
+    color: 'bg-red-50 border-red-200 text-red-800'
+    hoverColor: 'hover:bg-red-100'
+    selectedColor: 'bg-red-100 border-red-300'
+    prompt_template: |
+      请将内容优化为适合短视频平台的文案风格：
+      1. 开头要有强烈的钩子，3秒内抓住注意力
+      2. 使用短句，节奏感强
+      3. 适合口语化表达，便于配音
+      4. 包含互动元素，引导点赞评论
+      5. 时长控制在1-3分钟的内容量
+
+  - id: 'three_second_hook'
+    name: '三秒钩子'
+    description: '开头3秒内抓住观众注意力'
+    category: 'engagement'
+    color: 'bg-orange-50 border-orange-200 text-orange-800'
+    hoverColor: 'hover:bg-orange-100'
+    selectedColor: 'bg-orange-100 border-orange-300'
+    prompt_template: |
+      请优化内容，特别加强开头的吸引力：
+      1. 开头必须在3秒内制造悬念或冲击
+      2. 使用疑问句、感叹句或反常识观点开头
+      3. 避免常规的介绍性开场白
+      4. 直接切入最精彩或最有争议的部分
+      5. 让人产生"必须看下去"的冲动
+
+  - id: 'engage_comments'
+    name: '激发用户评论'
+    description: '引导用户互动和留言讨论'
+    category: 'engagement'
+    color: 'bg-blue-50 border-blue-200 text-blue-800'
+    hoverColor: 'hover:bg-blue-100'
+    selectedColor: 'bg-blue-100 border-blue-300'
+    prompt_template: |
+      请优化内容以激发用户评论和互动：
+      1. 在适当位置加入开放性问题
+      2. 留下一些"故意的"讨论空间
+      3. 使用"你觉得呢？"、"你有类似经历吗？"等互动语句
+      4. 分享个人观点，邀请不同意见
+      5. 在结尾处明确引导用户留言
+
+  - id: 'reader_resonance'
+    name: '激发读者共鸣'
+    description: '让读者产生强烈的情感共鸣'
+    category: 'emotional'
+    color: 'bg-purple-50 border-purple-200 text-purple-800'
+    hoverColor: 'hover:bg-purple-100'
+    selectedColor: 'bg-purple-100 border-purple-300'
+    prompt_template: |
+      请优化内容以激发读者的情感共鸣：
+      1. 使用具体的生活场景和细节
+      2. 加入普遍的人生体验和感受
+      3. 使用第二人称"你"增强代入感
+      4. 描述共同的困扰、梦想或经历
+      5. 让读者感觉"说出了我的心声"
+
+  - id: 'empathy'
+    name: '激发共情'
+    description: '触动读者的情感，产生同理心'
+    category: 'emotional'
+    color: 'bg-pink-50 border-pink-200 text-pink-800'
+    hoverColor: 'hover:bg-pink-100'
+    selectedColor: 'bg-pink-100 border-pink-300'
+    prompt_template: |
+      请优化内容以激发读者的共情能力：
+      1. 讲述真实的人物故事和情感经历
+      2. 描述具体的困难和挣扎过程
+      3. 展现人性的脆弱和坚强
+      4. 使用细腻的情感描述
+      5. 让读者能够感受到他人的处境
+
+  - id: 'call_to_action'
+    name: '行动号召'
+    description: '引导读者采取具体行动'
+    category: 'conversion'
+    color: 'bg-green-50 border-green-200 text-green-800'
+    hoverColor: 'hover:bg-green-100'
+    selectedColor: 'bg-green-100 border-green-300'
+    prompt_template: |
+      请优化内容以引导读者采取行动：
+      1. 明确指出读者应该做什么
+      2. 提供具体、可执行的步骤
+      3. 强调行动的紧迫性和重要性
+      4. 降低行动的门槛和阻力
+      5. 使用祈使句和行动性词汇
+
+  - id: 'storytelling'
+    name: '故事化表达'
+    description: '用故事的方式讲述内容'
+    category: 'narrative'
+    color: 'bg-indigo-50 border-indigo-200 text-indigo-800'
+    hoverColor: 'hover:bg-indigo-100'
+    selectedColor: 'bg-indigo-100 border-indigo-300'
+    prompt_template: |
+      请将内容转化为故事化表达：
+      1. 构建完整的故事结构（起承转合）
+      2. 加入具体的人物、场景、对话
+      3. 使用故事性的叙述手法
+      4. 在故事中自然融入要表达的观点
+      5. 让抽象概念通过故事变得生动具体
+
+  - id: 'pain_point'
+    name: '痛点切入'
+    description: '直击用户痛点，引起关注'
+    category: 'targeting'
+    color: 'bg-red-50 border-red-200 text-red-800'
+    hoverColor: 'hover:bg-red-100'
+    selectedColor: 'bg-red-100 border-red-300'
+    prompt_template: |
+      请优化内容以直击用户痛点：
+      1. 开头直接点出用户的核心困扰
+      2. 详细描述痛点带来的具体影响
+      3. 让用户感觉"说出了我的困扰"
+      4. 避免空泛的描述，要具体到细节
+      5. 在痛点基础上提供解决方案
+
+  - id: 'viral_potential'
+    name: '传播性强'
+    description: '容易被分享和传播的内容'
+    category: 'viral'
+    color: 'bg-yellow-50 border-yellow-200 text-yellow-800'
+    hoverColor: 'hover:bg-yellow-100'
+    selectedColor: 'bg-yellow-100 border-yellow-300'
+    prompt_template: |
+      请优化内容以提高传播性：
+      1. 包含令人惊讶或反直觉的信息
+      2. 加入容易被引用的金句
+      3. 创造话题性和讨论价值
+      4. 使内容具有社交货币价值
+      5. 让人有分享给朋友的冲动
+
+  - id: 'curiosity_gap'
+    name: '好奇心缺口'
+    description: '制造悬念，激发好奇心'
+    category: 'engagement'
+    color: 'bg-teal-50 border-teal-200 text-teal-800'
+    hoverColor: 'hover:bg-teal-100'
+    selectedColor: 'bg-teal-100 border-teal-300'
+    prompt_template: |
+      请优化内容以制造好奇心缺口：
+      1. 在开头提出引人深思的问题
+      2. 暗示有"不为人知的秘密"
+      3. 使用"你不知道的是..."等表达
+      4. 分段揭示，保持悬念到最后
+      5. 让读者产生"必须知道答案"的冲动
+
+  - id: 'fan_sb'
+    name: '犯SB'
+    description: '故意犯一些小错误，引发用户纠正和评论'
+    category: 'engagement'
+    color: 'bg-gray-50 border-gray-200 text-gray-800'
+    hoverColor: 'hover:bg-gray-100'
+    selectedColor: 'bg-gray-100 border-gray-300'
+    prompt_template: |
+      请在内容中巧妙加入一些小错误来引发互动：
+      1. 故意在细节处犯一些明显但无害的错误
+      2. 使用略显过时或不准确的表达
+      3. 在数据或事实上留下纠正空间
+      4. 避免在核心观点上犯错
+      5. 让用户有纠正的冲动和优越感
+
+  - id: 'provoke_debate'
+    name: '故意引战'
+    description: '使用专业引战技巧，制造争议性观点激发讨论和辩论'
+    category: 'controversial'
+    color: 'bg-red-50 border-red-200 text-red-800'
+    hoverColor: 'hover:bg-red-100'
+    selectedColor: 'bg-red-100 border-red-300'
+    prompt_template: |
+      请优化内容以制造有建设性的争议和讨论：
+      1. 提出有争议但有理有据的观点
+      2. 挑战主流认知或常见做法
+      3. 使用对比鲜明的表达方式
+      4. 避免人身攻击，专注观点碰撞
+      5. 为不同观点留下辩论空间
+
+  - id: 'differentiation'
+    name: '差异化'
+    description: '采用独特视角和创新表达，让内容脱颖而出'
+    category: 'uniqueness'
+    color: 'bg-violet-50 border-violet-200 text-violet-800'
+    hoverColor: 'hover:bg-violet-100'
+    selectedColor: 'bg-violet-100 border-violet-300'
+    prompt_template: |
+      请优化内容以实现差异化表达：
+      1. 采用独特的角度或视角
+      2. 使用创新的比喻和表达方式
+      3. 避免陈词滥调和常见表达
+      4. 加入个人独特的见解和经验
+      5. 让内容在同类中脱颖而出
+
+  - id: 'echo_ending'
+    name: '收尾呼应'
+    description: '结尾与开头形成呼应，增强整体性'
+    category: 'structure'
+    color: 'bg-blue-50 border-blue-200 text-blue-800'
+    hoverColor: 'hover:bg-blue-100'
+    selectedColor: 'bg-blue-100 border-blue-300'
+    prompt_template: |
+      请优化内容的开头和结尾形成呼应：
+      1. 让结尾回应开头的问题或场景
+      2. 使用相似的表达方式或意象
+      3. 形成完整的闭环结构
+      4. 增强内容的整体感和完整性
+      5. 让读者感受到结构的美感
+
+  - id: 'contrast_strong'
+    name: '强烈对比'
+    description: '通过鲜明对比突出重点'
+    category: 'emphasis'
+    color: 'bg-orange-50 border-orange-200 text-orange-800'
+    hoverColor: 'hover:bg-orange-100'
+    selectedColor: 'bg-orange-100 border-orange-300'
+    prompt_template: |
+      请优化内容以突出强烈对比：
+      1. 在关键观点前后加入对比元素
+      2. 使用"过去vs现在"、"成功vs失败"等对比
+      3. 通过反差突出要表达的重点
+      4. 让对比鲜明且有冲击力
+      5. 用对比增强记忆点和说服力
+
+  - id: 'golden_sentence'
+    name: '金句输出'
+    description: '包含容易被引用的经典语句'
+    category: 'memorable'
+    color: 'bg-yellow-50 border-yellow-200 text-yellow-800'
+    hoverColor: 'hover:bg-yellow-100'
+    selectedColor: 'bg-yellow-100 border-yellow-300'
+    prompt_template: |
+      请优化内容以产出金句：
+      1. 提炼出简洁有力的核心观点
+      2. 使用对称、押韵等修辞手法
+      3. 让语句朗朗上口，易于记忆
+      4. 包含深刻的洞察或智慧
+      5. 让人有摘抄和分享的冲动
+
+  - id: 'data_support'
+    name: '数据支撑'
+    description: '用具体数据增强说服力'
+    category: 'credibility'
+    color: 'bg-green-50 border-green-200 text-green-800'
+    hoverColor: 'hover:bg-green-100'
+    selectedColor: 'bg-green-100 border-green-300'
+    prompt_template: |
+      请优化内容以加强数据支撑：
+      1. 在关键观点处加入具体数据
+      2. 使用百分比、统计数字、研究结果
+      3. 确保数据的权威性和时效性
+      4. 让数据为观点提供有力支撑
+      5. 用数字让抽象概念变得具体
+
+  - id: 'authority_quote'
+    name: '权威引用'
+    description: '引用专家或名人观点增加可信度'
+    category: 'credibility'
+    color: 'bg-indigo-50 border-indigo-200 text-indigo-800'
+    hoverColor: 'hover:bg-indigo-100'
+    selectedColor: 'bg-indigo-100 border-indigo-300'
+    prompt_template: |
+      请优化内容以加入权威引用：
+      1. 引用相关领域专家的观点
+      2. 使用知名人士的经典语录
+      3. 引用权威机构的研究结论
+      4. 确保引用的准确性和相关性
+      5. 让权威背书增强内容可信度
+
+  - id: 'scenario_immersion'
+    name: '场景代入'
+    description: '让读者身临其境，增强体验感'
+    category: 'immersive'
+    color: 'bg-purple-50 border-purple-200 text-purple-800'
+    hoverColor: 'hover:bg-purple-100'
+    selectedColor: 'bg-purple-100 border-purple-300'
+    prompt_template: |
+      请优化内容以增强场景代入感：
+      1. 详细描述具体的场景和环境
+      2. 使用感官细节（视觉、听觉、触觉等）
+      3. 让读者能够想象自己在现场
+      4. 使用第二人称增强代入感
+      5. 创造沉浸式的阅读体验
+
+  - id: 'reverse_thinking'
+    name: '反向思维'
+    description: '与常规思路相反，制造惊喜'
+    category: 'innovative'
+    color: 'bg-pink-50 border-pink-200 text-pink-800'
+    hoverColor: 'hover:bg-pink-100'
+    selectedColor: 'bg-pink-100 border-pink-300'
+    prompt_template: |
+      请使用反向思维优化内容：
+      1. 挑战常见的认知和做法
+      2. 从相反的角度思考问题
+      3. 提出意外的解决方案
+      4. 让读者产生"原来如此"的惊喜
+      5. 用反常识的观点吸引注意
+
+  - id: 'anxiety_marketing'
+    name: '焦虑营销'
+    description: '合理利用焦虑心理驱动行动'
+    category: 'psychological'
+    color: 'bg-red-50 border-red-200 text-red-800'
+    hoverColor: 'hover:bg-red-100'
+    selectedColor: 'bg-red-100 border-red-300'
+    prompt_template: |
+      请优化内容以合理利用焦虑心理：
+      1. 点出读者可能面临的风险或损失
+      2. 强调不行动的后果和代价
+      3. 创造适度的紧迫感
+      4. 避免过度制造恐慌
+      5. 在焦虑后提供解决方案
+
+  - id: 'benefit_driven'
+    name: '利益驱动'
+    description: '明确指出读者能获得的好处'
+    category: 'motivation'
+    color: 'bg-green-50 border-green-200 text-green-800'
+    hoverColor: 'hover:bg-green-100'
+    selectedColor: 'bg-green-100 border-green-300'
+    prompt_template: |
+      请优化内容以突出读者利益：
+      1. 明确列出读者能获得的具体好处
+      2. 量化收益和价值
+      3. 使用"你将得到"、"帮你节省"等表达
+      4. 让利益清晰可见且有吸引力
+      5. 在每个要点中都体现价值
+
+  - id: 'scarcity_urgency'
+    name: '稀缺紧迫'
+    description: '营造稀缺感和紧迫感'
+    category: 'psychological'
+    color: 'bg-orange-50 border-orange-200 text-orange-800'
+    hoverColor: 'hover:bg-orange-100'
+    selectedColor: 'bg-orange-100 border-orange-300'
+    prompt_template: |
+      请优化内容以营造稀缺和紧迫感：
+      1. 强调机会的有限性和时效性
+      2. 使用"仅限"、"最后机会"等词汇
+      3. 设置明确的时间节点
+      4. 让读者感受到"错过就没有了"
+      5. 避免虚假的稀缺性
+
+  - id: 'social_proof'
+    name: '社会认同'
+    description: '利用从众心理增强说服力'
+    category: 'psychological'
+    color: 'bg-blue-50 border-blue-200 text-blue-800'
+    hoverColor: 'hover:bg-blue-100'
+    selectedColor: 'bg-blue-100 border-blue-300'
+    prompt_template: |
+      请优化内容以加入社会认同元素：
+      1. 展示其他人的成功案例和反馈
+      2. 使用"大多数人"、"成功人士都在"等表达
+      3. 加入用户评价和推荐
+      4. 让读者感受到群体的选择和认可
+      5. 利用从众心理增强说服力
+
+  - id: 'emotional_trigger'
+    name: '情绪触发'
+    description: '激发强烈的情绪反应'
+    category: 'emotional'
+    color: 'bg-red-50 border-red-200 text-red-800'
+    hoverColor: 'hover:bg-red-100'
+    selectedColor: 'bg-red-100 border-red-300'
+    prompt_template: |
+      请优化内容以触发强烈情绪：
+      1. 使用能引起情绪波动的词汇和表达
+      2. 激发愤怒、兴奋、感动等强烈情感
+      3. 通过情绪让内容更有感染力
+      4. 让读者产生情感共鸣和记忆点
+      5. 用情绪驱动分享和行动
+
+  - id: 'practical_tips'
+    name: '实用干货'
+    description: '提供具体可执行的方法技巧'
+    category: 'practical'
+    color: 'bg-teal-50 border-teal-200 text-teal-800'
+    hoverColor: 'hover:bg-teal-100'
+    selectedColor: 'bg-teal-100 border-teal-300'
+    prompt_template: |
+      请优化内容以突出实用价值：
+      1. 提供具体、可操作的方法和步骤
+      2. 加入实际案例和应用场景
+      3. 让每个建议都有实际指导意义
+      4. 避免空泛的理论，专注实用性
+      5. 让读者看完就能立即应用
+
+# 配置元信息
+config_info:
+  version: "1.0.0"
+  last_updated: "2024-01-01"
+  description: "智能润色目标配置文件，定义了26种不同的内容优化目标和风格" 
