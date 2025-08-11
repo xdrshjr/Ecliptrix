@@ -97,9 +97,7 @@ export interface UseMaterialManagementReturn {
   uploadProgress: number;
   handleMaterialTypeFilter: (type: MaterialType | 'all') => void;
   handleMaterialSelect: (id: string, selected: boolean) => void;
-  handleSelectAll: () => void;
-  handleMaterialPlay: (material: MaterialItem) => void;
-  handleMaterialDownload: (material: MaterialItem) => void;
+  handleMaterialBatchSelect: (materialIds: string[], isSelected: boolean) => void;
   handleMaterialDelete: (materialIds: string[]) => void;
   handleMaterialUpload: () => void;
   addMaterials: (materials: MaterialItem[]) => number;

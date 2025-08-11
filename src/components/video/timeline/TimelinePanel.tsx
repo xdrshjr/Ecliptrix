@@ -920,10 +920,23 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
             // Find the material to get the URL
             const material = materials?.find(m => m.id === item.materialId);
             if (material) {
+              // 优先使用服务器URL（Supabase URL），如果没有则使用本地URL
+              // 这样确保视频合成时后端能够正确下载文件
+              const videoUrl = material.serverUrl || material.url;
+              
+              console.log(`[TimelinePanel] 处理视频项目`, {
+                itemId: item.id,
+                itemName: item.name,
+                materialUrl: material.url,
+                serverUrl: material.serverUrl,
+                finalUrl: videoUrl,
+                trackId: track.id
+              });
+
               videoItems.push({
                 id: item.id,
                 name: item.name,
-                url: material.url,
+                url: videoUrl,
                 start_time: item.startTime,
                 duration: item.duration,
                 track_id: track.id,
@@ -936,7 +949,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
               console.log(`[TimelinePanel] 添加视频项目`, {
                 itemId: item.id,
                 itemName: item.name,
-                materialUrl: material.url,
+                finalUrl: videoUrl,
                 trackId: track.id,
                 startTime: item.startTime.toFixed(2),
                 clipStart: (item.clipStart || 0).toFixed(2),

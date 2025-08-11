@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
 import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
+import localVideoManager from '@/lib/utils/localVideoManager';
 
 /**
  * useMaterialManagement Hook
@@ -40,133 +41,106 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
 
   // 处理素材选择/取消选择
   const handleMaterialSelect = useCallback((materialId: string, isSelected: boolean) => {
-    const material = materials.find(m => m.id === materialId);
-    
-    logger.userAction('素材选择变更', 'materialCard', {
+    logger.userAction('素材选择状态变更', 'materialSelect', {
       materialId,
-      materialName: material?.name,
-      materialType: material?.type,
       isSelected,
       previousSelectionCount: selectedMaterials.size
     });
 
-    const newSelection = new Set(selectedMaterials);
-    if (isSelected) {
-      newSelection.add(materialId);
-    } else {
-      newSelection.delete(materialId);
-    }
-    
-    setSelectedMaterials(newSelection);
-    
-    logger.info('素材选择状态更新', {
-      newSelectionCount: newSelection.size,
-      selectedIds: Array.from(newSelection),
-      selectionChange: isSelected ? 'added' : 'removed'
+    setSelectedMaterials(prev => {
+      const newSet = new Set(prev);
+      if (isSelected) {
+        newSet.add(materialId);
+      } else {
+        newSet.delete(materialId);
+      }
+      
+      logger.info('素材选择状态更新', {
+        materialId,
+        isSelected,
+        newSelectionCount: newSet.size,
+        selectedMaterials: Array.from(newSet)
+      });
+      
+      return newSet;
     });
-  }, [selectedMaterials, materials, logger]);
+  }, [selectedMaterials, logger]);
 
-  // 处理全选/取消全选
-  const handleSelectAll = useCallback(() => {
-    const filteredMaterials = selectedMaterialType === 'all' 
-      ? materials 
-      : materials.filter((material: MaterialItem) => material.type === selectedMaterialType);
-    
-    const isAllSelected = filteredMaterials.every(material => selectedMaterials.has(material.id));
-    
-    logger.userAction('全选操作', 'selectAllButton', {
-      isAllSelected,
-      filteredCount: filteredMaterials.length,
-      previousSelectionCount: selectedMaterials.size,
-      filterType: selectedMaterialType
+  // 处理素材批量选择
+  const handleMaterialBatchSelect = useCallback((materialIds: string[], isSelected: boolean) => {
+    logger.userAction('素材批量选择', 'batchSelect', {
+      materialIds,
+      isSelected,
+      materialCount: materialIds.length,
+      previousSelectionCount: selectedMaterials.size
     });
 
-    if (isAllSelected) {
-      // 取消选择当前筛选的所有素材
-      const newSelection = new Set(selectedMaterials);
-      filteredMaterials.forEach(material => newSelection.delete(material.id));
-      setSelectedMaterials(newSelection);
-    } else {
-      // 选择当前筛选的所有素材
-      const newSelection = new Set(selectedMaterials);
-      filteredMaterials.forEach(material => newSelection.add(material.id));
-      setSelectedMaterials(newSelection);
-    }
-  }, [selectedMaterialType, selectedMaterials, materials, logger]);
-
-  // 处理素材播放/预览
-  const handleMaterialPlay = useCallback((material: MaterialItem) => {
-    logger.userAction('素材播放/预览', 'playButton', {
-      materialId: material.id,
-      materialName: material.name,
-      materialType: material.type,
-      materialFormat: material.format,
-      materialSize: material.size,
-      materialDuration: material.duration
+    setSelectedMaterials(prev => {
+      const newSet = new Set(prev);
+      materialIds.forEach(id => {
+        if (isSelected) {
+          newSet.add(id);
+        } else {
+          newSet.delete(id);
+        }
+      });
+      
+      logger.info('批量素材选择状态更新', {
+        materialIds,
+        isSelected,
+        newSelectionCount: newSet.size,
+        selectedMaterials: Array.from(newSet)
+      });
+      
+      return newSet;
     });
-
-    // Mock播放功能 - 显示提示
-    const actionText = material.type === 'image' ? '预览' : '播放';
-    alert(`${actionText}素材: ${material.name}\n类型: ${material.type}\n格式: ${material.format}\n大小: ${(material.size / 1024 / 1024).toFixed(2)}MB`);
-  }, [logger]);
-
-  // 处理素材下载
-  const handleMaterialDownload = useCallback((material: MaterialItem) => {
-    logger.userAction('素材下载', 'downloadButton', {
-      materialId: material.id,
-      materialName: material.name,
-      materialType: material.type,
-      materialUrl: material.url,
-      materialSize: material.size
-    });
-
-    // Mock下载功能 - 显示提示
-    alert(`下载素材: ${material.name}\nURL: ${material.url}\n大小: ${(material.size / 1024 / 1024).toFixed(2)}MB`);
-  }, [logger]);
+  }, [selectedMaterials, logger]);
 
   // 处理素材删除
   const handleMaterialDelete = useCallback((materialIds: string[]) => {
-    const materialNames = materialIds.map(id => {
-      const material = materials.find((m: MaterialItem) => m.id === id);
-      return material ? material.name : id;
-    });
-
-    logger.userAction('素材删除请求', 'deleteButton', {
+    logger.userAction('素材删除操作', 'deleteButton', {
       materialIds,
-      materialNames,
-      deleteCount: materialIds.length
+      materialCount: materialIds.length
     });
 
-    const confirmDelete = confirm(`确认删除以下素材吗？\n${materialNames.join('\n')}`);
-    
+    // 确认删除
+    const confirmDelete = window.confirm(
+      `确定要删除 ${materialIds.length} 个素材吗？此操作不可撤销。`
+    );
+
     if (confirmDelete) {
-      // 从素材库中移除
-      setMaterials(prevMaterials => 
-        prevMaterials.filter(material => !materialIds.includes(material.id))
-      );
-      
-      // 清除选中状态
-      const newSelection = new Set(selectedMaterials);
-      materialIds.forEach(id => newSelection.delete(id));
-      setSelectedMaterials(newSelection);
-      
-      logger.info('素材删除确认', {
-        deletedIds: materialIds,
-        deletedNames: materialNames,
-        remainingMaterialCount: materials.length - materialIds.length,
-        remainingSelectionCount: newSelection.size
+      logger.info('用户确认删除素材', {
+        materialIds,
+        materialCount: materialIds.length
       });
-      
-      alert(`已删除 ${materialIds.length} 个素材`);
+
+      setMaterials(prev => {
+        const filteredMaterials = prev.filter(material => !materialIds.includes(material.id));
+        
+        logger.info('素材删除完成', {
+          deletedIds: materialIds,
+          remainingCount: filteredMaterials.length,
+          deletedCount: materialIds.length
+        });
+        
+        return filteredMaterials;
+      });
+
+      // 清除已删除素材的选中状态
+      setSelectedMaterials(prev => {
+        const newSet = new Set(prev);
+        materialIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
     } else {
-      logger.info('素材删除取消', {
+      logger.info('用户取消删除素材', {
         cancelledIds: materialIds
       });
     }
   }, [selectedMaterials, materials, logger]);
 
   // 处理素材上传
-  const handleMaterialUpload = useCallback(() => {
+  const handleMaterialUpload = useCallback(async () => {
     logger.userAction('素材上传触发', 'uploadButton');
 
     if (isUploading) {
@@ -176,17 +150,17 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
       return;
     }
 
-    // Mock上传功能 - 模拟文件选择和上传过程
+    // 创建文件选择器
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
     input.accept = 'video/*,audio/*,image/*';
     
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const files = (e.target as HTMLInputElement)?.files;
       if (!files || files.length === 0) return;
 
-      logger.info('开始模拟上传', {
+      logger.info('开始处理上传文件', {
         fileCount: files.length,
         fileNames: Array.from(files).map(f => f.name),
         totalSize: Array.from(files).reduce((sum, f) => sum + f.size, 0)
@@ -195,121 +169,295 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
       setIsUploading(true);
       setUploadProgress(0);
 
-      // 模拟上传进度
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          const newProgress = prev + Math.random() * 20;
-          if (newProgress >= 100) {
-            clearInterval(progressInterval);
-            setIsUploading(false);
-            setUploadProgress(0);
-            
-            // 创建模拟的素材项目
-            const newMaterials: MaterialItem[] = Array.from(files).map((file, index) => {
-              const type: MaterialType = file.type.startsWith('video/') ? 'video' :
-                                       file.type.startsWith('audio/') ? 'audio' : 'image';
-              return {
-                id: `uploaded-${Date.now()}-${index}`,
-                name: file.name,
-                type,
-                format: file.name.split('.').pop() || 'unknown',
-                size: file.size,
-                duration: type === 'video' ? Math.floor(Math.random() * 300) + 30 : undefined,
-                width: type !== 'audio' ? Math.floor(Math.random() * 1000) + 500 : undefined,
-                height: type !== 'audio' ? Math.floor(Math.random() * 1000) + 500 : undefined,
-                thumbnailUrl: undefined,
-                url: URL.createObjectURL(file),
-                createdAt: new Date(),
-                tags: ['用户上传'],
-                description: `用户上传的${type === 'video' ? '视频' : type === 'audio' ? '音频' : '图片'}文件`
-              };
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+      const uploadedMaterials: MaterialItem[] = [];
+      let completedFiles = 0;
+
+      try {
+        // 处理每个文件
+        for (const file of Array.from(files)) {
+          try {
+            logger.info('开始上传单个文件', {
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: file.type
             });
 
-            // 添加到素材库
-            setMaterials(prevMaterials => [...prevMaterials, ...newMaterials]);
-            
-            logger.info('模拟上传完成', {
-              fileCount: files.length,
-              newMaterialIds: newMaterials.map(m => m.id),
-              totalMaterialCount: materials.length + newMaterials.length
+            // 判断文件类型
+            const materialType: MaterialType = file.type.startsWith('video/') ? 'video' :
+                                             file.type.startsWith('audio/') ? 'audio' : 'image';
+
+            // 如果是视频文件，使用视频上传API
+            if (materialType === 'video') {
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('task_id', taskId);
+              formData.append('generate_thumbnail', 'true');
+
+              const response = await fetch(`${API_BASE_URL}/api/supabase/upload-video`, {
+                method: 'POST',
+                body: formData
+              });
+
+              if (!response.ok) {
+                throw new Error(`视频上传失败: ${response.status} ${response.statusText}`);
+              }
+
+              const result = await response.json();
+
+              if (!result.success) {
+                throw new Error(`视频上传失败: ${result.message}`);
+              }
+
+              logger.info('视频上传到Supabase成功', {
+                fileName: file.name,
+                videoUrl: result.video_url,
+                thumbnailUrl: result.thumbnail_url,
+                fileSize: result.file_size,
+                duration: result.duration,
+                width: result.width,
+                height: result.height
+              });
+
+              // 下载视频文件到本地
+              logger.info('开始从Supabase下载视频到本地', {
+                url: result.video_url,
+                fileName: file.name
+              });
+
+              const videoResponse = await fetch(result.video_url);
+              if (!videoResponse.ok) {
+                throw new Error(`下载视频失败: ${videoResponse.status} ${videoResponse.statusText}`);
+              }
+              const videoBlob = await videoResponse.blob();
+
+              // 下载缩略图（如果有）
+              let thumbnailBlob: Blob | undefined;
+              if (result.thumbnail_url) {
+                try {
+                  const thumbnailResponse = await fetch(result.thumbnail_url);
+                  if (thumbnailResponse.ok) {
+                    thumbnailBlob = await thumbnailResponse.blob();
+                  }
+                } catch (error) {
+                                     logger.warn('下载缩略图失败，将使用默认处理', {
+                     error: error instanceof Error ? error.message : String(error),
+                     fileName: file.name
+                   });
+                }
+              }
+
+              // 存储到本地视频管理器
+              const { videoUrl, thumbnailUrl } = await localVideoManager.storeVideoFile(
+                file.name,
+                videoBlob,
+                thumbnailBlob,
+                {
+                  duration: result.duration,
+                  width: result.width,
+                  height: result.height,
+                  format: file.name.split('.').pop()
+                }
+              );
+
+              logger.info('视频文件本地存储成功', {
+                fileName: file.name,
+                localVideoUrl: videoUrl,
+                localThumbnailUrl: thumbnailUrl,
+                blobSize: videoBlob.size
+              });
+
+                             // 创建视频素材项
+               const videoMaterial: MaterialItem = {
+                 id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                 name: file.name,
+                 type: 'video',
+                 format: file.name.split('.').pop() || 'mp4',
+                 size: result.file_size,
+                 duration: result.duration,
+                 width: result.width,
+                 height: result.height,
+                 thumbnailUrl: thumbnailUrl,
+                 url: videoUrl,
+                 serverUrl: result.video_url,
+                 createdAt: new Date(),
+                 metadata: {
+                   originalUrl: result.video_url,
+                   fileName: file.name,
+                   isLocalFile: true,
+                   supabaseMetadata: result.metadata
+                 }
+               };
+
+               logger.info('视频素材项创建完成', {
+                 materialId: videoMaterial.id,
+                 fileName: file.name,
+                 localUrl: videoUrl,
+                 serverUrl: result.video_url,
+                 thumbnailUrl: thumbnailUrl,
+                 hasServerUrl: !!result.video_url,
+                 duration: result.duration,
+                 size: result.file_size
+               });
+
+              uploadedMaterials.push(videoMaterial);
+
+            } else {
+              // 对于非视频文件，使用通用上传API
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('task_id', taskId);
+
+              const response = await fetch(`${API_BASE_URL}/api/supabase/upload-file`, {
+                method: 'POST',
+                body: formData
+              });
+
+              if (!response.ok) {
+                throw new Error(`文件上传失败: ${response.status} ${response.statusText}`);
+              }
+
+              const result = await response.json();
+
+              if (!result.success) {
+                throw new Error(`文件上传失败: ${result.message}`);
+              }
+
+              logger.info('文件上传到Supabase成功', {
+                fileName: file.name,
+                fileUrl: result.file_url,
+                fileSize: result.file_size
+              });
+
+              // 下载文件到本地（音频使用音频管理器，图片暂时也用视频管理器）
+              const fileResponse = await fetch(result.file_url);
+              if (!fileResponse.ok) {
+                throw new Error(`下载文件失败: ${fileResponse.status} ${fileResponse.statusText}`);
+              }
+              const fileBlob = await fileResponse.blob();
+
+              // 创建本地URL
+              const localUrl = URL.createObjectURL(fileBlob);
+
+              // 创建素材项
+              const material: MaterialItem = {
+                id: `${materialType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                name: file.name,
+                type: materialType,
+                format: file.name.split('.').pop() || '',
+                size: result.file_size,
+                url: localUrl,
+                serverUrl: result.file_url,
+                createdAt: new Date(),
+                metadata: {
+                  originalUrl: result.file_url,
+                  fileName: file.name,
+                  isLocalFile: true
+                }
+              };
+
+              uploadedMaterials.push(material);
+            }
+
+            completedFiles++;
+            const progress = (completedFiles / files.length) * 100;
+            setUploadProgress(progress);
+
+            logger.info('文件上传处理完成', {
+              fileName: file.name,
+              progress,
+              completedFiles,
+              totalFiles: files.length
             });
-            
-            alert(`成功上传 ${files.length} 个文件`);
-            return 100;
+
+                     } catch (error) {
+             const errorObj = error instanceof Error ? error : new Error(String(error));
+             logger.error('单个文件上传失败', errorObj, {
+               fileName: file.name
+             });
+
+            // 继续处理其他文件，但记录错误
+            completedFiles++;
+            const progress = (completedFiles / files.length) * 100;
+            setUploadProgress(progress);
           }
-          return newProgress;
-        });
-      }, 200);
+        }
+
+        // 添加所有成功上传的素材
+        if (uploadedMaterials.length > 0) {
+          setMaterials(prev => [...prev, ...uploadedMaterials]);
+          
+          logger.info('素材上传完成', {
+            totalFiles: files.length,
+            successfulUploads: uploadedMaterials.length,
+            failedUploads: files.length - uploadedMaterials.length,
+            materials: uploadedMaterials.map(m => ({
+              id: m.id,
+              name: m.name,
+              type: m.type,
+              size: m.size
+            }))
+          });
+        }
+
+             } catch (error) {
+         const errorObj = error instanceof Error ? error : new Error(String(error));
+         logger.error('素材上传过程出错', errorObj, {
+           completedFiles,
+           totalFiles: files.length
+         });
+      } finally {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }
     };
 
     input.click();
-  }, [isUploading, uploadProgress, materials.length, logger]);
+  }, [isUploading, uploadProgress, taskId, logger]);
 
-  // Add materials function for external use (e.g., from video search)
+  // 添加素材到列表
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
-    logger.info('接收到新素材添加请求', {
-      receivedCount: newMaterials.length,
-      currentMaterialsCount: materials.length,
-      receivedMaterials: newMaterials.map(m => ({
+    logger.info('添加素材到列表', {
+      materialCount: newMaterials.length,
+      materials: newMaterials.map(m => ({
         id: m.id,
         name: m.name,
-        type: m.type,
-        hasUrl: !!m.url
+        type: m.type
       }))
     });
 
-    const existingIds = new Set(materials.map(m => m.id));
-    const uniqueNewMaterials = newMaterials.filter(material => !existingIds.has(material.id));
-
-    logger.info('素材去重处理完成', {
-      originalCount: newMaterials.length,
-      uniqueCount: uniqueNewMaterials.length,
-      duplicateCount: newMaterials.length - uniqueNewMaterials.length,
-      existingIds: Array.from(existingIds),
-      uniqueMaterialIds: uniqueNewMaterials.map(m => m.id)
-    });
-
-    if (uniqueNewMaterials.length > 0) {
-      setMaterials(prevMaterials => {
-        const updatedMaterials = [...prevMaterials, ...uniqueNewMaterials];
-        logger.info('素材状态更新', {
-          previousCount: prevMaterials.length,
-          newCount: updatedMaterials.length,
-          addedMaterials: uniqueNewMaterials.map(m => ({
-            id: m.id,
-            name: m.name
-          }))
-        });
-        return updatedMaterials;
+    setMaterials(prev => {
+      const updatedMaterials = [...prev, ...newMaterials];
+      
+      logger.info('素材列表更新完成', {
+        previousCount: prev.length,
+        newCount: updatedMaterials.length,
+        addedCount: newMaterials.length
       });
       
-      logger.info('新素材成功添加到库中', {
-        addedCount: uniqueNewMaterials.length,
-        skippedCount: newMaterials.length - uniqueNewMaterials.length,
-        newMaterialIds: uniqueNewMaterials.map(m => m.id),
-        totalMaterialsAfterAdd: materials.length + uniqueNewMaterials.length
-      });
-    } else {
-      logger.warn('没有新素材被添加', {
-        reason: 'all_materials_already_exist',
-        attemptedCount: newMaterials.length
-      });
-    }
+      return updatedMaterials;
+    });
 
-    return uniqueNewMaterials.length;
-  }, [materials, logger]);
+    return newMaterials.length;
+  }, [logger]);
+
+  // 过滤后的素材列表
+  const filteredMaterials = useMemo(() => {
+    if (selectedMaterialType === 'all') {
+      return materials;
+    }
+    return materials.filter(material => material.type === selectedMaterialType);
+  }, [materials, selectedMaterialType]);
 
   return {
-    materials,
+    materials: filteredMaterials,
     selectedMaterialType,
     selectedMaterials,
     isUploading,
     uploadProgress,
     handleMaterialTypeFilter,
     handleMaterialSelect,
-    handleSelectAll,
-    handleMaterialPlay,
-    handleMaterialDownload,
+    handleMaterialBatchSelect,
     handleMaterialDelete,
     handleMaterialUpload,
     addMaterials
