@@ -62,6 +62,7 @@ export interface ScriptSegment {
   duration?: number; // 预留给未来的时长信息
   thumbnail?: string; // 预留给未来的缩略图
   videos?: MaterialItem[]; // 关联的视频素材
+  keywords?: string[]; // 视频搜索关键词，用于自动填充搜索框
 }
 
 export interface VideoEditingTaskContent {

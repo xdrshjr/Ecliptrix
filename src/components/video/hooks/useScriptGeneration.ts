@@ -4,6 +4,94 @@ import { UseScriptGenerationReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createScriptService, ScriptService } from '../services';
 
+// 为脚本段落生成关键词的函数
+const generateKeywordsForSegments = async (
+  segments: ScriptSegment[], 
+  taskId: string, 
+  logger: VideoEditingLogger
+): Promise<ScriptSegment[]> => {
+  logger.info('开始为脚本段落生成关键词', {
+    segmentCount: segments.length,
+    taskId
+  });
+
+  // 创建关键词生成的Promise数组，支持并发处理
+  const keywordPromises = segments.map(async (segment, index) => {
+    try {
+      // 构建段落内容文本
+      const segmentContent = segment.sentences.map(s => s.text).join(' ');
+      
+      logger.info(`开始为段落 ${index + 1} 生成关键词`, {
+        segmentId: segment.id,
+        segmentTitle: segment.title,
+        contentLength: segmentContent.length
+      });
+
+      const response = await fetch('/api/script-keywords-generation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          segmentTitle: segment.title,
+          segmentContent: segmentContent,
+          taskId: taskId,
+        }),
+      });
+
+      if (!response.ok) {
+        logger.warn(`段落 ${index + 1} 关键词生成失败`, {
+          segmentId: segment.id,
+          status: response.status,
+          statusText: response.statusText
+        });
+        return segment; // 返回原始段落，不包含关键词
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.keywords && Array.isArray(result.keywords)) {
+        logger.info(`段落 ${index + 1} 关键词生成成功`, {
+          segmentId: segment.id,
+          keywords: result.keywords,
+          keywordCount: result.keywords.length
+        });
+
+        return {
+          ...segment,
+          keywords: result.keywords
+        };
+      } else {
+        logger.warn(`段落 ${index + 1} 关键词生成响应无效`, {
+          segmentId: segment.id,
+          result
+        });
+        return segment;
+      }
+    } catch (error) {
+      logger.error(`段落 ${index + 1} 关键词生成异常`, error as Error, {
+        segmentId: segment.id,
+        segmentTitle: segment.title
+      });
+      return segment; // 返回原始段落，不包含关键词
+    }
+  });
+
+  // 等待所有关键词生成完成
+  const segmentsWithKeywords = await Promise.all(keywordPromises);
+  
+  const successCount = segmentsWithKeywords.filter(s => s.keywords && s.keywords.length > 0).length;
+  
+  logger.info('脚本段落关键词生成完成', {
+    totalSegments: segments.length,
+    successfulSegments: successCount,
+    failedSegments: segments.length - successCount,
+    taskId
+  });
+
+  return segmentsWithKeywords;
+};
+
 /**
  * useScriptGeneration Hook
  * 管理脚本生成功能
@@ -74,20 +162,28 @@ export const useScriptGeneration = (
       setGenerationProgress(100);
 
       if (result.success && result.segments) {
-        // 更新content，添加生成的脚本片段
+        logger.info('脚本生成成功，开始生成关键词', {
+          segmentCount: result.segments.length
+        });
+
+        // 为每个段落生成关键词
+        const segmentsWithKeywords = await generateKeywordsForSegments(result.segments, taskId, logger);
+
+        // 更新content，添加生成的脚本片段（包含关键词）
         const updatedContent: VideoEditingTaskContent = {
           markdownContent: markdownContent,
           lastModified: new Date(),
-          scriptSegments: result.segments,
+          scriptSegments: segmentsWithKeywords,
         };
 
         onUpdateContent(updatedContent);
         
-        logger.info('脚本内容已更新到任务中（带配置）', {
-          segmentCount: result.segments.length,
-          totalSentences: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0),
-          totalDuration: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + (segment.duration || 0), 0),
-          averageSegmentLength: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0) / result.segments.length,
+        logger.info('脚本内容已更新到任务中（带配置和关键词）', {
+          segmentCount: segmentsWithKeywords.length,
+          totalSentences: segmentsWithKeywords.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0),
+          totalDuration: segmentsWithKeywords.reduce((sum: number, segment: ScriptSegment) => sum + (segment.duration || 0), 0),
+          averageSegmentLength: segmentsWithKeywords.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0) / segmentsWithKeywords.length,
+          segmentsWithKeywords: segmentsWithKeywords.filter((s: ScriptSegment) => s.keywords && s.keywords.length > 0).length,
           metadata: result.metadata,
           appliedConfig: config
         });
