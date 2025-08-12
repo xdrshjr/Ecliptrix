@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import subprocess
 import threading
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -230,11 +231,75 @@ class VideoCompositionService:
             logger.error(f"[Thread {thread_id}] {error_msg}")
             return {"success": False, "error": error_msg, "index": index}
     
-    def compose_video(self, request: VideoCompositionRequest) -> VideoCompositionResponse:
+    def start_video_composition(self, request: VideoCompositionRequest) -> VideoCompositionResponse:
         """
-        Compose video from timeline data.
+        Start video composition asynchronously and return immediately with composition_id.
         """
         composition_id = str(uuid.uuid4())
+        start_time = time.time()
+        
+        logger.info(f"Starting async video composition {composition_id} for task {request.task_id}")
+        logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
+        logger.info(f"Total composition duration: {request.total_duration}s")
+        
+        # Store composition info with initial status
+        self.compositions[composition_id] = {
+            "id": composition_id,
+            "task_id": request.task_id,
+            "status": "processing",
+            "progress": 0.0,
+            "start_time": start_time,
+            "request": request
+        }
+        
+        # Start background processing
+        threading.Thread(
+            target=self._process_video_composition_async,
+            args=(composition_id, request),
+            daemon=True
+        ).start()
+        
+        # Return immediately with processing status
+        return VideoCompositionResponse(
+            success=True,
+            message="Video composition started successfully",
+            composition_id=composition_id,
+            status="processing",
+            progress=0.0
+        )
+    
+    def _process_video_composition_async(self, composition_id: str, request: VideoCompositionRequest):
+        """
+        Process video composition in background thread.
+        """
+        try:
+            logger.info(f"Background processing started for composition {composition_id}")
+            
+            # Call the original synchronous composition method
+            # Status updates are handled within _compose_video_sync
+            result = self._compose_video_sync(composition_id, request)
+            
+            if result.success:
+                logger.info(f"Async composition {composition_id} completed successfully")
+            else:
+                logger.error(f"Async composition {composition_id} failed: {result.message}")
+                
+        except Exception as e:
+            error_msg = f"Async video composition failed: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            # Update composition status on unexpected errors
+            if composition_id in self.compositions:
+                self.compositions[composition_id].update({
+                    "status": "failed",
+                    "error_details": {"error": error_msg},
+                    "failed_at": datetime.utcnow()
+                })
+
+    def _compose_video_sync(self, composition_id: str, request: VideoCompositionRequest) -> VideoCompositionResponse:
+        """
+        Compose video from timeline data (synchronous processing).
+        """
         start_time = time.time()
         
         logger.info(f"Starting video composition {composition_id} for task {request.task_id}")
@@ -312,16 +377,6 @@ class VideoCompositionService:
         logger.info(f"裁剪统计: {trimmed_video_count}/{len(request.video_items)} 视频片段被裁剪, "
                    f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪")
         
-        # Store composition info
-        self.compositions[composition_id] = {
-            "id": composition_id,
-            "task_id": request.task_id,
-            "status": "processing",
-            "progress": 0.0,
-            "start_time": start_time,
-            "request": request
-        }
-        
         try:
             # Create temporary directory
             temp_dir = os.path.join(tempfile.gettempdir(), f"video_compose_{composition_id}")
@@ -335,7 +390,8 @@ class VideoCompositionService:
             logger.info(f"Output path: {output_path}")
             
             # Update progress
-            self.compositions[composition_id]["progress"] = 0.1
+            if composition_id in self.compositions:
+                self.compositions[composition_id]["progress"] = 0.1
             
             # Download videos
             logger.info("Starting video downloads...")
@@ -574,6 +630,17 @@ class VideoCompositionService:
             logger.info(f"Video composition completed: {output_filename}")
             logger.info(f"File size: {file_size / 1024 / 1024:.2f}MB")
             logger.info(f"Processing time: {processing_time:.2f}s")
+            
+            # Update composition status for successful completion
+            if composition_id in self.compositions:
+                self.compositions[composition_id].update({
+                    "status": "completed",
+                    "progress": 1.0,
+                    "output_file_path": str(output_path),
+                    "output_file_size": file_size,
+                    "processing_time": processing_time,
+                    "completed_at": datetime.utcnow()
+                })
             
             # Clean up temp directory
             try:

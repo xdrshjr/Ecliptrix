@@ -79,17 +79,18 @@ export interface CompositionStatusResponse {
 export class VideoCompositionAPI {
   private baseUrl: string;
 
-  constructor(baseUrl: string = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl: string = '') {
+    // Use Next.js API routes instead of direct backend calls
+    this.baseUrl = baseUrl || '';
   }
 
   /**
    * Compose a video from timeline data
    */
   async composeVideo(request: VideoCompositionRequest): Promise<VideoCompositionResponse> {
-    const url = `${this.baseUrl}/api/video/compose`;
+    const url = `/api/video-compose`;
     
-    console.log('[VideoCompositionAPI] Sending composition request', {
+    console.log('[VideoCompositionAPI] Sending composition request to Next.js API', {
       taskId: request.task_id,
       videoItemsCount: request.video_items.length,
       audioItemsCount: request.audio_items?.length || 0,
@@ -112,7 +113,7 @@ export class VideoCompositionAPI {
 
       const result: VideoCompositionResponse = await response.json();
       
-      console.log('[VideoCompositionAPI] Composition response received', {
+      console.log('[VideoCompositionAPI] Composition response received from Next.js API', {
         success: result.success,
         status: result.status,
         compositionId: result.composition_id,
@@ -130,9 +131,9 @@ export class VideoCompositionAPI {
    * Get the status of a video composition
    */
   async getCompositionStatus(compositionId: string): Promise<CompositionStatusResponse> {
-    const url = `${this.baseUrl}/api/video/compose/${compositionId}/status`;
+    const url = `/api/video-compose/${compositionId}/status`;
     
-    console.log('[VideoCompositionAPI] Requesting composition status', {
+    console.log('[VideoCompositionAPI] Requesting composition status via Next.js API', {
       compositionId
     });
 
@@ -150,7 +151,7 @@ export class VideoCompositionAPI {
 
       const result: CompositionStatusResponse = await response.json();
       
-      console.log('[VideoCompositionAPI] Status response received', {
+      console.log('[VideoCompositionAPI] Status response received from Next.js API', {
         compositionId: result.composition_id,
         status: result.status,
         progress: result.progress
@@ -167,9 +168,9 @@ export class VideoCompositionAPI {
    * Download a composed video
    */
   async downloadVideo(compositionId: string, taskId?: string): Promise<Blob> {
-    const url = `${this.baseUrl}/api/video/download/${compositionId}${taskId ? `?task_id=${taskId}` : ''}`;
+    const url = `/api/video-compose/${compositionId}/download${taskId ? `?task_id=${taskId}` : ''}`;
     
-    console.log('[VideoCompositionAPI] Downloading video', {
+    console.log('[VideoCompositionAPI] Downloading video via Next.js API', {
       compositionId,
       taskId
     });
@@ -185,7 +186,7 @@ export class VideoCompositionAPI {
 
       const blob = await response.blob();
       
-      console.log('[VideoCompositionAPI] Video download completed', {
+      console.log('[VideoCompositionAPI] Video download completed from Next.js API', {
         compositionId,
         blobSize: blob.size,
         blobType: blob.type
@@ -312,7 +313,7 @@ export class VideoCompositionAPI {
    * Check video composition service health
    */
   async checkHealth(): Promise<any> {
-    const url = `${this.baseUrl}/api/video/compose/health`;
+    const url = `/api/video-compose/health`;
     
     try {
       const response = await fetch(url, {
@@ -328,7 +329,7 @@ export class VideoCompositionAPI {
 
       const result = await response.json();
       
-      console.log('[VideoCompositionAPI] Health check result', result);
+      console.log('[VideoCompositionAPI] Health check result from Next.js API', result);
       return result;
     } catch (error) {
       console.error('[VideoCompositionAPI] Health check failed', error);

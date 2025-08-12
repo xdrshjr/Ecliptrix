@@ -4,6 +4,7 @@ Video-related API routes for the Basic Service application.
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
+from pathlib import Path
 from app.models import (
     VideoSearchRequest, 
     VideoSearchResponse,
@@ -125,9 +126,9 @@ async def compose_video(request: VideoCompositionRequest) -> VideoCompositionRes
                 detail="Total duration must be greater than 0"
             )
         
-        # Start composition
-        logger.debug(f"Starting video composition with parameters: {request.model_dump()}")
-        result = video_composition_service.compose_video(request)
+        # Start composition (async)
+        logger.debug(f"Starting async video composition with parameters: {request.model_dump()}")
+        result = video_composition_service.start_video_composition(request)
         
         logger.info(f"Video composition request processed - Success: {result.success}, Status: {result.status}")
         
@@ -202,6 +203,72 @@ async def get_composition_status(composition_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred while retrieving composition status"
+        )
+
+
+@router.get("/compose/{composition_id}/download")
+async def download_composed_video_from_compose(
+    composition_id: str, 
+    task_id: str = None,
+    filename: str = None
+):
+    """
+    Download a composed video file via compose endpoint.
+    
+    Args:
+        composition_id: ID of the composition to download
+        task_id: Optional task ID for tracking
+        filename: Optional filename for download
+    
+    Returns:
+        FileResponse: The composed video file
+    
+    Raises:
+        HTTPException: 404 if file not found, 500 for download errors
+    """
+    logger.info(f"Video download requested via compose endpoint - Composition: {composition_id}, Task: {task_id}, Filename: {filename}")
+    
+    try:
+        download_info = video_composition_service.get_download_info(composition_id)
+        
+        if not download_info:
+            logger.warning(f"Download not available for composition: {composition_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Composition {composition_id} not found or not ready for download"
+            )
+        
+        file_path = Path(download_info["file_path"])
+        if not file_path.exists():
+            logger.error(f"Video file not found: {file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video file not found on server"
+            )
+        
+        # Determine filename
+        download_filename = filename or download_info["file_name"]
+        
+        logger.info(f"Starting video download - File: {file_path}, Size: {download_info['file_size']} bytes")
+        
+        return FileResponse(
+            path=str(file_path),
+            filename=download_filename,
+            media_type="video/mp4",
+            headers={
+                "X-Composition-ID": composition_id,
+                "Content-Length": str(download_info["file_size"])
+            }
+        )
+        
+    except HTTPException:
+        raise
+        
+    except Exception as e:
+        logger.error(f"Video download failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download video file"
         )
 
 
