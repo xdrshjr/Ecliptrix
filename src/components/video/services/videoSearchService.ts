@@ -48,8 +48,10 @@ export interface VideoSearchResponse {
  */
 export class VideoSearchServiceImpl implements VideoSearchService {
   private logger: VideoEditingLogger;
+  private taskId: string;
 
   constructor(taskId: string) {
+    this.taskId = taskId;
     this.logger = new VideoEditingLogger({
       taskId,
       component: 'VideoSearchService'
@@ -95,21 +97,101 @@ export class VideoSearchServiceImpl implements VideoSearchService {
     }
 
     const startTime = performance.now();
-    this.logger.apiCall('开始视频搜索', '/api/video-search', {
-      query: query.trim(),
+    const originalQuery = query.trim();
+    
+    // 声明变量以便在catch块中使用
+    let finalQuery = originalQuery;
+    let translationInfo = {
+      translationNeeded: false,
+      isEnglish: true,
+      originalQuery,
+      translatedQuery: originalQuery
+    };
+    
+    this.logger.apiCall('开始视频搜索流程', '/api/video-search', {
+      originalQuery,
       maxVideos,
       orientation,
-      queryLength: query.length
+      queryLength: originalQuery.length
     });
 
     try {
+      // 第一步：查询翻译（如果需要）
+
+      this.logger.info('开始查询翻译检查', {
+        originalQuery,
+        taskId: this.taskId
+      });
+
+      const translationStartTime = performance.now();
+      
+      try {
+        const translationResponse = await fetch('/api/translate-search-query', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: originalQuery,
+            taskId: this.taskId,
+          }),
+        });
+
+        if (translationResponse.ok) {
+          const translationData = await translationResponse.json();
+          const translationEndTime = performance.now();
+          
+          if (translationData.success) {
+            finalQuery = translationData.translatedQuery;
+            translationInfo = {
+              translationNeeded: translationData.translationNeeded,
+              isEnglish: translationData.isEnglish,
+              originalQuery: translationData.originalQuery,
+              translatedQuery: translationData.translatedQuery
+            };
+
+            this.logger.info('查询翻译完成', {
+              ...translationInfo,
+              translationTime: translationEndTime - translationStartTime,
+              queryChanged: originalQuery !== finalQuery
+            });
+          } else {
+            this.logger.warn('查询翻译失败，使用原查询', {
+              originalQuery,
+              error: translationData.error
+            });
+          }
+        } else {
+          this.logger.warn('翻译服务调用失败，使用原查询', {
+            originalQuery,
+            status: translationResponse.status,
+            statusText: translationResponse.statusText
+          });
+        }
+      } catch (translationError) {
+        this.logger.warn('翻译服务异常，使用原查询', {
+          originalQuery,
+          error: (translationError as Error).message
+        });
+      }
+
+      // 第二步：执行视频搜索
+      this.logger.info('开始执行视频搜索', {
+        finalQuery,
+        originalQuery,
+        translationUsed: translationInfo.translationNeeded,
+        maxVideos,
+        orientation
+      });
+
+      const searchStartTime = performance.now();
       const response = await fetch('/api/video-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          query: query.trim(),
+          query: finalQuery,
           max_videos: maxVideos,
           orientation: orientation,
         }),
@@ -142,7 +224,7 @@ export class VideoSearchServiceImpl implements VideoSearchService {
       }
 
       const data = await response.json();
-      const endTime = performance.now();
+      const searchEndTime = performance.now();
 
       // 验证响应格式
       if (typeof data.success !== 'boolean') {
@@ -158,10 +240,15 @@ export class VideoSearchServiceImpl implements VideoSearchService {
         };
       }
 
-      this.logger.apiComplete('视频搜索', '/api/video-search', data.success, endTime - startTime, {
+      const totalTime = performance.now() - startTime;
+      const searchTime = searchEndTime - searchStartTime;
+
+      this.logger.apiComplete('视频搜索', '/api/video-search', data.success, searchTime, {
         totalFound: data.total_found || 0,
         videosCount: data.videos?.length || 0,
-        searchQuery: query.trim(),
+        originalQuery,
+        finalQuery,
+        translationUsed: translationInfo.translationNeeded,
         orientation
       });
 
@@ -173,7 +260,12 @@ export class VideoSearchServiceImpl implements VideoSearchService {
           totalFound: data.total_found || 0,
           validVideos: validatedVideos.length,
           invalidVideos: (data.videos.length - validatedVideos.length),
-          averageResponseTime: (endTime - startTime) / validatedVideos.length
+          averageResponseTime: validatedVideos.length > 0 ? totalTime / validatedVideos.length : 0,
+          totalTime,
+          searchTime,
+          originalQuery,
+          finalQuery,
+          translationUsed: translationInfo.translationNeeded
         });
 
         return {
@@ -184,9 +276,12 @@ export class VideoSearchServiceImpl implements VideoSearchService {
         };
       } else {
         this.logger.warn('视频搜索无结果', {
-          query: query.trim(),
+          originalQuery,
+          finalQuery,
+          translationUsed: translationInfo.translationNeeded,
           message: data.message,
-          responseTime: endTime - startTime
+          totalTime,
+          searchTime
         });
 
         return {
@@ -197,10 +292,12 @@ export class VideoSearchServiceImpl implements VideoSearchService {
       }
 
     } catch (error) {
-      const endTime = performance.now();
+      const errorTime = performance.now();
       this.logger.apiError('视频搜索请求', '/api/video-search', error as Error, {
-        responseTime: endTime - startTime,
-        query: query.trim(),
+        responseTime: errorTime - startTime,
+        originalQuery,
+        finalQuery: finalQuery || originalQuery,
+        translationUsed: translationInfo?.translationNeeded || false,
         maxVideos,
         orientation
       });
