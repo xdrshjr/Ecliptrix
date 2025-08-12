@@ -350,10 +350,22 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       return;
     }
 
-    logger.userAction('打开视频搜索', 'videoSearchButton', { segmentId });
+    // 查找对应的段落，获取关键词
+    const segment = segments.find(s => s.id === segmentId);
+    const keywords = segment?.keywords;
+
+    logger.userAction('打开视频搜索', 'videoSearchButton', { 
+      segmentId,
+      hasKeywords: !!keywords,
+      keywordCount: keywords?.length || 0,
+      keywords
+    });
+    
     setCurrentSegmentId(segmentId);
-    videoSearch.openSearchModal();
-  }, [completedSegments, logger, videoSearch]);
+    
+    // 如果段落有关键词，传递给视频搜索模态框
+    videoSearch.openSearchModal(keywords);
+  }, [completedSegments, logger, videoSearch, segments]);
 
   // 切换视频预览
   const handleVideoNavigation = useCallback((segmentId: string, direction: 'prev' | 'next') => {

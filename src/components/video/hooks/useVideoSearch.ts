@@ -24,8 +24,23 @@ export const useVideoSearch = (
   const [previewVideo, setPreviewVideo] = useState<VideoSearchResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const openSearchModal = useCallback(() => {
-    logger.userAction('打开视频搜索模态框', 'searchButton');
+  const openSearchModal = useCallback((initialKeywords?: string[]) => {
+    logger.userAction('打开视频搜索模态框', 'searchButton', {
+      hasInitialKeywords: !!initialKeywords,
+      keywordCount: initialKeywords?.length || 0,
+      keywords: initialKeywords
+    });
+    
+    // 如果有初始关键词，自动填充搜索框
+    if (initialKeywords && initialKeywords.length > 0) {
+      const keywordsString = initialKeywords.join(' ');
+      setSearchQuery(keywordsString);
+      logger.info('自动填充搜索关键词', {
+        keywords: initialKeywords,
+        searchQuery: keywordsString
+      });
+    }
+    
     setIsModalOpen(true);
   }, [logger]);
 

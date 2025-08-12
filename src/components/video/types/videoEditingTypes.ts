@@ -114,7 +114,7 @@ export interface UseVideoSearchReturn {
   selectedResults: Set<number>;
   previewVideo: any | null;
   validationError: string | null;
-  openSearchModal: () => void;
+  openSearchModal: (initialKeywords?: string[]) => void;
   closeSearchModal: () => void;
   handleSearch: () => Promise<void>;
   handleSearchResultSelect: (videoId: number, isSelected: boolean) => void;
