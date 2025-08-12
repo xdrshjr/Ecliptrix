@@ -172,37 +172,37 @@ if [ ! -f "$BACKEND_DIR/run.py" ]; then
     exit 1
 fi
 
-# 前端依赖安装
-log_step "检查前端依赖..."
-if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
-    log_info "安装前端依赖..."
-    npm install
-    if [ $? -ne 0 ]; then
-        log_error "前端依赖安装失败"
-        handle_error
-    fi
-    log_success "前端依赖安装完成"
-else
-    log_info "前端依赖已存在，跳过安装"
-fi
-
-# 后端依赖安装
-log_step "检查后端依赖..."
-cd "$BACKEND_DIR"
-
-# 安装后端依赖
-if [ -f "requirements.txt" ]; then
-    log_info "安装后端依赖..."
-    $PIP_CMD install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        log_error "后端依赖安装失败"
-        cd "$SCRIPT_DIR"
-        handle_error
-    fi
-    log_success "后端依赖安装完成"
-else
-    log_warning "requirements.txt 文件不存在"
-fi
+## 前端依赖安装
+#log_step "检查前端依赖..."
+#if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
+#    log_info "安装前端依赖..."
+#    npm install
+#    if [ $? -ne 0 ]; then
+#        log_error "前端依赖安装失败"
+#        handle_error
+#    fi
+#    log_success "前端依赖安装完成"
+#else
+#    log_info "前端依赖已存在，跳过安装"
+#fi
+#
+## 后端依赖安装
+#log_step "检查后端依赖..."
+#cd "$BACKEND_DIR"
+#
+## 安装后端依赖
+#if [ -f "requirements.txt" ]; then
+#    log_info "安装后端依赖..."
+#    $PIP_CMD install -r requirements.txt
+#    if [ $? -ne 0 ]; then
+#        log_error "后端依赖安装失败"
+#        cd "$SCRIPT_DIR"
+#        handle_error
+#    fi
+#    log_success "后端依赖安装完成"
+#else
+#    log_warning "requirements.txt 文件不存在"
+#fi
 
 cd "$SCRIPT_DIR"
 

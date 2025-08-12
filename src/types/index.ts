@@ -61,6 +61,7 @@ export interface ScriptSegment {
   sentences: ScriptSentence[];
   duration?: number; // 预留给未来的时长信息
   thumbnail?: string; // 预留给未来的缩略图
+  videos?: MaterialItem[]; // 关联的视频素材
 }
 
 export interface VideoEditingTaskContent {
