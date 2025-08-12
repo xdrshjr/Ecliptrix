@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { ScriptSegment, ScriptSentence, MaterialItem } from '@/types';
 import { 
   convertTextToSpeech, 
@@ -11,6 +11,9 @@ import {
   BatchTTSResponse 
 } from '@/lib/api/tts';
 import VoiceSelector from './components/VoiceSelector';
+import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
+import { useVideoSearch } from './hooks/useVideoSearch';
+import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 
 interface ScriptPanelProps {
@@ -32,6 +35,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   onAddMaterial,
   taskId
 }) => {
+  const logger = useMemo(() => new VideoEditingLogger({
+    taskId: taskId || 'unknown',
+    component: 'ScriptPanel'
+  }), [taskId]);
+
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
   
@@ -39,6 +47,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('zh_male_shaonianzixin_moon_bigtts');
   const [convertingSegments, setConvertingSegments] = useState<Set<string>>(new Set());
   const [ttsProgress, setTtsProgress] = useState<Record<string, number>>({});
+  const [completedSegments, setCompletedSegments] = useState<Set<string>>(new Set());
+  
+  // 视频搜索相关状态
+  const [currentSegmentId, setCurrentSegmentId] = useState<string | null>(null);
+  const [segmentVideoIndexes, setSegmentVideoIndexes] = useState<Record<string, number>>({});
   
   // 批量转换相关状态
   const [isBatchConverting, setIsBatchConverting] = useState<boolean>(false);
@@ -53,6 +66,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     failed: 0
   });
 
+  // 视频搜索hook
+  const videoSearch = useVideoSearch(taskId || 'unknown', (materials: MaterialItem[]) => {
+    if (currentSegmentId) {
+      return handleAddVideosToSegment(currentSegmentId, materials);
+    }
+    return false;
+  });
 
   const handleStartEdit = (sentence: ScriptSentence) => {
     console.log('[ScriptPanel] 开始编辑句子', {
@@ -132,6 +152,121 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
   };
 
+  // 添加视频到指定段落
+  const handleAddVideosToSegment = useCallback((segmentId: string, videos: MaterialItem[]): boolean => {
+    if (!onUpdateSegments) return false;
+
+    logger.info('为段落添加视频', {
+      segmentId,
+      videosCount: videos.length,
+      videoIds: videos.map(v => v.id)
+    });
+
+    // 验证视频总时长是否大于音频时长
+    const segment = segments.find(s => s.id === segmentId);
+    if (segment?.duration) {
+      const totalVideoDuration = videos.reduce((total, video) => total + (video.duration || 0), 0);
+      
+      if (totalVideoDuration < segment.duration) {
+        const errorMessage = `视频总时长 (${Math.ceil(totalVideoDuration)}秒) 需要大于当前音频时长 (${Math.ceil(segment.duration)}秒)`;
+        videoSearch.setValidationError(errorMessage);
+        logger.warn('视频时长验证失败，弹窗保持开启等待用户调整', {
+          segmentId,
+          totalVideoDuration,
+          requiredDuration: segment.duration,
+          errorMessage,
+          modalStaysOpen: true
+        });
+        return false; // 返回失败状态，弹窗不关闭
+      }
+    }
+
+    const updatedSegments = segments.map(seg => {
+      if (seg.id === segmentId) {
+        return {
+          ...seg,
+          videos: videos
+        };
+      }
+      return seg;
+    });
+
+    onUpdateSegments(updatedSegments);
+    setCurrentSegmentId(null);
+    
+    // 清除验证错误（如果有的话）
+    videoSearch.setValidationError(null);
+
+    // 将关联的视频添加到素材管理面板中
+    if (onAddMaterial) {
+      videos.forEach(video => {
+        onAddMaterial(video);
+        logger.info('视频已添加到素材管理', {
+          segmentId,
+          videoId: video.id,
+          videoName: video.name,
+          videoDuration: video.duration
+        });
+      });
+    }
+
+    // 初始化视频索引为0
+    setSegmentVideoIndexes(prev => ({
+      ...prev,
+      [segmentId]: 0
+    }));
+
+    logger.info('视频添加成功', {
+      segmentId,
+      videosCount: videos.length,
+      totalDuration: videos.reduce((total, video) => total + (video.duration || 0), 0),
+      addedToMaterialsPanel: !!onAddMaterial
+    });
+
+    return true; // 返回成功状态
+  }, [segments, onUpdateSegments, logger, videoSearch]);
+
+  // 打开视频搜索模态框
+  const handleOpenVideoSearch = useCallback((segmentId: string) => {
+    // 检查语音转换是否完成
+    if (!completedSegments.has(segmentId)) {
+      logger.warn('尝试打开视频搜索但语音转换未完成', { segmentId });
+      return;
+    }
+
+    logger.userAction('打开视频搜索', 'videoSearchButton', { segmentId });
+    setCurrentSegmentId(segmentId);
+    videoSearch.openSearchModal();
+  }, [completedSegments, logger, videoSearch]);
+
+  // 切换视频预览
+  const handleVideoNavigation = useCallback((segmentId: string, direction: 'prev' | 'next') => {
+    const segment = segments.find(s => s.id === segmentId);
+    if (!segment?.videos || segment.videos.length === 0) return;
+
+    const currentIndex = segmentVideoIndexes[segmentId] || 0;
+    let newIndex: number;
+
+    if (direction === 'prev') {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : segment.videos.length - 1;
+    } else {
+      newIndex = currentIndex < segment.videos.length - 1 ? currentIndex + 1 : 0;
+    }
+
+    setSegmentVideoIndexes(prev => ({
+      ...prev,
+      [segmentId]: newIndex
+    }));
+
+    logger.userAction('切换视频预览', 'videoNavigation', {
+      segmentId,
+      direction,
+      currentIndex,
+      newIndex,
+      totalVideos: segment.videos.length
+    });
+  }, [segments, segmentVideoIndexes, logger]);
+
   // TTS转换处理
   const handleConvertToSpeech = async (segment: ScriptSegment) => {
     if (convertingSegments.has(segment.id)) {
@@ -196,6 +331,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           fileName: fileName,
           fileSize: response.data.file_size
         });
+
+        // 标记段落转换完成
+        setCompletedSegments(prev => new Set([...Array.from(prev), segment.id]));
 
         try {
           // 直接从Supabase URL下载音频文件到本地
@@ -679,6 +817,27 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     {convertingSegments.has(segment.id) ? '转换中...' : '转换语音'}
                   </div>
                 </button>
+
+                {/* 搜索在线视频按钮 - 一直显示，但只有转换完成后才可点击 */}
+                <button
+                  onClick={() => handleOpenVideoSearch(segment.id)}
+                  disabled={!completedSegments.has(segment.id)}
+                  className={`p-1.5 border rounded transition-colors duration-200 group relative ${
+                    completedSegments.has(segment.id)
+                      ? 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
+                      : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
+                  }`}
+                  title={completedSegments.has(segment.id) ? "搜索在线视频" : "请先完成语音转换"}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  
+                  {/* Hover tooltip */}
+                  <div className={`absolute ${segmentIndex === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]`}>
+                    {completedSegments.has(segment.id) ? "搜索在线视频" : "请先完成语音转换"}
+                  </div>
+                </button>
                 
                 {/* 时长显示 */}
                 {segment.duration && (
@@ -776,6 +935,96 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 </div>
               ))}
             </div>
+
+            {/* 视频预览区域 */}
+            {segment.videos && segment.videos.length > 0 && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-medium text-gray-600">关联视频</h5>
+                  <span className="text-xs text-gray-500">
+                    {(segmentVideoIndexes[segment.id] || 0) + 1} / {segment.videos.length}
+                  </span>
+                </div>
+                
+                {(() => {
+                  const currentIndex = segmentVideoIndexes[segment.id] || 0;
+                  const currentVideo = segment.videos[currentIndex];
+                  
+                  if (!currentVideo) return null;
+                  
+                  return (
+                    <div className="space-y-2">
+                      {/* 视频预览 */}
+                      <div className="relative bg-black rounded-md overflow-hidden aspect-video">
+                        {currentVideo.thumbnailUrl ? (
+                          <img 
+                            src={currentVideo.thumbnailUrl}
+                            alt={currentVideo.name}
+                            className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                              logger.userAction('点击视频预览', 'videoPreview', {
+                                segmentId: segment.id,
+                                videoId: currentVideo.id,
+                                videoName: currentVideo.name
+                              });
+                              // 这里可以添加视频播放逻辑
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400">
+                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        
+                        {/* 播放按钮覆盖层 */}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/20">
+                          <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
+                            <svg className="w-6 h-6 text-gray-800 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 视频信息 */}
+                      <div className="text-xs text-gray-600">
+                        <div className="font-medium truncate">{currentVideo.name}</div>
+                        <div className="text-gray-500 mt-1">
+                          {currentVideo.duration && `${Math.ceil(currentVideo.duration)}秒`}
+                          {currentVideo.width && currentVideo.height && ` · ${currentVideo.width}x${currentVideo.height}`}
+                        </div>
+                      </div>
+                      
+                      {/* 导航按钮 */}
+                      {segment.videos.length > 1 && (
+                        <div className="flex items-center justify-center space-x-2">
+                          <button
+                            onClick={() => handleVideoNavigation(segment.id, 'prev')}
+                            className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+                            title="上一个视频"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleVideoNavigation(segment.id, 'next')}
+                            className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+                            title="下一个视频"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -789,6 +1038,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           />
         </div>
       </div>
+
+      {/* 视频搜索模态框 */}
+      <VideoSearchModal
+        {...videoSearch}
+        taskId={taskId || 'unknown'}
+      />
     </div>
   );
 };

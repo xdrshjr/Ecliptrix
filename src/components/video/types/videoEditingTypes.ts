@@ -113,6 +113,7 @@ export interface UseVideoSearchReturn {
   searchResults: any[];
   selectedResults: Set<number>;
   previewVideo: any | null;
+  validationError: string | null;
   openSearchModal: () => void;
   closeSearchModal: () => void;
   handleSearch: () => Promise<void>;
@@ -122,6 +123,7 @@ export interface UseVideoSearchReturn {
   handleClearSelection: () => void;
   setSearchQuery: (query: string) => void;
   setSearchOrientation: (orientation: SearchOrientation) => void;
+  setValidationError: (error: string | null) => void;
   taskId: string;
 }
 

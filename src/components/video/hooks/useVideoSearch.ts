@@ -6,7 +6,7 @@ import { createVideoSearchService, VideoSearchService, VideoSearchResult } from 
 
 export const useVideoSearch = (
   taskId: string,
-  onAddMaterials: (materials: MaterialItem[]) => void
+  onAddMaterials: (materials: MaterialItem[]) => boolean
 ): UseVideoSearchReturn => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
@@ -22,6 +22,7 @@ export const useVideoSearch = (
   const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
   const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
   const [previewVideo, setPreviewVideo] = useState<VideoSearchResult | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const openSearchModal = useCallback(() => {
     logger.userAction('打开视频搜索模态框', 'searchButton');
@@ -34,6 +35,7 @@ export const useVideoSearch = (
     setSearchResults([]);
     setSelectedResults(new Set());
     setPreviewVideo(null);
+    setValidationError(null);
     logger.userAction('关闭视频搜索模态框', 'closeButton');
   }, [logger]);
 
@@ -137,24 +139,31 @@ export const useVideoSearch = (
     });
 
     // 调用回调函数添加素材
-    const addedCount = onAddMaterials(newMaterials);
+    const success = onAddMaterials(newMaterials);
     
     logger.info('素材添加回调完成', {
       attemptedCount: newMaterials.length,
-      actualAddedCount: addedCount
+      success: success
     });
 
-    // 清除选择状态并关闭模态框
-    setSelectedResults(new Set());
-    setIsModalOpen(false);
-    setSearchQuery('');
-    setSearchResults([]);
-    setPreviewVideo(null);
-    
-    logger.info('视频添加完成，模态框已关闭', {
-      addedVideosCount: addedCount,
-      modalClosed: true
-    });
+    // 只有成功时才清除选择状态并关闭模态框
+    if (success) {
+      setSelectedResults(new Set());
+      setIsModalOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setPreviewVideo(null);
+      
+      logger.info('视频添加成功，模态框已关闭', {
+        addedVideosCount: newMaterials.length,
+        modalClosed: true
+      });
+    } else {
+      logger.info('视频添加失败，模态框保持开启等待用户调整', {
+        attemptedCount: newMaterials.length,
+        modalStaysOpen: true
+      });
+    }
   }, [searchResults, selectedResults, onAddMaterials, videoSearchService, logger]);
 
   const handleClearSelection = useCallback(() => {
@@ -178,6 +187,7 @@ export const useVideoSearch = (
     searchResults,
     selectedResults,
     previewVideo,
+    validationError,
     openSearchModal,
     closeSearchModal,
     handleSearch,
@@ -187,6 +197,7 @@ export const useVideoSearch = (
     handleClearSelection,
     setSearchQuery,
     setSearchOrientation,
+    setValidationError,
     taskId
   };
 };
