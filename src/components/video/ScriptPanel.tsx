@@ -53,6 +53,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [currentSegmentId, setCurrentSegmentId] = useState<string | null>(null);
   const [segmentVideoIndexes, setSegmentVideoIndexes] = useState<Record<string, number>>({});
   
+    // 新增：视频播放状态管理
+  const [playingVideos, setPlayingVideos] = useState<Set<string>>(new Set());
+  const [videoLoadingStates, setVideoLoadingStates] = useState<Record<string, 'loading' | 'loaded' | 'error'>>({});
+
   // 批量转换相关状态
   const [isBatchConverting, setIsBatchConverting] = useState<boolean>(false);
   const [batchProgress, setBatchProgress] = useState<{
@@ -73,6 +77,93 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
     return false;
   });
+
+  // 新增：视频播放/暂停处理
+  const handleVideoPlayPause = useCallback(async (videoElement: HTMLVideoElement, video: MaterialItem, segmentId: string) => {
+    const videoKey = `${segmentId}_${video.id}`;
+    
+    logger.userAction('视频播放控制', 'videoPlayPause', {
+      segmentId,
+      videoId: video.id,
+      videoName: video.name,
+      currentlyPlaying: playingVideos.has(videoKey)
+    });
+
+    try {
+      if (playingVideos.has(videoKey)) {
+        // 暂停视频
+        videoElement.pause();
+        setPlayingVideos(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(videoKey);
+          return newSet;
+        });
+        
+        logger.info('视频暂停成功', {
+          segmentId,
+          videoId: video.id,
+          currentTime: videoElement.currentTime
+        });
+      } else {
+        // 播放视频
+        await videoElement.play();
+        setPlayingVideos(prev => new Set(prev).add(videoKey));
+        
+        logger.info('视频播放成功', {
+          segmentId,
+          videoId: video.id,
+          duration: videoElement.duration
+        });
+      }
+    } catch (error) {
+      logger.error('视频播放操作失败', error as Error, {
+        segmentId,
+        videoId: video.id,
+        action: playingVideos.has(videoKey) ? 'pause' : 'play'
+      });
+    }
+  }, [playingVideos, logger]);
+
+  // 新增：视频加载状态处理
+  const handleVideoLoadStart = useCallback((videoKey: string, video: MaterialItem, segmentId: string) => {
+    setVideoLoadingStates(prev => ({
+      ...prev,
+      [videoKey]: 'loading'
+    }));
+    
+    logger.info('视频开始加载', {
+      segmentId,
+      videoId: video.id,
+      videoUrl: video.url
+    });
+  }, [logger]);
+
+  const handleVideoCanPlay = useCallback((videoKey: string, video: MaterialItem, segmentId: string) => {
+    setVideoLoadingStates(prev => ({
+      ...prev,
+      [videoKey]: 'loaded'
+    }));
+    
+    logger.info('视频可播放', {
+      segmentId,
+      videoId: video.id,
+      duration: video.duration
+    });
+  }, [logger]);
+
+  const handleVideoError = useCallback((videoKey: string, video: MaterialItem, segmentId: string, error: any) => {
+    setVideoLoadingStates(prev => ({
+      ...prev,
+      [videoKey]: 'error'
+    }));
+    
+    logger.error('视频加载失败', new Error('Video load error'), {
+      segmentId,
+      videoId: video.id,
+      videoUrl: video.url,
+      error: error?.message
+    });
+  }, [logger]);
 
   const handleStartEdit = (sentence: ScriptSentence) => {
     console.log('[ScriptPanel] 开始编辑句子', {
@@ -152,6 +243,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
   };
 
+  // 获取段落索引号（从1开始）
+  const getSegmentNumber = useCallback((segmentId: string): number => {
+    const index = segments.findIndex(s => s.id === segmentId);
+    return index >= 0 ? index + 1 : 0;
+  }, [segments]);
+
   // 添加视频到指定段落
   const handleAddVideosToSegment = useCallback((segmentId: string, videos: MaterialItem[]): boolean => {
     if (!onUpdateSegments) return false;
@@ -199,13 +296,32 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     // 将关联的视频添加到素材管理面板中
     if (onAddMaterial) {
-      videos.forEach(video => {
-        onAddMaterial(video);
+      const segmentNumber = getSegmentNumber(segmentId);
+      const segment = segments.find(s => s.id === segmentId);
+      
+      videos.forEach((video, index) => {
+        // 创建带有段落信息的视频副本
+        const videoWithSegmentInfo: MaterialItem = {
+          ...video,
+          name: `段落${segmentNumber} - ${video.name}`,
+          description: `段落${segmentNumber}"${segment?.title || ''}"的关联视频 - ${video.description || video.name}`,
+          metadata: {
+            ...video.metadata,
+            segment_id: segmentId,
+            segment_number: segmentNumber,
+            segment_title: segment?.title,
+            video_index_in_segment: index + 1
+          }
+        };
+        
+        onAddMaterial(videoWithSegmentInfo);
         logger.info('视频已添加到素材管理', {
           segmentId,
+          segmentNumber,
           videoId: video.id,
           videoName: video.name,
-          videoDuration: video.duration
+          videoDuration: video.duration,
+          videoIndexInSegment: index + 1
         });
       });
     }
@@ -224,7 +340,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     });
 
     return true; // 返回成功状态
-  }, [segments, onUpdateSegments, logger, videoSearch]);
+  }, [segments, onUpdateSegments, logger, videoSearch, onAddMaterial, getSegmentNumber]);
 
   // 打开视频搜索模态框
   const handleOpenVideoSearch = useCallback((segmentId: string) => {
@@ -245,27 +361,93 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     if (!segment?.videos || segment.videos.length === 0) return;
 
     const currentIndex = segmentVideoIndexes[segmentId] || 0;
+    const currentVideo = segment.videos[currentIndex];
+    
+    // 计算新的索引
     let newIndex: number;
-
     if (direction === 'prev') {
       newIndex = currentIndex > 0 ? currentIndex - 1 : segment.videos.length - 1;
     } else {
       newIndex = currentIndex < segment.videos.length - 1 ? currentIndex + 1 : 0;
     }
 
+    // 如果新索引和当前索引相同，说明只有一个视频，无需切换
+    if (newIndex === currentIndex) {
+      logger.info('只有一个视频，无需切换', {
+        segmentId,
+        videoId: currentVideo?.id,
+        totalVideos: segment.videos.length
+      });
+      return;
+    }
+    
+    // 停止当前播放的视频（在状态更新之前）
+    if (currentVideo) {
+      const currentVideoKey = `${segmentId}_${currentVideo.id}`;
+      if (playingVideos.has(currentVideoKey)) {
+        // 立即查找并停止实际的视频元素播放
+        const videoElement = document.querySelector(`video[data-video-key="${currentVideoKey}"]`) as HTMLVideoElement;
+        if (videoElement) {
+          try {
+            if (!videoElement.paused) {
+              videoElement.pause();
+              logger.info('DOM视频元素已停止播放', {
+                segmentId,
+                videoId: currentVideo.id,
+                currentTime: videoElement.currentTime,
+                paused: videoElement.paused
+              });
+            }
+          } catch (error) {
+            logger.warn('停止视频播放时出错', {
+              segmentId,
+              videoId: currentVideo.id,
+              error: (error as Error).message
+            });
+          }
+        } else {
+          logger.warn('未找到要停止的视频元素', {
+            segmentId,
+            videoId: currentVideo.id,
+            videoKey: currentVideoKey
+          });
+        }
+        
+        // 立即更新播放状态
+        setPlayingVideos(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(currentVideoKey);
+          return newSet;
+        });
+        
+        logger.info('切换视频时停止当前播放', {
+          segmentId,
+          stoppedVideoId: currentVideo.id,
+          stoppedVideoName: currentVideo.name
+        });
+      }
+    }
+
+    // 立即更新视频索引状态
     setSegmentVideoIndexes(prev => ({
       ...prev,
       [segmentId]: newIndex
     }));
 
+    const newVideo = segment.videos?.[newIndex];
     logger.userAction('切换视频预览', 'videoNavigation', {
       segmentId,
       direction,
       currentIndex,
       newIndex,
-      totalVideos: segment.videos.length
+      totalVideos: segment.videos?.length || 0,
+      previousVideoId: currentVideo?.id,
+      previousVideoName: currentVideo?.name,
+      newVideoId: newVideo?.id,
+      newVideoName: newVideo?.name
     });
-  }, [segments, segmentVideoIndexes, logger]);
+
+  }, [segments, segmentVideoIndexes, playingVideos, logger]);
 
   // TTS转换处理
   const handleConvertToSpeech = async (segment: ScriptSegment) => {
@@ -363,9 +545,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           });
 
           // 创建音频材料项（使用本地URL）
+          const segmentNumber = getSegmentNumber(segment.id);
           const audioMaterial: MaterialItem = {
             id: `audio_${segment.id}_${Date.now()}`,
-            name: `${segment.title} - 语音`,
+            name: `段落${segmentNumber} - ${segment.title} - 语音`,
             type: 'audio',
             format: 'mp3',
             size: response.data.file_size,
@@ -373,11 +556,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             url: localUrl, // 使用本地URL
             serverUrl: response.data.audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
-            description: `由"${segment.title}"片段转换生成的语音`,
+            description: `由段落${segmentNumber}"${segment.title}"转换生成的语音`,
             metadata: {
               voice_type: selectedVoiceId,
               text_length: response.data.text_length,
               segment_id: segment.id,
+              segment_number: segmentNumber, // 添加段落号
               task_id: taskId,
               server_file_name: fileName, // 保存服务器文件名
               actual_duration: response.data.duration, // 保存实际时长
@@ -956,18 +1140,74 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     <div className="space-y-2">
                       {/* 视频预览 */}
                       <div className="relative bg-black rounded-md overflow-hidden aspect-video">
-                        {currentVideo.thumbnailUrl ? (
+                        {currentVideo.type === 'video' && currentVideo.url ? (
+                          <video
+                            key={`${segment.id}_${currentVideo.id}`} // 强制重新创建元素
+                            className="w-full h-full object-contain cursor-pointer"
+                            poster={currentVideo.thumbnailUrl}
+                            controls
+                            preload="metadata"
+                            data-video-key={`${segment.id}_${currentVideo.id}`}
+                            onClick={(e) => {
+                              const videoElement = e.currentTarget;
+                              handleVideoPlayPause(videoElement, currentVideo, segment.id);
+                            }}
+                            onLoadStart={() => {
+                              const videoKey = `${segment.id}_${currentVideo.id}`;
+                              handleVideoLoadStart(videoKey, currentVideo, segment.id);
+                            }}
+                            onCanPlay={() => {
+                              const videoKey = `${segment.id}_${currentVideo.id}`;
+                              handleVideoCanPlay(videoKey, currentVideo, segment.id);
+                            }}
+                            onLoadedMetadata={() => {
+                              const videoKey = `${segment.id}_${currentVideo.id}`;
+                              logger.info('视频元数据加载完成', {
+                                segmentId: segment.id,
+                                videoId: currentVideo.id,
+                                videoKey
+                              });
+                            }}
+                            onError={(e) => {
+                              const videoKey = `${segment.id}_${currentVideo.id}`;
+                              handleVideoError(videoKey, currentVideo, segment.id, e.currentTarget.error);
+                            }}
+                            onPlay={() => {
+                              const videoKey = `${segment.id}_${currentVideo.id}`;
+                              setPlayingVideos(prev => new Set(prev).add(videoKey));
+                              logger.info('视频开始播放', {
+                                segmentId: segment.id,
+                                videoId: currentVideo.id
+                              });
+                            }}
+                            onPause={() => {
+                              const videoKey = `${segment.id}_${currentVideo.id}`;
+                              setPlayingVideos(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(videoKey);
+                                return newSet;
+                              });
+                              logger.info('视频暂停播放', {
+                                segmentId: segment.id,
+                                videoId: currentVideo.id
+                              });
+                            }}
+                          >
+                            <source src={currentVideo.url} type={`video/${currentVideo.format}`} />
+                            您的浏览器不支持视频播放。
+                          </video>
+                        ) : currentVideo.thumbnailUrl ? (
                           <img 
                             src={currentVideo.thumbnailUrl}
                             alt={currentVideo.name}
                             className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                              logger.userAction('点击视频预览', 'videoPreview', {
+                              logger.userAction('点击非视频素材预览', 'materialPreview', {
                                 segmentId: segment.id,
-                                videoId: currentVideo.id,
-                                videoName: currentVideo.name
+                                materialId: currentVideo.id,
+                                materialName: currentVideo.name,
+                                materialType: currentVideo.type
                               });
-                              // 这里可以添加视频播放逻辑
                             }}
                           />
                         ) : (
@@ -978,14 +1218,25 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           </div>
                         )}
                         
-                        {/* 播放按钮覆盖层 */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/20">
-                          <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
-                            <svg className="w-6 h-6 text-gray-800 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z"/>
-                            </svg>
-                          </div>
-                        </div>
+                        {/* 加载状态指示器 */}
+                        {(() => {
+                          const videoKey = `${segment.id}_${currentVideo.id}`;
+                          const loadingState = videoLoadingStates[videoKey];
+                          if (loadingState === 'loading') {
+                            return (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                                <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              </div>
+                            );
+                          } else if (loadingState === 'error') {
+                            return (
+                              <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
+                                <div className="text-white text-sm">加载失败</div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                       
                       {/* 视频信息 */}

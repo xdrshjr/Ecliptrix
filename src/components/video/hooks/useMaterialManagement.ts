@@ -440,7 +440,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
       return updatedMaterials;
     });
 
-    return newMaterials.length;
+    // Return boolean success indicator instead of count
+    return newMaterials.length > 0;
   }, [logger]);
 
   // 过滤后的素材列表

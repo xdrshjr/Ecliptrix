@@ -102,7 +102,7 @@ export interface UseMaterialManagementReturn {
   handleMaterialBatchSelect: (materialIds: string[], isSelected: boolean) => void;
   handleMaterialDelete: (materialIds: string[]) => void;
   handleMaterialUpload: () => void;
-  addMaterials: (materials: MaterialItem[]) => number;
+  addMaterials: (materials: MaterialItem[]) => boolean;
 }
 
 export interface UseVideoSearchReturn {
