@@ -475,7 +475,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     return (
       <div className={`flex flex-col h-full ${className}`}>
         {/* 标题栏 - 与其他面板保持一致的样式 */}
-        <div className="script-panel-header">
+        <div className="script-panel-header relative">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
@@ -484,6 +484,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 </svg>
               </div>
               <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
+              <span className="text-xs text-gray-500 ml-3">0 个片段 · 0 句话</span>
             </div>
             {onGenerateScript && (
               <button
@@ -510,9 +511,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               </button>
             )}
           </div>
-          <p className="text-xs text-gray-500">
-            0 个片段 · 0 句话
-          </p>
         </div>
 
         {/* 空状态内容 */}
@@ -534,7 +532,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   return (
     <div className={`flex flex-col h-full ${className}`}>
       {/* 标题栏 - 与其他面板保持一致的样式 */}
-      <div className="script-panel-header">
+      <div className="script-panel-header relative">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
@@ -543,6 +541,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
+            <span className="text-xs text-gray-500 ml-3">
+              {segments.length} 个片段 · {segments.reduce((sum, segment) => sum + segment.sentences.length, 0)} 句话
+            </span>
           </div>
           <div className="flex items-center space-x-2">
             {/* 转换全部语音按钮 - 修改为图标形式 */}
@@ -596,20 +597,17 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between mt-2">
-          <p className="text-xs text-gray-500">
-            {segments.length} 个片段 · {segments.reduce((sum, segment) => sum + segment.sentences.length, 0)} 句话
-          </p>
-          {/* 批量转换进度 */}
-          {isBatchConverting && (
-            <div className="text-xs text-purple-600">
+        {/* 批量转换进度 - 显示在标题栏内部，不增加高度 */}
+        {isBatchConverting && (
+          <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+            <div className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">
               进度: {batchProgress.completed + batchProgress.failed}/{batchProgress.total}
               {batchProgress.currentSegment && (
                 <span className="ml-1">({batchProgress.currentSegment})</span>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 脚本内容区域 */}

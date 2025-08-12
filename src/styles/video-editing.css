@@ -31,6 +31,12 @@
   border-bottom: 1px solid #e5e7eb;
   background-color: #f8fafc;
   flex-shrink: 0;
+  min-height: 60px;
+  max-height: 60px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* MD编辑器容器 - 确保不超出父容器，减去标题头部高度 */
