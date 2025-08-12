@@ -250,13 +250,43 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
           onAddMaterial(audioMaterial);
 
+          // 更新脚本段落的音频时长
+          if (response.data.duration && onUpdateSegments) {
+            const updatedSegments = segments.map(seg => {
+              if (seg.id === segment.id) {
+                console.log('[ScriptPanel] 更新脚本段落音频时长', {
+                  segmentId: seg.id,
+                  segmentTitle: seg.title,
+                  oldDuration: seg.duration,
+                  newDuration: response.data.duration,
+                  durationMethod: response.data.duration_method,
+                  timestamp: new Date().toISOString()
+                });
+                return {
+                  ...seg,
+                  duration: response.data.duration // 使用实际的音频时长
+                };
+              }
+              return seg;
+            });
+            onUpdateSegments(updatedSegments);
+            
+            console.log('[ScriptPanel] 脚本段落时长更新完成', {
+              segmentId: segment.id,
+              updatedDuration: response.data.duration,
+              totalSegments: updatedSegments.length,
+              timestamp: new Date().toISOString()
+            });
+          }
+
           console.log('[ScriptPanel] 音频材料添加成功', {
             materialId: audioMaterial.id,
             materialName: audioMaterial.name,
             materialSize: audioMaterial.size,
             actualDuration: response.data.duration,
             durationMethod: response.data.duration_method,
-            segmentId: segment.id
+            segmentId: segment.id,
+            segmentDurationUpdated: !!response.data.duration
           });
 
         } catch (downloadError) {
@@ -653,7 +683,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 {/* 时长显示 */}
                 {segment.duration && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {segment.duration}s
+                    {segment.duration.toFixed(2)}s
                   </span>
                 )}
               </div>

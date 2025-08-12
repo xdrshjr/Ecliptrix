@@ -52,7 +52,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       materials: materials.map(m => ({
         id: m.id,
         name: m.name,
-        type: m.type
+        type: m.type,
+        duration: m.duration ? m.duration.toFixed(2) : undefined
       }))
     });
 
@@ -437,7 +438,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {material.duration && (
                       <div className="absolute bottom-1 right-1">
                         <span className="px-1 py-0.5 bg-black bg-opacity-75 text-white text-xs rounded">
-                          {Math.floor(material.duration / 60)}:{(material.duration % 60).toString().padStart(2, '0')}
+                          {material.duration.toFixed(2)}s
                         </span>
                       </div>
                     )}
