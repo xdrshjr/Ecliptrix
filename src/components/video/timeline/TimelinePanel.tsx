@@ -109,6 +109,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [activeTool, setActiveTool] = useState<TimelineToolType>('select');
   const [history, setHistory] = useState<TimelineAction[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isExtractingSubtitles, setIsExtractingSubtitles] = useState(false);
 
   // 使用导出hook
   const videoExport = useVideoExport({
@@ -987,6 +988,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const handleAddSubtitle = useCallback(async () => {
     console.log(`[TimelinePanel] 开始字幕提取`, { timestamp: new Date().toISOString() });
     
+    // 设置加载状态
+    setIsExtractingSubtitles(true);
+    
     try {
       // 1. 收集所有音频轨道中的音频项目
       const audioTracks = timelineState.tracks.filter(track => track.type === 'audio');
@@ -1151,14 +1155,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         };
       });
       
-      // 6. 显示成功消息
-      alert(`字幕提取成功！共生成 ${addedSubtitlesCount} 个字幕片段`);
+            // 6. 记录成功日志
+      console.log(`[TimelinePanel] 字幕提取成功！共生成 ${addedSubtitlesCount} 个字幕片段`);
       
     } catch (error) {
       console.error(`[TimelinePanel] 字幕提取失败:`, error);
       alert(`字幕提取失败: ${error instanceof Error ? error.message : '未知错误'}`);
-         }
-   }, [timelineState, materials]);
+    } finally {
+      // 清除加载状态
+      setIsExtractingSubtitles(false);
+    }
+  }, [timelineState, materials]);
 
   // 处理字幕编辑
   const handleSubtitleEdit = useCallback((itemId: string, newText: string) => {
@@ -1199,6 +1206,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddEffect={handleAddEffect}
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
+        isExtractingSubtitles={isExtractingSubtitles}
         onExport={videoExport.handleExport}
         isExporting={videoExport.isExporting}
         exportProgress={videoExport.exportProgress}
