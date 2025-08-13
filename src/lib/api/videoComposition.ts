@@ -38,6 +38,7 @@ export interface SubtitleCompositionItem {
 
 export interface VideoCompositionRequest {
   task_id: string;
+  aspect_ratio?: string; // Add aspect ratio support (e.g., "16:9", "9:16", "4:3", "1:1", "21:9")
   video_items: VideoCompositionItem[];
   audio_items?: AudioCompositionItem[];
   subtitle_items?: SubtitleCompositionItem[];

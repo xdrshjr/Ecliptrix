@@ -11,6 +11,7 @@ interface UseVideoExportProps {
   timelineState: TimelineState;
   materials?: MaterialItem[];
   taskId?: string;
+  aspectRatio?: string; // Add aspect ratio support (e.g., "16:9", "9:16", "4:3", "1:1", "21:9")
 }
 
 /**
@@ -20,7 +21,8 @@ interface UseVideoExportProps {
 export const useVideoExport = ({ 
   timelineState, 
   materials, 
-  taskId = 'video_export' 
+  taskId = 'video_export',
+  aspectRatio // Add aspect ratio parameter
 }: UseVideoExportProps): UseVideoExportReturn => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -29,6 +31,9 @@ export const useVideoExport = ({
     console.log(`[useVideoExport] 开始导出视频`, {
       totalDuration: timelineState.totalDuration.toFixed(2),
       trackCount: timelineState.tracks.length,
+      aspectRatio: aspectRatio || 'default',
+      aspectRatioType: typeof aspectRatio,
+      aspectRatioLength: aspectRatio?.length,
       taskId,
       timestamp: new Date().toISOString()
     });
@@ -245,17 +250,33 @@ export const useVideoExport = ({
       // Create composition request
       const compositionRequest = {
         task_id: `export_${taskId}_${Date.now()}`, // Generate a unique task ID
+        aspect_ratio: aspectRatio, // Include selected aspect ratio
         video_items: videoItems,
         audio_items: audioItems,
         subtitle_items: subtitleItems,
         total_duration: timelineState.totalDuration,
-        output_resolution: {
-          width: 1920,
-          height: 1080
-        },
+        // Only include output_resolution if no aspect_ratio is specified (let backend calculate resolution from aspect ratio)
+        ...(aspectRatio ? {} : {
+          output_resolution: {
+            width: 1920,
+            height: 1080
+          }
+        }),
         output_fps: 30,
         output_format: 'mp4'
       };
+
+      console.log(`[useVideoExport] 合成请求配置`, {
+        taskId,
+        aspectRatio: aspectRatio || 'none',
+        hasAspectRatio: !!aspectRatio,
+        willUseDefaultResolution: !aspectRatio,
+        videoItemsCount: videoItems.length,
+        audioItemsCount: audioItems.length,
+        subtitleItemsCount: subtitleItems.length,
+        totalDuration: timelineState.totalDuration,
+        timestamp: new Date().toISOString()
+      });
 
       setExportProgress(20); // 更新进度
 
@@ -330,7 +351,7 @@ export const useVideoExport = ({
         setExportProgress(0);
       }, 2000); // 2秒后重置状态
     }
-  }, [timelineState, materials, taskId]);
+  }, [timelineState, materials, taskId, aspectRatio]);
 
   return {
     isExporting,

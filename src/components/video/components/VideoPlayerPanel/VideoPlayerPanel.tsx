@@ -127,7 +127,8 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       gridSize: 1
     },
     materials: materials || [],
-    taskId
+    taskId,
+    aspectRatio: selectedAspectRatio.id // Pass selected aspect ratio to export hook
   });
 
   // 当前播放模式：preview 或 composition
@@ -136,6 +137,14 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
 
   // 处理视频比例切换
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
+    console.log(`[VideoPlayerPanel] 比例切换调试`, {
+      fromRatio: selectedAspectRatio.id,
+      toRatio: aspectRatio.id,
+      fromObject: selectedAspectRatio,
+      toObject: aspectRatio,
+      timestamp: new Date().toISOString()
+    });
+    
     logger.info('切换视频比例', {
       fromRatio: selectedAspectRatio.id,
       toRatio: aspectRatio.id,
@@ -156,6 +165,31 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       timestamp: new Date().toISOString()
     });
   }, [selectedAspectRatio, playbackMode, logger]);
+
+  // 处理视频导出（带比例信息记录）
+  const handleVideoExport = useCallback(async () => {
+    console.log(`[VideoPlayerPanel] 导出前最终检查`, {
+      selectedAspectRatioId: selectedAspectRatio.id,
+      selectedAspectRatioObject: selectedAspectRatio,
+      timestamp: new Date().toISOString()
+    });
+    
+    logger.info('用户点击导出视频按钮', {
+      selectedAspectRatio: selectedAspectRatio.id,
+      aspectRatioDescription: selectedAspectRatio.description,
+      aspectRatioValue: selectedAspectRatio.ratio,
+      playbackMode,
+      hasTimelineState: !!timelineState,
+      tracksCount: timelineState?.tracks.length || 0,
+      materialsCount: materials?.length || 0,
+      totalDuration: timelineState?.totalDuration || 0,
+      exportButtonLocation: '视频合成播放面板头部右侧',
+      timestamp: new Date().toISOString()
+    });
+
+    // 调用实际的导出函数
+    await videoExport.handleExport();
+  }, [selectedAspectRatio, playbackMode, timelineState, materials, videoExport.handleExport, logger]);
 
   useEffect(() => {
     logger.info('组件初始化', {
@@ -557,7 +591,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           {/* 导出视频按钮 */}
           {timelineState && timelineState.tracks.length > 0 && (
             <button
-              onClick={videoExport.handleExport}
+              onClick={handleVideoExport}
               disabled={videoExport.isExporting}
               className={`
                 flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200
@@ -567,11 +601,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 }
               `}
               tabIndex={0}
-              aria-label={videoExport.isExporting ? '正在导出视频...' : '导出视频'}
+              aria-label={videoExport.isExporting ? `正在导出视频 (${selectedAspectRatio.id})...` : `导出视频 (${selectedAspectRatio.id})`}
               onKeyDown={(e) => {
                 if ((e.key === 'Enter' || e.key === ' ') && !videoExport.isExporting) {
                   e.preventDefault();
-                  videoExport.handleExport();
+                  handleVideoExport();
                 }
               }}
             >
