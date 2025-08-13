@@ -7,6 +7,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 const logRequest = (requestData: any) => {
   console.log(`[Video Compose API] ${new Date().toISOString()} - Video composition request`);
   console.log(`[Video Compose API] Task ID: ${requestData.task_id || 'N/A'}`);
+  console.log(`[Video Compose API] Aspect ratio: ${requestData.aspect_ratio || 'default (will use output_resolution)'}`);
   console.log(`[Video Compose API] Video items count: ${requestData.video_items?.length || 0}`);
   console.log(`[Video Compose API] Audio items count: ${requestData.audio_items?.length || 0}`);
   console.log(`[Video Compose API] Subtitle items count: ${requestData.subtitle_items?.length || 0}`);
@@ -14,6 +15,13 @@ const logRequest = (requestData: any) => {
   console.log(`[Video Compose API] Output resolution: ${requestData.output_resolution?.width || 1920}x${requestData.output_resolution?.height || 1080}`);
   console.log(`[Video Compose API] Output FPS: ${requestData.output_fps || 30}`);
   console.log(`[Video Compose API] Output format: ${requestData.output_format || 'mp4'}`);
+  
+  // Log aspect ratio usage details
+  if (requestData.aspect_ratio) {
+    console.log(`[Video Compose API] Using aspect ratio: ${requestData.aspect_ratio} (backend will calculate resolution automatically)`);
+  } else {
+    console.log(`[Video Compose API] No aspect ratio specified, using fixed resolution: ${requestData.output_resolution?.width || 1920}x${requestData.output_resolution?.height || 1080}`);
+  }
 };
 
 const logResponse = (success: boolean, compositionId?: string, status?: string, error?: string) => {
@@ -31,6 +39,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       task_id, 
+      aspect_ratio, // Add aspect ratio extraction
       video_items, 
       audio_items, 
       subtitle_items, 
@@ -111,6 +120,7 @@ export async function POST(request: NextRequest) {
 
     const requestData = { 
       task_id,
+      aspect_ratio, // Include aspect ratio in backend request
       video_items,
       audio_items: audio_items || [],
       subtitle_items: subtitle_items || [],
