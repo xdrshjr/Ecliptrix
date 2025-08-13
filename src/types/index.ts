@@ -81,7 +81,7 @@ export interface ScriptGenerationConfig {
 }
 
 // Materials Management related types
-export type MaterialType = 'video' | 'audio' | 'image';
+export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
 
 export interface MaterialItem {
   id: string;

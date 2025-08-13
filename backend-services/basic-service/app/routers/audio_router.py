@@ -3,6 +3,7 @@ Audio transcription API routes.
 """
 
 import os
+import glob
 from typing import Union
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
@@ -205,8 +206,35 @@ async def transcribe_local_audio(
             "generate_srt_file": generate_srt_file
         })
 
-        # 检查文件是否存在
-        if not os.path.exists(file_path):
+        # 检查文件是否存在，支持通配符模式
+        actual_file_path = file_path
+        
+        # 如果路径包含通配符，尝试查找匹配的文件
+        if '*' in file_path:
+            logger.info(f"检测到通配符路径，开始查找匹配文件: {file_path}")
+            
+            # 确保使用绝对路径进行通配符匹配
+            if not os.path.isabs(file_path):
+                # 如果是相对路径，转换为绝对路径
+                abs_pattern = os.path.abspath(file_path)
+                logger.info(f"转换为绝对路径: {abs_pattern}")
+                matching_files = glob.glob(abs_pattern)
+            else:
+                matching_files = glob.glob(file_path)
+            
+            if not matching_files:
+                logger.error(f"未找到匹配的文件: {file_path}")
+                return AudioTranscriptionErrorResponse(
+                    error=f"未找到匹配的文件: {file_path}",
+                    error_code="FILE_NOT_FOUND"
+                )
+            
+            # 使用最新的文件（按修改时间排序）
+            matching_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            actual_file_path = matching_files[0]
+            logger.info(f"找到匹配文件: {actual_file_path}")
+            
+        elif not os.path.exists(file_path):
             logger.error(f"文件不存在: {file_path}")
             return AudioTranscriptionErrorResponse(
                 error=f"文件不存在: {file_path}",
@@ -215,7 +243,7 @@ async def transcribe_local_audio(
 
         # 处理音频转字幕
         result = audio_transcription_service.process_audio_file(
-            audio_path=file_path,
+            audio_path=actual_file_path,
             language=language,
             use_itn=use_itn,
             use_punc=use_punc,

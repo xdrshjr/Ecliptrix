@@ -47,6 +47,8 @@ const Track: React.FC<TrackProps> = ({
         return track.type === 'video';
       case 'audio':
         return track.type === 'audio';
+      case 'subtitle':
+        return track.type === 'subtitle';
       default:
         return false;
     }

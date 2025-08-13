@@ -184,10 +184,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       } else {
         // 根据素材类型自动选择轨道
         const compatibleTracks = prev.tracks.filter(track => {
-          // 视频可以放在视频轨道，音频可以放在音频轨道，图片可以放在视频轨道
+          // 视频可以放在视频轨道，音频可以放在音频轨道，图片可以放在视频轨道，字幕可以放在字幕轨道
           if (material.type === 'video') return track.type === 'video';
           if (material.type === 'audio') return track.type === 'audio';
           if (material.type === 'image') return track.type === 'video'; // 图片放在视频轨道
+          if (material.type === 'subtitle') return track.type === 'subtitle'; // 字幕放在字幕轨道
           return false;
         });
 
