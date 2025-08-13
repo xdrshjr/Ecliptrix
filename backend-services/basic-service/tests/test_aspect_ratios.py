@@ -22,7 +22,7 @@ def test_video_composition(aspect_ratio: str, total_duration: float = 20.0, base
     print(f"🎬 Testing: Multiple videos composition -> {aspect_ratio}")
     
     # Get all video files
-    videos_dir = Path("../videos")
+    videos_dir = Path("../datas/videos")
     video_files = list(videos_dir.glob("*.mp4"))
     
     if not video_files:
@@ -147,7 +147,7 @@ def main():
     print("✅ Server is running")
     
     # Check available videos
-    videos_dir = Path("../videos")
+    videos_dir = Path("../datas/videos")
     if not videos_dir.exists():
         print(f"❌ Videos directory not found: {videos_dir}")
         sys.exit(1)
