@@ -11,9 +11,11 @@ from app.models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
     VideoDownloadRequest,
-    VideoDownloadResponse
+    VideoDownloadResponse,
+    SubtitleAddRequest,
+    SubtitleAddResponse
 )
-from app.services import VideoSearchService, VideoCompositionService
+from app.services import VideoSearchService, VideoCompositionService, SubtitleService
 from app.logger import get_logger
 
 # Initialize router and logger
@@ -23,6 +25,7 @@ logger = get_logger(__name__)
 # Initialize services
 video_search_service = VideoSearchService()
 video_composition_service = VideoCompositionService()
+subtitle_service = SubtitleService()
 
 
 @router.post("/search", response_model=VideoSearchResponse)
@@ -391,4 +394,83 @@ async def video_search_health():
             "service": "video_search",
             "status": "error",
             "message": f"Health check failed: {str(e)}"
-        } 
+        }
+
+
+@router.post("/add-subtitles", response_model=SubtitleAddResponse)
+async def add_subtitles(request: SubtitleAddRequest) -> SubtitleAddResponse:
+    """
+    Add subtitles to an existing video file.
+    
+    This endpoint adds subtitles from an SRT file to a video with automatic edge detection
+    and line wrapping. The subtitle size, position, and styling can be customized.
+    
+    Args:
+        request (SubtitleAddRequest): Subtitle addition parameters including video path,
+                                    subtitle path, font settings, and positioning options
+    
+    Returns:
+        SubtitleAddResponse: Processing results with output video path and metadata
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for processing errors
+    """
+    logger.info(f"Subtitle addition request received - Video: '{request.video_file_path}', "
+                f"Subtitle: '{request.subtitle_file_path}', Font size: {request.font_size}")
+    
+    try:
+        # Validate request parameters
+        if not request.video_file_path.strip():
+            logger.warning("Empty video file path provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video file path cannot be empty"
+            )
+        
+        if not request.subtitle_file_path.strip():
+            logger.warning("Empty subtitle file path provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Subtitle file path cannot be empty"
+            )
+        
+        # Validate font size range
+        if not (8 <= request.font_size <= 72):
+            logger.warning(f"Invalid font size: {request.font_size}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Font size must be between 8 and 72 pixels"
+            )
+        
+        # Validate position
+        valid_positions = ["top", "center", "bottom"]
+        if request.position not in valid_positions:
+            logger.warning(f"Invalid position: {request.position}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Position must be one of: {', '.join(valid_positions)}"
+            )
+        
+        # Process subtitle addition
+        logger.info(f"Processing subtitle addition for video: {request.video_file_path}")
+        result = await subtitle_service.add_subtitles(request)
+        
+        if result.success:
+            logger.info(f"Subtitle addition completed successfully - Output: {result.output_video_path}")
+            return result
+        else:
+            logger.error(f"Subtitle addition failed: {result.message}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.message
+            )
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during subtitle addition: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        ) 

@@ -218,4 +218,50 @@ class VideoDownloadResponse(BaseResponse):
     download_url: Optional[str] = Field(None, description="URL to download the composed video")
     file_name: Optional[str] = Field(None, description="Name of the file to download")
     file_size: Optional[int] = Field(None, description="Size of the file in bytes")
-    expires_at: Optional[str] = Field(None, description="Download link expiration time (ISO format)") 
+    expires_at: Optional[str] = Field(None, description="Download link expiration time (ISO format)")
+
+
+class SubtitleAddRequest(BaseModel):
+    """
+    Request model for adding subtitles to an existing video.
+    """
+    video_file_path: str = Field(..., description="Path to the input video file")
+    subtitle_file_path: str = Field(..., description="Path to the SRT subtitle file")
+    font_size: int = Field(24, ge=8, le=72, description="Font size in pixels")
+    font_color: str = Field("#FFFFFF", description="Font color in hex format (e.g., #FFFFFF)")
+    background_color: Optional[str] = Field(None, description="Background color in hex format (optional)")
+    border_width: int = Field(2, ge=0, le=10, description="Text border width in pixels")
+    border_color: str = Field("#000000", description="Text border color in hex format")
+    position: str = Field("bottom", description="Subtitle position (top, center, bottom)")
+    margin_vertical: int = Field(50, ge=10, le=200, description="Vertical margin from edge in pixels")
+    margin_horizontal: int = Field(50, ge=10, le=200, description="Horizontal margin from edge in pixels")
+    max_line_width: Optional[int] = Field(None, description="Maximum line width in characters (auto-calculated if not provided)")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "video_file_path": "datas/merge/video-1.mp4",
+                "subtitle_file_path": "datas/merge/basic-01.srt",
+                "font_size": 24,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "border_width": 2,
+                "border_color": "#000000",
+                "position": "bottom",
+                "margin_vertical": 50,
+                "margin_horizontal": 50
+            }
+        }
+    )
+
+
+class SubtitleAddResponse(BaseResponse):
+    """
+    Response model for subtitle addition.
+    """
+    output_video_path: Optional[str] = Field(None, description="Path to the output video with subtitles")
+    video_width: Optional[int] = Field(None, description="Width of the processed video")
+    video_height: Optional[int] = Field(None, description="Height of the processed video")
+    subtitle_count: Optional[int] = Field(None, description="Number of subtitle entries processed")
+    processing_time: Optional[float] = Field(None, description="Processing time in seconds")
+    file_size: Optional[int] = Field(None, description="Size of the output file in bytes") 
