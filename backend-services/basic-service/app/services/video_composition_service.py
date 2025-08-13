@@ -13,7 +13,7 @@ import subprocess
 import threading
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -26,7 +26,8 @@ from app.models import (
     VideoCompositionResponse,
     VideoCompositionItem,
     AudioCompositionItem,
-    SubtitleCompositionItem
+    SubtitleCompositionItem,
+    AspectRatio
 )
 
 logger = get_logger(__name__)
@@ -138,9 +139,6 @@ class VideoCompositionService:
         video_path = video_info['video_path']
         index = video_info['index']
         temp_dir = video_info['temp_dir']
-        target_width = video_info['target_width']
-        target_height = video_info['target_height']
-        target_fps = video_info['target_fps']
         ffmpeg_path = video_info['ffmpeg_path']
         
         # 新增：剪辑参数
@@ -177,7 +175,15 @@ class VideoCompositionService:
         
         # Normalize video with clipping
         normalized_path = os.path.join(temp_dir, f"normalized_{index}.mp4")
-        vf_params = f'scale={target_width}:{target_height},setsar=1:1'
+        
+        # 获取目标视频的宽高比信息
+        target_aspect_ratio = self._get_aspect_ratio_info(video_info['target_aspect_ratio'])
+        target_width = target_aspect_ratio["width"]
+        target_height = target_aspect_ratio["height"]
+        
+        # 计算缩放和填充参数
+        scaling_params = self._calculate_video_scaling(width, height, target_width, target_height)
+        vf_params = self._build_video_filter(scaling_params)
         
         # 构建FFmpeg命令，包含剪辑参数
         normalize_cmd = [
@@ -199,7 +205,7 @@ class VideoCompositionService:
         
         normalize_cmd.extend([
             '-vf', vf_params,
-            '-r', str(target_fps),
+            '-r', str(video_info['target_fps']),
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-profile:v', 'high',
@@ -429,10 +435,11 @@ class VideoCompositionService:
             # Update progress
             self.compositions[composition_id]["progress"] = 0.4
             
-            # Get target video parameters from first video
-            target_width = request.output_resolution["width"]
-            target_height = request.output_resolution["height"]
+            # Get target video parameters from request
             target_fps = request.output_fps
+            target_aspect_ratio = request.aspect_ratio
+            
+            logger.info(f"Target composition parameters: aspect_ratio={target_aspect_ratio}, fps={target_fps}")
             
             # Normalize videos
             logger.info("Starting video normalization...")
@@ -447,13 +454,13 @@ class VideoCompositionService:
                     'video_path': video_path,
                     'index': i,
                     'temp_dir': temp_dir,
-                    'target_width': target_width,
-                    'target_height': target_height,
                     'target_fps': target_fps,
                     'ffmpeg_path': ffmpeg_path,
                     # 新增：剪辑参数
                     'clip_start': video_item.clip_start if video_item else 0.0,
-                    'clip_end': video_item.clip_end if video_item else None
+                    'clip_end': video_item.clip_end if video_item else None,
+                    # 新增：目标宽高比
+                    'target_aspect_ratio': target_aspect_ratio
                 }
                 video_tasks.append(video_info)
                 
@@ -965,3 +972,106 @@ class VideoCompositionService:
         except Exception as e:
             logger.error(f"Audio processing failed with exception: {str(e)}")
             return None 
+
+    def _get_aspect_ratio_info(self, aspect_ratio: AspectRatio) -> Dict[str, Any]:
+        """Get aspect ratio information including resolution and ratio value."""
+        aspect_ratio_map = {
+            AspectRatio.RATIO_16_9: {
+                "width": 1920, "height": 1080, "ratio": 16/9, "name": "16:9"
+            },
+            AspectRatio.RATIO_9_16: {
+                "width": 1080, "height": 1920, "ratio": 9/16, "name": "9:16"
+            },
+            AspectRatio.RATIO_4_3: {
+                "width": 1440, "height": 1080, "ratio": 4/3, "name": "4:3"
+            },
+            AspectRatio.RATIO_1_1: {
+                "width": 1080, "height": 1080, "ratio": 1/1, "name": "1:1"
+            },
+            AspectRatio.RATIO_21_9: {
+                "width": 2560, "height": 1080, "ratio": 21/9, "name": "21:9"
+            }
+        }
+        return aspect_ratio_map.get(aspect_ratio, aspect_ratio_map[AspectRatio.RATIO_16_9])
+    
+    def _calculate_video_scaling(self, 
+                                source_width: int, 
+                                source_height: int, 
+                                target_width: int, 
+                                target_height: int) -> Dict[str, Any]:
+        """
+        Calculate video scaling parameters to maintain aspect ratio with letterboxing/pillarboxing.
+        
+        Args:
+            source_width: Original video width
+            source_height: Original video height  
+            target_width: Target output width
+            target_height: Target output height
+            
+        Returns:
+            Dict containing scaling parameters for FFmpeg
+        """
+        source_ratio = source_width / source_height
+        target_ratio = target_width / target_height
+        
+        logger.info(f"Calculating scaling: source={source_width}x{source_height} (ratio={source_ratio:.3f}), "
+                   f"target={target_width}x{target_height} (ratio={target_ratio:.3f})")
+        
+        if abs(source_ratio - target_ratio) < 0.01:  # Same aspect ratio
+            # Direct scaling
+            return {
+                "scale_width": target_width,
+                "scale_height": target_height,
+                "pad_width": target_width,
+                "pad_height": target_height,
+                "pad_x": 0,
+                "pad_y": 0,
+                "needs_padding": False
+            }
+        
+        if source_ratio > target_ratio:
+            # Source is wider - need horizontal letterboxing (black bars top/bottom)
+            scale_width = target_width
+            scale_height = int(target_width / source_ratio)
+            pad_x = 0
+            pad_y = (target_height - scale_height) // 2
+        else:
+            # Source is taller - need vertical pillarboxing (black bars left/right)
+            scale_height = target_height
+            scale_width = int(target_height * source_ratio)
+            pad_x = (target_width - scale_width) // 2
+            pad_y = 0
+        
+        logger.info(f"Scaling result: scale={scale_width}x{scale_height}, "
+                   f"pad=({pad_x},{pad_y}), final={target_width}x{target_height}")
+        
+        return {
+            "scale_width": scale_width,
+            "scale_height": scale_height,
+            "pad_width": target_width,
+            "pad_height": target_height,
+            "pad_x": pad_x,
+            "pad_y": pad_y,
+            "needs_padding": True
+        }
+    
+    def _build_video_filter(self, scaling_params: Dict[str, Any]) -> str:
+        """
+        Build FFmpeg video filter string for aspect ratio conversion.
+        
+        Args:
+            scaling_params: Scaling parameters from _calculate_video_scaling
+            
+        Returns:
+            FFmpeg video filter string
+        """
+        if not scaling_params["needs_padding"]:
+            # Simple scaling
+            return f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]},setsar=1:1'
+        
+        # Scale + pad for letterboxing/pillarboxing
+        scale_filter = f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]}'
+        pad_filter = (f'pad={scaling_params["pad_width"]}:{scaling_params["pad_height"]}:'
+                     f'{scaling_params["pad_x"]}:{scaling_params["pad_y"]}:black')
+        
+        return f'{scale_filter},{pad_filter},setsar=1:1' 

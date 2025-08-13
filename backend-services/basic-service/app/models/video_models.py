@@ -4,6 +4,8 @@ Video search data models for PEXELS API integration.
 
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict, validator
+from enum import Enum
+
 from .base_models import BaseResponse
 
 
@@ -137,6 +139,15 @@ class SubtitleCompositionItem(BaseModel):
     position: str = Field("bottom", description="Subtitle position (top, center, bottom)")
 
 
+class AspectRatio(str, Enum):
+    """Supported aspect ratios for video composition."""
+    RATIO_16_9 = "16:9"
+    RATIO_9_16 = "9:16" 
+    RATIO_4_3 = "4:3"
+    RATIO_1_1 = "1:1"
+    RATIO_21_9 = "21:9"
+
+
 class VideoCompositionRequest(BaseModel):
     """
     Request model for video composition.
@@ -146,19 +157,36 @@ class VideoCompositionRequest(BaseModel):
     audio_items: List[AudioCompositionItem] = Field(default_factory=list, description="List of audio items to compose")
     subtitle_items: List[SubtitleCompositionItem] = Field(default_factory=list, description="List of subtitle items to compose")
     total_duration: float = Field(..., gt=0, description="Total duration of the composition (seconds)")
-    output_resolution: Dict[str, int] = Field(
-        default={"width": 1920, "height": 1080}, 
-        description="Output video resolution"
+    aspect_ratio: AspectRatio = Field(AspectRatio.RATIO_16_9, description="Output video aspect ratio")
+    output_resolution: Optional[Dict[str, int]] = Field(
+        None, 
+        description="Output video resolution (auto-calculated from aspect_ratio if not provided)"
     )
     output_fps: int = Field(30, ge=15, le=60, description="Output video frame rate")
     output_format: str = Field("mp4", description="Output video format")
     
-    @validator('output_resolution')
-    def validate_resolution(cls, v):
+    @validator('output_resolution', always=True)
+    def validate_and_set_resolution(cls, v, values):
+        """Validate resolution or auto-calculate from aspect ratio."""
+        aspect_ratio = values.get('aspect_ratio', AspectRatio.RATIO_16_9)
+        
+        # Auto-calculate resolution from aspect ratio if not provided
+        if v is None:
+            resolution_map = {
+                AspectRatio.RATIO_16_9: {"width": 1920, "height": 1080},
+                AspectRatio.RATIO_9_16: {"width": 1080, "height": 1920},
+                AspectRatio.RATIO_4_3: {"width": 1440, "height": 1080},
+                AspectRatio.RATIO_1_1: {"width": 1080, "height": 1080},
+                AspectRatio.RATIO_21_9: {"width": 2560, "height": 1080}
+            }
+            v = resolution_map[aspect_ratio]
+        
+        # Validate provided resolution
         if 'width' not in v or 'height' not in v:
             raise ValueError('Resolution must contain width and height')
         if v['width'] <= 0 or v['height'] <= 0:
             raise ValueError('Resolution width and height must be positive')
+        
         return v
 
 

@@ -18,7 +18,8 @@ from .video_models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
     VideoDownloadRequest,
-    VideoDownloadResponse
+    VideoDownloadResponse,
+    AspectRatio
 )
 
 from .tts_models import (
@@ -58,6 +59,7 @@ __all__ = [
     "VideoCompositionResponse",
     "VideoDownloadRequest",
     "VideoDownloadResponse",
+    "AspectRatio",
     "TTSRequest",
     "TTSResponse",
     "VoiceType",
