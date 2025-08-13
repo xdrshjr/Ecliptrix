@@ -45,6 +45,14 @@ from .supabase_models import (
     BatchAudioUploadResponse
 )
 
+from .audio_models import (
+    SubtitleItem,
+    AudioTranscriptionRequest,
+    AudioTranscriptionResponse,
+    AudioTranscriptionErrorResponse,
+    AudioTranscriptionStatus
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -76,5 +84,10 @@ __all__ = [
     "AudioUploadRequest",
     "AudioUploadResponse",
     "BatchAudioUploadRequest",
-    "BatchAudioUploadResponse"
+    "BatchAudioUploadResponse",
+    "SubtitleItem",
+    "AudioTranscriptionRequest",
+    "AudioTranscriptionResponse",
+    "AudioTranscriptionErrorResponse",
+    "AudioTranscriptionStatus"
 ] 
