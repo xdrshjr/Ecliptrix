@@ -32,10 +32,35 @@ class SupabaseService:
             return
             
         try:
-            self.client: Optional[Client] = create_client(
-                settings.supabase.url,
-                settings.supabase.anon_key
-            )
+            # Validate environment variables first
+            if not settings.supabase.url:
+                raise ValueError("SUPABASE_URL environment variable is not set or empty")
+            if not settings.supabase.anon_key:
+                raise ValueError("SUPABASE_ANON_KEY environment variable is not set or empty")
+            if not settings.supabase.bucket:
+                raise ValueError("SUPABASE_BUCKET environment variable is not set or empty")
+            
+            logger.info(f"Initializing Supabase client with URL: {settings.supabase.url[:50]}...")
+            
+            # Use direct Client instantiation to avoid version compatibility issues
+            try:
+                # Import the Client class directly
+                from supabase import Client
+                
+                # Create client instance directly
+                self.client: Optional[Client] = Client(
+                    supabase_url=settings.supabase.url,
+                    supabase_key=settings.supabase.anon_key
+                )
+                
+            except Exception as client_error:
+                logger.warning(f"Direct Client creation failed: {client_error}, trying create_client function")
+                # Fallback to create_client function
+                self.client: Optional[Client] = create_client(
+                    settings.supabase.url,
+                    settings.supabase.anon_key
+                )
+            
             self.bucket_name = settings.supabase.bucket
             self.environment = settings.supabase.environment
             
@@ -45,11 +70,11 @@ class SupabaseService:
                 "url": settings.supabase.url[:50] + "..." if len(settings.supabase.url) > 50 else settings.supabase.url
             })
         except Exception as e:
-            logger.error("Supabase服务初始化失败", {
-                "error": str(e),
-                "url": settings.supabase.url,
-                "bucket": settings.supabase.bucket
-            })
+            logger.error(f"Supabase服务初始化失败: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"SUPABASE_URL: {'SET' if settings.supabase.url else 'NOT SET'}")
+            logger.error(f"SUPABASE_ANON_KEY: {'SET' if settings.supabase.anon_key else 'NOT SET'}")
+            logger.error(f"SUPABASE_BUCKET: {'SET' if settings.supabase.bucket else 'NOT SET'}")
             self.client = None
     
     def _validate_client(self) -> bool:
