@@ -19,6 +19,7 @@ interface TimelineToolbarProps {
   onAddEffect: () => void;
   onAddTransition: () => void;
   onAddSubtitle: () => void;
+  isExtractingSubtitles?: boolean; // 字幕提取状态
   onExport: () => void;
   isExporting?: boolean; // 导出状态
   exportProgress?: number; // 导出进度
@@ -40,6 +41,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddEffect,
   onAddTransition,
   onAddSubtitle,
+  isExtractingSubtitles = false,
   onExport,
   isExporting = false,
   exportProgress = 0,
@@ -166,13 +168,20 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     {
       id: 'subtitles',
       action: onAddSubtitle,
-      icon: (
+      icon: isExtractingSubtitles ? (
+        <div className="relative w-4 h-4">
+          <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+          </svg>
+        </div>
+      ) : (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
         </svg>
       ),
-      label: t.timeline.toolbar.subtitles,
-      shortcut: t.timeline.shortcuts.subtitlesShortcut
+      label: isExtractingSubtitles ? '提取字幕中...' : t.timeline.toolbar.subtitles,
+      shortcut: t.timeline.shortcuts.subtitlesShortcut,
+      disabled: isExtractingSubtitles
     },
     {
       id: 'export',
