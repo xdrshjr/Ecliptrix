@@ -608,10 +608,62 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         return prev;
       }
 
-      // 使用碰撞检测计算最终的参数
+      // 获取原始视频时长信息
+      const originalDuration = targetItem.originalDuration || targetItem.duration;
+      const currentClipStart = targetItem.clipStart || 0;
+      const currentClipEnd = targetItem.clipEnd || originalDuration;
+
+      // 预先验证：检查请求的调整是否会超过原始视频时长限制
+      let isValidResize = true;
+      let validationMessage = '';
+      let maxAllowedDuration = originalDuration;
+
+      if (resizeType === 'end') {
+        // 对于结束时间调整，检查是否会超过原始视频剩余长度
+        maxAllowedDuration = originalDuration - currentClipStart;
+        if (newDuration > maxAllowedDuration) {
+          isValidResize = false;
+          validationMessage = `结束时间调整超出限制：请求时长${newDuration.toFixed(2)}s > 最大允许时长${maxAllowedDuration.toFixed(2)}s`;
+        }
+      } else if (resizeType === 'start') {
+        // 对于开始时间调整，检查是否会导致总剪辑时长超过原始视频时长
+        if (newDuration > originalDuration) {
+          isValidResize = false;
+          validationMessage = `开始时间调整超出限制：请求时长${newDuration.toFixed(2)}s > 原始视频时长${originalDuration.toFixed(2)}s`;
+        }
+      }
+
+      console.log(`[TimelinePanel] 原始时长验证结果`, {
+        itemId,
+        resizeType,
+        originalDuration: originalDuration.toFixed(2),
+        currentClipStart: currentClipStart.toFixed(2),
+        currentClipEnd: currentClipEnd.toFixed(2),
+        requestedDuration: newDuration.toFixed(2),
+        maxAllowedDuration: maxAllowedDuration.toFixed(2),
+        isValidResize,
+        validationMessage,
+        timestamp: new Date().toISOString()
+      });
+
+      // 如果验证失败，限制到最大允许值
+      let constrainedDuration = newDuration;
+      if (!isValidResize) {
+        constrainedDuration = Math.min(newDuration, maxAllowedDuration);
+        console.warn(`[TimelinePanel] 调整请求被约束`, {
+          itemId,
+          resizeType,
+          originalRequest: newDuration.toFixed(2),
+          constrainedTo: constrainedDuration.toFixed(2),
+          reason: validationMessage,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // 使用碰撞检测计算最终的参数（基于约束后的时长）
       const resizeParams = calculateNonOverlappingResizeParams(
         targetItem, 
-        newDuration, 
+        constrainedDuration, 
         resizeType, 
         targetTrack.items
       );
@@ -622,9 +674,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         originalStartTime: targetItem.startTime.toFixed(2),
         originalDuration: targetItem.duration.toFixed(2),
         requestedDuration: newDuration.toFixed(2),
+        constrainedDuration: constrainedDuration.toFixed(2),
         finalDuration: resizeParams.duration.toFixed(2),
         finalStartTime: resizeParams.startTime.toFixed(2),
-        wasAdjusted: Math.abs(resizeParams.duration - newDuration) > 0.01 || 
+        wasConstrainedByOriginalDuration: !isValidResize,
+        wasAdjustedByCollisionDetection: Math.abs(resizeParams.duration - constrainedDuration) > 0.01 || 
                      Math.abs(resizeParams.startTime - targetItem.startTime) > 0.01,
         timestamp: new Date().toISOString()
       });
@@ -645,26 +699,64 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 timestamp: new Date().toISOString()
               });
               
-              // 计算剪辑属性
+              // 计算剪辑属性 - 确保不超过原始视频时长
               const originalDuration = item.originalDuration || item.duration;
               let newClipStart = item.clipStart || 0;
               let newClipEnd = item.clipEnd || originalDuration;
               
               if (resizeType === 'end') {
-                // 调整结束时间：修改clipEnd
-                newClipEnd = Math.min(
-                  newClipStart + resizeParams.duration, 
-                  originalDuration
-                );
+                // 调整结束时间：修改clipEnd，确保不超过原始时长
+                const requestedClipEnd = newClipStart + resizeParams.duration;
+                newClipEnd = Math.min(requestedClipEnd, originalDuration);
+                
+                // 如果clipEnd被限制，需要相应调整实际的timeline duration
+                const actualTimelineDuration = newClipEnd - newClipStart;
+                if (actualTimelineDuration < resizeParams.duration) {
+                  console.warn(`[TimelinePanel] clipEnd被原始时长限制，调整timeline duration`, {
+                    itemId,
+                    requestedClipEnd: requestedClipEnd.toFixed(2),
+                    constrainedClipEnd: newClipEnd.toFixed(2),
+                    originalTimelineDuration: resizeParams.duration.toFixed(2),
+                    adjustedTimelineDuration: actualTimelineDuration.toFixed(2),
+                    timestamp: new Date().toISOString()
+                  });
+                  resizeParams.duration = actualTimelineDuration;
+                }
               } else if (resizeType === 'start') {
-                // 调整开始时间：修改clipStart，保持clipEnd不变
-                const clipDuration = newClipEnd - newClipStart;
+                // 调整开始时间：修改clipStart，保持clipEnd不变，确保不超过原始时长
+                const currentClipDuration = newClipEnd - newClipStart;
                 const durationChange = resizeParams.duration - item.duration;
-                newClipStart = Math.max(0, newClipStart - durationChange);
-                newClipEnd = Math.min(newClipStart + resizeParams.duration, originalDuration);
+                const requestedClipStart = Math.max(0, newClipStart - durationChange);
+                
+                // 确保新的剪辑范围不超过原始视频时长
+                const requestedClipEnd = requestedClipStart + resizeParams.duration;
+                if (requestedClipEnd > originalDuration) {
+                  // 如果会超过，从原始时长向前计算
+                  newClipEnd = originalDuration;
+                  newClipStart = Math.max(0, originalDuration - resizeParams.duration);
+                  const actualTimelineDuration = newClipEnd - newClipStart;
+                  
+                  console.warn(`[TimelinePanel] start调整被原始时长限制`, {
+                    itemId,
+                    requestedClipStart: requestedClipStart.toFixed(2),
+                    requestedClipEnd: requestedClipEnd.toFixed(2),
+                    constrainedClipStart: newClipStart.toFixed(2),
+                    constrainedClipEnd: newClipEnd.toFixed(2),
+                    originalTimelineDuration: resizeParams.duration.toFixed(2),
+                    adjustedTimelineDuration: actualTimelineDuration.toFixed(2),
+                    timestamp: new Date().toISOString()
+                  });
+                  
+                  if (actualTimelineDuration < resizeParams.duration) {
+                    resizeParams.duration = actualTimelineDuration;
+                  }
+                } else {
+                  newClipStart = requestedClipStart;
+                  newClipEnd = Math.min(newClipStart + resizeParams.duration, originalDuration);
+                }
               }
               
-              console.log(`[TimelinePanel] 更新剪辑属性`, {
+              console.log(`[TimelinePanel] 更新剪辑属性 - 应用原始时长约束`, {
                 itemId,
                 resizeType,
                 originalDuration: originalDuration.toFixed(2),
@@ -674,6 +766,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 newClipEnd: newClipEnd.toFixed(2),
                 clipDuration: (newClipEnd - newClipStart).toFixed(2),
                 timelineDuration: resizeParams.duration.toFixed(2),
+                clipDurationMatchesTimeline: Math.abs((newClipEnd - newClipStart) - resizeParams.duration) < 0.01,
                 timestamp: new Date().toISOString()
               });
               
