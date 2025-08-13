@@ -10,6 +10,14 @@ import {
   TTSRequest, 
   BatchTTSResponse 
 } from '@/lib/api/tts';
+import { 
+  transcribeAudioFromPath, 
+  transcribeAudioFromFile,
+  formatSubtitleTime,
+  SubtitleItem,
+  AudioTranscriptionResponse,
+  AudioTranscriptionErrorResponse 
+} from '@/lib/api/audioTranscription';
 import VoiceSelector from './components/VoiceSelector';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
@@ -24,6 +32,7 @@ interface ScriptPanelProps {
   onUpdateSegments?: (segments: ScriptSegment[]) => void;
   onAddMaterial?: (material: MaterialItem) => void; // 添加素材到材料面板
   taskId?: string;
+  materials?: MaterialItem[]; // 添加材料列表，用于查找音频文件
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -33,7 +42,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   isGenerating = false,
   onUpdateSegments,
   onAddMaterial,
-  taskId
+  taskId,
+  materials = []
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -57,6 +67,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [playingVideos, setPlayingVideos] = useState<Set<string>>(new Set());
   const [videoLoadingStates, setVideoLoadingStates] = useState<Record<string, 'loading' | 'loaded' | 'error'>>({});
 
+  // 字幕识别相关状态
+  const [transcribingSegments, setTranscribingSegments] = useState<Set<string>>(new Set());
+  const [segmentSubtitles, setSegmentSubtitles] = useState<Record<string, SubtitleItem[]>>({});
+  const [subtitleErrors, setSubtitleErrors] = useState<Record<string, string>>({});
+
   // 批量转换相关状态
   const [isBatchConverting, setIsBatchConverting] = useState<boolean>(false);
   const [batchProgress, setBatchProgress] = useState<{
@@ -77,6 +92,269 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
     return false;
   });
+
+  // 字幕识别处理函数
+  const handleSubtitleRecognition = useCallback(async (segmentId: string) => {
+    if (transcribingSegments.has(segmentId)) {
+      logger.warn('字幕识别已在进行中', { segmentId });
+      return;
+    }
+
+    // 查找对应的音频材料
+    const audioMaterial = onAddMaterial ? null : null; // 需要从材料中找到对应的音频文件
+    
+    // 由于我们需要找到对应segment的音频文件路径，我们需要从本地音频管理器中获取
+    // 根据segment的文本内容生成的音频文件
+    const segment = segments.find(seg => seg.id === segmentId);
+    if (!segment) {
+             logger.error('找不到对应的段落', new Error('Segment not found'), { segmentId: segmentId });
+      return;
+    }
+
+         setTranscribingSegments(prev => new Set(Array.from(prev).concat(segmentId)));
+    setSubtitleErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[segmentId];
+      return newErrors;
+    });
+
+         logger.info('开始字幕识别', {
+       segmentId,
+       segmentText: segment.sentences.map(s => s.text).join(' ').substring(0, 100)
+     });
+
+          try {
+       // 查找对应segment的音频材料
+       // 从材料管理中查找对应的音频材料，这样可以获取实际的文件信息
+       let audioFile: File | null = null;
+       let serverAudioPath: string | null = null;
+       
+       // 方法1: 从材料管理中查找对应的音频材料
+       const audioMaterials = materials.filter(material => 
+         material.type === 'audio' && 
+         (material.metadata?.segmentId === segmentId || 
+          material.name.includes(segmentId) ||
+          material.id.includes(segmentId))
+       );
+       
+       if (audioMaterials.length > 0) {
+         // 使用最新的音频材料
+         const latestAudioMaterial = audioMaterials.sort((a, b) => 
+           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+         )[0];
+         
+         logger.info('从材料管理中找到音频文件', { 
+           segmentId, 
+           materialId: latestAudioMaterial.id,
+           materialName: latestAudioMaterial.name,
+           serverUrl: latestAudioMaterial.serverUrl
+         });
+         
+         if (latestAudioMaterial.serverUrl) {
+           // 使用材料的服务器URL直接下载文件
+           try {
+             const response = await fetch(latestAudioMaterial.serverUrl);
+             const audioBlob = await response.blob();
+             audioFile = new File([audioBlob], latestAudioMaterial.name, { type: 'audio/mpeg' });
+             logger.info('成功从材料服务器URL获取音频文件', { segmentId, fileName: audioFile.name });
+           } catch (error) {
+             logger.warn('从材料服务器URL获取音频文件失败', { 
+               segmentId, 
+               error: error instanceof Error ? error.message : String(error) 
+             });
+           }
+         }
+       }
+       
+       // 方法2: 尝试从本地音频管理器获取所有可能的音频文件
+       // 基于TTS服务的实际文件命名规则：tts_{segment_id}_{timestamp}_{file_id}.mp3
+       const possibleFileNames = [
+         // 尝试最近可能的文件名模式
+         `tts_${segmentId}_*.mp3`, // 通配符模式，需要特殊处理
+         `${segmentId}_tts_*.mp3`,
+         `${taskId}_${segmentId}.mp3`,
+         `${segmentId}.mp3`,
+         `segment_${segmentId}.mp3`,
+         `audio_${segmentId}.mp3`
+       ];
+       
+       // 由于本地音频管理器可能不支持通配符，我们需要尝试其他方法
+       // 先尝试简单的文件名匹配
+       for (const fileName of possibleFileNames.slice(2)) { // 跳过通配符模式
+         const localAudioUrl = localAudioManager.getAudioFileUrl(fileName);
+         if (localAudioUrl) {
+           logger.info('找到本地音频文件', { segmentId, fileName, localAudioUrl });
+           
+           try {
+             const response = await fetch(localAudioUrl);
+             const audioBlob = await response.blob();
+             audioFile = new File([audioBlob], fileName, { type: 'audio/mpeg' });
+             break;
+           } catch (error) {
+             logger.warn('本地音频文件读取失败', { segmentId, fileName, error: error instanceof Error ? error.message : String(error) });
+           }
+         }
+       }
+       
+       // 方法3: 如果没有找到本地文件，尝试构造服务器路径
+       if (!audioFile) {
+         logger.info('未找到本地音频文件，尝试使用服务器路径', { segmentId });
+         
+         // 基于TTS服务的实际存储路径构造可能的服务器端文件路径
+         // 从日志可以看出，实际路径格式类似：static/audio/generated/tts_{segment_id}_{timestamp}_{file_id}.mp3
+         const possibleServerPaths = [
+           // 使用通配符让后端查找匹配的文件
+           `../static/audio/generated/tts_${segmentId}_*.mp3`,
+           `../static/audio/generated/${segmentId}_tts_*.mp3`,
+           `../static/audio/generated/${taskId}_${segmentId}.mp3`,
+           `../static/audio/generated/segment_${segmentId}.mp3`,
+           `../static/audio/uploaded/${segmentId}.mp3`,
+           `../datas/audio/${segmentId}.mp3`
+         ];
+         
+         // 使用第一个可能的路径（后端需要支持通配符查找）
+         serverAudioPath = possibleServerPaths[0];
+       }
+       
+       let transcriptionResult: AudioTranscriptionResponse | AudioTranscriptionErrorResponse;
+       
+       if (audioFile) {
+         // 使用本地音频文件
+         logger.info('使用本地音频文件进行字幕识别', { segmentId, fileName: audioFile.name });
+         
+         transcriptionResult = await transcribeAudioFromFile(audioFile, {
+           language: 'zh-CN',
+           use_itn: true,
+           use_punc: false,
+           max_lines: 2,
+           words_per_line: 15,
+           generate_srt_file: true
+         });
+       } else if (serverAudioPath) {
+         // 使用服务器路径
+         logger.info('使用服务器路径进行字幕识别', { segmentId, serverAudioPath });
+         
+         transcriptionResult = await transcribeAudioFromPath({
+           file_path: serverAudioPath,
+           language: 'zh-CN',
+           use_itn: true,
+           use_punc: false,
+           max_lines: 2,
+           words_per_line: 15,
+           generate_srt_file: true
+         });
+       } else {
+         throw new Error('未找到对应的音频文件，请确保已完成语音转换');
+       }
+
+             if (transcriptionResult.success) {
+         const response = transcriptionResult as AudioTranscriptionResponse;
+         
+         logger.info('字幕识别成功', {
+           segmentId,
+           jobId: response.job_id,
+           subtitleCount: response.subtitles.length,
+           processingTime: response.processing_time,
+           audioDuration: response.audio_duration
+         });
+
+         setSegmentSubtitles(prev => ({
+           ...prev,
+           [segmentId]: response.subtitles
+         }));
+
+         // 自动添加字幕材料到素材管理面板
+         if (onAddMaterial && response.subtitles.length > 0) {
+           try {
+             // 生成SRT格式的字幕内容
+             const srtContent = response.subtitles.map((subtitle, index) => {
+               const startTime = formatSubtitleTime(subtitle.start_time);
+               const endTime = formatSubtitleTime(subtitle.end_time);
+               return `${index + 1}\n${startTime} --> ${endTime}\n${subtitle.text}\n`;
+             }).join('\n');
+
+             // 创建字幕文件的Blob
+             const subtitleBlob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+             const subtitleUrl = URL.createObjectURL(subtitleBlob);
+
+             // 计算字幕总时长
+             const totalDuration = response.subtitles.length > 0 
+               ? response.subtitles[response.subtitles.length - 1].end_time / 1000 
+               : 0;
+
+             // 创建字幕材料项
+             const subtitleMaterial: MaterialItem = {
+               id: `subtitle_${segmentId}_${Date.now()}`,
+               name: `${segment.title || `段落${segments.indexOf(segment) + 1}`} - 字幕`,
+               type: 'subtitle',
+               format: 'srt',
+               size: subtitleBlob.size,
+               duration: totalDuration,
+               url: subtitleUrl,
+               createdAt: new Date(),
+               description: `从"${segment.title || `段落${segments.indexOf(segment) + 1}`}"语音识别生成的字幕`,
+               metadata: {
+                 segment_id: segmentId,
+                 task_id: taskId,
+                 job_id: response.job_id,
+                 subtitle_count: response.subtitles.length,
+                 processing_time: response.processing_time,
+                 audio_duration: response.audio_duration,
+                 srt_content: srtContent,
+                 subtitles: response.subtitles,
+                 isLocalFile: true,
+                 fileName: `${segment.title || `段落${segments.indexOf(segment) + 1}`}_字幕.srt`
+               }
+             };
+
+             onAddMaterial(subtitleMaterial);
+
+             logger.info('字幕材料添加成功', {
+               materialId: subtitleMaterial.id,
+               segmentId,
+               subtitleCount: response.subtitles.length,
+               fileName: subtitleMaterial.metadata?.fileName,
+               duration: totalDuration
+             });
+
+           } catch (error) {
+             logger.error('字幕材料添加失败', new Error(error instanceof Error ? error.message : String(error)), {
+               segmentId
+             });
+           }
+         }
+      } else {
+        const errorResponse = transcriptionResult as AudioTranscriptionErrorResponse;
+        
+                 logger.error('字幕识别失败', new Error(errorResponse.error), {
+           segmentId,
+           errorCode: errorResponse.error_code
+         });
+
+        setSubtitleErrors(prev => ({
+          ...prev,
+          [segmentId]: errorResponse.error
+        }));
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+             logger.error('字幕识别异常', new Error(errorMessage), {
+         segmentId
+       });
+
+      setSubtitleErrors(prev => ({
+        ...prev,
+        [segmentId]: `字幕识别异常: ${errorMessage}`
+      }));
+    } finally {
+             setTranscribingSegments(prev => {
+         const newSet = new Set(Array.from(prev));
+         newSet.delete(segmentId);
+         return newSet;
+       });
+    }
+  }, [segments, taskId, logger, transcribingSegments]);
 
   // 新增：视频播放/暂停处理
   const handleVideoPlayPause = useCallback(async (videoElement: HTMLVideoElement, video: MaterialItem, segmentId: string) => {
@@ -1034,6 +1312,45 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     {completedSegments.has(segment.id) ? "搜索在线视频" : "请先完成语音转换"}
                   </div>
                 </button>
+
+                {/* 识别字幕按钮 - 一直显示，但只有转换完成后才可点击 */}
+                <button
+                  onClick={() => handleSubtitleRecognition(segment.id)}
+                  disabled={!completedSegments.has(segment.id) || transcribingSegments.has(segment.id)}
+                  className={`p-1.5 border rounded transition-colors duration-200 group relative ${
+                    completedSegments.has(segment.id) && !transcribingSegments.has(segment.id)
+                      ? 'text-green-600 bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300'
+                      : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
+                  }`}
+                  title={
+                    !completedSegments.has(segment.id) 
+                      ? "请先完成语音转换" 
+                      : transcribingSegments.has(segment.id)
+                      ? "字幕识别中..."
+                      : "识别字幕"
+                  }
+                >
+                  {transcribingSegments.has(segment.id) ? (
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
+                    </svg>
+                  )}
+                  
+                  {/* Hover tooltip */}
+                  <div className={`absolute ${segmentIndex === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]`}>
+                    {!completedSegments.has(segment.id) 
+                      ? "请先完成语音转换" 
+                      : transcribingSegments.has(segment.id)
+                      ? "字幕识别中..."
+                      : "识别字幕"
+                    }
+                  </div>
+                </button>
                 
                 {/* 时长显示 */}
                 {segment.duration && (
@@ -1286,6 +1603,122 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     </div>
                   );
                 })()}
+              </div>
+            )}
+
+            {/* 字幕显示区域 */}
+            {segmentSubtitles[segment.id] && segmentSubtitles[segment.id].length > 0 && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-sm font-medium text-blue-800 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
+                    </svg>
+                    识别字幕
+                  </h5>
+                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                    {segmentSubtitles[segment.id].length} 条
+                  </span>
+                </div>
+                
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {segmentSubtitles[segment.id].map((subtitle, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-start space-x-3 p-2 bg-white rounded border border-blue-100 hover:border-blue-200 transition-colors"
+                    >
+                      <span className="text-xs text-blue-500 font-mono mt-0.5 flex-shrink-0">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-800 leading-relaxed">
+                          {subtitle.text}
+                        </div>
+                        <div className="text-xs text-blue-600 mt-1 font-mono">
+                          {formatSubtitleTime(subtitle.start_time)} → {formatSubtitleTime(subtitle.end_time)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* 字幕操作按钮 */}
+                <div className="flex items-center justify-end space-x-2 mt-3 pt-2 border-t border-blue-200">
+                  <button
+                    onClick={() => {
+                      const subtitles = segmentSubtitles[segment.id];
+                      const srtContent = subtitles.map((subtitle, index) => {
+                        const startTime = formatSubtitleTime(subtitle.start_time);
+                        const endTime = formatSubtitleTime(subtitle.end_time);
+                        return `${index + 1}\n${startTime} --> ${endTime}\n${subtitle.text}\n`;
+                      }).join('\n');
+                      
+                      const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${segment.title || `段落${segments.indexOf(segment) + 1}`}_字幕.srt`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      
+                      logger.info('导出字幕文件', {
+                        segmentId: segment.id,
+                        subtitleCount: subtitles.length,
+                        fileName: a.download
+                      });
+                    }}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                  >
+                    导出SRT
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSegmentSubtitles(prev => {
+                        const newSubtitles = { ...prev };
+                        delete newSubtitles[segment.id];
+                        return newSubtitles;
+                      });
+                      
+                      logger.info('清除字幕', {
+                        segmentId: segment.id
+                      });
+                    }}
+                    className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                  >
+                    清除
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 字幕识别错误显示 */}
+            {subtitleErrors[segment.id] && (
+              <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
+                    <h5 className="text-sm font-medium text-red-800">字幕识别失败</h5>
+                    <p className="text-sm text-red-700 mt-1">{subtitleErrors[segment.id]}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSubtitleErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors[segment.id];
+                        return newErrors;
+                      });
+                    }}
+                    className="text-red-500 hover:text-red-700 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -146,8 +146,65 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     // 如果是音频文件，播放/暂停音频
     if (material.type === 'audio') {
       handleAudioPlayPause(material);
+    } else if (material.type === 'subtitle') {
+      handleSubtitleDownload(material);
     } else {
       // 实现其他类型素材的点击处理逻辑（预览、编辑等）
+    }
+  };
+
+  const handleSubtitleDownload = (material: MaterialItem) => {
+    try {
+      logger.userAction('下载字幕文件', 'subtitleDownload', {
+        materialId: material.id,
+        materialName: material.name,
+        format: material.format
+      });
+
+      // 从metadata中获取SRT内容或从URL下载
+      const srtContent = material.metadata?.srt_content;
+      const fileName = material.metadata?.fileName || `${material.name}.srt`;
+
+      if (srtContent) {
+        // 直接使用metadata中的SRT内容
+        const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        logger.info('字幕文件下载成功', {
+          materialId: material.id,
+          fileName,
+          contentLength: srtContent.length
+        });
+      } else if (material.url) {
+        // 从URL下载
+        const a = document.createElement('a');
+        a.href = material.url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        logger.info('字幕文件下载触发', {
+          materialId: material.id,
+          fileName,
+          url: material.url
+        });
+      } else {
+        throw new Error('无法获取字幕内容');
+      }
+    } catch (error) {
+      logger.error('字幕文件下载失败', new Error(error instanceof Error ? error.message : String(error)), {
+        materialId: material.id,
+        materialName: material.name
+      });
+      alert(`字幕文件下载失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -318,7 +375,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <div className="materials-panel-content">
         {/* 素材类型筛选标签 */}
         <div className="flex space-x-1 mb-4 p-1 bg-gray-100 rounded-lg">
-          {(['all', 'video', 'audio', 'image'] as const).map((type) => (
+          {(['all', 'video', 'audio', 'image', 'subtitle'] as const).map((type) => (
             <button
               key={type}
               onClick={() => handleTypeFilter(type)}
@@ -330,7 +387,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             >
               {type === 'all' ? '全部' : 
                type === 'video' ? '视频' :
-               type === 'audio' ? '音频' : '图片'}
+               type === 'audio' ? '音频' : 
+               type === 'image' ? '图片' : '字幕'}
             </button>
           ))}
         </div>
@@ -395,6 +453,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
+                        ) : material.type === 'subtitle' ? (
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
+                          </svg>
                         ) : (
                           <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -421,16 +483,29 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {/* 字幕下载控制覆盖层 */}
+                    {material.type === 'subtitle' && (
+                      <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-white bg-opacity-90 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100">
+                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* 类型标识 */}
                     <div className="absolute top-1 left-1">
                       <span className={`px-1 py-0.5 text-xs font-medium rounded ${
                         material.type === 'video' ? 'bg-blue-100 text-blue-800' :
                         material.type === 'audio' ? 'bg-green-100 text-green-800' :
+                        material.type === 'subtitle' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-purple-100 text-purple-800'
                       }`}>
                         {material.type === 'video' ? '视频' :
-                         material.type === 'audio' ? '音频' : '图片'}
+                         material.type === 'audio' ? '音频' : 
+                         material.type === 'subtitle' ? '字幕' : '图片'}
                       </span>
                     </div>
                     

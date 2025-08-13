@@ -191,6 +191,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
               onAddMaterial={(material) => materialManagement.addMaterials([material])}
               taskId={taskId}
+              materials={materialManagement.materials}
             />
           </div>
           
