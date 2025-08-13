@@ -141,49 +141,94 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
           // 始终基于初始duration计算，避免累积误差
           const minDuration = 0.1; // 最小时长0.1秒
           const requestedDuration = dragStart.duration + deltaTime;
-          const newDuration = Math.max(minDuration, requestedDuration);
           
-          console.log(`[TimelineItem] 调整素材结束时间`, {
+          // 获取原始视频时长和当前剪辑范围
+          const originalDuration = item.originalDuration || item.duration;
+          const currentClipStart = item.clipStart || 0;
+          const maxAllowedDuration = originalDuration - currentClipStart; // 不能超过原始视频剩余长度
+          
+          // 应用所有约束：最小时长、原始视频时长限制
+          const constrainedDuration = Math.max(
+            minDuration, 
+            Math.min(requestedDuration, maxAllowedDuration)
+          );
+          
+          console.log(`[TimelineItem] 调整素材结束时间 - 应用原始时长约束`, {
             itemId: item.id,
             initialDuration: dragStart.duration.toFixed(2),
             requestedDuration: requestedDuration.toFixed(2),
-            newDuration: newDuration.toFixed(2),
+            constrainedDuration: constrainedDuration.toFixed(2),
+            originalDuration: originalDuration.toFixed(2),
+            currentClipStart: currentClipStart.toFixed(2),
+            maxAllowedDuration: maxAllowedDuration.toFixed(2),
             deltaTime: deltaTime.toFixed(2),
             resizeType: 'end',
             limitedByMinDuration: requestedDuration < minDuration,
+            limitedByOriginalDuration: requestedDuration > maxAllowedDuration,
+            finalDurationDifferentFromRequested: Math.abs(constrainedDuration - requestedDuration) > 0.01,
             timestamp: new Date().toISOString()
           });
-          onResize(item.id, newDuration, 'end');
+          
+          onResize(item.id, constrainedDuration, 'end');
         } else if (isResizing === 'start') {
           // 调整开始时间：改变startTime和duration
           // 始终基于初始值计算，避免累积误差
           const minDuration = 0.1; // 最小时长0.1秒
           const originalEndTime = dragStart.startTime + dragStart.duration; // 原始结束时间固定
           
+          // 获取原始视频时长和当前剪辑范围
+          const originalDuration = item.originalDuration || item.duration;
+          const currentClipStart = item.clipStart || 0;
+          const currentClipEnd = item.clipEnd || originalDuration;
+          
           // 计算新的开始时间，但不能超过原始结束时间
           const requestedStartTime = dragStart.startTime + deltaTime;
           const maxAllowedStartTime = originalEndTime - minDuration; // 确保至少有最小时长
-          const newStartTime = Math.max(0, Math.min(requestedStartTime, maxAllowedStartTime));
           
-          // 基于新的开始时间计算duration
-          const adjustedDuration = originalEndTime - newStartTime;
+          // 计算基于原始视频时长的约束
+          // 当向左拖拽时，不能让clipStart变成负数，也不能让总的剪辑时长超过原始视频时长
+          const maxLeftExtension = currentClipStart; // 最多只能向左扩展到原始视频开始位置
+          const minAllowedStartTime = Math.max(0, dragStart.startTime - maxLeftExtension);
           
-          console.log(`[TimelineItem] 调整素材开始时间`, {
+          // 应用所有约束
+          const constrainedStartTime = Math.max(
+            minAllowedStartTime,
+            Math.min(requestedStartTime, maxAllowedStartTime)
+          );
+          
+          // 基于约束后的开始时间计算duration
+          const constrainedDuration = originalEndTime - constrainedStartTime;
+          
+          // 最终检查：确保剪辑时长不超过原始视频时长
+          const finalDuration = Math.min(constrainedDuration, originalDuration);
+          const finalStartTime = originalEndTime - finalDuration;
+          
+          console.log(`[TimelineItem] 调整素材开始时间 - 应用原始时长约束`, {
             itemId: item.id,
             initialStartTime: dragStart.startTime.toFixed(2),
             initialDuration: dragStart.duration.toFixed(2),
             originalEndTime: originalEndTime.toFixed(2),
             requestedStartTime: requestedStartTime.toFixed(2),
-            newStartTime: newStartTime.toFixed(2),
-            adjustedDuration: adjustedDuration.toFixed(2),
+            constrainedStartTime: constrainedStartTime.toFixed(2),
+            finalStartTime: finalStartTime.toFixed(2),
+            constrainedDuration: constrainedDuration.toFixed(2),
+            finalDuration: finalDuration.toFixed(2),
+            originalDuration: originalDuration.toFixed(2),
+            currentClipStart: currentClipStart.toFixed(2),
+            currentClipEnd: currentClipEnd.toFixed(2),
+            maxLeftExtension: maxLeftExtension.toFixed(2),
+            minAllowedStartTime: minAllowedStartTime.toFixed(2),
+            maxAllowedStartTime: maxAllowedStartTime.toFixed(2),
             deltaTime: deltaTime.toFixed(2),
             resizeType: 'start',
-            limitedByBoundary: requestedStartTime !== newStartTime,
+            limitedByBoundary: requestedStartTime !== constrainedStartTime,
+            limitedByOriginalDuration: constrainedDuration !== finalDuration,
+            finalResultDifferentFromRequested: Math.abs(finalStartTime - requestedStartTime) > 0.01 || Math.abs(finalDuration - constrainedDuration) > 0.01,
             timestamp: new Date().toISOString()
           });
           
           // 对于start类型调整，我们需要同时更新startTime和duration
-          onResize(item.id, adjustedDuration, 'start');
+          onResize(item.id, finalDuration, 'start');
         }
       }
     };
