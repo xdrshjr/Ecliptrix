@@ -52,7 +52,12 @@ from .audio_models import (
     AudioTranscriptionRequest,
     AudioTranscriptionResponse,
     AudioTranscriptionErrorResponse,
-    AudioTranscriptionStatus
+    AudioTranscriptionStatus,
+    AudioItemRequest,
+    BatchAudioTranscriptionRequest,
+    AudioItemTranscription,
+    BatchAudioTranscriptionResponse,
+    BatchAudioTranscriptionErrorResponse
 )
 
 __all__ = [
@@ -93,5 +98,10 @@ __all__ = [
     "AudioTranscriptionRequest",
     "AudioTranscriptionResponse",
     "AudioTranscriptionErrorResponse",
-    "AudioTranscriptionStatus"
+    "AudioTranscriptionStatus",
+    "AudioItemRequest",
+    "BatchAudioTranscriptionRequest",
+    "AudioItemTranscription",
+    "BatchAudioTranscriptionResponse",
+    "BatchAudioTranscriptionErrorResponse"
 ] 

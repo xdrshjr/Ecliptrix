@@ -12,7 +12,10 @@ from app.models.audio_models import (
     AudioTranscriptionRequest,
     AudioTranscriptionResponse,
     AudioTranscriptionErrorResponse,
-    AudioTranscriptionStatus
+    AudioTranscriptionStatus,
+    BatchAudioTranscriptionRequest,
+    BatchAudioTranscriptionResponse,
+    BatchAudioTranscriptionErrorResponse
 )
 from app.services.audio_transcription_service import audio_transcription_service
 from app.logger import get_logger
@@ -327,4 +330,96 @@ async def health_check():
             "status": "unhealthy",
             "error": str(e),
             "timestamp": datetime.now().isoformat()
-        } 
+        }
+
+
+@router.post(
+    "/batch-transcribe",
+    response_model=Union[BatchAudioTranscriptionResponse, BatchAudioTranscriptionErrorResponse],
+    summary="批量音频转字幕",
+    description="批量将时间轴上的音频项目转换为字幕，支持多个音频文件同时处理"
+)
+async def batch_transcribe_audio(
+    request: BatchAudioTranscriptionRequest
+) -> Union[BatchAudioTranscriptionResponse, BatchAudioTranscriptionErrorResponse]:
+    """
+    批量将时间轴上的音频项目转换为字幕
+    
+    Args:
+        request: 批量音频转录请求，包含音频项目列表和转录参数
+    
+    Returns:
+        BatchAudioTranscriptionResponse: 批量转录成功的响应
+        BatchAudioTranscriptionErrorResponse: 批量转录失败的错误响应
+    """
+    try:
+        logger.info(f"收到批量音频转录请求，共{len(request.audio_items)}个音频项目")
+        
+        if not request.audio_items:
+            logger.warning("批量音频转录请求中没有音频项目")
+            return BatchAudioTranscriptionErrorResponse(
+                error="请求中没有音频项目",
+                error_code="NO_AUDIO_ITEMS",
+                details={"audio_items_count": 0}
+            )
+        
+        # 转换请求数据为服务层需要的格式
+        audio_items_data = []
+        for item in request.audio_items:
+            audio_item_data = {
+                'id': item.id,
+                'name': item.name,
+                'url': item.url,
+                'start_time': item.start_time,
+                'duration': item.duration,
+                'track_id': item.track_id,
+                'clip_start': item.clip_start or 0.0,
+                'clip_end': item.clip_end
+            }
+            audio_items_data.append(audio_item_data)
+        
+        logger.info(f"开始批量音频转录处理，参数: language={request.language}, use_itn={request.use_itn}, use_punc={request.use_punc}")
+        
+        # 调用服务层进行批量转录
+        transcription_results = audio_transcription_service.transcribe_audio_urls(
+            audio_items=audio_items_data,
+            language=request.language,
+            use_itn=request.use_itn,
+            use_punc=request.use_punc,
+            max_lines=request.max_lines,
+            words_per_line=request.words_per_line
+        )
+        
+        # 统计结果
+        total_items = len(transcription_results)
+        successful_items = sum(1 for result in transcription_results if result.get('success', False))
+        failed_items = total_items - successful_items
+        total_processing_time = sum(result.get('processing_time', 0) for result in transcription_results)
+        
+        logger.info(f"批量音频转录完成，总计: {total_items}，成功: {successful_items}，失败: {failed_items}，总耗时: {total_processing_time:.2f}秒")
+        
+        # 构建响应
+        response = BatchAudioTranscriptionResponse(
+            success=True,
+            message=f"批量音频转录完成，成功处理{successful_items}个项目",
+            total_items=total_items,
+            successful_items=successful_items,
+            failed_items=failed_items,
+            transcriptions=transcription_results,
+            total_processing_time=total_processing_time
+        )
+        
+        return response
+        
+    except Exception as e:
+        error_message = f"批量音频转录失败: {str(e)}"
+        logger.error(error_message)
+        
+        return BatchAudioTranscriptionErrorResponse(
+            error=error_message,
+            error_code="BATCH_TRANSCRIPTION_FAILED",
+            details={
+                "exception_type": type(e).__name__,
+                "exception_message": str(e)
+            }
+        ) 

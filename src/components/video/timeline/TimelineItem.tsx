@@ -9,6 +9,7 @@ interface TimelineItemProps {
   onSelect: (itemId: string, isMultiSelect?: boolean) => void;
   onMove: (itemId: string, newStartTime: number) => void;
   onResize: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
+  onSubtitleEdit?: (itemId: string, newText: string) => void;
   isSelected: boolean;
   trackHeight: number;
 }
@@ -19,6 +20,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   onSelect,
   onMove,
   onResize,
+  onSubtitleEdit,
   isSelected,
   trackHeight
 }) => {
@@ -29,6 +31,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     startTime: 0, 
     duration: 0 // 添加初始duration记录
   });
+  const [isEditingSubtitle, setIsEditingSubtitle] = useState(false);
+  const [editingText, setEditingText] = useState('');
   const itemRef = useRef<HTMLDivElement>(null);
 
   // 计算项目的位置和尺寸
@@ -259,6 +263,62 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   }, [isDragging, isResizing, dragStart, pixelsPerSecond, onMove, onResize]);
 
+  // 处理双击编辑字幕
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (item.type === 'subtitle' && onSubtitleEdit) {
+      console.log(`[TimelineItem] 开始编辑字幕`, {
+        itemId: item.id,
+        currentText: item.text,
+        timestamp: new Date().toISOString()
+      });
+      
+      setEditingText(item.text || '');
+      setIsEditingSubtitle(true);
+    }
+  };
+
+  // 处理字幕编辑完成
+  const handleSubtitleEditComplete = () => {
+    if (onSubtitleEdit && editingText.trim() !== '') {
+      console.log(`[TimelineItem] 完成字幕编辑`, {
+        itemId: item.id,
+        oldText: item.text,
+        newText: editingText.trim(),
+        timestamp: new Date().toISOString()
+      });
+      
+      onSubtitleEdit(item.id, editingText.trim());
+    }
+    
+    setIsEditingSubtitle(false);
+    setEditingText('');
+  };
+
+  // 处理字幕编辑取消
+  const handleSubtitleEditCancel = () => {
+    console.log(`[TimelineItem] 取消字幕编辑`, {
+      itemId: item.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    setIsEditingSubtitle(false);
+    setEditingText('');
+  };
+
+  // 处理字幕编辑键盘事件
+  const handleSubtitleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubtitleEditComplete();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleSubtitleEditCancel();
+    }
+  };
+
   // 根据类型获取样式 - 针对32px轨道高度优化
   const getItemStyles = () => {
     const baseStyles = {
@@ -366,16 +426,34 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'subtitle':
         return (
           <div style={contentStyle}>
-            <div className="flex items-center space-x-1 min-w-0">
-              <div className="w-3 h-3 flex-shrink-0"> {/* 缩小图标 */}
-                <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
-                </svg>
+            {isEditingSubtitle ? (
+              // 编辑模式
+              <div className="flex items-center space-x-1 min-w-0 w-full">
+                <input
+                  type="text"
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  onKeyDown={handleSubtitleEditKeyDown}
+                  onBlur={handleSubtitleEditComplete}
+                  className="flex-1 bg-transparent text-white text-xs font-medium border-none outline-none"
+                  style={{ minWidth: '0' }}
+                  autoFocus
+                  placeholder="输入字幕内容..."
+                />
               </div>
-              <span className="text-white text-xs font-medium truncate">
-                {item.text || item.name}
-              </span>
-            </div>
+            ) : (
+              // 显示模式
+              <div className="flex items-center space-x-1 min-w-0">
+                <div className="w-3 h-3 flex-shrink-0"> {/* 缩小图标 */}
+                  <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
+                  </svg>
+                </div>
+                <span className="text-white text-xs font-medium truncate">
+                  {item.text || item.name}
+                </span>
+              </div>
+            )}
           </div>
         );
       default:
@@ -388,6 +466,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       ref={itemRef}
       style={getItemStyles()}
       onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
       className="timeline-item"
       title={`${item.name} (${item.startTime.toFixed(1)}s - ${(item.startTime + item.duration).toFixed(1)}s)`}
     >
