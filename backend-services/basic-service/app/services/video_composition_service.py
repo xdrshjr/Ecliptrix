@@ -27,8 +27,10 @@ from app.models import (
     VideoCompositionItem,
     AudioCompositionItem,
     SubtitleCompositionItem,
-    AspectRatio
+    AspectRatio,
+    SubtitleAddRequest
 )
+from app.services.subtitle_service import SubtitleService
 
 logger = get_logger(__name__)
 
@@ -44,10 +46,13 @@ class VideoCompositionService:
         self.output_dir = Path("static/video/composed")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
+        # Initialize subtitle service for subtitle composition
+        self.subtitle_service = SubtitleService()
+        
         # Check ffmpeg availability
         self._check_ffmpeg()
         
-        logger.info("VideoCompositionService initialized")
+        logger.info("VideoCompositionService initialized with subtitle support")
     
     def _check_ffmpeg(self) -> bool:
         """Check if ffmpeg is available."""
@@ -612,11 +617,29 @@ class VideoCompositionService:
             if request.subtitle_items:
                 logger.info("Processing subtitle tracks...")
                 logger.info(f"Found {len(request.subtitle_items)} subtitle items")
-                # Subtitle rendering would require more complex ffmpeg filters
-                # For now, we'll log the subtitle information
-                for subtitle in request.subtitle_items:
-                    logger.info(f"Subtitle: '{subtitle.text}' at {subtitle.start_time}s for {subtitle.duration}s")
-                logger.info("Subtitle rendering not yet implemented - subtitles logged for reference")
+                
+                try:
+                    # Process subtitles and add them to the video
+                    subtitle_processed_path = self._process_subtitle_tracks(
+                        request.subtitle_items, 
+                        str(output_path), 
+                        temp_dir
+                    )
+                    
+                    if subtitle_processed_path and os.path.exists(subtitle_processed_path):
+                        # Replace the original video with the subtitle-processed version
+                        os.replace(subtitle_processed_path, str(output_path))
+                        logger.info("Subtitles successfully added to video")
+                        
+                        # Verify final file with subtitles
+                        final_size = os.path.getsize(output_path)
+                        logger.info(f"Final video file size with subtitles: {final_size} bytes")
+                    else:
+                        logger.warning("Subtitle processing failed - continuing without subtitles")
+                        
+                except Exception as e:
+                    logger.error(f"Subtitle processing error: {str(e)}", exc_info=True)
+                    logger.warning("Continuing video composition without subtitles")
             else:
                 logger.info("No subtitle tracks to process")
             
@@ -1074,4 +1097,144 @@ class VideoCompositionService:
         pad_filter = (f'pad={scaling_params["pad_width"]}:{scaling_params["pad_height"]}:'
                      f'{scaling_params["pad_x"]}:{scaling_params["pad_y"]}:black')
         
-        return f'{scale_filter},{pad_filter},setsar=1:1' 
+        return f'{scale_filter},{pad_filter},setsar=1:1'
+    
+    def _process_subtitle_tracks(self, subtitle_items: List[SubtitleCompositionItem], 
+                               video_path: str, temp_dir: str) -> Optional[str]:
+        """
+        Process subtitle tracks and add them to the video.
+        
+        Args:
+            subtitle_items: List of subtitle items from the timeline
+            video_path: Path to the video file to add subtitles to
+            temp_dir: Temporary directory for processing
+            
+        Returns:
+            Path to the video with subtitles added, or None if failed
+        """
+        try:
+            logger.info(f"Starting subtitle processing for {len(subtitle_items)} subtitle items")
+            
+            # Log subtitle details for debugging
+            for i, subtitle in enumerate(subtitle_items):
+                logger.info(f"Subtitle {i+1}: '{subtitle.text}' at {subtitle.start_time}s for {subtitle.duration}s")
+            
+            # Create SRT file from subtitle items
+            srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
+            
+            if not srt_path or not os.path.exists(srt_path):
+                logger.error("Failed to create SRT file from subtitle items")
+                return None
+            
+            logger.info(f"Created SRT file: {srt_path}")
+            
+            # Use the first subtitle item's properties as defaults for all subtitles
+            first_subtitle = subtitle_items[0]
+            
+            # Create subtitle addition request
+            subtitle_request = SubtitleAddRequest(
+                video_file_path=video_path,
+                subtitle_file_path=srt_path,
+                font_size=first_subtitle.font_size,
+                font_color=first_subtitle.font_color,
+                background_color=first_subtitle.background_color or "#000000",
+                border_width=2,
+                border_color="#000000",
+                position=first_subtitle.position,
+                margin_vertical=50,
+                margin_horizontal=50
+            )
+            
+            logger.info(f"Subtitle request configuration: font_size={subtitle_request.font_size}, "
+                       f"font_color={subtitle_request.font_color}, position={subtitle_request.position}")
+            
+            # Add subtitles to video using SubtitleService
+            # Note: SubtitleService.add_subtitles is async, but we're in a sync context
+            # We need to run it in an event loop
+            import asyncio
+            try:
+                # Try to get the current event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If we're already in an event loop, we need to use run_in_executor
+                    # But for now, let's use a simpler approach by creating a new thread
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self.subtitle_service.add_subtitles(subtitle_request))
+                        result = future.result()
+                else:
+                    # If no event loop is running, we can use asyncio.run
+                    result = asyncio.run(self.subtitle_service.add_subtitles(subtitle_request))
+            except RuntimeError:
+                # If we can't get an event loop, create a new one
+                result = asyncio.run(self.subtitle_service.add_subtitles(subtitle_request))
+            
+            if result.success:
+                logger.info(f"Subtitle addition successful: {result.output_video_path}")
+                logger.info(f"Processed {result.subtitle_count} subtitles in {result.processing_time:.2f}s")
+                return result.output_video_path
+            else:
+                logger.error(f"Subtitle addition failed: {result.message}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error processing subtitle tracks: {str(e)}", exc_info=True)
+            return None
+    
+    def _create_srt_from_subtitle_items(self, subtitle_items: List[SubtitleCompositionItem], 
+                                      temp_dir: str) -> Optional[str]:
+        """
+        Create an SRT file from subtitle items.
+        
+        Args:
+            subtitle_items: List of subtitle items from the timeline
+            temp_dir: Temporary directory to create the SRT file in
+            
+        Returns:
+            Path to the created SRT file, or None if failed
+        """
+        try:
+            srt_path = os.path.join(temp_dir, "subtitles.srt")
+            
+            # Sort subtitle items by start time to ensure proper order
+            sorted_subtitles = sorted(subtitle_items, key=lambda x: x.start_time)
+            
+            logger.info(f"Creating SRT file with {len(sorted_subtitles)} subtitle entries")
+            
+            with open(srt_path, 'w', encoding='utf-8') as f:
+                for i, subtitle in enumerate(sorted_subtitles, 1):
+                    # Convert start_time and duration to SRT time format
+                    start_time_srt = self._seconds_to_srt_time(subtitle.start_time)
+                    end_time_srt = self._seconds_to_srt_time(subtitle.start_time + subtitle.duration)
+                    
+                    # Write SRT entry
+                    f.write(f"{i}\n")
+                    f.write(f"{start_time_srt} --> {end_time_srt}\n")
+                    f.write(f"{subtitle.text}\n")
+                    f.write("\n")
+                    
+                    logger.debug(f"SRT entry {i}: {start_time_srt} --> {end_time_srt} | {subtitle.text}")
+            
+            logger.info(f"SRT file created successfully: {srt_path}")
+            return srt_path
+            
+        except Exception as e:
+            logger.error(f"Error creating SRT file: {str(e)}", exc_info=True)
+            return None
+    
+    def _seconds_to_srt_time(self, seconds: float) -> str:
+        """
+        Convert seconds to SRT time format compatible with SubtitleService (MM:SS.mm).
+        
+        Args:
+            seconds: Time in seconds
+            
+        Returns:
+            Time in SubtitleService compatible format (MM:SS.mm)
+        """
+        # SubtitleService expects MM:SS.mm format, not standard HH:MM:SS,mmm
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        centiseconds = int((seconds % 1) * 100)  # Use centiseconds (2 digits) instead of milliseconds
+        
+        return f"{minutes:02d}:{secs:02d}.{centiseconds:02d}" 

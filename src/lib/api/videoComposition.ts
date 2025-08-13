@@ -238,7 +238,7 @@ export class VideoCompositionAPI {
     compositionId: string, 
     onProgress?: (status: CompositionStatusResponse) => void,
     pollInterval: number = 2000,
-    maxAttempts: number = 150 // 5 minutes at 2s intervals
+    maxAttempts: number = 300 // 10 minutes at 2s intervals (increased for subtitle processing)
   ): Promise<CompositionStatusResponse> {
     console.log('[VideoCompositionAPI] Starting status polling', {
       compositionId,
