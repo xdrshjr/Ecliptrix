@@ -984,9 +984,199 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     // 实现添加转场逻辑
   }, []);
 
-  const handleAddSubtitle = useCallback(() => {
-    console.log(`[TimelinePanel] 添加字幕`, { timestamp: new Date().toISOString() });
-    // 实现添加字幕逻辑
+  const handleAddSubtitle = useCallback(async () => {
+    console.log(`[TimelinePanel] 开始字幕提取`, { timestamp: new Date().toISOString() });
+    
+    try {
+      // 1. 收集所有音频轨道中的音频项目
+      const audioTracks = timelineState.tracks.filter(track => track.type === 'audio');
+      const allAudioItems: TimelineItem[] = [];
+      
+      audioTracks.forEach(track => {
+        track.items.forEach(item => {
+          if (item.type === 'audio' && item.materialId) {
+            allAudioItems.push(item);
+          }
+        });
+      });
+      
+      if (allAudioItems.length === 0) {
+        console.warn(`[TimelinePanel] 没有找到音频项目，无法提取字幕`);
+        alert('没有找到音频项目，请先添加音频到时间轴');
+        return;
+      }
+      
+      console.log(`[TimelinePanel] 找到 ${allAudioItems.length} 个音频项目，开始准备转录请求`);
+      
+      // 2. 构建批量转录请求数据
+      const audioItemsForTranscription = allAudioItems.map(item => {
+        // 查找对应的素材以获取serverUrl
+        const material = materials?.find(m => m.id === item.materialId);
+        const audioUrl = material?.serverUrl || material?.url || '';
+        
+        console.log(`[TimelinePanel] 音频项目 ${item.id}:`, {
+          name: item.name,
+          materialId: item.materialId,
+          url: audioUrl,
+          startTime: item.startTime,
+          duration: item.duration,
+          trackId: item.trackId
+        });
+        
+        return {
+          id: item.id,
+          name: item.name,
+          url: audioUrl,
+          start_time: item.startTime,
+          duration: item.duration,
+          track_id: item.trackId,
+          clip_start: item.clipStart || 0.0,
+          clip_end: item.clipEnd || (item.originalDuration || item.duration)
+        };
+      });
+      
+      // 3. 调用后台批量转录API
+      console.log(`[TimelinePanel] 调用批量转录API，音频项目数量: ${audioItemsForTranscription.length}`);
+      
+      const response = await fetch('/api/audio/batch-transcribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audio_items: audioItemsForTranscription,
+          language: 'zh-CN',
+          use_itn: true,
+          use_punc: false,
+          max_lines: 2,
+          words_per_line: 15,
+          generate_srt_file: true
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`批量转录请求失败: ${response.status} ${response.statusText}`);
+      }
+      
+      const transcriptionResult = await response.json();
+      
+      if (!transcriptionResult.success) {
+        throw new Error(`批量转录失败: ${transcriptionResult.error || '未知错误'}`);
+      }
+      
+      console.log(`[TimelinePanel] 批量转录完成`, {
+        totalItems: transcriptionResult.total_items,
+        successfulItems: transcriptionResult.successful_items,
+        failedItems: transcriptionResult.failed_items,
+        processingTime: transcriptionResult.total_processing_time
+      });
+      
+      // 4. 处理转录结果，添加字幕到字幕轨道
+      const subtitleTrack = timelineState.tracks.find(track => track.type === 'subtitle');
+      if (!subtitleTrack) {
+        console.error(`[TimelinePanel] 没有找到字幕轨道`);
+        alert('没有找到字幕轨道，请先添加字幕轨道');
+        return;
+      }
+      
+      const newSubtitleItems: TimelineItem[] = [];
+      let addedSubtitlesCount = 0;
+      
+      transcriptionResult.transcriptions.forEach((transcription: any) => {
+        if (transcription.success && transcription.subtitles && transcription.subtitles.length > 0) {
+          // 为每个字幕片段创建TimelineItem
+          transcription.subtitles.forEach((subtitle: any, index: number) => {
+            const subtitleStartTime = subtitle.start_time / 1000; // 转换为秒
+            const subtitleEndTime = subtitle.end_time / 1000; // 转换为秒
+            const subtitleDuration = subtitleEndTime - subtitleStartTime;
+            
+            const subtitleItem: TimelineItem = {
+              id: `subtitle_${transcription.audio_item_id}_${index}_${Date.now()}`,
+              name: `字幕: ${subtitle.text.substring(0, 20)}${subtitle.text.length > 20 ? '...' : ''}`,
+              type: 'subtitle',
+              startTime: subtitleStartTime,
+              duration: subtitleDuration,
+              trackId: subtitleTrack.id,
+              color: '#f59e0b', // 字幕使用黄色
+              text: subtitle.text,
+              materialId: `subtitle_material_${transcription.audio_item_id}_${index}`,
+              volume: 1.0,
+              opacity: 1.0
+            };
+            
+            newSubtitleItems.push(subtitleItem);
+            addedSubtitlesCount++;
+          });
+          
+          console.log(`[TimelinePanel] 音频项目 ${transcription.audio_item_id} 生成了 ${transcription.subtitles.length} 个字幕片段`);
+        } else {
+          console.warn(`[TimelinePanel] 音频项目 ${transcription.audio_item_id} 转录失败:`, transcription.error_message);
+        }
+      });
+      
+      if (newSubtitleItems.length === 0) {
+        console.warn(`[TimelinePanel] 没有生成任何字幕片段`);
+        alert('字幕提取失败，没有生成任何字幕内容');
+        return;
+      }
+      
+      // 5. 更新时间轴状态，添加字幕项目到字幕轨道
+      setTimelineState(prev => {
+        const updatedTracks = prev.tracks.map(track => {
+          if (track.id === subtitleTrack.id) {
+            return {
+              ...track,
+              items: [...track.items, ...newSubtitleItems]
+            };
+          }
+          return track;
+        });
+        
+        // 重新计算总时长
+        const allItemEndTimes = updatedTracks.flatMap(track => 
+          track.items.map(item => item.startTime + item.duration)
+        );
+        const maxItemEndTime = Math.max(...allItemEndTimes, prev.totalDuration);
+        
+        console.log(`[TimelinePanel] 字幕添加完成`, {
+          addedSubtitlesCount,
+          newTotalDuration: maxItemEndTime,
+          timestamp: new Date().toISOString()
+        });
+        
+        return {
+          ...prev,
+          tracks: updatedTracks,
+          totalDuration: maxItemEndTime
+        };
+      });
+      
+      // 6. 显示成功消息
+      alert(`字幕提取成功！共生成 ${addedSubtitlesCount} 个字幕片段`);
+      
+    } catch (error) {
+      console.error(`[TimelinePanel] 字幕提取失败:`, error);
+      alert(`字幕提取失败: ${error instanceof Error ? error.message : '未知错误'}`);
+         }
+   }, [timelineState, materials]);
+
+  // 处理字幕编辑
+  const handleSubtitleEdit = useCallback((itemId: string, newText: string) => {
+    console.log(`[TimelinePanel] 编辑字幕`, {
+      itemId,
+      newText,
+      timestamp: new Date().toISOString()
+    });
+
+    setTimelineState(prev => ({
+      ...prev,
+      tracks: prev.tracks.map(track => ({
+        ...track,
+        items: track.items.map(item => 
+          item.id === itemId ? { ...item, text: newText, name: `字幕: ${newText.substring(0, 20)}${newText.length > 20 ? '...' : ''}` } : item
+        )
+      }))
+    }));
   }, []);
 
   // 导出逻辑现在使用useVideoExport hook
@@ -1032,6 +1222,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onSelectItem={handleSelectItem}
         onMoveItem={handleMoveItem}
         onResizeItem={handleResizeItem}
+        onSubtitleEdit={handleSubtitleEdit}
         onToggleTrackMute={handleToggleTrackMute}
         onToggleTrackLock={handleToggleTrackLock}
         onToggleTrackVisibility={handleToggleTrackVisibility}

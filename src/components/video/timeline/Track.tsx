@@ -12,6 +12,7 @@ interface TrackProps {
   onSelectItem: (itemId: string, isMultiSelect?: boolean) => void;
   onMoveItem: (itemId: string, newStartTime: number) => void;
   onResizeItem: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
+  onSubtitleEdit?: (itemId: string, newText: string) => void;
   onToggleMute: (trackId: string) => void;
   onToggleLock: (trackId: string) => void;
   onToggleVisibility: (trackId: string) => void;
@@ -27,6 +28,7 @@ const Track: React.FC<TrackProps> = ({
   onSelectItem,
   onMoveItem,
   onResizeItem,
+  onSubtitleEdit,
   onToggleMute,
   onToggleLock,
   onToggleVisibility,
@@ -357,6 +359,7 @@ const Track: React.FC<TrackProps> = ({
             onSelect={onSelectItem}
             onMove={onMoveItem}
             onResize={onResizeItem}
+            onSubtitleEdit={onSubtitleEdit}
             isSelected={selectedItems.includes(item.id)}
             trackHeight={32} // 使用固定的32px高度，与轨道内容区域一致
           />

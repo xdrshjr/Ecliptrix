@@ -357,6 +357,201 @@ class AudioTranscriptionService:
                 "processing_time": processing_time
             }
 
+    def transcribe_audio_urls(self, audio_items: List[Dict[str, Any]], 
+                             language: str = "zh-CN", use_itn: bool = True, 
+                             use_punc: bool = False, max_lines: int = 2, 
+                             words_per_line: int = 15) -> List[Dict[str, Any]]:
+        """
+        批量转录音频URL列表
+        
+        Args:
+            audio_items: 音频项目列表，每个项目包含id, name, url, start_time, duration, track_id等信息
+            language: 语言代码
+            use_itn: 是否使用逆文本规范化
+            use_punc: 是否使用标点符号
+            max_lines: 最大行数
+            words_per_line: 每行最大字数
+            
+        Returns:
+            转录结果列表
+        """
+        logger.info(f"开始批量音频转录，共{len(audio_items)}个音频项目")
+        start_time = time.time()
+        
+        results = []
+        successful_count = 0
+        failed_count = 0
+        
+        for i, audio_item in enumerate(audio_items):
+            item_start_time = time.time()
+            audio_item_id = audio_item.get('id', f'audio_{i}')
+            audio_item_name = audio_item.get('name', f'Audio {i+1}')
+            audio_url = audio_item.get('url', '')
+            track_id = audio_item.get('track_id', '')
+            timeline_start_time = audio_item.get('start_time', 0.0)
+            timeline_duration = audio_item.get('duration', 0.0)
+            
+            logger.info(f"处理音频项目 {i+1}/{len(audio_items)}: {audio_item_name} ({audio_item_id})")
+            
+            try:
+                if not audio_url:
+                    raise ValueError(f"音频项目 {audio_item_id} 缺少URL")
+                
+                # 下载音频文件
+                temp_file_path = None
+                try:
+                    # 如果是本地文件路径，直接使用
+                    if audio_url.startswith('/') or audio_url.startswith('static/'):
+                        # 本地文件路径
+                        if audio_url.startswith('/api/'):
+                            # 去掉API前缀，转换为实际文件路径
+                            temp_file_path = audio_url.replace('/api/', '')
+                        else:
+                            temp_file_path = audio_url
+                        
+                        if not os.path.exists(temp_file_path):
+                            raise FileNotFoundError(f"本地音频文件不存在: {temp_file_path}")
+                            
+                        logger.info(f"使用本地音频文件: {temp_file_path}")
+                        
+                    else:
+                        # 远程URL，需要下载
+                        logger.info(f"下载远程音频文件: {audio_url}")
+                        response = requests.get(audio_url, timeout=30)
+                        response.raise_for_status()
+                        
+                        # 创建临时文件
+                        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+                        temp_file.write(response.content)
+                        temp_file.close()
+                        temp_file_path = temp_file.name
+                        
+                        logger.info(f"音频文件下载完成: {temp_file_path}")
+                    
+                    # 转录音频
+                    transcription_result = self.process_audio_file(
+                        temp_file_path, language, use_itn, use_punc, max_lines, words_per_line
+                    )
+                    
+                    item_processing_time = time.time() - item_start_time
+                    
+                    if transcription_result.get('success', False):
+                        successful_count += 1
+                        
+                        # 调整字幕时间戳，加上在时间轴上的开始时间
+                        adjusted_subtitles = []
+                        for subtitle in transcription_result.get('subtitles', []):
+                            adjusted_subtitle = {
+                                'start_time': subtitle.start_time + int(timeline_start_time * 1000),
+                                'end_time': subtitle.end_time + int(timeline_start_time * 1000),
+                                'text': subtitle.text
+                            }
+                            adjusted_subtitles.append(adjusted_subtitle)
+                        
+                        # 重新生成调整后的SRT内容
+                        srt_content = ""
+                        if adjusted_subtitles:
+                            srt_lines = []
+                            for idx, subtitle in enumerate(adjusted_subtitles, 1):
+                                start_time_str = self._format_srt_time(subtitle['start_time'])
+                                end_time_str = self._format_srt_time(subtitle['end_time'])
+                                srt_lines.append(f"{idx}")
+                                srt_lines.append(f"{start_time_str} --> {end_time_str}")
+                                srt_lines.append(subtitle['text'])
+                                srt_lines.append("")
+                            srt_content = "\n".join(srt_lines)
+                        
+                        result = {
+                            'audio_item_id': audio_item_id,
+                            'audio_item_name': audio_item_name,
+                            'track_id': track_id,
+                            'start_time': timeline_start_time,
+                            'duration': timeline_duration,
+                            'success': True,
+                            'subtitles': adjusted_subtitles,
+                            'srt_content': srt_content,
+                            'processing_time': item_processing_time,
+                            'audio_duration': transcription_result.get('audio_duration'),
+                            'error_message': None
+                        }
+                        
+                        logger.info(f"音频项目 {audio_item_id} 转录成功，生成 {len(adjusted_subtitles)} 条字幕")
+                        
+                    else:
+                        failed_count += 1
+                        result = {
+                            'audio_item_id': audio_item_id,
+                            'audio_item_name': audio_item_name,
+                            'track_id': track_id,
+                            'start_time': timeline_start_time,
+                            'duration': timeline_duration,
+                            'success': False,
+                            'subtitles': [],
+                            'srt_content': None,
+                            'processing_time': item_processing_time,
+                            'audio_duration': None,
+                            'error_message': transcription_result.get('error', '转录失败')
+                        }
+                        
+                        logger.error(f"音频项目 {audio_item_id} 转录失败: {result['error_message']}")
+                    
+                finally:
+                    # 清理临时文件（仅删除下载的临时文件，不删除本地文件）
+                    if temp_file_path and not audio_url.startswith('/') and not audio_url.startswith('static/'):
+                        try:
+                            if os.path.exists(temp_file_path):
+                                os.unlink(temp_file_path)
+                                logger.debug(f"清理临时文件: {temp_file_path}")
+                        except Exception as cleanup_error:
+                            logger.warning(f"清理临时文件失败: {cleanup_error}")
+                
+            except Exception as e:
+                failed_count += 1
+                item_processing_time = time.time() - item_start_time
+                error_message = str(e)
+                
+                result = {
+                    'audio_item_id': audio_item_id,
+                    'audio_item_name': audio_item_name,
+                    'track_id': track_id,
+                    'start_time': timeline_start_time,
+                    'duration': timeline_duration,
+                    'success': False,
+                    'subtitles': [],
+                    'srt_content': None,
+                    'processing_time': item_processing_time,
+                    'audio_duration': None,
+                    'error_message': error_message
+                }
+                
+                logger.error(f"音频项目 {audio_item_id} 处理异常: {error_message}")
+            
+            results.append(result)
+        
+        total_processing_time = time.time() - start_time
+        logger.info(f"批量音频转录完成，总耗时: {total_processing_time:.2f}秒，成功: {successful_count}，失败: {failed_count}")
+        
+        return results
+
+    def _format_srt_time(self, milliseconds: int) -> str:
+        """
+        将毫秒时间戳格式化为SRT时间格式
+        
+        Args:
+            milliseconds: 毫秒时间戳
+            
+        Returns:
+            SRT格式的时间字符串 (HH:MM:SS,mmm)
+        """
+        total_seconds = milliseconds // 1000
+        ms = milliseconds % 1000
+        
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}"
+
 
 # 创建全局服务实例
 audio_transcription_service = AudioTranscriptionService() 
