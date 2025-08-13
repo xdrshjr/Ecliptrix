@@ -5,6 +5,7 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **NEW**: Added subtitle composition support - subtitles from timeline are now automatically rendered into the final video
 - **NEW**: Added aspect ratio support with automatic letterboxing/pillarboxing
 - **FIXED**: Video truncation issue when audio is shorter than video content
 - Enhanced audio processing to support multiple audio tracks with proper mixing
@@ -237,6 +238,50 @@ The API supports multiple audio URL formats:
 ```
 
 This extracts seconds 0.0-6.4 from the original video and places it at timeline position 5.0.
+
+#### Subtitle Processing
+
+**NEW**: Subtitle composition automatically renders subtitle tracks into the final video:
+
+- **Subtitle Items**: Timeline subtitle items are converted to SRT format and rendered directly into the video
+- **Font Customization**: Supports font size, color, background color, and position settings
+- **Automatic Processing**: Subtitles are processed after video and audio composition
+- **Error Handling**: If subtitle processing fails, video composition continues without subtitles
+
+**Subtitle Item Properties**:
+- `text`: The subtitle text content
+- `start_time`: When the subtitle appears (seconds)
+- `duration`: How long the subtitle is displayed (seconds)
+- `font_size`: Font size in pixels (8-72, default: 24)
+- `font_color`: Font color in hex format (default: "#FFFFFF")
+- `background_color`: Background color in hex format (optional)
+- `position`: Subtitle position - "top", "center", or "bottom" (default: "bottom")
+
+**Example Subtitle Processing**:
+```json
+{
+  "subtitle_items": [
+    {
+      "id": "sub_001",
+      "name": "Opening Subtitle",
+      "text": "Welcome to our video tutorial",
+      "start_time": 0.0,
+      "duration": 3.0,
+      "track_id": "subtitle-track-1",
+      "font_size": 28,
+      "font_color": "#FFFFFF",
+      "background_color": "#000000",
+      "position": "bottom"
+    }
+  ]
+}
+```
+
+The subtitle processing:
+1. Converts timeline subtitle items to SRT format
+2. Uses the SubtitleService to render subtitles into the video
+3. Applies font styling and positioning
+4. Returns the final video with embedded subtitles
 
 #### Response
 

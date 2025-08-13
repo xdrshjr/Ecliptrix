@@ -131,16 +131,48 @@ export async function POST(request: NextRequest) {
     };
     logRequest(requestData);
 
-    // 调用后端服务 (异步处理，立即返回)
+    // 调用后端服务 (异步处理，立即返回)，带重试机制
     console.log(`[Video Compose API] Calling backend service: ${BACKEND_URL}/api/video/compose`);
     
-    const backendResponse = await fetch(`${BACKEND_URL}/api/video/compose`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestData),
-    });
+    let backendResponse: Response | null = null;
+    let retryCount = 0;
+    const maxRetries = 2; // 对于POST请求，减少重试次数
+    
+    while (retryCount <= maxRetries) {
+      try {
+        backendResponse = await fetch(`${BACKEND_URL}/api/video/compose`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestData),
+          // 减少超时时间到60秒，但使用重试机制
+          signal: AbortSignal.timeout(60000), // 60秒超时
+        });
+        
+        // 如果请求成功，跳出重试循环
+        break;
+        
+      } catch (error: any) {
+        retryCount++;
+        console.log(`[Video Compose API] Attempt ${retryCount} failed:`, error.message);
+        
+        if (retryCount > maxRetries) {
+          console.error(`[Video Compose API] All ${maxRetries + 1} attempts failed`);
+          throw error;
+        }
+        
+        // 等待一段时间后重试
+        const waitTime = 2000 * retryCount; // 2s, 4s
+        console.log(`[Video Compose API] Waiting ${waitTime}ms before retry ${retryCount + 1}`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    // 确保 backendResponse 不为 null
+    if (!backendResponse) {
+      throw new Error('Failed to get response from backend after all retries');
+    }
 
     console.log(`[Video Compose API] Backend response status: ${backendResponse.status}`);
 
