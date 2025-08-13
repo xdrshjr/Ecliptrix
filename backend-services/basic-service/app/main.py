@@ -241,9 +241,18 @@ app.include_router(tts_router.router, prefix="/api")
 from app.routers import supabase_router
 app.include_router(supabase_router.router, prefix="/api")
 
+# Import and include Audio router
+from app.routers import audio_router
+app.include_router(audio_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)
 app.mount("/api/audio/generated", StaticFiles(directory=audio_static_dir), name="generated_audio")
+
+# Mount static files for subtitle files
+subtitle_static_dir = "static/audio/subtitles"
+os.makedirs(subtitle_static_dir, exist_ok=True)
+app.mount("/api/audio/subtitles", StaticFiles(directory=subtitle_static_dir), name="audio_subtitles")
 
 logger.info("FastAPI application configured successfully") 
