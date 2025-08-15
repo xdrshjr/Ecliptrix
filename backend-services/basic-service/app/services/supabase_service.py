@@ -5,6 +5,7 @@ Supabase service for file upload and management.
 import os
 import mimetypes
 import requests
+import time
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,11 @@ logger = get_logger(__name__)
 
 class SupabaseService:
     """Service for handling Supabase file operations."""
+    
+    # Retry configuration
+    MAX_UPLOAD_RETRIES = 3
+    RETRY_BASE_DELAY = 1.0  # Base delay in seconds
+    RETRY_BACKOFF_FACTOR = 2.0  # Exponential backoff factor
     
     def __init__(self):
         """Initialize Supabase service."""
@@ -117,6 +123,164 @@ class SupabaseService:
             else:
                 content_type = 'application/octet-stream'
         return content_type
+    
+    def _upload_to_supabase_with_retry(self, bucket_path: str, file_data: bytes, content_type: str) -> Dict[str, Any]:
+        """
+        Upload file to Supabase with retry mechanism.
+        
+        Args:
+            bucket_path: Target path in Supabase bucket
+            file_data: File content as bytes
+            content_type: MIME type of the file
+            
+        Returns:
+            Dict containing upload result
+        """
+        last_exception = None
+        
+        for attempt in range(1, self.MAX_UPLOAD_RETRIES + 1):
+            try:
+                logger.info(f"尝试上传文件到Supabase (第{attempt}次尝试)", {
+                    "bucket_path": bucket_path,
+                    "file_size": len(file_data),
+                    "content_type": content_type,
+                    "attempt": attempt,
+                    "max_attempts": self.MAX_UPLOAD_RETRIES
+                })
+                
+                # Upload to Supabase
+                response = self.client.storage.from_(self.bucket_name).upload(
+                    path=bucket_path,
+                    file=file_data,
+                    file_options={
+                        "content-type": content_type,
+                        "cache-control": "3600",
+                        "upsert": "false"  # Prevent overwriting existing files
+                    }
+                )
+                
+                # Check for upload errors
+                if hasattr(response, 'error') and response.error:
+                    error_msg = str(response.error)
+                    logger.warning(f"Supabase上传失败 (第{attempt}次尝试)", {
+                        "error": error_msg,
+                        "bucket_path": bucket_path,
+                        "file_size": len(file_data),
+                        "content_type": content_type,
+                        "attempt": attempt,
+                        "max_attempts": self.MAX_UPLOAD_RETRIES
+                    })
+                    
+                    # Don't retry on client errors (4xx) - these won't be fixed by retrying
+                    if "400" in error_msg or "401" in error_msg or "403" in error_msg or "404" in error_msg:
+                        logger.error("客户端错误，不进行重试", {
+                            "error": error_msg,
+                            "bucket_path": bucket_path,
+                            "attempt": attempt
+                        })
+                        return {
+                            "success": False,
+                            "message": f"上传失败: {error_msg}",
+                            "error_type": "client_error"
+                        }
+                    
+                    last_exception = Exception(f"Supabase upload error: {error_msg}")
+                    
+                    # If this is not the last attempt, wait before retrying
+                    if attempt < self.MAX_UPLOAD_RETRIES:
+                        delay = self.RETRY_BASE_DELAY * (self.RETRY_BACKOFF_FACTOR ** (attempt - 1))
+                        logger.info(f"等待 {delay:.1f} 秒后重试", {
+                            "delay_seconds": delay,
+                            "next_attempt": attempt + 1,
+                            "max_attempts": self.MAX_UPLOAD_RETRIES
+                        })
+                        time.sleep(delay)
+                        continue
+                    
+                    # Last attempt failed
+                    return {
+                        "success": False,
+                        "message": f"上传失败 (已重试{self.MAX_UPLOAD_RETRIES}次): {error_msg}",
+                        "error_type": "upload_error"
+                    }
+                
+                # Upload successful
+                logger.info(f"文件上传到Supabase成功 (第{attempt}次尝试)", {
+                    "bucket_path": bucket_path,
+                    "file_size": len(file_data),
+                    "content_type": content_type,
+                    "attempt": attempt
+                })
+                
+                return {
+                    "success": True,
+                    "message": "上传成功",
+                    "response": response
+                }
+                
+            except Exception as e:
+                error_msg = str(e)
+                last_exception = e
+                
+                logger.warning(f"上传过程中发生异常 (第{attempt}次尝试)", {
+                    "error": error_msg,
+                    "error_type": type(e).__name__,
+                    "bucket_path": bucket_path,
+                    "file_size": len(file_data),
+                    "attempt": attempt,
+                    "max_attempts": self.MAX_UPLOAD_RETRIES
+                })
+                
+                # Check if this is a retryable error
+                retryable_errors = [
+                    "ConnectionError", "ConnectError", "ConnectionResetError", 
+                    "TimeoutError", "ReadTimeoutError", "ConnectTimeoutError",
+                    "SSLError", "ProxyError", "ChunkedEncodingError",
+                    "远程主机强迫关闭了一个现有的连接"
+                ]
+                
+                is_retryable = any(error_type in error_msg or error_type in type(e).__name__ 
+                                 for error_type in retryable_errors)
+                
+                if not is_retryable:
+                    logger.error("非可重试错误，停止重试", {
+                        "error": error_msg,
+                        "error_type": type(e).__name__,
+                        "bucket_path": bucket_path,
+                        "attempt": attempt
+                    })
+                    return {
+                        "success": False,
+                        "message": f"上传失败 (非可重试错误): {error_msg}",
+                        "error_type": "non_retryable_error"
+                    }
+                
+                # If this is not the last attempt, wait before retrying
+                if attempt < self.MAX_UPLOAD_RETRIES:
+                    delay = self.RETRY_BASE_DELAY * (self.RETRY_BACKOFF_FACTOR ** (attempt - 1))
+                    logger.info(f"网络错误，等待 {delay:.1f} 秒后重试", {
+                        "error": error_msg,
+                        "delay_seconds": delay,
+                        "next_attempt": attempt + 1,
+                        "max_attempts": self.MAX_UPLOAD_RETRIES
+                    })
+                    time.sleep(delay)
+                    continue
+        
+        # All attempts failed
+        final_error_msg = str(last_exception) if last_exception else "未知错误"
+        logger.error(f"文件上传失败，已重试{self.MAX_UPLOAD_RETRIES}次", {
+            "final_error": final_error_msg,
+            "bucket_path": bucket_path,
+            "file_size": len(file_data),
+            "total_attempts": self.MAX_UPLOAD_RETRIES
+        })
+        
+        return {
+            "success": False,
+            "message": f"文件上传失败 (已重试{self.MAX_UPLOAD_RETRIES}次): {final_error_msg}",
+            "error_type": "max_retries_exceeded"
+        }
     
     def upload_file(self, 
                    local_file_path: str,
@@ -228,34 +392,17 @@ class SupabaseService:
                     "message": f"读取文件失败: {str(read_error)}"
                 }
             
-            # Upload to Supabase
-            response = self.client.storage.from_(self.bucket_name).upload(
-                path=bucket_path,
-                file=file_data,
-                file_options={
-                    "content-type": content_type,
-                    "cache-control": "3600",
-                    "upsert": "false"  # Prevent overwriting existing files
-                }
-            )
+            # Upload to Supabase with retry mechanism
+            upload_result = self._upload_to_supabase_with_retry(bucket_path, file_data, content_type)
             
-            if hasattr(response, 'error') and response.error:
-                logger.error("Supabase上传失败", {
-                    "error": response.error,
-                    "bucket_path": bucket_path,
-                    "file_size": len(file_data),
-                    "content_type": content_type
-                })
+            if not upload_result["success"]:
                 return {
                     "success": False,
-                    "message": f"上传失败: {response.error}"
+                    "message": upload_result["message"]
                 }
             
-            logger.info("文件上传到Supabase成功", {
-                "bucket_path": bucket_path,
-                "file_size": len(file_data),
-                "content_type": content_type
-            })
+            # Extract response from successful upload
+            response = upload_result["response"]
             
             # 直接创建签名URL，不尝试公共URL
             try:
