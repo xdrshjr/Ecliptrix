@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import '@/styles/globals.css'
+import { NotificationProvider } from '@/contexts/NotificationContext'
 
 export const metadata: Metadata = {
   title: 'Ecliptrix - Where light and shadow collide',
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="h-full bg-white text-gray-900 antialiased overflow-hidden">
-        {children}
+        <NotificationProvider>
+          {children}
+        </NotificationProvider>
       </body>
     </html>
   )

@@ -161,6 +161,14 @@ export const useVideoExport = ({
               console.warn(`[useVideoExport] 未找到音频素材 ${item.materialId} 对应的URL`, { taskId });
             }
           } else if (item.type === 'subtitle') {
+            // Extract subtitle styling from TimelineItem
+            const subtitleStyle = item.subtitleStyle || {
+              fontFamily: 'default',
+              fontSize: 24,
+              fontColor: '#FFFFFF',
+              position: 'bottom'
+            };
+            
             subtitleItems.push({
               id: item.id,
               name: item.name,
@@ -168,9 +176,11 @@ export const useVideoExport = ({
               start_time: item.startTime,
               duration: item.duration,
               track_id: track.id,
-              font_size: 24,
-              font_color: '#FFFFFF',
-              position: 'bottom'
+              font_family: subtitleStyle.fontFamily,
+              font_size: subtitleStyle.fontSize,
+              font_color: subtitleStyle.fontColor,
+              background_color: subtitleStyle.backgroundColor,
+              position: subtitleStyle.position
             });
           }
         });

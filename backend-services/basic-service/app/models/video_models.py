@@ -133,6 +133,7 @@ class SubtitleCompositionItem(BaseModel):
     start_time: float = Field(..., ge=0, description="Start time in the timeline (seconds)")
     duration: float = Field(..., gt=0, description="Duration of the subtitle display (seconds)")
     track_id: str = Field(..., description="ID of the track this item belongs to")
+    font_family: str = Field("default", description="Font family (default, serif, sans-serif, monospace)")
     font_size: int = Field(24, ge=8, le=72, description="Font size in pixels")
     font_color: str = Field("#FFFFFF", description="Font color in hex format")
     background_color: Optional[str] = Field(None, description="Background color in hex format")
@@ -227,6 +228,7 @@ class SubtitleAddRequest(BaseModel):
     """
     video_file_path: str = Field(..., description="Path to the input video file")
     subtitle_file_path: str = Field(..., description="Path to the SRT subtitle file")
+    font_family: str = Field("default", description="Font family (default, serif, sans-serif, monospace)")
     font_size: int = Field(24, ge=8, le=72, description="Font size in pixels")
     font_color: str = Field("#FFFFFF", description="Font color in hex format (e.g., #FFFFFF)")
     background_color: Optional[str] = Field(None, description="Background color in hex format (optional)")
@@ -242,6 +244,7 @@ class SubtitleAddRequest(BaseModel):
             "example": {
                 "video_file_path": "datas/merge/video-1.mp4",
                 "subtitle_file_path": "datas/merge/basic-01.srt",
+                "font_family": "default",
                 "font_size": 24,
                 "font_color": "#FFFFFF",
                 "background_color": "#000000",
