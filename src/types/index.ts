@@ -119,6 +119,25 @@ export interface LLMConfig {
   model?: string;
 } 
 
+// Subtitle styling related types
+export type SubtitleFontFamily = 'default' | 'serif' | 'sans-serif' | 'monospace';
+export type SubtitlePosition = 'top' | 'center' | 'bottom';
+
+export interface SubtitleStyle {
+  fontFamily: SubtitleFontFamily;
+  fontSize: number; // 8-72 pixels
+  fontColor: string; // hex color
+  backgroundColor?: string; // optional hex color
+  position: SubtitlePosition;
+}
+
+// Predefined subtitle style presets
+export interface SubtitleStylePreset {
+  id: string;
+  name: string;
+  style: SubtitleStyle;
+}
+
 // Timeline and Video Editing related types
 export interface TimelineItem {
   id: string;
@@ -140,6 +159,9 @@ export interface TimelineItem {
   clipStart?: number;      // 原始素材中的开始时间（秒）
   clipEnd?: number;        // 原始素材中的结束时间（秒）
   originalDuration?: number; // 原始素材的总时长（秒）
+  
+  // 新增：字幕样式属性
+  subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）
 }
 
 export interface Track {

@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import { useVideoExport } from '../hooks/useVideoExport';
+import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
@@ -122,6 +123,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     materials,
     taskId: `timeline_export`
   });
+
+  // 使用通知hook
+  const { showSuccess, showError } = useNotification();
 
   // 通知父组件时间轴状态变化
   useEffect(() => {
@@ -1011,7 +1015,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       
       if (allAudioItems.length === 0) {
         console.warn(`[TimelinePanel] 没有找到音频项目，无法提取字幕`);
-        alert('没有找到音频项目，请先添加音频到时间轴');
+        showError('没有找到音频项目，请先添加音频到时间轴');
         return;
       }
       
@@ -1084,8 +1088,19 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       const subtitleTrack = timelineState.tracks.find(track => track.type === 'subtitle');
       if (!subtitleTrack) {
         console.error(`[TimelinePanel] 没有找到字幕轨道`);
-        alert('没有找到字幕轨道，请先添加字幕轨道');
+        showError('没有找到字幕轨道，请先添加字幕轨道');
         return;
+      }
+      
+      // 检查是否已有字幕，直接替换现有字幕
+      const hasExistingSubtitles = subtitleTrack.items.length > 0;
+      
+      if (hasExistingSubtitles) {
+        console.log(`[TimelinePanel] 检测到现有字幕，将直接替换`, {
+          existingSubtitlesCount: subtitleTrack.items.length,
+          operation: 'replace',
+          timestamp: new Date().toISOString()
+        });
       }
       
       const newSubtitleItems: TimelineItem[] = [];
@@ -1125,17 +1140,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       
       if (newSubtitleItems.length === 0) {
         console.warn(`[TimelinePanel] 没有生成任何字幕片段`);
-        alert('字幕提取失败，没有生成任何字幕内容');
+        showError('字幕提取失败，没有生成任何字幕内容');
         return;
       }
       
-      // 5. 更新时间轴状态，添加字幕项目到字幕轨道
+      // 5. 更新时间轴状态，直接替换现有字幕项目
       setTimelineState(prev => {
         const updatedTracks = prev.tracks.map(track => {
           if (track.id === subtitleTrack.id) {
             return {
               ...track,
-              items: [...track.items, ...newSubtitleItems]
+              items: newSubtitleItems  // 直接替换：只保留新字幕
             };
           }
           return track;
@@ -1147,8 +1162,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         );
         const maxItemEndTime = Math.max(...allItemEndTimes, prev.totalDuration);
         
-        console.log(`[TimelinePanel] 字幕添加完成`, {
+        console.log(`[TimelinePanel] 字幕${hasExistingSubtitles ? '替换' : '添加'}完成`, {
+          operation: hasExistingSubtitles ? 'replace' : 'add',
           addedSubtitlesCount,
+          previousSubtitlesCount: hasExistingSubtitles ? subtitleTrack.items.length : 0,
+          finalSubtitlesCount: newSubtitleItems.length,
           newTotalDuration: maxItemEndTime,
           timestamp: new Date().toISOString()
         });
@@ -1160,12 +1178,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         };
       });
       
-            // 6. 记录成功日志
-      console.log(`[TimelinePanel] 字幕提取成功！共生成 ${addedSubtitlesCount} 个字幕片段`);
+      // 6. 记录成功日志
+      const operationType = hasExistingSubtitles ? '替换' : '生成';
+      console.log(`[TimelinePanel] 字幕提取成功！${operationType}了 ${addedSubtitlesCount} 个字幕片段`);
+      
+      // 显示成功提示
+      showSuccess(`字幕提取成功！${operationType}了 ${addedSubtitlesCount} 个字幕片段`);
       
     } catch (error) {
       console.error(`[TimelinePanel] 字幕提取失败:`, error);
-      alert(`字幕提取失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      showError(`字幕提取失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       // 清除加载状态
       setIsExtractingSubtitles(false);

@@ -209,10 +209,13 @@ class SubtitleService:
         
         return wrapped_lines
     
-    def _get_font_path(self) -> Optional[str]:
+    def _get_font_path(self, font_family: str = "default") -> Optional[str]:
         """
-        Get available font path for Chinese text support.
+        Get available font path for the specified font family with cross-platform support.
         
+        Args:
+            font_family: Font family type (default, serif, sans-serif, monospace)
+            
         Returns:
             Font file path or None if no suitable font found
         """
@@ -220,32 +223,94 @@ class SubtitleService:
         
         system = platform.system().lower()
         
-        # Common Chinese font paths by system
-        font_paths = []
+        # Font paths by system and font family
+        font_paths_map = {}
         
         if system == "windows":
-            font_paths = [
-                "C:/Windows/Fonts/simhei.ttf",      # SimHei (黑体)
-                "C:/Windows/Fonts/simsun.ttc",      # SimSun (宋体)
-                "C:/Windows/Fonts/msyh.ttc",        # Microsoft YaHei (微软雅黑)
-                "C:/Windows/Fonts/arial.ttf",       # Arial (fallback)
-            ]
+            font_paths_map = {
+                "default": [
+                    "C:/Windows/Fonts/msyh.ttc",        # Microsoft YaHei (微软雅黑) - best for Chinese
+                    "C:/Windows/Fonts/simhei.ttf",      # SimHei (黑体)
+                    "C:/Windows/Fonts/simsun.ttc",      # SimSun (宋体)
+                    "C:/Windows/Fonts/arial.ttf",       # Arial (fallback)
+                ],
+                "serif": [
+                    "C:/Windows/Fonts/simsun.ttc",      # SimSun (宋体) - serif Chinese
+                    "C:/Windows/Fonts/times.ttf",       # Times New Roman
+                    "C:/Windows/Fonts/timesbd.ttf",     # Times New Roman Bold
+                    "C:/Windows/Fonts/georgia.ttf",     # Georgia
+                ],
+                "sans-serif": [
+                    "C:/Windows/Fonts/msyh.ttc",        # Microsoft YaHei (微软雅黑)
+                    "C:/Windows/Fonts/simhei.ttf",      # SimHei (黑体)
+                    "C:/Windows/Fonts/arial.ttf",       # Arial
+                    "C:/Windows/Fonts/calibri.ttf",     # Calibri
+                ],
+                "monospace": [
+                    "C:/Windows/Fonts/consola.ttf",     # Consolas
+                    "C:/Windows/Fonts/cour.ttf",        # Courier New
+                    "C:/Windows/Fonts/lucon.ttf",       # Lucida Console
+                ]
+            }
         elif system == "darwin":  # macOS
-            font_paths = [
-                "/System/Library/Fonts/PingFang.ttc",
-                "/System/Library/Fonts/Arial.ttf",
-            ]
-        else:  # Linux
-            font_paths = [
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            ]
+            font_paths_map = {
+                "default": [
+                    "/System/Library/Fonts/PingFang.ttc",
+                    "/System/Library/Fonts/Helvetica.ttc",
+                    "/System/Library/Fonts/Arial.ttf",
+                ],
+                "serif": [
+                    "/System/Library/Fonts/Times.ttc",
+                    "/System/Library/Fonts/Georgia.ttf",
+                ],
+                "sans-serif": [
+                    "/System/Library/Fonts/Helvetica.ttc",
+                    "/System/Library/Fonts/Arial.ttf",
+                    "/System/Library/Fonts/PingFang.ttc",
+                ],
+                "monospace": [
+                    "/System/Library/Fonts/Monaco.ttf",
+                    "/System/Library/Fonts/Courier New.ttf",
+                ]
+            }
+        else:  # Linux (Ubuntu)
+            font_paths_map = {
+                "default": [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",  # For Chinese support
+                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                ],
+                "serif": [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
+                ],
+                "sans-serif": [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                ],
+                "monospace": [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoSansMonoCJK-Regular.ttc",
+                ]
+            }
+        
+        # Get font paths for the requested family, fallback to default
+        font_paths = font_paths_map.get(font_family, font_paths_map.get("default", []))
         
         # Check which fonts exist
         for font_path in font_paths:
             if os.path.exists(font_path):
-                logger.info(f"Using font: {font_path}")
+                logger.info(f"Using {font_family} font: {font_path}")
                 return font_path
+        
+        # If no specific font found, try default fonts
+        if font_family != "default":
+            logger.warning(f"No {font_family} font found, trying default fonts")
+            return self._get_font_path("default")
         
         logger.warning("No suitable font found, using system default")
         return None
@@ -335,7 +400,7 @@ class SubtitleService:
             drawtext_filter = f"drawtext=text='{text_content}'"
             
             # Add font file if available
-            font_path = self._get_font_path()
+            font_path = self._get_font_path(getattr(request, 'font_family', 'default'))
             if font_path:
                 # Escape backslashes for ffmpeg
                 escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
@@ -353,7 +418,10 @@ class SubtitleService:
             
             # Add background if specified
             if request.background_color:
+                logger.info(f"Adding background color {request.background_color} to subtitle: '{text_content[:20]}...'")
                 drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
+            else:
+                logger.info(f"No background color specified for subtitle: '{text_content[:20]}...'")
             
             drawtext_filters.append(drawtext_filter)
         

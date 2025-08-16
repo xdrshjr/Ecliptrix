@@ -1135,9 +1135,10 @@ class VideoCompositionService:
             subtitle_request = SubtitleAddRequest(
                 video_file_path=video_path,
                 subtitle_file_path=srt_path,
+                font_family=getattr(first_subtitle, 'font_family', 'default'),
                 font_size=first_subtitle.font_size,
                 font_color=first_subtitle.font_color,
-                background_color=first_subtitle.background_color or "#000000",
+                background_color=first_subtitle.background_color,  # 不强制设置默认背景色，保持None值
                 border_width=2,
                 border_color="#000000",
                 position=first_subtitle.position,
@@ -1145,8 +1146,9 @@ class VideoCompositionService:
                 margin_horizontal=50
             )
             
-            logger.info(f"Subtitle request configuration: font_size={subtitle_request.font_size}, "
-                       f"font_color={subtitle_request.font_color}, position={subtitle_request.position}")
+            logger.info(f"Subtitle request configuration: font_family={subtitle_request.font_family}, "
+                       f"font_size={subtitle_request.font_size}, font_color={subtitle_request.font_color}, "
+                       f"background_color={subtitle_request.background_color}, position={subtitle_request.position}")
             
             # Add subtitles to video using SubtitleService
             # Note: SubtitleService.add_subtitles is async, but we're in a sync context
