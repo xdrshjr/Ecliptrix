@@ -4,4 +4,5 @@ export { default as MaterialsPanel } from './MaterialsPanel';
 export { default as VideoPlayerPanel } from './VideoPlayerPanel';
 export { default as VideoSearchModal } from './VideoSearchModal';
 export { ContentPolishModal } from './ContentPolishModal';
-export { ScriptGenerationModal } from './ScriptGenerationModal'; 
+export { ScriptGenerationModal } from './ScriptGenerationModal';
+export { SubtitleEditModal } from './SubtitleEditModal'; 

@@ -81,10 +81,22 @@ export interface Translations {
       unlock: string;
       show: string;
       hide: string;
+      editSubtitles: string;
       dropVideoHere: string;
       dropAudioHere: string;
       dropSubtitleHere: string;
       dropToTrack: string;
+    };
+    subtitleEditModal: {
+      title: string;
+      subtitle: string;
+      noSubtitles: string;
+      subtitleText: string;
+      startTime: string;
+      duration: string;
+      save: string;
+      cancel: string;
+      placeholder: string;
     };
   };
 }
@@ -173,11 +185,23 @@ export const translations: Record<string, Translations> = {
         unlock: 'Unlock Track',
         show: 'Show Track',
         hide: 'Hide Track',
+        editSubtitles: 'Edit Subtitles',
         dropVideoHere: 'Drag video/image materials here',
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
         dropToTrack: 'Drop to {trackName}',
       },
+    },
+    subtitleEditModal: {
+      title: 'Edit Subtitles',
+      subtitle: 'Edit subtitle text for each timeline segment',
+      noSubtitles: 'No subtitles found in the subtitle track',
+      subtitleText: 'Subtitle Text',
+      startTime: 'Start Time',
+      duration: 'Duration',
+      save: 'Save Changes',
+      cancel: 'Cancel',
+      placeholder: 'Enter subtitle text...',
     },
   },
   'zh-CN': {
@@ -263,11 +287,23 @@ export const translations: Record<string, Translations> = {
         unlock: '解锁轨道',
         show: '显示轨道',
         hide: '隐藏轨道',
+        editSubtitles: '编辑字幕',
         dropVideoHere: '拖拽视频/图片素材到此轨道',
         dropAudioHere: '拖拽音频素材到此轨道',
         dropSubtitleHere: '拖拽字幕素材到此轨道',
         dropToTrack: '放置到 {trackName}',
       },
+    },
+    subtitleEditModal: {
+      title: '编辑字幕',
+      subtitle: '编辑时间轴上每个字幕片段的文本内容',
+      noSubtitles: '字幕轨道中没有找到字幕',
+      subtitleText: '字幕文本',
+      startTime: '开始时间',
+      duration: '持续时间',
+      save: '保存更改',
+      cancel: '取消',
+      placeholder: '请输入字幕内容...',
     },
   },
 };

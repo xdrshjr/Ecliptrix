@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import { useVideoExport } from '../hooks/useVideoExport';
+import { SubtitleEditModal } from '../components';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
@@ -110,6 +111,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [history, setHistory] = useState<TimelineAction[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isExtractingSubtitles, setIsExtractingSubtitles] = useState(false);
+  
+  // 字幕编辑模态框状态
+  const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = useState(false);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
 
   // 使用导出hook
   const videoExport = useVideoExport({
@@ -1186,6 +1191,48 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }));
   }, []);
 
+  // 处理批量字幕编辑
+  const handleEditSubtitles = useCallback((trackId: string) => {
+    console.log(`[TimelinePanel] 打开字幕编辑模态框`, {
+      trackId,
+      timestamp: new Date().toISOString()
+    });
+
+    setEditingTrackId(trackId);
+    setIsSubtitleEditModalOpen(true);
+  }, []);
+
+  const handleCloseSubtitleEditModal = useCallback(() => {
+    console.log(`[TimelinePanel] 关闭字幕编辑模态框`, {
+      editingTrackId,
+      timestamp: new Date().toISOString()
+    });
+
+    setIsSubtitleEditModalOpen(false);
+    setEditingTrackId(null);
+  }, [editingTrackId]);
+
+  const handleSaveSubtitleChanges = useCallback((updatedSubtitles: TimelineItem[]) => {
+    if (!editingTrackId) return;
+
+    console.log(`[TimelinePanel] 保存字幕编辑更改`, {
+      trackId: editingTrackId,
+      subtitleCount: updatedSubtitles.length,
+      timestamp: new Date().toISOString()
+    });
+
+    setTimelineState(prev => ({
+      ...prev,
+      tracks: prev.tracks.map(track => 
+        track.id === editingTrackId 
+          ? { ...track, items: updatedSubtitles }
+          : track
+      )
+    }));
+
+    handleCloseSubtitleEditModal();
+  }, [editingTrackId, handleCloseSubtitleEditModal]);
+
   // 导出逻辑现在使用useVideoExport hook
 
   return (
@@ -1231,6 +1278,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onMoveItem={handleMoveItem}
         onResizeItem={handleResizeItem}
         onSubtitleEdit={handleSubtitleEdit}
+        onEditSubtitles={handleEditSubtitles}
         onToggleTrackMute={handleToggleTrackMute}
         onToggleTrackLock={handleToggleTrackLock}
         onToggleTrackVisibility={handleToggleTrackVisibility}
@@ -1240,6 +1288,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onMaterialDrop={handleMaterialDrop}
         locale={locale}
       />
+
+      {/* 字幕编辑模态框 */}
+      {editingTrackId && (
+        <SubtitleEditModal
+          isOpen={isSubtitleEditModalOpen}
+          onClose={handleCloseSubtitleEditModal}
+          onSave={handleSaveSubtitleChanges}
+          subtitles={timelineState.tracks.find(track => track.id === editingTrackId)?.items.filter(item => item.type === 'subtitle') || []}
+          taskId="timeline_subtitle_edit"
+          locale={locale}
+        />
+      )}
     </div>
   );
 };

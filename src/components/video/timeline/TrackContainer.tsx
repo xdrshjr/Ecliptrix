@@ -11,6 +11,7 @@ interface TrackContainerProps {
   onMoveItem: (itemId: string, newStartTime: number) => void;
   onResizeItem: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
   onSubtitleEdit?: (itemId: string, newText: string) => void;
+  onEditSubtitles?: (trackId: string) => void;
   onToggleTrackMute: (trackId: string) => void;
   onToggleTrackLock: (trackId: string) => void;
   onToggleTrackVisibility: (trackId: string) => void;
@@ -27,6 +28,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onMoveItem,
   onResizeItem,
   onSubtitleEdit,
+  onEditSubtitles,
   onToggleTrackMute,
   onToggleTrackLock,
   onToggleTrackVisibility,
@@ -83,6 +85,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
               onMoveItem={onMoveItem}
               onResizeItem={onResizeItem}
               onSubtitleEdit={onSubtitleEdit}
+              onEditSubtitles={onEditSubtitles}
               onToggleMute={onToggleTrackMute}
               onToggleLock={onToggleTrackLock}
               onToggleVisibility={onToggleTrackVisibility}

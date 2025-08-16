@@ -13,6 +13,7 @@ interface TrackProps {
   onMoveItem: (itemId: string, newStartTime: number) => void;
   onResizeItem: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
   onSubtitleEdit?: (itemId: string, newText: string) => void;
+  onEditSubtitles?: (trackId: string) => void;
   onToggleMute: (trackId: string) => void;
   onToggleLock: (trackId: string) => void;
   onToggleVisibility: (trackId: string) => void;
@@ -29,6 +30,7 @@ const Track: React.FC<TrackProps> = ({
   onMoveItem,
   onResizeItem,
   onSubtitleEdit,
+  onEditSubtitles,
   onToggleMute,
   onToggleLock,
   onToggleVisibility,
@@ -250,6 +252,45 @@ const Track: React.FC<TrackProps> = ({
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                     <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
                       {track.isMuted ? t.timeline.track.unmute : t.timeline.track.mute}
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* 编辑字幕按钮（仅字幕轨道） */}
+            {track.type === 'subtitle' && (
+              <div className="relative group">
+                <button
+                  onClick={() => {
+                    console.log(`[Track] 编辑字幕轨道`, {
+                      trackId: track.id,
+                      subtitleCount: track.items.length,
+                      timestamp: new Date().toISOString()
+                    });
+                    if (onEditSubtitles) {
+                      onEditSubtitles(track.id);
+                    }
+                  }}
+                  disabled={track.items.length === 0}
+                  className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                    track.items.length === 0
+                      ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                  }`}
+                  aria-label={t.timeline.track.editSubtitles}
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                  </svg>
+                  
+                  {/* 悬停提示 */}
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                    <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                      {t.timeline.track.editSubtitles}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
                       </div>
