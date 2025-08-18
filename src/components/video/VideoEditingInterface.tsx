@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -46,6 +46,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 脚本生成弹窗状态
   const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(false);
+  
+  // 新增：程序化添加素材到时间轴的状态
+  const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
+    materials: MaterialItem[], 
+    targetTrackId?: string, 
+    timestamp: number 
+  } | undefined>(undefined);
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
@@ -157,6 +164,96 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setCurrentTimelineState(timelineState);
   }, []);
 
+  // 新增：AI自动混剪功能
+  const handleAutoMixAudio = useCallback(() => {
+    console.log(`[VideoEditingInterface] 开始AI自动混剪`, {
+      taskId,
+      totalMaterialsCount: materialManagement.materials.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // 筛选从文本脚本转换的音频素材
+    const scriptAudioMaterials = materialManagement.materials.filter(material => {
+      const isAudio = material.type === 'audio';
+      const hasSegmentId = material.metadata?.segment_id;
+      const hasSegmentNumber = typeof material.metadata?.segment_number === 'number';
+      
+      return isAudio && hasSegmentId && hasSegmentNumber;
+    });
+
+    console.log(`[VideoEditingInterface] 筛选出脚本音频素材`, {
+      totalMaterials: materialManagement.materials.length,
+      scriptAudioCount: scriptAudioMaterials.length,
+      materials: scriptAudioMaterials.map(m => ({
+        id: m.id,
+        name: m.name,
+        segmentId: m.metadata?.segment_id,
+        segmentNumber: m.metadata?.segment_number,
+        duration: m.duration
+      }))
+    });
+
+    if (scriptAudioMaterials.length === 0) {
+      console.warn(`[VideoEditingInterface] 未找到从文本脚本转换的音频素材`, {
+        taskId,
+        availableMaterials: materialManagement.materials.map(m => ({
+          id: m.id,
+          name: m.name,
+          type: m.type,
+          hasSegmentId: !!m.metadata?.segment_id,
+          hasSegmentNumber: typeof m.metadata?.segment_number === 'number'
+        }))
+      });
+      return;
+    }
+
+    // 按segment_number排序，确保转换顺序
+    const sortedAudioMaterials = [...scriptAudioMaterials].sort((a, b) => {
+      const aSegmentNumber = a.metadata?.segment_number || 0;
+      const bSegmentNumber = b.metadata?.segment_number || 0;
+      return aSegmentNumber - bSegmentNumber;
+    });
+
+    console.log(`[VideoEditingInterface] 音频素材排序完成`, {
+      sortedMaterials: sortedAudioMaterials.map((m, index) => ({
+        index: index + 1,
+        id: m.id,
+        name: m.name,
+        segmentNumber: m.metadata?.segment_number,
+        duration: m.duration?.toFixed(2)
+      })),
+      totalDuration: sortedAudioMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2)
+    });
+
+    // 触发时间轴添加素材，指定添加到第一个音频轨道
+    setMaterialsToAddToTimeline({
+      materials: sortedAudioMaterials,
+      targetTrackId: 'audio-track-1', // 指定添加到第一个音频轨道
+      timestamp: Date.now()
+    });
+
+    console.log(`[VideoEditingInterface] AI自动混剪请求已发送`, {
+      materialsCount: sortedAudioMaterials.length,
+      targetTrackId: 'audio-track-1',
+      timestamp: Date.now()
+    });
+  }, [taskId, materialManagement.materials]);
+
+  // 清除添加素材请求状态，避免重复处理
+  React.useEffect(() => {
+    if (materialsToAddToTimeline) {
+      // 设置一个短暂的延迟后清除状态，确保TimelinePanel有时间处理
+      const timeoutId = setTimeout(() => {
+        console.log(`[VideoEditingInterface] 清除素材添加请求状态`, {
+          timestamp: Date.now()
+        });
+        setMaterialsToAddToTimeline(undefined);
+      }, 1000); // 1秒后清除状态
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [materialsToAddToTimeline]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* 视频编辑工作区 - 左右布局 */}
@@ -202,6 +299,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               <MaterialsPanel
                 {...materialManagement}
                 onSearchVideos={videoSearch.openSearchModal}
+                onAutoMixAudio={handleAutoMixAudio}
                 taskId={taskId}
               />
 
@@ -231,6 +329,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onCurrentTimeChange={handleTimelineTimeChange}
                 materials={materialManagement.materials}
                 onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
+                materialsToAdd={materialsToAddToTimeline}
               />
             </div>
           </div>
