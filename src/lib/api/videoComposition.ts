@@ -96,7 +96,8 @@ export class VideoCompositionAPI {
       videoItemsCount: request.video_items.length,
       audioItemsCount: request.audio_items?.length || 0,
       subtitleItemsCount: request.subtitle_items?.length || 0,
-      totalDuration: request.total_duration
+      totalDuration: request.total_duration,
+      timeout: '10 minutes'
     });
 
     try {
@@ -105,7 +106,9 @@ export class VideoCompositionAPI {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
+        // 设置10分钟超时，适应视频合成的长处理时间
+        signal: AbortSignal.timeout(600000) // 600秒（10分钟）超时
       });
 
       if (!response.ok) {
@@ -122,8 +125,18 @@ export class VideoCompositionAPI {
       });
 
       return result;
-    } catch (error) {
-      console.error('[VideoCompositionAPI] Composition request failed', error);
+    } catch (error: any) {
+      // 检查是否是超时错误并记录详细信息
+      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+        console.error('[VideoCompositionAPI] Composition request timeout after 10 minutes', {
+          taskId: request.task_id,
+          videoItemsCount: request.video_items.length,
+          totalDuration: request.total_duration,
+          error: error.message
+        });
+      } else {
+        console.error('[VideoCompositionAPI] Composition request failed', error);
+      }
       throw error;
     }
   }
@@ -143,7 +156,9 @@ export class VideoCompositionAPI {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        // 设置较短超时，状态查询应该快速响应
+        signal: AbortSignal.timeout(30000) // 30秒超时
       });
 
       if (!response.ok) {
@@ -178,55 +193,130 @@ export class VideoCompositionAPI {
 
     try {
       const response = await fetch(url, {
-        method: 'GET'
+        method: 'GET',
+        // 设置10分钟超时，适应大视频文件下载
+        signal: AbortSignal.timeout(600000) // 600秒（10分钟）超时
+      });
+
+      console.log('[VideoCompositionAPI] Download response received', {
+        compositionId,
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length'),
+        headers: Object.fromEntries(response.headers.entries())
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[VideoCompositionAPI] Download response error', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText
+        });
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
-      const blob = await response.blob();
-      
-      console.log('[VideoCompositionAPI] Video download completed from Next.js API', {
-        compositionId,
-        blobSize: blob.size,
-        blobType: blob.type
-      });
+      // 检查响应是否有body
+      if (!response.body) {
+        throw new Error('Response body is empty');
+      }
 
-      return blob;
-    } catch (error) {
-      console.error('[VideoCompositionAPI] Video download failed', error);
+      console.log('[VideoCompositionAPI] Starting blob conversion...');
+      
+      try {
+        const blob = await response.blob();
+        
+        console.log('[VideoCompositionAPI] Video download completed from Next.js API', {
+          compositionId,
+          blobSize: blob.size,
+          blobType: blob.type
+        });
+
+        // 验证blob是否有效
+        if (blob.size === 0) {
+          throw new Error('Downloaded blob is empty');
+        }
+
+        return blob;
+      } catch (blobError: any) {
+        console.error('[VideoCompositionAPI] Blob conversion failed', {
+          compositionId,
+          error: blobError.message,
+          responseBodyUsed: response.bodyUsed,
+          responseRedirected: response.redirected
+        });
+        throw new Error(`Failed to convert response to blob: ${blobError.message}`);
+      }
+    } catch (error: any) {
+      // 检查是否是超时错误并记录详细信息
+      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+        console.error('[VideoCompositionAPI] Video download timeout after 10 minutes', {
+          compositionId,
+          taskId,
+          error: error.message
+        });
+      } else {
+        console.error('[VideoCompositionAPI] Video download failed', error);
+      }
       throw error;
     }
   }
 
   /**
    * Trigger automatic download of a composed video
+   * Uses direct URL download instead of blob conversion to avoid memory issues
    */
   async triggerDownload(compositionId: string, taskId?: string, filename?: string): Promise<void> {
+    console.log('[VideoCompositionAPI] Starting direct download', {
+      compositionId,
+      taskId,
+      filename,
+      method: 'direct_url'
+    });
+
     try {
-      const blob = await this.downloadVideo(compositionId, taskId);
+      // 构建下载URL
+      const downloadUrl = `/api/video-compose/${compositionId}/download${taskId ? `?task_id=${taskId}` : ''}`;
       
-      // Create a download link and trigger the download
-      const downloadUrl = window.URL.createObjectURL(blob);
+      // 创建下载链接并触发下载
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = filename || `composed_video_${compositionId}.mp4`;
       
-      // Append to body, click, and remove
+      // 设置必要的属性以确保下载行为
+      link.style.display = 'none';
+      link.target = '_blank';
+      
+      console.log('[VideoCompositionAPI] Creating download link', {
+        url: downloadUrl,
+        filename: link.download,
+        compositionId
+      });
+      
+      // 添加到DOM，点击，然后移除
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
       
-      // Clean up the object URL
-      window.URL.revokeObjectURL(downloadUrl);
+      // 延迟移除链接，确保下载开始
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+      }, 100);
       
-      console.log('[VideoCompositionAPI] Download triggered successfully', {
+      console.log('[VideoCompositionAPI] Direct download triggered successfully', {
         compositionId,
-        filename: link.download
+        filename: link.download,
+        url: downloadUrl
       });
-    } catch (error) {
-      console.error('[VideoCompositionAPI] Failed to trigger download', error);
+      
+    } catch (error: any) {
+      console.error('[VideoCompositionAPI] Failed to trigger direct download', {
+        compositionId,
+        taskId,
+        filename,
+        error: error.message
+      });
       throw error;
     }
   }
@@ -321,7 +411,9 @@ export class VideoCompositionAPI {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        // 设置较短超时，健康检查应该快速响应
+        signal: AbortSignal.timeout(10000) // 10秒超时
       });
 
       if (!response.ok) {

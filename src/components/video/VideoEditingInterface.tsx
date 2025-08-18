@@ -181,10 +181,27 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       return isAudio && hasSegmentId && hasSegmentNumber;
     });
 
-    console.log(`[VideoEditingInterface] 筛选出脚本音频素材`, {
+    // 筛选从文本脚本关联的视频素材
+    const scriptVideoMaterials = materialManagement.materials.filter(material => {
+      const isVideo = material.type === 'video';
+      const hasSegmentId = material.metadata?.segment_id;
+      const hasSegmentNumber = typeof material.metadata?.segment_number === 'number';
+      
+      return isVideo && hasSegmentId && hasSegmentNumber;
+    });
+
+    console.log(`[VideoEditingInterface] 筛选出脚本素材`, {
       totalMaterials: materialManagement.materials.length,
       scriptAudioCount: scriptAudioMaterials.length,
-      materials: scriptAudioMaterials.map(m => ({
+      scriptVideoCount: scriptVideoMaterials.length,
+      audioMaterials: scriptAudioMaterials.map(m => ({
+        id: m.id,
+        name: m.name,
+        segmentId: m.metadata?.segment_id,
+        segmentNumber: m.metadata?.segment_number,
+        duration: m.duration
+      })),
+      videoMaterials: scriptVideoMaterials.map(m => ({
         id: m.id,
         name: m.name,
         segmentId: m.metadata?.segment_id,
@@ -193,8 +210,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       }))
     });
 
-    if (scriptAudioMaterials.length === 0) {
-      console.warn(`[VideoEditingInterface] 未找到从文本脚本转换的音频素材`, {
+    if (scriptAudioMaterials.length === 0 && scriptVideoMaterials.length === 0) {
+      console.warn(`[VideoEditingInterface] 未找到从文本脚本转换的音频或视频素材`, {
         taskId,
         availableMaterials: materialManagement.materials.map(m => ({
           id: m.id,
@@ -207,34 +224,75 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       return;
     }
 
-    // 按segment_number排序，确保转换顺序
+    // 按segment_number排序音频素材，确保转换顺序
     const sortedAudioMaterials = [...scriptAudioMaterials].sort((a, b) => {
       const aSegmentNumber = a.metadata?.segment_number || 0;
       const bSegmentNumber = b.metadata?.segment_number || 0;
       return aSegmentNumber - bSegmentNumber;
     });
 
-    console.log(`[VideoEditingInterface] 音频素材排序完成`, {
-      sortedMaterials: sortedAudioMaterials.map((m, index) => ({
+    // 按segment_number排序视频素材，确保与音频相同的转换顺序
+    const sortedVideoMaterials = [...scriptVideoMaterials].sort((a, b) => {
+      const aSegmentNumber = a.metadata?.segment_number || 0;
+      const bSegmentNumber = b.metadata?.segment_number || 0;
+      return aSegmentNumber - bSegmentNumber;
+    });
+
+    console.log(`[VideoEditingInterface] 素材排序完成`, {
+      audioMaterials: sortedAudioMaterials.map((m, index) => ({
         index: index + 1,
         id: m.id,
         name: m.name,
         segmentNumber: m.metadata?.segment_number,
         duration: m.duration?.toFixed(2)
       })),
-      totalDuration: sortedAudioMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2)
+      videoMaterials: sortedVideoMaterials.map((m, index) => ({
+        index: index + 1,
+        id: m.id,
+        name: m.name,
+        segmentNumber: m.metadata?.segment_number,
+        duration: m.duration?.toFixed(2)
+      })),
+      totalAudioDuration: sortedAudioMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2),
+      totalVideoDuration: sortedVideoMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2)
     });
 
-    // 触发时间轴添加素材，指定添加到第一个音频轨道
-    setMaterialsToAddToTimeline({
-      materials: sortedAudioMaterials,
-      targetTrackId: 'audio-track-1', // 指定添加到第一个音频轨道
-      timestamp: Date.now()
-    });
+    // 首先添加音频素材到音频轨道
+    if (sortedAudioMaterials.length > 0) {
+      setMaterialsToAddToTimeline({
+        materials: sortedAudioMaterials,
+        targetTrackId: 'audio-track-1', // 指定添加到第一个音频轨道
+        timestamp: Date.now()
+      });
 
-    console.log(`[VideoEditingInterface] AI自动混剪请求已发送`, {
-      materialsCount: sortedAudioMaterials.length,
-      targetTrackId: 'audio-track-1',
+      console.log(`[VideoEditingInterface] 音频素材添加请求已发送`, {
+        materialsCount: sortedAudioMaterials.length,
+        targetTrackId: 'audio-track-1',
+        timestamp: Date.now()
+      });
+    }
+
+    // 延迟添加视频素材到视频轨道，确保音频添加完成后再添加视频
+    if (sortedVideoMaterials.length > 0) {
+      setTimeout(() => {
+        setMaterialsToAddToTimeline({
+          materials: sortedVideoMaterials,
+          targetTrackId: 'video-track-1', // 指定添加到第一个视频轨道
+          timestamp: Date.now()
+        });
+
+        console.log(`[VideoEditingInterface] 视频素材添加请求已发送`, {
+          materialsCount: sortedVideoMaterials.length,
+          targetTrackId: 'video-track-1',
+          timestamp: Date.now()
+        });
+      }, 200); // 200ms延迟，确保音频处理完成
+    }
+
+    console.log(`[VideoEditingInterface] AI自动混剪请求完成`, {
+      audioMaterialsCount: sortedAudioMaterials.length,
+      videoMaterialsCount: sortedVideoMaterials.length,
+      totalMaterialsProcessed: sortedAudioMaterials.length + sortedVideoMaterials.length,
       timestamp: Date.now()
     });
   }, [taskId, materialManagement.materials]);

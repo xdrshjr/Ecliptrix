@@ -55,6 +55,8 @@ export async function GET(
     
     const backendResponse = await fetch(backendUrl.toString(), {
       method: 'GET',
+      // 设置10分钟超时，适应大视频文件下载
+      signal: AbortSignal.timeout(600000), // 600秒（10分钟）超时
     });
 
     console.log(`[Video Compose Download API] Backend response status: ${backendResponse.status}`);
@@ -85,8 +87,7 @@ export async function GET(
       );
     }
 
-    // 获取文件内容和头部信息
-    const fileBuffer = await backendResponse.arrayBuffer();
+    // 获取响应头信息
     const contentType = backendResponse.headers.get('content-type') || 'video/mp4';
     const contentLength = backendResponse.headers.get('content-length');
     const compositionIdHeader = backendResponse.headers.get('x-composition-id');
@@ -96,20 +97,53 @@ export async function GET(
     // 记录响应结果
     logResponse(true, contentLength ? parseInt(contentLength) : undefined);
 
-    // 返回文件流
-    const response = new NextResponse(fileBuffer, {
+    // 使用流式传输，避免将大文件加载到内存中
+    const response = new NextResponse(backendResponse.body, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Length': contentLength || fileBuffer.byteLength.toString(),
+        'Content-Length': contentLength || '0',
         'Content-Disposition': contentDisposition,
         'X-Composition-ID': compositionIdHeader || compositionId,
+        // 添加缓存控制头，优化大文件传输
+        'Cache-Control': 'no-cache',
+        'Accept-Ranges': 'bytes',
+        // 添加CORS头，确保前端可以正确访问
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Expose-Headers': 'Content-Length, Content-Disposition, X-Composition-ID',
       },
+    });
+
+    console.log(`[Video Compose Download API] Streaming file response`, {
+      compositionId,
+      contentType,
+      contentLength,
+      streamingMode: 'enabled'
     });
 
     return response;
 
-  } catch (error) {
+  } catch (error: any) {
+    // 检查是否是超时错误并记录详细信息
+    if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+      console.error('[Video Compose Download API] Request timeout after 10 minutes', {
+        compositionId: (await params).compositionId,
+        error: error.message
+      });
+      logResponse(false, undefined, `Download timeout: ${error.message}`);
+      
+      return NextResponse.json(
+        { 
+          success: false,
+          message: 'Video download timeout - file may be too large or processing is incomplete',
+          data: null
+        },
+        { status: 408 }
+      );
+    }
+    
     console.error('[Video Compose Download API] Request processing error:', error);
     logResponse(false, undefined, String(error));
     

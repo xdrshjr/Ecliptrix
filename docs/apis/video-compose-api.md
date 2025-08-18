@@ -6,6 +6,7 @@ The Video Compose API provides Next.js API routes that proxy video composition r
 
 **Key Features:**
 - **Asynchronous Processing**: Video composition runs in background, returns immediately
+- **10-Minute Timeout**: Extended timeout support for complex video processing
 - Proxies requests to backend video composition service
 - Comprehensive request validation and error handling
 - Detailed logging for debugging and monitoring
@@ -30,6 +31,8 @@ Currently, no authentication is required for these endpoints.
 **POST** `/api/video-compose`
 
 Initiates video composition by proxying the request to the backend service. The composition runs asynchronously in the background, and this endpoint returns immediately with a `composition_id` for tracking progress.
+
+**⚠️ Timeout Configuration**: This endpoint has a 10-minute (600 seconds) timeout to accommodate complex video processing operations. For very complex compositions, ensure the backend service can complete processing within this timeframe.
 
 #### Request Body
 
@@ -131,6 +134,8 @@ The API logs the following information:
 
 Retrieves the current status of a video composition.
 
+**⚠️ Timeout Configuration**: This endpoint has a 30-second timeout for quick status responses.
+
 #### Path Parameters
 
 - `compositionId` (string): The composition ID returned from the compose request
@@ -169,6 +174,8 @@ Retrieves the current status of a video composition.
 
 Downloads the completed video file.
 
+**⚠️ Timeout Configuration**: This endpoint has a 10-minute (600 seconds) timeout to accommodate large video file downloads.
+
 #### Path Parameters
 
 - `compositionId` (string): The composition ID
@@ -204,6 +211,8 @@ Binary video file with headers:
 **GET** `/api/video-compose/health`
 
 Checks the health status of the video composition service.
+
+**⚠️ Timeout Configuration**: This endpoint has a 10-second timeout for quick health checks.
 
 #### Response
 
@@ -246,8 +255,32 @@ Checks the health status of the video composition service.
 
 1. **Validation Errors** (400): Invalid request parameters
 2. **Not Found Errors** (404): Composition not found
-3. **Service Unavailable** (500/503): Backend service issues
-4. **Internal Errors** (500): Unexpected server errors
+3. **Timeout Errors** (408/500): Request timeout after configured limits
+4. **Service Unavailable** (500/503): Backend service issues
+5. **Internal Errors** (500): Unexpected server errors
+
+### Timeout Handling
+
+The API implements different timeout configurations for different operations:
+
+- **Video Composition** (`POST /api/video-compose`): 10 minutes (600s)
+- **Video Download** (`GET /api/video-compose/{id}/download`): 10 minutes (600s)  
+- **Status Check** (`GET /api/video-compose/{id}/status`): 30 seconds
+- **Health Check** (`GET /api/video-compose/health`): 10 seconds
+
+**Timeout Error Response:**
+```json
+{
+  "success": false,
+  "message": "Request timeout - operation exceeded time limit",
+  "data": null
+}
+```
+
+**Frontend Timeout Handling:**
+- All API calls from the frontend include appropriate timeout configurations
+- Timeout errors are logged with detailed context information
+- Users receive clear error messages when timeouts occur
 
 ## Environment Configuration
 
