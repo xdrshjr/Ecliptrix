@@ -28,7 +28,13 @@ export const useVideoExport = ({
   const [exportProgress, setExportProgress] = useState(0);
 
   const handleExport = useCallback(async () => {
-    console.log(`[useVideoExport] 开始导出视频`, {
+    // Calculate actual total duration from clipped video segments
+    let actualTotalDuration = 0;
+    const videoItems: any[] = [];
+    const audioItems: any[] = [];
+    const subtitleItems: any[] = [];
+
+    console.log(`[useVideoExport] 开始导出处理`, {
       totalDuration: timelineState.totalDuration.toFixed(2),
       trackCount: timelineState.tracks.length,
       aspectRatio: aspectRatio || 'default',
@@ -46,22 +52,10 @@ export const useVideoExport = ({
       // Import the video composition API
       const { videoCompositionAPI } = await import('@/lib/api/videoComposition');
       
-      // Extract video items from timeline
-      const videoItems: any[] = [];
-      const audioItems: any[] = [];
-      const subtitleItems: any[] = [];
-
-      console.log(`[useVideoExport] 开始处理轨道内容`, {
-        totalTracks: timelineState.tracks.length,
-        taskId,
-        timestamp: new Date().toISOString()
-      });
-
       // Process each track
       timelineState.tracks.forEach(track => {
         if (!track.isVisible || track.isLocked) {
-          console.log(`[useVideoExport] 跳过轨道 ${track.id} (不可见或已锁定)`, {
-            trackName: track.name,
+          console.log(`[useVideoExport] 跳过轨道 ${track.id}`, {
             isVisible: track.isVisible,
             isLocked: track.isLocked,
             taskId
@@ -78,6 +72,11 @@ export const useVideoExport = ({
               // 这样确保视频合成时后端能够正确下载文件
               const videoUrl = material.serverUrl || material.url;
               
+              // Calculate clipped duration for this video item
+              const clipStart = item.clipStart || 0;
+              const clipEnd = item.clipEnd || (item.originalDuration || item.duration);
+              const clippedDuration = clipEnd - clipStart;
+              
               console.log(`[useVideoExport] 处理视频项目`, {
                 itemId: item.id,
                 itemName: item.name,
@@ -85,36 +84,39 @@ export const useVideoExport = ({
                 serverUrl: material.serverUrl,
                 finalUrl: videoUrl,
                 trackId: track.id,
+                originalDuration: item.originalDuration || item.duration,
+                timelineDuration: item.duration,
+                clipStart: clipStart,
+                clipEnd: clipEnd,
+                clippedDuration: clippedDuration,
                 taskId
               });
+
+              // Add clipped duration to actual total
+              actualTotalDuration += clippedDuration;
 
               videoItems.push({
                 id: item.id,
                 name: item.name,
                 url: videoUrl,
                 start_time: item.startTime,
-                duration: item.duration,
+                duration: item.duration, // Keep timeline duration for positioning
                 track_id: track.id,
                 volume: item.volume || 1.0,
                 opacity: item.opacity || 1.0,
                 // 新增：剪辑信息，用于后端视频裁剪
-                clip_start: item.clipStart || 0,
-                clip_end: item.clipEnd || (item.originalDuration || item.duration)
+                clip_start: clipStart,
+                clip_end: clipEnd,
+                // Add clipped duration for backend reference
+                clipped_duration: clippedDuration
               });
-              console.log(`[useVideoExport] 添加视频项目`, {
+              
+              console.log(`[useVideoExport] 视频项目添加完成`, {
                 itemId: item.id,
-                itemName: item.name,
-                finalUrl: videoUrl,
-                trackId: track.id,
-                startTime: item.startTime.toFixed(2),
-                clipStart: (item.clipStart || 0).toFixed(2),
-                clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
-                clipDuration: ((item.clipEnd || (item.originalDuration || item.duration)) - (item.clipStart || 0)).toFixed(2),
-                timelineDuration: item.duration.toFixed(2),
+                clippedDuration: clippedDuration,
+                runningTotalDuration: actualTotalDuration,
                 taskId
               });
-            } else {
-              console.warn(`[useVideoExport] 未找到素材 ${item.materialId} 对应的URL`, { taskId });
             }
           } else if (item.type === 'audio') {
             // Find the material to get the URL
@@ -186,6 +188,14 @@ export const useVideoExport = ({
         });
       });
 
+      console.log(`[useVideoExport] 实际总时长计算完成`, {
+        originalTotalDuration: timelineState.totalDuration,
+        actualTotalDuration: actualTotalDuration,
+        durationDifference: actualTotalDuration - timelineState.totalDuration,
+        videoItemsCount: videoItems.length,
+        taskId
+      });
+
       // 关键修改：确保前端按照正确的timeline顺序排序，后端就不需要重新排序
       // 按start_time排序所有项目，确保时间轴顺序正确
       videoItems.sort((a, b) => a.start_time - b.start_time);
@@ -231,7 +241,8 @@ export const useVideoExport = ({
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
-        totalDuration: timelineState.totalDuration,
+        originalTimelineDuration: timelineState.totalDuration,
+        actualClippedDuration: actualTotalDuration,
         calculatedTotalDuration: calculatedTotalDuration,
         maxVideoEndTime: maxVideoEndTime,
         maxAudioEndTime: maxAudioEndTime,
@@ -264,7 +275,7 @@ export const useVideoExport = ({
         video_items: videoItems,
         audio_items: audioItems,
         subtitle_items: subtitleItems,
-        total_duration: timelineState.totalDuration,
+        total_duration: actualTotalDuration, // Use actualTotalDuration for composition
         // Only include output_resolution if no aspect_ratio is specified (let backend calculate resolution from aspect ratio)
         ...(aspectRatio ? {} : {
           output_resolution: {
@@ -284,7 +295,7 @@ export const useVideoExport = ({
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
-        totalDuration: timelineState.totalDuration,
+        totalDuration: actualTotalDuration,
         timestamp: new Date().toISOString()
       });
 

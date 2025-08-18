@@ -315,7 +315,31 @@ class VideoCompositionService:
         
         logger.info(f"Starting video composition {composition_id} for task {request.task_id}")
         logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
-        logger.info(f"Total composition duration: {request.total_duration}s")
+        logger.info(f"Frontend provided total duration: {request.total_duration}s")
+        
+        # Calculate actual total duration from clipped video segments
+        actual_total_duration = 0
+        clipped_video_durations = []
+        
+        for i, video_item in enumerate(request.video_items):
+            clip_start = video_item.clip_start if hasattr(video_item, 'clip_start') else 0.0
+            clip_end = video_item.clip_end if hasattr(video_item, 'clip_end') else video_item.duration
+            clipped_duration = clip_end - clip_start
+            
+            clipped_video_durations.append(clipped_duration)
+            actual_total_duration += clipped_duration
+            
+            logger.info(f"Video {i+1} duration calculation: "
+                       f"clip_start={clip_start}s, clip_end={clip_end}s, "
+                       f"clipped_duration={clipped_duration}s")
+        
+        logger.info(f"Duration calculation summary: "
+                   f"frontend_total={request.total_duration}s, "
+                   f"actual_clipped_total={actual_total_duration}s, "
+                   f"difference={actual_total_duration - request.total_duration}s")
+        
+        # Use actual_total_duration for all processing instead of request.total_duration
+        # This ensures the final video and audio match the actual clipped content
         
         # 前端已确保正确的时间轴顺序，后端直接按接收到的顺序处理
         # 记录接收到的项目顺序以便调试
@@ -327,7 +351,8 @@ class VideoCompositionService:
                     "name": item.name,
                     "start_time": item.start_time,
                     "duration": item.duration,
-                    "track_id": item.track_id
+                    "track_id": item.track_id,
+                    "clipped_duration": clipped_video_durations[i] if i < len(clipped_video_durations) else 0
                 }
                 for i, item in enumerate(request.video_items)
             ],
@@ -386,7 +411,8 @@ class VideoCompositionService:
                                    (hasattr(item, 'clip_end') and item.clip_end != item.duration))
                                    
         logger.info(f"裁剪统计: {trimmed_video_count}/{len(request.video_items)} 视频片段被裁剪, "
-                   f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪")
+                   f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪, "
+                   f"将使用实际裁剪总时长: {actual_total_duration}s")
         
         try:
             # Create temporary directory
@@ -553,10 +579,10 @@ class VideoCompositionService:
             if request.audio_items:
                 logger.info("Processing audio tracks...")
                 try:
-                    # Create audio mix from audio items
+                    # Create audio mix from audio items using actual video duration
                     audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
                     
-                    processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path)
+                    processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path, actual_total_duration)
                     
                     if processed_audio_path:
                         logger.info("Adding mixed audio to video...")
@@ -773,7 +799,7 @@ class VideoCompositionService:
                 raise FileNotFoundError(f"Audio file not found: {url}")
             return url
 
-    def _process_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str) -> Optional[str]:
+    def _process_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str, actual_total_duration: float) -> Optional[str]:
         """
         Process multiple audio tracks and create a mixed audio file.
         Returns the path to the mixed audio file, or None if processing failed.
@@ -807,7 +833,7 @@ class VideoCompositionService:
                 logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
                 logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
                 logger.info(f"Audio clipping: start={audio_item.clip_start}s, end={audio_item.clip_end}s")
-                logger.info(f"Total video duration: {request.total_duration}s")
+                logger.info(f"Actual video duration: {actual_total_duration}s (was {request.total_duration}s from frontend)")
                 
                 # Calculate the actual duration we need
                 if audio_item.start_time > 0:
@@ -857,7 +883,7 @@ class VideoCompositionService:
                         '-i', temp_audio_path,
                         '-filter_complex', f'[0:a]atrim=duration={silence_duration}[silence];[silence][1:a]concat=n=2:v=0:a=1[out]',
                         '-map', '[out]',
-                        '-t', str(request.total_duration),
+                        '-t', str(actual_total_duration),
                         audio_mix_path
                     ]
                 else:
@@ -877,7 +903,7 @@ class VideoCompositionService:
                     
                     # 计算实际的音频时长（考虑剪辑）
                     clip_duration = audio_item.clip_end - audio_item.clip_start
-                    actual_duration = min(request.total_duration, clip_duration)
+                    actual_duration = min(actual_total_duration, clip_duration)
                     
                     final_cmd.extend([
                         '-af', f'volume={audio_item.volume}',
@@ -917,14 +943,14 @@ class VideoCompositionService:
                 # Multiple audio items - create complex mix
                 logger.info(f"Mixing {len(request.audio_items)} audio tracks")
                 
-                # Create a silent base track with the total duration
+                # Create a silent base track with the actual total duration
                 base_audio_path = os.path.join(temp_dir, "silent_base.wav")
                 silent_cmd = [
                     ffmpeg_path,
                     '-y',
                     '-f', 'lavfi',
                     '-i', f'anullsrc=r=44100:cl=stereo',
-                    '-t', str(request.total_duration),
+                    '-t', str(actual_total_duration),
                     '-ar', '44100',
                     '-ac', '2',
                     base_audio_path
@@ -946,20 +972,31 @@ class VideoCompositionService:
                         temp_mix_path = os.path.join(temp_dir, f"temp_mix_{i}.wav")
                         
                         logger.info(f"Overlaying audio {i+1}/{len(request.audio_items)}: {audio_item.name}")
+                        logger.info(f"Audio clipping: start={audio_item.clip_start}s, end={audio_item.clip_end}s")
                         
-                        # Create overlay command
+                        # Calculate clipped duration for this audio item
+                        clip_duration = audio_item.clip_end - audio_item.clip_start
+                        
+                        # Create overlay command with clipping support
                         overlay_cmd = [
                             ffmpeg_path,
                             '-y',
                             '-i', current_mix,  # Base mix
+                        ]
+                        
+                        # Add clipping parameters for the audio input
+                        if audio_item.clip_start > 0:
+                            overlay_cmd.extend(['-ss', str(audio_item.clip_start)])
+                        
+                        overlay_cmd.extend([
                             '-i', local_audio_path,  # Audio to overlay
                             '-filter_complex',
-                            f'[1:a]adelay={int(audio_item.start_time * 1000)}|{int(audio_item.start_time * 1000)},volume={audio_item.volume}[delayed];[0:a][delayed]amix=inputs=2:duration=first:dropout_transition=3[out]',
+                            f'[1:a]atrim=duration={clip_duration},adelay={int(audio_item.start_time * 1000)}|{int(audio_item.start_time * 1000)},volume={audio_item.volume}[delayed];[0:a][delayed]amix=inputs=2:duration=first:dropout_transition=3[out]',
                             '-map', '[out]',
                             '-ar', '44100',
                             '-ac', '2',
                             temp_mix_path
-                        ]
+                        ])
                         
                         logger.info(f"Running overlay command: {' '.join(overlay_cmd)}")
                         result = subprocess.run(overlay_cmd, capture_output=True, text=True)
