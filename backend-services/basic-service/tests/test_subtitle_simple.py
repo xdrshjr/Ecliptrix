@@ -108,7 +108,7 @@ def test_font_detection(service):
     logger.info("测试字体检测...")
     
     try:
-        font_path = service._get_font_path()
+        font_path = service._get_font_path("default", "测试中文字符")
         
         if font_path:
             logger.info(f"✅ 找到字体文件: {font_path}")

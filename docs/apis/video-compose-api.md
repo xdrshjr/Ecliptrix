@@ -7,6 +7,7 @@ The Video Compose API provides Next.js API routes that proxy video composition r
 **Key Features:**
 - **Asynchronous Processing**: Video composition runs in background, returns immediately
 - **10-Minute Timeout**: Extended timeout support for complex video processing
+- **Chinese Subtitle Support**: Fixed Ubuntu Chinese subtitle rendering issues (v2024.01)
 - Proxies requests to backend video composition service
 - Comprehensive request validation and error handling
 - Detailed logging for debugging and monitoring
@@ -409,6 +410,101 @@ Video composition is a CPU-intensive operation that can take significant time de
 2. Limit the number of simultaneous tracks
 3. Pre-process videos to consistent formats
 4. Consider breaking long compositions into segments
+
+## Chinese Subtitle Support (Ubuntu Fix)
+
+### Issue Fixed (v2024.01)
+
+Previously, Chinese subtitles would appear as garbled characters (乱码) when composing videos on Ubuntu systems. This was caused by incorrect font priority in the subtitle rendering system.
+
+### Solution Implemented
+
+The subtitle service now includes:
+
+1. **Smart Font Detection**: Automatically detects Chinese characters in subtitle text
+2. **Prioritized Font Selection**: When Chinese characters are detected, Chinese fonts are prioritized:
+   - Noto CJK fonts (primary)
+   - WenQuanYi fonts (secondary)
+   - Source Han fonts (tertiary)
+3. **Enhanced Ubuntu Font Support**: Added comprehensive Chinese font paths for Ubuntu systems
+
+### System Requirements
+
+For optimal Chinese subtitle support on Ubuntu, install recommended fonts:
+
+```bash
+# Install Noto CJK fonts (recommended)
+sudo apt-get install fonts-noto-cjk
+
+# Install WenQuanYi fonts (alternative)
+sudo apt-get install fonts-wqy-microhei fonts-wqy-zenhei
+
+# Install Source Han fonts (optional)
+sudo apt-get install fonts-source-han-sans-cn
+```
+
+### Verification
+
+To verify Chinese font availability:
+
+```bash
+# List all Chinese fonts
+fc-list :lang=zh
+
+# Check specific font
+ls /usr/share/fonts/opentype/noto/NotoSansCJK*
+```
+
+### Testing Chinese Subtitles
+
+Example request with Chinese subtitles:
+
+```json
+{
+  "task_id": "chinese_test_001",
+  "video_items": [...],
+  "subtitle_items": [
+    {
+      "id": "sub_cn_1",
+      "text": "这是中文字幕测试",
+      "start_time": 0.0,
+      "duration": 3.0,
+      "font_size": 24,
+      "font_color": "#FFFFFF",
+      "position": "bottom"
+    },
+    {
+      "id": "sub_mixed_1", 
+      "text": "Mixed 中英文 subtitles",
+      "start_time": 3.0,
+      "duration": 3.0,
+      "font_size": 24,
+      "font_color": "#FFFFFF"
+    }
+  ],
+  "total_duration": 30.0
+}
+```
+
+### Troubleshooting
+
+If Chinese subtitles still appear garbled:
+
+1. **Check system fonts**:
+   ```bash
+   python backend-services/basic-service/test_chinese_subtitle_fix.py
+   ```
+
+2. **Install missing fonts**:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install fonts-noto-cjk fonts-wqy-microhei
+   ```
+
+3. **Check logs** for font selection details:
+   ```bash
+   tail -f backend-services/basic-service/logs/app.log | grep "font"
+   ```
 
 ## Migration from Direct Backend Calls
 
