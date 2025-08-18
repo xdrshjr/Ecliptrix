@@ -342,18 +342,63 @@ export const useVideoExport = ({
 
       // Download completed video
       console.log(`[useVideoExport] 合成完成，开始自动下载...`, { taskId });
-      await videoCompositionAPI.triggerDownload(
-        compositionResponse.composition_id,
-        compositionRequest.task_id,
-        `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
-      );
+      
+      try {
+        await videoCompositionAPI.triggerDownload(
+          compositionResponse.composition_id,
+          compositionRequest.task_id,
+          `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
+        );
+      } catch (downloadError: any) {
+        console.error(`[useVideoExport] 自动下载失败，提供手动下载选项`, { 
+          taskId, 
+          error: downloadError.message 
+        });
+        
+        // 提供手动下载链接
+        const downloadUrl = `/api/video-compose/${compositionResponse.composition_id}/download?task_id=${compositionRequest.task_id}`;
+        const fallbackMessage = `自动下载失败，请点击以下链接手动下载：\n${window.location.origin}${downloadUrl}`;
+        
+        // 复制链接到剪贴板（如果支持）
+        if (navigator.clipboard) {
+          try {
+            await navigator.clipboard.writeText(`${window.location.origin}${downloadUrl}`);
+            alert(`${fallbackMessage}\n\n下载链接已复制到剪贴板！`);
+          } catch {
+            alert(fallbackMessage);
+          }
+        } else {
+          alert(fallbackMessage);
+        }
+        
+        // 尝试在新窗口打开下载链接
+        window.open(downloadUrl, '_blank');
+        
+        // 不抛出错误，因为我们已经提供了备用方案
+        console.log(`[useVideoExport] 已提供手动下载选项`, { taskId, downloadUrl });
+      }
 
       setExportProgress(100); // 完成
       console.log(`[useVideoExport] 视频导出完成`, { taskId });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[useVideoExport] 导出失败`, { error, taskId });
-      alert(`视频导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      
+      // 检查是否是超时错误并提供更友好的错误信息
+      if (error?.name === 'TimeoutError' || error?.message?.includes('timeout')) {
+        console.error(`[useVideoExport] 视频导出超时`, { 
+          taskId, 
+          timeout: '10 minutes',
+          error: error.message 
+        });
+        alert(`视频导出超时：处理时间超过10分钟限制。请尝试以下方法：
+1. 减少视频时长或复杂度
+2. 降低输出分辨率
+3. 减少同时处理的轨道数量
+4. 稍后重试`);
+      } else {
+        alert(`视频导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      }
     } finally {
       // 重置导出状态
       setTimeout(() => {

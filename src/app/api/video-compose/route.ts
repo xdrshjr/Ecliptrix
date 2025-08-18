@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     
     let backendResponse: Response | null = null;
     let retryCount = 0;
-    const maxRetries = 2; // 对于POST请求，减少重试次数
+    const maxRetries = 1; // 对于长时间运行的视频合成，减少重试次数避免重复处理
     
     while (retryCount <= maxRetries) {
       try {
@@ -146,8 +146,8 @@ export async function POST(request: NextRequest) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestData),
-          // 减少超时时间到60秒，但使用重试机制
-          signal: AbortSignal.timeout(60000), // 60秒超时
+          // 设置10分钟超时，适应视频合成的长处理时间
+          signal: AbortSignal.timeout(600000), // 600秒（10分钟）超时
         });
         
         // 如果请求成功，跳出重试循环
@@ -157,13 +157,18 @@ export async function POST(request: NextRequest) {
         retryCount++;
         console.log(`[Video Compose API] Attempt ${retryCount} failed:`, error.message);
         
+        // 检查是否是超时错误
+        if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+          console.error(`[Video Compose API] Request timeout after ${600}s - video composition may require more time`);
+        }
+        
         if (retryCount > maxRetries) {
           console.error(`[Video Compose API] All ${maxRetries + 1} attempts failed`);
           throw error;
         }
         
-        // 等待一段时间后重试
-        const waitTime = 2000 * retryCount; // 2s, 4s
+        // 对于长时间运行的视频合成，增加重试等待时间
+        const waitTime = 5000 * retryCount; // 5s 等待时间
         console.log(`[Video Compose API] Waiting ${waitTime}ms before retry ${retryCount + 1}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }

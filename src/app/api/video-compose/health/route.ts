@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
+      // 设置10秒超时，健康检查应该快速响应
+      signal: AbortSignal.timeout(10000), // 10秒超时
     });
 
     console.log(`[Video Compose Health API] Backend response status: ${backendResponse.status}`);
@@ -58,7 +60,27 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
 
-  } catch (error) {
+  } catch (error: any) {
+    // 检查是否是超时错误并记录详细信息
+    if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+      console.error('[Video Compose Health API] Health check timeout after 10 seconds', {
+        error: error.message
+      });
+      logResponse(false, undefined, `Health check timeout: ${error.message}`);
+      
+      return NextResponse.json(
+        { 
+          service: "video_composition",
+          status: "error",
+          message: 'Health check timeout - service may be overloaded',
+          ffmpeg_available: false,
+          active_compositions: 0,
+          timestamp: new Date().toISOString()
+        },
+        { status: 408 }
+      );
+    }
+    
     console.error('[Video Compose Health API] Request processing error:', error);
     logResponse(false, undefined, String(error));
     
