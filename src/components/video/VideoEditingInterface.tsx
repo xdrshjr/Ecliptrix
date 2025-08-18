@@ -22,7 +22,8 @@ import {
   VideoPlayerPanel,
   VideoSearchModal,
   ContentPolishModal,
-  ScriptGenerationModal
+  ScriptGenerationModal,
+  CreativeBrainstormingModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -46,6 +47,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 脚本生成弹窗状态
   const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(false);
+  
+  // 创意构思弹窗状态
+  const [isCreativeBrainstormingModalOpen, setIsCreativeBrainstormingModalOpen] = useState<boolean>(false);
   
   // 新增：程序化添加素材到时间轴的状态
   const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
@@ -138,6 +142,38 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // 调用脚本生成服务，传入配置
     scriptGeneration.handleGenerateScriptWithConfig(config);
   }, [taskId, documentState.markdownValue.length, scriptGeneration]);
+
+  // 处理创意构思弹窗
+  const handleCreativeBrainstormingClick = useCallback(() => {
+    console.log(`[VideoEditingInterface] 用户点击创意构思按钮`, {
+      taskId,
+      currentContentLength: documentState.markdownValue.length,
+      timestamp: new Date().toISOString()
+    });
+    setIsCreativeBrainstormingModalOpen(true);
+  }, [taskId, documentState.markdownValue.length]);
+
+  const handleCreativeBrainstormingClose = useCallback(() => {
+    console.log(`[VideoEditingInterface] 关闭创意构思弹窗`, {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+    setIsCreativeBrainstormingModalOpen(false);
+  }, [taskId]);
+
+  const handleCreativeBrainstormingExport = useCallback((content: string) => {
+    console.log(`[VideoEditingInterface] 导出创意构思文案`, {
+      taskId,
+      originalLength: documentState.markdownValue.length,
+      exportedLength: content.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 将生成的内容添加到当前文档中
+    const updatedContent = documentState.markdownValue + '\n\n## 创意构思成果\n\n' + content;
+    documentState.handleMarkdownChange(updatedContent);
+    setIsCreativeBrainstormingModalOpen(false);
+  }, [taskId, documentState.markdownValue, documentState.handleMarkdownChange]);
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
@@ -322,6 +358,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             markdownValue={documentState.markdownValue}
             handleMarkdownChange={documentState.handleMarkdownChange}
             taskId={taskId}
+            onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
           />
           
           <AIAssistantPanel
@@ -412,6 +449,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={handleScriptGenerationClose}
         onGenerate={handleScriptGenerate}
         taskId={taskId}
+      />
+
+      <CreativeBrainstormingModal
+        isOpen={isCreativeBrainstormingModalOpen}
+        onClose={handleCreativeBrainstormingClose}
+        onExportContent={handleCreativeBrainstormingExport}
+        taskId={taskId}
+        currentContent={documentState.markdownValue}
       />
     </div>
   );
