@@ -20,6 +20,8 @@ interface TimelinePanelProps {
   materials?: MaterialItem[];
   // 新增：时间轴组合回调
   onTimelineCompositionChange?: (timelineState: TimelineState) => void;
+  // 新增：程序化添加素材到时间轴的回调（外部传入要添加的素材）
+  materialsToAdd?: { materials: MaterialItem[], targetTrackId?: string, timestamp: number };
   // 国际化支持
   locale?: SupportedLocale;
 }
@@ -31,6 +33,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onCurrentTimeChange,
   materials = [],
   onTimelineCompositionChange,
+  materialsToAdd,
   locale = defaultLocale
 }) => {
   // 创建初始空轨道状态
@@ -267,13 +270,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       const newTotalDuration = Math.max(prev.totalDuration, maxItemEndTime);
       
       console.log(`[TimelinePanel] 总时长计算`, {
-        previousTotalDuration: prev.totalDuration,
-        newItemEndTime: startTime + duration,
-        allItemEndTimes: allItemEndTimes,
-        maxItemEndTime: maxItemEndTime,
-        newTotalDuration: newTotalDuration,
-        materialName: material.name,
-        timestamp: new Date().toISOString()
+        previousDuration: prev.totalDuration.toFixed(2),
+        newDuration: newTotalDuration.toFixed(2),
+        maxItemEndTime: maxItemEndTime.toFixed(2)
       });
 
       return {
@@ -290,6 +289,49 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       timestamp: new Date()
     });
   }, []);
+
+  // 程序化添加多个素材到时间轴
+  const handleAddMaterialsToTimeline = useCallback((materials: MaterialItem[], targetTrackId?: string) => {
+    console.log(`[TimelinePanel] 程序化添加素材到时间轴`, {
+      materialsCount: materials.length,
+      targetTrackId,
+      materials: materials.map(m => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        duration: m.duration,
+        segmentNumber: m.metadata?.segment_number
+      })),
+      timestamp: new Date().toISOString()
+    });
+
+    // 逐个添加素材，确保按顺序添加到轨道末尾
+    materials.forEach((material, index) => {
+      console.log(`[TimelinePanel] 添加第${index + 1}/${materials.length}个素材`, {
+        materialId: material.id,
+        materialName: material.name,
+        segmentNumber: material.metadata?.segment_number
+      });
+      
+      // 使用setTimeout确保每个素材按顺序处理
+      setTimeout(() => {
+        handleMaterialDrop(material, targetTrackId);
+      }, index * 10); // 10ms间隔确保顺序执行
+    });
+  }, [handleMaterialDrop]);
+
+  // 监听外部传入的素材添加请求
+  React.useEffect(() => {
+    if (materialsToAdd && materialsToAdd.materials.length > 0) {
+      console.log(`[TimelinePanel] 接收到外部素材添加请求`, {
+        materialsCount: materialsToAdd.materials.length,
+        targetTrackId: materialsToAdd.targetTrackId,
+        timestamp: materialsToAdd.timestamp
+      });
+      
+      handleAddMaterialsToTimeline(materialsToAdd.materials, materialsToAdd.targetTrackId);
+    }
+  }, [materialsToAdd, handleAddMaterialsToTimeline]);
 
   // 历史记录管理
   const addToHistory = useCallback((action: TimelineAction) => {
