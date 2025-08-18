@@ -209,12 +209,43 @@ class SubtitleService:
         
         return wrapped_lines
     
-    def _get_font_path(self, font_family: str = "default") -> Optional[str]:
+    def _contains_chinese(self, text: str) -> bool:
+        """
+        Check if text contains Chinese characters.
+        
+        Args:
+            text: Text to check
+            
+        Returns:
+            True if text contains Chinese characters, False otherwise
+        """
+        chinese_ranges = [
+            (0x4e00, 0x9fff),   # CJK Unified Ideographs
+            (0x3400, 0x4dbf),   # CJK Extension A
+            (0x20000, 0x2a6df), # CJK Extension B
+            (0x2a700, 0x2b73f), # CJK Extension C
+            (0x2b740, 0x2b81f), # CJK Extension D
+            (0x2b820, 0x2ceaf), # CJK Extension E
+            (0x2ceb0, 0x2ebef), # CJK Extension F
+            (0xf900, 0xfaff),   # CJK Compatibility Ideographs
+            (0x2f800, 0x2fa1f), # CJK Compatibility Supplement
+        ]
+        
+        for char in text:
+            char_code = ord(char)
+            for start, end in chinese_ranges:
+                if start <= char_code <= end:
+                    return True
+        return False
+
+    def _get_font_path(self, font_family: str = "default", text_content: str = "") -> Optional[str]:
         """
         Get available font path for the specified font family with cross-platform support.
+        Prioritizes Chinese fonts when Chinese characters are detected.
         
         Args:
             font_family: Font family type (default, serif, sans-serif, monospace)
+            text_content: Text content to analyze for Chinese characters
             
         Returns:
             Font file path or None if no suitable font found
@@ -222,6 +253,9 @@ class SubtitleService:
         import platform
         
         system = platform.system().lower()
+        has_chinese = self._contains_chinese(text_content) if text_content else False
+        
+        logger.info(f"Getting font path for system: {system}, family: {font_family}, has_chinese: {has_chinese}")
         
         # Font paths by system and font family
         font_paths_map = {}
@@ -273,46 +307,86 @@ class SubtitleService:
                     "/System/Library/Fonts/Courier New.ttf",
                 ]
             }
-        else:  # Linux (Ubuntu)
+        else:  # Linux (Ubuntu) - 修复中文字幕乱码问题
+            # 为Ubuntu系统优化字体配置，中文字体优先
+            chinese_fonts = [
+                # Noto CJK 字体 - 最佳中文支持
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansCJK.ttc",
+                # 文泉驿字体 - 常见的开源中文字体
+                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                # 思源字体
+                "/usr/share/fonts/opentype/source-han-sans/SourceHanSansCN-Regular.otf",
+                "/usr/share/fonts/truetype/source-han-sans/SourceHanSansCN-Regular.ttf",
+                # AR PL 字体
+                "/usr/share/fonts/truetype/arphic/uming.ttc",
+                "/usr/share/fonts/truetype/arphic/ukai.ttc",
+                # Droid 字体
+                "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+            ]
+            
+            latin_fonts = [
+                # 拉丁字体 - 不支持中文
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+            ]
+            
+            # 根据是否包含中文决定字体优先级
+            if has_chinese:
+                default_fonts = chinese_fonts + latin_fonts
+                logger.info("Chinese characters detected, prioritizing Chinese fonts")
+            else:
+                default_fonts = latin_fonts + chinese_fonts
+                logger.info("No Chinese characters detected, using standard font priority")
+            
             font_paths_map = {
-                "default": [
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",  # For Chinese support
-                    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                ],
+                "default": default_fonts,
                 "serif": [
+                    # 中文衬线字体
+                    "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
+                    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+                    "/usr/share/fonts/truetype/arphic/uming.ttc",
+                    # 拉丁衬线字体
                     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
                     "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-                    "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
                 ],
-                "sans-serif": [
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                ],
+                "sans-serif": default_fonts,  # 与default相同
                 "monospace": [
+                    # 中文等宽字体
+                    "/usr/share/fonts/truetype/noto/NotoSansMonoCJK-Regular.ttc",
+                    "/usr/share/fonts/opentype/noto/NotoSansMonoCJK-Regular.ttc",
+                    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                    # 拉丁等宽字体
                     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
                     "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-                    "/usr/share/fonts/truetype/noto/NotoSansMonoCJK-Regular.ttc",
+                    "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
                 ]
             }
         
         # Get font paths for the requested family, fallback to default
         font_paths = font_paths_map.get(font_family, font_paths_map.get("default", []))
         
-        # Check which fonts exist
-        for font_path in font_paths:
+        # Check which fonts exist and log the search process
+        logger.info(f"Searching for {font_family} fonts, checking {len(font_paths)} font paths")
+        for i, font_path in enumerate(font_paths):
             if os.path.exists(font_path):
-                logger.info(f"Using {font_family} font: {font_path}")
+                logger.info(f"Found suitable font (#{i+1}): {font_path}")
                 return font_path
+            else:
+                logger.debug(f"Font not found (#{i+1}): {font_path}")
         
         # If no specific font found, try default fonts
         if font_family != "default":
             logger.warning(f"No {font_family} font found, trying default fonts")
-            return self._get_font_path("default")
+            return self._get_font_path("default", text_content)
         
-        logger.warning("No suitable font found, using system default")
+        logger.error("No suitable font found on the system! This will cause subtitle rendering issues.")
+        logger.error("Please install Chinese fonts for proper subtitle support:")
+        logger.error("  Ubuntu: sudo apt-get install fonts-noto-cjk fonts-wqy-microhei")
         return None
     
     def _convert_time_to_seconds(self, time_str: str) -> float:
@@ -399,8 +473,8 @@ class SubtitleService:
             # Build drawtext filter with font support
             drawtext_filter = f"drawtext=text='{text_content}'"
             
-            # Add font file if available
-            font_path = self._get_font_path(getattr(request, 'font_family', 'default'))
+            # Add font file if available - pass text content for Chinese character detection
+            font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
             if font_path:
                 # Escape backslashes for ffmpeg
                 escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
