@@ -427,25 +427,7 @@ async def batch_transcribe_audio(
                 "exception_type": type(e).__name__,
                 "exception_message": str(e)
             }
-        ) 
-
-"""
-Audio search router for handling audio-related API endpoints.
-"""
-
-from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import JSONResponse
-
-from app.models.audio_search_models import AudioSearchRequest, AudioSearchResponse
-from app.services.audio_search_service import AudioSearchService
-from app.logger import get_logger
-
-# Initialize router and logger
-router = APIRouter(prefix="/audio", tags=["audio"])
-logger = get_logger(__name__)
-
-# Initialize services
-audio_search_service = AudioSearchService()
+        )
 
 
 @router.post("/search", response_model=AudioSearchResponse)
