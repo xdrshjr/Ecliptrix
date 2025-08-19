@@ -60,6 +60,12 @@ from .audio_models import (
     BatchAudioTranscriptionErrorResponse
 )
 
+from .audio_search_models import (
+    AudioSearchRequest,
+    AudioInfo,
+    AudioSearchResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -103,5 +109,10 @@ __all__ = [
     "BatchAudioTranscriptionRequest",
     "AudioItemTranscription",
     "BatchAudioTranscriptionResponse",
-    "BatchAudioTranscriptionErrorResponse"
+    "BatchAudioTranscriptionErrorResponse",
+    
+    # Audio Search Models
+    "AudioSearchRequest",
+    "AudioInfo",
+    "AudioSearchResponse"
 ] 

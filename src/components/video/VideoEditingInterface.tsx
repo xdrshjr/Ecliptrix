@@ -12,6 +12,7 @@ import {
   useScriptGeneration,
   useMaterialManagement,
   useVideoSearch,
+  useAudioSearch,
   useTimelineComposition
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
@@ -21,6 +22,7 @@ import {
   MaterialsPanel,
   VideoPlayerPanel,
   VideoSearchModal,
+  AudioSearchModal,
   ContentPolishModal,
   ScriptGenerationModal,
   CreativeBrainstormingModal
@@ -75,6 +77,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
   const materialManagement = useMaterialManagement(taskId);
   const videoSearch = useVideoSearch(taskId, materialManagement.addMaterials);
+  const audioSearch = useAudioSearch(taskId, materialManagement.addMaterials);
   
   // 添加时间轴组合播放功能
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
@@ -394,6 +397,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               <MaterialsPanel
                 {...materialManagement}
                 onSearchVideos={videoSearch.openSearchModal}
+                onSearchAudios={audioSearch.openSearchModal}
                 onAutoMixAudio={handleAutoMixAudio}
                 taskId={taskId}
               />
@@ -433,6 +437,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <VideoSearchModal
         {...videoSearch}
+        taskId={taskId}
+      />
+
+      <AudioSearchModal
+        {...audioSearch}
         taskId={taskId}
       />
       
