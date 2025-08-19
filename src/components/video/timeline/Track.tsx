@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Track as TrackType, TimelineItem as TimelineItemType, MaterialItem } from '@/types';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import TimelineItem from './TimelineItem';
+import VolumeSlider from './VolumeSlider';
 
 interface TrackProps {
   track: TrackType;
@@ -17,6 +18,7 @@ interface TrackProps {
   onToggleMute: (trackId: string) => void;
   onToggleLock: (trackId: string) => void;
   onToggleVisibility: (trackId: string) => void;
+  onVolumeChange: (trackId: string, volume: number) => void;
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
   totalDuration: number;
   locale?: SupportedLocale;
@@ -34,11 +36,13 @@ const Track: React.FC<TrackProps> = ({
   onToggleMute,
   onToggleLock,
   onToggleVisibility,
+  onVolumeChange,
   onMaterialDrop,
   totalDuration,
   locale = defaultLocale
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   
   // 获取国际化翻译
   const t = getTranslations(locale);
@@ -180,14 +184,27 @@ const Track: React.FC<TrackProps> = ({
   };
 
   // 处理轨道控制按钮点击
-  const handleMuteClick = () => {
-    console.log(`[Track] 切换轨道静音状态`, {
+  const handleVolumeClick = () => {
+    console.log(`[Track] 打开音量控制`, {
       trackId: track.id,
-      currentMuted: track.isMuted,
-      newMuted: !track.isMuted,
+      currentVolume: track.volume,
       timestamp: new Date().toISOString()
     });
-    onToggleMute(track.id);
+    setShowVolumeSlider(!showVolumeSlider);
+  };
+
+  const handleVolumeChange = (volume: number) => {
+    console.log(`[Track] 调整轨道音量`, {
+      trackId: track.id,
+      oldVolume: track.volume,
+      newVolume: volume,
+      timestamp: new Date().toISOString()
+    });
+    onVolumeChange(track.id, volume);
+  };
+
+  const handleVolumeSliderClose = () => {
+    setShowVolumeSlider(false);
   };
 
   const handleLockClick = () => {
@@ -232,17 +249,17 @@ const Track: React.FC<TrackProps> = ({
             {track.type === 'audio' && (
               <div className="relative group">
                 <button
-                  onClick={handleMuteClick}
+                  onClick={handleVolumeClick}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                    track.isMuted 
-                      ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                    showVolumeSlider 
+                      ? 'bg-gray-200 text-gray-600 hover:bg-gray-300' 
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
-                  aria-label={track.isMuted ? t.timeline.track.unmute : t.timeline.track.mute}
+                  aria-label={showVolumeSlider ? '关闭音量控制' : '打开音量控制'}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                    {track.isMuted ? (
-                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                    {showVolumeSlider ? (
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
                     ) : (
                       <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
                     )}
@@ -251,13 +268,21 @@ const Track: React.FC<TrackProps> = ({
                   {/* 悬停提示 */}
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                     <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
-                      {track.isMuted ? t.timeline.track.unmute : t.timeline.track.mute}
+                      {showVolumeSlider ? '关闭音量控制' : '打开音量控制'}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
                       </div>
                     </div>
                   </div>
                 </button>
+                
+                {/* 音量控制滑块 */}
+                <VolumeSlider
+                  volume={track.volume}
+                  onVolumeChange={handleVolumeChange}
+                  isVisible={showVolumeSlider}
+                  onClose={handleVolumeSliderClose}
+                />
               </div>
             )}
 

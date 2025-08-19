@@ -47,6 +47,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 100, // 视频轨道默认音量100%
         order: 0,
         items: []
       },
@@ -58,6 +59,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 100, // 视频轨道默认音量100%
         order: 1,
         items: []
       },
@@ -69,6 +71,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 200, // 音频轨道1默认音量200%
         order: 2,
         items: []
       },
@@ -80,6 +83,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 10, // 音频轨道2默认音量10%
         order: 3,
         items: []
       },
@@ -91,6 +95,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 100, // 字幕轨道不使用音量，但保持一致性
         order: 4,
         items: []
       }
@@ -879,6 +884,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }));
   }, []);
 
+  const handleTrackVolumeChange = useCallback((trackId: string, volume: number) => {
+    console.log(`[TimelinePanel] 调整轨道音量`, { 
+      trackId, 
+      volume, 
+      timestamp: new Date().toISOString() 
+    });
+    
+    setTimelineState(prev => ({
+      ...prev,
+      tracks: prev.tracks.map(track => 
+        track.id === trackId ? { ...track, volume } : track
+      )
+    }));
+  }, []);
+
   const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
     const trackId = `${type}-track-${Date.now()}`;
     // 使用国际化轨道名称
@@ -904,6 +924,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       isLocked: false,
       isMuted: false,
       isVisible: true,
+      volume: type === 'audio' ? 100 : 100, // 音频轨道默认100%音量，其他轨道也设为100保持一致性
       order: timelineState.tracks.length,
       items: []
     };
@@ -1346,6 +1367,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onToggleTrackMute={handleToggleTrackMute}
         onToggleTrackLock={handleToggleTrackLock}
         onToggleTrackVisibility={handleToggleTrackVisibility}
+        onTrackVolumeChange={handleTrackVolumeChange}
         onAddTrack={handleAddTrack}
         onRemoveTrack={handleRemoveTrack}
         onReorderTracks={handleReorderTracks}
