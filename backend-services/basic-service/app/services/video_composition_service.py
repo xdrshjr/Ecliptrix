@@ -940,94 +940,154 @@ class VideoCompositionService:
                         return None
                     
             else:
-                # Multiple audio items - create complex mix
-                logger.info(f"Mixing {len(request.audio_items)} audio tracks")
+                # Multiple audio items - create proper parallel mix
+                logger.info(f"Mixing {len(request.audio_items)} audio tracks with independent volume control")
                 
-                # Create a silent base track with the actual total duration
-                base_audio_path = os.path.join(temp_dir, "silent_base.wav")
-                silent_cmd = [
-                    ffmpeg_path,
-                    '-y',
-                    '-f', 'lavfi',
-                    '-i', f'anullsrc=r=44100:cl=stereo',
-                    '-t', str(actual_total_duration),
-                    '-ar', '44100',
-                    '-ac', '2',
-                    base_audio_path
-                ]
-                
-                logger.info(f"Creating silent base track: {' '.join(silent_cmd)}")
-                result = subprocess.run(silent_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    logger.error(f"Failed to create silent base track: {result.stderr}")
-                    return None
-                
-                # Process each audio item and overlay on the base
-                current_mix = base_audio_path
-                
+                # Pre-process each audio item individually to apply volume and clipping
+                processed_audio_paths = []
                 for i, audio_item in enumerate(request.audio_items):
                     try:
                         local_audio_path = self._convert_url_to_local_path(audio_item.url)
-                        temp_mix_path = os.path.join(temp_dir, f"temp_mix_{i}.wav")
+                        processed_path = os.path.join(temp_dir, f"processed_audio_{i}.wav")
                         
-                        logger.info(f"Overlaying audio {i+1}/{len(request.audio_items)}: {audio_item.name}")
-                        logger.info(f"Audio clipping: start={audio_item.clip_start}s, end={audio_item.clip_end}s")
+                        logger.info(f"Pre-processing audio {i+1}/{len(request.audio_items)}: {audio_item.name}", {
+                            'volume': audio_item.volume,
+                            'start_time': audio_item.start_time,
+                            'clip_start': audio_item.clip_start,
+                            'clip_end': audio_item.clip_end,
+                            'track_id': audio_item.track_id
+                        })
                         
                         # Calculate clipped duration for this audio item
                         clip_duration = audio_item.clip_end - audio_item.clip_start
                         
-                        # Create overlay command with clipping support
-                        overlay_cmd = [
+                        # Pre-process this audio item with volume and clipping
+                        process_cmd = [
                             ffmpeg_path,
-                            '-y',
-                            '-i', current_mix,  # Base mix
+                            '-y'
                         ]
                         
                         # Add clipping parameters for the audio input
                         if audio_item.clip_start > 0:
-                            overlay_cmd.extend(['-ss', str(audio_item.clip_start)])
+                            process_cmd.extend(['-ss', str(audio_item.clip_start)])
                         
-                        overlay_cmd.extend([
-                            '-i', local_audio_path,  # Audio to overlay
-                            '-filter_complex',
-                            f'[1:a]atrim=duration={clip_duration},adelay={int(audio_item.start_time * 1000)}|{int(audio_item.start_time * 1000)},volume={audio_item.volume}[delayed];[0:a][delayed]amix=inputs=2:duration=first:dropout_transition=3[out]',
-                            '-map', '[out]',
+                        process_cmd.extend([
+                            '-i', local_audio_path,
+                            '-af', f'volume={audio_item.volume}',
+                            '-t', str(clip_duration),
                             '-ar', '44100',
                             '-ac', '2',
-                            temp_mix_path
+                            processed_path
                         ])
                         
-                        logger.info(f"Running overlay command: {' '.join(overlay_cmd)}")
-                        result = subprocess.run(overlay_cmd, capture_output=True, text=True)
+                        logger.info(f"Pre-processing audio command: {' '.join(process_cmd)}")
+                        result = subprocess.run(process_cmd, capture_output=True, text=True)
                         
                         if result.returncode != 0:
-                            logger.error(f"Audio overlay failed for item {i+1}", {
-                                'command': ' '.join(overlay_cmd),
+                            logger.error(f"Audio pre-processing failed for item {i+1}", {
+                                'command': ' '.join(process_cmd),
                                 'stderr': result.stderr,
                                 'audio_item': audio_item.name
                             })
                             continue
                         
-                        # Update current mix to the new temp file
-                        if current_mix != base_audio_path and os.path.exists(current_mix):
-                            os.remove(current_mix)
-                        current_mix = temp_mix_path
+                        processed_audio_paths.append({
+                            'path': processed_path,
+                            'start_time': audio_item.start_time,
+                            'name': audio_item.name,
+                            'track_id': audio_item.track_id
+                        })
                         
-                        logger.info(f"Successfully overlaid audio: {audio_item.name}")
+                        logger.info(f"Successfully pre-processed audio: {audio_item.name}")
                         
                     except Exception as e:
-                        logger.error(f"Failed to process audio item {audio_item.name}: {str(e)}")
+                        logger.error(f"Failed to pre-process audio item {audio_item.name}: {str(e)}")
                         continue
                 
-                # Move final mix to output path
-                if current_mix != base_audio_path:
-                    os.rename(current_mix, audio_mix_path)
-                    logger.info("Audio mixing completed successfully")
-                    return audio_mix_path
-                else:
-                    logger.warning("No audio tracks were successfully processed")
+                if not processed_audio_paths:
+                    logger.error("No audio tracks were successfully pre-processed")
                     return None
+                
+                # Now create the final mix using all processed audio files
+                logger.info(f"Creating final mix with {len(processed_audio_paths)} processed audio tracks")
+                
+                # Log detailed timing information for debugging
+                for i, audio_info in enumerate(processed_audio_paths):
+                    logger.info(f"Audio track {i+1} timing details", {
+                        'name': audio_info['name'],
+                        'start_time': audio_info['start_time'],
+                        'track_id': audio_info['track_id'],
+                        'processed_path': audio_info['path']
+                    })
+                
+                logger.info(f"Total video duration for audio mixing: {actual_total_duration}s")
+                
+                # Build the complex FFmpeg command for mixing
+                mix_cmd = [ffmpeg_path, '-y']
+                
+                # Add all processed audio inputs
+                for audio_info in processed_audio_paths:
+                    mix_cmd.extend(['-i', audio_info['path']])
+                
+                # Build the filter complex for proper mixing with timing
+                filter_parts = []
+                for i, audio_info in enumerate(processed_audio_paths):
+                    delay_ms = int(audio_info['start_time'] * 1000)
+                    if delay_ms > 0:
+                        # Use adelay to position audio at correct time, and apad to ensure it doesn't get cut off
+                        filter_parts.append(f'[{i}:a]adelay={delay_ms}|{delay_ms},apad=pad_dur={actual_total_duration}[delayed{i}]')
+                    else:
+                        # For audio starting at 0, still add padding to ensure full duration
+                        filter_parts.append(f'[{i}:a]apad=pad_dur={actual_total_duration}[delayed{i}]')
+                
+                # Create the mix filter with longest duration to ensure all audio is preserved
+                input_labels = [f'[delayed{i}]' for i in range(len(processed_audio_paths))]
+                mix_filter = f"{';'.join(filter_parts)};{' '.join(input_labels)}amix=inputs={len(processed_audio_paths)}:duration=longest:dropout_transition=3,atrim=duration={actual_total_duration}[out]"
+                
+                mix_cmd.extend([
+                    '-filter_complex', mix_filter,
+                    '-map', '[out]',
+                    '-t', str(actual_total_duration),
+                    '-ar', '44100',
+                    '-ac', '2',
+                    audio_mix_path
+                ])
+                
+                logger.info(f"Running final mix command: {' '.join(mix_cmd)}")
+                logger.info(f"Filter complex: {mix_filter}")
+                
+                result = subprocess.run(mix_cmd, capture_output=True, text=True)
+                
+                logger.info(f"Audio mixing result: returncode={result.returncode}")
+                if result.stdout:
+                    logger.info(f"Audio mixing stdout: {result.stdout}")
+                if result.stderr:
+                    logger.info(f"Audio mixing stderr: {result.stderr}")
+                
+                # Clean up processed audio files
+                for audio_info in processed_audio_paths:
+                    try:
+                        if os.path.exists(audio_info['path']):
+                            os.remove(audio_info['path'])
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up processed audio file {audio_info['path']}: {str(e)}")
+                
+                if result.returncode != 0:
+                    logger.error(f"Audio mixing failed", {
+                        'command': ' '.join(mix_cmd),
+                        'stderr': result.stderr,
+                        'stdout': result.stdout
+                    })
+                    return None
+                else:
+                    # Verify the output file
+                    if os.path.exists(audio_mix_path):
+                        audio_size = os.path.getsize(audio_mix_path)
+                        logger.info(f"Audio mixing completed successfully, output size: {audio_size} bytes")
+                        return audio_mix_path
+                    else:
+                        logger.error("Audio mixing completed but output file not found")
+                        return None
                     
         except Exception as e:
             logger.error(f"Audio processing failed with exception: {str(e)}")
