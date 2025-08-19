@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { UseAudioSearchReturn } from '../../types';
+import AudioPlayer from './AudioPlayer';
 import { VideoEditingLogger } from '../../utils/logger';
 
 interface AudioSearchModalProps extends UseAudioSearchReturn {
@@ -103,57 +104,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
     }
   };
 
-  const handleAudioPlay = async (audio: any, index: number) => {
-    try {
-      // 停止当前播放的音频
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-
-      if (playingAudioId === audio.id) {
-        // 如果点击的是当前播放的音频，则停止播放
-        setPlayingAudioId(null);
-        logger.userAction('停止音频播放', 'audioStop', {
-          audioId: audio.id,
-          audioName: audio.name
-        });
-        return;
-      }
-
-      // 播放新音频
-      const audioElement = new Audio(audio.preview_url);
-      audioRef.current = audioElement;
-      setPlayingAudioId(audio.id);
-
-      audioElement.onended = () => {
-        setPlayingAudioId(null);
-      };
-
-      audioElement.onerror = () => {
-        setPlayingAudioId(null);
-        logger.error('音频播放失败', new Error('Audio playback failed'), {
-          audioId: audio.id,
-          previewUrl: audio.preview_url
-        });
-      };
-
-      await audioElement.play();
-      
-      logger.userAction('开始音频播放', 'audioPlay', {
-        audioId: audio.id,
-        audioName: audio.name,
-        duration: audio.duration,
-        previewUrl: audio.preview_url
-      });
-
-    } catch (error) {
-      setPlayingAudioId(null);
-      logger.error('音频播放异常', error as Error, {
-        audioId: audio.id,
-        audioName: audio.name
-      });
-    }
-  };
+  // 音频播放现在由AudioPlayer组件处理
 
   const formatDuration = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -293,68 +244,112 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
               )}
             </div>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-3 max-h-96 overflow-y-auto">
               {searchResults.map((audio, index) => (
                 <div
                   key={audio.id}
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                  className={`p-4 border rounded-lg transition-colors ${
                     selectedResults.has(index)
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
-                  onClick={() => handleSearchResultSelect(index)}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <h4 className="font-medium text-gray-900 truncate">{audio.name}</h4>
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                          {audio.license}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{audio.username}</p>
-                      <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                        <span>{formatDuration(audio.duration)}</span>
-                        {audio.filesize && <span>{formatFileSize(audio.filesize)}</span>}
-                        {audio.type && <span>{audio.type.toUpperCase()}</span>}
-                        {audio.channels && <span>{audio.channels} 声道</span>}
-                      </div>
-                      {audio.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {audio.tags.slice(0, 5).map((tag, tagIndex) => (
-                            <span
-                              key={tagIndex}
-                              className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {audio.tags.length > 5 && (
-                            <span className="text-xs text-gray-500">+{audio.tags.length - 5}</span>
-                          )}
+                  {/* 音频基本信息 */}
+                  <div 
+                    className="cursor-pointer"
+                    onClick={() => handleSearchResultSelect(index)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0 pr-4">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h4 className="font-medium text-gray-900 truncate max-w-full" title={audio.name}>
+                            {audio.name}
+                          </h4>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded flex-shrink-0">
+                            {audio.license}
+                          </span>
                         </div>
-                      )}
+                        <p className="text-sm text-gray-600 truncate" title={audio.username}>
+                          by {audio.username}
+                        </p>
+                        <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
+                          <span>{formatDuration(audio.duration)}</span>
+                          {audio.filesize && <span>{formatFileSize(audio.filesize)}</span>}
+                          {audio.type && <span>{audio.type.toUpperCase()}</span>}
+                          {audio.channels && <span>{audio.channels} 声道</span>}
+                        </div>
+                        {audio.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2 max-w-full">
+                            {audio.tags.slice(0, 4).map((tag, tagIndex) => (
+                              <span
+                                key={tagIndex}
+                                className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded truncate max-w-20"
+                                title={tag}
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {audio.tags.length > 4 && (
+                              <span className="text-xs text-gray-500 px-2 py-1">
+                                +{audio.tags.length - 4}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* 选择状态指示器 */}
+                      <div className="flex-shrink-0">
+                        {selectedResults.has(index) && (
+                          <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    
-                    {/* 播放按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAudioPlay(audio, index);
+                  </div>
+
+                  {/* 音频播放器 */}
+                  <div className="border-t border-gray-100 pt-3">
+                    <AudioPlayer
+                      audioUrl={audio.preview_url}
+                      audioId={audio.id}
+                      audioName={audio.name}
+                      duration={audio.duration}
+                      taskId={taskId}
+                      isPlaying={playingAudioId === audio.id}
+                      onPlayStateChange={(isPlaying) => {
+                        if (isPlaying) {
+                          // 停止其他音频播放
+                          if (audioRef.current && playingAudioId !== null && playingAudioId !== audio.id) {
+                            audioRef.current.pause();
+                          }
+                          setPlayingAudioId(audio.id);
+                          logger.userAction('开始播放音频', 'audioPlay', {
+                            audioId: audio.id,
+                            audioName: audio.name,
+                            duration: audio.duration,
+                            previewUrl: audio.preview_url
+                          });
+                        } else {
+                          setPlayingAudioId(null);
+                          logger.userAction('停止播放音频', 'audioStop', {
+                            audioId: audio.id,
+                            audioName: audio.name
+                          });
+                        }
                       }}
-                      className="ml-2 p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                      title="播放预览"
-                    >
-                      {playingAudioId === audio.id ? (
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z"/>
-                        </svg>
-                      )}
-                    </button>
+                      onError={(error) => {
+                        setPlayingAudioId(null);
+                        logger.error('音频播放失败', error, {
+                          audioId: audio.id,
+                          audioName: audio.name,
+                          previewUrl: audio.preview_url
+                        });
+                      }}
+                    />
                   </div>
                 </div>
               ))}
