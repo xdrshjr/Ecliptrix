@@ -5,6 +5,7 @@ import { UseMaterialManagementReturn } from '../../types';
 import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import localAudioManager from '@/lib/utils/localAudioManager';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -23,7 +24,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onSearchVideos,
   onAutoMixAudio, // 新增：AI自动混剪回调
   taskId,
-  className = ''
+  className = '',
+  // 新增的删除功能
+  handleMaterialDelete,
+  handleDeleteAllMaterials,
+  confirmationDialog,
+  handleCloseConfirmationDialog
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
@@ -96,6 +102,31 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
     
     onSearchVideos();
+  };
+
+  // 处理删除全部按钮点击
+  const handleDeleteAllClick = () => {
+    logger.info('用户点击删除全部按钮', {
+      selectedMaterialType,
+      materialsCount: materials.length,
+      filteredMaterialsCount: materials.length
+    });
+    
+    handleDeleteAllMaterials();
+  };
+
+  // 处理单个素材删除按钮点击
+  const handleSingleMaterialDelete = (material: MaterialItem, e: React.MouseEvent) => {
+    // 阻止事件冒泡，避免触发素材点击事件
+    e.stopPropagation();
+    
+    logger.info('用户点击单个素材删除按钮', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type
+    });
+    
+    handleMaterialDelete([material.id]);
   };
 
   // 拖拽开始处理
@@ -535,6 +566,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </span>
                     </div>
                     
+                    {/* 删除按钮 - 右上角 */}
+                    <div className="absolute top-1 right-1">
+                      <button
+                        onClick={(e) => handleSingleMaterialDelete(material, e)}
+                        className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
+                        title={`删除素材: ${material.name}`}
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    
                     {/* 时长显示 */}
                     {material.duration && (
                       <div className="absolute bottom-1 right-1">
@@ -544,8 +588,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </div>
                     )}
 
-                    {/* 拖拽指示器 */}
-                    <div className="absolute top-1 right-1">
+                    {/* 拖拽指示器 - 移到左下角 */}
+                    <div className="absolute bottom-1 left-1">
                       <div className="w-4 h-4 bg-white bg-opacity-80 rounded flex items-center justify-center">
                         <svg className="w-3 h-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -584,6 +628,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 </svg>
                 <span>搜索视频</span>
               </button>
+              
+              {/* 新增：删除全部按钮 */}
+              {materials.length > 0 && (
+                <button
+                  onClick={handleDeleteAllClick}
+                  className="flex items-center space-x-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded transition-colors"
+                  title={`删除当前选项卡的所有素材 (${materials.length}个)`}
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>删除全部</span>
+                </button>
+              )}
             </div>
             <div className="text-gray-500">
               {materials.length}个素材
@@ -591,6 +649,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           </div>
         </div>
       </div>
+      
+      {/* 确认删除对话框 */}
+      <ConfirmationDialog
+        isOpen={confirmationDialog.isOpen}
+        title={confirmationDialog.title}
+        message={confirmationDialog.message}
+        type={confirmationDialog.type}
+        onConfirm={confirmationDialog.onConfirm}
+        onCancel={handleCloseConfirmationDialog}
+      />
     </div>
   );
 };

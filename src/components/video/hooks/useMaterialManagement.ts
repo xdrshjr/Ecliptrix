@@ -4,6 +4,15 @@ import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import localVideoManager from '@/lib/utils/localVideoManager';
 
+// 确认对话框状态接口
+interface ConfirmationDialogState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  type: 'danger' | 'warning' | 'info';
+}
+
 /**
  * useMaterialManagement Hook
  * 管理素材库操作
@@ -24,6 +33,15 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // 确认对话框状态
+  const [confirmationDialog, setConfirmationDialog] = useState<ConfirmationDialogState>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'danger'
+  });
 
   // 处理素材类型筛选
   const handleMaterialTypeFilter = useCallback((type: MaterialType | 'all') => {
@@ -96,48 +114,116 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     });
   }, [selectedMaterials, logger]);
 
-  // 处理素材删除
+  // 实际执行删除操作的函数
+  const executeDelete = useCallback((materialIds: string[]) => {
+    logger.info('开始执行素材删除', {
+      materialIds,
+      materialCount: materialIds.length
+    });
+
+    setMaterials(prev => {
+      const filteredMaterials = prev.filter(material => !materialIds.includes(material.id));
+      
+      logger.info('素材删除完成', {
+        deletedIds: materialIds,
+        remainingCount: filteredMaterials.length,
+        deletedCount: materialIds.length
+      });
+      
+      return filteredMaterials;
+    });
+
+    // 清除已删除素材的选中状态
+    setSelectedMaterials(prev => {
+      const newSet = new Set(prev);
+      materialIds.forEach(id => newSet.delete(id));
+      return newSet;
+    });
+  }, [logger]);
+
+  // 处理素材删除（单个或批量）
   const handleMaterialDelete = useCallback((materialIds: string[]) => {
     logger.userAction('素材删除操作', 'deleteButton', {
       materialIds,
       materialCount: materialIds.length
     });
 
-    // 确认删除
-    const confirmDelete = window.confirm(
-      `确定要删除 ${materialIds.length} 个素材吗？此操作不可撤销。`
-    );
+    // 获取要删除的素材信息
+    const materialsToDelete = materials.filter(material => materialIds.includes(material.id));
+    const materialNames = materialsToDelete.map(m => m.name).join('、');
 
-    if (confirmDelete) {
-      logger.info('用户确认删除素材', {
-        materialIds,
-        materialCount: materialIds.length
-      });
-
-      setMaterials(prev => {
-        const filteredMaterials = prev.filter(material => !materialIds.includes(material.id));
-        
-        logger.info('素材删除完成', {
-          deletedIds: materialIds,
-          remainingCount: filteredMaterials.length,
-          deletedCount: materialIds.length
+    setConfirmationDialog({
+      isOpen: true,
+      title: '确认删除素材',
+      message: materialIds.length === 1 
+        ? `确定要删除素材「${materialNames}」吗？此操作不可撤销。`
+        : `确定要删除这 ${materialIds.length} 个素材吗？此操作不可撤销。`,
+      type: 'danger',
+      onConfirm: () => {
+        logger.info('用户确认删除素材', {
+          materialIds,
+          materialCount: materialIds.length,
+          materialNames
         });
-        
-        return filteredMaterials;
-      });
+        executeDelete(materialIds);
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  }, [materials, logger, executeDelete]);
 
-      // 清除已删除素材的选中状态
-      setSelectedMaterials(prev => {
-        const newSet = new Set(prev);
-        materialIds.forEach(id => newSet.delete(id));
-        return newSet;
+  // 处理删除当前选项卡的所有素材
+  const handleDeleteAllMaterials = useCallback(() => {
+    // 获取当前选项卡的所有素材
+    const currentTabMaterials = materials.filter(material => 
+      selectedMaterialType === 'all' || material.type === selectedMaterialType
+    );
+    
+    if (currentTabMaterials.length === 0) {
+      logger.info('当前选项卡无素材，忽略删除全部操作', {
+        selectedMaterialType,
+        totalMaterials: materials.length
       });
-    } else {
-      logger.info('用户取消删除素材', {
-        cancelledIds: materialIds
-      });
+      return;
     }
-  }, [selectedMaterials, materials, logger]);
+
+    logger.userAction('删除全部素材操作', 'deleteAllButton', {
+      selectedMaterialType,
+      currentTabMaterialCount: currentTabMaterials.length,
+      totalMaterialCount: materials.length
+    });
+
+    const materialIds = currentTabMaterials.map(m => m.id);
+    const tabName = selectedMaterialType === 'all' ? '全部' : 
+                   selectedMaterialType === 'video' ? '视频' :
+                   selectedMaterialType === 'audio' ? '音频' :
+                   selectedMaterialType === 'image' ? '图片' : '字幕';
+
+    setConfirmationDialog({
+      isOpen: true,
+      title: '确认清空素材',
+      message: selectedMaterialType === 'all'
+        ? `确定要清空所有 ${currentTabMaterials.length} 个素材吗？此操作将删除素材管理面板中的所有内容，且不可撤销。`
+        : `确定要清空「${tabName}」选项卡中的所有 ${currentTabMaterials.length} 个素材吗？此操作不可撤销。`,
+      type: 'danger',
+      onConfirm: () => {
+        logger.info('用户确认删除全部素材', {
+          selectedMaterialType,
+          materialIds,
+          materialCount: materialIds.length
+        });
+        executeDelete(materialIds);
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  }, [materials, selectedMaterialType, logger, executeDelete]);
+
+  // 关闭确认对话框
+  const handleCloseConfirmationDialog = useCallback(() => {
+    logger.info('用户取消删除操作', {
+      dialogType: confirmationDialog.title
+    });
+    setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+  }, [confirmationDialog.title, logger]);
 
   // 处理素材上传
   const handleMaterialUpload = useCallback(async () => {
@@ -463,6 +549,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
     handleMaterialBatchSelect,
     handleMaterialDelete,
     handleMaterialUpload,
-    addMaterials
+    addMaterials,
+    // 新增的删除功能
+    handleDeleteAllMaterials,
+    confirmationDialog,
+    handleCloseConfirmationDialog
   };
 };

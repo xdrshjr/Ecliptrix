@@ -4,6 +4,7 @@ export interface CreativeBrainstormingConfig {
   creationGoal: string[];
   contentStrategy: string[];
   creativeExperts: string[];
+  customCreativeInput: string;
 }
 
 export interface ExpertProfile {

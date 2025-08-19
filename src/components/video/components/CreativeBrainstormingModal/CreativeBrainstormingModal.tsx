@@ -33,7 +33,8 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
     creationDomain: [],
     creationGoal: [],
     contentStrategy: [],
-    creativeExperts: []
+    creativeExperts: ['creative-director', 'marketing-strategist', 'content-writer', 'visual-designer', 'ux-expert'],
+    customCreativeInput: ''
   });
 
   // 聊天状态
@@ -56,9 +57,14 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
   const canExport = Boolean(finalSummary);
 
   const handleConfigChange = useCallback((newConfig: CreativeBrainstormingConfig) => {
+    // 检查是否有自定义创意输入的变化
+    const customCreativeChanged = config.customCreativeInput !== newConfig.customCreativeInput;
+    
     logger.info('配置更新', {
       previousConfig: config,
       newConfig,
+      customCreativeChanged,
+      customCreativeLength: newConfig.customCreativeInput?.length || 0,
       timestamp: new Date().toISOString()
     });
     setConfig(newConfig);
