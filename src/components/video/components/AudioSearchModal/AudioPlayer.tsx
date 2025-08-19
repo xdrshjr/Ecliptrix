@@ -25,7 +25,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   onError
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const loggerRef = useRef<VideoEditingLogger>();
+  const loggerRef = useRef<VideoEditingLogger | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [volume, setVolume] = useState(1);
