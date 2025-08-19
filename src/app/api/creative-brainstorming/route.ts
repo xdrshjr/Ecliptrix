@@ -53,7 +53,8 @@ const buildSystemPrompt = (config: any, phase: string, expertId: string, current
 - 创作领域：${config.creationDomain?.join('、') || '未指定'}
 - 创作目标：${config.creationGoal?.join('、') || '未指定'}
 - 内容策略：${config.contentStrategy?.join('、') || '未指定'}
-- 参与专家：${config.creativeExperts?.join('、') || '未指定'}
+- 参与专家：${config.creativeExperts?.join('、') || '未指定'}${config.customCreativeInput ? `
+- 自定义创意：${config.customCreativeInput}` : ''}
 
 现在需要你作为项目主持人，综合所有专家的讨论内容，生成一份完整的创意构思总结报告。
 
@@ -81,7 +82,8 @@ const buildSystemPrompt = (config: any, phase: string, expertId: string, current
 - 创作领域：${config.creationDomain?.join('、') || '未指定'}
 - 创作目标：${config.creationGoal?.join('、') || '未指定'}
 - 内容策略：${config.contentStrategy?.join('、') || '未指定'}
-- 参与专家：${config.creativeExperts?.join('、') || '未指定'}
+- 参与专家：${config.creativeExperts?.join('、') || '未指定'}${config.customCreativeInput ? `
+- 自定义创意：${config.customCreativeInput}` : ''}
 `;
 
   if (phase === 'discussion') {

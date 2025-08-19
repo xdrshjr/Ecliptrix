@@ -42,6 +42,15 @@ export interface UseTimelineCompositionReturn {
   handleSequenceIndexUpdate: (sequenceIndex: number) => void;
 }
 
+// 确认对话框状态接口
+export interface ConfirmationDialogState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  type: 'danger' | 'warning' | 'info';
+}
+
 // Hook return types
 export interface UseDocumentStateReturn {
   markdownValue: string;
@@ -103,6 +112,10 @@ export interface UseMaterialManagementReturn {
   handleMaterialDelete: (materialIds: string[]) => void;
   handleMaterialUpload: () => void;
   addMaterials: (materials: MaterialItem[]) => boolean;
+  // 新增的删除功能
+  handleDeleteAllMaterials: () => void;
+  confirmationDialog: ConfirmationDialogState;
+  handleCloseConfirmationDialog: () => void;
 }
 
 export interface UseVideoSearchReturn {

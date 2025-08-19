@@ -23,6 +23,7 @@ import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -49,6 +50,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     taskId: taskId || 'unknown',
     component: 'ScriptPanel'
   }), [taskId]);
+
+  // 使用通知hook
+  const { showSuccess, showError } = useNotification();
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -923,7 +927,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       });
 
       // 显示错误提示
-      alert(`语音转换失败: ${errorMessage}`);
+      showError(`语音转换失败: ${errorMessage}`);
 
     } finally {
       // 清理状态
@@ -943,10 +947,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
   };
 
-  // 批量转换全部语音
+  // 批量转换全部语音 - 修改为依次点击每个片段的转换语音按钮
   const handleBatchConvertToSpeech = async () => {
     if (isBatchConverting || segments.length === 0) {
-      console.warn('[ScriptPanel] 无法开始批量转换', {
+      logger.warn('无法开始批量转换', {
         isBatchConverting,
         segmentsCount: segments.length
       });
@@ -954,7 +958,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
 
     try {
-      console.log('[ScriptPanel] 开始批量语音转换', {
+      logger.info('开始批量语音转换（依次点击各片段转换按钮）', {
         segmentsCount: segments.length,
         voiceId: selectedVoiceId,
         taskId
@@ -967,140 +971,93 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         failed: 0
       });
 
-      // 转换为批量请求格式
-      const batchRequest = convertScriptSegmentsToBatchRequest(
-        segments,
-        selectedVoiceId,
-        1.0,
-        taskId,
-        3 // 默认使用3个并发线程
-      );
+      let successCount = 0;
+      let failCount = 0;
 
-      console.log('[ScriptPanel] 发送批量TTS请求', {
-        segmentsCount: batchRequest.segments.length,
-        concurrentThreads: batchRequest.concurrent_threads,
-        totalTextLength: batchRequest.segments.reduce((sum, seg) => sum + seg.text.length, 0)
-      });
+      // 依次处理每个片段，调用各自的转换语音按钮处理函数
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        
+        // 跳过已经在转换中的片段
+        if (convertingSegments.has(segment.id)) {
+          logger.warn('跳过正在转换中的片段', { segmentId: segment.id });
+          continue;
+        }
 
-      // 调用批量转换API
-      const response: BatchTTSResponse = await convertBatchTextToSpeech(batchRequest);
+        try {
+          logger.info('开始转换片段语音', {
+            segmentIndex: i + 1,
+            totalSegments: segments.length,
+            segmentId: segment.id,
+            segmentTitle: segment.title
+          });
 
-      console.log('[ScriptPanel] 批量转换完成', {
-        success: response.success,
-        totalSegments: response.total_segments,
-        successfulSegments: response.successful_segments,
-        failedSegments: response.failed_segments,
-        processingTime: response.total_processing_time
-      });
+          setBatchProgress(prev => ({
+            ...prev,
+            currentSegment: segment.id
+          }));
 
-      // 处理转换结果
-      let addedMaterials = 0;
-      for (const result of response.results) {
-        setBatchProgress(prev => ({
-          ...prev,
-          currentSegment: result.segment_id,
-          completed: prev.completed + (result.success ? 1 : 0),
-          failed: prev.failed + (result.success ? 0 : 1)
-        }));
+          // 调用单个片段的转换语音函数
+          await handleConvertToSpeech(segment);
+          
+          successCount++;
+          setBatchProgress(prev => ({
+            ...prev,
+            completed: successCount
+          }));
 
-        if (result.success && result.audio_url && onAddMaterial) {
-          try {
-            // 找到对应的segment
-            const segment = segments.find(seg => seg.id === result.segment_id);
-            if (!segment) {
-              console.warn('[ScriptPanel] 找不到对应的segment', { segmentId: result.segment_id });
-              continue;
-            }
+          logger.info('片段语音转换成功', {
+            segmentIndex: i + 1,
+            segmentId: segment.id,
+            segmentTitle: segment.title,
+            successCount
+          });
 
-            // 获取和验证音频URL
-            const cleanAudioUrl = result.audio_url.includes('/object/sign/') ? result.audio_url : result.audio_url.split('?')[0];
-            const fileName = result.audio_url.split('/').pop()?.split('?')[0] || `batch_audio_${result.segment_id}_${Date.now()}.mp3`;
-
-            console.log('[ScriptPanel] 下载批量转换的音频文件', {
-              segmentId: result.segment_id,
-              fileName,
-              originalAudioUrl: result.audio_url,
-              cleanAudioUrl: cleanAudioUrl,
-              fileSize: result.file_size
-            });
-
-            // 直接从Supabase URL下载音频文件到本地
-            console.log('[ScriptPanel] 开始批量下载Supabase音频', {
-              url: cleanAudioUrl,
-              segmentId: result.segment_id
-            });
-            
-            const fetchResponse = await fetch(cleanAudioUrl);
-            if (!fetchResponse.ok) {
-              throw new Error(`Failed to fetch audio from Supabase: ${fetchResponse.status} ${fetchResponse.statusText}`);
-            }
-            const audioBlob = await fetchResponse.blob();
-            const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
-
-            // 创建音频材料项
-            const audioMaterial: MaterialItem = {
-              id: `batch_audio_${result.segment_id}_${Date.now()}`,
-              name: `${segment.title} - 批量语音`,
-              type: 'audio',
-              format: 'mp3',
-              size: result.file_size || audioBlob.size,
-              duration: result.duration || Math.ceil(segment.sentences.reduce((sum, s) => sum + s.text.length, 0) * 0.15),
-              url: localUrl,
-              createdAt: new Date(),
-              description: `批量转换生成的"${segment.title}"语音`,
-              metadata: {
-                voice_type: selectedVoiceId,
-                segment_id: result.segment_id,
-                task_id: taskId,
-                processing_time: result.processing_time,
-                batch_conversion: true
-              }
-            };
-
-            onAddMaterial(audioMaterial);
-            addedMaterials++;
-
-            console.log('[ScriptPanel] 批量音频材料添加成功', {
-              materialId: audioMaterial.id,
-              segmentId: result.segment_id,
-              fileName
-            });
-
-          } catch (downloadError) {
-            console.error('[ScriptPanel] 批量音频下载失败', {
-              segmentId: result.segment_id,
-              audioUrl: result.audio_url,
-              error: downloadError instanceof Error ? downloadError.message : String(downloadError)
-            });
+          // 添加延时避免请求过于频繁
+          if (i < segments.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
-        } else if (!result.success) {
-          console.error('[ScriptPanel] 段落转换失败', {
-            segmentId: result.segment_id,
-            error: result.error
+
+        } catch (error) {
+          failCount++;
+          setBatchProgress(prev => ({
+            ...prev,
+            failed: failCount
+          }));
+
+          logger.error('片段语音转换失败', error as Error, {
+            segmentIndex: i + 1,
+            segmentId: segment.id,
+            segmentTitle: segment.title,
+            failCount
           });
         }
       }
 
       // 显示完成提示
-      const message = `批量语音转换完成！\n成功: ${response.successful_segments}/${response.total_segments} 个段落\n已添加: ${addedMaterials} 个音频文件到素材库`;
-      alert(message);
+      if (failCount === 0) {
+        showSuccess(`批量语音转换完成！成功转换 ${successCount} 个片段`);
+      } else if (successCount > 0) {
+        showSuccess(`批量语音转换完成！成功: ${successCount}/${segments.length} 个片段，失败: ${failCount} 个片段`);
+      } else {
+        showError(`批量语音转换失败！所有 ${segments.length} 个片段都转换失败`);
+      }
 
-      console.log('[ScriptPanel] 批量转换处理完成', {
-        totalSegments: response.total_segments,
-        successfulSegments: response.successful_segments,
-        failedSegments: response.failed_segments,
-        addedMaterials,
-        processingTime: response.total_processing_time
+      logger.info('批量语音转换处理完成', {
+        totalSegments: segments.length,
+        successCount,
+        failCount,
+        taskId
       });
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[ScriptPanel] 批量语音转换失败', {
-        error: errorMessage,
+      logger.error('批量语音转换失败', error as Error, {
+        errorMessage,
         taskId
       });
 
-      alert(`批量语音转换失败: ${errorMessage}`);
+      showError(`批量语音转换失败: ${errorMessage}`);
 
     } finally {
       setIsBatchConverting(false);
@@ -1132,7 +1089,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               <button
                 onClick={handleGenerateScript}
                 disabled={isGenerating}
-                className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 group relative"
+                className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 title="生成脚本"
               >
                 {isGenerating ? (
@@ -1145,11 +1102,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 )}
-                
-                {/* Hover tooltip */}
-                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]">
-                  生成脚本
-                </div>
               </button>
             )}
           </div>
@@ -1188,11 +1140,21 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             </span>
           </div>
           <div className="flex items-center space-x-2">
+            {/* 批量转换进度 - 显示在按钮左侧 */}
+            {isBatchConverting && (
+              <div className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded border border-purple-200">
+                进度: {batchProgress.completed + batchProgress.failed}/{batchProgress.total}
+                {batchProgress.currentSegment && (
+                  <span className="ml-1">({batchProgress.currentSegment})</span>
+                )}
+              </div>
+            )}
+            
             {/* 转换全部语音按钮 - 修改为图标形式 */}
             <button
               onClick={handleBatchConvertToSpeech}
               disabled={isBatchConverting || segments.length === 0}
-              className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 group relative"
+              className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
               title="转换全部语音"
             >
               {isBatchConverting ? (
@@ -1205,11 +1167,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6zM9 9a3 3 0 000 6 3 3 0 000-6z" />
                 </svg>
               )}
-              
-                                            {/* Hover tooltip */}
-               <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]">
-                 转换全部语音
-               </div>
             </button>
             
             {/* 生成脚本按钮 - 修改文本和图标 */}
@@ -1217,39 +1174,24 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               <button
                 onClick={handleGenerateScript}
                 disabled={isGenerating}
-                className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 group relative"
+                className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 title="生成脚本"
               >
                 {isGenerating ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 ) : (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 )}
-                
-                {/* Hover tooltip */}
-                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]">
-                  生成脚本
-                </div>
               </button>
             )}
           </div>
         </div>
-        {/* 批量转换进度 - 显示在标题栏内部，不增加高度 */}
-        {isBatchConverting && (
-          <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-            <div className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">
-              进度: {batchProgress.completed + batchProgress.failed}/{batchProgress.total}
-              {batchProgress.currentSegment && (
-                <span className="ml-1">({batchProgress.currentSegment})</span>
-              )}
-            </div>
-          </div>
-        )}
+
       </div>
 
       {/* 脚本内容区域 */}
@@ -1272,7 +1214,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <button
                   onClick={() => handleConvertToSpeech(segment)}
                   disabled={convertingSegments.has(segment.id) || isBatchConverting}
-                  className="p-1.5 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 group relative"
+                  className="p-1.5 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                   title="转换语音"
                 >
                   {convertingSegments.has(segment.id) ? (
@@ -1285,18 +1227,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6zM9 9a3 3 0 000 6 3 3 0 000-6z" />
                     </svg>
                   )}
-                  
-                  {/* Hover tooltip */}
-                  <div className={`absolute ${segmentIndex === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]`}>
-                    {convertingSegments.has(segment.id) ? '转换中...' : '转换语音'}
-                  </div>
                 </button>
 
                 {/* 搜索在线视频按钮 - 一直显示，但只有转换完成后才可点击 */}
                 <button
                   onClick={() => handleOpenVideoSearch(segment.id)}
                   disabled={!completedSegments.has(segment.id)}
-                  className={`p-1.5 border rounded transition-colors duration-200 group relative ${
+                  className={`p-1.5 border rounded transition-colors duration-200 ${
                     completedSegments.has(segment.id)
                       ? 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
                       : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
@@ -1306,52 +1243,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  
-                  {/* Hover tooltip */}
-                  <div className={`absolute ${segmentIndex === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]`}>
-                    {completedSegments.has(segment.id) ? "搜索在线视频" : "请先完成语音转换"}
-                  </div>
                 </button>
 
-                {/* 识别字幕按钮 - 一直显示，但只有转换完成后才可点击 */}
-                <button
-                  onClick={() => handleSubtitleRecognition(segment.id)}
-                  disabled={!completedSegments.has(segment.id) || transcribingSegments.has(segment.id)}
-                  className={`p-1.5 border rounded transition-colors duration-200 group relative ${
-                    completedSegments.has(segment.id) && !transcribingSegments.has(segment.id)
-                      ? 'text-green-600 bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300'
-                      : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
-                  }`}
-                  title={
-                    !completedSegments.has(segment.id) 
-                      ? "请先完成语音转换" 
-                      : transcribingSegments.has(segment.id)
-                      ? "字幕识别中..."
-                      : "识别字幕"
-                  }
-                >
-                  {transcribingSegments.has(segment.id) ? (
-                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
-                    </svg>
-                  )}
-                  
-                  {/* Hover tooltip */}
-                  <div className={`absolute ${segmentIndex === 0 ? 'top-full mt-2' : 'bottom-full mb-2'} left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999]`}>
-                    {!completedSegments.has(segment.id) 
-                      ? "请先完成语音转换" 
-                      : transcribingSegments.has(segment.id)
-                      ? "字幕识别中..."
-                      : "识别字幕"
-                    }
-                  </div>
-                </button>
-                
+
+
                 {/* 时长显示 */}
                 {segment.duration && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
@@ -1607,120 +1502,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             )}
 
             {/* 字幕显示区域 */}
-            {segmentSubtitles[segment.id] && segmentSubtitles[segment.id].length > 0 && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h5 className="text-sm font-medium text-blue-800 flex items-center">
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
-                    </svg>
-                    识别字幕
-                  </h5>
-                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                    {segmentSubtitles[segment.id].length} 条
-                  </span>
-                </div>
-                
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {segmentSubtitles[segment.id].map((subtitle, index) => (
-                    <div 
-                      key={index}
-                      className="flex items-start space-x-3 p-2 bg-white rounded border border-blue-100 hover:border-blue-200 transition-colors"
-                    >
-                      <span className="text-xs text-blue-500 font-mono mt-0.5 flex-shrink-0">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-800 leading-relaxed">
-                          {subtitle.text}
-                        </div>
-                        <div className="text-xs text-blue-600 mt-1 font-mono">
-                          {formatSubtitleTime(subtitle.start_time)} → {formatSubtitleTime(subtitle.end_time)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                {/* 字幕操作按钮 */}
-                <div className="flex items-center justify-end space-x-2 mt-3 pt-2 border-t border-blue-200">
-                  <button
-                    onClick={() => {
-                      const subtitles = segmentSubtitles[segment.id];
-                      const srtContent = subtitles.map((subtitle, index) => {
-                        const startTime = formatSubtitleTime(subtitle.start_time);
-                        const endTime = formatSubtitleTime(subtitle.end_time);
-                        return `${index + 1}\n${startTime} --> ${endTime}\n${subtitle.text}\n`;
-                      }).join('\n');
-                      
-                      const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `${segment.title || `段落${segments.indexOf(segment) + 1}`}_字幕.srt`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      
-                      logger.info('导出字幕文件', {
-                        segmentId: segment.id,
-                        subtitleCount: subtitles.length,
-                        fileName: a.download
-                      });
-                    }}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                  >
-                    导出SRT
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSegmentSubtitles(prev => {
-                        const newSubtitles = { ...prev };
-                        delete newSubtitles[segment.id];
-                        return newSubtitles;
-                      });
-                      
-                      logger.info('清除字幕', {
-                        segmentId: segment.id
-                      });
-                    }}
-                    className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                  >
-                    清除
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {/* 字幕识别错误显示 */}
-            {subtitleErrors[segment.id] && (
-              <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
-                <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div className="flex-1">
-                    <h5 className="text-sm font-medium text-red-800">字幕识别失败</h5>
-                    <p className="text-sm text-red-700 mt-1">{subtitleErrors[segment.id]}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSubtitleErrors(prev => {
-                        const newErrors = { ...prev };
-                        delete newErrors[segment.id];
-                        return newErrors;
-                      });
-                    }}
-                    className="text-red-500 hover:text-red-700 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
+
+
           </div>
         ))}
       </div>
