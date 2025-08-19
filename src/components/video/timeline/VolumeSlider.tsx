@@ -26,15 +26,29 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (sliderRef.current && !sliderRef.current.contains(event.target as Node)) {
-        onClose();
+      const target = event.target as Node;
+      
+      // 检查是否点击在滑块内部
+      if (sliderRef.current && sliderRef.current.contains(target)) {
+        return;
       }
+      
+      // 检查是否点击在音量按钮上（通过aria-label识别）
+      const clickedElement = target as Element;
+      const volumeButton = clickedElement.closest('[aria-label*="音量控制"]');
+      if (volumeButton) {
+        return; // 不关闭，让按钮的onClick处理
+      }
+      
+      // 如果点击在其他地方，关闭面板
+      onClose();
     };
 
     if (isVisible) {
-      document.addEventListener('mousedown', handleClickOutside);
+      // 使用capture阶段来确保在按钮的onClick之前处理
+      document.addEventListener('mousedown', handleClickOutside, true);
       return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('mousedown', handleClickOutside, true);
       };
     }
   }, [isVisible, onClose]);
