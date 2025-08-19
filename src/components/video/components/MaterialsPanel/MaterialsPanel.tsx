@@ -9,6 +9,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
+  onSearchAudios: () => void; // 新增：搜索音频回调
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
   taskId: string;
   className?: string;
@@ -22,6 +23,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   handleMaterialTypeFilter,
   handleMaterialUpload,
   onSearchVideos,
+  onSearchAudios, // 新增：搜索音频回调
   onAutoMixAudio, // 新增：AI自动混剪回调
   taskId,
   className = '',
@@ -102,6 +104,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
     
     onSearchVideos();
+  };
+
+  const handleSearchAudiosClick = () => {
+    logger.info('用户点击搜索音频按钮', {
+      materialsCount: materials.length,
+      selectedType: selectedMaterialType
+    });
+    
+    onSearchAudios();
   };
 
   // 处理删除全部按钮点击
@@ -627,6 +638,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <span>搜索视频</span>
+              </button>
+
+              <button
+                onClick={handleSearchAudiosClick}
+                className="flex items-center space-x-1 text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 px-2 py-1 rounded transition-colors"
+                title="搜索在线音频"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+                <span>搜索音频</span>
               </button>
               
               {/* 新增：删除全部按钮 */}

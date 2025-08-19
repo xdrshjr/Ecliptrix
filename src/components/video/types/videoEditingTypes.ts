@@ -167,4 +167,59 @@ export interface LogEntry {
   action: string;
   data?: Record<string, any>;
   error?: Error;
+}
+
+// Audio Search Types
+export interface AudioSearchResult {
+  id: number;
+  name: string;
+  description: string;
+  username: string;
+  duration: number;
+  download_url: string;
+  preview_url: string;
+  waveform_url?: string;
+  license: string;
+  tags: string[];
+  filesize?: number;
+  type?: string;
+  channels?: number;
+  bitrate?: number;
+  samplerate?: number;
+}
+
+export interface AudioSearchResponse {
+  success: boolean;
+  message: string;
+  audios: AudioSearchResult[];
+  total_found: number;
+  query: string;
+}
+
+export type AudioType = 'all' | 'music' | 'sound-effect' | 'speech' | 'ambient' | 'nature';
+
+export interface UseAudioSearchReturn {
+  isModalOpen: boolean;
+  searchQuery: string;
+  isSearching: boolean;
+  searchResults: AudioSearchResult[];
+  selectedResults: Set<number>;
+  previewAudio: AudioSearchResult | null;
+  validationError: string | null;
+  durationMin: number | null;
+  durationMax: number | null;
+  audioType: AudioType;
+  openSearchModal: () => void;
+  closeSearchModal: () => void;
+  handleSearch: () => void;
+  handleSearchResultSelect: (resultIndex: number) => void;
+  handleAudioPreview: (audio: AudioSearchResult) => void;
+  handleAddSelectedAudios: () => void;
+  handleClearSelection: () => void;
+  setSearchQuery: (query: string) => void;
+  setDurationMin: (duration: number | null) => void;
+  setDurationMax: (duration: number | null) => void;
+  setAudioType: (audioType: AudioType) => void;
+  setValidationError: (error: string | null) => void;
+  taskId: string;
 } 

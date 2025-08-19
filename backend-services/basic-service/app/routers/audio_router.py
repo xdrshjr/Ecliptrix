@@ -17,12 +17,17 @@ from app.models.audio_models import (
     BatchAudioTranscriptionResponse,
     BatchAudioTranscriptionErrorResponse
 )
+from app.models.audio_search_models import AudioSearchRequest, AudioSearchResponse
 from app.services.audio_transcription_service import audio_transcription_service
+from app.services.audio_search_service import AudioSearchService
 from app.logger import get_logger
 
 # Initialize router and logger
-router = APIRouter(prefix="/audio", tags=["Audio Transcription"])
+router = APIRouter(prefix="/audio", tags=["Audio Transcription", "Audio Search"])
 logger = get_logger(__name__)
+
+# Initialize services
+audio_search_service = AudioSearchService()
 
 
 @router.post(
@@ -422,4 +427,154 @@ async def batch_transcribe_audio(
                 "exception_type": type(e).__name__,
                 "exception_message": str(e)
             }
+        ) 
+
+"""
+Audio search router for handling audio-related API endpoints.
+"""
+
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
+
+from app.models.audio_search_models import AudioSearchRequest, AudioSearchResponse
+from app.services.audio_search_service import AudioSearchService
+from app.logger import get_logger
+
+# Initialize router and logger
+router = APIRouter(prefix="/audio", tags=["audio"])
+logger = get_logger(__name__)
+
+# Initialize services
+audio_search_service = AudioSearchService()
+
+
+@router.post("/search", response_model=AudioSearchResponse)
+async def search_audios(request: AudioSearchRequest) -> AudioSearchResponse:
+    """
+    Search for audio files using Freesound API.
+    
+    This endpoint allows users to search for audio files from Freesound with various filters.
+    
+    Args:
+        request (AudioSearchRequest): Audio search parameters including query, max_audios, and duration filters
+    
+    Returns:
+        AudioSearchResponse: Search results containing list of audio files with metadata
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for internal errors
+    """
+    logger.info(f"Audio search request received", extra={
+        'query': request.query,
+        'max_audios': request.max_audios,
+        'duration_min': request.duration_min,
+        'duration_max': request.duration_max,
+        'audio_type': request.audio_type
+    })
+    
+    try:
+        # Validate request parameters
+        if not request.query.strip():
+            logger.warning("Empty search query provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Search query cannot be empty"
+            )
+        
+        # Validate duration range if both are provided
+        if (request.duration_min is not None and request.duration_max is not None and 
+            request.duration_min >= request.duration_max):
+            logger.warning(f"Invalid duration range: min={request.duration_min}, max={request.duration_max}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="duration_min must be less than duration_max"
+            )
+        
+        # Validate audio type
+        if request.audio_type not in ["all", "music", "sound-effect", "speech", "ambient", "nature"]:
+            logger.warning(f"Invalid audio type provided: {request.audio_type}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="audio_type must be one of: all, music, sound-effect, speech, ambient, nature"
+            )
+        
+        # Perform audio search
+        logger.debug(f"Calling audio search service", extra={
+            'request_params': request.model_dump()
+        })
+        
+        result = audio_search_service.search_audios(
+            query=request.query,
+            max_audios=request.max_audios,
+            duration_min=request.duration_min,
+            duration_max=request.duration_max,
+            audio_type=request.audio_type
+        )
+        
+        # Log search results
+        logger.info(f"Audio search completed", extra={
+            'success': result.success,
+            'found_count': len(result.audios),
+            'total_available': result.total_found,
+            'query': request.query
+        })
+        
+        if not result.success:
+            logger.error(f"Audio search failed: {result.message}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.message
+            )
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Handle unexpected errors
+        error_message = f"Unexpected error during audio search: {str(e)}"
+        logger.error(error_message, extra={
+            'query': request.query,
+            'error_type': type(e).__name__
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred during audio search"
+        )
+
+
+@router.get("/health")
+async def audio_health_check():
+    """
+    Health check endpoint for audio search service.
+    
+    Returns:
+        dict: Service health status
+    """
+    try:
+        # Check if API key is configured
+        api_key_configured = bool(audio_search_service.api_key)
+        
+        status_message = "Audio search service is healthy"
+        if not api_key_configured:
+            status_message = "Audio search service is running but Freesound API key is not configured"
+        
+        logger.info("Audio search health check", extra={
+            'api_key_configured': api_key_configured,
+            'service_status': 'healthy'
+        })
+        
+        return {
+            "status": "healthy",
+            "message": status_message,
+            "api_key_configured": api_key_configured,
+            "service": "audio_search"
+        }
+        
+    except Exception as e:
+        logger.error(f"Audio search health check failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Audio search service health check failed"
         ) 
