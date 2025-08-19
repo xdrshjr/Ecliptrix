@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Tab, TaskType } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface TaskbarProps {
   tabs: Tab[];
@@ -17,6 +18,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
   onSelectTab,
   onCloseTab,
 }) => {
+  const { t } = useLocale();
   const [showTaskMenu, setShowTaskMenu] = useState(false);
 
   const getTaskIcon = (type: TaskType) => {
@@ -49,12 +51,6 @@ const Taskbar: React.FC<TaskbarProps> = ({
   };
 
   const handleCreateTask = (type: TaskType) => {
-    console.log(`Taskbar 任务菜单: 用户选择创建${type}任务`, {
-      taskType: type,
-      timestamp: new Date().toISOString(),
-      menuAction: 'create_task_selected',
-      note: 'Voice Synthesis选项已从菜单中移除，AI Chat已调整为第一项'
-    });
     onCreateTask(type);
     setShowTaskMenu(false);
   };
@@ -70,7 +66,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          <span>New Task</span>
+          <span>{t.common.newTask}</span>
         </button>
 
         {/* Task Type Menu */}
@@ -81,28 +77,28 @@ const Taskbar: React.FC<TaskbarProps> = ({
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
               {getTaskIcon('chat')}
-              <span className="text-sm">AI Chat</span>
+              <span className="text-sm">{t.tasks.aiChat}</span>
             </button>
             <button
               onClick={() => handleCreateTask('video')}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
               {getTaskIcon('video')}
-              <span className="text-sm">Video Editing</span>
+              <span className="text-sm">{t.tasks.videoEditing}</span>
             </button>
             <button
               onClick={() => handleCreateTask('content')}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
               {getTaskIcon('content')}
-              <span className="text-sm">Content Creation</span>
+              <span className="text-sm">{t.tasks.contentCreation}</span>
             </button>
             <button
               onClick={() => handleCreateTask('brainstorm')}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
               {getTaskIcon('brainstorm')}
-              <span className="text-sm">Brainstorming</span>
+              <span className="text-sm">{t.tasks.brainstorming}</span>
             </button>
           </div>
         )}

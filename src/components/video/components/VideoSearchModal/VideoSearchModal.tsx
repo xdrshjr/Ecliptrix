@@ -3,9 +3,12 @@
 import React, { useEffect, useRef } from 'react';
 import { UseVideoSearchReturn } from '../../types';
 import { VideoEditingLogger } from '../../utils/logger';
+import { SupportedLocale } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoSearchModalProps extends UseVideoSearchReturn {
   taskId: string;
+  locale?: SupportedLocale; // 保持向后兼容性，但context优先
 }
 
 const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
@@ -26,13 +29,16 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   setSearchQuery,
   setSearchOrientation,
   setValidationError,
-  taskId
+  taskId,
+  locale // 保持向后兼容性，但不再使用
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
     component: 'VideoSearchModal'
   });
 
+  // 使用LocaleContext获取国际化翻译
+  const { t, locale: contextLocale } = useLocale();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -176,8 +182,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">搜索在线视频</h2>
-              <p className="text-sm text-gray-500">发现高质量的免费视频素材</p>
+              <h2 className="text-xl font-semibold text-gray-900">{t.videoSearchModal.title}</h2>
+              <p className="text-sm text-gray-500">{t.videoSearchModal.subtitle}</p>
             </div>
           </div>
           <button
@@ -196,7 +202,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
             <div className="flex-1">
               <input
                 type="text"
-                placeholder="输入搜索关键词，如：自然风景、商务办公、人物肖像..."
+                placeholder={t.videoSearchModal.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -205,16 +211,16 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               />
             </div>
             <div className="flex items-center space-x-3">
-              <label className="text-sm font-medium text-gray-700">方向:</label>
+              <label className="text-sm font-medium text-gray-700">{t.videoSearchModal.orientationLabel}</label>
               <select
                 value={searchOrientation}
                 onChange={(e) => setSearchOrientation(e.target.value as any)}
                 className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 text-gray-900"
                 disabled={isSearching}
               >
-                <option value="mixed">混合</option>
-                <option value="landscape">横屏</option>
-                <option value="portrait">竖屏</option>
+                <option value="mixed">{t.videoSearchModal.orientationMixed}</option>
+                <option value="landscape">{t.videoSearchModal.orientationLandscape}</option>
+                <option value="portrait">{t.videoSearchModal.orientationPortrait}</option>
               </select>
             </div>
             <button
@@ -228,14 +234,14 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span>搜索中...</span>
+                  <span>{t.videoSearchModal.searching}</span>
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  <span>搜索</span>
+                  <span>{t.videoSearchModal.searchButton}</span>
                 </>
               )}
             </button>
@@ -250,7 +256,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
             {searchResults.length > 0 && (
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  找到 <span className="font-semibold text-gray-900">{searchResults.length}</span> 个视频，已选择 <span className="font-semibold text-blue-600">{selectedResults.size}</span> 个
+                  {t.videoSearchModal.foundVideos} <span className="font-semibold text-gray-900">{searchResults.length}</span> {t.videoSearchModal.items}{t.videoSearchModal.selected} <span className="font-semibold text-blue-600">{selectedResults.size}</span> 个
                 </div>
               </div>
             )}
@@ -264,7 +270,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <p className="text-gray-600 font-medium">正在搜索视频...</p>
+                    <p className="text-gray-600 font-medium">{t.videoSearchModal.searchingVideos}</p>
                   </div>
                 </div>
               ) : searchResults.length > 0 ? (
@@ -311,7 +317,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           {/* 视频信息 */}
                           <div className="flex-1 min-w-0">
                             <h4 className="text-sm font-semibold text-gray-900 truncate mb-1">{video.title}</h4>
-                            <p className="text-xs text-gray-500 mb-2">作者: {video.author}</p>
+                            <p className="text-xs text-gray-500 mb-2">{t.videoSearchModal.author} {video.author}</p>
                             <div className="flex items-center justify-between text-xs text-gray-500">
                               <span className="bg-gray-100 px-2 py-1 rounded">{video.width} × {video.height}</span>
                               {video.duration && (
@@ -343,8 +349,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    <p className="text-gray-500 text-lg mb-2 font-medium">输入关键词开始搜索</p>
-                    <p className="text-gray-400 text-sm">搜索高质量的免费视频素材</p>
+                    <p className="text-gray-500 text-lg mb-2 font-medium">{t.videoSearchModal.enterKeywordPrompt}</p>
+                    <p className="text-gray-400 text-sm">{t.videoSearchModal.searchHighQualityPrompt}</p>
                   </div>
                 </div>
               )}
@@ -362,7 +368,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0 pr-4">
                         <h3 className="font-semibold text-gray-900 truncate">{previewVideo.title}</h3>
-                        <p className="text-sm text-gray-500 mt-1">作者: {previewVideo.author}</p>
+                        <p className="text-sm text-gray-500 mt-1">{t.videoSearchModal.author} {previewVideo.author}</p>
                       </div>
                       <div className="flex-shrink-0 flex items-center space-x-3 text-xs">
                         <div className="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded-md">
@@ -426,7 +432,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                 </svg>
-                                <p className="text-sm">无预览视频</p>
+                                <p className="text-sm">{t.videoSearchModal.previewUnavailable}</p>
                               </div>
                             )}
                           </div>
@@ -441,8 +447,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-lg font-medium mb-2">点击视频进行预览</p>
-                    <p className="text-sm">在左侧选择一个视频来查看详情</p>
+                    <p className="text-lg font-medium mb-2">{t.videoSearchModal.clickToPreview}</p>
+                    <p className="text-sm">{t.videoSearchModal.clickToPreviewDesc}</p>
                   </div>
                 </div>
               )}
@@ -453,7 +459,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               {/* 已选择标题栏 */}
               <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/50">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-gray-900">已选择的视频</h4>
+                  <h4 className="font-medium text-gray-900">{t.videoSearchModal.selectedVideos}</h4>
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                     {selectedVideos.length} 个
                   </span>
@@ -517,8 +523,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                       <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
-                      <p className="text-sm font-medium mb-1">暂无选择</p>
-                      <p className="text-xs">点击视频进行选择</p>
+                      <p className="text-sm font-medium mb-1">{t.videoSearchModal.noSelection}</p>
+                      <p className="text-xs">{t.videoSearchModal.noSelectionDesc}</p>
                     </div>
                   </div>
                 )}
@@ -538,9 +544,9 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-red-800 mb-1">视频时长不足</h4>
+                <h4 className="text-sm font-medium text-red-800 mb-1">{t.videoSearchModal.validationErrorTitle}</h4>
                 <p className="text-sm text-red-700">{validationError}</p>
-                <p className="text-xs text-red-600 mt-1">请选择更多视频或时长更长的视频素材。</p>
+                <p className="text-xs text-red-600 mt-1">{t.videoSearchModal.validationErrorDesc}</p>
               </div>
               <button
                 onClick={() => setValidationError(null)}
@@ -559,7 +565,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               onClick={handleReselect}
               className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium"
             >
-              重新选择
+              {t.videoSearchModal.reselectButton}
             </button>
             <button
               onClick={handleConfirmAdd}
@@ -569,7 +575,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <span>确认添加 ({selectedResults.size})</span>
+              <span>{t.videoSearchModal.confirmAddButton} ({selectedResults.size})</span>
             </button>
           </div>
         </div>
