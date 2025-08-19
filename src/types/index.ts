@@ -172,6 +172,7 @@ export interface Track {
   isLocked: boolean; // 是否锁定
   isMuted: boolean;  // 是否静音（音频轨道）
   isVisible: boolean; // 是否可见
+  volume: number;    // 音量大小（0-200，默认100，仅音频轨道有效）
   items: TimelineItem[];
   order: number;     // 轨道顺序
 }

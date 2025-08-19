@@ -5,10 +5,11 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **NEW**: Added audio volume control support - individual track volumes can be adjusted from 0% to 200%
 - **NEW**: Added subtitle composition support - subtitles from timeline are now automatically rendered into the final video
 - **NEW**: Added aspect ratio support with automatic letterboxing/pillarboxing
 - **FIXED**: Video truncation issue when audio is shorter than video content
-- Enhanced audio processing to support multiple audio tracks with proper mixing
+- Enhanced audio processing to support multiple audio tracks with proper mixing and volume control
 - Added support for server-side audio file URLs (e.g., TTS generated audio)
 - Improved error handling and logging for audio processing
 - Audio tracks are now properly extended/padded to match total video duration
@@ -213,6 +214,46 @@ The API supports multiple audio URL formats:
   - Individual volume control per track
   - Overlay mixing preserving all audio content
   - Automatic duration management
+
+#### Volume Control
+
+**NEW**: Individual volume control for audio and video tracks:
+
+- **Volume Range**: 0.0 to 2.0 (0% to 200%)
+  - `0.0` = Silent/Muted
+  - `1.0` = Original volume (100%)
+  - `2.0` = Double volume (200%)
+- **Default Values**: 
+  - Audio Track 1: 1.0 (100%)
+  - Audio Track 2: 0.5 (50%) - Half volume for balanced mixing
+- **Processing**: Uses FFmpeg `volume` filter for precise audio level adjustment
+- **Application**: Volume is applied during the mixing process, preserving audio quality
+
+**Volume Examples:**
+```json
+{
+  "audio_items": [
+    {
+      "id": "bgm",
+      "name": "background_music.mp3",
+      "url": "https://example.com/bgm.mp3",
+      "start_time": 0.0,
+      "duration": 30.0,
+      "track_id": "audio-track-1",
+      "volume": 0.3  // Background music at 30% volume
+    },
+    {
+      "id": "narration", 
+      "name": "voice_over.mp3",
+      "url": "https://example.com/voice.mp3",
+      "start_time": 5.0,
+      "duration": 20.0,
+      "track_id": "audio-track-2", 
+      "volume": 1.2  // Voice over at 120% volume for clarity
+    }
+  ]
+}
+```
 
 #### Video and Audio Clipping Support
 
