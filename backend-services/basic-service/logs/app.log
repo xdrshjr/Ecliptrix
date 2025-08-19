@@ -1,0 +1,344 @@
+2025-08-18 21:20:39 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-18 21:20:39 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-18 21:20:39 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-18 21:20:39 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-18 21:20:39 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-18 21:20:39 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-18 21:20:39 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-18 21:20:40 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:49 - Initializing Supabase client with URL: https://hlqvzgwmbejiviaekdns.supabase.co...
+2025-08-18 21:20:40 - [33mapp.services.supabase_service[0m - [33mWARNING[0m - __init__:63 - Direct Client creation failed: Client.__init__() got an unexpected keyword argument 'proxy', trying create_client function
+2025-08-18 21:20:40 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:79 - Supabase服务初始化失败: Client.__init__() got an unexpected keyword argument 'proxy'
+2025-08-18 21:20:40 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:80 - Error type: TypeError
+2025-08-18 21:20:40 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:81 - SUPABASE_URL: SET
+2025-08-18 21:20:40 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:82 - SUPABASE_ANON_KEY: SET
+2025-08-18 21:20:40 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:83 - SUPABASE_BUCKET: SET
+2025-08-18 21:20:40 - [32mapp.services.video_search_service[0m - [32mINFO[0m - __init__:26 - VideoSearchService initialized with 3 API keys
+2025-08-18 21:20:41 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-18 21:20:41 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-18 21:20:41 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _check_ffmpeg:62 - ffmpeg is available
+2025-08-18 21:20:41 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - __init__:55 - VideoCompositionService initialized with subtitle support
+2025-08-18 21:20:41 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-18 21:20:41 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-18 21:20:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-18 21:20:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-18 21:20:41 - [32mapp.services.batch_tts_service[0m - [32mINFO[0m - __init__:29 - BatchTTSService初始化
+2025-08-18 21:20:41 - [32mapp.services.audio_transcription_service[0m - [32mINFO[0m - __init__:39 - 音频转字幕服务初始化完成
+2025-08-18 21:20:41 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-18 21:20:41 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-18 21:20:41 - [32mapp.main[0m - [32mINFO[0m - <module>:258 - FastAPI application configured successfully
+2025-08-18 21:20:41 - [32mapp.main[0m - [32mINFO[0m - lifespan:37 - Starting Basic Service API v1.0.0
+2025-08-18 21:20:41 - [32mapp.main[0m - [32mINFO[0m - lifespan:38 - Debug mode: False
+2025-08-18 21:20:41 - [32mapp.main[0m - [32mINFO[0m - lifespan:39 - Log level: DEBUG
+2025-08-18 21:20:41 - [32mapp.main[0m - [32mINFO[0m - lifespan:40 - Server will run on 0.0.0.0:8000
+2025-08-18 21:20:41 - [32mapp.main[0m - [32mINFO[0m - lifespan:48 - Application startup completed
+2025-08-18 21:27:07 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-18 21:27:07 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-18 21:27:07 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-18 21:27:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-18 21:27:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-18 21:27:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-18 21:27:07 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-18 21:27:07 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.036s
+2025-08-18 21:27:07 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-18 21:27:07 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-18 21:27:07 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-18 21:27:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-18 21:27:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-18 21:27:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-18 21:27:07 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-18 21:27:07 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.031s
+2025-08-18 21:28:39 - [32mapp.main[0m - [32mINFO[0m - lifespan:53 - Shutting down application
+2025-08-18 21:28:39 - [32mapp.main[0m - [32mINFO[0m - lifespan:54 - Application shutdown completed
+2025-08-18 21:28:46 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-18 21:28:46 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-18 21:28:46 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-18 21:28:46 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-18 21:28:46 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-18 21:28:46 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-18 21:28:46 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-18 21:28:47 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:49 - Initializing Supabase client with URL: https://hlqvzgwmbejiviaekdns.supabase.co...
+2025-08-18 21:28:47 - [33mapp.services.supabase_service[0m - [33mWARNING[0m - __init__:63 - Direct Client creation failed: Client.__init__() got an unexpected keyword argument 'proxy', trying create_client function
+2025-08-18 21:28:47 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:79 - Supabase服务初始化失败: Client.__init__() got an unexpected keyword argument 'proxy'
+2025-08-18 21:28:47 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:80 - Error type: TypeError
+2025-08-18 21:28:47 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:81 - SUPABASE_URL: SET
+2025-08-18 21:28:47 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:82 - SUPABASE_ANON_KEY: SET
+2025-08-18 21:28:47 - [31mapp.services.supabase_service[0m - [31mERROR[0m - __init__:83 - SUPABASE_BUCKET: SET
+2025-08-18 21:28:47 - [32mapp.services.video_search_service[0m - [32mINFO[0m - __init__:26 - VideoSearchService initialized with 3 API keys
+2025-08-18 21:28:47 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-18 21:28:47 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-18 21:28:47 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _check_ffmpeg:62 - ffmpeg is available
+2025-08-18 21:28:47 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - __init__:55 - VideoCompositionService initialized with subtitle support
+2025-08-18 21:28:47 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-18 21:28:47 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-18 21:28:47 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-18 21:28:47 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-18 21:28:47 - [32mapp.services.batch_tts_service[0m - [32mINFO[0m - __init__:29 - BatchTTSService初始化
+2025-08-18 21:28:47 - [32mapp.services.audio_transcription_service[0m - [32mINFO[0m - __init__:39 - 音频转字幕服务初始化完成
+2025-08-18 21:28:47 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-18 21:28:47 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-18 21:28:47 - [32mapp.main[0m - [32mINFO[0m - <module>:258 - FastAPI application configured successfully
+2025-08-18 21:28:47 - [32mapp.main[0m - [32mINFO[0m - lifespan:37 - Starting Basic Service API v1.0.0
+2025-08-18 21:28:47 - [32mapp.main[0m - [32mINFO[0m - lifespan:38 - Debug mode: False
+2025-08-18 21:28:47 - [32mapp.main[0m - [32mINFO[0m - lifespan:39 - Log level: DEBUG
+2025-08-18 21:28:47 - [32mapp.main[0m - [32mINFO[0m - lifespan:40 - Server will run on 0.0.0.0:8000
+2025-08-18 21:28:47 - [32mapp.main[0m - [32mINFO[0m - lifespan:48 - Application startup completed
+2025-08-18 21:29:13 - [32mapp.main[0m - [32mINFO[0m - lifespan:53 - Shutting down application
+2025-08-18 21:29:13 - [32mapp.main[0m - [32mINFO[0m - lifespan:54 - Application shutdown completed
+2025-08-18 21:29:52 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-18 21:29:52 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-18 21:29:52 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-18 21:29:52 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-18 21:29:52 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-18 21:29:52 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-18 21:29:52 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-18 21:29:52 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:49 - Initializing Supabase client with URL: https://hlqvzgwmbejiviaekdns.supabase.co...
+2025-08-18 21:29:53 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:73 - Supabase服务初始化成功
+2025-08-18 21:29:53 - [32mapp.services.video_search_service[0m - [32mINFO[0m - __init__:26 - VideoSearchService initialized with 3 API keys
+2025-08-18 21:29:53 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-18 21:29:53 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-18 21:29:53 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _check_ffmpeg:62 - ffmpeg is available
+2025-08-18 21:29:53 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - __init__:55 - VideoCompositionService initialized with subtitle support
+2025-08-18 21:29:53 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-18 21:29:53 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-18 21:29:53 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-18 21:29:53 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-18 21:29:53 - [32mapp.services.batch_tts_service[0m - [32mINFO[0m - __init__:29 - BatchTTSService初始化
+2025-08-18 21:29:53 - [32mapp.services.audio_transcription_service[0m - [32mINFO[0m - __init__:39 - 音频转字幕服务初始化完成
+2025-08-18 21:29:53 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-18 21:29:53 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-18 21:29:53 - [32mapp.main[0m - [32mINFO[0m - <module>:258 - FastAPI application configured successfully
+2025-08-18 21:29:53 - [32mapp.main[0m - [32mINFO[0m - lifespan:37 - Starting Basic Service API v1.0.0
+2025-08-18 21:29:53 - [32mapp.main[0m - [32mINFO[0m - lifespan:38 - Debug mode: False
+2025-08-18 21:29:53 - [32mapp.main[0m - [32mINFO[0m - lifespan:39 - Log level: DEBUG
+2025-08-18 21:29:53 - [32mapp.main[0m - [32mINFO[0m - lifespan:40 - Server will run on 0.0.0.0:8000
+2025-08-18 21:29:53 - [32mapp.main[0m - [32mINFO[0m - lifespan:48 - Application startup completed
+2025-08-18 21:30:00 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-18 21:30:00 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-18 21:30:00 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-18 21:30:00 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-18 21:30:01 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-18 21:30:01 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-18 21:30:01 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-18 21:30:01 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.148s
+2025-08-18 21:30:01 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-18 21:30:01 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-18 21:30:01 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-18 21:30:01 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-18 21:30:01 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-18 21:30:01 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-18 21:30:01 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-18 21:30:01 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.064s
+2025-08-18 22:55:32 - [32mapp.main[0m - [32mINFO[0m - lifespan:53 - Shutting down application
+2025-08-18 22:55:32 - [32mapp.main[0m - [32mINFO[0m - lifespan:54 - Application shutdown completed
+2025-08-19 20:33:05 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-19 20:33:05 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-19 20:33:05 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-19 20:33:05 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-19 20:33:05 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-19 20:33:05 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-19 20:33:05 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-19 20:33:06 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:49 - Initializing Supabase client with URL: https://hlqvzgwmbejiviaekdns.supabase.co...
+2025-08-19 20:33:07 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:73 - Supabase服务初始化成功
+2025-08-19 20:33:07 - [32mapp.services.video_search_service[0m - [32mINFO[0m - __init__:26 - VideoSearchService initialized with 3 API keys
+2025-08-19 20:33:07 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-19 20:33:07 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-19 20:33:07 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _check_ffmpeg:62 - ffmpeg is available
+2025-08-19 20:33:07 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - __init__:55 - VideoCompositionService initialized with subtitle support
+2025-08-19 20:33:07 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-19 20:33:07 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-19 20:33:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-19 20:33:07 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-19 20:33:07 - [32mapp.services.batch_tts_service[0m - [32mINFO[0m - __init__:29 - BatchTTSService初始化
+2025-08-19 20:33:07 - [32mapp.services.audio_transcription_service[0m - [32mINFO[0m - __init__:39 - 音频转字幕服务初始化完成
+2025-08-19 20:33:07 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-19 20:33:07 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-19 20:33:07 - [32mapp.main[0m - [32mINFO[0m - <module>:258 - FastAPI application configured successfully
+2025-08-19 20:33:07 - [32mapp.main[0m - [32mINFO[0m - lifespan:37 - Starting Basic Service API v1.0.0
+2025-08-19 20:33:07 - [32mapp.main[0m - [32mINFO[0m - lifespan:38 - Debug mode: False
+2025-08-19 20:33:07 - [32mapp.main[0m - [32mINFO[0m - lifespan:39 - Log level: DEBUG
+2025-08-19 20:33:07 - [32mapp.main[0m - [32mINFO[0m - lifespan:40 - Server will run on 0.0.0.0:8000
+2025-08-19 20:33:07 - [32mapp.main[0m - [32mINFO[0m - lifespan:48 - Application startup completed
+2025-08-19 20:41:20 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 20:41:20 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 20:41:20 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 20:41:20 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 20:41:20 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 20:41:20 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 20:41:20 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 20:41:20 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.070s
+2025-08-19 20:41:20 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 20:41:20 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 20:41:20 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 20:41:20 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 20:41:20 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 20:41:20 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 20:41:20 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 20:41:20 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.053s
+2025-08-19 21:03:39 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:03:39 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:03:39 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:03:39 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:03:39 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:03:39 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:03:39 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:03:39 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.050s
+2025-08-19 21:03:39 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:03:39 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:03:39 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:03:39 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:03:39 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:03:39 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:03:39 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:03:39 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.030s
+2025-08-19 21:16:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:16:13 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:16:13 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:16:13 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:16:13 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:16:13 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:16:13 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:16:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.031s
+2025-08-19 21:16:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:16:13 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:16:13 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:16:13 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:16:13 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:16:13 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:16:13 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:16:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.036s
+2025-08-19 21:32:42 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:32:42 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:32:42 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:32:42 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:32:42 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:32:42 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:32:42 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:32:42 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.032s
+2025-08-19 21:32:42 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:32:42 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:32:42 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:32:42 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:32:42 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:32:42 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:32:42 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:32:42 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.030s
+2025-08-19 21:34:25 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:34:25 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:34:25 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:34:25 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:34:25 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:34:25 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:34:25 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:34:25 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.050s
+2025-08-19 21:34:25 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:34:25 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:34:25 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:34:25 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:34:25 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:34:25 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:34:25 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:34:25 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.050s
+2025-08-19 21:35:41 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:35:41 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:35:41 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:35:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:35:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:35:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:35:41 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:35:41 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.052s
+2025-08-19 21:35:41 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:35:41 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:35:41 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:35:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:35:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:35:41 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:35:41 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:35:41 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.052s
+2025-08-19 21:43:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:43:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:43:03 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:43:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:43:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:43:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:43:03 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:43:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.032s
+2025-08-19 21:52:09 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:52:09 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:52:09 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:52:09 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:52:09 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:52:09 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:52:09 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:52:09 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.031s
+2025-08-19 21:52:09 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 21:52:09 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 21:52:09 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 21:52:09 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 21:52:09 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 21:52:09 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 21:52:09 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 21:52:09 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.038s
+2025-08-19 22:07:12 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:07:12 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:07:12 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:07:12 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:07:12 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:07:12 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:07:12 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:07:12 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.038s
+2025-08-19 22:07:12 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:07:12 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:07:12 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:07:12 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:07:12 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:07:12 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:07:12 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:07:12 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.042s
+2025-08-19 22:17:53 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:17:53 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:17:53 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:17:53 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:17:54 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:17:54 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:17:54 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:17:54 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.041s
+2025-08-19 22:17:54 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:17:54 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:17:54 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:17:54 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:17:54 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:17:54 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:17:54 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:17:54 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.033s
+2025-08-19 22:25:56 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:25:56 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:25:56 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:25:56 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:25:56 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:25:56 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:25:56 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:25:56 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.031s
+2025-08-19 22:25:56 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:25:56 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:25:56 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:25:56 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:25:56 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:25:56 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:25:56 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:25:56 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.032s
+2025-08-19 22:39:38 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:39:38 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:39:38 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:39:38 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:39:38 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.055s
+2025-08-19 22:39:38 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:92 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-19 22:39:38 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:93 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-19 22:39:38 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-19 22:39:38 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-19 22:39:38 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.031s

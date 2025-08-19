@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Track as TrackType, TimelineItem as TimelineItemType, MaterialItem } from '@/types';
-import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
-import TimelineItem from './TimelineItem';
+import React, { useState, useRef, useCallback } from 'react';
+import { Track as TrackType, TimelineItem, MaterialItem } from '@/types';
+import { SupportedLocale } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
+import TimelineItemComponent from './TimelineItem';
 
 interface TrackProps {
   track: TrackType;
@@ -19,7 +20,7 @@ interface TrackProps {
   onToggleVisibility: (trackId: string) => void;
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
   totalDuration: number;
-  locale?: SupportedLocale;
+  locale?: SupportedLocale; // 保持向后兼容性，但context优先
 }
 
 const Track: React.FC<TrackProps> = ({
@@ -36,13 +37,12 @@ const Track: React.FC<TrackProps> = ({
   onToggleVisibility,
   onMaterialDrop,
   totalDuration,
-  locale = defaultLocale
+  locale // 保持向后兼容性，但不再使用
 }) => {
+  // 使用LocaleContext获取国际化翻译
+  const { t, locale: contextLocale } = useLocale();
   const [isDragOver, setIsDragOver] = useState(false);
   
-  // 获取国际化翻译
-  const t = getTranslations(locale);
-
   // 检查素材类型是否与轨道兼容
   const isMaterialCompatible = (materialType: string): boolean => {
     switch (materialType) {
@@ -393,7 +393,7 @@ const Track: React.FC<TrackProps> = ({
 
         {/* 渲染轨道上的所有项目 */}
         {track.items.map((item) => (
-          <TimelineItem
+          <TimelineItemComponent
             key={item.id}
             item={item}
             pixelsPerSecond={pixelsPerSecond}

@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { TimelineToolType } from '@/types';
-import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
+import { SupportedLocale } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface TimelineToolbarProps {
   activeTool: TimelineToolType;
@@ -23,7 +24,7 @@ interface TimelineToolbarProps {
   onExport: () => void;
   isExporting?: boolean; // 导出状态
   exportProgress?: number; // 导出进度
-  locale?: SupportedLocale; // 可选的locale参数，默认使用defaultLocale
+  locale?: SupportedLocale; // 保持向后兼容性，但context优先
 }
 
 const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
@@ -45,10 +46,10 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onExport,
   isExporting = false,
   exportProgress = 0,
-  locale = defaultLocale
+  locale // 保持向后兼容性，但不再使用
 }) => {
-  // 获取国际化翻译
-  const t = getTranslations(locale);
+  // 使用LocaleContext获取国际化翻译
+  const { t, locale: contextLocale } = useLocale();
 
   console.log(`[TimelineToolbar] 工具栏渲染`, {
     activeTool,
@@ -57,7 +58,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     canRedo,
     isExporting,
     exportProgress,
-    locale,
+    locale: contextLocale, // 使用context中的locale
     timestamp: new Date().toISOString()
   });
 

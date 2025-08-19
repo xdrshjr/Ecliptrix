@@ -24,6 +24,7 @@ import { useVideoSearch } from './hooks/useVideoSearch';
 import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -53,6 +54,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   // 使用通知hook
   const { showSuccess, showError } = useNotification();
+  const { t } = useLocale();
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -248,7 +250,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
            generate_srt_file: true
          });
        } else {
-         throw new Error('未找到对应的音频文件，请确保已完成语音转换');
+         throw new Error(t.scriptPanel.errors.audioFileNotFound);
        }
 
              if (transcriptionResult.success) {
@@ -289,14 +291,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
              // 创建字幕材料项
              const subtitleMaterial: MaterialItem = {
                id: `subtitle_${segmentId}_${Date.now()}`,
-               name: `${segment.title || `段落${segments.indexOf(segment) + 1}`} - 字幕`,
+               name: `${segment.title || t.scriptPanel.segments.segmentPrefix.replace('{index}', (segments.indexOf(segment) + 1).toString())}${t.scriptPanel.segments.subtitleSuffix}`,
                type: 'subtitle',
                format: 'srt',
                size: subtitleBlob.size,
                duration: totalDuration,
                url: subtitleUrl,
                createdAt: new Date(),
-               description: `从"${segment.title || `段落${segments.indexOf(segment) + 1}`}"语音识别生成的字幕`,
+               description: t.scriptPanel.segments.generatedFrom.replace('{source}', segment.title || t.scriptPanel.segments.segmentPrefix.replace('{index}', (segments.indexOf(segment) + 1).toString())),
                metadata: {
                  segment_id: segmentId,
                  task_id: taskId,
@@ -307,7 +309,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                  srt_content: srtContent,
                  subtitles: response.subtitles,
                  isLocalFile: true,
-                 fileName: `${segment.title || `段落${segments.indexOf(segment) + 1}`}_字幕.srt`
+                                   fileName: `${segment.title || t.scriptPanel.segments.segmentPrefix.replace('{index}', (segments.indexOf(segment) + 1).toString())}_${t.scriptPanel.segments.subtitleSuffix.replace(' - ', '')}.srt`
                }
              };
 
@@ -347,10 +349,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
          segmentId
        });
 
-      setSubtitleErrors(prev => ({
-        ...prev,
-        [segmentId]: `字幕识别异常: ${errorMessage}`
-      }));
+              setSubtitleErrors(prev => ({
+          ...prev,
+          [segmentId]: `${t.scriptPanel.errors.speechConversionFailed}: ${errorMessage}`
+        }));
     } finally {
              setTranscribingSegments(prev => {
          const newSet = new Set(Array.from(prev));
@@ -547,7 +549,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       const totalVideoDuration = videos.reduce((total, video) => total + (video.duration || 0), 0);
       
       if (totalVideoDuration < segment.duration) {
-        const errorMessage = `视频总时长 (${Math.ceil(totalVideoDuration)}秒) 需要大于当前音频时长 (${Math.ceil(segment.duration)}秒)`;
+        const errorMessage = t.scriptPanel.errors.videoDurationInsufficient
+          .replace('{videoDuration}', Math.ceil(totalVideoDuration).toString())
+          .replace('{audioDuration}', Math.ceil(segment.duration).toString());
         videoSearch.setValidationError(errorMessage);
         logger.warn('视频时长验证失败，弹窗保持开启等待用户调整', {
           segmentId,
@@ -585,8 +589,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         // 创建带有段落信息的视频副本
         const videoWithSegmentInfo: MaterialItem = {
           ...video,
-          name: `段落${segmentNumber} - ${video.name}`,
-          description: `段落${segmentNumber}"${segment?.title || ''}"的关联视频 - ${video.description || video.name}`,
+          name: t.scriptPanel.segments.associatedVideo.replace('{index}', segmentNumber.toString()).replace('{videoName}', video.name),
+          description: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', segmentNumber.toString())}"${segment?.title || ''}"的关联视频 - ${video.description || video.name}`,
           metadata: {
             ...video.metadata,
             segment_id: segmentId,
@@ -769,7 +773,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       const fullText = segment.sentences.map(sentence => sentence.text).join(' ');
 
       if (!fullText.trim()) {
-        throw new Error('片段文本为空');
+        throw new Error(t.scriptPanel.errors.segmentTextEmpty);
       }
 
       // 模拟进度更新
@@ -842,7 +846,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           const segmentNumber = getSegmentNumber(segment.id);
           const audioMaterial: MaterialItem = {
             id: `audio_${segment.id}_${Date.now()}`,
-            name: `段落${segmentNumber} - ${segment.title} - 语音`,
+                          name: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', segmentNumber.toString())} - ${segment.title}${t.scriptPanel.segments.speechSuffix}`,
             type: 'audio',
             format: 'mp3',
             size: response.data.file_size,
@@ -850,7 +854,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             url: localUrl, // 使用本地URL
             serverUrl: response.data.audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
-            description: `由段落${segmentNumber}"${segment.title}"转换生成的语音`,
+                          description: `${t.scriptPanel.segments.generatedFrom.replace('{source}', `${t.scriptPanel.segments.segmentPrefix.replace('{index}', segmentNumber.toString())}"${segment.title}"`)}`,
             metadata: {
               voice_type: selectedVoiceId,
               text_length: response.data.text_length,
@@ -911,7 +915,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             fileName: fileName,
             error: downloadError instanceof Error ? downloadError.message : String(downloadError)
           });
-          throw new Error(`音频下载失败: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
+          throw new Error(`${t.scriptPanel.errors.audioDownloadFailed}: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
         }
 
       } else {
@@ -927,7 +931,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       });
 
       // 显示错误提示
-      showError(`语音转换失败: ${errorMessage}`);
+      showError(`${t.scriptPanel.errors.speechConversionFailed}: ${errorMessage}`);
 
     } finally {
       // 清理状态
@@ -1036,11 +1040,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
       // 显示完成提示
       if (failCount === 0) {
-        showSuccess(`批量语音转换完成！成功转换 ${successCount} 个片段`);
+        showSuccess(t.scriptPanel.errors.batchConversionComplete.replace('{success}', successCount.toString()));
       } else if (successCount > 0) {
-        showSuccess(`批量语音转换完成！成功: ${successCount}/${segments.length} 个片段，失败: ${failCount} 个片段`);
+        showSuccess(t.scriptPanel.errors.batchConversionPartial
+          .replace('{success}', successCount.toString())
+          .replace('{total}', segments.length.toString())
+          .replace('{failed}', failCount.toString()));
       } else {
-        showError(`批量语音转换失败！所有 ${segments.length} 个片段都转换失败`);
+        showError(t.scriptPanel.errors.batchConversionFailed.replace('{total}', segments.length.toString()));
       }
 
       logger.info('批量语音转换处理完成', {
@@ -1057,7 +1064,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         taskId
       });
 
-      showError(`批量语音转换失败: ${errorMessage}`);
+      showError(`${t.scriptPanel.errors.speechConversionFailed}: ${errorMessage}`);
 
     } finally {
       setIsBatchConverting(false);
@@ -1082,8 +1089,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
-              <span className="text-xs text-gray-500 ml-3">0 个片段 · 0 句话</span>
+              <h3 className="text-sm font-semibold text-gray-900">{t.scriptPanel.header.title}</h3>
+              <span className="text-xs text-gray-500 ml-3">{t.scriptPanel.header.segmentsCount.replace('{count}', '0')} · {t.scriptPanel.header.sentencesCount.replace('{count}', '0')}</span>
             </div>
             {onGenerateScript && (
               <button
@@ -1113,9 +1120,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <p className="text-sm text-gray-600">暂无脚本内容</p>
+            <p className="text-sm text-gray-600">{t.scriptPanel.emptyState.noScript}</p>
             <p className="text-xs text-gray-500 mt-1">
-              {onGenerateScript ? '点击"生成脚本"按钮根据左侧内容生成脚本' : '文本脚本将显示在这里'}
+              {onGenerateScript ? t.scriptPanel.emptyState.clickGenerate : t.scriptPanel.emptyState.scriptWillAppear}
             </p>
           </div>
         </div>
@@ -1134,16 +1141,16 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t.scriptPanel.header.title}</h3>
             <span className="text-xs text-gray-500 ml-3">
-              {segments.length} 个片段 · {segments.reduce((sum, segment) => sum + segment.sentences.length, 0)} 句话
+              {t.scriptPanel.header.segmentsCount.replace('{count}', segments.length.toString())} · {t.scriptPanel.header.sentencesCount.replace('{count}', segments.reduce((sum, segment) => sum + segment.sentences.length, 0).toString())}
             </span>
           </div>
           <div className="flex items-center space-x-2">
             {/* 批量转换进度 - 显示在按钮左侧 */}
             {isBatchConverting && (
               <div className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded border border-purple-200">
-                进度: {batchProgress.completed + batchProgress.failed}/{batchProgress.total}
+                {t.scriptPanel.progress.progressStatus.replace('{completed}', (batchProgress.completed + batchProgress.failed).toString()).replace('{total}', batchProgress.total.toString())}
                 {batchProgress.currentSegment && (
                   <span className="ml-1">({batchProgress.currentSegment})</span>
                 )}
@@ -1155,7 +1162,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               onClick={handleBatchConvertToSpeech}
               disabled={isBatchConverting || segments.length === 0}
               className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              title="转换全部语音"
+              title={t.scriptPanel.header.convertAllSpeech}
             >
               {isBatchConverting ? (
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1175,7 +1182,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 onClick={handleGenerateScript}
                 disabled={isGenerating}
                 className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title="生成脚本"
+                title={t.scriptPanel.header.generateScript}
               >
                 {isGenerating ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1184,7 +1191,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   </svg>
                 ) : (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 712-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 )}
               </button>
@@ -1215,7 +1222,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   onClick={() => handleConvertToSpeech(segment)}
                   disabled={convertingSegments.has(segment.id) || isBatchConverting}
                   className="p-1.5 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  title="转换语音"
+                  title={t.scriptPanel.actions.convertSpeech}
                 >
                   {convertingSegments.has(segment.id) ? (
                     <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1238,7 +1245,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       ? 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
                       : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
                   }`}
-                  title={completedSegments.has(segment.id) ? "搜索在线视频" : "请先完成语音转换"}
+                  title={completedSegments.has(segment.id) ? t.scriptPanel.actions.searchOnlineVideos : t.scriptPanel.actions.completeConversionFirst}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1250,7 +1257,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 {/* 时长显示 */}
                 {segment.duration && (
                   <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {segment.duration.toFixed(2)}s
+                    {segment.duration.toFixed(2)}{t.scriptPanel.video.seconds}
                   </span>
                 )}
               </div>
@@ -1260,7 +1267,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {ttsProgress[segment.id] !== undefined && (
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-600">转换进度</span>
+                  <span className="text-xs text-gray-600">{t.scriptPanel.progress.conversionProgress}</span>
                   <span className="text-xs text-gray-600">{ttsProgress[segment.id]}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -1299,16 +1306,16 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                               onClick={handleSaveEdit}
                               className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors duration-150"
                             >
-                              保存
+                              {t.scriptPanel.editing.save}
                             </button>
                             <button
                               onClick={handleCancelEdit}
                               className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors duration-150"
                             >
-                              取消
+                              {t.scriptPanel.editing.cancel}
                             </button>
                             <span className="text-xs text-gray-500">
-                              Enter保存 · Esc取消
+                              {t.scriptPanel.editing.saveHint}
                             </span>
                           </div>
                         </div>
@@ -1331,7 +1338,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                         <button
                           onClick={() => handleStartEdit(sentence)}
                           className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors duration-150"
-                          title="编辑句子"
+                          title={t.scriptPanel.actions.editSentence}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1348,7 +1355,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {segment.videos && segment.videos.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
-                  <h5 className="text-xs font-medium text-gray-600">关联视频</h5>
+                  <h5 className="text-xs font-medium text-gray-600">{t.scriptPanel.video.associatedVideos}</h5>
                   <span className="text-xs text-gray-500">
                     {(segmentVideoIndexes[segment.id] || 0) + 1} / {segment.videos.length}
                   </span>
@@ -1418,7 +1425,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                             }}
                           >
                             <source src={currentVideo.url} type={`video/${currentVideo.format}`} />
-                            您的浏览器不支持视频播放。
+                            {t.scriptPanel.video.browserNotSupported}
                           </video>
                         ) : currentVideo.thumbnailUrl ? (
                           <img 
@@ -1455,7 +1462,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           } else if (loadingState === 'error') {
                             return (
                               <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
-                                <div className="text-white text-sm">加载失败</div>
+                                <div className="text-white text-sm">{t.scriptPanel.video.loadingFailed}</div>
                               </div>
                             );
                           }
@@ -1467,7 +1474,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       <div className="text-xs text-gray-600">
                         <div className="font-medium truncate">{currentVideo.name}</div>
                         <div className="text-gray-500 mt-1">
-                          {currentVideo.duration && `${Math.ceil(currentVideo.duration)}秒`}
+                          {currentVideo.duration && `${Math.ceil(currentVideo.duration)}${t.scriptPanel.video.seconds}`}
                           {currentVideo.width && currentVideo.height && ` · ${currentVideo.width}x${currentVideo.height}`}
                         </div>
                       </div>
@@ -1478,7 +1485,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           <button
                             onClick={() => handleVideoNavigation(segment.id, 'prev')}
                             className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                            title="上一个视频"
+                            title={t.scriptPanel.actions.previousVideo}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -1487,7 +1494,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           <button
                             onClick={() => handleVideoNavigation(segment.id, 'next')}
                             className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                            title="下一个视频"
+                            title={t.scriptPanel.actions.nextVideo}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

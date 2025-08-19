@@ -6,6 +6,7 @@ import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -31,6 +32,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   confirmationDialog,
   handleCloseConfirmationDialog
 }) => {
+  const { t } = useLocale();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'MaterialsPanel'
@@ -42,7 +44,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const materialsGridRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    logger.info('组件初始化 - 素材网格滚动优化版本', {
+    logger.info('Component initialized - Materials grid scroll optimized version', {
       materialsCount: materials.length,
       selectedType: selectedMaterialType,
       isUploading,
@@ -52,7 +54,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 监听 materials 变化
   useEffect(() => {
-    logger.info('素材列表更新 - 4列紧凑布局，独立滚动容器', {
+    logger.info('Materials list updated - 4-column compact layout, independent scroll container', {
       materialsCount: materials.length,
       layoutType: 'grid-cols-4-compact',
       scrollContainer: 'materials-grid-container',
@@ -68,7 +70,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     // 记录滚动容器状态
     if (materialsGridRef.current) {
       const container = materialsGridRef.current;
-      logger.info('素材网格滚动容器状态', {
+      logger.info('Materials grid scroll container status', {
         scrollHeight: container.scrollHeight,
         clientHeight: container.clientHeight,
         scrollable: container.scrollHeight > container.clientHeight,
@@ -78,7 +80,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   }, [materials]);
 
   const handleTypeFilter = (type: MaterialType | 'all') => {
-    logger.info('素材类型筛选', {
+    logger.info('Material type filter', {
       previousType: selectedMaterialType,
       newType: type,
       materialsCount: materials.length
@@ -88,7 +90,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   };
 
   const handleUploadClick = () => {
-    logger.info('用户点击上传按钮', {
+    logger.info('User clicked upload button', {
       materialsCount: materials.length,
       isCurrentlyUploading: isUploading
     });
@@ -97,7 +99,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   };
 
   const handleSearchClick = () => {
-    logger.info('用户点击搜索视频按钮', {
+    logger.info('User clicked search videos button', {
       materialsCount: materials.length,
     });
     
@@ -106,7 +108,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 处理删除全部按钮点击
   const handleDeleteAllClick = () => {
-    logger.info('用户点击删除全部按钮', {
+    logger.info('User clicked delete all button', {
       selectedMaterialType,
       materialsCount: materials.length,
       filteredMaterialsCount: materials.length
@@ -120,7 +122,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     // 阻止事件冒泡，避免触发素材点击事件
     e.stopPropagation();
     
-    logger.info('用户点击单个素材删除按钮', {
+    logger.info('User clicked single material delete button', {
       materialId: material.id,
       materialName: material.name,
       materialType: material.type
@@ -131,7 +133,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 拖拽开始处理
   const handleDragStart = (e: React.DragEvent, material: MaterialItem) => {
-    logger.info('开始拖拽素材', {
+    logger.info('Started dragging material', {
       materialId: material.id,
       materialName: material.name,
       materialType: material.type,
@@ -159,7 +161,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 拖拽结束处理
   const handleDragEnd = (e: React.DragEvent, material: MaterialItem) => {
-    logger.info('拖拽素材结束', {
+    logger.info('Finished dragging material', {
       materialId: material.id,
       materialName: material.name,
       dropEffect: e.dataTransfer.dropEffect
@@ -170,7 +172,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 素材项点击处理
   const handleMaterialClick = (material: MaterialItem) => {
-    logger.info('素材项点击', {
+    logger.info('Material item clicked', {
       materialId: material.id,
       materialName: material.name,
       materialType: material.type
@@ -188,7 +190,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   const handleSubtitleDownload = (material: MaterialItem) => {
     try {
-      logger.userAction('下载字幕文件', 'subtitleDownload', {
+      logger.userAction('Download subtitle file', 'subtitleDownload', {
         materialId: material.id,
         materialName: material.name,
         format: material.format
@@ -210,7 +212,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        logger.info('字幕文件下载成功', {
+        logger.info('Subtitle file download successful', {
           materialId: material.id,
           fileName,
           contentLength: srtContent.length
@@ -224,20 +226,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         a.click();
         document.body.removeChild(a);
 
-        logger.info('字幕文件下载触发', {
+        logger.info('Subtitle file download triggered', {
           materialId: material.id,
           fileName,
           url: material.url
         });
       } else {
-        throw new Error('无法获取字幕内容');
+        throw new Error(t.materialsPanel.subtitleContentError);
       }
     } catch (error) {
-      logger.error('字幕文件下载失败', new Error(error instanceof Error ? error.message : String(error)), {
+      logger.error('Subtitle file download failed', new Error(error instanceof Error ? error.message : String(error)), {
         materialId: material.id,
         materialName: material.name
       });
-      alert(`字幕文件下载失败: ${error instanceof Error ? error.message : String(error)}`);
+      alert(`${t.materialsPanel.subtitleDownloadError}: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -249,7 +251,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       }
       setPlayingAudio(null);
       
-      logger.info('暂停音频播放', {
+      logger.info('Paused audio playback', {
         materialId: material.id,
         materialName: material.name
       });
@@ -269,13 +271,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         if (localUrl) {
           audioUrl = localUrl;
           isLocalFile = true;
-          logger.info('使用本地音频文件', {
+          logger.info('Using local audio file', {
             materialId: material.id,
             fileName: material.metadata.fileName,
             localUrl: localUrl
           });
         } else {
-          logger.info('本地音频文件不可用，使用远程URL', {
+          logger.info('Local audio file not available, using remote URL', {
             materialId: material.id,
             fileName: material.metadata.fileName,
             originalUrl: material.metadata.originalUrl || material.url
@@ -288,7 +290,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       
       audio.onplay = () => {
         setPlayingAudio(material.id);
-        logger.info('开始音频播放', {
+        logger.info('Started audio playback', {
           materialId: material.id,
           materialName: material.name,
           duration: material.duration,
@@ -305,7 +307,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       
       audio.onended = () => {
         setPlayingAudio(null);
-        logger.info('音频播放完成', {
+        logger.info('Audio playback completed', {
           materialId: material.id,
           materialName: material.name,
           isLocalFile: isLocalFile
@@ -317,7 +319,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         
         // 如果本地文件播放失败，尝试使用远程URL
         if (isLocalFile && material.metadata?.originalUrl) {
-          logger.error('本地音频播放失败，尝试远程URL', new Error('Local audio playback failed'), {
+          logger.error('Local audio playback failed, trying remote URL', new Error('Local audio playback failed'), {
             materialId: material.id,
             materialName: material.name,
             localUrl: audioUrl,
@@ -337,7 +339,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           return;
         }
         
-        logger.error('音频播放失败', new Error('Audio playback failed'), {
+        logger.error('Audio playback failed', new Error('Audio playback failed'), {
           materialId: material.id,
           materialName: material.name,
           url: audioUrl,
@@ -347,7 +349,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       
       audio.play().catch(error => {
         const errorObj = error instanceof Error ? error : new Error(String(error));
-        logger.error('音频播放启动失败', errorObj, {
+        logger.error('Audio playback start failed', errorObj, {
           materialId: material.id,
           isLocalFile: isLocalFile,
           audioUrl: audioUrl
@@ -359,7 +361,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   // 滚动事件处理
   const handleGridScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
-    logger.debug('素材网格滚动事件', {
+    logger.debug('Materials grid scroll event', {
       scrollTop: container.scrollTop,
       scrollHeight: container.scrollHeight,
       clientHeight: container.clientHeight,
@@ -377,14 +379,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">素材管理</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t.materialsPanel.title}</h3>
           </div>
           <div className="flex items-center space-x-2">
             {/* 新增：AI自动混剪按钮 */}
             {onAutoMixAudio && (
               <button
                 onClick={() => {
-                  logger.userAction('AI自动混剪', 'autoMixButton', {
+                  logger.userAction('AI Auto Mix', 'autoMixButton', {
                     materialsCount: materials.length,
                     audioMaterialsCount: materials.filter(m => m.type === 'audio').length,
                     taskId
@@ -392,12 +394,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   onAutoMixAudio();
                 }}
                 className="flex items-center space-x-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-md hover:bg-purple-700 transition-colors"
-                title="将所有文本脚本转换的音频和关联的视频按顺序自动添加到时间轴"
+                title={t.materialsPanel.aiAutoMixTooltip}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
-                <span>AI自动混剪</span>
+                <span>{t.materialsPanel.aiAutoMix}</span>
               </button>
             )}
             
@@ -406,7 +408,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               onClick={handleUploadClick}
               disabled={isUploading}
               className="flex items-center space-x-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="上传素材"
+              title={t.materialsPanel.uploadTooltip}
             >
               {isUploading ? (
                 <>
@@ -421,7 +423,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  <span>上传</span>
+                  <span>{t.materialsPanel.upload}</span>
                 </>
               )}
             </button>
@@ -442,10 +444,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {type === 'all' ? '全部' : 
-               type === 'video' ? '视频' :
-               type === 'audio' ? '音频' : 
-               type === 'image' ? '图片' : '字幕'}
+              {type === 'all' ? t.materialsPanel.filterAll : 
+               type === 'video' ? t.materialsPanel.filterVideo :
+               type === 'audio' ? t.materialsPanel.filterAudio : 
+               type === 'image' ? t.materialsPanel.filterImage : t.materialsPanel.filterSubtitle}
             </button>
           ))}
         </div>
@@ -463,9 +465,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">暂无素材</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">{t.materialsPanel.noMaterials}</h3>
               <p className="text-sm text-gray-500 text-center mb-6 max-w-sm">
-                素材库为空，点击下方「搜索视频」按钮来添加高质量的视频素材
+                {t.materialsPanel.emptyDescription}
               </p>
               <button
                 onClick={handleSearchClick}
@@ -474,7 +476,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <span>搜索视频</span>
+                <span>{t.materialsPanel.searchVideos}</span>
               </button>
             </div>
           ) : (
@@ -560,9 +562,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         material.type === 'subtitle' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-purple-100 text-purple-800'
                       }`}>
-                        {material.type === 'video' ? '视频' :
-                         material.type === 'audio' ? '音频' : 
-                         material.type === 'subtitle' ? '字幕' : '图片'}
+                        {material.type === 'video' ? t.materialsPanel.typeVideo :
+                         material.type === 'audio' ? t.materialsPanel.typeAudio : 
+                         material.type === 'subtitle' ? t.materialsPanel.typeSubtitle : t.materialsPanel.typeImage}
                       </span>
                     </div>
                     
@@ -571,7 +573,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       <button
                         onClick={(e) => handleSingleMaterialDelete(material, e)}
                         className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
-                        title={`删除素材: ${material.name}`}
+                        title={t.materialsPanel.deleteMaterialTooltip.replace('{name}', material.name)}
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -621,12 +623,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               <button
                 onClick={handleSearchClick}
                 className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                title="搜索在线视频"
+                title={t.materialsPanel.searchVideosTooltip}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <span>搜索视频</span>
+                <span>{t.materialsPanel.searchVideos}</span>
               </button>
               
               {/* 新增：删除全部按钮 */}
@@ -634,17 +636,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <button
                   onClick={handleDeleteAllClick}
                   className="flex items-center space-x-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded transition-colors"
-                  title={`删除当前选项卡的所有素材 (${materials.length}个)`}
+                  title={t.materialsPanel.deleteAllTooltip.replace('{count}', materials.length.toString())}
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  <span>删除全部</span>
+                  <span>{t.materialsPanel.deleteAll}</span>
                 </button>
               )}
             </div>
             <div className="text-gray-500">
-              {materials.length}个素材
+              {materials.length}{t.materialsPanel.materialsCount}
             </div>
           </div>
         </div>

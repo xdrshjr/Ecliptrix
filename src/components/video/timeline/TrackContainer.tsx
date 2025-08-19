@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
-import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
+import { SupportedLocale } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
 import Track from './Track';
 
 interface TrackContainerProps {
@@ -19,7 +20,7 @@ interface TrackContainerProps {
   onRemoveTrack: (trackId: string) => void;
   onReorderTracks: (sourceIndex: number, destinationIndex: number) => void;
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
-  locale?: SupportedLocale;
+  locale?: SupportedLocale; // 保持向后兼容性，但context优先
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -36,10 +37,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onRemoveTrack,
   onReorderTracks,
   onMaterialDrop,
-  locale = defaultLocale
+  locale // 保持向后兼容性，但不再使用
 }) => {
-  // 获取国际化翻译
-  const t = getTranslations(locale);
+  // 使用LocaleContext获取国际化翻译
+  const { t, locale: contextLocale } = useLocale();
   const { tracks, selectedItems, totalDuration, zoomLevel } = timelineState;
   const pixelsPerSecond = zoomLevel * 50; // 基础像素比例
 
@@ -91,7 +92,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
               onToggleVisibility={onToggleTrackVisibility}
               onMaterialDrop={onMaterialDrop}
               totalDuration={totalDuration}
-              locale={locale}
+              locale={contextLocale} // 传递context中的locale
             />
           ))
         ) : (

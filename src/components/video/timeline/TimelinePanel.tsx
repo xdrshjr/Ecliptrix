@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
-import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
+import { SupportedLocale } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
 import { useVideoExport } from '../hooks/useVideoExport';
 import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
@@ -22,11 +23,11 @@ interface TimelinePanelProps {
   onTimelineCompositionChange?: (timelineState: TimelineState) => void;
   // 新增：程序化添加素材到时间轴的回调（外部传入要添加的素材）
   materialsToAdd?: { materials: MaterialItem[], targetTrackId?: string, timestamp: number };
-  // 国际化支持
+  // 国际化支持 - 保持向后兼容性，但context优先
   locale?: SupportedLocale;
 }
 
-const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
+const TimelinePanel: React.FC<TimelinePanelProps> = ({
   className = '', 
   onTimelineStateChange, 
   externalCurrentTime,
@@ -34,8 +35,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   materials = [],
   onTimelineCompositionChange,
   materialsToAdd,
-  locale = defaultLocale
+  locale // 保持向后兼容性，但不再使用
 }) => {
+  // 使用LocaleContext获取国际化翻译
+  const { t, locale: contextLocale } = useLocale();
+
   // 创建初始空轨道状态
   const createInitialTimelineState = (): TimelineState => {
     const initialTracks: Track[] = [
@@ -882,7 +886,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
     const trackId = `${type}-track-${Date.now()}`;
     // 使用国际化轨道名称
-    const t = getTranslations(locale);
     const baseTrackName = type === 'video' ? t.timeline.track.videoTrack : 
                          type === 'audio' ? t.timeline.track.audioTrack : 
                          t.timeline.track.subtitleTrack;
@@ -912,7 +915,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       ...prev,
       tracks: [...prev.tracks, newTrack]
     }));
-  }, [timelineState.tracks]);
+  }, [timelineState.tracks, t]);
 
   const handleRemoveTrack = useCallback((trackId: string) => {
     console.log(`[TimelinePanel] 删除轨道`, { trackId, timestamp: new Date().toISOString() });
@@ -1234,7 +1237,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       // 清除加载状态
       setIsExtractingSubtitles(false);
     }
-  }, [timelineState, materials]);
+  }, [timelineState, materials, showError]);
 
   // 处理字幕编辑
   const handleSubtitleEdit = useCallback((itemId: string, newText: string) => {
@@ -1321,7 +1324,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onExport={videoExport.handleExport}
         isExporting={videoExport.isExporting}
         exportProgress={videoExport.exportProgress}
-        locale={locale}
+        locale={contextLocale}
       />
 
       {/* 时间刻度尺 */}
@@ -1350,7 +1353,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onRemoveTrack={handleRemoveTrack}
         onReorderTracks={handleReorderTracks}
         onMaterialDrop={handleMaterialDrop}
-        locale={locale}
+        locale={contextLocale}
       />
 
       {/* 字幕编辑模态框 */}
@@ -1361,7 +1364,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           onSave={handleSaveSubtitleChanges}
           subtitles={timelineState.tracks.find(track => track.id === editingTrackId)?.items.filter(item => item.type === 'subtitle') || []}
           taskId="timeline_subtitle_edit"
-          locale={locale}
+          locale={contextLocale}
         />
       )}
     </div>
