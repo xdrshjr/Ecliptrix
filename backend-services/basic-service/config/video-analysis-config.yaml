@@ -1,0 +1,67 @@
+# Video Analysis Configuration
+# Configuration for video analysis service including VLM concurrent processing settings
+
+# VLM Processing Configuration
+vlm_processing:
+  # Number of concurrent threads for VLM API calls
+  # Higher values increase processing speed but may hit API rate limits
+  concurrent_threads: 5
+  
+  # Timeout for individual VLM API calls (seconds)
+  api_timeout: 30
+  
+  # Maximum retries for failed VLM API calls
+  max_retries: 2
+
+# Frame Extraction Configuration
+frame_extraction:
+  # Default interval in seconds between frames to extract
+  # Can be overridden by API request parameter
+  default_frame_interval_seconds: 5
+  
+  # Maximum number of frames to extract from a single video
+  max_frames_per_video: 20
+  
+  # Supported video formats for frame extraction
+  supported_formats: ["mp4", "avi", "mov", "mkv", "webm", "flv"]
+
+# Performance Configuration
+performance:
+  # Enable detailed performance logging
+  enable_performance_logging: true
+  
+  # Log concurrent processing statistics
+  log_concurrent_stats: true
+  
+  # Maximum video duration to process (seconds)
+  # Videos longer than this will be rejected
+  max_video_duration_seconds: 3600  # 1 hour
+
+# Temporary File Management
+temp_files:
+  # Directory for temporary video downloads (relative to system temp)
+  video_download_dir: "video_analysis"
+  
+  # Directory prefix for frame extraction (will be suffixed with unique ID)
+  frames_dir_prefix: "frames_"
+  
+  # Automatically cleanup temporary files after processing
+  auto_cleanup: true
+  
+  # Cleanup timeout (seconds) - force cleanup after this time
+  cleanup_timeout: 300  # 5 minutes
+
+# Logging Configuration
+logging:
+  # Log level for video analysis operations
+  # Options: DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
+  
+  # Include frame analysis content in logs (may be verbose)
+  log_analysis_content: false
+  
+  # Include base64 image data in logs (NOT recommended for production)
+  log_base64_content: false
+  
+  # Log processing time for each frame
+  log_frame_processing_time: true
