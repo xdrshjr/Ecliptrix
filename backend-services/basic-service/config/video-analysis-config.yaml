@@ -20,7 +20,7 @@ frame_extraction:
   default_frame_interval_seconds: 5
   
   # Maximum number of frames to extract from a single video
-  max_frames_per_video: 20
+  max_frames_per_video: 5
   
   # Supported video formats for frame extraction
   supported_formats: ["mp4", "avi", "mov", "mkv", "webm", "flv"]
