@@ -12,6 +12,8 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchAudios: () => void; // 新增：搜索音频回调
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
   onVideoAnalysis?: (material: MaterialItem) => void; // 新增：视频AI解析回调
+  onBatchVideoAnalysis?: () => Promise<void>; // 新增：批量视频AI解析回调
+  isBatchAnalyzing?: boolean; // 新增：批量解析状态
   getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
   taskId: string;
   className?: string;
@@ -28,6 +30,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onSearchAudios, // 新增：搜索音频回调
   onAutoMixAudio, // 新增：AI自动混剪回调
   onVideoAnalysis, // 新增：视频AI解析回调
+  onBatchVideoAnalysis, // 新增：批量视频AI解析回调
+  isBatchAnalyzing = false, // 新增：批量解析状态
   getVideoAnalysisStatus, // 新增：获取视频解析状态
   taskId,
   className = '',
@@ -412,6 +416,47 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             <h3 className="text-sm font-semibold text-gray-900">素材管理</h3>
           </div>
           <div className="flex items-center space-x-2">
+            {/* 新增：AI解析视频按钮 */}
+            {onBatchVideoAnalysis && (
+              <button
+                onClick={async () => {
+                  const videoMaterials = materials.filter(m => m.type === 'video');
+                  logger.userAction('AI批量解析视频', 'batchVideoAnalysisButton', {
+                    materialsCount: materials.length,
+                    videoMaterialsCount: videoMaterials.length,
+                    videoMaterials: videoMaterials.map(m => ({
+                      id: m.id,
+                      name: m.name,
+                      url: m.url
+                    })),
+                    taskId
+                  });
+                  await onBatchVideoAnalysis();
+                }}
+                disabled={isBatchAnalyzing}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isBatchAnalyzing ? "正在批量解析视频..." : "对所有视频素材进行AI解析，生成详细的内容描述"}
+              >
+                {isBatchAnalyzing ? (
+                  <>
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>解析中...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    <span>AI解析视频</span>
+                  </>
+                )}
+              </button>
+            )}
+            
             {/* 新增：AI自动混剪按钮 */}
             {onAutoMixAudio && (
               <button

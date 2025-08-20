@@ -21,9 +21,11 @@ import {
 import VoiceSelector from './components/VoiceSelector';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
+import { useVideoAIMatch } from './hooks/useVideoAIMatch';
 import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
+import { VideoAnalysisResponse } from './services/videoAnalysisService';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -34,6 +36,7 @@ interface ScriptPanelProps {
   onAddMaterial?: (material: MaterialItem) => void; // 添加素材到材料面板
   taskId?: string;
   materials?: MaterialItem[]; // 添加材料列表，用于查找音频文件
+  getVideoAnalysisResult?: (videoUrl: string) => VideoAnalysisResponse | null; // 获取视频分析结果
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -44,7 +47,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   onUpdateSegments,
   onAddMaterial,
   taskId,
-  materials = []
+  materials = [],
+  getVideoAnalysisResult
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -96,6 +100,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
     return false;
   });
+
+  // 视频AI匹配hook
+  const videoAIMatch = useVideoAIMatch(taskId || 'unknown');
 
   // 字幕识别处理函数
   const handleSubtitleRecognition = useCallback(async (segmentId: string) => {
@@ -541,25 +548,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       videoIds: videos.map(v => v.id)
     });
 
-    // 验证视频总时长是否大于音频时长
-    const segment = segments.find(s => s.id === segmentId);
-    if (segment?.duration) {
-      const totalVideoDuration = videos.reduce((total, video) => total + (video.duration || 0), 0);
-      
-      if (totalVideoDuration < segment.duration) {
-        const errorMessage = `视频总时长 (${Math.ceil(totalVideoDuration)}秒) 需要大于当前音频时长 (${Math.ceil(segment.duration)}秒)`;
-        videoSearch.setValidationError(errorMessage);
-        logger.warn('视频时长验证失败，弹窗保持开启等待用户调整', {
-          segmentId,
-          totalVideoDuration,
-          requiredDuration: segment.duration,
-          errorMessage,
-          modalStaysOpen: true
-        });
-        return false; // 返回失败状态，弹窗不关闭
-      }
-    }
-
     const updatedSegments = segments.map(seg => {
       if (seg.id === segmentId) {
         return {
@@ -597,13 +585,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         };
         
         onAddMaterial(videoWithSegmentInfo);
-        logger.info('视频已添加到素材管理', {
+        logger.info('视频已添加/替换到素材管理', {
           segmentId,
           segmentNumber,
           videoId: video.id,
           videoName: video.name,
           videoDuration: video.duration,
-          videoIndexInSegment: index + 1
+          videoIndexInSegment: index + 1,
+          operation: 'addOrReplace'
         });
       });
     }
@@ -623,6 +612,249 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     return true; // 返回成功状态
   }, [segments, onUpdateSegments, logger, videoSearch, onAddMaterial, getSegmentNumber]);
+
+  // 关联AI匹配的视频到段落（不添加到素材管理）
+  const handleAssociateVideosToSegment = useCallback((segmentId: string, matchedMaterials: MaterialItem[]): boolean => {
+    if (!onUpdateSegments) return false;
+
+    logger.info('关联AI匹配视频到段落', {
+      segmentId,
+      videosCount: matchedMaterials.length,
+      videoIds: matchedMaterials.map(v => v.id)
+    });
+
+    // 验证视频总时长是否大于音频时长
+    const segment = segments.find(s => s.id === segmentId);
+    if (segment?.duration) {
+      const totalVideoDuration = matchedMaterials.reduce((total, video) => total + (video.duration || 0), 0);
+      
+      if (totalVideoDuration < segment.duration) {
+        const errorMessage = `视频总时长 (${Math.ceil(totalVideoDuration)}秒) 需要大于当前音频时长 (${Math.ceil(segment.duration)}秒)`;
+        logger.warn('AI匹配视频时长验证失败', {
+          segmentId,
+          totalVideoDuration,
+          requiredDuration: segment.duration,
+          errorMessage
+        });
+        showError(errorMessage);
+        return false;
+      }
+    }
+
+    // 只更新段落的视频关联，不添加到素材管理
+    const updatedSegments = segments.map(seg => {
+      if (seg.id === segmentId) {
+        return {
+          ...seg,
+          videos: matchedMaterials
+        };
+      }
+      return seg;
+    });
+
+    onUpdateSegments(updatedSegments);
+
+    logger.info('AI匹配视频关联成功', {
+      segmentId,
+      videosCount: matchedMaterials.length,
+      totalDuration: matchedMaterials.reduce((total, video) => total + (video.duration || 0), 0)
+    });
+
+    return true;
+  }, [segments, onUpdateSegments, logger, showError]);
+
+  // 获取已使用的视频ID列表
+  const getUsedVideoIds = useCallback((excludeSegmentId?: string): Set<string> => {
+    const usedVideoIds = new Set<string>();
+    
+    segments.forEach(seg => {
+      // 排除当前段落（允许重新匹配当前段落）
+      if (excludeSegmentId && seg.id === excludeSegmentId) {
+        return;
+      }
+      
+      if (seg.videos && seg.videos.length > 0) {
+        seg.videos.forEach(video => {
+          usedVideoIds.add(video.id);
+        });
+      }
+    });
+    
+    return usedVideoIds;
+  }, [segments]);
+
+  // 检查是否有可用的（未使用的）已分析视频
+  const hasAvailableAnalyzedVideos = useCallback((segmentId: string): boolean => {
+    if (!getVideoAnalysisResult) return false;
+    
+    const usedVideoIds = getUsedVideoIds(segmentId);
+    const availableMaterials = materials.filter(material => 
+      material.type === 'video' && 
+      material.url && 
+      !usedVideoIds.has(material.id)
+    );
+    
+    return videoAIMatch.hasAnalyzedVideos(availableMaterials, getVideoAnalysisResult);
+  }, [materials, getVideoAnalysisResult, getUsedVideoIds, videoAIMatch]);
+
+  // 处理AI匹配视频
+  const handleAIMatchVideos = useCallback(async (segmentId: string) => {
+    if (!getVideoAnalysisResult) {
+      logger.error('AI匹配视频失败', new Error('Missing required functions'), { 
+        segmentId,
+        hasGetVideoAnalysisResult: !!getVideoAnalysisResult
+      });
+      showError('AI匹配视频功能未正确配置');
+      return;
+    }
+
+    // 获取当前段落
+    const segment = segments.find(s => s.id === segmentId);
+    if (!segment) {
+      logger.error('AI匹配视频失败', new Error('Segment not found'), { segmentId });
+      showError('找不到指定的脚本段落');
+      return;
+    }
+
+    // 获取段落文本
+    const scriptText = segment.sentences.map(s => s.text).join(' ');
+    if (!scriptText.trim()) {
+      logger.warn('AI匹配视频跳过', { segmentId, reason: 'empty_script_text' });
+      showError('脚本段落内容为空');
+      return;
+    }
+
+    // 获取已使用的视频ID（排除当前段落）
+    const usedVideoIds = getUsedVideoIds(segmentId);
+    
+    // 筛选出未使用的视频素材
+    const availableMaterials = materials.filter(material => 
+      material.type === 'video' && 
+      material.url && 
+      !usedVideoIds.has(material.id)
+    );
+
+    // 检查是否有可用的已分析视频
+    if (!videoAIMatch.hasAnalyzedVideos(availableMaterials, getVideoAnalysisResult)) {
+      const totalVideoCount = materials.filter(m => m.type === 'video').length;
+      const usedVideoCount = usedVideoIds.size;
+      const availableVideoCount = availableMaterials.length;
+      
+      logger.warn('AI匹配视频跳过', { 
+        segmentId, 
+        reason: 'no_available_analyzed_videos',
+        totalVideoCount,
+        usedVideoCount,
+        availableVideoCount,
+        materialCount: materials.length
+      });
+      
+      if (usedVideoCount > 0) {
+        showError(`没有找到可用的已解析视频。总计${totalVideoCount}个视频，${usedVideoCount}个已被使用，${availableVideoCount}个可用但未解析`);
+      } else {
+        showError('没有找到已完成AI解析的视频素材，请先对视频进行AI解析');
+      }
+      return;
+    }
+
+    logger.userAction('开始AI匹配视频', 'aiMatchVideos', {
+      segmentId,
+      segmentNumber: getSegmentNumber(segmentId),
+      scriptTextLength: scriptText.length,
+      scriptPreview: scriptText.substring(0, 100),
+      totalMaterialCount: materials.length,
+      availableMaterialCount: availableMaterials.length,
+      usedVideoCount: usedVideoIds.size,
+      analyzedVideoCount: videoAIMatch.getAnalyzedVideoCount(availableMaterials, getVideoAnalysisResult)
+    });
+
+    try {
+      // 执行AI匹配（使用可用的素材）
+      const matches = await videoAIMatch.matchVideos(scriptText, availableMaterials, getVideoAnalysisResult, segment.duration);
+      
+      if (matches.length === 0) {
+        logger.info('AI匹配完成但无匹配结果', {
+          segmentId,
+          scriptTextLength: scriptText.length,
+          availableMaterialCount: availableMaterials.length,
+          usedVideoCount: usedVideoIds.size,
+          analyzedVideoCount: videoAIMatch.getAnalyzedVideoCount(availableMaterials, getVideoAnalysisResult)
+        });
+        showError('未找到匹配的视频，请尝试调整脚本内容或添加更多未使用的视频素材');
+        return;
+      }
+
+      // 从可用素材中找到匹配的视频
+      const matchedMaterials: MaterialItem[] = [];
+      for (const match of matches) {
+        const material = availableMaterials.find(m => m.id === match.materialId);
+        if (material) {
+          matchedMaterials.push(material);
+        } else {
+          logger.warn('找不到匹配的可用素材', {
+            materialId: match.materialId,
+            videoName: match.videoName,
+            availableMaterialCount: availableMaterials.length
+          });
+        }
+      }
+      
+      if (matchedMaterials.length === 0) {
+        logger.warn('没有找到有效的匹配素材', {
+          segmentId,
+          originalMatchCount: matches.length
+        });
+        showError('匹配的视频在可用素材中不存在，可能已被其他段落使用');
+        return;
+      }
+      
+      // 将匹配的视频添加到段落并同时添加到素材管理（用于AI自动混剪）
+      const success = handleAddVideosToSegment(segmentId, matchedMaterials);
+      
+      if (success) {
+        logger.info('AI匹配视频成功', {
+          segmentId,
+          matchCount: matches.length,
+          addedVideoCount: matchedMaterials.length,
+          addedToMaterialsPanel: true,
+          matches: matches.map(m => ({
+            materialId: m.materialId,
+            videoName: m.videoName,
+            matchScore: m.matchScore
+          })),
+          matchedMaterials: matchedMaterials.map(m => ({
+            id: m.id,
+            name: m.name,
+            duration: m.duration
+          }))
+        });
+        
+        showSuccess(`成功为段落添加了 ${matchedMaterials.length} 个视频到素材管理 (共找到 ${matches.length} 个匹配项)，现在可以使用AI自动混剪功能`);
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'AI匹配视频失败';
+      logger.error('AI匹配视频失败', error as Error, {
+        segmentId,
+        scriptTextLength: scriptText.length,
+        totalMaterialCount: materials.length,
+        availableMaterialCount: availableMaterials.length,
+        usedVideoCount: usedVideoIds.size
+      });
+      showError(`AI匹配视频失败: ${errorMessage}`);
+    }
+  }, [
+    segments, 
+    materials, 
+    getVideoAnalysisResult, 
+    videoAIMatch, 
+    handleAssociateVideosToSegment, 
+    getUsedVideoIds,
+    getSegmentNumber, 
+    logger, 
+    showSuccess, 
+    showError
+  ]);
 
   // 打开视频搜索模态框
   const handleOpenVideoSearch = useCallback((segmentId: string) => {
@@ -1245,7 +1477,46 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   </svg>
                 </button>
 
-
+                {/* AI匹配视频按钮 - 需要转换完成且有已分析的视频 */}
+                <button
+                  onClick={() => handleAIMatchVideos(segment.id)}
+                  disabled={
+                    !completedSegments.has(segment.id) || 
+                    !getVideoAnalysisResult ||
+                    !hasAvailableAnalyzedVideos(segment.id) ||
+                    videoAIMatch.matchState.isMatching
+                  }
+                  className={`p-1.5 border rounded transition-colors duration-200 ${
+                    completedSegments.has(segment.id) && 
+                    getVideoAnalysisResult &&
+                    hasAvailableAnalyzedVideos(segment.id) &&
+                    !videoAIMatch.matchState.isMatching
+                      ? 'text-purple-600 bg-purple-50 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+                      : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
+                  }`}
+                  title={
+                    !completedSegments.has(segment.id) 
+                      ? "请先完成语音转换"
+                      : !getVideoAnalysisResult
+                        ? "AI匹配功能未配置"
+                        : !hasAvailableAnalyzedVideos(segment.id)
+                          ? "没有可用的已解析视频（可能已被其他段落使用）"
+                          : videoAIMatch.matchState.isMatching
+                            ? "AI匹配中..."
+                            : "AI匹配视频"
+                  }
+                >
+                  {videoAIMatch.matchState.isMatching ? (
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  )}
+                </button>
 
                 {/* 时长显示 */}
                 {segment.duration && (

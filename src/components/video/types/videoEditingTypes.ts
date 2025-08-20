@@ -112,6 +112,7 @@ export interface UseMaterialManagementReturn {
   handleMaterialDelete: (materialIds: string[]) => void;
   handleMaterialUpload: () => void;
   addMaterials: (materials: MaterialItem[]) => boolean;
+  addOrReplaceMaterial: (material: MaterialItem) => boolean; // 新增：添加或替换单个素材
   // 新增的删除功能
   handleDeleteAllMaterials: () => void;
   confirmationDialog: ConfirmationDialogState;

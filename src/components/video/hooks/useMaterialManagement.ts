@@ -530,6 +530,63 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
     return newMaterials.length > 0;
   }, [logger]);
 
+  // 添加或替换单个素材（用于AI匹配视频场景）
+  const addOrReplaceMaterial = useCallback((newMaterial: MaterialItem) => {
+    logger.info('添加或替换素材', {
+      materialId: newMaterial.id,
+      materialName: newMaterial.name,
+      materialType: newMaterial.type,
+      hasSegmentId: !!newMaterial.metadata?.segment_id,
+      segmentId: newMaterial.metadata?.segment_id,
+      segmentNumber: newMaterial.metadata?.segment_number
+    });
+
+    setMaterials(prev => {
+      // 如果是带有segment_id的视频素材，检查是否需要替换
+      if (newMaterial.type === 'video' && newMaterial.metadata?.segment_id) {
+        const segmentId = newMaterial.metadata.segment_id;
+        
+        // 查找是否已存在相同segment_id的视频素材
+        const existingIndex = prev.findIndex(material => 
+          material.type === 'video' && 
+          material.metadata?.segment_id === segmentId
+        );
+
+        if (existingIndex !== -1) {
+          // 替换现有素材
+          const updatedMaterials = [...prev];
+          const oldMaterial = updatedMaterials[existingIndex];
+          updatedMaterials[existingIndex] = newMaterial;
+          
+          logger.info('替换现有视频素材', {
+            segmentId,
+            oldMaterialId: oldMaterial.id,
+            oldMaterialName: oldMaterial.name,
+            newMaterialId: newMaterial.id,
+            newMaterialName: newMaterial.name,
+            replacedIndex: existingIndex
+          });
+          
+          return updatedMaterials;
+        }
+      }
+      
+      // 如果不需要替换，则直接添加
+      const updatedMaterials = [...prev, newMaterial];
+      
+      logger.info('添加新素材到列表', {
+        materialId: newMaterial.id,
+        materialName: newMaterial.name,
+        previousCount: prev.length,
+        newCount: updatedMaterials.length
+      });
+      
+      return updatedMaterials;
+    });
+
+    return true;
+  }, [logger]);
+
   // 过滤后的素材列表
   const filteredMaterials = useMemo(() => {
     if (selectedMaterialType === 'all') {
@@ -550,6 +607,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
     handleMaterialDelete,
     handleMaterialUpload,
     addMaterials,
+    addOrReplaceMaterial, // 新增：添加或替换单个素材
     // 新增的删除功能
     handleDeleteAllMaterials,
     confirmationDialog,
