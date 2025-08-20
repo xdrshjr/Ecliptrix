@@ -66,6 +66,13 @@ from .audio_search_models import (
     AudioSearchResponse
 )
 
+from .video_analysis import (
+    FrameAnalysis,
+    VideoAnalysisRequest,
+    VideoAnalysisResponse,
+    VideoAnalysisStatusResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -114,5 +121,11 @@ __all__ = [
     # Audio Search Models
     "AudioSearchRequest",
     "AudioInfo",
-    "AudioSearchResponse"
+    "AudioSearchResponse",
+    
+    # Video Analysis Models
+    "FrameAnalysis",
+    "VideoAnalysisRequest", 
+    "VideoAnalysisResponse",
+    "VideoAnalysisStatusResponse"
 ] 

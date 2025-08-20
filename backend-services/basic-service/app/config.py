@@ -59,6 +59,11 @@ class Settings(BaseModel):
     llm_api_key: str = Field(..., description="LLM API key")
     llm_api_url: str = Field(..., description="LLM API base URL")
     
+    # VL LLM Configuration (for video analysis)
+    vl_llm_api_key: str = Field(default="", description="VL LLM API key for video analysis")
+    vl_llm_api_url: str = Field(default="", description="VL LLM API base URL for video analysis")
+    vl_llm_model: str = Field(default="qwen-vl-plus", description="VL LLM model name")
+    
     # PEXELS API Configuration
     pexels_api_keys: List[str] = Field(default=[], description="PEXELS API keys (comma-separated)")
     
@@ -138,6 +143,9 @@ def get_settings() -> Settings:
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
+        vl_llm_api_key=os.getenv("VL_LLM_API_KEY", ""),
+        vl_llm_api_url=os.getenv("VL_LLM_API_URL", ""),
+        vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),
         pexels_api_keys=pexels_api_keys,
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),

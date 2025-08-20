@@ -7,4 +7,5 @@ export { AudioSearchModal } from './AudioSearchModal';
 export { ContentPolishModal } from './ContentPolishModal';
 export { ScriptGenerationModal } from './ScriptGenerationModal';
 export { SubtitleEditModal } from './SubtitleEditModal';
-export { CreativeBrainstormingModal } from './CreativeBrainstormingModal'; 
+export { CreativeBrainstormingModal } from './CreativeBrainstormingModal';
+export { VideoAnalysisModal } from './VideoAnalysisModal'; 

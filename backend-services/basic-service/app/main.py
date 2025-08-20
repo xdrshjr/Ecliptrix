@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import time
 import traceback
 import os
+import logging
 
 from app.config import settings
 from app.logger import get_logger, setup_logging
@@ -23,6 +24,12 @@ from app.models import ErrorResponse
 # Initialize logging
 setup_logging()
 logger = get_logger(__name__)
+
+# Configure third-party library logging to prevent sensitive data leakage
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
@@ -39,11 +46,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Log level: {settings.log_level}")
     logger.info(f"Server will run on {settings.host}:{settings.port}")
     
+    # Log third-party library logging configuration
+    logger.info("Third-party library logging configured to prevent sensitive data leakage")
+    logger.debug(f"OpenAI logger level: {logging.getLogger('openai').level}")
+    logger.debug(f"HTTPX logger level: {logging.getLogger('httpx').level}")
+    
     # Validate critical configuration
     if not settings.llm_api_key:
         logger.warning("LLM_API_KEY is not set - some features may not work")
     if not settings.llm_api_url:
         logger.warning("LLM_API_URL is not set - some features may not work")
+    
+    # Check VL LLM configuration
+    if settings.vl_llm_api_key and settings.vl_llm_api_url:
+        logger.info("VL LLM configuration found - video analysis features available")
+    else:
+        logger.warning("VL LLM configuration not complete - video analysis may not work")
     
     logger.info("Application startup completed")
     

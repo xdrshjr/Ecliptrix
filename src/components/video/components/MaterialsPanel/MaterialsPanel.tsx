@@ -11,6 +11,8 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
+  onVideoAnalysis?: (material: MaterialItem) => void; // 新增：视频AI解析回调
+  getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
   taskId: string;
   className?: string;
 }
@@ -25,6 +27,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
   onAutoMixAudio, // 新增：AI自动混剪回调
+  onVideoAnalysis, // 新增：视频AI解析回调
+  getVideoAnalysisStatus, // 新增：获取视频解析状态
   taskId,
   className = '',
   // 新增的删除功能
@@ -378,6 +382,23 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
   };
 
+  // 处理视频AI解析
+  const handleVideoAnalysis = (material: MaterialItem, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    logger.userAction('点击视频AI解析按钮', 'videoAnalysis', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      videoUrl: material.url
+    });
+
+    if (onVideoAnalysis) {
+      onVideoAnalysis(material);
+    }
+  };
+
   return (
     <div className={`video-editing-materials-panel border-r border-gray-200 ${className}`}>
       <div className="materials-panel-header">
@@ -590,14 +611,61 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </button>
                     </div>
                     
-                    {/* 时长显示 */}
-                    {material.duration && (
-                      <div className="absolute bottom-1 right-1">
+                    {/* 右下角区域 - 时长和AI解析按钮 */}
+                    <div className="absolute bottom-1 right-1 flex items-center space-x-1">
+                      {/* AI视频解析按钮 - 仅对视频素材显示 */}
+                      {material.type === 'video' && (() => {
+                        const analysisStatus = getVideoAnalysisStatus ? getVideoAnalysisStatus(material.url || '') : 'idle';
+                        const isAnalyzing = analysisStatus === 'analyzing';
+                        const isCompleted = analysisStatus === 'completed';
+                        
+                        return (
+                          <button
+                            onClick={(e) => handleVideoAnalysis(material, e)}
+                            disabled={isAnalyzing}
+                            className={`w-5 h-5 rounded flex items-center justify-center transition-all duration-200 hover:scale-110 ${
+                              isAnalyzing 
+                                ? 'bg-yellow-500 cursor-not-allowed' 
+                                : isCompleted 
+                                  ? 'bg-green-500 hover:bg-green-600' 
+                                  : 'bg-purple-500 hover:bg-purple-600'
+                            } text-white`}
+                            title={
+                              isAnalyzing 
+                                ? 'AI解析中...' 
+                                : isCompleted 
+                                  ? '查看解析结果' 
+                                  : 'AI视频解析'
+                            }
+                          >
+                            {isAnalyzing ? (
+                              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : isCompleted ? (
+                              // 放大镜图标
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                            ) : (
+                              // 齿轮图标
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })()}
+                      
+                      {/* 时长显示 */}
+                      {material.duration && (
                         <span className="px-1 py-0.5 bg-black bg-opacity-75 text-white text-xs rounded">
                           {material.duration.toFixed(2)}s
                         </span>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* 拖拽指示器 - 移到左下角 */}
                     <div className="absolute bottom-1 left-1">
@@ -619,6 +687,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       <span className="text-blue-600 text-xs">{material.format?.toUpperCase()}</span>
                     </div>
                   </div>
+                  
+
                 </div>
               ))}
             </div>

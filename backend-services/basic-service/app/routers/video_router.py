@@ -13,9 +13,12 @@ from app.models import (
     VideoDownloadRequest,
     VideoDownloadResponse,
     SubtitleAddRequest,
-    SubtitleAddResponse
+    SubtitleAddResponse,
+    VideoAnalysisRequest,
+    VideoAnalysisResponse,
+    VideoAnalysisStatusResponse
 )
-from app.services import VideoSearchService, VideoCompositionService, SubtitleService
+from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
 from app.logger import get_logger
 
 # Initialize router and logger
@@ -473,4 +476,84 @@ async def add_subtitles(request: SubtitleAddRequest) -> SubtitleAddResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.post("/analyze", response_model=VideoAnalysisResponse)
+async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
+    """
+    Analyze video content using VL LLM.
+    
+    This endpoint extracts frames from a video at specified intervals and analyzes
+    each frame using a Vision-Language Model to provide detailed descriptions.
+    
+    Args:
+        request (VideoAnalysisRequest): Video analysis parameters including video URL,
+                                      frame interval, and optional custom prompt
+    
+    Returns:
+        VideoAnalysisResponse: Analysis results with frame-by-frame descriptions
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for analysis errors
+    """
+    logger.info(f"Video analysis request received - Video: {request.video_url}")
+    logger.info(f"Frame interval: {request.frame_interval}s, Custom prompt: {bool(request.custom_prompt)}")
+    
+    try:
+        # Validate request parameters
+        if not request.video_url.strip():
+            logger.warning("Empty video URL provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video URL cannot be empty"
+            )
+        
+        if request.frame_interval <= 0:
+            logger.warning(f"Invalid frame interval: {request.frame_interval}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Frame interval must be greater than 0"
+            )
+        
+        # Perform video analysis
+        logger.debug(f"Starting video analysis", extra={
+            "video_url": request.video_url,
+            "frame_interval": request.frame_interval,
+            "has_custom_prompt": bool(request.custom_prompt),
+            "custom_prompt_length": len(request.custom_prompt) if request.custom_prompt else 0
+        })
+        result = await video_analysis_service.analyze_video(
+            video_url=request.video_url,
+            frame_interval=request.frame_interval,
+            custom_prompt=request.custom_prompt
+        )
+        
+        # Log analysis results (without detailed frame analysis content)
+        logger.info(f"Video analysis completed", extra={
+            "success": result.success,
+            "video_url": result.video_url,
+            "frames_extracted": result.total_frames_extracted,
+            "video_duration": result.video_duration,
+            "processing_time": result.processing_time,
+            "total_analysis_length": sum(len(frame.analysis) for frame in result.frame_analyses) if result.frame_analyses else 0
+        })
+        
+        if not result.success:
+            logger.warning(f"Video analysis failed: {result.message}", extra={
+                "video_url": result.video_url,
+                "processing_time": result.processing_time
+            })
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+        
+    except Exception as e:
+        logger.error(f"Unexpected error during video analysis: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred during video analysis"
         ) 

@@ -13,7 +13,8 @@ import {
   useMaterialManagement,
   useVideoSearch,
   useAudioSearch,
-  useTimelineComposition
+  useTimelineComposition,
+  useVideoAnalysis
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
 import {
@@ -25,7 +26,8 @@ import {
   AudioSearchModal,
   ContentPolishModal,
   ScriptGenerationModal,
-  CreativeBrainstormingModal
+  CreativeBrainstormingModal,
+  VideoAnalysisModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -81,6 +83,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加时间轴组合播放功能
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
+  
+  // 添加视频解析功能
+  const videoAnalysis = useVideoAnalysis(taskId);
 
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
@@ -177,6 +182,45 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     documentState.handleMarkdownChange(updatedContent);
     setIsCreativeBrainstormingModalOpen(false);
   }, [taskId, documentState.markdownValue, documentState.handleMarkdownChange]);
+
+  // 处理视频AI解析
+  const handleVideoAnalysis = useCallback(async (material: MaterialItem) => {
+    console.log(`[VideoEditingInterface] 开始视频AI解析`, {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      videoUrl: material.url,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!material.url) {
+      console.error(`[VideoEditingInterface] 视频素材缺少URL`, {
+        materialId: material.id,
+        materialName: material.name
+      });
+      return;
+    }
+
+    try {
+      // 检查当前状态，如果已完成则打开结果弹窗，否则开始解析
+      const currentStatus = videoAnalysis.getAnalysisStatus(material.url);
+      
+      if (currentStatus === 'completed') {
+        // 已完成解析，打开结果弹窗
+        videoAnalysis.openAnalysisModal(material.url);
+      } else if (currentStatus === 'idle') {
+        // 开始新的解析
+        await videoAnalysis.analyzeVideo(material.url, 5); // 默认5秒间隔
+      }
+    } catch (error) {
+      console.error(`[VideoEditingInterface] 视频解析失败`, {
+        taskId,
+        materialId: material.id,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [taskId, videoAnalysis]);
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
@@ -399,6 +443,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onSearchVideos={videoSearch.openSearchModal}
                 onSearchAudios={audioSearch.openSearchModal}
                 onAutoMixAudio={handleAutoMixAudio}
+                onVideoAnalysis={handleVideoAnalysis}
+                getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
                 taskId={taskId}
               />
 
@@ -466,6 +512,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onExportContent={handleCreativeBrainstormingExport}
         taskId={taskId}
         currentContent={documentState.markdownValue}
+      />
+
+      <VideoAnalysisModal
+        isOpen={videoAnalysis.isModalOpen}
+        onClose={videoAnalysis.closeAnalysisModal}
+        analysisResult={videoAnalysis.currentAnalysisResult}
+        videoUrl={videoAnalysis.currentVideoUrl || undefined}
       />
     </div>
   );
