@@ -5,6 +5,7 @@ import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenc
 import { TimelineState, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useVideoExport } from '../../hooks/useVideoExport';
+import VideoExportProgressModal from './VideoExportProgressModal';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -863,6 +864,13 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           </div>
         </div>
       </div>
+      
+      {/* 视频导出进度弹窗 */}
+      <VideoExportProgressModal
+        isOpen={videoExport.isExporting}
+        progress={videoExport.exportProgress}
+        allowCancel={false}
+      />
     </div>
   );
 };
