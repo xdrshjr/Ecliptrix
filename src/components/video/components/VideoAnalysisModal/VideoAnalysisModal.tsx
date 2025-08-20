@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { VideoAnalysisResponse, FrameAnalysis } from '../../services/videoAnalysisService';
 
 interface VideoAnalysisModalProps {
@@ -16,11 +18,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
   analysisResult,
   videoUrl
 }) => {
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  }, [onClose]);
+
 
   const formatTimestamp = useCallback((seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -28,16 +26,50 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }, []);
 
+  // 日志记录
+  const logModalAction = useCallback((action: string, details?: any) => {
+    console.log(`[VideoAnalysisModal] ${action}`, {
+      timestamp: new Date().toISOString(),
+      videoUrl,
+      hasAnalysisResult: !!analysisResult,
+      analysisSuccess: analysisResult?.success,
+      framesCount: analysisResult?.frame_analyses?.length,
+      ...details
+    });
+  }, [videoUrl, analysisResult]);
+
+  // 记录弹窗打开/关闭
+  React.useEffect(() => {
+    if (isOpen) {
+      logModalAction('弹窗打开', {
+        modalType: 'AI视频解析结果',
+        loadingState: !analysisResult ? 'loading' : analysisResult.success ? 'success' : 'error'
+      });
+    }
+  }, [isOpen, logModalAction]);
+
+  const handleClose = useCallback(() => {
+    logModalAction('用户关闭弹窗', { closeMethod: 'button' });
+    onClose();
+  }, [onClose, logModalAction]);
+
+  const handleBackdropClose = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      logModalAction('用户关闭弹窗', { closeMethod: 'backdrop' });
+      onClose();
+    }
+  }, [onClose, logModalAction]);
+
   if (!isOpen) return null;
 
   return (
     <div 
       className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={handleBackdropClick}
+      onClick={handleBackdropClose}
     >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,7 +82,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
             title="关闭"
           >
@@ -60,8 +92,8 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-120px)]">
+        {/* Content - 使用flex-1确保占用剩余空间 */}
+        <div className="flex-1 overflow-y-auto">
           {analysisResult ? (
             analysisResult.success ? (
               <div className="p-6">
@@ -109,7 +141,28 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                             </span>
                             <span className="text-xs text-gray-500">时间点</span>
                           </div>
-                          <p className="text-gray-800 leading-relaxed text-sm">{frame.analysis}</p>
+                          {/* 使用ReactMarkdown渲染分析内容 */}
+                          <div className="prose prose-sm max-w-none text-gray-800">
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                // 自定义组件样式
+                                p: ({children}) => <p className="mb-2 leading-relaxed">{children}</p>,
+                                h1: ({children}) => <h1 className="text-lg font-semibold mb-2 text-gray-900">{children}</h1>,
+                                h2: ({children}) => <h2 className="text-base font-semibold mb-2 text-gray-900">{children}</h2>,
+                                h3: ({children}) => <h3 className="text-sm font-semibold mb-1 text-gray-900">{children}</h3>,
+                                ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                                ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                                li: ({children}) => <li className="text-sm">{children}</li>,
+                                strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                                em: ({children}) => <em className="italic text-gray-700">{children}</em>,
+                                code: ({children}) => <code className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                blockquote: ({children}) => <blockquote className="border-l-4 border-blue-200 pl-3 py-1 bg-blue-50 text-sm">{children}</blockquote>
+                              }}
+                            >
+                              {frame.analysis}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -127,7 +180,18 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                       </div>
                       <div>
                         <h4 className="text-sm font-medium text-blue-900">分析总结</h4>
-                        <p className="text-sm text-blue-800 mt-1">{analysisResult.message}</p>
+                        <div className="text-sm text-blue-800 mt-1">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              p: ({children}) => <p className="mb-1">{children}</p>,
+                              strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                              em: ({children}) => <em className="italic">{children}</em>
+                            }}
+                          >
+                            {analysisResult.message}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -144,7 +208,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                 <h3 className="text-lg font-medium text-gray-900 mb-2">解析失败</h3>
                 <p className="text-gray-600 mb-4">{analysisResult.message || '视频解析过程中出现错误'}</p>
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
                 >
                   关闭
@@ -166,9 +230,9 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer - 使用flex-shrink-0确保始终可见 */}
         {analysisResult?.success && (
-          <div className="border-t border-gray-100 p-4 bg-gray-50">
+          <div className="border-t border-gray-100 p-4 bg-gray-50 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-500">
                 {videoUrl && (
@@ -176,7 +240,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                 )}
               </div>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 关闭
