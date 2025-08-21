@@ -44,6 +44,51 @@ class BatchTTSConfig(BaseModel):
     limits: BatchTTSLimitsConfig = BatchTTSLimitsConfig()
 
 
+class YoutubeDownloadConfig(BaseModel):
+    """YouTube download configuration."""
+    max_concurrent_downloads: int = 3
+    download_timeout: int = 300
+    max_retries: int = 3
+    retry_delay: int = 5
+
+
+class YoutubeUploadConfig(BaseModel):
+    """YouTube upload configuration."""
+    upload_timeout: int = 600
+    max_retries: int = 3
+    retry_delay: int = 10
+
+
+class YoutubeQualityConfig(BaseModel):
+    """YouTube quality configuration."""
+    default_video_quality: str = "720p"
+    default_audio_quality: str = "best"
+    default_format: str = "mp4"
+
+
+class YoutubeFileManagementConfig(BaseModel):
+    """YouTube file management configuration."""
+    auto_cleanup: bool = True
+    temp_file_retention_hours: int = 24
+    generate_thumbnail: bool = True
+
+
+class YoutubeLoggingConfig(BaseModel):
+    """YouTube logging configuration."""
+    enable_detailed_logging: bool = True
+    log_download_progress: bool = True
+    progress_log_interval: int = 10
+
+
+class YoutubeConfig(BaseModel):
+    """YouTube configuration."""
+    download: YoutubeDownloadConfig = YoutubeDownloadConfig()
+    upload: YoutubeUploadConfig = YoutubeUploadConfig()
+    quality: YoutubeQualityConfig = YoutubeQualityConfig()
+    file_management: YoutubeFileManagementConfig = YoutubeFileManagementConfig()
+    logging: YoutubeLoggingConfig = YoutubeLoggingConfig()
+
+
 class SupabaseConfig(BaseModel):
     """Supabase configuration."""
     url: str = Field(..., description="Supabase URL")
@@ -77,6 +122,9 @@ class Settings(BaseModel):
     
     # Batch TTS Configuration
     batch_tts: BatchTTSConfig = BatchTTSConfig()
+    
+    # YouTube Configuration
+    youtube: YoutubeConfig = YoutubeConfig()
     
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
@@ -116,12 +164,15 @@ def get_settings() -> Settings:
     # Load YAML configuration
     config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
     batch_tts_config_path = os.path.join(config_dir, 'batch_tts_config.yaml')
-    yaml_config = load_yaml_config(batch_tts_config_path)
+    youtube_config_path = os.path.join(config_dir, 'youtube.yaml')
+    
+    batch_tts_yaml_config = load_yaml_config(batch_tts_config_path)
+    youtube_yaml_config = load_yaml_config(youtube_config_path)
     
     # Create batch TTS config from YAML
     batch_tts_config = BatchTTSConfig()
-    if 'batch_tts' in yaml_config:
-        batch_tts_data = yaml_config['batch_tts']
+    if 'batch_tts' in batch_tts_yaml_config:
+        batch_tts_data = batch_tts_yaml_config['batch_tts']
         batch_tts_config = BatchTTSConfig(
             concurrent_threads=batch_tts_data.get('concurrent_threads', 3),
             max_concurrent_threads=batch_tts_data.get('max_concurrent_threads', 10),
@@ -130,6 +181,23 @@ def get_settings() -> Settings:
             retry=BatchTTSRetryConfig(**batch_tts_data.get('retry', {})),
             logging=BatchTTSLoggingConfig(**batch_tts_data.get('logging', {})),
             limits=BatchTTSLimitsConfig(**batch_tts_data.get('limits', {}))
+        )
+    
+    # Create YouTube config from YAML
+    youtube_config = YoutubeConfig()
+    if youtube_yaml_config:
+        download_data = youtube_yaml_config.get('download', {})
+        upload_data = youtube_yaml_config.get('upload', {})
+        quality_data = youtube_yaml_config.get('quality', {})
+        file_management_data = youtube_yaml_config.get('file_management', {})
+        logging_data = youtube_yaml_config.get('logging', {})
+        
+        youtube_config = YoutubeConfig(
+            download=YoutubeDownloadConfig(**download_data),
+            upload=YoutubeUploadConfig(**upload_data),
+            quality=YoutubeQualityConfig(**quality_data),
+            file_management=YoutubeFileManagementConfig(**file_management_data),
+            logging=YoutubeLoggingConfig(**logging_data)
         )
     
     # Create Supabase configuration
@@ -152,6 +220,7 @@ def get_settings() -> Settings:
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
         supabase=supabase_config,
         batch_tts=batch_tts_config,
+        youtube=youtube_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),

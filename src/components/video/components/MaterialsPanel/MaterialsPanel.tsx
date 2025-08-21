@@ -561,10 +561,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 .map((material) => (
                 <div
                   key={material.id}
-                  draggable={true}
+                  draggable={material.downloadStatus !== 'downloading'}
                   onDragStart={(e) => handleDragStart(e, material)}
                   onDragEnd={(e) => handleDragEnd(e, material)}
-                  className={`group bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${
+                  className={`group bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all ${
+                    material.downloadStatus === 'downloading' 
+                      ? 'opacity-60 cursor-not-allowed' 
+                      : 'cursor-grab active:cursor-grabbing'
+                  } ${
                     draggedMaterial?.id === material.id ? 'opacity-50 scale-95' : ''
                   } ${material.type === 'audio' ? 'cursor-pointer' : ''}`}
                   onClick={() => handleMaterialClick(material)}
@@ -626,6 +630,37 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
+                      </div>
+                    )}
+
+                    {/* YouTube视频下载状态覆盖层 */}
+                    {material.downloadStatus === 'downloading' && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
+                        <span className="text-white text-xs font-medium">正在下载视频</span>
+                        {material.downloadProgress !== undefined && (
+                          <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
+                            <div 
+                              className="bg-blue-600 h-1 rounded-full transition-all duration-300" 
+                              style={{ width: `${material.downloadProgress}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 下载错误状态覆盖层 */}
+                    {material.downloadStatus === 'error' && (
+                      <div className="absolute inset-0 bg-red-500 bg-opacity-50 flex flex-col items-center justify-center">
+                        <svg className="w-6 h-6 text-white mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-white text-xs font-medium text-center px-1">下载失败</span>
+                        {material.downloadError && (
+                          <span className="text-white text-xs opacity-80 text-center px-1 mt-1" title={material.downloadError}>
+                            {material.downloadError.length > 20 ? `${material.downloadError.substring(0, 20)}...` : material.downloadError}
+                          </span>
+                        )}
                       </div>
                     )}
                     

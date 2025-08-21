@@ -77,4 +77,29 @@ class YoutubeVideoInfoResponse(BaseModel):
     success: bool = Field(..., description="获取是否成功")
     video: Optional[YoutubeVideoInfo] = Field(default=None, description="视频信息")
     message: Optional[str] = Field(default=None, description="响应消息")
+    error: Optional[str] = Field(default=None, description="错误信息")
+
+
+class YoutubeVideoDownloadAndUploadRequest(BaseModel):
+    """YouTube视频下载并上传请求模型"""
+    url: str = Field(..., description="YouTube视频URL")
+    task_id: Optional[str] = Field(default=None, description="任务ID")
+    video_quality: str = Field(default="720p", description="视频质量")
+    audio_quality: str = Field(default="best", description="音频质量")
+    format_type: str = Field(default="mp4", description="输出格式")
+    generate_thumbnail: bool = Field(default=True, description="是否生成缩略图")
+    custom_filename: Optional[str] = Field(default=None, description="自定义文件名")
+
+
+class YoutubeVideoDownloadAndUploadResponse(BaseModel):
+    """YouTube视频下载并上传响应模型"""
+    success: bool = Field(..., description="操作是否成功")
+    message: str = Field(..., description="响应消息")
+    video_url: Optional[str] = Field(default=None, description="Supabase视频URL")
+    thumbnail_url: Optional[str] = Field(default=None, description="缩略图URL")
+    file_size: Optional[int] = Field(default=None, description="文件大小（字节）")
+    duration: Optional[float] = Field(default=None, description="视频时长（秒）")
+    width: Optional[int] = Field(default=None, description="视频宽度")
+    height: Optional[int] = Field(default=None, description="视频高度")
+    original_youtube_url: Optional[str] = Field(default=None, description="原始YouTube URL")
     error: Optional[str] = Field(default=None, description="错误信息") 

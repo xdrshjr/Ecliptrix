@@ -83,6 +83,9 @@ export interface ScriptGenerationConfig {
 // Materials Management related types
 export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
 
+// 下载状态类型
+export type MaterialDownloadStatus = 'idle' | 'downloading' | 'completed' | 'error';
+
 export interface MaterialItem {
   id: string;
   name: string;
@@ -98,6 +101,11 @@ export interface MaterialItem {
   createdAt: Date;
   tags?: string[]; // 标签
   description?: string; // 描述
+  // 新增：下载状态相关字段
+  downloadStatus?: MaterialDownloadStatus; // 下载状态
+  downloadProgress?: number; // 下载进度 (0-100)
+  downloadError?: string; // 下载错误信息
+  youtubeUrl?: string; // 原始Youtube URL
   metadata?: { // 额外元数据
     originalUrl?: string; // 原始远程URL
     fileName?: string; // 文件名

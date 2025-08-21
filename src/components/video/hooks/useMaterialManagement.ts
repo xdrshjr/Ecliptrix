@@ -503,24 +503,59 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
     input.click();
   }, [isUploading, uploadProgress, taskId, logger]);
 
-  // 添加素材到列表
+  // 添加或更新素材到列表
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
-    logger.info('添加素材到列表', {
+    logger.info('添加或更新素材到列表', {
       materialCount: newMaterials.length,
       materials: newMaterials.map(m => ({
         id: m.id,
         name: m.name,
-        type: m.type
+        type: m.type,
+        downloadStatus: m.downloadStatus
       }))
     });
 
     setMaterials(prev => {
-      const updatedMaterials = [...prev, ...newMaterials];
+      let updatedMaterials = [...prev];
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      newMaterials.forEach(newMaterial => {
+        // 查找是否已存在相同ID的素材
+        const existingIndex = updatedMaterials.findIndex(material => material.id === newMaterial.id);
+        
+        if (existingIndex !== -1) {
+          // 更新现有素材
+          const oldMaterial = updatedMaterials[existingIndex];
+          updatedMaterials[existingIndex] = newMaterial;
+          updatedCount++;
+          
+          logger.info('更新现有素材', {
+            materialId: newMaterial.id,
+            materialName: newMaterial.name,
+            oldDownloadStatus: oldMaterial.downloadStatus,
+            newDownloadStatus: newMaterial.downloadStatus,
+            oldUrl: oldMaterial.url,
+            newUrl: newMaterial.url
+          });
+        } else {
+          // 添加新素材
+          updatedMaterials.push(newMaterial);
+          addedCount++;
+          
+          logger.info('添加新素材', {
+            materialId: newMaterial.id,
+            materialName: newMaterial.name,
+            downloadStatus: newMaterial.downloadStatus
+          });
+        }
+      });
       
       logger.info('素材列表更新完成', {
         previousCount: prev.length,
         newCount: updatedMaterials.length,
-        addedCount: newMaterials.length
+        addedCount,
+        updatedCount
       });
       
       return updatedMaterials;

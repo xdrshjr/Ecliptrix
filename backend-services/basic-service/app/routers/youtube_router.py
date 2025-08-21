@@ -6,7 +6,8 @@ from app.logger import get_logger
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse,
     YoutubeVideoInfoRequest, YoutubeVideoInfoResponse,
-    YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse
+    YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
+    YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse
 )
 from app.services.youtube_service import youtube_service
 
@@ -186,6 +187,66 @@ async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> Youtub
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="视频下载过程中发生内部服务器错误"
+        )
+
+
+@router.post("/download-and-upload", response_model=YoutubeVideoDownloadAndUploadResponse)
+async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
+    """
+    下载YouTube视频并上传到Supabase
+    
+    This endpoint downloads a YouTube video and automatically uploads it to Supabase storage.
+    
+    Args:
+        request (YoutubeVideoDownloadAndUploadRequest): 下载并上传参数
+    
+    Returns:
+        YoutubeVideoDownloadAndUploadResponse: 操作结果包含Supabase URL等信息
+    
+    Raises:
+        HTTPException: 400 for invalid parameters, 500 for internal errors
+    """
+    logger.info(f"YouTube视频下载并上传请求 - URL: {request.url}, 任务ID: {request.task_id}")
+    
+    try:
+        # 验证URL格式
+        if not request.url.strip():
+            logger.warning("空的视频URL")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="视频URL不能为空"
+            )
+        
+        if "youtube.com" not in request.url and "youtu.be" not in request.url:
+            logger.warning(f"无效的YouTube URL: {request.url}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请提供有效的YouTube视频URL"
+            )
+        
+        # 执行下载并上传
+        logger.debug(f"调用YouTube下载并上传服务，参数: {request.model_dump()}")
+        result = await youtube_service.download_and_upload_video(request)
+        
+        # 记录操作结果
+        logger.info(f"YouTube视频下载并上传完成 - 成功: {result.success}")
+        
+        if not result.success:
+            logger.warning(f"YouTube视频下载并上传失败: {result.error}")
+            return result
+        
+        logger.info(f"成功下载并上传YouTube视频 - Supabase URL: {result.video_url}")
+        return result
+        
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+        
+    except Exception as e:
+        logger.error(f"YouTube视频下载并上传过程中发生意外错误: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="视频下载并上传过程中发生内部服务器错误"
         )
 
 
