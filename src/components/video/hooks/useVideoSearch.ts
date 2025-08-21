@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
 import { UseVideoSearchReturn, SearchOrientation, VideoLibraryType, YoutubeVideoSearchResult, YoutubeDurationRange, YoutubeDurationPreset } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createVideoSearchService, VideoSearchService, VideoSearchResult } from '../services';
 import { createYoutubeVideoSearchService, YoutubeVideoSearchService } from '../services';
+import { getMaxConcurrentDownloads } from '@/lib/api/config';
 
 export const useVideoSearch = (
   taskId: string,
@@ -16,6 +17,29 @@ export const useVideoSearch = (
 
   const videoSearchService = useMemo(() => createVideoSearchService(taskId), [taskId]);
   const youtubeVideoSearchService = useMemo(() => createYoutubeVideoSearchService(taskId), [taskId]);
+
+  // 加载YouTube配置
+  useEffect(() => {
+    const loadYoutubeConfig = async () => {
+      try {
+        logger.info('开始加载YouTube配置', { taskId });
+        const concurrentDownloads = await getMaxConcurrentDownloads();
+        setMaxConcurrentDownloads(concurrentDownloads);
+        logger.info('YouTube配置加载成功', { 
+          taskId,
+          maxConcurrentDownloads: concurrentDownloads 
+        });
+      } catch (error) {
+        logger.error('YouTube配置加载失败，使用默认值', error as Error, { 
+          taskId,
+          defaultValue: 3 
+        });
+        // 保持默认值3
+      }
+    };
+
+    loadYoutubeConfig();
+  }, [taskId, logger]);
 
   // 通用状态
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,6 +61,9 @@ export const useVideoSearch = (
   const [youtubeSearchResults, setYoutubeSearchResults] = useState<YoutubeVideoSearchResult[]>([]);
   const [youtubeSelectedResults, setYoutubeSelectedResults] = useState<Set<string>>(new Set());
   const [youtubePreviewVideo, setYoutubePreviewVideo] = useState<YoutubeVideoSearchResult | null>(null);
+  
+  // YouTube配置状态
+  const [maxConcurrentDownloads, setMaxConcurrentDownloads] = useState(3); // 默认值
   
   // YouTube时间范围状态
   const [youtubeDurationRange, setYoutubeDurationRange] = useState<YoutubeDurationRange>({
@@ -325,7 +352,7 @@ export const useVideoSearch = (
     }
   }, [activeLibrary, searchResults, selectedResults, logger, videoSearchService, onAddMaterials, closeSearchModal]);
 
-  const handleAddSelectedYoutubeVideos = useCallback(() => {
+  const handleAddSelectedYoutubeVideos = useCallback(async () => {
     const selectedVideos = youtubeSearchResults.filter(video => youtubeSelectedResults.has(video.id));
     
     if (selectedVideos.length === 0) {
@@ -338,21 +365,192 @@ export const useVideoSearch = (
       videoIds: selectedVideos.map(v => v.id)
     });
 
-    const materials = youtubeVideoSearchService.convertToMaterials(selectedVideos);
+    // 转换为素材并设置初始下载状态
+    const materials = youtubeVideoSearchService.convertToMaterials(selectedVideos).map(material => ({
+      ...material,
+      downloadStatus: 'downloading' as const,
+      downloadProgress: 0,
+      youtubeUrl: selectedVideos.find(v => v.id === material.id)?.videoUrl || material.url
+    }));
+
     const success = onAddMaterials(materials);
 
     if (success) {
-      logger.info('Youtube视频添加成功', {
+      logger.info('Youtube视频添加成功，开始下载', {
         addedCount: materials.length,
         materialIds: materials.map(m => m.id)
       });
+      
+      // 关闭搜索模态框
       closeSearchModal();
+      
+      // 并发下载视频，使用配置的线程数
+      logger.info('开始并发下载YouTube视频', {
+        materialCount: materials.length,
+        maxConcurrentDownloads,
+        configSource: 'youtube.yaml'
+      });
+      downloadVideosInParallel(materials, maxConcurrentDownloads);
     } else {
       logger.warn('Youtube视频添加失败', {
         attemptedCount: materials.length
       });
     }
-  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal]);
+  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal, taskId, maxConcurrentDownloads]);
+
+  // 下载单个视频的函数
+  const downloadSingleVideo = useCallback(async (material: MaterialItem): Promise<void> => {
+    try {
+      logger.info('开始下载单个YouTube视频', {
+        materialId: material.id,
+        youtubeUrl: material.youtubeUrl,
+        materialName: material.name
+      });
+
+      const response = await fetch('/api/youtube/download-and-upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: material.youtubeUrl,
+          task_id: taskId,
+          video_quality: '720p',
+          format_type: 'mp4'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        logger.info('YouTube视频下载并上传成功', {
+          materialId: material.id,
+          videoUrl: result.video_url,
+          fileSize: result.file_size
+        });
+
+        // 更新素材状态为完成
+        onAddMaterials([{
+          ...material,
+          downloadStatus: 'completed' as const,
+          downloadProgress: 100,
+          url: result.video_url,
+          serverUrl: result.video_url,
+          size: result.file_size || material.size,
+          thumbnailUrl: result.thumbnail_url || material.thumbnailUrl
+        }]);
+      } else {
+        throw new Error(result.error || '下载失败');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      logger.error('YouTube视频下载失败', error instanceof Error ? error : new Error(errorMessage), {
+        materialId: material.id,
+        youtubeUrl: material.youtubeUrl
+      });
+
+      // 更新素材状态为错误
+      onAddMaterials([{
+        ...material,
+        downloadStatus: 'error' as const,
+        downloadError: errorMessage
+      }]);
+
+      // 重新抛出错误以便上层处理
+      throw error;
+    }
+  }, [logger, taskId, onAddMaterials]);
+
+  // 并发下载视频的函数
+  const downloadVideosInParallel = useCallback(async (materials: MaterialItem[], maxConcurrency: number = 3) => {
+    logger.info('开始并发下载YouTube视频', {
+      totalCount: materials.length,
+      maxConcurrency,
+      materialIds: materials.map(m => m.id)
+    });
+
+    // 创建一个简单的并发控制器
+    const concurrencyController = async () => {
+      const results: Array<{ material: MaterialItem; success: boolean; error?: string }> = [];
+      
+      // 将材料分成批次
+      for (let i = 0; i < materials.length; i += maxConcurrency) {
+        const batch = materials.slice(i, i + maxConcurrency);
+        
+        logger.info('开始处理批次', {
+          batchIndex: Math.floor(i / maxConcurrency) + 1,
+          totalBatches: Math.ceil(materials.length / maxConcurrency),
+          batchSize: batch.length,
+          materialIds: batch.map(m => m.id)
+        });
+
+        // 并行处理当前批次
+        const batchPromises = batch.map(async (material, index) => {
+          const globalIndex = i + index + 1;
+          try {
+            logger.info('启动下载任务', {
+              taskIndex: globalIndex,
+              totalTasks: materials.length,
+              materialId: material.id,
+              materialName: material.name
+            });
+
+            await downloadSingleVideo(material);
+            
+            logger.info('下载任务完成', {
+              taskIndex: globalIndex,
+              materialId: material.id,
+              success: true
+            });
+            
+            return { material, success: true };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            
+            logger.error('下载任务失败', error instanceof Error ? error : new Error(String(error)), {
+              taskIndex: globalIndex,
+              materialId: material.id
+            });
+            
+            return { material, success: false, error: errorMessage };
+          }
+        });
+
+        // 等待当前批次完成
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        
+        logger.info('批次处理完成', {
+          batchIndex: Math.floor(i / maxConcurrency) + 1,
+          batchSize: batch.length,
+          successCount: batchResults.filter(r => r.success).length,
+          failureCount: batchResults.filter(r => !r.success).length
+        });
+      }
+
+      return results;
+    };
+
+    // 执行并发下载
+    const results = await concurrencyController();
+
+    // 记录最终结果
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.filter(r => !r.success).length;
+    
+    logger.info('并发下载完成', {
+      totalCount: materials.length,
+      successCount,
+      failureCount,
+      maxConcurrency,
+      successRate: `${((successCount / materials.length) * 100).toFixed(1)}%`
+    });
+  }, [logger, downloadSingleVideo]);
 
   const handleClearSelection = useCallback(() => {
     if (activeLibrary === 'official') {

@@ -13,7 +13,8 @@ from app.logger import get_logger
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse, YoutubeVideoInfo,
     YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
-    YoutubeVideoInfoRequest, YoutubeVideoInfoResponse
+    YoutubeVideoInfoRequest, YoutubeVideoInfoResponse,
+    YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse
 )
 
 logger = get_logger(__name__)
@@ -48,7 +49,7 @@ class YouTubeService:
 
     def sanitize_filename(self, title: str, max_length: int = 200) -> str:
         """
-        文件名规范化函数
+        文件名规范化函数，移除特殊字符、emoji和不安全字符
         
         Args:
             title: 原始标题
@@ -62,6 +63,24 @@ class YouTubeService:
             
         # Unicode规范化，将组合字符转换为分解形式
         title = unicodedata.normalize('NFKD', title)
+        
+        # 移除emoji和其他符号字符
+        # 保留基本拉丁字母、数字、常见标点符号
+        allowed_chars = []
+        for char in title:
+            # 获取字符的Unicode类别
+            category = unicodedata.category(char)
+            # 保留字母、数字、标点符号（部分）、空格
+            if (category.startswith('L') or  # Letters
+                category.startswith('N') or  # Numbers
+                char in ' .-_()[]{}' or      # Safe punctuation
+                category == 'Zs'):          # Space separators
+                allowed_chars.append(char)
+            else:
+                # 将其他字符替换为下划线
+                allowed_chars.append('_')
+        
+        title = ''.join(allowed_chars)
         
         # 移除或替换文件系统不支持的字符
         problematic_chars = r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]'
@@ -401,6 +420,127 @@ class YouTubeService:
                 success=False,
                 message="视频下载失败",
                 error=error_msg
+            )
+
+    async def download_and_upload_video(self, request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
+        """
+        下载YouTube视频并上传到Supabase
+        
+        Args:
+            request: 下载并上传请求参数
+            
+        Returns:
+            YoutubeVideoDownloadAndUploadResponse: 操作结果
+        """
+        from app.models.youtube_models import YoutubeVideoDownloadAndUploadResponse
+        from app.services.supabase_service import supabase_service
+        from datetime import datetime
+        import tempfile
+        import os
+        
+        logger.info(f"开始下载并上传YouTube视频 - URL: {request.url}")
+        
+        try:
+            # 第一步：下载YouTube视频
+            download_request = YoutubeVideoDownloadRequest(
+                url=request.url,
+                video_quality=request.video_quality,
+                audio_quality=request.audio_quality,
+                format_type=request.format_type
+            )
+            
+            logger.info("步骤1: 下载YouTube视频")
+            download_result = self.download_video(download_request)
+            
+            if not download_result.success:
+                logger.error(f"YouTube视频下载失败: {download_result.error}")
+                return YoutubeVideoDownloadAndUploadResponse(
+                    success=False,
+                    message="YouTube视频下载失败",
+                    error=download_result.error,
+                    original_youtube_url=request.url
+                )
+            
+            if not download_result.file_path or not os.path.exists(download_result.file_path):
+                logger.error("下载的视频文件不存在")
+                return YoutubeVideoDownloadAndUploadResponse(
+                    success=False,
+                    message="下载的视频文件不存在",
+                    error="文件路径无效",
+                    original_youtube_url=request.url
+                )
+            
+            logger.info(f"YouTube视频下载成功: {download_result.file_path}")
+            
+            # 第二步：上传到Supabase
+            logger.info("步骤2: 上传视频到Supabase")
+            
+            # 构建自定义文件名
+            custom_filename = request.custom_filename
+            if not custom_filename:
+                # 从下载的文件路径中提取文件名并清理
+                base_name = os.path.splitext(os.path.basename(download_result.file_path))[0]
+                # 清理文件名，移除特殊字符和emoji
+                sanitized_name = self.sanitize_filename(base_name)
+                custom_filename = f"youtube_{sanitized_name}.{request.format_type}"
+            
+            # 调用Supabase上传服务
+            # 构建bucket路径
+            now = datetime.now()
+            date_path = now.strftime("%Y/%m/%d")
+            if request.task_id:
+                bucket_path = f"video/youtube/{date_path}/task-{request.task_id}/{custom_filename}"
+            else:
+                bucket_path = f"video/youtube/{date_path}/{custom_filename}"
+            
+            upload_result = supabase_service.upload_file(
+                local_file_path=download_result.file_path,
+                bucket_path=bucket_path,
+                content_type="video/mp4"
+            )
+            
+            # 清理临时下载文件
+            try:
+                if os.path.exists(download_result.file_path):
+                    os.remove(download_result.file_path)
+                    logger.info(f"已清理临时下载文件: {download_result.file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"清理临时文件失败: {cleanup_error}")
+            
+            if not upload_result.get("success", False):
+                error_msg = upload_result.get("message", "未知错误")
+                logger.error(f"Supabase上传失败: {error_msg}")
+                return YoutubeVideoDownloadAndUploadResponse(
+                    success=False,
+                    message="视频上传到Supabase失败",
+                    error=error_msg,
+                    original_youtube_url=request.url
+                )
+            
+            video_url = upload_result.get("public_url", "")
+            logger.info(f"视频成功上传到Supabase: {video_url}")
+            
+            # 返回成功结果
+            return YoutubeVideoDownloadAndUploadResponse(
+                success=True,
+                message="YouTube视频下载并上传成功",
+                video_url=video_url,
+                thumbnail_url=None,  # 暂时不生成缩略图
+                file_size=download_result.file_size,
+                duration=None,  # 暂时不获取时长
+                width=None,  # 暂时不获取尺寸
+                height=None,  # 暂时不获取尺寸
+                original_youtube_url=request.url
+            )
+            
+        except Exception as e:
+            error_msg = f"下载并上传过程中发生错误: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return YoutubeVideoDownloadAndUploadResponse(
+                success=False,
+                message="下载并上传过程中发生错误",
+                error=error_msg,
+                original_youtube_url=request.url
             )
 
 
