@@ -11,6 +11,8 @@ export interface YoutubeVideoSearchService {
     query: string;
     maxVideos: number;
     orientation: SearchOrientation;
+    minDuration?: number;
+    maxDuration?: number;
   }): Promise<YoutubeVideoSearchResponse>;
   
   validateSearchQuery(query: string): boolean;
@@ -77,8 +79,10 @@ export class YoutubeVideoSearchServiceImpl implements YoutubeVideoSearchService 
     query: string;
     maxVideos: number;
     orientation: SearchOrientation;
+    minDuration?: number;
+    maxDuration?: number;
   }): Promise<YoutubeVideoSearchResponse> {
-    const { query, maxVideos, orientation } = params;
+    const { query, maxVideos, orientation, minDuration, maxDuration } = params;
 
     // 参数验证
     if (!this.validateSearchQuery(query)) {
@@ -106,13 +110,45 @@ export class YoutubeVideoSearchServiceImpl implements YoutubeVideoSearchService 
       };
     }
 
+    // 验证时间范围参数
+    if (minDuration !== undefined && maxDuration !== undefined) {
+      if (minDuration < 0 || maxDuration < 0) {
+        const error = 'Duration values must be non-negative';
+        this.logger.error('Youtube视频搜索时间参数验证失败', new Error(error), { 
+          minDuration,
+          maxDuration,
+          reason: 'negative_duration'
+        });
+        return {
+          success: false,
+          error
+        };
+      }
+
+      if (minDuration >= maxDuration) {
+        const error = 'Min duration must be less than max duration';
+        this.logger.error('Youtube视频搜索时间参数验证失败', new Error(error), { 
+          minDuration,
+          maxDuration,
+          reason: 'invalid_duration_range'
+        });
+        return {
+          success: false,
+          error
+        };
+      }
+    }
+
     const startTime = performance.now();
     
     this.logger.apiCall('开始Youtube视频搜索流程', '/api/youtube/search', {
       query: query.trim(),
       maxVideos,
       orientation,
-      queryLength: query.length
+      queryLength: query.length,
+      minDuration,
+      maxDuration,
+      hasDurationFilter: minDuration !== undefined || maxDuration !== undefined
     });
 
     try {
@@ -126,6 +162,8 @@ export class YoutubeVideoSearchServiceImpl implements YoutubeVideoSearchService 
           query: query.trim(),
           max_videos: maxVideos,
           orientation: orientation,
+          ...(minDuration !== undefined && { min_duration: minDuration }),
+          ...(maxDuration !== undefined && { max_duration: maxDuration }),
         }),
       });
 

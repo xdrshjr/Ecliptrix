@@ -148,6 +148,15 @@ export interface YoutubeVideoSearchResponse {
   nextPageToken?: string;
 }
 
+// YouTube时间范围类型
+export interface YoutubeDurationRange {
+  minDuration: number; // 最小时长（秒）
+  maxDuration: number; // 最大时长（秒）
+}
+
+// YouTube时间范围预设选项
+export type YoutubeDurationPreset = 'under_1min' | 'under_3min' | 'under_5min' | 'under_10min' | 'custom';
+
 export interface UseVideoSearchReturn {
   isModalOpen: boolean;
   searchQuery: string;
@@ -163,6 +172,9 @@ export interface UseVideoSearchReturn {
   youtubeSelectedResults: Set<string>;
   youtubePreviewVideo: YoutubeVideoSearchResult | null;
   isYoutubeSearching: boolean;
+  // 新增：YouTube时间范围相关状态
+  youtubeDurationRange: YoutubeDurationRange;
+  youtubeDurationPreset: YoutubeDurationPreset;
   openSearchModal: (initialKeywords?: string[]) => void;
   closeSearchModal: () => void;
   handleSearch: () => Promise<void>;
@@ -180,6 +192,9 @@ export interface UseVideoSearchReturn {
   handleYoutubeResultSelect: (videoId: string, isSelected: boolean) => void;
   handleAddSelectedYoutubeVideos: () => void;
   handleClearYoutubeSelection: () => void;
+  // 新增：YouTube时间范围相关方法
+  setYoutubeDurationRange: (range: YoutubeDurationRange) => void;
+  setYoutubeDurationPreset: (preset: YoutubeDurationPreset) => void;
   taskId: string;
 }
 

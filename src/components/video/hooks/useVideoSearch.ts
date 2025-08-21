@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
-import { UseVideoSearchReturn, SearchOrientation, VideoLibraryType, YoutubeVideoSearchResult } from '../types';
+import { UseVideoSearchReturn, SearchOrientation, VideoLibraryType, YoutubeVideoSearchResult, YoutubeDurationRange, YoutubeDurationPreset } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createVideoSearchService, VideoSearchService, VideoSearchResult } from '../services';
 import { createYoutubeVideoSearchService, YoutubeVideoSearchService } from '../services';
@@ -37,6 +37,74 @@ export const useVideoSearch = (
   const [youtubeSearchResults, setYoutubeSearchResults] = useState<YoutubeVideoSearchResult[]>([]);
   const [youtubeSelectedResults, setYoutubeSelectedResults] = useState<Set<string>>(new Set());
   const [youtubePreviewVideo, setYoutubePreviewVideo] = useState<YoutubeVideoSearchResult | null>(null);
+  
+  // YouTube时间范围状态
+  const [youtubeDurationRange, setYoutubeDurationRange] = useState<YoutubeDurationRange>({
+    minDuration: 0,
+    maxDuration: 300 // 默认5分钟
+  });
+  const [youtubeDurationPreset, setYoutubeDurationPresetState] = useState<YoutubeDurationPreset>('under_5min');
+
+  // 处理YouTube时间预设变化
+  const handleYoutubeDurationPresetChange = useCallback((preset: YoutubeDurationPreset) => {
+    setYoutubeDurationPresetState(preset);
+    
+    // 根据预设更新时间范围
+    let newRange: YoutubeDurationRange | undefined;
+    switch (preset) {
+      case 'under_1min':
+        newRange = { minDuration: 0, maxDuration: 60 };
+        break;
+      case 'under_3min':
+        newRange = { minDuration: 0, maxDuration: 180 };
+        break;
+      case 'under_5min':
+        newRange = { minDuration: 0, maxDuration: 300 };
+        break;
+      case 'under_10min':
+        newRange = { minDuration: 0, maxDuration: 600 };
+        break;
+      case 'custom':
+        // 自定义模式不自动更新范围
+        newRange = undefined;
+        break;
+      default:
+        newRange = { minDuration: 0, maxDuration: 300 };
+    }
+    
+    if (newRange) {
+      setYoutubeDurationRange(newRange);
+    }
+    
+    logger.userAction('YouTube时间预设变化', 'durationPresetChange', {
+      preset,
+      newRange: preset !== 'custom' ? newRange : undefined,
+      activeLibrary
+    });
+  }, [logger, activeLibrary]);
+
+  // 处理自定义时间范围变化
+  const handleYoutubeDurationRangeChange = useCallback((range: YoutubeDurationRange) => {
+    setYoutubeDurationRange(range);
+    
+    // 如果不是预设范围，切换到自定义模式
+    const isPresetRange = 
+      (range.minDuration === 0 && range.maxDuration === 60) ||   // 1分钟
+      (range.minDuration === 0 && range.maxDuration === 180) ||  // 3分钟
+      (range.minDuration === 0 && range.maxDuration === 300) ||  // 5分钟
+      (range.minDuration === 0 && range.maxDuration === 600);    // 10分钟
+    
+    if (!isPresetRange && youtubeDurationPreset !== 'custom') {
+      setYoutubeDurationPresetState('custom');
+    }
+    
+    logger.userAction('YouTube自定义时间范围变化', 'durationRangeChange', {
+      range,
+      wasPresetRange: isPresetRange,
+      currentPreset: youtubeDurationPreset,
+      activeLibrary
+    });
+  }, [youtubeDurationPreset, logger, activeLibrary]);
 
   const openSearchModal = useCallback((initialKeywords?: string[]) => {
     logger.userAction('打开视频搜索模态框', 'searchButton', {
@@ -157,7 +225,9 @@ export const useVideoSearch = (
       const result = await youtubeVideoSearchService.searchVideos({
         query: searchQuery,
         maxVideos: 20,
-        orientation: searchOrientation
+        orientation: searchOrientation,
+        minDuration: youtubeDurationRange.minDuration,
+        maxDuration: youtubeDurationRange.maxDuration
       });
 
       if (result.success && result.videos) {
@@ -180,7 +250,7 @@ export const useVideoSearch = (
     } finally {
       setIsYoutubeSearching(false);
     }
-  }, [searchQuery, searchOrientation, logger, youtubeVideoSearchService]);
+  }, [searchQuery, searchOrientation, youtubeDurationRange, logger, youtubeVideoSearchService]);
 
   const handleSearchResultSelect = useCallback((videoId: number | string, isSelected: boolean) => {
     if (typeof videoId === 'number') {
@@ -334,6 +404,10 @@ export const useVideoSearch = (
     youtubeSelectedResults,
     youtubePreviewVideo,
     
+    // YouTube时间范围状态
+    youtubeDurationRange,
+    youtubeDurationPreset,
+    
     // 通用方法
     openSearchModal,
     closeSearchModal,
@@ -357,6 +431,10 @@ export const useVideoSearch = (
     handleYoutubeResultSelect,
     handleAddSelectedYoutubeVideos,
     handleClearYoutubeSelection,
+    
+    // YouTube时间范围方法
+    setYoutubeDurationRange: handleYoutubeDurationRangeChange,
+    setYoutubeDurationPreset: handleYoutubeDurationPresetChange,
     
     taskId
   };

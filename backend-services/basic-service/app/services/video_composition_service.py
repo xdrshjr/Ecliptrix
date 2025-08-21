@@ -30,7 +30,9 @@ from app.models import (
     AspectRatio,
     SubtitleAddRequest
 )
+from app.models.youtube_models import YoutubeVideoDownloadRequest
 from app.services.subtitle_service import SubtitleService
+from app.services.youtube_service import YouTubeService
 
 logger = get_logger(__name__)
 
@@ -49,10 +51,13 @@ class VideoCompositionService:
         # Initialize subtitle service for subtitle composition
         self.subtitle_service = SubtitleService()
         
+        # Initialize YouTube service for YouTube video downloads
+        self.youtube_service = YouTubeService()
+        
         # Check ffmpeg availability
         self._check_ffmpeg()
         
-        logger.info("VideoCompositionService initialized with subtitle support")
+        logger.info("VideoCompositionService initialized with subtitle and YouTube support")
     
     def _check_ffmpeg(self) -> bool:
         """Check if ffmpeg is available."""
@@ -74,6 +79,10 @@ class VideoCompositionService:
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.error("ffmpeg not available")
             return None
+    
+    def _is_youtube_url(self, url: str) -> bool:
+        """Check if the URL is a YouTube URL."""
+        return "youtube.com" in url or "youtu.be" in url
     
     def _get_video_properties(self, video_path: str) -> tuple:
         """Get video properties (width, height, fps)."""
@@ -100,6 +109,57 @@ class VideoCompositionService:
         
         logger.info(f"[Thread {thread_id}] Downloading video: {video_url}")
         
+        # Check if it's a YouTube URL
+        if self._is_youtube_url(video_url):
+            logger.info(f"[Thread {thread_id}] Detected YouTube URL, using yt-dlp for download")
+            return self._download_youtube_video(video_url, video_path, thread_id)
+        else:
+            logger.info(f"[Thread {thread_id}] Using FFmpeg for direct video URL download")
+            return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
+    
+    def _download_youtube_video(self, video_url: str, target_path: str, thread_id: int) -> Dict[str, Any]:
+        """Download YouTube video using YouTubeService."""
+        try:
+            # Create download request
+            download_request = YoutubeVideoDownloadRequest(
+                url=video_url,
+                video_quality="720p",  # Use reasonable quality for composition
+                format_type="mp4"
+            )
+            
+            logger.info(f"[Thread {thread_id}] Starting YouTube download with yt-dlp")
+            
+            # Download using YouTube service
+            result = self.youtube_service.download_video(download_request)
+            
+            if not result.success:
+                error_msg = f"YouTube download failed: {result.error or result.message}"
+                logger.error(f"[Thread {thread_id}] {error_msg}")
+                return {"success": False, "error": error_msg}
+            
+            # Move downloaded file to target location
+            if result.file_path and os.path.exists(result.file_path):
+                try:
+                    shutil.move(result.file_path, target_path)
+                    file_size = os.path.getsize(target_path)
+                    logger.info(f"[Thread {thread_id}] YouTube download successful: {file_size / 1024 / 1024:.2f}MB")
+                    return {"success": True, "output_path": target_path}
+                except Exception as e:
+                    error_msg = f"Failed to move downloaded file: {str(e)}"
+                    logger.error(f"[Thread {thread_id}] {error_msg}")
+                    return {"success": False, "error": error_msg}
+            else:
+                error_msg = "Downloaded file not found"
+                logger.error(f"[Thread {thread_id}] {error_msg}")
+                return {"success": False, "error": error_msg}
+                
+        except Exception as e:
+            error_msg = f"YouTube download error: {str(e)}"
+            logger.error(f"[Thread {thread_id}] {error_msg}", exc_info=True)
+            return {"success": False, "error": error_msg}
+    
+    def _download_video_with_ffmpeg(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
+        """Download video using FFmpeg (for non-YouTube URLs)."""
         ffmpeg_path = self._get_ffmpeg_path()
         if not ffmpeg_path:
             return {"success": False, "error": "ffmpeg not available"}
@@ -114,11 +174,12 @@ class VideoCompositionService:
         ]
         
         try:
+            logger.info(f"[Thread {thread_id}] Executing FFmpeg download command")
             result = subprocess.run(download_cmd, capture_output=True, 
                                   text=True, timeout=120)
             
             if result.returncode != 0:
-                error_msg = f"Download failed: {result.stderr}"
+                error_msg = f"FFmpeg download failed: {result.stderr}"
                 logger.error(f"[Thread {thread_id}] {error_msg}")
                 return {"success": False, "error": error_msg}
             
@@ -130,7 +191,7 @@ class VideoCompositionService:
             if file_size < 1024:  # Less than 1KB
                 return {"success": False, "error": "Downloaded file too small"}
             
-            logger.info(f"[Thread {thread_id}] Download successful: {file_size / 1024 / 1024:.2f}MB")
+            logger.info(f"[Thread {thread_id}] FFmpeg download successful: {file_size / 1024 / 1024:.2f}MB")
             return {"success": True, "output_path": video_path}
             
         except subprocess.TimeoutExpired:
