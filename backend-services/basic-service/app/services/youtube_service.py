@@ -437,6 +437,8 @@ class YouTubeService:
         from datetime import datetime
         import tempfile
         import os
+        import subprocess
+        import json
         
         logger.info(f"开始下载并上传YouTube视频 - URL: {request.url}")
         
@@ -472,8 +474,71 @@ class YouTubeService:
             
             logger.info(f"YouTube视频下载成功: {download_result.file_path}")
             
-            # 第二步：上传到Supabase
-            logger.info("步骤2: 上传视频到Supabase")
+            # 第二步：获取视频元数据
+            logger.info("步骤2: 获取视频元数据")
+            duration = None
+            width = None
+            height = None
+            video_metadata = {
+                "original_youtube_url": request.url,
+                "download_time": datetime.now().isoformat(),
+                "file_size": download_result.file_size
+            }
+            
+            try:
+                # 使用ffprobe获取视频信息
+                cmd = [
+                    'ffprobe', '-v', 'quiet', '-print_format', 'json',
+                    '-show_format', '-show_streams', download_result.file_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0:
+                    probe_data = json.loads(result.stdout)
+                    
+                    # 查找视频流
+                    for stream in probe_data.get('streams', []):
+                        if stream.get('codec_type') == 'video':
+                            width = stream.get('width')
+                            height = stream.get('height')
+                            break
+                    
+                    # 获取时长
+                    format_data = probe_data.get('format', {})
+                    duration_str = format_data.get('duration')
+                    if duration_str:
+                        duration = float(duration_str)
+                    
+                    video_metadata.update({
+                        "width": width,
+                        "height": height,
+                        "duration": duration,
+                        "ffprobe_success": True
+                    })
+                    
+                    logger.info("成功获取视频元数据", {
+                        "youtube_url": request.url,
+                        "duration": duration,
+                        "width": width,
+                        "height": height
+                    })
+                else:
+                    logger.warning("无法获取视频元数据", {
+                        "youtube_url": request.url,
+                        "ffprobe_error": result.stderr
+                    })
+                    video_metadata["ffprobe_success"] = False
+                    
+            except Exception as probe_error:
+                logger.warning("获取视频元数据时出错", {
+                    "youtube_url": request.url,
+                    "error": str(probe_error)
+                })
+                video_metadata["ffprobe_error"] = str(probe_error)
+            
+            # 第三步：上传视频到Supabase
+            logger.info("步骤3: 上传视频到Supabase")
             
             # 构建自定义文件名
             custom_filename = request.custom_filename
@@ -484,7 +549,6 @@ class YouTubeService:
                 sanitized_name = self.sanitize_filename(base_name)
                 custom_filename = f"youtube_{sanitized_name}.{request.format_type}"
             
-            # 调用Supabase上传服务
             # 构建bucket路径
             now = datetime.now()
             date_path = now.strftime("%Y/%m/%d")
@@ -499,14 +563,6 @@ class YouTubeService:
                 content_type="video/mp4"
             )
             
-            # 清理临时下载文件
-            try:
-                if os.path.exists(download_result.file_path):
-                    os.remove(download_result.file_path)
-                    logger.info(f"已清理临时下载文件: {download_result.file_path}")
-            except Exception as cleanup_error:
-                logger.warning(f"清理临时文件失败: {cleanup_error}")
-            
             if not upload_result.get("success", False):
                 error_msg = upload_result.get("message", "未知错误")
                 logger.error(f"Supabase上传失败: {error_msg}")
@@ -517,19 +573,97 @@ class YouTubeService:
                     original_youtube_url=request.url
                 )
             
-            video_url = upload_result.get("public_url", "")
+            video_url = upload_result.get("file_url", "")
             logger.info(f"视频成功上传到Supabase: {video_url}")
             
-            # 返回成功结果
+            # 第四步：生成缩略图（如果需要且有时长信息）
+            thumbnail_url = None
+            thumbnail_path = None
+            
+            if request.generate_thumbnail and duration is not None:
+                logger.info("步骤4: 生成并上传缩略图")
+                try:
+                    # 生成缩略图
+                    thumbnail_filename = f"thumb_{os.path.splitext(custom_filename)[0]}.jpg"
+                    thumbnail_bucket_path = bucket_path.replace(custom_filename, thumbnail_filename)
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as thumb_file:
+                        thumbnail_path = thumb_file.name
+                    
+                    # 使用ffmpeg生成缩略图（在视频中间位置）
+                    thumbnail_time = duration / 2 if duration > 2 else 1
+                    
+                    cmd = [
+                        'ffmpeg', '-i', download_result.file_path, '-ss', str(thumbnail_time),
+                        '-vframes', '1', '-q:v', '2', '-y', thumbnail_path
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, timeout=30)
+                    
+                    if result.returncode == 0 and os.path.exists(thumbnail_path):
+                        # 上传缩略图到Supabase
+                        thumb_result = supabase_service.upload_file(
+                            local_file_path=thumbnail_path,
+                            bucket_path=thumbnail_bucket_path,
+                            content_type="image/jpeg"
+                        )
+                        
+                        if thumb_result.get("success", False):
+                            thumbnail_url = thumb_result.get("file_url", "")
+                            logger.info("缩略图生成并上传成功", {
+                                "thumbnail_url": thumbnail_url,
+                                "youtube_url": request.url
+                            })
+                        else:
+                            logger.warning("缩略图上传失败", {
+                                "error": thumb_result.get("message", "未知错误"),
+                                "youtube_url": request.url
+                            })
+                    else:
+                        logger.warning("缩略图生成失败", {
+                            "youtube_url": request.url,
+                            "ffmpeg_error": result.stderr.decode() if result.stderr else "Unknown error"
+                        })
+                        
+                except Exception as thumb_error:
+                    logger.warning("生成缩略图时出错", {
+                        "youtube_url": request.url,
+                        "error": str(thumb_error)
+                    })
+            
+            # 清理临时文件
+            try:
+                if os.path.exists(download_result.file_path):
+                    os.remove(download_result.file_path)
+                    logger.info(f"已清理临时下载文件: {download_result.file_path}")
+                
+                if thumbnail_path and os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
+                    logger.info(f"已清理临时缩略图文件: {thumbnail_path}")
+                    
+            except Exception as cleanup_error:
+                logger.warning(f"清理临时文件失败: {cleanup_error}")
+            
+            # 返回成功结果，包含完整的视频信息
+            logger.info("YouTube视频下载并上传完成", {
+                "youtube_url": request.url,
+                "video_url": video_url,
+                "thumbnail_url": thumbnail_url,
+                "file_size": download_result.file_size,
+                "duration": duration,
+                "width": width,
+                "height": height
+            })
+            
             return YoutubeVideoDownloadAndUploadResponse(
                 success=True,
                 message="YouTube视频下载并上传成功",
                 video_url=video_url,
-                thumbnail_url=None,  # 暂时不生成缩略图
+                thumbnail_url=thumbnail_url,
                 file_size=download_result.file_size,
-                duration=None,  # 暂时不获取时长
-                width=None,  # 暂时不获取尺寸
-                height=None,  # 暂时不获取尺寸
+                duration=duration,
+                width=width,
+                height=height,
                 original_youtube_url=request.url
             )
             
