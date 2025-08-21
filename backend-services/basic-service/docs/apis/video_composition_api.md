@@ -5,6 +5,7 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **FIXED**: YouTube video download support - YouTube URLs from video search can now be used in video composition
 - **NEW**: Added audio volume control support - individual track volumes can be adjusted from 0% to 200%
 - **NEW**: Added subtitle composition support - subtitles from timeline are now automatically rendered into the final video
 - **NEW**: Added aspect ratio support with automatic letterboxing/pillarboxing
@@ -424,7 +425,7 @@ Check the health status of the video composition service.
 |-------|------|----------|-------------|
 | id | string | Yes | Unique identifier for the timeline item |
 | name | string | Yes | Display name of the video item |
-| url | string | Yes | Video URL (local or remote) |
+| url | string | Yes | Video URL (local, remote, or YouTube URL) |
 | start_time | float | Yes | Start time in timeline (seconds, ≥ 0) |
 | duration | float | Yes | Duration of video segment (seconds, > 0) |
 | track_id | string | Yes | ID of the track this item belongs to |

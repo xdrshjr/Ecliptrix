@@ -38,6 +38,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   handleYoutubeResultSelect,
   handleAddSelectedYoutubeVideos,
   handleClearYoutubeSelection,
+  // 新增：YouTube时间范围相关props
+  youtubeDurationRange,
+  youtubeDurationPreset,
+  setYoutubeDurationRange,
+  setYoutubeDurationPreset,
   taskId
 }) => {
   const logger = new VideoEditingLogger({
@@ -313,6 +318,70 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 <option value="portrait">竖屏</option>
               </select>
             </div>
+            
+            {/* YouTube时间范围选择器 */}
+            {activeLibrary === 'youtube' && (
+              <div className="flex items-center space-x-3">
+                <label className="text-sm font-medium text-gray-700">时长:</label>
+                <select
+                  value={youtubeDurationPreset}
+                  onChange={(e) => {
+                    const preset = e.target.value as any;
+                    setYoutubeDurationPreset(preset);
+                    logger.userAction('YouTube时长预设选择', 'durationPresetSelect', {
+                      preset,
+                      activeLibrary
+                    });
+                  }}
+                  className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all duration-200 text-gray-900"
+                  disabled={currentSearching}
+                >
+                  <option value="under_1min">1分钟内</option>
+                  <option value="under_3min">3分钟内</option>
+                  <option value="under_5min">5分钟内</option>
+                  <option value="under_10min">10分钟内</option>
+                  <option value="custom">自定义</option>
+                </select>
+                
+                {/* 自定义时间范围输入 */}
+                {youtubeDurationPreset === 'custom' && (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      placeholder="最小秒数"
+                      value={youtubeDurationRange.minDuration}
+                      onChange={(e) => {
+                        const minDuration = parseInt(e.target.value) || 0;
+                        setYoutubeDurationRange({
+                          ...youtubeDurationRange,
+                          minDuration
+                        });
+                      }}
+                      className="w-20 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none"
+                      disabled={currentSearching}
+                      min="0"
+                    />
+                    <span className="text-xs text-gray-500">-</span>
+                    <input
+                      type="number"
+                      placeholder="最大秒数"
+                      value={youtubeDurationRange.maxDuration}
+                      onChange={(e) => {
+                        const maxDuration = parseInt(e.target.value) || 300;
+                        setYoutubeDurationRange({
+                          ...youtubeDurationRange,
+                          maxDuration
+                        });
+                      }}
+                      className="w-20 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none"
+                      disabled={currentSearching}
+                      min="1"
+                    />
+                    <span className="text-xs text-gray-500">秒</span>
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={handleSearchClick}
               disabled={currentSearching || !searchQuery.trim()}
