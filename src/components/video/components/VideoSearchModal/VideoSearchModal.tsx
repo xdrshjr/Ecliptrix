@@ -117,14 +117,45 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   };
 
   const handleVideoClick = (video: any) => {
+    // 只处理预览，不处理选择
+    if (activeLibrary === 'official') {
+      handleVideoPreview(video);
+    } else {
+      handleYoutubeVideoPreview(video);
+    }
+    
+    logger.info('用户点击视频进行预览', {
+      videoId: video.id,
+      videoTitle: video.title,
+      activeLibrary,
+      userAction: 'video_preview_click'
+    });
+  };
+
+  // 新增：处理单个视频添加到合成
+  const handleAddToComposition = (video: any, event: React.MouseEvent) => {
+    event.stopPropagation(); // 阻止事件冒泡到视频条目点击
+    
     if (activeLibrary === 'official') {
       const isSelected = selectedResults.has(video.id);
       handleSearchResultSelect(video.id, !isSelected);
-      handleVideoPreview(video);
+      
+      logger.info('用户点击添加合成按钮 - 官方视频', {
+        videoId: video.id,
+        videoTitle: video.title,
+        action: isSelected ? 'remove' : 'add',
+        userAction: 'add_composition_button'
+      });
     } else {
       const isSelected = youtubeSelectedResults.has(video.id);
       handleYoutubeResultSelect(video.id, !isSelected);
-      handleYoutubeVideoPreview(video);
+      
+      logger.info('用户点击添加合成按钮 - Youtube视频', {
+        videoId: video.id,
+        videoTitle: video.title,
+        action: isSelected ? 'remove' : 'add',
+        userAction: 'add_composition_button'
+      });
     }
   };
 
@@ -311,131 +342,19 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           </div>
         </div>
 
-        {/* 主内容区域 - 左右分栏 */}
+        {/* 主内容区域 - 左中右三栏布局 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 左侧 - 搜索结果列表 */}
-          <div className="w-3/5 border-r border-gray-100 flex flex-col">
-            {/* 结果统计栏 */}
-            {currentResults.length > 0 && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  找到 <span className="font-semibold text-gray-900">{currentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-blue-600' : 'text-red-600'}`}>{currentSelectedResults.size}</span> 个
-                </div>
-              </div>
-            )}
-
-            {/* 搜索结果内容 */}
-            <div className="flex-1 overflow-y-auto">
-              {currentSearching ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <svg className={`w-12 h-12 animate-spin mx-auto mb-4 ${activeLibrary === 'official' ? 'text-blue-500' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <p className="text-gray-600 font-medium">正在搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频...</p>
-                  </div>
-                </div>
-              ) : currentResults.length > 0 ? (
-                <div className="p-4 space-y-3">
-                  {currentResults.map((video) => {
-                    const isSelected = currentSelectedResults.has(video.id);
-                    const isPreviewActive = currentPreviewVideo?.id === video.id;
-                    
-                    return (
-                      <div
-                        key={video.id}
-                        className={`group relative bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all duration-200 cursor-pointer ${
-                          isSelected 
-                            ? `${activeLibrary === 'official' ? 'border-blue-300 bg-blue-50/30' : 'border-red-300 bg-red-50/30'} shadow-sm` 
-                            : 'border-gray-200 hover:border-gray-300'
-                        } ${isPreviewActive 
-                          ? `ring-2 ${activeLibrary === 'official' ? 'ring-blue-500 border-blue-500' : 'ring-red-500 border-red-500'}` 
-                          : ''
-                        }`}
-                        onClick={() => handleVideoClick(video)}
-                      >
-                        <div className="flex p-4 space-x-4">
-                          {/* 视频缩略图 */}
-                          <div className="relative w-32 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                            {(video.thumbnail || video.thumbnailUrl) ? (
-                              <img 
-                                src={video.thumbnail || video.thumbnailUrl} 
-                                alt={video.title}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              </div>
-                            )}
-                            
-                            {/* 选择状态指示器 */}
-                            {isSelected && (
-                              <div className={`absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center shadow-sm ${
-                                activeLibrary === 'official' ? 'bg-blue-500' : 'bg-red-500'
-                              }`}>
-                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* 视频信息 */}
-                          <div className="flex-1 min-w-0">
-                            <h5 className="text-sm font-medium text-gray-900 mb-2 line-clamp-2">{video.title}</h5>
-                            <div className="space-y-1">
-                              <div className="flex items-center space-x-2 text-xs text-gray-500">
-                                <span>{video.width} × {video.height}</span>
-                                {video.duration && (
-                                  <span>• {formatDuration(video.duration)}</span>
-                                )}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {activeLibrary === 'official' ? (
-                                  <span>作者: {video.author}</span>
-                                ) : (
-                                  <>
-                                    <span>频道: {video.channelTitle}</span>
-                                    {video.viewCount && (
-                                      <span> • {video.viewCount.toLocaleString()} 次观看</span>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center p-8">
-                  <div className="text-center text-gray-400">
-                    <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <p className="text-lg font-medium mb-2">开始搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频</p>
-                    <p className="text-sm">输入关键词并点击搜索按钮</p>
-                  </div>
-                </div>
-              )}
+          {/* 左栏 - 视频预览区域 */}
+          <div className="w-1/3 border-r border-gray-100 flex flex-col bg-gray-50/30">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h4 className="font-medium text-gray-900">视频预览</h4>
             </div>
-          </div>
-
-          {/* 右侧 - 预览和已选择区域 */}
-          <div className="w-2/5 flex flex-col bg-gray-50/30">
-            {/* 上方区域 - 视频预览 (50%高度) */}
-            <div className="h-1/2 border-b border-gray-100 flex flex-col bg-white">
+            <div className="flex-1 flex flex-col bg-white">
               {currentPreviewVideo ? (
                 <>
                   {/* 预览视频标题栏 */}
-                  <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/50">
-                    <h4 className="font-medium text-gray-900 truncate">{currentPreviewVideo.title}</h4>
+                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                    <h5 className="font-medium text-gray-900 truncate text-sm">{currentPreviewVideo.title}</h5>
                     <div className="text-xs text-gray-500 mt-1">
                       {activeLibrary === 'official' ? (
                         <span>作者: {currentPreviewVideo.author}</span>
@@ -529,14 +448,196 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                     <p className="text-lg font-medium mb-2">点击视频进行预览</p>
-                    <p className="text-sm">在左侧选择一个视频来查看详情</p>
+                    <p className="text-sm">在中间选择一个视频来查看详情</p>
                   </div>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* 下方区域 - 已选择视频列表 (50%高度) */}
-            <div className="h-1/2 border-t border-gray-100 flex flex-col bg-white">
+          {/* 中栏 - 搜索结果展示区域 */}
+          <div className="w-1/3 border-r border-gray-100 flex flex-col">
+            {/* 标题栏 */}
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h4 className="font-medium text-gray-900">搜索结果</h4>
+            </div>
+            
+            {/* 结果统计栏 */}
+            {currentResults.length > 0 && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  找到 <span className="font-semibold text-gray-900">{currentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-blue-600' : 'text-red-600'}`}>{currentSelectedResults.size}</span> 个
+                </div>
+              </div>
+            )}
+
+            {/* 搜索结果内容 */}
+            <div className="flex-1 overflow-y-auto">
+              {currentSearching ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <svg className={`w-12 h-12 animate-spin mx-auto mb-4 ${activeLibrary === 'official' ? 'text-blue-500' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p className="text-gray-600 font-medium">正在搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频...</p>
+                  </div>
+                </div>
+              ) : currentResults.length > 0 ? (
+                <div className="p-3 space-y-3">
+                  {currentResults.map((video) => {
+                    const isSelected = currentSelectedResults.has(video.id);
+                    const isPreviewActive = currentPreviewVideo?.id === video.id;
+                    
+                    return (
+                      <div
+                        key={video.id}
+                        className={`group relative bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all duration-200 cursor-pointer ${
+                          isPreviewActive 
+                            ? `ring-2 ${activeLibrary === 'official' ? 'ring-blue-500 border-blue-500' : 'ring-red-500 border-red-500'}` 
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => handleVideoClick(video)}
+                      >
+{activeLibrary === 'official' ? (
+                          // 官方视频库 - 卡片式布局（包含缩略图）
+                          <div className="flex flex-col p-3 space-y-3">
+                            {/* 视频缩略图 */}
+                            <div className="relative w-full aspect-video bg-gray-100 rounded-lg overflow-hidden">
+                              {(video.thumbnail || video.thumbnailUrl) ? (
+                                <img 
+                                  src={video.thumbnail || video.thumbnailUrl} 
+                                  alt={video.title}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 视频信息 */}
+                            <div className="space-y-2">
+                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">{video.title}</h5>
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                  <span>{video.width} × {video.height}</span>
+                                  {video.duration && (
+                                    <span>• {formatDuration(video.duration)}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  <span>作者: {video.author}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 添加合成按钮 */}
+                            <button
+                              onClick={(e) => handleAddToComposition(video, e)}
+                              className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                                isSelected
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <>
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>已添加</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  <span>添加合成</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          // YouTube视频库 - 紧凑的文字列表布局（无缩略图）
+                          <div className="flex items-center p-3 space-x-3">
+                            {/* 视频图标 */}
+                            <div className="flex-shrink-0 w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
+                              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+
+                            {/* 视频信息 */}
+                            <div className="flex-1 min-w-0">
+                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight mb-1">{video.title}</h5>
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                  <span>{video.width} × {video.height}</span>
+                                  {video.duration && (
+                                    <span>• {formatDuration(video.duration)}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  <span>频道: {video.channelTitle}</span>
+                                  {video.viewCount && (
+                                    <span> • {video.viewCount.toLocaleString()} 次观看</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 添加合成按钮 */}
+                            <button
+                              onClick={(e) => handleAddToComposition(video, e)}
+                              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
+                                isSelected
+                                  ? 'bg-red-500 text-white'
+                                  : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>已添加</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  <span>添加合成</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <div className="text-center text-gray-400">
+                    <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <p className="text-lg font-medium mb-2">开始搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频</p>
+                    <p className="text-sm">输入关键词并点击搜索按钮</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右栏 - 已选择的视频列表区域 */}
+          <div className="w-1/3 flex flex-col bg-gray-50/30">
+            <div className="flex flex-col bg-white h-full">
               {/* 已选择标题栏 */}
               <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/50">
                 <div className="flex items-center justify-between">
@@ -609,7 +710,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
                       <p className="text-sm font-medium mb-1">暂无选择</p>
-                      <p className="text-xs">点击视频进行选择</p>
+                      <p className="text-xs">点击"添加合成"按钮选择视频</p>
                     </div>
                   </div>
                 )}
