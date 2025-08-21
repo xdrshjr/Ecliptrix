@@ -4,6 +4,9 @@ import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, Tim
 export type PreviewQuality = 'low' | 'medium' | 'high' | 'original';
 export type SearchOrientation = 'landscape' | 'portrait' | 'mixed';
 
+// 新增：视频库类型
+export type VideoLibraryType = 'official' | 'youtube';
+
 // Timeline Composition types
 export interface VideoSequenceItem {
   id: string;
@@ -119,25 +122,64 @@ export interface UseMaterialManagementReturn {
   handleCloseConfirmationDialog: () => void;
 }
 
+// 新增：Youtube视频搜索结果接口
+export interface YoutubeVideoSearchResult {
+  id: string;
+  title: string;
+  channelTitle: string;
+  description: string;
+  thumbnailUrl: string;
+  videoUrl: string;
+  duration: number; // 以秒为单位
+  publishedAt: string;
+  viewCount: number;
+  likeCount?: number;
+  width: number;
+  height: number;
+}
+
+// 新增：Youtube视频搜索响应接口
+export interface YoutubeVideoSearchResponse {
+  success: boolean;
+  videos?: YoutubeVideoSearchResult[];
+  total_found?: number;
+  message?: string;
+  error?: string;
+  nextPageToken?: string;
+}
+
 export interface UseVideoSearchReturn {
   isModalOpen: boolean;
   searchQuery: string;
   searchOrientation: SearchOrientation;
   isSearching: boolean;
   searchResults: any[];
-  selectedResults: Set<number>;
+  selectedResults: Set<number | string>; // 修改为支持string类型的ID
   previewVideo: any | null;
   validationError: string | null;
+  // 新增：视频库相关状态
+  activeLibrary: VideoLibraryType;
+  youtubeSearchResults: YoutubeVideoSearchResult[];
+  youtubeSelectedResults: Set<string>;
+  youtubePreviewVideo: YoutubeVideoSearchResult | null;
+  isYoutubeSearching: boolean;
   openSearchModal: (initialKeywords?: string[]) => void;
   closeSearchModal: () => void;
   handleSearch: () => Promise<void>;
-  handleSearchResultSelect: (videoId: number, isSelected: boolean) => void;
+  handleSearchResultSelect: (videoId: number | string, isSelected: boolean) => void;
   handleVideoPreview: (video: any) => void;
   handleAddSelectedVideos: () => void;
   handleClearSelection: () => void;
   setSearchQuery: (query: string) => void;
   setSearchOrientation: (orientation: SearchOrientation) => void;
   setValidationError: (error: string | null) => void;
+  // 新增：视频库切换和Youtube相关方法
+  setActiveLibrary: (library: VideoLibraryType) => void;
+  handleYoutubeSearch: () => Promise<void>;
+  handleYoutubeVideoPreview: (video: YoutubeVideoSearchResult) => void;
+  handleYoutubeResultSelect: (videoId: string, isSelected: boolean) => void;
+  handleAddSelectedYoutubeVideos: () => void;
+  handleClearYoutubeSelection: () => void;
   taskId: string;
 }
 

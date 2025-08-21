@@ -37,4 +37,14 @@ export type {
 export {
   VideoSearchServiceImpl,
   createVideoSearchService
-} from './videoSearchService'; 
+} from './videoSearchService';
+
+// Youtube Video Search Service
+export type {
+  YoutubeVideoSearchService
+} from './youtubeVideoSearchService';
+
+export {
+  YoutubeVideoSearchServiceImpl,
+  createYoutubeVideoSearchService
+} from './youtubeVideoSearchService'; 
