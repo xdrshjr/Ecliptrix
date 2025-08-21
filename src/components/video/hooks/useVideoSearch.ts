@@ -416,7 +416,8 @@ export const useVideoSearch = (
           url: material.youtubeUrl,
           task_id: taskId,
           video_quality: '720p',
-          format_type: 'mp4'
+          format_type: 'mp4',
+          generate_thumbnail: true
         }),
       });
 
@@ -430,19 +431,54 @@ export const useVideoSearch = (
         logger.info('YouTube视频下载并上传成功', {
           materialId: material.id,
           videoUrl: result.video_url,
-          fileSize: result.file_size
+          thumbnailUrl: result.thumbnail_url,
+          fileSize: result.file_size,
+          duration: result.duration,
+          width: result.width,
+          height: result.height
         });
 
-        // 更新素材状态为完成
-        onAddMaterials([{
+        // 更新素材状态为完成，包含完整的视频信息
+        const updatedMaterial: MaterialItem = {
           ...material,
           downloadStatus: 'completed' as const,
           downloadProgress: 100,
           url: result.video_url,
           serverUrl: result.video_url,
           size: result.file_size || material.size,
-          thumbnailUrl: result.thumbnail_url || material.thumbnailUrl
-        }]);
+          thumbnailUrl: result.thumbnail_url || material.thumbnailUrl,
+          duration: result.duration || material.duration,
+          width: result.width || material.width,
+          height: result.height || material.height,
+          metadata: {
+            ...material.metadata,
+            originalUrl: material.youtubeUrl,
+            supabaseUrl: result.video_url,
+            thumbnailUrl: result.thumbnail_url,
+            videoMetadata: {
+              duration: result.duration,
+              width: result.width,
+              height: result.height,
+              fileSize: result.file_size
+            },
+            uploadTime: new Date().toISOString(),
+            isYoutubeVideo: true
+          }
+        };
+
+        onAddMaterials([updatedMaterial]);
+
+        logger.info('素材信息更新完成', {
+          materialId: material.id,
+          updatedFields: {
+            url: result.video_url,
+            thumbnailUrl: result.thumbnail_url,
+            duration: result.duration,
+            width: result.width,
+            height: result.height,
+            size: result.file_size
+          }
+        });
       } else {
         throw new Error(result.error || '下载失败');
       }

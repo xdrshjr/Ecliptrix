@@ -1,8 +1,8 @@
-# YouTube Download and Upload API
+# YouTube Video Download and Upload API
 
 ## Overview
 
-The YouTube Download and Upload API provides functionality to download YouTube videos and automatically upload them to Supabase storage in a single operation. This is particularly useful for video editing workflows where YouTube videos need to be processed and stored for further use.
+The YouTube Video Download and Upload API provides functionality to download YouTube videos and automatically upload them to Supabase storage with complete metadata extraction and thumbnail generation.
 
 ## Base URL
 
@@ -20,7 +20,7 @@ Currently, no authentication is required for these endpoints.
 
 **POST** `/download-and-upload`
 
-Download a YouTube video and automatically upload it to Supabase storage bucket.
+Download a YouTube video and automatically upload it to Supabase storage with metadata extraction and thumbnail generation.
 
 #### Request
 
@@ -28,15 +28,15 @@ Download a YouTube video and automatically upload it to Supabase storage bucket.
 
 **Parameters:**
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `url` | string | Yes | YouTube video URL (youtube.com or youtu.be) |
-| `task_id` | string | No | Task ID associated with the video |
-| `video_quality` | string | No | Video quality (default: "720p") |
-| `audio_quality` | string | No | Audio quality (default: "best") |
-| `format_type` | string | No | Output format (default: "mp4") |
-| `generate_thumbnail` | boolean | No | Whether to generate thumbnail (default: true) |
-| `custom_filename` | string | No | Custom filename for the uploaded file |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `url` | string | Yes | - | YouTube video URL (youtube.com or youtu.be) |
+| `task_id` | string | No | null | Task ID associated with the video |
+| `video_quality` | string | No | "720p" | Video quality (720p, 1080p, etc.) |
+| `audio_quality` | string | No | "best" | Audio quality setting |
+| `format_type` | string | No | "mp4" | Output video format |
+| `generate_thumbnail` | boolean | No | true | Whether to generate thumbnail |
+| `custom_filename` | string | No | null | Custom filename for the uploaded file |
 
 #### Request Example
 
@@ -60,12 +60,12 @@ curl -X POST "http://localhost:8000/api/youtube/download-and-upload" \
 {
   "success": true,
   "message": "YouTube视频下载并上传成功",
-  "video_url": "https://supabase-url/storage/v1/object/public/bucket/video/youtube/2024/01/15/task-123/youtube_video_20240115_143022.mp4",
-  "thumbnail_url": null,
+  "video_url": "https://supabase-url/storage/v1/object/public/bucket/video/youtube/2024/01/15/task-123/youtube_video_title.mp4",
+  "thumbnail_url": "https://supabase-url/storage/v1/object/public/bucket/video/youtube/2024/01/15/task-123/thumb_youtube_video_title.jpg",
   "file_size": 15728640,
-  "duration": null,
-  "width": null,
-  "height": null,
+  "duration": 210.5,
+  "width": 1280,
+  "height": 720,
   "original_youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 }
 ```
@@ -75,9 +75,9 @@ curl -X POST "http://localhost:8000/api/youtube/download-and-upload" \
 ```json
 {
   "success": false,
-  "message": "视频URL不能为空",
-  "error": "视频URL不能为空",
-  "original_youtube_url": null
+  "message": "YouTube视频下载失败",
+  "error": "Invalid YouTube URL format",
+  "original_youtube_url": "https://invalid-url.com"
 }
 ```
 
@@ -87,8 +87,8 @@ curl -X POST "http://localhost:8000/api/youtube/download-and-upload" \
 {
   "success": false,
   "message": "下载并上传过程中发生错误",
-  "error": "YouTube视频下载失败: Video not available",
-  "original_youtube_url": "https://www.youtube.com/watch?v=invalid"
+  "error": "Network timeout during download",
+  "original_youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 }
 ```
 
@@ -97,23 +97,86 @@ curl -X POST "http://localhost:8000/api/youtube/download-and-upload" \
 | Field | Type | Description |
 |-------|------|-------------|
 | `success` | boolean | Whether the operation was successful |
-| `message` | string | Human-readable message |
-| `video_url` | string | Supabase public URL of the uploaded video |
-| `thumbnail_url` | string | Supabase public URL of the thumbnail (if generated) |
-| `file_size` | number | File size in bytes |
-| `duration` | number | Video duration in seconds (currently null) |
-| `width` | number | Video width in pixels (currently null) |
-| `height` | number | Video height in pixels (currently null) |
-| `original_youtube_url` | string | Original YouTube URL |
-| `error` | string | Error message (only present when success is false) |
+| `message` | string | Human-readable message describing the result |
+| `video_url` | string | Supabase URL of the uploaded video (if successful) |
+| `thumbnail_url` | string | Supabase URL of the generated thumbnail (if successful and generated) |
+| `file_size` | integer | File size in bytes (if successful) |
+| `duration` | float | Video duration in seconds (if metadata extraction successful) |
+| `width` | integer | Video width in pixels (if metadata extraction successful) |
+| `height` | integer | Video height in pixels (if metadata extraction successful) |
+| `original_youtube_url` | string | Original YouTube URL that was processed |
+| `error` | string | Error message (if unsuccessful) |
 
-## Usage Examples
+## Process Flow
 
-### Frontend Integration
+1. **Video Download**: Downloads the YouTube video using yt-dlp with specified quality settings
+2. **Metadata Extraction**: Uses ffprobe to extract video metadata (duration, dimensions, etc.)
+3. **Video Upload**: Uploads the video file to Supabase storage
+4. **Thumbnail Generation**: Generates a thumbnail image at the middle of the video using ffmpeg
+5. **Thumbnail Upload**: Uploads the thumbnail to Supabase storage
+6. **Cleanup**: Removes temporary files
+7. **Response**: Returns complete video information including Supabase URLs
 
-```typescript
-// Example usage in a React component
-const downloadAndUploadVideo = async (youtubeUrl: string, taskId: string) => {
+## File Organization
+
+Videos are organized in Supabase storage with the following structure:
+
+```
+video/youtube/YYYY/MM/DD/task-{task_id}/filename.mp4
+video/youtube/YYYY/MM/DD/task-{task_id}/thumb_filename.jpg
+```
+
+If no task_id is provided:
+
+```
+video/youtube/YYYY/MM/DD/filename.mp4
+video/youtube/YYYY/MM/DD/thumb_filename.jpg
+```
+
+## Error Handling
+
+The API handles various error scenarios:
+
+- **Invalid YouTube URL**: Returns 400 Bad Request
+- **Download Failure**: Returns error with download failure details
+- **Upload Failure**: Returns error with Supabase upload failure details
+- **Metadata Extraction Failure**: Continues without metadata, logs warning
+- **Thumbnail Generation Failure**: Continues without thumbnail, logs warning
+
+## Dependencies
+
+- **yt-dlp**: For YouTube video downloading
+- **ffprobe**: For video metadata extraction
+- **ffmpeg**: For thumbnail generation
+- **Supabase**: For file storage
+
+## Logging
+
+The API provides detailed logging for:
+
+- Download progress and completion
+- Metadata extraction results
+- Upload progress and completion
+- Thumbnail generation and upload
+- Error conditions and cleanup operations
+
+## Rate Limiting
+
+Currently, no rate limiting is implemented. Consider implementing rate limiting for production use.
+
+## Security Considerations
+
+- Validate YouTube URLs to prevent SSRF attacks
+- Implement file size limits to prevent abuse
+- Consider implementing authentication for production use
+- Monitor disk usage for temporary files
+
+## Example Integration
+
+### Frontend JavaScript
+
+```javascript
+async function downloadAndUploadYouTubeVideo(youtubeUrl, taskId) {
   try {
     const response = await fetch('/api/youtube/download-and-upload', {
       method: 'POST',
@@ -124,67 +187,55 @@ const downloadAndUploadVideo = async (youtubeUrl: string, taskId: string) => {
         url: youtubeUrl,
         task_id: taskId,
         video_quality: '720p',
-        format_type: 'mp4'
+        generate_thumbnail: true
       }),
     });
 
     const result = await response.json();
-
+    
     if (result.success) {
-      console.log('Video uploaded to:', result.video_url);
-      // Update material with the new URL
-      updateMaterial({
-        url: result.video_url,
-        downloadStatus: 'completed'
+      console.log('Video uploaded successfully:', result.video_url);
+      console.log('Thumbnail URL:', result.thumbnail_url);
+      console.log('Video metadata:', {
+        duration: result.duration,
+        width: result.width,
+        height: result.height,
+        size: result.file_size
       });
     } else {
-      console.error('Download failed:', result.error);
-      // Update material with error status
-      updateMaterial({
-        downloadStatus: 'error',
-        downloadError: result.error
-      });
+      console.error('Upload failed:', result.error);
     }
   } catch (error) {
-    console.error('Request failed:', error);
+    console.error('Network error:', error);
   }
-};
+}
 ```
 
-### Video Editing Workflow
+### Python Client
 
-1. **Search YouTube Videos**: Use the `/search` endpoint to find videos
-2. **Add to Materials**: Add selected videos to the materials panel with `downloading` status
-3. **Auto Download**: Trigger this endpoint to download and upload videos
-4. **Update Status**: Update material status to `completed` or `error` based on response
-5. **Enable Dragging**: Allow users to drag completed videos to timeline
+```python
+import requests
 
-## Error Handling
-
-The API provides detailed error information for common scenarios:
-
-- **Invalid URL**: Returns 400 with validation error
-- **YouTube Download Failure**: Returns 500 with YouTube-specific error
-- **Supabase Upload Failure**: Returns 500 with upload-specific error
-- **File System Errors**: Returns 500 with file operation errors
-
-## Performance Considerations
-
-- **Async Operation**: The download and upload process is asynchronous
-- **File Cleanup**: Temporary downloaded files are automatically cleaned up
-- **Quality Settings**: Lower quality settings result in faster downloads and smaller files
-- **Timeout**: Large videos may take several minutes to process
-
-## Security Notes
-
-- Only YouTube URLs are accepted (youtube.com and youtu.be domains)
-- File paths are sanitized to prevent directory traversal
-- Temporary files are stored securely and cleaned up after upload
-- No user authentication is currently required (consider adding for production use)
-
-## Related Endpoints
-
-- `POST /search` - Search YouTube videos
-- `POST /info` - Get YouTube video information
-- `POST /download` - Download YouTube video only (without upload)
-- `POST /api/supabase/upload-video` - Upload video file to Supabase 
+def download_and_upload_youtube_video(youtube_url, task_id=None):
+    url = "http://localhost:8000/api/youtube/download-and-upload"
+    
+    payload = {
+        "url": youtube_url,
+        "task_id": task_id,
+        "video_quality": "720p",
+        "generate_thumbnail": True
+    }
+    
+    response = requests.post(url, json=payload)
+    result = response.json()
+    
+    if result["success"]:
+        print(f"Video uploaded: {result['video_url']}")
+        print(f"Thumbnail: {result['thumbnail_url']}")
+        print(f"Duration: {result['duration']}s")
+        print(f"Resolution: {result['width']}x{result['height']}")
+    else:
+        print(f"Error: {result['error']}")
+    
+    return result
+``` 
