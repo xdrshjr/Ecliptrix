@@ -1636,61 +1636,93 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       {/* 视频预览 */}
                       <div className="relative bg-black rounded-md overflow-hidden aspect-video">
                         {currentVideo.type === 'video' && currentVideo.url ? (
-                          <video
-                            key={`${segment.id}_${currentVideo.id}`} // 强制重新创建元素
-                            className="w-full h-full object-contain cursor-pointer"
-                            poster={currentVideo.thumbnailUrl}
-                            controls
-                            preload="metadata"
-                            data-video-key={`${segment.id}_${currentVideo.id}`}
-                            onClick={(e) => {
-                              const videoElement = e.currentTarget;
-                              handleVideoPlayPause(videoElement, currentVideo, segment.id);
-                            }}
-                            onLoadStart={() => {
-                              const videoKey = `${segment.id}_${currentVideo.id}`;
-                              handleVideoLoadStart(videoKey, currentVideo, segment.id);
-                            }}
-                            onCanPlay={() => {
-                              const videoKey = `${segment.id}_${currentVideo.id}`;
-                              handleVideoCanPlay(videoKey, currentVideo, segment.id);
-                            }}
-                            onLoadedMetadata={() => {
-                              const videoKey = `${segment.id}_${currentVideo.id}`;
-                              logger.info('视频元数据加载完成', {
-                                segmentId: segment.id,
-                                videoId: currentVideo.id,
-                                videoKey
-                              });
-                            }}
-                            onError={(e) => {
-                              const videoKey = `${segment.id}_${currentVideo.id}`;
-                              handleVideoError(videoKey, currentVideo, segment.id, e.currentTarget.error);
-                            }}
-                            onPlay={() => {
-                              const videoKey = `${segment.id}_${currentVideo.id}`;
-                              setPlayingVideos(prev => new Set(prev).add(videoKey));
-                              logger.info('视频开始播放', {
-                                segmentId: segment.id,
-                                videoId: currentVideo.id
-                              });
-                            }}
-                            onPause={() => {
-                              const videoKey = `${segment.id}_${currentVideo.id}`;
-                              setPlayingVideos(prev => {
-                                const newSet = new Set(prev);
-                                newSet.delete(videoKey);
-                                return newSet;
-                              });
-                              logger.info('视频暂停播放', {
-                                segmentId: segment.id,
-                                videoId: currentVideo.id
-                              });
-                            }}
-                          >
-                            <source src={currentVideo.url} type={`video/${currentVideo.format}`} />
-                            您的浏览器不支持视频播放。
-                          </video>
+                          // 检查是否为YouTube视频
+                          currentVideo.metadata?.source === 'youtube' && currentVideo.metadata?.youtubeId ? (
+                            // YouTube视频使用嵌入式播放器
+                            <iframe
+                              key={`${segment.id}_${currentVideo.id}`}
+                              src={`https://www.youtube.com/embed/${currentVideo.metadata.youtubeId}?autoplay=0&controls=1&modestbranding=1&rel=0`}
+                              className="w-full h-full"
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              onLoad={() => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                logger.info('YouTube视频预览加载完成', {
+                                  segmentId: segment.id,
+                                  videoId: currentVideo.id,
+                                  youtubeId: currentVideo.metadata?.youtubeId,
+                                  videoKey
+                                });
+                              }}
+                              onError={(e) => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                logger.error('YouTube视频预览加载失败', new Error('YouTube iframe load error'), {
+                                  segmentId: segment.id,
+                                  videoId: currentVideo.id,
+                                  youtubeId: currentVideo.metadata?.youtubeId,
+                                  videoKey
+                                });
+                              }}
+                            />
+                          ) : (
+                            // 其他视频使用video元素
+                            <video
+                              key={`${segment.id}_${currentVideo.id}`} // 强制重新创建元素
+                              className="w-full h-full object-contain cursor-pointer"
+                              poster={currentVideo.thumbnailUrl}
+                              controls
+                              preload="metadata"
+                              data-video-key={`${segment.id}_${currentVideo.id}`}
+                              onClick={(e) => {
+                                const videoElement = e.currentTarget;
+                                handleVideoPlayPause(videoElement, currentVideo, segment.id);
+                              }}
+                              onLoadStart={() => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                handleVideoLoadStart(videoKey, currentVideo, segment.id);
+                              }}
+                              onCanPlay={() => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                handleVideoCanPlay(videoKey, currentVideo, segment.id);
+                              }}
+                              onLoadedMetadata={() => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                logger.info('视频元数据加载完成', {
+                                  segmentId: segment.id,
+                                  videoId: currentVideo.id,
+                                  videoKey
+                                });
+                              }}
+                              onError={(e) => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                handleVideoError(videoKey, currentVideo, segment.id, e.currentTarget.error);
+                              }}
+                              onPlay={() => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                setPlayingVideos(prev => new Set(prev).add(videoKey));
+                                logger.info('视频开始播放', {
+                                  segmentId: segment.id,
+                                  videoId: currentVideo.id
+                                });
+                              }}
+                              onPause={() => {
+                                const videoKey = `${segment.id}_${currentVideo.id}`;
+                                setPlayingVideos(prev => {
+                                  const newSet = new Set(prev);
+                                  newSet.delete(videoKey);
+                                  return newSet;
+                                });
+                                logger.info('视频暂停播放', {
+                                  segmentId: segment.id,
+                                  videoId: currentVideo.id
+                                });
+                              }}
+                            >
+                              <source src={currentVideo.url} type={`video/${currentVideo.format}`} />
+                              您的浏览器不支持视频播放。
+                            </video>
+                          )
                         ) : currentVideo.thumbnailUrl ? (
                           <img 
                             src={currentVideo.thumbnailUrl}
