@@ -52,11 +52,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const materialsGridRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    logger.info('组件初始化 - 素材网格滚动优化版本', {
+    logger.info('组件初始化 - 素材网格滚动优化版本，按钮样式已优化为图标形式', {
       materialsCount: materials.length,
       selectedType: selectedMaterialType,
       isUploading,
-      scrollImplementation: 'materials-grid-container'
+      scrollImplementation: 'materials-grid-container',
+      buttonStyleUpdate: 'icon-only-with-tooltip',
+      emptyStateUpdate: 'removed-search-button'
     });
   }, []);
 
@@ -434,25 +436,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   await onBatchVideoAnalysis();
                 }}
                 disabled={isBatchAnalyzing}
-                className="flex items-center space-x-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 title={isBatchAnalyzing ? "正在批量解析视频..." : "对所有视频素材进行AI解析，生成详细的内容描述"}
               >
                 {isBatchAnalyzing ? (
-                  <>
-                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>解析中...</span>
-                  </>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
                 ) : (
-                  <>
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    <span>AI解析视频</span>
-                  </>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
                 )}
               </button>
             )}
@@ -468,13 +464,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   });
                   onAutoMixAudio();
                 }}
-                className="flex items-center space-x-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-md hover:bg-purple-700 transition-colors"
+                className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors duration-200"
                 title="将所有文本脚本转换的音频和关联的视频按顺序自动添加到时间轴"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
-                <span>AI自动混剪</span>
               </button>
             )}
             
@@ -482,24 +477,18 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             <button
               onClick={handleUploadClick}
               disabled={isUploading}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="上传素材"
+              className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              title={isUploading ? `上传中 ${uploadProgress.toFixed(0)}%` : "上传素材"}
             >
               {isUploading ? (
-                <>
-                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span>{uploadProgress.toFixed(0)}%</span>
-                </>
               ) : (
-                <>
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  <span>上传</span>
-                </>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
               )}
             </button>
           </div>
@@ -541,18 +530,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 </svg>
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">暂无素材</h3>
-              <p className="text-sm text-gray-500 text-center mb-6 max-w-sm">
-                素材库为空，点击下方「搜索视频」按钮来添加高质量的视频素材
+              <p className="text-sm text-gray-500 text-center max-w-sm">
+                素材库为空，可以通过上传或搜索功能来添加素材
               </p>
-              <button
-                onClick={handleSearchClick}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <span>搜索视频</span>
-              </button>
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-2">
