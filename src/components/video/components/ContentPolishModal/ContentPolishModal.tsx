@@ -156,37 +156,39 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
       setPolishResults([]);
       setSelectedResult('');
 
-      const selectedGoals = Array.from(selectedStyles).map(styleId => 
+      const selectedStyleIds = Array.from(selectedStyles);
+      const selectedGoals = selectedStyleIds.map(styleId => 
         polishGoals.find(goal => goal.id === styleId)
       ).filter(Boolean) as PolishGoal[];
       
-      logger.info('开始内容润色', {
+      logger.info('开始多目标内容润色', {
         originalContentLength: originalContent.length,
         selectedStylesCount: selectedStyles.size,
         selectedGoals: selectedGoals.map(g => ({ id: g.id, name: g.name })),
         contentPreview: originalContent.substring(0, 100) + '...'
       });
 
-      // 为每个选中的润色目标生成结果
-      const polishPromises = selectedGoals.map(async (goal, goalIndex) => {
+      // 生成5种不同强度的候选答案，每种都同时满足所有选中的润色目标
+      const intensityLabels = ['轻度润色', '中度润色', '强度润色', '深度润色', '极度润色'];
+      const polishPromises = [1, 2, 3, 4, 5].map(async (intensity) => {
         try {
-          logger.info(`开始润色调用: ${goal.name}`, { 
-            goalId: goal.id,
-            goalName: goal.name,
-            goalIndex: goalIndex + 1,
-            totalGoals: selectedGoals.length
+          logger.info(`开始强度${intensity}的多目标润色`, { 
+            intensity,
+            intensityLabel: intensityLabels[intensity - 1],
+            selectedGoalsCount: selectedGoals.length,
+            selectedGoals: selectedGoals.map(g => g.name)
           });
 
-          const response = await fetch('/api/content-polish', {
+          const response = await fetch('/api/content-polish-multiple', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               originalContent,
-              polishStyle: goal.id,
+              polishStyles: selectedStyleIds,
               taskId,
-              intensity: 2 // 使用中等强度
+              intensity
             }),
           });
 
@@ -212,8 +214,9 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
               if (line.startsWith('data: ')) {
                 const data = line.slice(6);
                 if (data === '[DONE]') {
-                  logger.info(`润色调用完成: ${goal.name}`, { 
-                    goalName: goal.name,
+                  logger.info(`强度${intensity}润色调用完成`, { 
+                    intensity,
+                    intensityLabel: intensityLabels[intensity - 1],
                     contentLength: accumulatedContent.length 
                   });
                   break;
@@ -233,18 +236,18 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
 
           return {
             content: accumulatedContent.trim(),
-            style: goal.name,
-            description: goal.description
+            style: intensityLabels[intensity - 1],
+            description: `同时满足${selectedGoals.length}个润色目标：${selectedGoals.map(g => g.name).join('、')}`
           };
         } catch (error) {
-          logger.error(`润色调用失败: ${goal.name}`, 
+          logger.error(`强度${intensity}润色调用失败`, 
             error instanceof Error ? error : new Error(String(error)), 
-            { goalName: goal.name, goalId: goal.id }
+            { intensity, intensityLabel: intensityLabels[intensity - 1] }
           );
           return {
             content: `润色失败: ${error instanceof Error ? error.message : String(error)}`,
-            style: goal.name,
-            description: `${goal.description} - 生成失败`
+            style: intensityLabels[intensity - 1],
+            description: `强度${intensity}润色生成失败`
           };
         }
       });
@@ -269,18 +272,19 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
         setSelectedResult(successfulResults[0].content);
       }
 
-      logger.info('润色完成', {
+      logger.info('多目标润色完成', {
         totalResults: successfulResults.length,
         selectedStylesCount: selectedStyles.size,
         selectedGoals: selectedGoals.map(g => g.name),
         resultsPreview: successfulResults.map(r => ({
           style: r.style,
-          length: r.content.length
+          length: r.content.length,
+          description: r.description
         }))
       });
 
     } catch (error) {
-      logger.error('润色过程失败', 
+      logger.error('多目标润色过程失败', 
         error instanceof Error ? error : new Error(String(error)),
         { 
           selectedStylesCount: selectedStyles.size,
