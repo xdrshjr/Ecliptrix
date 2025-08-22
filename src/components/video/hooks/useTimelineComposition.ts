@@ -150,7 +150,21 @@ export const useTimelineComposition = (
         currentTime: timelineState.currentTime,
         tracksCount: timelineState.tracks.length,
         videoSequencesCount: videoSequences.length,
-        sequencesChanged
+        sequencesChanged,
+        previousSequencesCount: prev.videoSequences.length,
+        isCompositionMode: videoSequences.length > 0,
+        firstVideoSequence: videoSequences.length > 0 ? {
+          id: videoSequences[0].id,
+          name: videoSequences[0].name,
+          url: videoSequences[0].url,
+          startTime: videoSequences[0].startTime?.toFixed(2),
+          duration: videoSequences[0].duration?.toFixed(2),
+          clipStart: videoSequences[0].clipStart?.toFixed(2) || '0.00',
+          clipEnd: videoSequences[0].clipEnd?.toFixed(2) || 'N/A'
+        } : null,
+        message: videoSequences.length > 0 ? 
+          '组合播放模式已激活，VideoPlayerPanel应该显示第一个视频画面' :
+          '组合播放模式已关闭，VideoPlayerPanel显示占位符'
       });
 
       return {
