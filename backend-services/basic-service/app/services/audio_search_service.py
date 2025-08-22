@@ -115,6 +115,7 @@ class AudioSearchService:
         channels = audio_data.get('channels', None)
         bitrate = audio_data.get('bitrate', None)
         samplerate = audio_data.get('samplerate', None)
+        num_downloads = audio_data.get('num_downloads', 0)
         
         return AudioInfo(
             id=audio_data.get('id', 0),
@@ -131,11 +132,12 @@ class AudioSearchService:
             type=file_type,
             channels=channels,
             bitrate=bitrate,
-            samplerate=samplerate
+            samplerate=samplerate,
+            downloads=num_downloads
         )
     
     def search_audios(self, query: str, max_audios: int = 20, duration_min: Optional[float] = None, 
-                     duration_max: Optional[float] = None, audio_type: str = "all") -> AudioSearchResponse:
+                     duration_max: Optional[float] = None, audio_type: str = "all", sort_by: str = "score") -> AudioSearchResponse:
         """
         Search for audio files using Freesound API.
         
@@ -145,6 +147,7 @@ class AudioSearchService:
             duration_min: Minimum duration filter (seconds)
             duration_max: Maximum duration filter (seconds)
             audio_type: Audio type filter (all, music, sound-effect, speech, ambient, nature)
+            sort_by: Sort order (score, downloads, rating, duration_desc, duration_asc, created_desc, created_asc)
             
         Returns:
             AudioSearchResponse: Search results
@@ -154,7 +157,8 @@ class AudioSearchService:
             'max_audios': max_audios,
             'duration_min': duration_min,
             'duration_max': duration_max,
-            'audio_type': audio_type
+            'audio_type': audio_type,
+            'sort_by': sort_by
         })
         
         if not self.api_key:
@@ -172,8 +176,16 @@ class AudioSearchService:
         params = {
             'query': query,
             'page_size': min(max_audios, 150),  # Freesound API limit
-            'fields': 'id,name,description,username,duration,previews,images,license,tags,filesize,type,channels,bitrate,samplerate'
+            'fields': 'id,name,description,username,duration,previews,images,license,tags,filesize,type,channels,bitrate,samplerate,num_downloads',
+            'sort': sort_by  # Add sort parameter
         }
+        
+        logger.info(f"Using sort parameter: {sort_by}", extra={
+            'sort_by': sort_by,
+            'query': query,
+            'is_popularity_search': sort_by == 'downloads',
+            'requested_fields': 'id,name,description,username,duration,previews,images,license,tags,filesize,type,channels,bitrate,samplerate,num_downloads'
+        })
         
         # Add duration filter if specified
         filter_parts = []
@@ -240,6 +252,7 @@ class AudioSearchService:
                 logger.debug(f"Converted audio: {audio_info.name}", extra={
                     'audio_id': audio_info.id,
                     'duration': audio_info.duration,
+                    'downloads': audio_info.downloads,
                     'tags': audio_info.tags[:3]  # Log first 3 tags only
                 })
                 
@@ -250,10 +263,24 @@ class AudioSearchService:
                 continue
         
         success_message = f"Found {len(audio_list)} audio files"
+        
+        # Add popularity-specific logging if sorting by downloads
+        popularity_stats = None
+        if sort_by == 'downloads' and audio_list:
+            downloads_list = [audio.downloads for audio in audio_list if audio.downloads is not None]
+            if downloads_list:
+                popularity_stats = {
+                    'max_downloads': max(downloads_list),
+                    'min_downloads': min(downloads_list),
+                    'avg_downloads': sum(downloads_list) / len(downloads_list)
+                }
+        
         logger.info(f"Audio search completed successfully", extra={
             'found_count': len(audio_list),
             'total_available': total_count,
-            'query': query
+            'query': query,
+            'sort_by': sort_by,
+            'popularity_stats': popularity_stats
         })
         
         return AudioSearchResponse(

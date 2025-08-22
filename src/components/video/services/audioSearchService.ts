@@ -13,6 +13,7 @@ export interface AudioSearchService {
     durationMin?: number;
     durationMax?: number;
     audioType?: string;
+    sortBy?: string;
   }) => Promise<AudioSearchResponse>;
 }
 
@@ -32,8 +33,9 @@ export class AudioSearchServiceImpl implements AudioSearchService {
     durationMin?: number;
     durationMax?: number;
     audioType?: string;
+    sortBy?: string;
   }): Promise<AudioSearchResponse> {
-    const { query, maxAudios, durationMin, durationMax, audioType = 'all' } = params;
+    const { query, maxAudios, durationMin, durationMax, audioType = 'all', sortBy = 'score' } = params;
     const startTime = performance.now();
 
     this.logger.info('开始音频搜索', {
@@ -42,6 +44,7 @@ export class AudioSearchServiceImpl implements AudioSearchService {
       durationMin,
       durationMax,
       audioType,
+      sortBy,
       searchType: 'freesound_api'
     });
 
@@ -102,6 +105,7 @@ export class AudioSearchServiceImpl implements AudioSearchService {
         durationMin,
         durationMax,
         audioType,
+        sortBy,
         endpoint: '/api/audio-search'
       });
 
@@ -117,6 +121,7 @@ export class AudioSearchServiceImpl implements AudioSearchService {
           duration_min: durationMin,
           duration_max: durationMax,
           audio_type: audioType,
+          sort_by: sortBy,
         }),
       });
 

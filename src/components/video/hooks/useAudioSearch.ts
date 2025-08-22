@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
-import { UseAudioSearchReturn, AudioSearchResult, AudioType } from '../types';
+import { UseAudioSearchReturn, AudioSearchResult, AudioType, SortBy } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createAudioSearchService, AudioSearchService } from '../services/audioSearchService';
 
@@ -24,17 +24,33 @@ export const useAudioSearch = (
   const [validationError, setValidationError] = useState<string | null>(null);
   const [durationMin, setDurationMin] = useState<number | null>(null);
   const [durationMax, setDurationMax] = useState<number | null>(null);
-  const [audioType, setAudioType] = useState<AudioType>('all');
+  const [audioType, setAudioType] = useState<AudioType>('music');
+  const [sortBy, setSortBy] = useState<SortBy>('score');
+  const [isAddingAudios, setIsAddingAudios] = useState(false);
+
+  const handleSortByChange = useCallback((newSortBy: SortBy) => {
+    const previousSortBy = sortBy;
+    setSortBy(newSortBy);
+    
+    logger.userAction('切换音频搜索排序方式', 'sortByChange', {
+      previousSortBy,
+      newSortBy,
+      isChangingToPopularity: newSortBy === 'downloads',
+      isChangingFromPopularity: previousSortBy === 'downloads'
+    });
+  }, [sortBy, logger]);
 
   const openSearchModal = useCallback(() => {
     logger.userAction('打开音频搜索模态框', 'searchButton', {
       currentQuery: searchQuery,
       hasResults: searchResults.length > 0,
-      selectedCount: selectedResults.size
+      selectedCount: selectedResults.size,
+      audioType,
+      sortBy
     });
     
     setIsModalOpen(true);
-  }, [logger, searchQuery, searchResults.length, selectedResults.size]);
+  }, [logger, searchQuery, searchResults.length, selectedResults.size, audioType, sortBy]);
 
   const closeSearchModal = useCallback(() => {
     setIsModalOpen(false);
@@ -45,7 +61,9 @@ export const useAudioSearch = (
     setValidationError(null);
     setDurationMin(null);
     setDurationMax(null);
-    setAudioType('all');
+    setAudioType('music');
+    setSortBy('score');
+    setIsAddingAudios(false);
     logger.userAction('关闭音频搜索模态框', 'closeButton');
   }, [logger]);
 
@@ -86,10 +104,27 @@ export const useAudioSearch = (
         durationMin: durationMin || undefined,
         durationMax: durationMax || undefined,
         audioType: audioType,
+        sortBy: sortBy,
       });
 
       if (result.success && result.audios) {
         setSearchResults(result.audios);
+        
+        // Calculate popularity statistics if sorting by downloads
+        const popularityStats = sortBy === 'downloads' && result.audios.length > 0 ? {
+          hasPopularityData: result.audios.some(audio => audio.downloads !== undefined),
+          downloadsRange: result.audios
+            .filter(audio => audio.downloads !== undefined)
+            .map(audio => audio.downloads!)
+            .sort((a, b) => b - a), // Sort by downloads descending
+          maxDownloads: Math.max(...result.audios
+            .filter(audio => audio.downloads !== undefined)
+            .map(audio => audio.downloads!)),
+          minDownloads: Math.min(...result.audios
+            .filter(audio => audio.downloads !== undefined)
+            .map(audio => audio.downloads!))
+        } : null;
+        
         logger.info('音频搜索成功', {
           totalFound: result.total_found,
           audiosCount: result.audios.length,
@@ -98,13 +133,18 @@ export const useAudioSearch = (
             min: durationMin,
             max: durationMax
           },
-          audioType: audioType
+          audioType: audioType,
+          sortBy: sortBy,
+          isPopularitySearch: sortBy === 'downloads',
+          popularityStats: popularityStats
         });
       } else {
         setValidationError(result.message || '搜索失败，请稍后重试');
         logger.warn('音频搜索无结果', {
           error: result.message,
-          query: searchQuery
+          query: searchQuery,
+          sortBy: sortBy,
+          isPopularitySearch: sortBy === 'downloads'
         });
       }
     } catch (error) {
@@ -113,7 +153,7 @@ export const useAudioSearch = (
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery, durationMin, durationMax, audioType, logger, audioSearchService]);
+  }, [searchQuery, durationMin, durationMax, audioType, sortBy, logger, audioSearchService]);
 
   const handleSearchResultSelect = useCallback((resultIndex: number) => {
     const newSelected = new Set(selectedResults);
@@ -145,6 +185,11 @@ export const useAudioSearch = (
       return;
     }
 
+    if (isAddingAudios) {
+      logger.warn('音频添加已在进行中，忽略重复请求');
+      return;
+    }
+
     const selectedAudios = Array.from(selectedResults).map(index => searchResults[index]);
     
     logger.userAction('开始添加选中音频', 'addSelectedAudios', {
@@ -152,6 +197,9 @@ export const useAudioSearch = (
       audioIds: selectedAudios.map(audio => audio.id),
       audioNames: selectedAudios.map(audio => audio.name)
     });
+
+    setIsAddingAudios(true);
+    setValidationError(null);
 
     try {
       const materials: MaterialItem[] = [];
@@ -241,8 +289,10 @@ export const useAudioSearch = (
     } catch (error) {
       logger.error('添加音频素材异常', error as Error);
       setValidationError('添加音频时发生错误，请稍后重试');
+    } finally {
+      setIsAddingAudios(false);
     }
-  }, [selectedResults, searchResults, onAddMaterials, logger, closeSearchModal]);
+  }, [selectedResults, searchResults, onAddMaterials, logger, closeSearchModal, isAddingAudios]);
 
   const handleClearSelection = useCallback(() => {
     logger.userAction('清空音频选择', 'clearSelection', {
@@ -262,6 +312,8 @@ export const useAudioSearch = (
     durationMin,
     durationMax,
     audioType,
+    sortBy,
+    isAddingAudios,
     openSearchModal,
     closeSearchModal,
     handleSearch,
@@ -273,6 +325,7 @@ export const useAudioSearch = (
     setDurationMin,
     setDurationMax,
     setAudioType,
+    setSortBy: handleSortByChange,
     setValidationError,
     taskId
   };

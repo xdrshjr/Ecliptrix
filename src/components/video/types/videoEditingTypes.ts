@@ -244,6 +244,7 @@ export interface AudioSearchResult {
   channels?: number;
   bitrate?: number;
   samplerate?: number;
+  downloads?: number;
 }
 
 export interface AudioSearchResponse {
@@ -256,6 +257,8 @@ export interface AudioSearchResponse {
 
 export type AudioType = 'all' | 'music' | 'sound-effect' | 'speech' | 'ambient' | 'nature';
 
+export type SortBy = 'score' | 'downloads' | 'rating' | 'duration_desc' | 'duration_asc' | 'created_desc' | 'created_asc';
+
 export interface UseAudioSearchReturn {
   isModalOpen: boolean;
   searchQuery: string;
@@ -267,6 +270,8 @@ export interface UseAudioSearchReturn {
   durationMin: number | null;
   durationMax: number | null;
   audioType: AudioType;
+  sortBy: SortBy;
+  isAddingAudios: boolean;
   openSearchModal: () => void;
   closeSearchModal: () => void;
   handleSearch: () => void;
@@ -278,6 +283,7 @@ export interface UseAudioSearchReturn {
   setDurationMin: (duration: number | null) => void;
   setDurationMax: (duration: number | null) => void;
   setAudioType: (audioType: AudioType) => void;
+  setSortBy: (sortBy: SortBy) => void;
   setValidationError: (error: string | null) => void;
   taskId: string;
 } 
