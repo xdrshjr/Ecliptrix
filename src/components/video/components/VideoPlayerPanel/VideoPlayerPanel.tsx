@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
 import { TimelineState, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
@@ -136,6 +136,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const playbackMode = compositionPlayback?.isCompositionMode && compositionPlayback.videoSequences.length > 0 
     ? 'composition' : 'preview';
 
+  // 创建稳定的第一个视频序列标识符，避免useEffect过度触发
+  const firstSequenceId = useMemo(() => {
+    return compositionPlayback?.videoSequences?.[0]?.id || null;
+  }, [compositionPlayback?.videoSequences?.[0]?.id]);
+
   // 处理视频比例切换
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
     console.log(`[VideoPlayerPanel] 比例切换调试`, {
@@ -208,6 +213,60 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       placeholderDesign: '占位符充满整个预览容器，无图标设计，仅显示文本和比例信息'
     });
   }, []);
+
+  // 新增：监听compositionPlayback变化，当有视频序列时自动设置第一个视频
+  useEffect(() => {
+    if (playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 && videoRef.current) {
+      const firstSequence = compositionPlayback.videoSequences[0];
+      const clipStart = firstSequence.clipStart || 0;
+      
+      // 检查是否需要更新视频源（避免重复设置相同的src）
+      const currentSrc = videoRef.current.src;
+      const newSrc = firstSequence.url;
+      const currentVideoTime = videoRef.current.currentTime;
+      
+      if (currentSrc !== newSrc || Math.abs(currentVideoTime - clipStart) > 0.1) {
+        logger.info('自动设置视频合成播放的首个视频', {
+          sequenceIndex: 0,
+          sequenceName: firstSequence.name,
+          sequenceUrl: firstSequence.url,
+          clipStart: clipStart.toFixed(2),
+          clipEnd: firstSequence.clipEnd?.toFixed(2) || 'N/A',
+          originalDuration: firstSequence.originalDuration?.toFixed(2) || 'N/A',
+          timelineStartTime: firstSequence.startTime.toFixed(2),
+          timelineDuration: firstSequence.duration.toFixed(2),
+          currentSrc: currentSrc,
+          needsUpdate: currentSrc !== newSrc,
+          action: '设置视频源并显示第一帧，保持暂停状态'
+        });
+
+        // 只在需要时设置视频源
+        if (currentSrc !== newSrc) {
+          videoRef.current.src = firstSequence.url;
+        }
+        // 设置到裁剪起始位置（或视频开始位置）
+        videoRef.current.currentTime = clipStart;
+        // 确保视频处于暂停状态
+        videoRef.current.pause();
+        // 重置组合播放状态（仅在状态确实不同时更新）
+        if (isCompositionPlaying) {
+          setIsCompositionPlaying(false);
+        }
+        if (compositionCurrentTime !== 0) {
+          setCompositionCurrentTime(0);
+        }
+        
+        logger.info('视频合成播放器状态已重置', {
+          videoSrc: firstSequence.url,
+          videoCurrentTime: clipStart.toFixed(2),
+          isCompositionPlaying: false,
+          compositionCurrentTime: 0,
+          srcChanged: currentSrc !== newSrc,
+          message: '视频已准备就绪，显示第一帧画面，等待用户播放'
+        });
+      }
+    }
+  }, [playbackMode, compositionPlayback?.videoSequences.length, firstSequenceId]);
 
   // 组合播放时的视频切换逻辑
   const handleVideoEnded = useCallback(() => {
@@ -654,6 +713,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                   <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
+                    preload="metadata"
                     onEnded={handleVideoEnded}
                     onTimeUpdate={handleTimeUpdate}
                     onLoadStart={() => {
@@ -679,6 +739,26 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                         duration: videoRef.current?.duration,
                         aspectRatio: selectedAspectRatio.id,
                         containerHeight: '70% of upper panel'
+                      });
+                    }}
+                    onLoadedMetadata={() => {
+                      logger.info('组合视频元数据加载完成', {
+                        sequenceIndex: compositionPlayback.currentSequenceIndex,
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
+                        duration: videoRef.current?.duration,
+                        videoWidth: videoRef.current?.videoWidth,
+                        videoHeight: videoRef.current?.videoHeight,
+                        currentTime: videoRef.current?.currentTime?.toFixed(2),
+                        aspectRatio: selectedAspectRatio.id,
+                        message: '视频元数据已加载，第一帧应该可见'
+                      });
+                    }}
+                    onSeeked={() => {
+                      logger.info('组合视频跳转完成', {
+                        sequenceIndex: compositionPlayback.currentSequenceIndex,
+                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
+                        currentTime: videoRef.current?.currentTime?.toFixed(2),
+                        message: '视频已跳转到指定时间点'
                       });
                     }}
                     onError={(e) => {

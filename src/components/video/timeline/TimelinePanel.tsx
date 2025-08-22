@@ -293,6 +293,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       payload: { materialId: material.id, materialName: material.name },
       timestamp: new Date()
     });
+
+    // 新增：如果添加的是视频素材，记录详细日志
+    if (material.type === 'video') {
+      console.log(`[TimelinePanel] 视频素材已添加到时间轴`, {
+        materialId: material.id,
+        materialName: material.name,
+        materialUrl: material.url,
+        materialServerUrl: material.serverUrl,
+        duration: material.duration?.toFixed(2),
+        targetTrackId: targetTrackId,
+        message: '视频素材已成功添加到时间轴，右侧播放器应显示视频画面但保持暂停状态',
+        nextAction: '等待VideoPlayerPanel接收compositionPlayback状态更新',
+        timestamp: new Date().toISOString()
+      });
+    }
   }, []);
 
   // 程序化添加多个素材到时间轴
