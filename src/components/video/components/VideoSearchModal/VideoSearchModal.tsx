@@ -133,7 +133,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
       videoId: video.id,
       videoTitle: video.title,
       activeLibrary,
-      userAction: 'video_preview_click'
+      userAction: 'video_preview_click',
+      videoDimensions: `${video.width}x${video.height}`,
+      videoOrientation: video.width > video.height ? 'landscape' : 'portrait',
+      videoAspectRatio: (video.width / video.height).toFixed(2),
+      layoutConstraints: 'max-height-320px-object-contain'
     });
   };
 
@@ -434,14 +438,15 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                   </div>
 
                   {/* 预览视频内容 */}
-                  <div className="flex-1 p-4">
-                    <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+                  <div className="flex-1 p-4 max-h-96 overflow-y-auto">
+                    <div className="w-full h-full min-h-[200px] max-h-[320px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
                       {(currentPreviewVideo.video_url || currentPreviewVideo.videoUrl) ? (
                         activeLibrary === 'youtube' ? (
                           // YouTube视频使用嵌入式播放器
                           <iframe
                             src={`https://www.youtube.com/embed/${currentPreviewVideo.id}?autoplay=0&controls=1&modestbranding=1&rel=0`}
-                            className="w-full h-full"
+                            className="w-full h-full max-h-[320px] object-contain"
+                            style={{ aspectRatio: 'auto' }}
                             frameBorder="0"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowFullScreen
@@ -449,7 +454,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                               logger.info('YouTube视频预览加载完成', {
                                 videoId: currentPreviewVideo.id,
                                 videoTitle: currentPreviewVideo.title,
-                                activeLibrary
+                                activeLibrary,
+                                videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
+                                videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
+                                previewContainerMaxHeight: '320px',
+                                layoutType: 'constrained_height_preview'
                               });
                             }}
                             onError={(e) => {
@@ -464,7 +473,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           <video
                             ref={videoRef}
                             src={currentPreviewVideo.video_url || currentPreviewVideo.videoUrl}
-                            className="w-full h-full object-contain"
+                            className="w-full h-full max-h-[320px] object-contain"
+                            style={{ maxWidth: '100%', maxHeight: '320px' }}
                             controls
                             preload="metadata"
                             onLoadStart={() => {
@@ -475,9 +485,15 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                               });
                             }}
                             onCanPlay={() => {
+                              const videoElement = videoRef.current;
                               logger.info('视频预览可播放', {
                                 videoId: currentPreviewVideo.id,
-                                activeLibrary
+                                activeLibrary,
+                                videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
+                                videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
+                                actualVideoSize: videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : 'unknown',
+                                previewContainerMaxHeight: '320px',
+                                layoutType: 'constrained_height_preview'
                               });
                             }}
                             onError={(e) => {
@@ -568,11 +584,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                         }`}
                         onClick={() => handleVideoClick(video)}
                       >
-{activeLibrary === 'official' ? (
-                          // 官方视频库 - 卡片式布局（包含缩略图）
-                          <div className="flex flex-col p-3 space-y-3">
+                        {activeLibrary === 'official' ? (
+                          // 官方视频库 - 紧凑横向布局（小缩略图）
+                          <div className="flex items-center p-3 space-x-3">
                             {/* 视频缩略图 */}
-                            <div className="relative w-full aspect-video bg-gray-100 rounded-lg overflow-hidden">
+                            <div className="relative w-16 h-12 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
                               {(video.thumbnail || video.thumbnailUrl) ? (
                                 <img 
                                   src={video.thumbnail || video.thumbnailUrl} 
@@ -581,7 +597,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                   </svg>
                                 </div>
@@ -589,8 +605,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             </div>
 
                             {/* 视频信息 */}
-                            <div className="space-y-2">
-                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">{video.title}</h5>
+                            <div className="flex-1 min-w-0">
+                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight mb-1">{video.title}</h5>
                               <div className="space-y-1">
                                 <div className="flex items-center space-x-2 text-xs text-gray-500">
                                   <span>{video.width} × {video.height}</span>
@@ -607,7 +623,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             {/* 添加合成按钮 */}
                             <button
                               onClick={(e) => handleAddToComposition(video, e)}
-                              className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
                                 isSelected
                                   ? 'bg-blue-500 text-white'
                                   : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
@@ -615,14 +631,14 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             >
                               {isSelected ? (
                                 <>
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                   </svg>
                                   <span>已添加</span>
                                 </>
                               ) : (
                                 <>
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                   </svg>
                                   <span>添加合成</span>
