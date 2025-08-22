@@ -5,6 +5,8 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **NEW**: Enhanced subtitle aspect ratio adaptation - subtitles now automatically adjust character width based on video aspect ratio (horizontal vs vertical) and font size for optimal readability
+- **IMPROVED**: Subtitle rendering for portrait/vertical videos - automatic line wrapping prevents subtitles from exceeding screen width
 - **FIXED**: YouTube video download support - YouTube URLs from video search can now be used in video composition
 - **NEW**: Added audio volume control support - individual track volumes can be adjusted from 0% to 200%
 - **NEW**: Added subtitle composition support - subtitles from timeline are now automatically rendered into the final video
