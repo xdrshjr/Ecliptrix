@@ -1361,6 +1361,13 @@ class VideoCompositionService:
                 logger.info(f"Subtitle addition successful: {result.output_video_path}")
                 logger.info(f"Processed {result.subtitle_count} subtitles in {result.processing_time:.2f}s")
                 logger.info(f"Video dimensions: {result.video_width}x{result.video_height}")
+                
+                # Add aspect ratio information for better tracking
+                if result.video_width and result.video_height:
+                    aspect_ratio = result.video_width / result.video_height
+                    video_type = "portrait" if aspect_ratio < 1.0 else "landscape"
+                    logger.info(f"Video type: {video_type} (aspect ratio: {aspect_ratio:.2f})")
+                
                 logger.info(f"Output file size: {result.file_size} bytes")
                 return result.output_video_path
             else:
