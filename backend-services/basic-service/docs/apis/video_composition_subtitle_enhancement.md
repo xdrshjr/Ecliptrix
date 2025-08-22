@@ -17,15 +17,43 @@ The video composition service now uses verified parameters from the test script 
 - **Border**: 2px black border for text contrast
 - **Margins**: 50px vertical and horizontal margins for proper positioning
 
-### 2. Aspect Ratio Adaptation
+### 2. Portrait Video Multi-Line Centering (NEW)
+
+**NEW FEATURE**: Enhanced subtitle rendering for portrait/vertical videos ensures each line of multi-line subtitles is individually centered horizontally.
+
+#### Problem Solved
+- **Issue**: In portrait videos, subtitles often wrap to multiple lines due to limited horizontal space
+- **Previous behavior**: Multi-line subtitles were left-aligned, creating uneven visual appearance
+- **Solution**: Each line is now individually centered using separate FFmpeg drawtext filters
+
+#### Technical Implementation
+- **Aspect Ratio Detection**: Automatically detects portrait videos (aspect ratio < 1.0)
+- **Individual Line Filters**: Creates separate drawtext filter for each wrapped line
+- **Perfect Centering**: Each line uses `x=(w-text_w)/2` for individual horizontal centering
+- **Proper Spacing**: Maintains consistent line height and vertical positioning
+
+#### Enhanced Logging for Portrait Videos
+```
+[Subtitle Service] Video aspect ratio: 0.56 (1080x1920)
+[Subtitle Service] Portrait video detected - using multi-line centered subtitle rendering for optimal display
+[Subtitle Service] Portrait video max line width: 6 characters
+[Subtitle Service] Portrait subtitle 'This is a long subtitle text...' wrapped into 3 lines
+[Subtitle Service] Portrait subtitle positioning: start_y=1620, total_height=165, lines=3
+[Subtitle Service] Portrait line 1/3: 'This is' at y=1620
+[Subtitle Service] Portrait line 2/3: 'a long' at y=1675
+[Subtitle Service] Portrait line 3/3: 'subtitle' at y=1730
+[Subtitle Service] Generated 9 individual line filters for portrait video multi-line centering
+```
+
+### 3. Aspect Ratio Adaptation
 
 The subtitle service automatically adapts character width based on video aspect ratio:
 
-- **Horizontal Videos (16:9, 21:9)**: Standard character width
-- **Vertical Videos (9:16)**: Reduced character width to prevent text overflow
-- **Square Videos (1:1)**: Balanced character width
+- **Horizontal Videos (16:9, 21:9)**: Standard character width, uses standard multi-line rendering
+- **Vertical Videos (9:16)**: Reduced character width + **individual line centering**
+- **Square Videos (1:1)**: Balanced character width, uses standard rendering
 
-### 3. Enhanced Logging
+### 4. Enhanced Logging
 
 Detailed logging throughout the subtitle processing pipeline:
 
@@ -36,8 +64,9 @@ Detailed logging throughout the subtitle processing pipeline:
   background_color=#000000@0.5, position=bottom, 
   border_width=2, border_color=#000000, 
   margin_vertical=50, margin_horizontal=50
+[Video Compose] Portrait video detected - using multi-line centered subtitle rendering
 [Video Compose] Processed 5 subtitles in 3.45s
-[Video Compose] Video dimensions: 1920x1080
+[Video Compose] Video dimensions: 1080x1920
 [Video Compose] Output file size: 15728640 bytes
 ```
 
@@ -45,19 +74,18 @@ Detailed logging throughout the subtitle processing pipeline:
 
 ### Request Format
 
-The subtitle_items array in video composition requests now supports enhanced styling:
+The subtitle_items array in video composition requests now supports enhanced styling with automatic portrait video detection:
 
 ```json
 {
   "subtitle_items": [
     {
-      "id": "sub_001",
-      "name": "Enhanced Subtitle",
-      "text": "This subtitle uses optimized parameters",
+      "id": "subtitle_1",
+      "name": "Opening subtitle",
+      "text": "This is a long subtitle that will be wrapped across multiple lines in portrait videos",
       "start_time": 0.0,
       "duration": 3.0,
-      "track_id": "subtitle-track-1",
-      "font_family": "default",
+      "track_id": "subtitle_track_1",
       "font_size": 50,
       "font_color": "#FFFFFF",
       "background_color": "#000000@0.5",
@@ -67,97 +95,40 @@ The subtitle_items array in video composition requests now supports enhanced sty
 }
 ```
 
-### Default Values
+### Response Enhancements
 
-If any subtitle styling parameters are not provided, the system will use these optimized defaults:
+Enhanced logging provides detailed information about portrait video subtitle processing:
 
-| Parameter | Default Value | Description |
-|-----------|---------------|-------------|
-| font_family | "default" | System default font |
-| font_size | 50 | Optimized for readability |
-| font_color | "#FFFFFF" | White text |
-| background_color | "#000000@0.5" | Semi-transparent black |
-| position | "bottom" | Bottom positioning |
-| border_width | 2 | Text border for contrast |
-| border_color | "#000000" | Black border |
-| margin_vertical | 50 | Top/bottom margins |
-| margin_horizontal | 50 | Left/right margins |
+- **Aspect ratio detection**: Logs detected video orientation
+- **Line wrapping details**: Shows how many lines each subtitle was wrapped into
+- **Positioning information**: Detailed Y-coordinate calculations for each line
+- **Filter generation**: Count of individual drawtext filters created
 
-## Test Verification
+## Technical Details
 
-These parameters have been verified through comprehensive testing in `test_subtitle_aspect_ratio.py`:
+### Portrait Video Detection
 
-- **Font Sizes Tested**: 35, 50, 72 pixels
-- **Video Types Tested**: Horizontal (landscape) and vertical (portrait)
-- **Validation**: Ensures subtitles don't exceed video width boundaries
-- **Aspect Ratio Adaptation**: Automatic adjustment for different video orientations
-
-## Integration
-
-### Frontend Changes
-
-The frontend now sends enhanced default values:
-
-```javascript
-const subtitleStyle = item.subtitleStyle || {
-  fontFamily: 'default',
-  fontSize: 50, // Updated from 24
-  fontColor: '#FFFFFF',
-  backgroundColor: '#000000@0.5', // Added semi-transparent background
-  position: 'bottom'
-};
+```python
+aspect_ratio = video_width / video_height
+is_portrait = aspect_ratio < 1.0
 ```
 
-### Backend Processing
+### Multi-Line Centering Algorithm
 
-The backend VideoCompositionService now:
+1. **Text Wrapping**: Subtitle text is wrapped based on calculated max line width
+2. **Line Height Calculation**: `line_height = font_size + 5`
+3. **Total Height**: `total_height = num_lines * line_height`
+4. **Starting Position**: Calculated based on position parameter (top/center/bottom)
+5. **Individual Lines**: Each line gets its own drawtext filter with `x=(w-text_w)/2`
 
-1. Uses verified parameters from the test script
-2. Provides sensible defaults for missing parameters
-3. Logs detailed subtitle configuration
-4. Reports processing results including video dimensions and file size
+### Performance Impact
 
-## Error Handling
+- **Portrait Videos**: Slight increase in processing time due to multiple drawtext filters
+- **Landscape Videos**: No performance impact (uses standard processing)
+- **Filter Count**: Portrait videos may generate 3-5x more filters depending on text length
 
-Enhanced error handling and logging:
+## Migration Notes
 
-- Detailed parameter validation
-- Comprehensive processing logs
-- Clear error messages for debugging
-- Fallback to default values for missing parameters
-
-## Performance
-
-The enhanced subtitle processing maintains high performance while providing better quality:
-
-- Optimized font sizes for faster rendering
-- Efficient aspect ratio calculations
-- Minimal overhead for parameter validation
-- Detailed timing logs for performance monitoring
-
-## Migration Guide
-
-### For Existing Applications
-
-No breaking changes - existing subtitle items will automatically use the enhanced defaults if styling parameters are not provided.
-
-### For New Applications
-
-Consider using the new default values for optimal subtitle rendering:
-
-```javascript
-// Recommended subtitle styling
-const optimalSubtitleStyle = {
-  fontFamily: 'default',
-  fontSize: 50,
-  fontColor: '#FFFFFF',
-  backgroundColor: '#000000@0.5',
-  position: 'bottom'
-};
-```
-
-## References
-
-- Test Script: `backend-services/basic-service/tests/test-subtitle-style/scripts/test_subtitle_aspect_ratio.py`
-- Video Composition API: `/api/video/compose`
-- Subtitle Service: `app.services.subtitle_service.SubtitleService` 
+- **Backward Compatibility**: Existing landscape video processing unchanged
+- **Automatic Detection**: No API changes required - detection is automatic
+- **Consistent Quality**: Portrait videos now have significantly improved subtitle readability 

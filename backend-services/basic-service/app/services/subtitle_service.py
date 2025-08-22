@@ -549,6 +549,62 @@ class SubtitleService:
         Returns:
             ffmpeg command as list of strings
         """
+        # Calculate aspect ratio to detect portrait/vertical videos
+        aspect_ratio = video_width / video_height
+        is_portrait = aspect_ratio < 1.0
+        
+        logger.info(f"Video aspect ratio: {aspect_ratio:.2f} ({video_width}x{video_height})")
+        
+        if is_portrait:
+            logger.info("Portrait video detected - using multi-line centered subtitle rendering for optimal display")
+            # Use special handling for portrait videos to ensure each line is centered
+            drawtext_filters = self._build_multiline_centered_drawtext_filters(
+                subtitles, request, video_width, video_height
+            )
+        else:
+            logger.info("Landscape video detected - using standard subtitle rendering")
+            # Use standard handling for landscape videos
+            drawtext_filters = self._build_standard_drawtext_filters(
+                subtitles, request, video_width, video_height
+            )
+        
+        if not drawtext_filters:
+            logger.warning("No valid subtitle filters created")
+            return []
+        
+        logger.info(f"Generated {len(drawtext_filters)} drawtext filters for subtitle rendering")
+        
+        # Build complete ffmpeg command
+        cmd = [
+            'ffmpeg',
+            '-i', input_video,
+            '-vf', ','.join(drawtext_filters),
+            '-c:a', 'copy',  # Copy audio without re-encoding
+            '-y',  # Overwrite output file
+            output_video
+        ]
+        
+        return cmd
+    
+    def _build_standard_drawtext_filters(
+        self,
+        subtitles: List[SubtitleEntry],
+        request: SubtitleAddRequest,
+        video_width: int,
+        video_height: int
+    ) -> List[str]:
+        """
+        Build standard drawtext filters for landscape videos.
+        
+        Args:
+            subtitles: List of subtitle entries
+            request: Subtitle request parameters
+            video_width: Video width
+            video_height: Video height
+            
+        Returns:
+            List of drawtext filter strings
+        """
         # Calculate max line width if not provided
         max_line_width = request.max_line_width
         if max_line_width is None:
@@ -612,21 +668,112 @@ class SubtitleService:
             
             drawtext_filters.append(drawtext_filter)
         
-        if not drawtext_filters:
-            logger.warning("No valid subtitle filters created")
-            return []
+        return drawtext_filters
+    
+    def _build_multiline_centered_drawtext_filters(
+        self,
+        subtitles: List[SubtitleEntry],
+        request: SubtitleAddRequest,
+        video_width: int,
+        video_height: int
+    ) -> List[str]:
+        """
+        Build multi-line centered drawtext filters for portrait videos.
+        This ensures each line of subtitle is horizontally centered.
         
-        # Build complete ffmpeg command
-        cmd = [
-            'ffmpeg',
-            '-i', input_video,
-            '-vf', ','.join(drawtext_filters),
-            '-c:a', 'copy',  # Copy audio without re-encoding
-            '-y',  # Overwrite output file
-            output_video
-        ]
+        Args:
+            subtitles: List of subtitle entries
+            request: Subtitle request parameters
+            video_width: Video width
+            video_height: Video height
+            
+        Returns:
+            List of drawtext filter strings
+        """
+        logger.info("Building multi-line centered drawtext filters for portrait video")
         
-        return cmd
+        # Calculate max line width if not provided
+        max_line_width = request.max_line_width
+        if max_line_width is None:
+            max_line_width = self._calculate_max_line_width(
+                video_width, request.font_size, request.margin_horizontal, video_height
+            )
+        
+        logger.info(f"Portrait video max line width: {max_line_width} characters")
+        
+        # Build drawtext filters for each subtitle
+        drawtext_filters = []
+        
+        for subtitle in subtitles:
+            # Wrap text into multiple lines
+            wrapped_lines = self._wrap_text(subtitle.text, max_line_width)
+            if not wrapped_lines:
+                continue
+            
+            logger.info(f"Portrait subtitle '{subtitle.text[:30]}...' wrapped into {len(wrapped_lines)} lines")
+            
+            # Convert times to seconds
+            start_time = self._convert_time_to_seconds(subtitle.start_time)
+            end_time = self._convert_time_to_seconds(subtitle.end_time)
+            
+            # Calculate line height (approximate)
+            line_height = request.font_size + 5  # Font size + small padding
+            
+            # Calculate total text block height
+            total_text_height = len(wrapped_lines) * line_height
+            
+            # Calculate starting Y position to center the entire text block
+            if request.position == "top":
+                start_y = request.margin_vertical
+            elif request.position == "center":
+                start_y = (video_height - total_text_height) // 2
+            else:  # bottom
+                start_y = video_height - total_text_height - request.margin_vertical
+            
+            logger.info(f"Portrait subtitle positioning: start_y={start_y}, total_height={total_text_height}, lines={len(wrapped_lines)}")
+            
+            # Create a separate drawtext filter for each line to ensure proper centering
+            for line_index, line_text in enumerate(wrapped_lines):
+                if not line_text.strip():
+                    continue
+                
+                # Calculate Y position for this line
+                line_y = start_y + (line_index * line_height)
+                
+                # Escape special characters for ffmpeg
+                escaped_text = line_text.replace("'", "\\'").replace(":", "\\:")
+                
+                # Build drawtext filter with font support
+                drawtext_filter = f"drawtext=text='{escaped_text}'"
+                
+                # Add font file if available
+                font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
+                if font_path:
+                    # Escape backslashes for ffmpeg
+                    escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
+                    drawtext_filter += f":fontfile='{escaped_font_path}'"
+                
+                # Each line is individually centered horizontally
+                drawtext_filter += (
+                    f":fontsize={request.font_size}"
+                    f":fontcolor={request.font_color}"
+                    f":borderw={request.border_width}"
+                    f":bordercolor={request.border_color}"
+                    f":x=(w-text_w)/2"  # Center each line individually
+                    f":y={line_y}"
+                    f":enable='between(t,{start_time},{end_time})'"
+                )
+                
+                # Add background if specified
+                if request.background_color:
+                    drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
+                
+                drawtext_filters.append(drawtext_filter)
+                
+                logger.debug(f"Portrait line {line_index + 1}/{len(wrapped_lines)}: '{line_text}' at y={line_y}")
+        
+        logger.info(f"Generated {len(drawtext_filters)} individual line filters for portrait video multi-line centering")
+        return drawtext_filters
     
     async def add_subtitles(self, request: SubtitleAddRequest) -> SubtitleAddResponse:
         """
