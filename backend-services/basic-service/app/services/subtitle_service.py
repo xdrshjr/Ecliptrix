@@ -170,16 +170,24 @@ class SubtitleService:
                 # Calculate base character count
                 base_max_chars = int(available_width / char_width)
                 
-                # Apply conservative limits to ensure no overflow
+                # Apply reasonable limits that respect user font size settings
+                # The previous limits were too conservative and made fonts appear much smaller
                 if font_size >= 72:
-                    # Large font - ensure very safe limits (72px * 0.8 * 4 chars = 230.4px < 260px)
-                    max_chars = min(base_max_chars, 4)
+                    # Large font - allow reasonable character count while preventing overflow
+                    # For 72px font: 72 * 0.8 * 12 chars = 691px < 980px available
+                    max_chars = min(base_max_chars, 12)
                 elif font_size >= 50:
-                    # Medium font - moderate limits (50px * 0.8 * 6 chars = 240px < 260px)
-                    max_chars = min(base_max_chars, 6)
+                    # Medium font - allow good readability 
+                    # For 50px font: 50 * 0.8 * 18 chars = 720px < 980px available
+                    max_chars = min(base_max_chars, 18)
+                elif font_size >= 30:
+                    # Standard font - allow sufficient characters for normal text
+                    # For 36px font: 36 * 0.8 * 25 chars = 720px < 980px available
+                    max_chars = min(base_max_chars, 25)
                 else:
-                    # Small font - less restrictive but still safe (35px * 0.8 * 9 chars = 252px < 260px)
-                    max_chars = min(base_max_chars, 9)
+                    # Small font - be more generous to maintain readability
+                    # For 24px font: 24 * 0.8 * 35 chars = 672px < 980px available
+                    max_chars = min(base_max_chars, 35)
                 
                 logger.info(f"Portrait video: base_chars={base_max_chars}, final_chars={max_chars} for font size {font_size}")
                 

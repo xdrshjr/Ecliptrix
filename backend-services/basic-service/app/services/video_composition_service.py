@@ -1295,15 +1295,18 @@ class VideoCompositionService:
             
             logger.info(f"Created SRT file: {srt_path}")
             
-            # Use the first subtitle item's properties, with proper defaults from test script
+            # Use the first subtitle item's properties, with proper defaults from frontend
             first_subtitle = subtitle_items[0]
             
-            # Apply defaults based on the verified test script
+            # Get font size from frontend (respect user settings)
             font_family = getattr(first_subtitle, 'font_family', 'default')
-            font_size = getattr(first_subtitle, 'font_size', 50)  # Use 50 as default, tested font size
+            font_size = getattr(first_subtitle, 'font_size', 24)  # Use frontend value or standard default
             font_color = getattr(first_subtitle, 'font_color', '#FFFFFF')
             background_color = getattr(first_subtitle, 'background_color', None)
             position = getattr(first_subtitle, 'position', 'bottom')
+            
+            # Log the font size to verify it's being used correctly
+            logger.info(f"Using subtitle font size from frontend: {font_size}px (user setting: {hasattr(first_subtitle, 'font_size')})")
             
             # Use semi-transparent black background as default (from test script)
             if not background_color:
