@@ -165,11 +165,12 @@ export const useVideoExport = ({
               console.warn(`[useVideoExport] 未找到音频素材 ${item.materialId} 对应的URL`, { taskId });
             }
           } else if (item.type === 'subtitle') {
-            // Extract subtitle styling from TimelineItem
+            // Extract subtitle styling from TimelineItem with enhanced defaults
             const subtitleStyle = item.subtitleStyle || {
               fontFamily: 'default',
-              fontSize: 24,
+              fontSize: 50, // Updated to match test_subtitle_aspect_ratio.py
               fontColor: '#FFFFFF',
+              backgroundColor: '#000000@0.5', // Semi-transparent black background for readability
               position: 'bottom'
             };
             

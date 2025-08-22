@@ -1262,6 +1262,10 @@ class VideoCompositionService:
         """
         Process subtitle tracks and add them to the video.
         
+        Based on the verified test script test_subtitle_aspect_ratio.py,
+        this method uses consistent parameters for proper subtitle rendering
+        with aspect ratio adaptation.
+        
         Args:
             subtitle_items: List of subtitle items from the timeline
             video_path: Path to the video file to add subtitles to
@@ -1272,10 +1276,15 @@ class VideoCompositionService:
         """
         try:
             logger.info(f"Starting subtitle processing for {len(subtitle_items)} subtitle items")
+            logger.info(f"Using enhanced subtitle parameters based on test_subtitle_aspect_ratio.py")
             
             # Log subtitle details for debugging
             for i, subtitle in enumerate(subtitle_items):
                 logger.info(f"Subtitle {i+1}: '{subtitle.text}' at {subtitle.start_time}s for {subtitle.duration}s")
+                logger.debug(f"  Font size: {getattr(subtitle, 'font_size', 'default')}, "
+                           f"Font color: {getattr(subtitle, 'font_color', 'default')}, "
+                           f"Background color: {getattr(subtitle, 'background_color', 'default')}, "
+                           f"Position: {getattr(subtitle, 'position', 'default')}")
             
             # Create SRT file from subtitle items
             srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
@@ -1286,27 +1295,46 @@ class VideoCompositionService:
             
             logger.info(f"Created SRT file: {srt_path}")
             
-            # Use the first subtitle item's properties as defaults for all subtitles
+            # Use the first subtitle item's properties, with proper defaults from test script
             first_subtitle = subtitle_items[0]
             
-            # Create subtitle addition request
+            # Apply defaults based on the verified test script
+            font_family = getattr(first_subtitle, 'font_family', 'default')
+            font_size = getattr(first_subtitle, 'font_size', 50)  # Use 50 as default, tested font size
+            font_color = getattr(first_subtitle, 'font_color', '#FFFFFF')
+            background_color = getattr(first_subtitle, 'background_color', None)
+            position = getattr(first_subtitle, 'position', 'bottom')
+            
+            # Use semi-transparent black background as default (from test script)
+            if not background_color:
+                background_color = "#000000@0.5"
+                logger.info("Using default semi-transparent black background for subtitles")
+            
+            # Create subtitle addition request with parameters matching test script
             subtitle_request = SubtitleAddRequest(
                 video_file_path=video_path,
                 subtitle_file_path=srt_path,
-                font_family=getattr(first_subtitle, 'font_family', 'default'),
-                font_size=first_subtitle.font_size,
-                font_color=first_subtitle.font_color,
-                background_color=first_subtitle.background_color,  # 不强制设置默认背景色，保持None值
-                border_width=2,
-                border_color="#000000",
-                position=first_subtitle.position,
-                margin_vertical=50,
-                margin_horizontal=50
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                background_color=background_color,
+                border_width=2,  # Verified in test script
+                border_color="#000000",  # Verified in test script
+                position=position,
+                margin_vertical=50,  # Verified in test script
+                margin_horizontal=50  # Verified in test script
             )
             
-            logger.info(f"Subtitle request configuration: font_family={subtitle_request.font_family}, "
-                       f"font_size={subtitle_request.font_size}, font_color={subtitle_request.font_color}, "
-                       f"background_color={subtitle_request.background_color}, position={subtitle_request.position}")
+            logger.info(f"Subtitle request configuration (enhanced): "
+                       f"font_family={subtitle_request.font_family}, "
+                       f"font_size={subtitle_request.font_size}, "
+                       f"font_color={subtitle_request.font_color}, "
+                       f"background_color={subtitle_request.background_color}, "
+                       f"position={subtitle_request.position}, "
+                       f"border_width={subtitle_request.border_width}, "
+                       f"border_color={subtitle_request.border_color}, "
+                       f"margin_vertical={subtitle_request.margin_vertical}, "
+                       f"margin_horizontal={subtitle_request.margin_horizontal}")
             
             # Add subtitles to video using SubtitleService
             # Note: SubtitleService.add_subtitles is async, but we're in a sync context
@@ -1332,6 +1360,8 @@ class VideoCompositionService:
             if result.success:
                 logger.info(f"Subtitle addition successful: {result.output_video_path}")
                 logger.info(f"Processed {result.subtitle_count} subtitles in {result.processing_time:.2f}s")
+                logger.info(f"Video dimensions: {result.video_width}x{result.video_height}")
+                logger.info(f"Output file size: {result.file_size} bytes")
                 return result.output_video_path
             else:
                 logger.error(f"Subtitle addition failed: {result.message}")
@@ -1376,6 +1406,7 @@ class VideoCompositionService:
                     logger.debug(f"SRT entry {i}: {start_time_srt} --> {end_time_srt} | {subtitle.text}")
             
             logger.info(f"SRT file created successfully: {srt_path}")
+            logger.info(f"SRT file uses standard format (HH:MM:SS,mmm) compatible with SubtitleService")
             return srt_path
             
         except Exception as e:
@@ -1384,17 +1415,18 @@ class VideoCompositionService:
     
     def _seconds_to_srt_time(self, seconds: float) -> str:
         """
-        Convert seconds to SRT time format compatible with SubtitleService (MM:SS.mm).
+        Convert seconds to standard SRT time format (HH:MM:SS,mmm).
         
         Args:
             seconds: Time in seconds
             
         Returns:
-            Time in SubtitleService compatible format (MM:SS.mm)
+            Time in standard SRT format (HH:MM:SS,mmm)
         """
-        # SubtitleService expects MM:SS.mm format, not standard HH:MM:SS,mmm
-        minutes = int(seconds // 60)
+        # Convert to standard SRT format: HH:MM:SS,mmm
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
-        centiseconds = int((seconds % 1) * 100)  # Use centiseconds (2 digits) instead of milliseconds
+        milliseconds = int((seconds % 1) * 1000)  # Convert to milliseconds
         
-        return f"{minutes:02d}:{secs:02d}.{centiseconds:02d}" 
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}" 
