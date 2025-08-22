@@ -165,14 +165,29 @@ export const useVideoExport = ({
               console.warn(`[useVideoExport] 未找到音频素材 ${item.materialId} 对应的URL`, { taskId });
             }
           } else if (item.type === 'subtitle') {
-            // Extract subtitle styling from TimelineItem with enhanced defaults
+            // Extract subtitle styling from TimelineItem with proper defaults
             const subtitleStyle = item.subtitleStyle || {
               fontFamily: 'default',
-              fontSize: 50, // Updated to match test_subtitle_aspect_ratio.py
+              fontSize: 24, // Use standard default instead of hardcoded 50
               fontColor: '#FFFFFF',
               backgroundColor: '#000000@0.5', // Semi-transparent black background for readability
               position: 'bottom'
             };
+            
+            console.log(`[useVideoExport] 处理字幕项目，字体大小: ${subtitleStyle.fontSize}`, {
+              itemId: item.id,
+              itemName: item.name,
+              text: item.text || item.name,
+              hasSubtitleStyle: !!item.subtitleStyle,
+              fontFamily: subtitleStyle.fontFamily,
+              fontSize: subtitleStyle.fontSize,
+              fontColor: subtitleStyle.fontColor,
+              backgroundColor: subtitleStyle.backgroundColor,
+              position: subtitleStyle.position,
+              startTime: item.startTime,
+              duration: item.duration,
+              taskId
+            });
             
             subtitleItems.push({
               id: item.id,
