@@ -480,6 +480,15 @@ async def search_audios(request: AudioSearchRequest) -> AudioSearchResponse:
                 detail="audio_type must be one of: all, music, sound-effect, speech, ambient, nature"
             )
         
+        # Validate sort_by parameter
+        valid_sort_options = ["score", "downloads", "rating", "duration_desc", "duration_asc", "created_desc", "created_asc"]
+        if request.sort_by not in valid_sort_options:
+            logger.warning(f"Invalid sort_by parameter provided: {request.sort_by}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"sort_by must be one of: {', '.join(valid_sort_options)}"
+            )
+        
         # Perform audio search
         logger.debug(f"Calling audio search service", extra={
             'request_params': request.model_dump()
@@ -490,7 +499,8 @@ async def search_audios(request: AudioSearchRequest) -> AudioSearchResponse:
             max_audios=request.max_audios,
             duration_min=request.duration_min,
             duration_max=request.duration_max,
-            audio_type=request.audio_type
+            audio_type=request.audio_type,
+            sort_by=request.sort_by
         )
         
         # Log search results

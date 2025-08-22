@@ -17,6 +17,7 @@ class AudioSearchRequest(BaseModel):
     duration_min: Optional[float] = Field(default=None, description="Minimum duration in seconds", ge=0)
     duration_max: Optional[float] = Field(default=None, description="Maximum duration in seconds", ge=0)
     audio_type: str = Field(default="all", description="Audio type filter", pattern="^(all|music|sound-effect|speech|ambient|nature)$")
+    sort_by: str = Field(default="score", description="Sort order for results", pattern="^(score|downloads|rating|duration_desc|duration_asc|created_desc|created_asc)$")
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -25,7 +26,8 @@ class AudioSearchRequest(BaseModel):
                 "max_audios": 20,
                 "duration_min": 5.0,
                 "duration_max": 60.0,
-                "audio_type": "music"
+                "audio_type": "music",
+                "sort_by": "downloads"
             }
         }
     )
@@ -56,6 +58,7 @@ class AudioInfo(BaseModel):
     channels: Optional[int] = Field(default=None, description="Number of audio channels")
     bitrate: Optional[int] = Field(default=None, description="Audio bitrate")
     samplerate: Optional[int] = Field(default=None, description="Audio sample rate")
+    downloads: Optional[int] = Field(default=None, description="Number of times the audio has been downloaded (popularity metric)")
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -74,7 +77,8 @@ class AudioInfo(BaseModel):
                 "type": "mp3",
                 "channels": 2,
                 "bitrate": 128,
-                "samplerate": 44100
+                "samplerate": 44100,
+                "downloads": 1523
             }
         }
     )
