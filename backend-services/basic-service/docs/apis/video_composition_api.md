@@ -5,8 +5,11 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **ENHANCED**: Subtitle processing now uses verified parameters from test_subtitle_aspect_ratio.py for consistent rendering
+- **IMPROVED**: Default subtitle styling with semi-transparent black background (#000000@0.5) for better readability
 - **NEW**: Enhanced subtitle aspect ratio adaptation - subtitles now automatically adjust character width based on video aspect ratio (horizontal vs vertical) and font size for optimal readability
 - **IMPROVED**: Subtitle rendering for portrait/vertical videos - automatic line wrapping prevents subtitles from exceeding screen width
+- **ENHANCED**: Detailed logging for subtitle processing including font configuration and video properties
 - **FIXED**: YouTube video download support - YouTube URLs from video search can now be used in video composition
 - **NEW**: Added audio volume control support - individual track volumes can be adjusted from 0% to 200%
 - **NEW**: Added subtitle composition support - subtitles from timeline are now automatically rendered into the final video
@@ -296,10 +299,16 @@ This extracts seconds 0.0-6.4 from the original video and places it at timeline 
 - `text`: The subtitle text content
 - `start_time`: When the subtitle appears (seconds)
 - `duration`: How long the subtitle is displayed (seconds)
-- `font_size`: Font size in pixels (8-72, default: 24)
+- `font_size`: Font size in pixels (8-72, default: 50, optimized for readability)
 - `font_color`: Font color in hex format (default: "#FFFFFF")
-- `background_color`: Background color in hex format (optional)
+- `background_color`: Background color in hex format with optional transparency (default: "#000000@0.5" - semi-transparent black)
 - `position`: Subtitle position - "top", "center", or "bottom" (default: "bottom")
+
+**Enhanced Subtitle Features (Based on test_subtitle_aspect_ratio.py)**:
+- **Aspect Ratio Adaptation**: Automatic character width adjustment for horizontal vs vertical videos
+- **Consistent Styling**: Uses verified parameters for optimal readability
+- **Semi-transparent Background**: Default background ensures text visibility across all content
+- **Border Enhancement**: Automatic text borders for better contrast
 
 **Example Subtitle Processing**:
 ```json
@@ -312,20 +321,22 @@ This extracts seconds 0.0-6.4 from the original video and places it at timeline 
       "start_time": 0.0,
       "duration": 3.0,
       "track_id": "subtitle-track-1",
-      "font_size": 28,
+      "font_size": 50,
       "font_color": "#FFFFFF",
-      "background_color": "#000000",
+      "background_color": "#000000@0.5",
       "position": "bottom"
     }
   ]
 }
 ```
 
-The subtitle processing:
+The enhanced subtitle processing:
 1. Converts timeline subtitle items to SRT format
-2. Uses the SubtitleService to render subtitles into the video
-3. Applies font styling and positioning
-4. Returns the final video with embedded subtitles
+2. Uses the SubtitleService with verified parameters from test_subtitle_aspect_ratio.py
+3. Applies enhanced font styling with semi-transparent backgrounds
+4. Automatically adapts character width based on video aspect ratio
+5. Provides detailed logging of subtitle configuration and processing results
+6. Returns the final video with optimally rendered subtitles
 
 #### Response
 
