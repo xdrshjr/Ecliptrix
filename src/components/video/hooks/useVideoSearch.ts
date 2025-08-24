@@ -512,81 +512,92 @@ export const useVideoSearch = (
 
     // 创建一个简单的并发控制器
     const concurrencyController = async () => {
-      const results: Array<{ material: MaterialItem; success: boolean; error?: string }> = [];
-      
-      // 将材料分成批次
-      for (let i = 0; i < materials.length; i += maxConcurrency) {
-        const batch = materials.slice(i, i + maxConcurrency);
-        
-        logger.info('开始处理批次', {
-          batchIndex: Math.floor(i / maxConcurrency) + 1,
-          totalBatches: Math.ceil(materials.length / maxConcurrency),
-          batchSize: batch.length,
-          materialIds: batch.map(m => m.id)
-        });
+      const downloadPromises: Promise<void>[] = [];
+      let currentIndex = 0;
 
-        // 并行处理当前批次
-        const batchPromises = batch.map(async (material, index) => {
-          const globalIndex = i + index + 1;
+      const executeDownload = async () => {
+        while (currentIndex < materials.length) {
+          const material = materials[currentIndex++];
+          
+          logger.info('启动单个视频下载任务', {
+            materialId: material.id,
+            materialName: material.name,
+            queuePosition: currentIndex,
+            totalCount: materials.length
+          });
+
           try {
-            logger.info('启动下载任务', {
-              taskIndex: globalIndex,
-              totalTasks: materials.length,
-              materialId: material.id,
-              materialName: material.name
-            });
-
             await downloadSingleVideo(material);
-            
-            logger.info('下载任务完成', {
-              taskIndex: globalIndex,
-              materialId: material.id,
-              success: true
-            });
-            
-            return { material, success: true };
           } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            
-            logger.error('下载任务失败', error instanceof Error ? error : new Error(String(error)), {
-              taskIndex: globalIndex,
-              materialId: material.id
+            // 错误已在downloadSingleVideo中处理，这里只记录
+            logger.info('单个视频下载任务完成（失败）', {
+              materialId: material.id,
+              error: error instanceof Error ? error.message : String(error)
             });
-            
-            return { material, success: false, error: errorMessage };
           }
-        });
+        }
+      };
 
-        // 等待当前批次完成
-        const batchResults = await Promise.all(batchPromises);
-        results.push(...batchResults);
-        
-        logger.info('批次处理完成', {
-          batchIndex: Math.floor(i / maxConcurrency) + 1,
-          batchSize: batch.length,
-          successCount: batchResults.filter(r => r.success).length,
-          failureCount: batchResults.filter(r => !r.success).length
-        });
+      // 创建并启动并发下载任务
+      for (let i = 0; i < Math.min(maxConcurrency, materials.length); i++) {
+        downloadPromises.push(executeDownload());
       }
 
-      return results;
+      await Promise.all(downloadPromises);
     };
 
-    // 执行并发下载
-    const results = await concurrencyController();
+    try {
+      await concurrencyController();
+      
+      logger.info('所有YouTube视频下载任务完成', {
+        totalCount: materials.length,
+        maxConcurrency
+      });
+    } catch (error) {
+      logger.error('并发下载过程出现错误', error instanceof Error ? error : new Error(String(error)), {
+        totalCount: materials.length,
+        maxConcurrency
+      });
+    }
+  }, [downloadSingleVideo, logger]);
 
-    // 记录最终结果
-    const successCount = results.filter(r => r.success).length;
-    const failureCount = results.filter(r => !r.success).length;
-    
-    logger.info('并发下载完成', {
-      totalCount: materials.length,
-      successCount,
-      failureCount,
-      maxConcurrency,
-      successRate: `${((successCount / materials.length) * 100).toFixed(1)}%`
+  // 重试单个视频下载的函数
+  const retryVideoDownload = useCallback(async (material: MaterialItem): Promise<void> => {
+    logger.info('开始重试YouTube视频下载', {
+      materialId: material.id,
+      materialName: material.name,
+      youtubeUrl: material.youtubeUrl,
+      previousError: material.downloadError
     });
-  }, [logger, downloadSingleVideo]);
+
+    // 首先将状态重置为下载中
+    const retryingMaterial: MaterialItem = {
+      ...material,
+      downloadStatus: 'downloading' as const,
+      downloadProgress: 0,
+      downloadError: undefined
+    };
+
+    // 更新UI状态为重新下载中
+    onAddMaterials([retryingMaterial]);
+
+    try {
+      // 调用下载函数进行重试
+      await downloadSingleVideo(retryingMaterial);
+      
+      logger.info('YouTube视频重试下载成功', {
+        materialId: material.id,
+        materialName: material.name
+      });
+    } catch (error) {
+      // 错误处理已在downloadSingleVideo中完成
+      logger.warn('YouTube视频重试下载失败', {
+        materialId: material.id,
+        materialName: material.name,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }, [downloadSingleVideo, onAddMaterials, logger]);
 
   const handleClearSelection = useCallback(() => {
     if (activeLibrary === 'official') {
@@ -670,6 +681,8 @@ export const useVideoSearch = (
     setYoutubeDurationRange: handleYoutubeDurationRangeChange,
     setYoutubeDurationPreset: handleYoutubeDurationPresetChange,
     
-    taskId
+    taskId,
+    // 新增：重试下载功能
+    retryVideoDownload
   };
 };

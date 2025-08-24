@@ -634,6 +634,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onBatchVideoAnalysis={handleBatchVideoAnalysis}
                 isBatchAnalyzing={isBatchAnalyzing}
                 getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
+                onRetryDownload={videoSearch.retryVideoDownload}
                 taskId={taskId}
               />
 
