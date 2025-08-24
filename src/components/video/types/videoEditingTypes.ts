@@ -24,9 +24,27 @@ export interface VideoSequenceItem {
   originalDuration?: number; // 原始素材的总时长（秒）
 }
 
+// 新增：音频序列项目接口，用于组合播放时的音频同步
+export interface AudioSequenceItem {
+  id: string;
+  name: string;
+  url: string;
+  startTime: number;
+  duration: number;
+  materialId?: string;
+  trackId: string;
+  volume?: number;         // 音量 (0-1)
+  
+  // 音频剪辑属性，用于支持时间轴上的音频素材缩放和裁剪播放
+  clipStart?: number;      // 原始音频中的开始时间（秒）
+  clipEnd?: number;        // 原始音频中的结束时间（秒）
+  originalDuration?: number; // 原始音频的总时长（秒）
+}
+
 export interface CompositionPlayback {
   isCompositionMode: boolean;
   videoSequences: VideoSequenceItem[];
+  audioSequences: AudioSequenceItem[]; // 新增：音频序列数据
   currentSequenceIndex: number;
   totalCompositionDuration: number;
   compositionCurrentTime: number;
@@ -39,6 +57,7 @@ export interface UseTimelineCompositionReturn {
   handleCompositionPause: () => void;
   handleCompositionSeek: (time: number) => void;
   getVideoSequencesFromTimeline: (timelineState: TimelineState) => VideoSequenceItem[];
+  getAudioSequencesFromTimeline: (timelineState: TimelineState) => AudioSequenceItem[]; // 新增：音频序列提取方法
   // 新增方法
   handleNextSequence: () => boolean;
   handleCompositionTimeUpdate: (currentTime: number) => void;
