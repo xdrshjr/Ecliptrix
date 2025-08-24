@@ -20,9 +20,6 @@ interface TimelineToolbarProps {
   onAddTransition: () => void;
   onAddSubtitle: () => void;
   isExtractingSubtitles?: boolean; // 字幕提取状态
-  onExport: () => void;
-  isExporting?: boolean; // 导出状态
-  exportProgress?: number; // 导出进度
   locale?: SupportedLocale; // 可选的locale参数，默认使用defaultLocale
 }
 
@@ -42,9 +39,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddTransition,
   onAddSubtitle,
   isExtractingSubtitles = false,
-  onExport,
-  isExporting = false,
-  exportProgress = 0,
   locale = defaultLocale
 }) => {
   // 获取国际化翻译
@@ -55,8 +49,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     selectedItemsCount,
     canUndo,
     canRedo,
-    isExporting,
-    exportProgress,
     locale,
     timestamp: new Date().toISOString()
   });
@@ -182,34 +174,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       label: isExtractingSubtitles ? '提取字幕中...' : t.timeline.toolbar.subtitles,
       shortcut: t.timeline.shortcuts.subtitlesShortcut,
       disabled: isExtractingSubtitles
-    },
-    {
-      id: 'export',
-      action: onExport,
-      icon: isExporting ? (
-        <div className="relative w-4 h-4">
-          <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-          </svg>
-          {exportProgress > 0 && (
-            <div className="absolute -top-1 -right-1 text-xs bg-blue-500 text-white rounded-full w-3 h-3 flex items-center justify-center text-[8px]">
-              {Math.round(exportProgress)}
-            </div>
-          )}
-        </div>
-      ) : (
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
-        </svg>
-      ),
-      label: isExporting 
-        ? (exportProgress > 0 
-           ? t.timeline.toolbar.exportingProgress.replace('{progress}', Math.round(exportProgress).toString())
-           : t.timeline.toolbar.exporting
-          )
-        : t.timeline.toolbar.export,
-      shortcut: t.timeline.shortcuts.exportShortcut,
-      disabled: isExporting
     }
   ];
 
