@@ -196,6 +196,8 @@ export interface UseVideoSearchReturn {
   setYoutubeDurationRange: (range: YoutubeDurationRange) => void;
   setYoutubeDurationPreset: (preset: YoutubeDurationPreset) => void;
   taskId: string;
+  // 新增：重试下载功能
+  retryVideoDownload: (material: MaterialItem) => Promise<void>;
 }
 
 // Video preview types

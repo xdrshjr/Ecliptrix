@@ -15,6 +15,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onBatchVideoAnalysis?: () => Promise<void>; // 新增：批量视频AI解析回调
   isBatchAnalyzing?: boolean; // 新增：批量解析状态
   getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
+  onRetryDownload?: (material: MaterialItem) => void; // 新增：重试下载回调
   taskId: string;
   className?: string;
 }
@@ -33,6 +34,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onBatchVideoAnalysis, // 新增：批量视频AI解析回调
   isBatchAnalyzing = false, // 新增：批量解析状态
   getVideoAnalysisStatus, // 新增：获取视频解析状态
+  onRetryDownload, // 新增：重试下载回调
   taskId,
   className = '',
   // 新增的删除功能
@@ -640,6 +642,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           <span className="text-white text-xs opacity-80 text-center px-1 mt-1" title={material.downloadError}>
                             {material.downloadError.length > 20 ? `${material.downloadError.substring(0, 20)}...` : material.downloadError}
                           </span>
+                        )}
+                        {onRetryDownload && (
+                          <button
+                            onClick={() => onRetryDownload(material)}
+                            className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                            title="重试下载"
+                          >
+                            重试下载
+                          </button>
                         )}
                       </div>
                     )}
