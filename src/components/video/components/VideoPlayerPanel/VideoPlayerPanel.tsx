@@ -114,6 +114,10 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   // 新增：视频比例状态
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>(ASPECT_RATIOS[0]);
 
+  // 新增：音频同步播放管理
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const [activeAudioSequences, setActiveAudioSequences] = useState<Set<string>>(new Set());
+
   // 使用导出hook（仅在有timelineState时启用）
   const videoExport = useVideoExport({
     timelineState: timelineState || {
@@ -140,6 +144,161 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const firstSequenceId = useMemo(() => {
     return compositionPlayback?.videoSequences?.[0]?.id || null;
   }, [compositionPlayback?.videoSequences?.[0]?.id]);
+
+  // 新增：音频管理函数 - 创建或获取音频元素
+  const getOrCreateAudioElement = useCallback((audioSequence: any) => {
+    const audioId = audioSequence.id;
+    let audioElement = audioElementsRef.current.get(audioId);
+    
+    if (!audioElement) {
+      audioElement = new Audio();
+      audioElement.crossOrigin = 'anonymous';
+      
+      // 设置音频属性
+      audioElement.src = audioSequence.url;
+      // 限制音量在[0, 1]范围内，HTML Audio API要求
+      const clampedVolume = Math.max(0, Math.min(audioSequence.volume ?? 1, 1));
+      audioElement.volume = clampedVolume;
+      audioElement.preload = 'metadata';
+      
+      // 如果原始音量超出范围，记录警告
+      if ((audioSequence.volume ?? 1) !== clampedVolume) {
+        logger.warn('音频音量超出HTML Audio API范围，已自动限制', {
+          audioId: audioSequence.id,
+          originalVolume: audioSequence.volume?.toFixed(2) || '1.00',
+          clampedVolume: clampedVolume.toFixed(2),
+          note: 'HTML Audio API音量范围为[0, 1]'
+        });
+      }
+      
+      // 添加事件监听器
+      audioElement.addEventListener('loadedmetadata', () => {
+        logger.info('音频元数据加载完成', {
+          audioId: audioSequence.id,
+          audioName: audioSequence.name,
+          duration: audioElement!.duration,
+          clipStart: audioSequence.clipStart?.toFixed(2) || '0.00',
+          clipEnd: audioSequence.clipEnd?.toFixed(2) || 'N/A'
+        });
+      });
+
+      audioElement.addEventListener('error', (error) => {
+        logger.error('音频加载失败', error as any, {
+          audioId: audioSequence.id,
+          audioName: audioSequence.name,
+          audioUrl: audioSequence.url
+        });
+      });
+
+      audioElementsRef.current.set(audioId, audioElement);
+      
+      logger.info('创建新的音频元素', {
+        audioId: audioSequence.id,
+        audioName: audioSequence.name,
+        audioUrl: audioSequence.url,
+        volume: audioSequence.volume?.toFixed(2) || '1.00',
+        totalAudioElements: audioElementsRef.current.size
+      });
+    }
+    
+    return audioElement;
+  }, [logger]);
+
+  // 新增：计算当前时间应该播放的音频序列
+  const getActiveAudioSequencesAtTime = useCallback((currentTime: number) => {
+    if (!compositionPlayback?.audioSequences) return [];
+    
+    return compositionPlayback.audioSequences.filter(audioSeq => {
+      const startTime = audioSeq.startTime;
+      const endTime = audioSeq.startTime + audioSeq.duration;
+      return currentTime >= startTime && currentTime < endTime;
+    });
+  }, [compositionPlayback?.audioSequences]);
+
+  // 新增：同步音频播放状态
+  const syncAudioPlayback = useCallback(async (currentTime: number, isPlaying: boolean) => {
+    if (!compositionPlayback?.audioSequences || compositionPlayback.audioSequences.length === 0) {
+      return;
+    }
+
+    const activeSequences = getActiveAudioSequencesAtTime(currentTime);
+    const activeIds = new Set<string>(activeSequences.map(seq => seq.id));
+    
+    logger.info('同步音频播放状态', {
+      currentTime: currentTime.toFixed(2),
+      isPlaying,
+      totalAudioSequences: compositionPlayback.audioSequences.length,
+      activeAudioSequences: activeSequences.length,
+      activeSequenceNames: activeSequences.map(seq => seq.name),
+      action: isPlaying ? '开始播放音频' : '暂停音频'
+    });
+
+    // 停止不再活跃的音频
+    for (const [audioId, audioElement] of Array.from(audioElementsRef.current.entries())) {
+      if (!activeIds.has(audioId) && !audioElement.paused) {
+        audioElement.pause();
+        logger.info('停止不再活跃的音频', { audioId });
+      }
+    }
+
+    // 处理当前应该播放的音频
+    for (const audioSeq of activeSequences) {
+      const audioElement = getOrCreateAudioElement(audioSeq);
+      const audioStartTime = audioSeq.startTime;
+      const relativeTime = currentTime - audioStartTime;
+      
+      // 计算音频在原始文件中的实际播放位置（考虑裁剪）
+      const clipStart = audioSeq.clipStart ?? 0;
+      const clipEnd = audioSeq.clipEnd ?? audioSeq.originalDuration ?? audioSeq.duration;
+      const clipDuration = clipEnd - clipStart;
+      const actualAudioTime = clipStart + (relativeTime * clipDuration / audioSeq.duration);
+      
+      // 确保音频时间在有效范围内
+      const clampedAudioTime = Math.max(clipStart, Math.min(actualAudioTime, clipEnd));
+      
+      if (isPlaying) {
+        // 设置音频播放位置
+        if (Math.abs(audioElement.currentTime - clampedAudioTime) > 0.1) {
+          audioElement.currentTime = clampedAudioTime;
+        }
+        
+        // 开始播放音频
+        if (audioElement.paused) {
+          try {
+            await audioElement.play();
+            logger.info('开始播放音频序列', {
+              audioId: audioSeq.id,
+              audioName: audioSeq.name,
+              timelineCurrentTime: currentTime.toFixed(2),
+              relativeTime: relativeTime.toFixed(2),
+              clipStart: clipStart.toFixed(2),
+              clipEnd: clipEnd.toFixed(2),
+              actualAudioTime: clampedAudioTime.toFixed(2),
+              volume: audioSeq.volume?.toFixed(2) || '1.00'
+            });
+          } catch (error) {
+            logger.error('音频播放失败', error as Error, {
+              audioId: audioSeq.id,
+              audioName: audioSeq.name
+            });
+          }
+        }
+      } else {
+        // 暂停音频
+        if (!audioElement.paused) {
+          audioElement.pause();
+          logger.info('暂停音频序列', {
+            audioId: audioSeq.id,
+            audioName: audioSeq.name
+          });
+        }
+      }
+    }
+
+    setActiveAudioSequences(activeIds);
+  }, [compositionPlayback?.audioSequences, getActiveAudioSequencesAtTime, getOrCreateAudioElement, logger]);
+
+
 
   // 处理视频比例切换
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
@@ -207,6 +366,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       videoDuration: videoPreview.duration,
       playbackMode,
       compositionSequencesCount: compositionPlayback?.videoSequences.length || 0,
+      compositionAudioSequencesCount: compositionPlayback?.audioSequences.length || 0,
       initialAspectRatio: selectedAspectRatio.id,
       layoutStructure: '视频预览容器占用大部分高度，比例选择器在信息面板第二行',
       uiDesign: '两行布局：第一行显示视频信息，第二行显示比例选择器，整体高度紧凑',
@@ -268,6 +428,38 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     }
   }, [playbackMode, compositionPlayback?.videoSequences.length, firstSequenceId]);
 
+  // 新增：音频序列变化时清理旧的音频元素
+  useEffect(() => {
+    // 当音频序列发生变化时，清理不再需要的音频元素
+    if (compositionPlayback?.audioSequences) {
+      const currentAudioIds = new Set(compositionPlayback.audioSequences.map(seq => seq.id));
+      for (const [audioId, audioElement] of Array.from(audioElementsRef.current.entries())) {
+        if (!currentAudioIds.has(audioId)) {
+          audioElement.pause();
+          audioElement.src = '';
+          audioElementsRef.current.delete(audioId);
+          logger.info('清理未使用的音频元素', { audioId });
+        }
+      }
+    }
+  }, [compositionPlayback?.audioSequences]);
+
+  // 新增：组件卸载时清理音频元素
+  useEffect(() => {
+    return () => {
+      // 组件卸载时清理所有音频元素
+      for (const [audioId, audioElement] of Array.from(audioElementsRef.current.entries())) {
+        audioElement.pause();
+        audioElement.src = '';
+        audioElement.removeEventListener('loadedmetadata', () => {});
+        audioElement.removeEventListener('error', () => {});
+      }
+      audioElementsRef.current.clear();
+      setActiveAudioSequences(new Set());
+      logger.info('组件卸载 - 清理所有音频元素');
+    };
+  }, []);
+
   // 组合播放时的视频切换逻辑
   const handleVideoEnded = useCallback(() => {
     if (playbackMode === 'composition' && compositionPlayback && onNextSequence) {
@@ -312,6 +504,15 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
               clipStart: nextClipStart.toFixed(2)
             });
           });
+
+          // 新增：切换到下一个视频时同步音频
+          const nextVideoStartTime = compositionPlayback.videoSequences.slice(0, nextIndex).reduce((sum, seq) => sum + seq.duration, 0);
+          syncAudioPlayback(nextVideoStartTime, true).catch(error => {
+            logger.error('切换视频时音频同步失败', error as Error, {
+              nextIndex,
+              sequenceName: nextSequence.name
+            });
+          });
         }
       } else {
         // 所有视频播放完毕
@@ -320,6 +521,12 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           totalDuration: compositionPlayback.totalCompositionDuration
         });
         setIsCompositionPlaying(false);
+        
+        // 新增：停止所有音频
+        syncAudioPlayback(compositionPlayback.totalCompositionDuration, false).catch(error => {
+          logger.error('组合播放完毕时停止音频失败', error as Error);
+        });
+        
         if (onCompositionPlayPause) {
           onCompositionPlayPause();
         }
@@ -420,6 +627,15 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         });
         onTimelineTimeUpdate(accumulatedTime);
       }
+
+      // 新增：同步音频播放（仅在播放时）
+      if (isCompositionPlaying) {
+        syncAudioPlayback(accumulatedTime, true).catch(error => {
+          logger.error('音频同步失败', error as Error, {
+            currentTime: accumulatedTime.toFixed(2)
+          });
+        });
+      }
     } else if (playbackMode === 'preview' && videoRef.current) {
       // 预览模式下也需要同步时间到timeline
       const videoCurrentTime = videoRef.current.currentTime;
@@ -436,11 +652,20 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         });
         onTimelineTimeUpdate(videoCurrentTime);
       }
+
+      // 新增：预览模式下的音频同步（仅在播放时）
+      if (isPlaying && compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0) {
+        syncAudioPlayback(videoCurrentTime, true).catch(error => {
+          logger.error('预览模式音频同步失败', error as Error, {
+            currentTime: videoCurrentTime.toFixed(2)
+          });
+        });
+      }
     }
-  }, [playbackMode, compositionPlayback, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, logger]);
+  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, syncAudioPlayback, logger]);
 
   // 处理播放/暂停点击
-  const handlePlayPauseClick = useCallback(() => {
+  const handlePlayPauseClick = useCallback(async () => {
     if (playbackMode === 'composition') {
       logger.userAction('组合播放/暂停切换', 'compositionPlayPauseButton', {
         currentState: isCompositionPlaying ? '播放中' : '已暂停',
@@ -453,6 +678,8 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       if (videoRef.current) {
         if (isCompositionPlaying) {
           videoRef.current.pause();
+          // 新增：同步暂停音频
+          await syncAudioPlayback(compositionCurrentTime, false);
         } else {
           // 开始组合播放
           if (compositionPlayback && compositionPlayback.videoSequences.length > 0) {
@@ -526,6 +753,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                   clipEnd: clipEnd.toFixed(2)
                 });
               });
+
+              // 新增：同步播放音频
+              await syncAudioPlayback(startTime, true);
             }
           }
         }
@@ -545,11 +775,22 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       });
       
       handlePlayPause();
+      
+      // 新增：预览模式下也要同步音频播放
+      if (compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0) {
+        const newIsPlaying = !isPlaying;
+        await syncAudioPlayback(currentTime, newIsPlaying);
+        logger.info('预览模式音频同步', {
+          currentTime: currentTime.toFixed(2),
+          newIsPlaying,
+          audioSequencesCount: compositionPlayback.audioSequences.length
+        });
+      }
     }
-  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, logger]);
+  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, syncAudioPlayback, logger]);
 
   // 处理时间跳转
-  const handleTimeSeekClick = useCallback((newTime: number) => {
+  const handleTimeSeekClick = useCallback(async (newTime: number) => {
     if (playbackMode === 'composition' && compositionPlayback) {
       logger.userAction('组合播放时间跳转', 'compositionTimeSeek', {
         previousTime: compositionCurrentTime,
@@ -577,6 +818,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         videoRef.current.src = targetSequence.url;
         videoRef.current.currentTime = targetVideoTime;
         setCompositionCurrentTime(newTime);
+        
+        // 新增：同步音频时间跳转
+        await syncAudioPlayback(newTime, isCompositionPlaying);
       }
 
       if (onCompositionSeek) {
@@ -585,8 +829,18 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     } else {
       // 原有的预览模式时间跳转
       handleTimeSeek(newTime);
+      
+      // 新增：预览模式下的音频时间跳转
+      if (compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0) {
+        await syncAudioPlayback(newTime, isPlaying);
+        logger.info('预览模式音频时间跳转', {
+          newTime: newTime.toFixed(2),
+          isPlaying,
+          audioSequencesCount: compositionPlayback.audioSequences.length
+        });
+      }
     }
-  }, [playbackMode, compositionPlayback, compositionCurrentTime, onCompositionSeek, handleTimeSeek, logger]);
+  }, [playbackMode, compositionPlayback, compositionCurrentTime, isCompositionPlaying, isPlaying, onCompositionSeek, handleTimeSeek, syncAudioPlayback, logger]);
 
   // 获取当前显示的时长和当前时间
   const getCurrentTime = () => {
@@ -642,9 +896,16 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
               {playbackMode === 'composition' ? '视频合成播放' : '视频预览播放'}
             </h3>
             {playbackMode === 'composition' && (
-              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
-                {compositionPlayback?.videoSequences.length || 0} 个视频
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+                  {compositionPlayback?.videoSequences.length || 0} 个视频
+                </span>
+                {compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0 && (
+                  <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">
+                    {compositionPlayback.audioSequences.length} 个音频
+                  </span>
+                )}
+              </div>
             )}
           </div>
           
