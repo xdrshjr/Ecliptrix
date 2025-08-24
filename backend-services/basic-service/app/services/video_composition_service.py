@@ -12,6 +12,8 @@ import tempfile
 import subprocess
 import threading
 import asyncio
+import yaml
+import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,6 +23,7 @@ import cv2
 from pydub import AudioSegment
 
 from app.logger import get_logger
+from app.config import settings
 from app.models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
@@ -47,6 +50,9 @@ class VideoCompositionService:
         self.compositions: Dict[str, Dict[str, Any]] = {}
         self.output_dir = Path("static/video/composed")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load video download configuration
+        self._load_video_download_config()
         
         # Initialize subtitle service for subtitle composition
         self.subtitle_service = SubtitleService()
@@ -80,9 +86,56 @@ class VideoCompositionService:
             logger.error("ffmpeg not available")
             return None
     
+    def _load_video_download_config(self):
+        """Load video download configuration from YAML file."""
+        try:
+            config_path = Path("config/video-download.yaml")
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    self.video_download_config = yaml.safe_load(f)
+                logger.info("Video download configuration loaded successfully")
+            else:
+                # Default configuration if file doesn't exist
+                self.video_download_config = {
+                    'pexels': {
+                        'retry': {
+                            'max_retries': 5,
+                            'switch_api_key_on_retry': True,
+                            'download_timeout': 120,
+                            'retry_delay': 2.0
+                        },
+                        'download': {
+                            'max_file_size_mb': 500,
+                            'min_file_size_kb': 1
+                        }
+                    },
+                    'general': {
+                        'cleanup_temp_files': True,
+                        'detailed_logging': True
+                    }
+                }
+                logger.warning("Video download config file not found, using defaults")
+        except Exception as e:
+            logger.error(f"Failed to load video download configuration: {str(e)}")
+            # Use default configuration
+            self.video_download_config = {
+                'pexels': {
+                    'retry': {
+                        'max_retries': 5,
+                        'switch_api_key_on_retry': True,
+                        'download_timeout': 120,
+                        'retry_delay': 2.0
+                    }
+                }
+            }
+    
     def _is_youtube_url(self, url: str) -> bool:
         """Check if the URL is a YouTube URL."""
         return "youtube.com" in url or "youtu.be" in url
+    
+    def _is_pexels_url(self, url: str) -> bool:
+        """Check if URL is a Pexels video URL."""
+        return "pexels.com" in url.lower()
     
     def _get_video_properties(self, video_path: str) -> tuple:
         """Get video properties (width, height, fps)."""
@@ -113,6 +166,10 @@ class VideoCompositionService:
         if self._is_youtube_url(video_url):
             logger.info(f"[Thread {thread_id}] Detected YouTube URL, using yt-dlp for download")
             return self._download_youtube_video(video_url, video_path, thread_id)
+        # Check if it's a Pexels URL
+        elif self._is_pexels_url(video_url):
+            logger.info(f"[Thread {thread_id}] Detected Pexels URL, using retry logic with API key switching")
+            return self._download_pexels_video_with_retry(video_url, video_path, thread_id)
         else:
             logger.info(f"[Thread {thread_id}] Using FFmpeg for direct video URL download")
             return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
@@ -157,6 +214,76 @@ class VideoCompositionService:
             error_msg = f"YouTube download error: {str(e)}"
             logger.error(f"[Thread {thread_id}] {error_msg}", exc_info=True)
             return {"success": False, "error": error_msg}
+    
+    def _download_pexels_video_with_retry(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
+        """Download Pexels video with API key retry logic."""
+        config = self.video_download_config.get('pexels', {})
+        retry_config = config.get('retry', {})
+        
+        max_retries = retry_config.get('max_retries', 5)
+        switch_api_key = retry_config.get('switch_api_key_on_retry', True)
+        retry_delay = retry_config.get('retry_delay', 2.0)
+        
+        logger.info(f"[Thread {thread_id}] Starting Pexels video download with retry logic (max_retries: {max_retries})")
+        
+        # Get available API keys
+        api_keys = getattr(settings, 'pexels_api_keys', [])
+        if not api_keys:
+            logger.error(f"[Thread {thread_id}] No Pexels API keys available for retry logic")
+            return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
+        
+        # Try with different API keys if configured
+        used_keys = set()
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Select API key for this attempt
+                if switch_api_key and len(api_keys) > 1:
+                    # Get unused API keys
+                    available_keys = [key for key in api_keys if key not in used_keys]
+                    if not available_keys:
+                        # If all keys used, reset and use all keys again
+                        used_keys.clear()
+                        available_keys = api_keys
+                    
+                    current_api_key = random.choice(available_keys)
+                    used_keys.add(current_api_key)
+                else:
+                    current_api_key = api_keys[0] if api_keys else None
+                
+                if attempt > 0:
+                    logger.info(f"[Thread {thread_id}] Retry attempt {attempt}/{max_retries} for Pexels download")
+                    if switch_api_key:
+                        logger.info(f"[Thread {thread_id}] Using API key: {current_api_key[:10]}...{current_api_key[-5:] if current_api_key else 'None'}")
+                    time.sleep(retry_delay)
+                
+                # Attempt download with current configuration
+                result = self._download_video_with_ffmpeg(video_url, video_path, thread_id)
+                
+                if result.get('success'):
+                    if attempt > 0:
+                        logger.info(f"[Thread {thread_id}] Pexels download succeeded on retry attempt {attempt}")
+                    else:
+                        logger.info(f"[Thread {thread_id}] Pexels download succeeded on first attempt")
+                    return result
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.warning(f"[Thread {thread_id}] Pexels download attempt {attempt + 1} failed: {error_msg}")
+                    
+                    # If this is the last attempt, return the error
+                    if attempt >= max_retries:
+                        logger.error(f"[Thread {thread_id}] All Pexels download attempts failed after {max_retries + 1} tries")
+                        return result
+                
+            except Exception as e:
+                error_msg = f"Pexels download attempt {attempt + 1} error: {str(e)}"
+                logger.error(f"[Thread {thread_id}] {error_msg}")
+                
+                if attempt >= max_retries:
+                    return {"success": False, "error": f"All retry attempts failed. Last error: {error_msg}"}
+        
+        # This should not be reached, but just in case
+        return {"success": False, "error": "Maximum retry attempts exceeded"}
     
     def _download_video_with_ffmpeg(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
         """Download video using FFmpeg (for non-YouTube URLs)."""

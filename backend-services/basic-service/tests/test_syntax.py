@@ -15,4 +15,4 @@ def check_syntax(filename):
         print(f"Other error: {e}")
 
 if __name__ == "__main__":
-    check_syntax("app/services/video_composition_service.py") 
+    check_syntax("../app/services/video_composition_service.py")
