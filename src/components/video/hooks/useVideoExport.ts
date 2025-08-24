@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -15,6 +16,82 @@ interface UseVideoExportProps {
 }
 
 /**
+ * 计算时间轴中视频轨道的总持续时间
+ * @param timelineState 时间轴状态
+ * @returns 视频轨道的最大结束时间
+ */
+const calculateVideoTrackDuration = (timelineState: TimelineState): number => {
+  let maxVideoEndTime = 0;
+  
+  timelineState.tracks.forEach(track => {
+    if (track.type === 'video' && track.isVisible && !track.isLocked) {
+      track.items.forEach(item => {
+        if (item.type === 'video') {
+          const itemEndTime = item.startTime + item.duration;
+          maxVideoEndTime = Math.max(maxVideoEndTime, itemEndTime);
+        }
+      });
+    }
+  });
+  
+  return maxVideoEndTime;
+};
+
+/**
+ * 计算时间轴中音频轨道的总持续时间
+ * @param timelineState 时间轴状态
+ * @returns 音频轨道的最大结束时间
+ */
+const calculateAudioTrackDuration = (timelineState: TimelineState): number => {
+  let maxAudioEndTime = 0;
+  
+  timelineState.tracks.forEach(track => {
+    if (track.type === 'audio' && track.isVisible && !track.isLocked && !track.isMuted) {
+      track.items.forEach(item => {
+        if (item.type === 'audio') {
+          const itemEndTime = item.startTime + item.duration;
+          maxAudioEndTime = Math.max(maxAudioEndTime, itemEndTime);
+        }
+      });
+    }
+  });
+  
+  return maxAudioEndTime;
+};
+
+/**
+ * 验证视频轨道长度是否满足导出要求
+ * @param timelineState 时间轴状态
+ * @param taskId 任务ID（用于日志）
+ * @returns 验证结果和详细信息
+ */
+const validateVideoExport = (timelineState: TimelineState, taskId: string) => {
+  const videoDuration = calculateVideoTrackDuration(timelineState);
+  const audioDuration = calculateAudioTrackDuration(timelineState);
+  
+  const validationResult = {
+    isValid: videoDuration >= audioDuration,
+    videoDuration,
+    audioDuration,
+    deficit: audioDuration > videoDuration ? audioDuration - videoDuration : 0
+  };
+
+  console.log(`[useVideoExport] 导出验证结果`, {
+    taskId,
+    isValid: validationResult.isValid,
+    videoDuration: videoDuration.toFixed(2),
+    audioDuration: audioDuration.toFixed(2),
+    deficit: validationResult.deficit.toFixed(2),
+    timelineTracksCount: timelineState.tracks.length,
+    videoTracksCount: timelineState.tracks.filter(t => t.type === 'video').length,
+    audioTracksCount: timelineState.tracks.filter(t => t.type === 'audio').length,
+    timestamp: new Date().toISOString()
+  });
+
+  return validationResult;
+};
+
+/**
  * 可复用的视频导出hook
  * 提供视频导出功能，包括状态管理和进度跟踪
  */
@@ -26,14 +103,9 @@ export const useVideoExport = ({
 }: UseVideoExportProps): UseVideoExportReturn => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const { showError } = useNotification();
 
   const handleExport = useCallback(async () => {
-    // Calculate actual total duration from clipped video segments
-    let actualTotalDuration = 0;
-    const videoItems: any[] = [];
-    const audioItems: any[] = [];
-    const subtitleItems: any[] = [];
-
     console.log(`[useVideoExport] 开始导出处理`, {
       totalDuration: timelineState.totalDuration.toFixed(2),
       trackCount: timelineState.tracks.length,
@@ -43,6 +115,38 @@ export const useVideoExport = ({
       taskId,
       timestamp: new Date().toISOString()
     });
+
+    // 导出前验证
+    const validation = validateVideoExport(timelineState, taskId);
+    
+    if (!validation.isValid) {
+      const errorMessage = `视频轨道长度不足！视频轨道时长 ${validation.videoDuration.toFixed(1)}秒，音频轨道时长 ${validation.audioDuration.toFixed(1)}秒，需要增加 ${validation.deficit.toFixed(1)}秒 的视频内容。`;
+      
+      console.error(`[useVideoExport] 导出验证失败`, {
+        taskId,
+        errorMessage,
+        videoDuration: validation.videoDuration,
+        audioDuration: validation.audioDuration,
+        deficit: validation.deficit,
+        timestamp: new Date().toISOString()
+      });
+      
+      showError(errorMessage, 6000); // 显示6秒错误提示
+      return;
+    }
+
+    console.log(`[useVideoExport] 验证通过，继续导出流程`, {
+      taskId,
+      videoDuration: validation.videoDuration,
+      audioDuration: validation.audioDuration,
+      timestamp: new Date().toISOString()
+    });
+
+    // Calculate actual total duration from clipped video segments
+    let actualTotalDuration = 0;
+    const videoItems: any[] = [];
+    const audioItems: any[] = [];
+    const subtitleItems: any[] = [];
 
     // 设置导出状态
     setIsExporting(true);
@@ -435,7 +539,7 @@ export const useVideoExport = ({
         setExportProgress(0);
       }, 2000); // 2秒后重置状态
     }
-  }, [timelineState, materials, taskId, aspectRatio]);
+  }, [timelineState, materials, taskId, aspectRatio, showError]);
 
   return {
     isExporting,

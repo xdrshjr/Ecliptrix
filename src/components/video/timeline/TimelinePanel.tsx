@@ -3,7 +3,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
-import { useVideoExport } from '../hooks/useVideoExport';
 import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
 import TimelineToolbar from './TimelineToolbar';
@@ -124,13 +123,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // 字幕编辑模态框状态
   const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
-
-  // 使用导出hook
-  const videoExport = useVideoExport({
-    timelineState,
-    materials,
-    taskId: `timeline_export`
-  });
 
   // 使用通知hook
   const { showSuccess, showError } = useNotification();
@@ -1333,8 +1325,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     handleCloseSubtitleEditModal();
   }, [editingTrackId, handleCloseSubtitleEditModal]);
 
-  // 导出逻辑现在使用useVideoExport hook
-
   return (
     <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
       {/* 工具栏 */}
@@ -1354,9 +1344,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
         isExtractingSubtitles={isExtractingSubtitles}
-        onExport={videoExport.handleExport}
-        isExporting={videoExport.isExporting}
-        exportProgress={videoExport.exportProgress}
         locale={locale}
       />
 
