@@ -5,6 +5,9 @@
 The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
 
 **Recent Updates:**
+- **NEW**: Pexels video download retry logic with configurable API key switching - automatically retries failed Pexels downloads with different API keys
+- **NEW**: Configurable retry settings via video-download.yaml - supports up to 5 retries by default with customizable delays
+- **ENHANCED**: Detailed logging for video download attempts including retry status and API key rotation
 - **NEW**: Portrait video multi-line subtitle centering - each line in multi-line subtitles is now individually centered horizontally for竖屏视频
 - **ENHANCED**: Subtitle processing now uses verified parameters from test_subtitle_aspect_ratio.py for consistent rendering
 - **IMPROVED**: Default subtitle styling with semi-transparent black background (#000000@0.5) for better readability
@@ -590,4 +593,8 @@ This example demonstrates:
 - Multiple audio tracks with different start times
 - Overlapping audio (background music throughout, narration at specific times)
 - Different volume levels for different types of audio
-- Mix of TTS-generated and uploaded audio files 
+- Mix of TTS-generated and uploaded audio files
+
+## Related Documentation
+
+- **[Video Download Retry API](./video-download-retry.md)** - Enhanced Pexels video download with retry logic and API key switching 
