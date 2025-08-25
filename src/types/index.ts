@@ -211,7 +211,7 @@ export type TimelineToolType =
   | 'export';    // 导出
 
 export interface TimelineAction {
-  type: 'ADD_ITEM' | 'REMOVE_ITEM' | 'UPDATE_ITEM' | 'MOVE_ITEM' | 'SELECT_ITEM' | 'DESELECT_ALL';
+  type: 'ADD_ITEM' | 'REMOVE_ITEM' | 'UPDATE_ITEM' | 'MOVE_ITEM' | 'SELECT_ITEM' | 'DESELECT_ALL' | 'SELECT_ALL_TRACK_ITEMS';
   payload?: any;
   timestamp: Date;
 } 

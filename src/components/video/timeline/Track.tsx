@@ -19,6 +19,7 @@ interface TrackProps {
   onToggleLock: (trackId: string) => void;
   onToggleVisibility: (trackId: string) => void;
   onVolumeChange: (trackId: string, volume: number) => void;
+  onSelectAllItems: (trackId: string) => void;
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
   totalDuration: number;
   locale?: SupportedLocale;
@@ -37,6 +38,7 @@ const Track: React.FC<TrackProps> = ({
   onToggleLock,
   onToggleVisibility,
   onVolumeChange,
+  onSelectAllItems,
   onMaterialDrop,
   totalDuration,
   locale = defaultLocale
@@ -46,6 +48,9 @@ const Track: React.FC<TrackProps> = ({
   
   // 获取国际化翻译
   const t = getTranslations(locale);
+
+  // 检查轨道所有素材是否都被选中
+  const allItemsSelected = track.items.length > 0 && track.items.every(item => selectedItems.includes(item.id));
 
   // 检查素材类型是否与轨道兼容
   const isMaterialCompatible = (materialType: string): boolean => {
@@ -227,6 +232,15 @@ const Track: React.FC<TrackProps> = ({
     onToggleVisibility(track.id);
   };
 
+  const handleSelectAllClick = () => {
+    console.log(`[Track] 全选轨道素材`, {
+      trackId: track.id,
+      itemCount: track.items.length,
+      timestamp: new Date().toISOString()
+    });
+    onSelectAllItems(track.id);
+  };
+
   return (
     <div className="track flex border-b border-gray-100 last:border-b-0">
       {/* 轨道控制区域 - 紧凑设计 */}
@@ -324,6 +338,33 @@ const Track: React.FC<TrackProps> = ({
                 </button>
               </div>
             )}
+
+            {/* 全选按钮 */}
+            <div className="relative group">
+              <button
+                onClick={handleSelectAllClick}
+                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                  allItemsSelected 
+                    ? 'bg-blue-100 text-blue-600 hover:bg-blue-200' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-600'
+                }`}
+                aria-label={t.timeline.track.selectAll}
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M3 5H1v16c0 1.1.9 2 2 2h16v-2H3V5zm18-4H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 16H7V3h14v14zm-10-7l1.41 1.41L16 8.83 20.59 13.41 22 12l-6-6-4 4z"/>
+                </svg>
+                
+                {/* 悬停提示 */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                    {t.timeline.track.selectAll}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
 
             {/* 锁定按钮 */}
             <div className="relative group">
