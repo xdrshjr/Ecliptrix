@@ -306,7 +306,7 @@ This extracts seconds 0.0-6.4 from the original video and places it at timeline 
 - `font_size`: Font size in pixels (8-72, default: 50, optimized for readability)
 - `font_color`: Font color in hex format (default: "#FFFFFF")
 - `background_color`: Background color in hex format with optional transparency (default: "#000000@0.5" - semi-transparent black)
-- `position`: Subtitle position - "top", "center", or "bottom" (default: "bottom")
+- `position`: Subtitle position - "top", "upper-3/4", "center", "lower-3/4", or "bottom" (default: "bottom")
 
 **Enhanced Subtitle Features (Based on test_subtitle_aspect_ratio.py)**:
 - **Aspect Ratio Adaptation**: Automatic character width adjustment for horizontal vs vertical videos

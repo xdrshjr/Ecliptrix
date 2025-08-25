@@ -16,7 +16,7 @@
 - **字体大小**：8-72像素，默认24像素
 - **字体颜色**：十六进制颜色代码，默认白色(#FFFFFF)
 - **背景颜色**：可选的背景色，默认黑色(#000000)
-- **位置设置**：支持顶部(top)、居中(center)、底部(bottom)，默认底部
+- **位置设置**：支持顶部(top)、上3/4高度(upper-3/4)、居中(center)、下3/4高度(lower-3/4)、底部(bottom)，默认底部
 - **边框设置**：自动添加2像素黑色边框提高可读性
 
 ## 数据模型
@@ -36,7 +36,7 @@
   "font_size": 24,                  // 字体大小（8-72像素）
   "font_color": "#FFFFFF",          // 字体颜色（十六进制）
   "background_color": "#000000",    // 背景颜色（可选）
-  "position": "bottom"              // 字幕位置（top/center/bottom）
+  "position": "bottom"              // 字幕位置（top/upper-3/4/center/lower-3/4/bottom）
 }
 ```
 
