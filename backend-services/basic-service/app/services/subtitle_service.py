@@ -623,10 +623,21 @@ class SubtitleService:
         # Calculate position
         if request.position == "top":
             y_position = request.margin_vertical
+            logger.debug(f"Standard subtitle using TOP position: y={y_position}")
+        elif request.position == "upper-3/4":
+            y_position = f"(h*0.25-text_h/2)"
+            logger.debug(f"Standard subtitle using UPPER-3/4 position: y={y_position}")
         elif request.position == "center":
             y_position = f"(h-text_h)/2"
+            logger.debug(f"Standard subtitle using CENTER position: y={y_position}")
+        elif request.position == "lower-3/4":
+            y_position = f"(h*0.75-text_h/2)"
+            logger.debug(f"Standard subtitle using LOWER-3/4 position: y={y_position}")
         else:  # bottom
             y_position = f"h-text_h-{request.margin_vertical}"
+            logger.debug(f"Standard subtitle using BOTTOM position: y={y_position}")
+        
+        logger.info(f"Standard subtitle positioning: position={request.position}, y_formula='{y_position}', max_line_width={max_line_width}")
         
         # Build drawtext filters for each subtitle
         drawtext_filters = []
@@ -733,12 +744,21 @@ class SubtitleService:
             # Calculate starting Y position to center the entire text block
             if request.position == "top":
                 start_y = request.margin_vertical
+                logger.debug(f"Using TOP position: margin_vertical={request.margin_vertical}")
+            elif request.position == "upper-3/4":
+                start_y = int(video_height * 0.25 - total_text_height // 2)
+                logger.debug(f"Using UPPER-3/4 position: 25% of height ({video_height * 0.25}) minus half text height")
             elif request.position == "center":
                 start_y = (video_height - total_text_height) // 2
+                logger.debug(f"Using CENTER position: centered vertically")
+            elif request.position == "lower-3/4":
+                start_y = int(video_height * 0.75 - total_text_height // 2)
+                logger.debug(f"Using LOWER-3/4 position: 75% of height ({video_height * 0.75}) minus half text height")
             else:  # bottom
                 start_y = video_height - total_text_height - request.margin_vertical
+                logger.debug(f"Using BOTTOM position: video_height - total_text_height - margin_vertical")
             
-            logger.info(f"Portrait subtitle positioning: start_y={start_y}, total_height={total_text_height}, lines={len(wrapped_lines)}")
+            logger.info(f"Portrait subtitle positioning: position={request.position}, start_y={start_y}, total_height={total_text_height}, lines={len(wrapped_lines)}, video_height={video_height}")
             
             # Create a separate drawtext filter for each line to ensure proper centering
             for line_index, line_text in enumerate(wrapped_lines):

@@ -137,7 +137,7 @@ class SubtitleCompositionItem(BaseModel):
     font_size: int = Field(24, ge=8, le=72, description="Font size in pixels")
     font_color: str = Field("#FFFFFF", description="Font color in hex format")
     background_color: Optional[str] = Field(None, description="Background color in hex format")
-    position: str = Field("bottom", description="Subtitle position (top, center, bottom)")
+    position: str = Field("bottom", description="Subtitle position (top, center, bottom, upper-3/4, lower-3/4)")
 
 
 class AspectRatio(str, Enum):

@@ -129,7 +129,7 @@ export interface LLMConfig {
 
 // Subtitle styling related types
 export type SubtitleFontFamily = 'default' | 'serif' | 'sans-serif' | 'monospace';
-export type SubtitlePosition = 'top' | 'center' | 'bottom';
+export type SubtitlePosition = 'top' | 'center' | 'bottom' | 'upper-3/4' | 'lower-3/4';
 
 export interface SubtitleStyle {
   fontFamily: SubtitleFontFamily;
