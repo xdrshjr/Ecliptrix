@@ -16,6 +16,7 @@ interface TrackContainerProps {
   onToggleTrackLock: (trackId: string) => void;
   onToggleTrackVisibility: (trackId: string) => void;
   onTrackVolumeChange: (trackId: string, volume: number) => void;
+  onSelectAllTrackItems: (trackId: string) => void;
   onAddTrack: (type: 'video' | 'audio' | 'subtitle') => void;
   onRemoveTrack: (trackId: string) => void;
   onReorderTracks: (sourceIndex: number, destinationIndex: number) => void;
@@ -34,6 +35,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onToggleTrackLock,
   onToggleTrackVisibility,
   onTrackVolumeChange,
+  onSelectAllTrackItems,
   onAddTrack,
   onRemoveTrack,
   onReorderTracks,
@@ -92,6 +94,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
               onToggleLock={onToggleTrackLock}
               onToggleVisibility={onToggleTrackVisibility}
               onVolumeChange={onTrackVolumeChange}
+              onSelectAllItems={onSelectAllTrackItems}
               onMaterialDrop={onMaterialDrop}
               totalDuration={totalDuration}
               locale={locale}

@@ -440,6 +440,52 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     });
   }, [timelineState.selectedItems, addToHistory]);
 
+  const handleSelectAllTrackItems = useCallback((trackId: string) => {
+    console.log(`[TimelinePanel] 全选轨道素材`, {
+      trackId,
+      timestamp: new Date().toISOString()
+    });
+
+    setTimelineState(prev => {
+      const track = prev.tracks.find(t => t.id === trackId);
+      if (!track) {
+        console.warn(`[TimelinePanel] 未找到轨道: ${trackId}`);
+        return prev;
+      }
+
+      const trackItemIds = track.items.map(item => item.id);
+      
+      // 检查当前轨道的所有素材是否都已被选中
+      const allSelected = trackItemIds.every(id => prev.selectedItems.includes(id));
+      
+      let newSelectedItems: string[];
+      if (allSelected) {
+        // 如果全部已选中，则取消选择该轨道的所有素材
+        newSelectedItems = prev.selectedItems.filter(id => !trackItemIds.includes(id));
+        console.log(`[TimelinePanel] 取消选择轨道 ${trackId} 的所有素材`, {
+          unselectedCount: trackItemIds.length,
+          remainingSelected: newSelectedItems.length
+        });
+      } else {
+        // 否则，选中该轨道的所有素材（保留其他轨道已选中的素材）
+        const existingSelected = prev.selectedItems.filter(id => !trackItemIds.includes(id));
+        newSelectedItems = [...existingSelected, ...trackItemIds];
+        console.log(`[TimelinePanel] 选择轨道 ${trackId} 的所有素材`, {
+          selectedCount: trackItemIds.length,
+          totalSelected: newSelectedItems.length
+        });
+      }
+
+      return { ...prev, selectedItems: newSelectedItems };
+    });
+
+    addToHistory({
+      type: 'SELECT_ALL_TRACK_ITEMS',
+      payload: { trackId },
+      timestamp: new Date()
+    });
+  }, [timelineState.tracks, addToHistory]);
+
   // 计算非重叠位置的辅助函数
   const calculateNonOverlappingPosition = useCallback((
     targetItem: TimelineItem, 
@@ -1370,6 +1416,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onToggleTrackLock={handleToggleTrackLock}
         onToggleTrackVisibility={handleToggleTrackVisibility}
         onTrackVolumeChange={handleTrackVolumeChange}
+        onSelectAllTrackItems={handleSelectAllTrackItems}
         onAddTrack={handleAddTrack}
         onRemoveTrack={handleRemoveTrack}
         onReorderTracks={handleReorderTracks}
