@@ -1,0 +1,8 @@
+$env:ANTHROPIC_BASE_URL = "http://localhost:4141/"
+$env:ANTHROPIC_AUTH_TOKEN = "dummy"
+$env:ANTHROPIC_MODEL = "claude-sonnet-4"
+$env:ANTHROPIC_SMALL_FAST_MODEL = "claude-3.7-sonnet"
+$env:DISABLE_NON_ESSENTIAL_MODEL_CALLS = "1"
+$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+
+claude
