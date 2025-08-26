@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>黄白交替字幕效果</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        .subtitle-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        .subtitle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            font-weight: bold;
+            opacity: 0;
+            white-space: nowrap;
+            letter-spacing: 2px;
+        }
+
+        .subtitle.bounce-in {
+            animation: bounceIn 0.8s ease-out forwards;
+        }
+
+        .subtitle.tear-top {
+            clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
+            animation: tearTop 0.8s ease-out forwards;
+        }
+
+        .subtitle.tear-bottom {
+            clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0 100%);
+            animation: tearBottom 0.8s ease-out forwards;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0) translateY(50px);
+            }
+            50% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.2) translateY(-20px);
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) translateY(0);
+            }
+        }
+
+        @keyframes tearTop {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) translateY(0) rotate(0deg);
+                filter: blur(0px);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.02) translateY(-30px) rotate(-1deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.85) translateY(-120px) rotate(-3deg);
+                filter: blur(1px);
+            }
+        }
+
+        @keyframes tearBottom {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) translateY(0) rotate(0deg);
+                filter: blur(0px);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.02) translateY(30px) rotate(1deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.85) translateY(120px) rotate(3deg);
+                filter: blur(1px);
+            }
+        }
+
+        /* 黄色字体黑色描边 */
+        .subtitle.yellow-text {
+            color: #FFD700;
+            text-shadow:
+                -2px -2px 0 #000,
+                2px -2px 0 #000,
+                -2px 2px 0 #000,
+                2px 2px 0 #000,
+                -3px 0 0 #000,
+                3px 0 0 #000,
+                0 -3px 0 #000,
+                0 3px 0 #000,
+                -1px -1px 0 #000,
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000,
+                0 0 15px rgba(255, 215, 0, 0.5);
+        }
+
+        /* 白色字体黑色描边 */
+        .subtitle.white-text {
+            color: #FFFFFF;
+            text-shadow:
+                -2px -2px 0 #000,
+                2px -2px 0 #000,
+                -2px 2px 0 #000,
+                2px 2px 0 #000,
+                -3px 0 0 #000,
+                3px 0 0 #000,
+                0 -3px 0 #000,
+                0 3px 0 #000,
+                -1px -1px 0 #000,
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000,
+                0 0 15px rgba(255, 255, 255, 0.3);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .subtitle {
+                font-size: 2rem;
+            }
+
+            .subtitle.yellow-text,
+            .subtitle.white-text {
+                text-shadow:
+                    -1px -1px 0 #000,
+                    1px -1px 0 #000,
+                    -1px 1px 0 #000,
+                    1px 1px 0 #000,
+                    -2px 0 0 #000,
+                    2px 0 0 #000,
+                    0 -2px 0 #000,
+                    0 2px 0 #000,
+                    0 0 10px rgba(255, 215, 0, 0.3);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .subtitle {
+                font-size: 1.5rem;
+                letter-spacing: 1px;
+            }
+
+            .subtitle.yellow-text,
+            .subtitle.white-text {
+                text-shadow:
+                    -1px -1px 0 #000,
+                    1px -1px 0 #000,
+                    -1px 1px 0 #000,
+                    1px 1px 0 #000,
+                    0 0 8px rgba(255, 255, 255, 0.2);
+            }
+        }
+
+        /* 添加页面加载提示 */
+        .loading-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        /* 添加颜色指示器 */
+        .color-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            color: white;
+            font-size: 0.8rem;
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <div class="subtitle-container" id="subtitleContainer">
+    </div>
+
+    <div class="color-indicator" id="colorIndicator">
+        当前: 黄色字体
+    </div>
+
+    <div class="loading-hint">
+        点击屏幕或按空格键快速切换字幕<br>
+        <small>黄色与白色字体交替显示</small>
+    </div>
+
+    <script>
+        const subtitles = [
+            "欢迎来到未来世界",
+            "科技改变生活",
+            "梦想从这里起航",
+            "创新无处不在",
+            "挑战极限突破自我",
+            "每一天都是新开始",
+            "相信奇迹的力量",
+            "勇敢追求你的梦想",
+            "成功属于坚持的人",
+            "未来由我们创造"
+        ];
+
+        let currentIndex = 0;
+        let currentSubtitle = null;
+        let isAnimating = false;
+        const container = document.getElementById('subtitleContainer');
+        const colorIndicator = document.getElementById('colorIndicator');
+
+        function getColorClass(index) {
+            // 交替使用黄色和白色
+            return index % 2 === 0 ? 'yellow-text' : 'white-text';
+        }
+
+        function updateColorIndicator(index) {
+            const isYellow = index % 2 === 0;
+            colorIndicator.textContent = isYellow ? '当前: 黄色字体' : '当前: 白色字体';
+            colorIndicator.style.background = isYellow ?
+                'rgba(255, 215, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)';
+        }
+
+        function createSubtitle(text, colorClass) {
+            const subtitle = document.createElement('div');
+            subtitle.className = `subtitle ${colorClass}`;
+            subtitle.textContent = text;
+            return subtitle;
+        }
+
+        function createTearEffect(originalElement) {
+            // 创建字符上半部分
+            const tearTop = originalElement.cloneNode(true);
+            tearTop.className = `${originalElement.className} tear-top`;
+
+            // 创建字符下半部分
+            const tearBottom = originalElement.cloneNode(true);
+            tearBottom.className = `${originalElement.className} tear-bottom`;
+
+            return { tearTop, tearBottom };
+        }
+
+        function showNextSubtitle() {
+            if (isAnimating) return;
+
+            if (currentIndex >= subtitles.length) {
+                // 所有字幕播放完毕，重新开始
+                currentIndex = 0;
+                setTimeout(() => showNextSubtitle(), 2000);
+                return;
+            }
+
+            isAnimating = true;
+            const colorClass = getColorClass(currentIndex);
+
+            // 更新颜色指示器
+            updateColorIndicator(currentIndex);
+
+            // 如果有当前字幕，先执行字符撕裂动画
+            if (currentSubtitle) {
+                const { tearTop, tearBottom } = createTearEffect(currentSubtitle);
+
+                // 添加撕裂元素到容器
+                container.appendChild(tearTop);
+                container.appendChild(tearBottom);
+
+                // 移除原字幕
+                currentSubtitle.remove();
+
+                // 清理撕裂动画元素
+                setTimeout(() => {
+                    tearTop.remove();
+                    tearBottom.remove();
+                }, 800);
+            }
+
+            // 延迟显示新字幕，让撕裂动画先执行一部分
+            setTimeout(() => {
+                currentSubtitle = createSubtitle(subtitles[currentIndex], colorClass);
+                container.appendChild(currentSubtitle);
+
+                // 触发弹跳动画
+                setTimeout(() => {
+                    currentSubtitle.classList.add('bounce-in');
+                }, 50);
+
+                currentIndex++;
+                isAnimating = false;
+
+                // 设置下一个字幕的时间
+                setTimeout(() => showNextSubtitle(), 2800);
+            }, currentSubtitle ? 400 : 0);
+        }
+
+        // 页面加载完成后开始播放
+        window.addEventListener('load', () => {
+            setTimeout(() => showNextSubtitle(), 800);
+        });
+
+        // 添加鼠标点击事件快速切换字幕
+        document.addEventListener('click', () => {
+            if (!isAnimating && currentIndex < subtitles.length) {
+                showNextSubtitle();
+            }
+        });
+
+        // 添加键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'Enter') {
+                e.preventDefault();
+                if (!isAnimating && currentIndex < subtitles.length) {
+                    showNextSubtitle();
+                }
+            }
+
+            // 添加重新开始功能
+            if (e.code === 'KeyR') {
+                currentIndex = 0;
+                if (currentSubtitle) {
+                    currentSubtitle.remove();
+                    currentSubtitle = null;
+                }
+                if (!isAnimating) {
+                    showNextSubtitle();
+                }
+            }
+        });
+
+        // 添加自动循环播放
+        function startAutoPlay() {
+            if (currentIndex >= subtitles.length) {
+                currentIndex = 0;
+                if (currentSubtitle) {
+                    currentSubtitle.remove();
+                    currentSubtitle = null;
+                }
+                setTimeout(() => showNextSubtitle(), 1000);
+            }
+        }
+
+        // 监听循环播放
+        setInterval(startAutoPlay, 100);
+    </script>
+</body>
+</html>
