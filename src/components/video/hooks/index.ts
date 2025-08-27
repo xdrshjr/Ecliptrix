@@ -6,4 +6,5 @@ export { useMaterialManagement } from './useMaterialManagement';
 export { useVideoSearch } from './useVideoSearch';
 export { useAudioSearch } from './useAudioSearch';
 export { useTimelineComposition } from './useTimelineComposition';
-export { useVideoAnalysis } from './useVideoAnalysis'; 
+export { useVideoAnalysis } from './useVideoAnalysis';
+export { useAIImageGeneration } from './useAIImageGeneration'; 

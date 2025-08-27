@@ -10,6 +10,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
+  onAIImageGeneration?: () => void; // 新增：AI生图回调
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
   onVideoAnalysis?: (material: MaterialItem) => void; // 新增：视频AI解析回调
   onBatchVideoAnalysis?: () => Promise<void>; // 新增：批量视频AI解析回调
@@ -29,6 +30,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   handleMaterialUpload,
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
+  onAIImageGeneration, // 新增：AI生图回调
   onAutoMixAudio, // 新增：AI自动混剪回调
   onVideoAnalysis, // 新增：视频AI解析回调
   onBatchVideoAnalysis, // 新增：批量视频AI解析回调
@@ -125,6 +127,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
     
     onSearchAudios();
+  };
+
+  const handleAIImageGenerationClick = () => {
+    logger.info('用户点击AI生图按钮', {
+      materialsCount: materials.length,
+      selectedType: selectedMaterialType
+    });
+    
+    if (onAIImageGeneration) {
+      onAIImageGeneration();
+    }
   };
 
   // 处理删除全部按钮点击
@@ -790,6 +803,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                 </svg>
                 <span>搜索音频</span>
+              </button>
+
+              <button
+                onClick={handleAIImageGenerationClick}
+                className="flex items-center space-x-1 text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded transition-colors"
+                title="AI生图"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>AI生图</span>
               </button>
               
               {/* 新增：删除全部按钮 */}

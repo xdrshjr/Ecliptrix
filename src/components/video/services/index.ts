@@ -47,4 +47,14 @@ export type {
 export {
   YoutubeVideoSearchServiceImpl,
   createYoutubeVideoSearchService
-} from './youtubeVideoSearchService'; 
+} from './youtubeVideoSearchService';
+
+// AI Image Generation Service
+export type {
+  AIImageGenerationService
+} from './aiImageGenerationService';
+
+export {
+  AIImageGenerationServiceImpl,
+  createAIImageGenerationService
+} from './aiImageGenerationService'; 

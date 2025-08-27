@@ -308,3 +308,79 @@ export interface UseAudioSearchReturn {
   setValidationError: (error: string | null) => void;
   taskId: string;
 } 
+
+// AI Image Generation Types
+export interface AIImageGenerationRequest {
+  positive_prompt: string;
+  negative_prompt?: string;
+  width?: number;
+  height?: number;
+  steps?: number;
+  seed?: number;
+  cfg?: number;
+  guidance?: number;
+  checkpoint?: string;
+}
+
+export interface AIImageGenerationResponse {
+  prompt_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  message: string;
+  estimated_time?: number;
+}
+
+export interface ImageInfo {
+  filename: string;
+  subfolder?: string;
+  type?: string;
+  url?: string;
+  size_bytes?: number;
+}
+
+export interface AIImageGenerationStatus {
+  prompt_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  images?: ImageInfo[];
+  error_message?: string;
+  created_at?: string;
+  completed_at?: string;
+}
+
+export interface UseAIImageGenerationReturn {
+  isModalOpen: boolean;
+  isGenerating: boolean;
+  generationProgress: number;
+  generatedImages: string[];
+  generationError: string | null;
+  generationStatus: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
+  
+  // 生图参数
+  positivePrompt: string;
+  negativePrompt: string;
+  width: number;
+  height: number;
+  steps: number;
+  seed: number | null;
+  cfg: number;
+  guidance: number;
+  checkpoint: string;
+  
+  // 方法
+  openModal: () => void;
+  closeModal: () => void;
+  handleGenerate: () => void;
+  handleAddToMaterials: (imageUrls: string[]) => void;
+  setPositivePrompt: (prompt: string) => void;
+  setNegativePrompt: (prompt: string) => void;
+  setWidth: (width: number) => void;
+  setHeight: (height: number) => void;
+  setSteps: (steps: number) => void;
+  setSeed: (seed: number | null) => void;
+  setCfg: (cfg: number) => void;
+  setGuidance: (guidance: number) => void;
+  setCheckpoint: (checkpoint: string) => void;
+  clearError: () => void;
+  
+  taskId: string;
+} 

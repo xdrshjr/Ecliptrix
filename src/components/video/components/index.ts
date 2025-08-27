@@ -8,4 +8,5 @@ export { ContentPolishModal } from './ContentPolishModal';
 export { ScriptGenerationModal } from './ScriptGenerationModal';
 export { SubtitleEditModal } from './SubtitleEditModal';
 export { CreativeBrainstormingModal } from './CreativeBrainstormingModal';
-export { VideoAnalysisModal } from './VideoAnalysisModal'; 
+export { VideoAnalysisModal } from './VideoAnalysisModal';
+export { default as AIImageGenerationModal } from './AIImageGenerationModal'; 

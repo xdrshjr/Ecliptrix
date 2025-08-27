@@ -14,7 +14,8 @@ import {
   useVideoSearch,
   useAudioSearch,
   useTimelineComposition,
-  useVideoAnalysis
+  useVideoAnalysis,
+  useAIImageGeneration
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
 import {
@@ -27,7 +28,8 @@ import {
   ContentPolishModal,
   ScriptGenerationModal,
   CreativeBrainstormingModal,
-  VideoAnalysisModal
+  VideoAnalysisModal,
+  AIImageGenerationModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -88,6 +90,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加视频解析功能
   const videoAnalysis = useVideoAnalysis(taskId);
+  
+  // 添加AI生图功能
+  const aiImageGeneration = useAIImageGeneration(taskId, materialManagement.addMaterials);
 
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
@@ -661,6 +666,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 {...materialManagement}
                 onSearchVideos={videoSearch.openSearchModal}
                 onSearchAudios={audioSearch.openSearchModal}
+                onAIImageGeneration={aiImageGeneration.openModal}
                 onAutoMixAudio={handleAutoMixAudio}
                 onVideoAnalysis={handleVideoAnalysis}
                 onBatchVideoAnalysis={handleBatchVideoAnalysis}
@@ -742,6 +748,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={videoAnalysis.closeAnalysisModal}
         analysisResult={videoAnalysis.currentAnalysisResult}
         videoUrl={videoAnalysis.currentVideoUrl || undefined}
+      />
+
+      <AIImageGenerationModal
+        {...aiImageGeneration}
       />
     </div>
   );
