@@ -827,6 +827,35 @@ class VideoCompositionService:
             else:
                 logger.info("No audio tracks to process")
             
+            # 新增：处理图片叠加 
+            image_video_items = [item for item in request.video_items if item.original_material_type == 'image' and item.image_position]
+            if image_video_items:
+                logger.info("Processing image overlay tracks...")
+                logger.info(f"Found {len(image_video_items)} image overlay items")
+                
+                try:
+                    # Process image overlays and add them to the video
+                    image_processed_path = self._process_image_overlays(
+                        image_video_items,
+                        str(output_path), 
+                        temp_dir,
+                        request.output_resolution
+                    )
+                    
+                    if image_processed_path and os.path.exists(image_processed_path):
+                        # Replace the original video with the image-processed version
+                        os.replace(image_processed_path, str(output_path))
+                        logger.info("Image overlays successfully added to video")
+                        
+                        # Verify final file with image overlays
+                        final_size = os.path.getsize(output_path)
+                        logger.info(f"Final video file size with image overlays: {final_size} bytes")
+                    else:
+                        logger.warning("Image overlay processing did not produce output file")
+                        
+                except Exception as e:
+                    logger.error(f"Image overlay processing error: {str(e)}", exc_info=True)
+
             # Handle subtitles if present  
             if request.subtitle_items:
                 logger.info("Processing subtitle tracks...")
@@ -1566,4 +1595,170 @@ class VideoCompositionService:
         secs = int(seconds % 60)
         milliseconds = int((seconds % 1) * 1000)  # Convert to milliseconds
         
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}" 
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+    
+    def _process_image_overlays(self, image_items: List, video_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> Optional[str]:
+        """
+        Process image overlays and add them to the video.
+        
+        Args:
+            image_items: List of video items that are actually image overlays
+            video_path: Path to the input video file
+            temp_dir: Temporary directory for processing
+            output_resolution: Video output resolution dict with 'width' and 'height'
+            
+        Returns:
+            Path to the video with image overlays added, or None if failed
+        """
+        try:
+            logger.info(f"Starting image overlay processing for {len(image_items)} image items")
+            
+            # Get FFmpeg path
+            ffmpeg_path = self._get_ffmpeg_path()
+            
+            # Output path for video with overlays
+            output_path = os.path.join(temp_dir, "video_with_overlays.mp4")
+            
+            # Build FFmpeg command for image overlays
+            cmd = [ffmpeg_path, '-y', '-i', video_path]
+            
+            # Add each image as input
+            valid_items = []
+            for i, item in enumerate(image_items):
+                image_url = item.url
+                local_image_path = self._convert_url_to_local_path(image_url)
+                
+                if not os.path.exists(local_image_path):
+                    # Download image if it's a remote URL
+                    downloaded_image = self._download_image(image_url, temp_dir, i)
+                    if downloaded_image and downloaded_image.get('success'):
+                        local_image_path = downloaded_image['output_path']
+                    else:
+                        logger.warning(f"Failed to download image {image_url}, skipping overlay")
+                        continue
+                
+                cmd.extend(['-i', local_image_path])
+                valid_items.append(item)
+            
+            if len(valid_items) == 0:
+                logger.warning("No valid image items to overlay")
+                return None
+            
+            # Build filter complex for image overlays
+            filter_parts = []
+            base_input = "[0:v]"
+            
+            video_width = output_resolution['width']
+            video_height = output_resolution['height']
+            
+            for i, item in enumerate(valid_items):
+                input_idx = i + 1  # +1 because [0] is the video
+                pos = item.image_position
+                
+                # Calculate actual pixel positions
+                x = int(pos.x * video_width)
+                y = int(pos.y * video_height)
+                w = int(pos.width * video_width)
+                h = int(pos.height * video_height)
+                
+                # Calculate time filters based on item timing
+                start_time = item.start_time
+                end_time = item.start_time + item.duration
+                
+                # Scale the image and overlay it
+                scale_filter = f"[{input_idx}:v]scale={w}:{h}[img{i}]"
+                filter_parts.append(scale_filter)
+                
+                # Create overlay filter with timing
+                if i == 0:
+                    overlay_filter = f"{base_input}[img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
+                else:
+                    overlay_filter = f"[v{i-1}][img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
+                filter_parts.append(overlay_filter)
+            
+            # Combine all filter parts
+            filter_complex = ";".join(filter_parts)
+            final_output = f"[v{len(valid_items)-1}]"
+            
+            logger.info(f"Image overlay filter complex: {filter_complex}")
+            
+            cmd.extend([
+                '-filter_complex', filter_complex,
+                '-map', final_output,
+                '-map', '0:a?',  # Copy audio if it exists
+                '-c:a', 'copy',  # Copy audio codec
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-pix_fmt', 'yuv420p',
+                output_path
+            ])
+            
+            logger.info(f"Running image overlay command: {' '.join(cmd)}")
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info(f"Image overlay processing completed successfully")
+                logger.info(f"Output file: {output_path} (size: {os.path.getsize(output_path)} bytes)")
+                return output_path
+            else:
+                logger.error(f"Image overlay processing failed: {result.stderr}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error processing image overlays: {str(e)}", exc_info=True)
+            return None
+    
+    def _download_image(self, image_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
+        """
+        Download an image file from URL.
+        
+        Args:
+            image_url: URL of the image to download
+            temp_dir: Temporary directory to save the image
+            index: Index for naming the downloaded file
+            
+        Returns:
+            Dictionary with success status and output path
+        """
+        try:
+            import requests
+            from urllib.parse import urlparse, unquote
+            
+            # Parse URL to get file extension
+            parsed_url = urlparse(image_url)
+            path = unquote(parsed_url.path)
+            
+            # Try to get file extension from URL
+            file_ext = os.path.splitext(path)[1].lower()
+            if not file_ext or file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
+                file_ext = '.jpg'  # Default to jpg
+            
+            output_filename = f"image_{index}{file_ext}"
+            output_path = os.path.join(temp_dir, output_filename)
+            
+            logger.info(f"Downloading image from {image_url} to {output_path}")
+            
+            # Download the image
+            response = requests.get(image_url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            file_size = os.path.getsize(output_path)
+            logger.info(f"Image downloaded successfully: {file_size} bytes")
+            
+            return {
+                "success": True,
+                "output_path": output_path,
+                "file_size": file_size
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to download image {image_url}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            } 

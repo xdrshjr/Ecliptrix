@@ -147,6 +147,16 @@ export interface SubtitleStylePreset {
 }
 
 // Timeline and Video Editing related types
+
+// 新增：图片叠加位置信息
+export interface ImagePosition {
+  x: number; // X坐标（0-1，相对于视频宽度）
+  y: number; // Y坐标（0-1，相对于视频高度）
+  width: number; // 宽度（0-1，相对于视频宽度）
+  height: number; // 高度（0-1，相对于视频高度）
+  zIndex?: number; // 层级，用于多图片叠加时的前后顺序
+}
+
 export interface TimelineItem {
   id: string;
   name: string;
@@ -173,6 +183,9 @@ export interface TimelineItem {
   
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）
+  
+  // 新增：图片位置信息，用于图片叠加定位
+  imagePosition?: ImagePosition; // 图片在视频中的位置信息（仅图片类型使用）
 }
 
 export interface Track {

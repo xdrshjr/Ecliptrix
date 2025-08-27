@@ -88,6 +88,18 @@ class VideoSearchResponse(BaseModel):
     ) 
 
 # Video Composition Models
+
+class ImagePosition(BaseModel):
+    """
+    Position information for image overlays in video composition.
+    """
+    x: float = Field(..., ge=0, le=1, description="X coordinate (0-1, relative to video width)")
+    y: float = Field(..., ge=0, le=1, description="Y coordinate (0-1, relative to video height)")
+    width: float = Field(..., ge=0, le=1, description="Width (0-1, relative to video width)")
+    height: float = Field(..., ge=0, le=1, description="Height (0-1, relative to video height)")
+    z_index: Optional[int] = Field(10, description="Layer order for multiple image overlays")
+
+
 class VideoCompositionItem(BaseModel):
     """
     Individual video item in the composition timeline.
@@ -104,6 +116,10 @@ class VideoCompositionItem(BaseModel):
     # 新增：视频剪辑属性，用于支持时间轴上的素材缩放
     clip_start: float = Field(0.0, ge=0, description="Start time within the source video file (seconds)")
     clip_end: float = Field(..., gt=0, description="End time within the source video file (seconds)")
+    
+    # 新增：图片叠加相关属性
+    original_material_type: Optional[str] = Field(None, description="Original material type (video, image, audio, etc.)")
+    image_position: Optional[ImagePosition] = Field(None, description="Position for image overlay (only for image materials)")
 
 
 class AudioCompositionItem(BaseModel):
