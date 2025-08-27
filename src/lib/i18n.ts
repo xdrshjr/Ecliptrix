@@ -81,6 +81,7 @@ export interface Translations {
       videoTrack: string;
       audioTrack: string;
       subtitleTrack: string;
+      imageTrack: string;
       mute: string;
       unmute: string;
       lock: string;
@@ -93,6 +94,16 @@ export interface Translations {
       dropAudioHere: string;
       dropSubtitleHere: string;
       dropToTrack: string;
+    };
+    messages: {
+      noAudioItems: string;
+      noSubtitleTrack: string;
+      subtitleExtractionFailed: string;
+      subtitleExtractionSuccess: string;
+      subtitleExtractionError: string;
+      subtitlePrefix: string;
+      operationGenerated: string;
+      operationReplaced: string;
     };
     subtitleEditModal: {
       title: string;
@@ -122,15 +133,26 @@ export interface Translations {
     noMaterials: string;
     emptyDescription: string;
     searchVideos: string;
+    searchAudios: string;
+    searchAudiosTooltip: string;
     deleteAll: string;
     materialsCount: string;
     aiAutoMixTooltip: string;
     uploadTooltip: string;
+    uploadingProgress: string;
     searchVideosTooltip: string;
     deleteMaterialTooltip: string;
     deleteAllTooltip: string;
     subtitleContentError: string;
     subtitleDownloadError: string;
+    batchAnalyzing: string;
+    batchAnalysisTooltip: string;
+    downloadingVideo: string;
+    downloadFailed: string;
+    retryDownload: string;
+    aiAnalyzing: string;
+    viewAnalysisResult: string;
+    aiVideoAnalysis: string;
   };
   videoSearchModal: {
     title: string;
@@ -174,6 +196,7 @@ export interface Translations {
       videoCompositionPlayback: string;
       videoPreviewPlayback: string;
       videosCount: string;
+      audioCount: string;
       play: string;
       pause: string;
       compositionPlay: string;
@@ -190,6 +213,7 @@ export interface Translations {
       format: string;
       aspectRatio: string;
       currentAspectRatio: string;
+      unknown: string;
     };
     export: {
       exportVideo: string;
@@ -199,6 +223,7 @@ export interface Translations {
     placeholders: {
       noMaterialsInTimeline: string;
       clickPlayToPreview: string;
+      currentAspectRatioLabel: string;
     };
     accessibility: {
       videoCompositionPanel: string;
@@ -267,6 +292,12 @@ export interface Translations {
       associatedVideo: string;
     };
   };
+  documentPanel: {
+    title: string;
+    creativeBrainstorming: string;
+    creativeBrainstormingAriaLabel: string;
+    placeholder: string;
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -323,15 +354,26 @@ export const translations: Record<string, Translations> = {
       noMaterials: 'No Materials',
       emptyDescription: 'Materials library is empty. Click the \'Search Videos\' button below to add high-quality video materials.',
       searchVideos: 'Search Videos',
+      searchAudios: 'Search Audios',
+      searchAudiosTooltip: 'Search Online Audios',
       deleteAll: 'Delete All',
       materialsCount: ' materials',
       aiAutoMixTooltip: 'Automatically add all script-converted audio and associated videos to timeline in order',
       uploadTooltip: 'Upload Materials',
+      uploadingProgress: 'Uploading...',
       searchVideosTooltip: 'Search Online Videos',
       deleteMaterialTooltip: 'Delete material: {name}',
       deleteAllTooltip: 'Delete all materials in current tab ({count} items)',
       subtitleContentError: 'Cannot get subtitle content',
       subtitleDownloadError: 'Subtitle file download failed',
+              batchAnalyzing: 'Batch analyzing videos...',
+        batchAnalysisTooltip: 'AI analyze all video materials to generate detailed content descriptions',
+      downloadingVideo: 'Downloading video...',
+      downloadFailed: 'Download failed',
+      retryDownload: 'Retry Download',
+      aiAnalyzing: 'AI analyzing...',
+      viewAnalysisResult: 'View Analysis Result',
+      aiVideoAnalysis: 'AI Video Analysis',
     },
     timeline: {
       toolbar: {
@@ -375,11 +417,12 @@ export const translations: Record<string, Translations> = {
         addAudioTrack: 'Add Audio Track',
         addSubtitleTrack: 'Add Subtitle Track',
       },
-      track: {
-        videoTrack: 'Video Track',
-        audioTrack: 'Audio Track',
-        subtitleTrack: 'Subtitle Track',
-        mute: 'Mute',
+              track: {
+          videoTrack: 'Video Track',
+          audioTrack: 'Audio Track',
+          subtitleTrack: 'Subtitle Track',
+          imageTrack: 'Image Track',
+          mute: 'Mute',
         unmute: 'Unmute',
         lock: 'Lock Track',
         unlock: 'Unlock Track',
@@ -391,6 +434,16 @@ export const translations: Record<string, Translations> = {
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
         dropToTrack: 'Drop to {trackName}',
+      },
+      messages: {
+        noAudioItems: 'No audio items found, please add audio to the timeline first.',
+        noSubtitleTrack: 'No subtitle track found, please add a subtitle track first.',
+        subtitleExtractionFailed: 'Subtitle extraction failed, no subtitle content was generated.',
+        subtitleExtractionSuccess: 'Subtitle extraction successful! {operation} {count} subtitle segments.',
+        subtitleExtractionError: 'Subtitle extraction error: {error}',
+        subtitlePrefix: 'Subtitle',
+        operationGenerated: 'Generated',
+        operationReplaced: 'Replaced',
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -445,7 +498,8 @@ export const translations: Record<string, Translations> = {
       playback: {
         videoCompositionPlayback: 'Play Composition',
         videoPreviewPlayback: 'Play Preview',
-        videosCount: 'Videos in Composition',
+        videosCount: 'videos',
+        audioCount: 'audios',
         play: 'Play',
         pause: 'Pause',
         compositionPlay: 'Composition Play',
@@ -462,6 +516,7 @@ export const translations: Record<string, Translations> = {
         format: 'Format',
         aspectRatio: 'Aspect Ratio',
         currentAspectRatio: 'Current Aspect Ratio',
+        unknown: 'Unknown',
       },
       export: {
         exportVideo: 'Export Video',
@@ -471,6 +526,7 @@ export const translations: Record<string, Translations> = {
              placeholders: {
          noMaterialsInTimeline: 'No video materials in timeline\nPlease add video materials to timeline before playing',
          clickPlayToPreview: 'Click play button to preview video',
+         currentAspectRatioLabel: 'Current Aspect Ratio',
        },
       accessibility: {
         videoCompositionPanel: 'Video Composition Panel',
@@ -539,6 +595,12 @@ export const translations: Record<string, Translations> = {
          associatedVideo: 'Segment{index} - {videoName}',
        },
      },
+     documentPanel: {
+       title: 'Project Documentation',
+       creativeBrainstorming: 'Creative Brainstorming',
+       creativeBrainstormingAriaLabel: 'Start creative brainstorming',
+       placeholder: 'Start writing your video project documentation...',
+     },
   },
   'zh-CN': {
     common: {
@@ -593,15 +655,26 @@ export const translations: Record<string, Translations> = {
       noMaterials: '暂无素材',
       emptyDescription: '素材库为空，点击下方「搜索视频」按钮来添加高质量的视频素材',
       searchVideos: '搜索视频',
+      searchAudios: '搜索音频',
+      searchAudiosTooltip: '搜索在线音频',
       deleteAll: '删除全部',
       materialsCount: '个素材',
       aiAutoMixTooltip: '将所有文本脚本转换的音频和关联的视频按顺序自动添加到时间轴',
       uploadTooltip: '上传素材',
+      uploadingProgress: '上传中...',
       searchVideosTooltip: '搜索在线视频',
       deleteMaterialTooltip: '删除素材: {name}',
       deleteAllTooltip: '删除当前选项卡的所有素材 ({count}个)',
       subtitleContentError: '无法获取字幕内容',
       subtitleDownloadError: '字幕文件下载失败',
+              batchAnalyzing: '正在批量解析视频...',
+        batchAnalysisTooltip: '对所有视频素材进行AI解析，生成详细的内容描述',
+      downloadingVideo: '正在下载视频...',
+      downloadFailed: '下载失败',
+      retryDownload: '重试下载',
+              aiAnalyzing: 'AI解析中...',
+        viewAnalysisResult: '查看解析结果',
+        aiVideoAnalysis: 'AI视频解析',
     },
     timeline: {
       toolbar: {
@@ -645,11 +718,12 @@ export const translations: Record<string, Translations> = {
         addAudioTrack: '添加音频轨道',
         addSubtitleTrack: '添加字幕轨道',
       },
-      track: {
-        videoTrack: '视频轨道',
-        audioTrack: '音频轨道',
-        subtitleTrack: '字幕轨道',
-        mute: '静音',
+              track: {
+          videoTrack: '视频轨道',
+          audioTrack: '音频轨道',
+          subtitleTrack: '字幕轨道',
+          imageTrack: '图片轨道',
+          mute: '静音',
         unmute: '取消静音',
         lock: '锁定轨道',
         unlock: '解锁轨道',
@@ -662,6 +736,16 @@ export const translations: Record<string, Translations> = {
         dropSubtitleHere: '拖拽字幕素材到此轨道',
         dropToTrack: '放置到 {trackName}',
       },
+              messages: {
+          noAudioItems: '没有找到音频项目，请先添加音频到时间轴。',
+          noSubtitleTrack: '没有找到字幕轨道，请先添加字幕轨道。',
+          subtitleExtractionFailed: '字幕提取失败，没有生成任何字幕内容。',
+          subtitleExtractionSuccess: '字幕提取成功！{operation}了 {count} 个字幕片段。',
+          subtitleExtractionError: '字幕提取错误: {error}',
+          subtitlePrefix: '字幕',
+          operationGenerated: '生成',
+          operationReplaced: '替换',
+        },
       subtitleEditModal: {
         title: '编辑字幕',
         subtitle: '编辑时间轴上每个字幕片段的文本内容',
@@ -715,7 +799,8 @@ export const translations: Record<string, Translations> = {
       playback: {
         videoCompositionPlayback: '播放组合',
         videoPreviewPlayback: '预览播放',
-        videosCount: '组合中视频数量',
+        videosCount: '个视频',
+        audioCount: '个音频',
         play: '播放',
         pause: '暂停',
         compositionPlay: '组合播放',
@@ -732,6 +817,7 @@ export const translations: Record<string, Translations> = {
         format: '格式',
         aspectRatio: '宽高比',
         currentAspectRatio: '当前宽高比',
+        unknown: '未知',
       },
       export: {
         exportVideo: '导出视频',
@@ -741,6 +827,7 @@ export const translations: Record<string, Translations> = {
              placeholders: {
          noMaterialsInTimeline: '时间轴中没有视频素材\n请在时间轴中添加视频素材后播放',
          clickPlayToPreview: '点击播放按钮预览视频',
+                   currentAspectRatioLabel: '当前比例',
        },
       accessibility: {
         videoCompositionPanel: '视频组合面板',
@@ -808,6 +895,12 @@ export const translations: Record<string, Translations> = {
          generatedFrom: '从"段落{index}"语音识别生成的字幕',
          associatedVideo: '段落{index} - {videoName}',
        },
+     },
+     documentPanel: {
+       title: '项目文档编辑',
+       creativeBrainstorming: '创意构思',
+       creativeBrainstormingAriaLabel: '开启创意构思',
+       placeholder: '开始编写您的视频项目文档...',
      },
   },
 };

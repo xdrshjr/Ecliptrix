@@ -342,3 +342,304 @@
 2025-08-19 22:39:38 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
 2025-08-19 22:39:38 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
 2025-08-19 22:39:38 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:103 - Response: 200 - 0.031s
+2025-08-27 21:21:30 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-27 21:21:30 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-27 21:21:30 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-27 21:21:30 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-27 21:21:30 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-27 21:21:30 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-27 21:21:30 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-27 21:22:42 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-27 21:22:42 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-27 21:22:42 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-27 21:22:42 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-27 21:22:42 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-27 21:22:42 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-27 21:22:42 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-27 21:22:43 - [32mapp.services.youtube_service[0m - [32mINFO[0m - __init__:39 - YouTube服务初始化完成，下载目录: static\video\youtube
+2025-08-27 21:22:43 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:49 - Initializing Supabase client with URL: https://hlqvzgwmbejiviaekdns.supabase.co...
+2025-08-27 21:22:43 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:73 - Supabase服务初始化成功
+2025-08-27 21:22:44 - [32mapp.services.video_analysis_service[0m - [32mINFO[0m - __init__:56 - VideoAnalysisService initialized with VL_LLM configuration
+2025-08-27 21:22:44 - [32mapp.services.video_analysis_service[0m - [32mINFO[0m - _load_config:108 - Configuration loaded from D:\TAKODATA\Ecliptrix\backend-services\basic-service\config\video-analysis-config.yaml
+2025-08-27 21:22:44 - [32mapp.services.video_analysis_service[0m - [32mINFO[0m - __init__:60 - VideoAnalysisService initialized with config: concurrent_threads=5, default_frame_interval=5s
+2025-08-27 21:22:44 - [32mapp.services.video_search_service[0m - [32mINFO[0m - __init__:26 - VideoSearchService initialized with 3 API keys
+2025-08-27 21:22:44 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _load_video_download_config:101 - Video download configuration loaded successfully
+2025-08-27 21:22:44 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-27 21:22:44 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-27 21:22:44 - [32mapp.services.youtube_service[0m - [32mINFO[0m - __init__:39 - YouTube服务初始化完成，下载目录: static\video\youtube
+2025-08-27 21:22:44 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _check_ffmpeg:78 - ffmpeg is available
+2025-08-27 21:22:44 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - __init__:71 - VideoCompositionService initialized with subtitle and YouTube support
+2025-08-27 21:22:44 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-27 21:22:44 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-27 21:22:44 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-27 21:22:44 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-27 21:22:44 - [32mapp.services.batch_tts_service[0m - [32mINFO[0m - __init__:29 - BatchTTSService初始化
+2025-08-27 21:22:44 - [32mapp.services.audio_transcription_service[0m - [32mINFO[0m - __init__:39 - 音频转字幕服务初始化完成
+2025-08-27 21:22:44 - [32mapp.services.audio_search_service[0m - [32mINFO[0m - __init__:36 - Audio search service initialized with Freesound API
+2025-08-27 21:22:44 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-27 21:22:44 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - <module>:280 - FastAPI application configured successfully
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:44 - Starting Basic Service API v1.0.0
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:45 - Debug mode: False
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:46 - Log level: DEBUG
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:47 - Server will run on 0.0.0.0:8000
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:50 - Third-party library logging configured to prevent sensitive data leakage
+2025-08-27 21:22:44 - [36mapp.main[0m - [36mDEBUG[0m - lifespan:51 - OpenAI logger level: 30
+2025-08-27 21:22:44 - [36mapp.main[0m - [36mDEBUG[0m - lifespan:52 - HTTPX logger level: 30
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:62 - VL LLM configuration found - video analysis features available
+2025-08-27 21:22:44 - [32mapp.main[0m - [32mINFO[0m - lifespan:66 - Application startup completed
+2025-08-27 21:52:34 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-27 21:52:34 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-27 21:52:34 - [32mbasic_service[0m - [32mINFO[0m - main:12 - Starting Basic Service...
+2025-08-27 21:52:34 - [32mbasic_service[0m - [32mINFO[0m - main:13 - Server configuration: 0.0.0.0:8000
+2025-08-27 21:52:34 - [32mbasic_service[0m - [32mINFO[0m - main:14 - Debug mode: False
+2025-08-27 21:52:34 - [32mbasic_service[0m - [32mINFO[0m - main:15 - Log level: DEBUG
+2025-08-27 21:52:34 - [36masyncio[0m - [36mDEBUG[0m - __init__:630 - Using proactor: IocpProactor
+2025-08-27 21:52:35 - [32mapp.services.youtube_service[0m - [32mINFO[0m - __init__:39 - YouTube服务初始化完成，下载目录: static\video\youtube
+2025-08-27 21:52:35 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:49 - Initializing Supabase client with URL: https://hlqvzgwmbejiviaekdns.supabase.co...
+2025-08-27 21:52:36 - [32mapp.services.supabase_service[0m - [32mINFO[0m - __init__:73 - Supabase服务初始化成功
+2025-08-27 21:52:36 - [32mapp.services.video_analysis_service[0m - [32mINFO[0m - __init__:56 - VideoAnalysisService initialized with VL_LLM configuration
+2025-08-27 21:52:36 - [32mapp.services.video_analysis_service[0m - [32mINFO[0m - _load_config:108 - Configuration loaded from D:\TAKODATA\Ecliptrix\backend-services\basic-service\config\video-analysis-config.yaml
+2025-08-27 21:52:36 - [32mapp.services.video_analysis_service[0m - [32mINFO[0m - __init__:60 - VideoAnalysisService initialized with config: concurrent_threads=5, default_frame_interval=5s
+2025-08-27 21:52:36 - [32mapp.services.video_search_service[0m - [32mINFO[0m - __init__:26 - VideoSearchService initialized with 3 API keys
+2025-08-27 21:52:36 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _load_video_download_config:101 - Video download configuration loaded successfully
+2025-08-27 21:52:37 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-27 21:52:37 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-27 21:52:37 - [32mapp.services.youtube_service[0m - [32mINFO[0m - __init__:39 - YouTube服务初始化完成，下载目录: static\video\youtube
+2025-08-27 21:52:37 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - _check_ffmpeg:78 - ffmpeg is available
+2025-08-27 21:52:37 - [32mapp.services.video_composition_service[0m - [32mINFO[0m - __init__:71 - VideoCompositionService initialized with subtitle and YouTube support
+2025-08-27 21:52:37 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - _check_ffmpeg:53 - ffmpeg is available for subtitle processing
+2025-08-27 21:52:37 - [32mapp.services.subtitle_service[0m - [32mINFO[0m - __init__:46 - SubtitleService initialized
+2025-08-27 21:52:37 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-27 21:52:37 - [32mapp.services.tts_service[0m - [32mINFO[0m - _check_ffmpeg:309 - ffmpeg is available for audio duration detection
+2025-08-27 21:52:37 - [32mapp.services.batch_tts_service[0m - [32mINFO[0m - __init__:29 - BatchTTSService初始化
+2025-08-27 21:52:37 - [32mapp.services.audio_transcription_service[0m - [32mINFO[0m - __init__:39 - 音频转字幕服务初始化完成
+2025-08-27 21:52:37 - [32mapp.services.audio_search_service[0m - [32mINFO[0m - __init__:36 - Audio search service initialized with Freesound API
+2025-08-27 21:52:37 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:92 - Logging initialized with level: DEBUG
+2025-08-27 21:52:37 - [32mbasic_service[0m - [32mINFO[0m - setup_logging:93 - Log file location: logs\app.log
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - <module>:280 - FastAPI application configured successfully
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:44 - Starting Basic Service API v1.0.0
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:45 - Debug mode: False
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:46 - Log level: DEBUG
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:47 - Server will run on 0.0.0.0:8000
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:50 - Third-party library logging configured to prevent sensitive data leakage
+2025-08-27 21:52:37 - [36mapp.main[0m - [36mDEBUG[0m - lifespan:51 - OpenAI logger level: 30
+2025-08-27 21:52:37 - [36mapp.main[0m - [36mDEBUG[0m - lifespan:52 - HTTPX logger level: 30
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:62 - VL LLM configuration found - video analysis features available
+2025-08-27 21:52:37 - [32mapp.main[0m - [32mINFO[0m - lifespan:66 - Application startup completed
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 21:56:57 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 21:56:57 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 21:56:57 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 21:56:57 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 21:56:57 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 21:56:57 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 21:56:57 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 21:56:57 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 21:56:57 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.057s
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.057s
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 21:56:57 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 21:56:57 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 21:56:57 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.007s
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 21:56:57 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 21:56:57 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 21:56:57 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 21:56:57 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 21:56:57 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 21:56:57 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 21:56:57 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.068s
+2025-08-27 21:56:57 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 21:56:57 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.013s
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 21:56:57 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 21:56:57 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 21:56:57 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 21:56:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:23:27 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:23:27 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:23:27 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:23:27 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:23:27 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:23:27 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:23:27 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:23:27 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:23:27 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.035s
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.033s
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:23:27 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:23:27 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:23:27 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.000s
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:23:27 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:23:27 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:23:27 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:23:27 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:23:27 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:23:27 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:23:27 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.030s
+2025-08-27 22:23:27 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:23:27 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:23:27 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:23:27 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:23:27 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:23:27 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.000s
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:33:49 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:33:49 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:33:49 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:33:49 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:33:49 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:33:49 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:33:49 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:33:49 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:33:49 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.060s
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.062s
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:33:49 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:33:49 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:33:49 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.003s
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:33:49 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:33:49 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:33:49 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:33:49 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:33:49 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:33:49 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:33:49 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.049s
+2025-08-27 22:33:49 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:33:49 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.003s
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:33:49 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:33:49 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:33:49 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:33:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.001s
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:43:08 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:43:08 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:43:08 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:43:08 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:43:08 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:43:08 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:43:08 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:43:08 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:43:08 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.078s
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.076s
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:43:08 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:43:08 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:43:08 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.001s
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:43:08 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:43:08 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:43:08 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:43:08 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:43:08 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:43:08 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:43:08 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.032s
+2025-08-27 22:43:08 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:43:08 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:43:08 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:43:08 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:43:08 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:43:08 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.001s
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:50:59 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:50:59 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:50:59 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:50:59 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:50:59 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:50:59 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:50:59 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:50:59 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:50:59 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.033s
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.033s
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:50:59 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:50:59 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:50:59 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.000s
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:50:59 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:50:59 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:50:59 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:50:59 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:50:59 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:50:59 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:50:59 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.034s
+2025-08-27 22:50:59 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:50:59 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:50:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
+2025-08-27 22:51:00 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:51:00 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:51:00 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:51:00 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:51:00 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.001s
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:55:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:55:03 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:55:03 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:55:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:55:03 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:55:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:55:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:55:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:55:03 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.032s
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.030s
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:55:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:55:03 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:55:03 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/tts/voice-types
+2025-08-27 22:55:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:55:03 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:187 - 收到获取音色列表请求
+2025-08-27 22:55:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:667 - 开始从配置文件加载音色列表
+2025-08-27 22:55:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:686 - 从配置文件加载音色
+2025-08-27 22:55:03 - [32mapp.services.tts_service[0m - [32mINFO[0m - get_available_voice_types:703 - 音色列表加载成功
+2025-08-27 22:55:03 - [32mapp.routers.tts_router[0m - [32mINFO[0m - get_voice_types:191 - 获取音色列表成功
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:55:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.032s
+2025-08-27 22:55:03 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:55:03 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:110 - Request: GET http://localhost:8000/api/config
+2025-08-27 22:55:03 - [36mapp.main[0m - [36mDEBUG[0m - logging_middleware:111 - Request headers: {'host': 'localhost:8000', 'connection': 'keep-alive', 'content-type': 'application/json', 'accept': '*/*', 'accept-language': '*', 'sec-fetch-mode': 'cors', 'user-agent': 'node', 'accept-encoding': 'gzip, deflate'}
+2025-08-27 22:55:03 - [32mapp.routers.api_router[0m - [32mINFO[0m - get_config:93 - Configuration endpoint accessed
+2025-08-27 22:55:03 - [36mapp.routers.api_router[0m - [36mDEBUG[0m - get_config:134 - Configuration info returned: {'app_name': 'Basic Service API', 'app_version': '1.0.0', 'log_level': 'DEBUG', 'debug': False, 'llm_api_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'host': '0.0.0.0', 'port': 8000, 'youtube': {'download': {'max_concurrent_downloads': 3, 'download_timeout': 300, 'max_retries': 3, 'retry_delay': 5}, 'upload': {'upload_timeout': 600, 'max_retries': 3, 'retry_delay': 10}, 'quality': {'default_video_quality': '720p', 'default_audio_quality': 'best', 'default_format': 'mp4'}, 'file_management': {'auto_cleanup': True, 'temp_file_retention_hours': 24, 'generate_thumbnail': True}, 'logging': {'enable_detailed_logging': True, 'log_download_progress': True, 'progress_log_interval': 10}}}
+2025-08-27 22:55:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:121 - Response: 200 - 0.002s
