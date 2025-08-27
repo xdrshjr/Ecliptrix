@@ -168,6 +168,9 @@ export interface TimelineItem {
   clipEnd?: number;        // 原始素材中的结束时间（秒）
   originalDuration?: number; // 原始素材的总时长（秒）
   
+  // 新增：原始素材类型，用于区分图片和视频素材
+  originalMaterialType?: MaterialType;
+  
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）
 }

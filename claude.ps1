@@ -1,8 +1,6 @@
-$env:ANTHROPIC_BASE_URL = "http://localhost:4141/"
-$env:ANTHROPIC_AUTH_TOKEN = "dummy"
-$env:ANTHROPIC_MODEL = "claude-sonnet-4"
-$env:ANTHROPIC_SMALL_FAST_MODEL = "claude-3.7-sonnet"
-$env:DISABLE_NON_ESSENTIAL_MODEL_CALLS = "1"
-$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+$env:ANTHROPIC_BASE_URL = "https://club.383338.xyz"
+$env:ANTHROPIC_AUTH_TOKEN = "sk-rMpbRKCDnxyTEFQ1s2Yxz5cTIedfLYulo7nYEFtVsBDK3LpK"
+$env:ANTHROPIC_MODEL="claude-sonnet-4-20250514"
+$env:ANTHROPIC_SMALL_FAST_MODEL="claude-3-5-haiku-20241022"
 
 claude
