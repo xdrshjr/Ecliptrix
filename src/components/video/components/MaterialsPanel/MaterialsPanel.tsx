@@ -6,6 +6,7 @@ import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -43,6 +44,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   confirmationDialog,
   handleCloseConfirmationDialog
 }) => {
+  const { t } = useLocale();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'MaterialsPanel'
@@ -253,14 +255,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           url: material.url
         });
       } else {
-        throw new Error('无法获取字幕内容');
+        throw new Error(t.materialsPanel.subtitleContentError);
       }
     } catch (error) {
       logger.error('字幕文件下载失败', new Error(error instanceof Error ? error.message : String(error)), {
         materialId: material.id,
         materialName: material.name
       });
-      alert(`字幕文件下载失败: ${error instanceof Error ? error.message : String(error)}`);
+      alert(`${t.materialsPanel.subtitleDownloadError}: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -417,7 +419,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">素材管理</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t.materialsPanel.title}</h3>
           </div>
           <div className="flex items-center space-x-2">
             {/* 新增：AI解析视频按钮 */}
@@ -439,7 +441,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 }}
                 disabled={isBatchAnalyzing}
                 className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title={isBatchAnalyzing ? "正在批量解析视频..." : "对所有视频素材进行AI解析，生成详细的内容描述"}
+                title={isBatchAnalyzing ? t.materialsPanel.batchAnalyzing : t.materialsPanel.batchAnalysisTooltip}
               >
                 {isBatchAnalyzing ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -467,7 +469,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   onAutoMixAudio();
                 }}
                 className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors duration-200"
-                title="将所有文本脚本转换的音频和关联的视频按顺序自动添加到时间轴"
+                title={t.materialsPanel.aiAutoMixTooltip}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -480,7 +482,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               onClick={handleUploadClick}
               disabled={isUploading}
               className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              title={isUploading ? `上传中 ${uploadProgress.toFixed(0)}%` : "上传素材"}
+              title={isUploading ? `${t.materialsPanel.uploadingProgress} ${uploadProgress.toFixed(0)}%` : t.materialsPanel.uploadTooltip}
             >
               {isUploading ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -510,10 +512,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {type === 'all' ? '全部' : 
-               type === 'video' ? '视频' :
-               type === 'audio' ? '音频' : 
-               type === 'image' ? '图片' : '字幕'}
+              {type === 'all' ? t.materialsPanel.filterAll : 
+               type === 'video' ? t.materialsPanel.filterVideo :
+               type === 'audio' ? t.materialsPanel.filterAudio : 
+               type === 'image' ? t.materialsPanel.filterImage : t.materialsPanel.filterSubtitle}
             </button>
           ))}
         </div>
@@ -531,9 +533,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">暂无素材</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">{t.materialsPanel.noMaterials}</h3>
               <p className="text-sm text-gray-500 text-center max-w-sm">
-                素材库为空，可以通过上传或搜索功能来添加素材
+                {t.materialsPanel.emptyDescription}
               </p>
             </div>
           ) : (
@@ -619,7 +621,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {material.downloadStatus === 'downloading' && (
                       <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center">
                         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-white text-xs font-medium">正在下载视频</span>
+                        <span className="text-white text-xs font-medium">{t.materialsPanel.downloadingVideo}</span>
                         {material.downloadProgress !== undefined && (
                           <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
                             <div 
@@ -637,7 +639,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         <svg className="w-6 h-6 text-white mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span className="text-white text-xs font-medium text-center px-1">下载失败</span>
+                        <span className="text-white text-xs font-medium text-center px-1">{t.materialsPanel.downloadFailed}</span>
                         {material.downloadError && (
                           <span className="text-white text-xs opacity-80 text-center px-1 mt-1" title={material.downloadError}>
                             {material.downloadError.length > 20 ? `${material.downloadError.substring(0, 20)}...` : material.downloadError}
@@ -647,9 +649,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           <button
                             onClick={() => onRetryDownload(material)}
                             className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-                            title="重试下载"
+                            title={t.materialsPanel.retryDownload}
                           >
-                            重试下载
+                            {t.materialsPanel.retryDownload}
                           </button>
                         )}
                       </div>
@@ -663,9 +665,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         material.type === 'subtitle' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-purple-100 text-purple-800'
                       }`}>
-                        {material.type === 'video' ? '视频' :
-                         material.type === 'audio' ? '音频' : 
-                         material.type === 'subtitle' ? '字幕' : '图片'}
+                        {material.type === 'video' ? t.materialsPanel.typeVideo :
+                         material.type === 'audio' ? t.materialsPanel.typeAudio : 
+                         material.type === 'subtitle' ? t.materialsPanel.typeSubtitle : t.materialsPanel.typeImage}
                       </span>
                     </div>
                     
@@ -674,7 +676,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       <button
                         onClick={(e) => handleSingleMaterialDelete(material, e)}
                         className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
-                        title={`删除素材: ${material.name}`}
+                        title={t.materialsPanel.deleteMaterialTooltip.replace('{name}', material.name)}
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -703,10 +705,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                             } text-white`}
                             title={
                               isAnalyzing 
-                                ? 'AI解析中...' 
+                                ? t.materialsPanel.aiAnalyzing 
                                 : isCompleted 
-                                  ? '查看解析结果' 
-                                  : 'AI视频解析'
+                                  ? t.materialsPanel.viewAnalysisResult 
+                                  : t.materialsPanel.aiVideoAnalysis
                             }
                           >
                             {isAnalyzing ? (
@@ -773,23 +775,23 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               <button
                 onClick={handleSearchClick}
                 className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                title="搜索在线视频"
+                title={t.materialsPanel.searchVideosTooltip}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <span>搜索视频</span>
+                <span>{t.materialsPanel.searchVideos}</span>
               </button>
 
               <button
                 onClick={handleSearchAudiosClick}
                 className="flex items-center space-x-1 text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 px-2 py-1 rounded transition-colors"
-                title="搜索在线音频"
+                title={t.materialsPanel.searchAudiosTooltip}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                 </svg>
-                <span>搜索音频</span>
+                <span>{t.materialsPanel.searchAudios}</span>
               </button>
               
               {/* 新增：删除全部按钮 */}
@@ -797,17 +799,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <button
                   onClick={handleDeleteAllClick}
                   className="flex items-center space-x-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded transition-colors"
-                  title={`删除当前选项卡的所有素材 (${materials.length}个)`}
+                  title={t.materialsPanel.deleteAllTooltip.replace('{count}', materials.length.toString())}
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  <span>删除全部</span>
+                  <span>{t.materialsPanel.deleteAll}</span>
                 </button>
               )}
             </div>
             <div className="text-gray-500">
-              {materials.length}个素材
+              {materials.length}{t.materialsPanel.materialsCount}
             </div>
           </div>
         </div>
