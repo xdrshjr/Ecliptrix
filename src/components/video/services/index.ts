@@ -68,4 +68,9 @@ export type {
 export {
   ComfyUIHealthServiceImpl,
   createComfyUIHealthService
-} from './comfyuiHealthService'; 
+} from './comfyuiHealthService';
+
+// Prompt Optimization Service
+export {
+  PromptOptimizationService
+} from './promptOptimizationService'; 

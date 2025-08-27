@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { UseAIImageGenerationReturn } from '../../types';
 import { VideoEditingLogger } from '../../utils';
+import { PromptOptimizationService } from '../../services';
 import ImagePreviewModal from '../ImagePreviewModal';
 
 interface AIImageGenerationModalProps extends UseAIImageGenerationReturn {}
@@ -107,6 +108,11 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
 
   // 图片预览状态
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  
+  // 提示词优化状态
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizationError, setOptimizationError] = useState<string | null>(null);
+  const [promptOptimizationService] = useState(() => new PromptOptimizationService(taskId));
 
   useEffect(() => {
     if (isModalOpen) {
@@ -186,6 +192,69 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     }
   };
 
+  // 处理AI提示词优化
+  const handleOptimizePrompts = async () => {
+    if (!positivePrompt.trim()) {
+      setOptimizationError('请先输入正向提示词');
+      logger.warn('AI提示词优化失败：正向提示词为空');
+      return;
+    }
+
+    setIsOptimizing(true);
+    setOptimizationError(null);
+
+    try {
+      logger.userAction('点击AI辅助生成按钮', 'optimizeButton', {
+        positivePromptLength: positivePrompt.length,
+        negativePromptLength: negativePrompt.length,
+        hasNegativePrompt: !!negativePrompt.trim()
+      });
+
+      const optimizedPrompts = await promptOptimizationService.optimizePrompts({
+        positivePrompt,
+        negativePrompt
+      });
+
+      // 验证优化结果
+      if (!promptOptimizationService.validateOptimizedPrompts(optimizedPrompts)) {
+        throw new Error('优化结果验证失败');
+      }
+
+      // 更新提示词
+      setPositivePrompt(optimizedPrompts.positivePrompt);
+      setNegativePrompt(optimizedPrompts.negativePrompt);
+
+      logger.userAction('AI提示词优化成功', 'optimizeSuccess', {
+        originalPositiveLength: positivePrompt.length,
+        originalNegativeLength: negativePrompt.length,
+        optimizedPositiveLength: optimizedPrompts.positivePrompt.length,
+        optimizedNegativeLength: optimizedPrompts.negativePrompt.length,
+        improvementRatio: {
+          positive: (optimizedPrompts.positivePrompt.length / positivePrompt.length).toFixed(2),
+          negative: negativePrompt ? (optimizedPrompts.negativePrompt.length / negativePrompt.length).toFixed(2) : 'N/A'
+        }
+      });
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '优化失败';
+      setOptimizationError(errorMessage);
+      
+      logger.error('AI提示词优化失败', error as Error, {
+        originalPositiveLength: positivePrompt.length,
+        originalNegativeLength: negativePrompt.length,
+        errorMessage
+      });
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  // 清除优化错误
+  const handleClearOptimizationError = () => {
+    setOptimizationError(null);
+    logger.info('清除提示词优化错误信息');
+  };
+
   const commonDimensions = [
     { label: '1:1 正方形', width: 1024, height: 1024 },
     { label: '16:9 横屏', width: 1024, height: 576 },
@@ -250,20 +319,62 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
               <div className="space-y-8">
                 {/* 提示词设置 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-800 mb-3">
-                    正向提示词 <span className="text-red-400">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="block text-sm font-medium text-gray-800">
+                      正向提示词 <span className="text-red-400">*</span>
+                    </label>
+                    <button
+                      onClick={handleOptimizePrompts}
+                      disabled={isGenerating || isOptimizing || !positivePrompt.trim()}
+                      className="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md disabled:shadow-none flex items-center space-x-1"
+                      title="AI辅助生成优化提示词"
+                    >
+                      {isOptimizing ? (
+                        <>
+                          <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>优化中</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          <span>AI辅助生成</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <textarea
                     value={positivePrompt}
                     onChange={(e) => setPositivePrompt(e.target.value)}
                     placeholder="描述你想要生成的图片，例如：A beautiful landscape with mountains and rivers, digital art style"
                     className="w-full h-24 px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none text-sm transition-all duration-200 shadow-sm"
-                    disabled={isGenerating}
+                    disabled={isGenerating || isOptimizing}
                   />
                   <div className="text-xs text-gray-500 mt-2 text-right">
                     {positivePrompt.length}/5000 字符
                   </div>
                 </div>
+
+                {/* 优化错误信息 */}
+                {optimizationError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <div className="flex items-start">
+                      <svg className="w-5 h-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-red-800 break-words">提示词优化失败: {optimizationError}</p>
+                        <button
+                          onClick={handleClearOptimizationError}
+                          className="text-xs text-red-600 hover:text-red-800 mt-2 font-medium"
+                        >
+                          清除错误
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-800 mb-3">
@@ -274,7 +385,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                     onChange={(e) => setNegativePrompt(e.target.value)}
                     placeholder="描述你不希望出现在图片中的内容"
                     className="w-full h-20 px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none text-sm transition-all duration-200 shadow-sm"
-                    disabled={isGenerating}
+                    disabled={isGenerating || isOptimizing}
                   />
                   <div className="text-xs text-gray-500 mt-2 text-right">
                     {negativePrompt.length}/2000 字符
@@ -298,7 +409,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                           setHeight(h);
                         }}
                         className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm appearance-none cursor-pointer"
-                        disabled={isGenerating}
+                        disabled={isGenerating || isOptimizing}
                       >
                         {commonDimensions.map((dim) => (
                           <option key={dim.label} value={`${dim.width}x${dim.height}`}>
@@ -321,7 +432,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                           max="2048"
                           step="8"
                           className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm"
-                          disabled={isGenerating}
+                          disabled={isGenerating || isOptimizing}
                         />
                       </div>
                       <div>
@@ -334,7 +445,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                           max="2048"
                           step="8"
                           className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm"
-                          disabled={isGenerating}
+                          disabled={isGenerating || isOptimizing}
                         />
                       </div>
                     </div>
@@ -357,7 +468,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                         min="1"
                         max="100"
                         className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer slider-thumb disabled:opacity-50"
-                        disabled={isGenerating}
+                        disabled={isGenerating || isOptimizing}
                         style={{
                           background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(steps - 1) / 99 * 100}%, #e5e7eb ${(steps - 1) / 99 * 100}%, #e5e7eb 100%)`
                         }}
@@ -377,7 +488,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                         max="20"
                         step="0.1"
                         className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer slider-thumb disabled:opacity-50"
-                        disabled={isGenerating}
+                        disabled={isGenerating || isOptimizing}
                         style={{
                           background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(cfg - 0.1) / 19.9 * 100}%, #e5e7eb ${(cfg - 0.1) / 19.9 * 100}%, #e5e7eb 100%)`
                         }}
@@ -397,7 +508,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                         max="20"
                         step="0.1"
                         className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer slider-thumb disabled:opacity-50"
-                        disabled={isGenerating}
+                        disabled={isGenerating || isOptimizing}
                         style={{
                           background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(guidance - 0.1) / 19.9 * 100}%, #e5e7eb ${(guidance - 0.1) / 19.9 * 100}%, #e5e7eb 100%)`
                         }}
@@ -414,12 +525,12 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                           onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : null)}
                           placeholder="随机"
                           className="flex-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm"
-                          disabled={isGenerating}
+                          disabled={isGenerating || isOptimizing}
                         />
                         <button
                           onClick={() => setSeed(Math.floor(Math.random() * 1000000))}
                           className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 shadow-sm disabled:opacity-50"
-                          disabled={isGenerating}
+                          disabled={isGenerating || isOptimizing}
                           title="随机种子"
                         >
                           🎲
@@ -434,7 +545,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                       value={checkpoint}
                       onChange={(e) => setCheckpoint(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm appearance-none cursor-pointer"
-                      disabled={isGenerating}
+                      disabled={isGenerating || isOptimizing}
                     >
                       {commonCheckpoints.map((cp) => (
                         <option key={cp} value={cp}>
@@ -471,7 +582,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
             <div className="border-t border-gray-100 p-6 bg-white/80 backdrop-blur-sm">
               <button
                 onClick={handleGenerateClick}
-                disabled={isGenerating || !positivePrompt.trim()}
+                disabled={isGenerating || isOptimizing || !positivePrompt.trim()}
                 className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 disabled:shadow-none"
               >
                 {isGenerating ? (
