@@ -15,6 +15,7 @@ export const useAIImageGeneration = (
 
   const aiImageService = useMemo(() => createAIImageGenerationService(taskId), [taskId]);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const downloadedPromptIds = useRef<Set<string>>(new Set());
 
   // 弹窗状态
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -50,9 +51,19 @@ export const useAIImageGeneration = (
   const startPolling = useCallback((promptId: string) => {
     clearPolling();
     
+    logger.info('开始轮询生成状态', { promptId });
+    
     const poll = async () => {
       try {
         const status = await aiImageService.getGenerationStatus(promptId);
+        
+        logger.debug('轮询状态更新', {
+          promptId,
+          status: status.status,
+          progress: status.progress,
+          imagesCount: status.images?.length || 0,
+          hasDownloaded: downloadedPromptIds.current.has(promptId)
+        });
         
         setGenerationStatus(status.status);
         setGenerationProgress(status.progress || 0);
@@ -61,21 +72,52 @@ export const useAIImageGeneration = (
           clearPolling();
           setIsGenerating(false);
           
-          if (status.images && status.images.length > 0) {
-            // 使用prompt_id下载图片（ComfyUI API服务按prompt_id提供下载）
+          // 检查是否已经下载过这个promptId
+          if (!downloadedPromptIds.current.has(promptId) && status.images && status.images.length > 0) {
+            // 标记为已下载，防止重复下载
+            downloadedPromptIds.current.add(promptId);
+            
             try {
               const url = await aiImageService.downloadImageByPromptId(promptId);
-              // 修复：将新图片添加到最前面，而不是替换整个数组
-              setGeneratedImages(prev => [url, ...prev]);
+              
+              // 检查URL是否已存在，防止重复添加
+              setGeneratedImages(prev => {
+                if (prev.includes(url)) {
+                  logger.warn('图片URL已存在，跳过添加', {
+                    promptId,
+                    url: url.substring(0, 100),
+                    existingCount: prev.length
+                  });
+                  return prev;
+                }
+                
+                logger.info('添加新图片到生成结果', {
+                  promptId,
+                  url: url.substring(0, 100),
+                  previousCount: prev.length,
+                  newCount: prev.length + 1
+                });
+                
+                return [url, ...prev];
+              });
               
               logger.info('AI图片下载完成', {
                 promptId,
                 imagesCount: 1,
-                totalGenerated: status.images.length
+                totalGenerated: status.images.length,
+                downloadedPromptsCount: downloadedPromptIds.current.size
               });
             } catch (error) {
               logger.error('下载生成图片失败', error as Error, { promptId });
+              // 移除失败的promptId，允许重试
+              downloadedPromptIds.current.delete(promptId);
             }
+          } else {
+            logger.info('图片已下载或无图片可下载', {
+              promptId,
+              hasDownloaded: downloadedPromptIds.current.has(promptId),
+              imagesCount: status.images?.length || 0
+            });
           }
         } else if (status.status === 'failed') {
           clearPolling();
@@ -109,7 +151,8 @@ export const useAIImageGeneration = (
   const closeModal = useCallback(() => {
     logger.userAction('关闭AI生图弹窗', 'closeModal', {
       wasGenerating: isGenerating,
-      generatedImagesCount: generatedImages.length
+      generatedImagesCount: generatedImages.length,
+      downloadedPromptsCount: downloadedPromptIds.current.size
     });
     
     setIsModalOpen(false);
@@ -123,6 +166,9 @@ export const useAIImageGeneration = (
     setGenerationStatus('idle');
     setCurrentPromptId(null);
     
+    // 清空已下载记录
+    downloadedPromptIds.current.clear();
+    
     // 清空参数
     setPositivePrompt('');
     setNegativePrompt('low quality, blurry, distorted');
@@ -133,17 +179,23 @@ export const useAIImageGeneration = (
     setCfg(1.0);
     setGuidance(3.5);
     setCheckpoint('flux1-dev-fp8.safetensors');
+    
+    logger.info('AI生图弹窗已关闭，状态已重置');
   }, [logger, isGenerating, generatedImages.length, clearPolling]);
 
   // 开始生成
   const handleGenerate = useCallback(async () => {
     if (!positivePrompt.trim()) {
       setGenerationError('请输入正向提示词');
+      logger.warn('生成失败：正向提示词为空');
       return;
     }
 
     if (isGenerating) {
-      logger.warn('生成进行中，忽略重复请求');
+      logger.warn('生成进行中，忽略重复请求', {
+        currentStatus: generationStatus,
+        currentPromptId
+      });
       return;
     }
 
@@ -154,12 +206,13 @@ export const useAIImageGeneration = (
       steps,
       cfg,
       guidance,
-      checkpoint
+      checkpoint,
+      currentImagesCount: generatedImages.length,
+      downloadedPromptsCount: downloadedPromptIds.current.size
     });
 
     setIsGenerating(true);
     setGenerationProgress(0);
-    // 修复：不再清空已生成的图片
     setGenerationError(null);
     setGenerationStatus('pending');
 
@@ -179,6 +232,12 @@ export const useAIImageGeneration = (
       const response = await aiImageService.generateImage(request);
       setCurrentPromptId(response.prompt_id);
       
+      logger.info('图片生成请求已提交', {
+        promptId: response.prompt_id,
+        status: response.status,
+        estimatedTime: response.estimated_time
+      });
+      
       // 开始轮询状态
       startPolling(response.prompt_id);
       
@@ -192,7 +251,8 @@ export const useAIImageGeneration = (
     }
   }, [
     positivePrompt, negativePrompt, width, height, steps, seed, cfg, guidance, checkpoint,
-    isGenerating, aiImageService, startPolling, logger
+    isGenerating, generationStatus, currentPromptId, generatedImages.length,
+    aiImageService, startPolling, logger
   ]);
 
   // 添加到素材库（批量）
@@ -247,13 +307,16 @@ export const useAIImageGeneration = (
           addedCount: materials.length,
           totalImages: imageUrls.length
         });
+        return true;
       } else {
         logger.error('添加AI生成图片到素材库失败', new Error('onAddMaterials returned false'));
         setGenerationError('添加图片到素材库失败');
+        return false;
       }
     } catch (error) {
       logger.error('添加AI生成图片异常', error as Error);
       setGenerationError('添加图片到素材库时发生错误');
+      return false;
     }
   }, [onAddMaterials, positivePrompt, width, height, steps, cfg, guidance, checkpoint, logger]);
 

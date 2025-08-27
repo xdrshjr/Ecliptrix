@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { UseAIImageGenerationReturn } from '../../types';
 import { VideoEditingLogger } from '../../utils';
 import { PromptOptimizationService } from '../../services';
+import { useNotification } from '@/contexts/NotificationContext';
 import ImagePreviewModal from '../ImagePreviewModal';
 
 interface AIImageGenerationModalProps extends UseAIImageGenerationReturn {}
@@ -106,6 +107,9 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     component: 'AIImageGenerationModal'
   });
 
+  // Toast通知
+  const { showSuccess, showError } = useNotification();
+
   // 图片预览状态
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   
@@ -152,7 +156,15 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
       logger.userAction('添加所有生成图片到素材库', 'addAllButton', {
         imagesCount: generatedImages.length
       });
-      handleAddToMaterials(generatedImages);
+      
+      const success = handleAddToMaterials(generatedImages);
+      
+      // 显示Toast通知
+      if (success) {
+        showSuccess(`已成功添加 ${generatedImages.length} 张图片到素材库！`);
+      } else {
+        showError('添加图片到素材库失败，请稍后重试');
+      }
     }
   };
 
@@ -160,7 +172,15 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     logger.userAction('添加单张图片到素材库', 'addSingleButton', {
       imageIndex: index
     });
-    handleAddToMaterials([imageUrl]);
+    
+    const success = handleAddToMaterials([imageUrl]);
+    
+    // 显示Toast通知
+    if (success) {
+      showSuccess('图片已成功添加到素材库！');
+    } else {
+      showError('添加图片到素材库失败，请稍后重试');
+    }
   };
 
   // 处理图片点击预览
@@ -184,10 +204,14 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
   const handleAddFromPreview = async (imageUrl: string) => {
     try {
       const success = await handleAddSingleToMaterials(imageUrl);
-      if (!success) {
+      if (success) {
+        showSuccess('图片已成功添加到素材库！');
+      } else {
+        showError('添加图片到素材库失败，请稍后重试');
         logger.error('从预览弹窗添加图片到素材库失败', new Error('添加图片失败'));
       }
     } catch (error) {
+      showError('添加图片时发生错误，请稍后重试');
       logger.error('从预览弹窗添加图片异常', error as Error);
     }
   };
@@ -274,7 +298,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-[90vw] h-[85vh] max-w-7xl flex flex-col">
         {/* 标题栏 */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-white/80 backdrop-blur-sm rounded-t-lg">
           <div className="flex items-center space-x-4">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -285,19 +309,6 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
               <h2 className="text-xl font-semibold text-gray-900">AI生图</h2>
               <p className="text-sm text-gray-500">智能图片生成</p>
             </div>
-            {generationStatus !== 'idle' && (
-              <span className={`px-3 py-1.5 text-xs font-medium rounded-full shadow-sm ${
-                generationStatus === 'pending' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
-                generationStatus === 'running' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                generationStatus === 'completed' ? 'bg-green-50 text-green-700 border border-green-200' :
-                'bg-red-50 text-red-700 border border-red-200'
-              }`}>
-                {generationStatus === 'pending' ? '队列中' :
-                 generationStatus === 'running' ? '生成中' :
-                 generationStatus === 'completed' ? '已完成' :
-                 '失败'}
-              </span>
-            )}
           </div>
           <button
             onClick={handleClose}
@@ -579,7 +590,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
             </div>
 
             {/* 生成按钮 - 固定在左侧面板底部 */}
-            <div className="border-t border-gray-100 p-6 bg-white/80 backdrop-blur-sm">
+            <div className="border-t border-gray-100 p-6 bg-white/80 backdrop-blur-sm rounded-bl-lg">
               <button
                 onClick={handleGenerateClick}
                 disabled={isGenerating || isOptimizing || !positivePrompt.trim()}
@@ -600,7 +611,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
           {/* 右侧结果展示面板 */}
           <div className="w-[70%] flex flex-col overflow-hidden">
             {/* 标题栏 */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white/80 backdrop-blur-sm rounded-tr-lg">
               {generatedImages.length > 0 ? (
                 <>
                   <h3 className="text-lg font-medium text-gray-900">
@@ -619,7 +630,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
             </div>
 
             {/* 内容区域 - 支持滚动 */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto rounded-br-lg">
               {generatedImages.length === 0 ? (
                 <div className="h-full flex items-center justify-center p-8">
                   <div className="text-center">
@@ -651,38 +662,45 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                         />
                         
                         {/* 悬停操作层 */}
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-200 flex items-center justify-center">
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity space-x-2">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center">
+                          <div className="w-full p-3 flex justify-center space-x-2">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleAddSingleImageToMaterials(imageUrl, index);
                               }}
-                              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                              className="group/btn flex items-center justify-center w-9 h-9 bg-white/90 hover:bg-white text-gray-700 hover:text-blue-600 rounded-lg shadow-lg hover:shadow-xl backdrop-blur-sm transition-all duration-200 transform hover:scale-105"
                               title="添加到素材库"
                             >
-                              添加
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                              </svg>
                             </button>
                             <a
                               href={imageUrl}
                               download={`ai-generated-image-${index + 1}.png`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-block px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                              className="group/btn flex items-center justify-center w-9 h-9 bg-white/90 hover:bg-white text-gray-700 hover:text-green-600 rounded-lg shadow-lg hover:shadow-xl backdrop-blur-sm transition-all duration-200 transform hover:scale-105"
                               title="下载图片"
                             >
-                              下载
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
                             </a>
                           </div>
                         </div>
 
                         {/* 图片序号 */}
-                        <div className="absolute top-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
+                        <div className="absolute top-3 left-3 bg-white/90 text-gray-700 text-xs font-medium px-2.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm">
                           #{index + 1}
                         </div>
 
                         {/* 点击预览提示 */}
-                        <div className="absolute bottom-2 right-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                          点击预览
+                        <div className="absolute top-3 right-3 bg-white/90 text-gray-700 text-xs font-medium px-2.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
                         </div>
                       </div>
                     ))}
