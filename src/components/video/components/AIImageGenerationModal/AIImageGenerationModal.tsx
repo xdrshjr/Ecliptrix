@@ -6,6 +6,62 @@ import { VideoEditingLogger } from '../../utils';
 
 interface AIImageGenerationModalProps extends UseAIImageGenerationReturn {}
 
+// 苹果风格滑块样式
+const sliderStyles = `
+  .slider-thumb::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(59, 130, 246, 0.2);
+    transition: all 0.2s ease;
+  }
+  
+  .slider-thumb::-webkit-slider-thumb:hover {
+    background: #2563eb;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15), 0 0 0 2px rgba(59, 130, 246, 0.3);
+    transform: scale(1.1);
+  }
+  
+  .slider-thumb::-webkit-slider-thumb:active {
+    background: #1d4ed8;
+    transform: scale(0.95);
+  }
+  
+  .slider-thumb::-moz-range-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(59, 130, 246, 0.2);
+    transition: all 0.2s ease;
+  }
+  
+  .slider-thumb::-moz-range-thumb:hover {
+    background: #2563eb;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15), 0 0 0 2px rgba(59, 130, 246, 0.3);
+    transform: scale(1.1);
+  }
+  
+  .slider-thumb:disabled::-webkit-slider-thumb {
+    background: #d1d5db;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .slider-thumb:disabled::-moz-range-thumb {
+    background: #d1d5db;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
 const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
   isModalOpen,
   isGenerating,
@@ -110,23 +166,28 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <>
+      <style dangerouslySetInnerHTML={{ __html: sliderStyles }} />
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-[90vw] h-[85vh] max-w-7xl flex flex-col">
         {/* 标题栏 */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
+          <div className="flex items-center space-x-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-gray-900">AI生图</h2>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">AI生图</h2>
+              <p className="text-sm text-gray-500">智能图片生成</p>
+            </div>
             {generationStatus !== 'idle' && (
-              <span className={`px-2 py-1 text-xs rounded-full ${
-                generationStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                generationStatus === 'running' ? 'bg-blue-100 text-blue-800' :
-                generationStatus === 'completed' ? 'bg-green-100 text-green-800' :
-                'bg-red-100 text-red-800'
+              <span className={`px-3 py-1.5 text-xs font-medium rounded-full shadow-sm ${
+                generationStatus === 'pending' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                generationStatus === 'running' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                generationStatus === 'completed' ? 'bg-green-50 text-green-700 border border-green-200' :
+                'bg-red-50 text-red-700 border border-red-200'
               }`}>
                 {generationStatus === 'pending' ? '队列中' :
                  generationStatus === 'running' ? '生成中' :
@@ -137,10 +198,10 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
           </div>
           <button
             onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-3 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
             title="关闭"
           >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -149,232 +210,250 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
         {/* 主内容区域 */}
         <div className="flex flex-1 overflow-hidden">
           {/* 左侧参数设置面板 */}
-          <div className="w-1/2 border-r border-gray-200 p-4 overflow-y-auto">
-            <div className="space-y-6">
-              {/* 提示词设置 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  正向提示词 <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={positivePrompt}
-                  onChange={(e) => setPositivePrompt(e.target.value)}
-                  placeholder="描述你想要生成的图片，例如：A beautiful landscape with mountains and rivers, digital art style"
-                  className="w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-                  disabled={isGenerating}
-                />
-                <div className="text-xs text-gray-500 mt-1">
-                  {positivePrompt.length}/5000 字符
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  反向提示词
-                </label>
-                <textarea
-                  value={negativePrompt}
-                  onChange={(e) => setNegativePrompt(e.target.value)}
-                  placeholder="描述你不希望出现在图片中的内容"
-                  className="w-full h-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-                  disabled={isGenerating}
-                />
-                <div className="text-xs text-gray-500 mt-1">
-                  {negativePrompt.length}/2000 字符
-                </div>
-              </div>
-
-              {/* 图片尺寸 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  图片尺寸
-                </label>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {commonDimensions.map((dim) => (
-                    <button
-                      key={dim.label}
-                      onClick={() => {
-                        setWidth(dim.width);
-                        setHeight(dim.height);
-                      }}
-                      className={`px-3 py-2 text-sm border rounded-md transition-colors ${
-                        width === dim.width && height === dim.height
-                          ? 'bg-purple-50 border-purple-300 text-purple-700'
-                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                      disabled={isGenerating}
-                    >
-                      {dim.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">宽度</label>
-                    <input
-                      type="number"
-                      value={width}
-                      onChange={(e) => setWidth(Math.max(64, Math.min(2048, parseInt(e.target.value) || 1024)))}
-                      min="64"
-                      max="2048"
-                      step="8"
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
-                      disabled={isGenerating}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">高度</label>
-                    <input
-                      type="number"
-                      value={height}
-                      onChange={(e) => setHeight(Math.max(64, Math.min(2048, parseInt(e.target.value) || 1024)))}
-                      min="64"
-                      max="2048"
-                      step="8"
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
-                      disabled={isGenerating}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 高级参数 */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium text-gray-700">高级参数</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      采样步数: {steps}
-                    </label>
-                    <input
-                      type="range"
-                      value={steps}
-                      onChange={(e) => setSteps(parseInt(e.target.value))}
-                      min="1"
-                      max="100"
-                      className="w-full"
-                      disabled={isGenerating}
-                    />
-                    <div className="text-xs text-gray-500">推荐: 20-50</div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      CFG Scale: {cfg.toFixed(1)}
-                    </label>
-                    <input
-                      type="range"
-                      value={cfg}
-                      onChange={(e) => setCfg(parseFloat(e.target.value))}
-                      min="0.1"
-                      max="20"
-                      step="0.1"
-                      className="w-full"
-                      disabled={isGenerating}
-                    />
-                    <div className="text-xs text-gray-500">推荐: 1.0-7.0</div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      引导强度: {guidance.toFixed(1)}
-                    </label>
-                    <input
-                      type="range"
-                      value={guidance}
-                      onChange={(e) => setGuidance(parseFloat(e.target.value))}
-                      min="0.1"
-                      max="20"
-                      step="0.1"
-                      className="w-full"
-                      disabled={isGenerating}
-                    />
-                    <div className="text-xs text-gray-500">推荐: 3.0-7.0</div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">随机种子</label>
-                    <div className="flex space-x-1">
-                      <input
-                        type="number"
-                        value={seed || ''}
-                        onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : null)}
-                        placeholder="随机"
-                        className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        disabled={isGenerating}
-                      />
-                      <button
-                        onClick={() => setSeed(Math.floor(Math.random() * 1000000))}
-                        className="px-2 py-1 text-xs bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 transition-colors"
-                        disabled={isGenerating}
-                        title="随机种子"
-                      >
-                        🎲
-                      </button>
-                    </div>
+          <div className="w-[30%] border-r border-gray-100 flex flex-col bg-gray-50/30">
+            {/* 参数设置区域 - 可滚动 */}
+            <div className="flex-1 p-6 overflow-y-auto overflow-x-hidden">
+              <div className="space-y-8">
+                {/* 提示词设置 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-800 mb-3">
+                    正向提示词 <span className="text-red-400">*</span>
+                  </label>
+                  <textarea
+                    value={positivePrompt}
+                    onChange={(e) => setPositivePrompt(e.target.value)}
+                    placeholder="描述你想要生成的图片，例如：A beautiful landscape with mountains and rivers, digital art style"
+                    className="w-full h-24 px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none text-sm transition-all duration-200 shadow-sm"
+                    disabled={isGenerating}
+                  />
+                  <div className="text-xs text-gray-500 mt-2 text-right">
+                    {positivePrompt.length}/5000 字符
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">模型</label>
-                  <select
-                    value={checkpoint}
-                    onChange={(e) => setCheckpoint(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  <label className="block text-sm font-medium text-gray-800 mb-3">
+                    反向提示词
+                  </label>
+                  <textarea
+                    value={negativePrompt}
+                    onChange={(e) => setNegativePrompt(e.target.value)}
+                    placeholder="描述你不希望出现在图片中的内容"
+                    className="w-full h-20 px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none text-sm transition-all duration-200 shadow-sm"
                     disabled={isGenerating}
-                  >
-                    {commonCheckpoints.map((cp) => (
-                      <option key={cp} value={cp}>
-                        {cp.replace('.safetensors', '')}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <div className="text-xs text-gray-500 mt-2 text-right">
+                    {negativePrompt.length}/2000 字符
+                  </div>
                 </div>
-              </div>
 
-              {/* 错误信息 */}
-              {generationError && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                  <div className="flex">
-                    <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
+                {/* 图片尺寸 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-800 mb-3">
+                    图片尺寸
+                  </label>
+                  <div className="space-y-4">
+                    {/* 预设尺寸下拉框 */}
                     <div>
-                      <p className="text-sm text-red-800">{generationError}</p>
-                      <button
-                        onClick={clearError}
-                        className="text-xs text-red-600 hover:text-red-800 mt-1"
+                      <label className="block text-xs font-medium text-gray-600 mb-2">预设尺寸</label>
+                      <select
+                        value={`${width}x${height}`}
+                        onChange={(e) => {
+                          const [w, h] = e.target.value.split('x').map(Number);
+                          setWidth(w);
+                          setHeight(h);
+                        }}
+                        className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm appearance-none cursor-pointer"
+                        disabled={isGenerating}
                       >
-                        清除错误
-                      </button>
+                        {commonDimensions.map((dim) => (
+                          <option key={dim.label} value={`${dim.width}x${dim.height}`}>
+                            {dim.label} ({dim.width}×{dim.height})
+                          </option>
+                        ))}
+                        <option value="custom">自定义尺寸</option>
+                      </select>
+                    </div>
+                    
+                    {/* 自定义尺寸输入 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-2">宽度</label>
+                        <input
+                          type="number"
+                          value={width}
+                          onChange={(e) => setWidth(Math.max(64, Math.min(2048, parseInt(e.target.value) || 1024)))}
+                          min="64"
+                          max="2048"
+                          step="8"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm"
+                          disabled={isGenerating}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-2">高度</label>
+                        <input
+                          type="number"
+                          value={height}
+                          onChange={(e) => setHeight(Math.max(64, Math.min(2048, parseInt(e.target.value) || 1024)))}
+                          min="64"
+                          max="2048"
+                          step="8"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm"
+                          disabled={isGenerating}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
 
-              {/* 生成按钮 */}
-              <div>
-                <button
-                  onClick={handleGenerateClick}
-                  disabled={isGenerating || !positivePrompt.trim()}
-                  className="w-full bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-                >
-                  {isGenerating ? (
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>生成中... {generationProgress > 0 && `${generationProgress}%`}</span>
+                {/* 高级参数 */}
+                <div className="space-y-6">
+                  <h3 className="text-sm font-semibold text-gray-800">高级参数</h3>
+                  
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-3">
+                        采样步数: <span className="font-semibold text-gray-800">{steps}</span>
+                      </label>
+                      <input
+                        type="range"
+                        value={steps}
+                        onChange={(e) => setSteps(parseInt(e.target.value))}
+                        min="1"
+                        max="100"
+                        className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer slider-thumb disabled:opacity-50"
+                        disabled={isGenerating}
+                        style={{
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(steps - 1) / 99 * 100}%, #e5e7eb ${(steps - 1) / 99 * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="text-xs text-gray-500 mt-1">推荐: 20-50</div>
                     </div>
-                  ) : (
-                    '生成图片'
-                  )}
-                </button>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-3">
+                        CFG Scale: <span className="font-semibold text-gray-800">{cfg.toFixed(1)}</span>
+                      </label>
+                      <input
+                        type="range"
+                        value={cfg}
+                        onChange={(e) => setCfg(parseFloat(e.target.value))}
+                        min="0.1"
+                        max="20"
+                        step="0.1"
+                        className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer slider-thumb disabled:opacity-50"
+                        disabled={isGenerating}
+                        style={{
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(cfg - 0.1) / 19.9 * 100}%, #e5e7eb ${(cfg - 0.1) / 19.9 * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="text-xs text-gray-500 mt-1">推荐: 1.0-7.0</div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-3">
+                        引导强度: <span className="font-semibold text-gray-800">{guidance.toFixed(1)}</span>
+                      </label>
+                      <input
+                        type="range"
+                        value={guidance}
+                        onChange={(e) => setGuidance(parseFloat(e.target.value))}
+                        min="0.1"
+                        max="20"
+                        step="0.1"
+                        className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer slider-thumb disabled:opacity-50"
+                        disabled={isGenerating}
+                        style={{
+                          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(guidance - 0.1) / 19.9 * 100}%, #e5e7eb ${(guidance - 0.1) / 19.9 * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="text-xs text-gray-500 mt-1">推荐: 3.0-7.0</div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-3">随机种子</label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="number"
+                          value={seed || ''}
+                          onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : null)}
+                          placeholder="随机"
+                          className="flex-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm"
+                          disabled={isGenerating}
+                        />
+                        <button
+                          onClick={() => setSeed(Math.floor(Math.random() * 1000000))}
+                          className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 shadow-sm disabled:opacity-50"
+                          disabled={isGenerating}
+                          title="随机种子"
+                        >
+                          🎲
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-3">模型</label>
+                    <select
+                      value={checkpoint}
+                      onChange={(e) => setCheckpoint(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-200 shadow-sm appearance-none cursor-pointer"
+                      disabled={isGenerating}
+                    >
+                      {commonCheckpoints.map((cp) => (
+                        <option key={cp} value={cp}>
+                          {cp.replace('.safetensors', '')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 错误信息 */}
+                {generationError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <div className="flex items-start">
+                      <svg className="w-5 h-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-red-800 break-words">{generationError}</p>
+                        <button
+                          onClick={clearError}
+                          className="text-xs text-red-600 hover:text-red-800 mt-2 font-medium"
+                        >
+                          清除错误
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
+
+            {/* 生成按钮 - 固定在左侧面板底部 */}
+            <div className="border-t border-gray-100 p-6 bg-white/80 backdrop-blur-sm">
+              <button
+                onClick={handleGenerateClick}
+                disabled={isGenerating || !positivePrompt.trim()}
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 disabled:shadow-none"
+              >
+                {isGenerating ? (
+                  <div className="flex items-center justify-center space-x-3">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>生成中... {generationProgress > 0 && `${generationProgress}%`}</span>
+                  </div>
+                ) : (
+                  '生成图片'
+                )}
+              </button>
             </div>
           </div>
 
           {/* 右侧结果展示面板 */}
-          <div className="w-1/2 p-4 overflow-y-auto">
+          <div className="w-[70%] p-4 overflow-y-auto">
             <div className="h-full">
               {generatedImages.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
@@ -404,13 +483,14 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                     </button>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* 瀑布流布局 */}
+                  <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
                     {generatedImages.map((imageUrl, index) => (
-                      <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden group">
+                      <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden group break-inside-avoid mb-4">
                         <img
                           src={imageUrl}
                           alt={`AI生成图片 ${index + 1}`}
-                          className="w-full h-48 object-cover"
+                          className="w-full h-auto object-cover"
                         />
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity space-x-2">
@@ -441,6 +521,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 
