@@ -87,6 +87,7 @@ export interface Translations {
       unlock: string;
       show: string;
       hide: string;
+      selectAll: string;
       editSubtitles: string;
       dropVideoHere: string;
       dropAudioHere: string;
@@ -384,6 +385,7 @@ export const translations: Record<string, Translations> = {
         unlock: 'Unlock Track',
         show: 'Show Track',
         hide: 'Hide Track',
+        selectAll: 'Select All',
         editSubtitles: 'Edit Subtitles',
         dropVideoHere: 'Drag video/image materials here',
         dropAudioHere: 'Drag audio materials here',
@@ -653,6 +655,7 @@ export const translations: Record<string, Translations> = {
         unlock: '解锁轨道',
         show: '显示轨道',
         hide: '隐藏轨道',
+        selectAll: '全选',
         editSubtitles: '编辑字幕',
         dropVideoHere: '拖拽视频/图片素材到此轨道',
         dropAudioHere: '拖拽音频素材到此轨道',

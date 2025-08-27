@@ -1,14 +1,10 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { UseVideoSearchReturn } from '../../types';
+import { UseVideoSearchReturn, VideoLibraryType } from '../../types';
 import { VideoEditingLogger } from '../../utils/logger';
-import { SupportedLocale } from '@/lib/i18n';
-import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoSearchModalProps extends UseVideoSearchReturn {
-  taskId: string;
-  locale?: SupportedLocale; // 保持向后兼容性，但context优先
 }
 
 const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
@@ -20,6 +16,12 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   selectedResults,
   previewVideo,
   validationError,
+  // 新增：视频库相关props
+  activeLibrary,
+  youtubeSearchResults,
+  youtubeSelectedResults,
+  youtubePreviewVideo,
+  isYoutubeSearching,
   closeSearchModal,
   handleSearch,
   handleSearchResultSelect,
@@ -29,44 +31,68 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   setSearchQuery,
   setSearchOrientation,
   setValidationError,
-  taskId,
-  locale // 保持向后兼容性，但不再使用
+  // 新增：视频库切换和Youtube相关方法
+  setActiveLibrary,
+  handleYoutubeSearch,
+  handleYoutubeVideoPreview,
+  handleYoutubeResultSelect,
+  handleAddSelectedYoutubeVideos,
+  handleClearYoutubeSelection,
+  // 新增：YouTube时间范围相关props
+  youtubeDurationRange,
+  youtubeDurationPreset,
+  setYoutubeDurationRange,
+  setYoutubeDurationPreset,
+  taskId
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
     component: 'VideoSearchModal'
   });
 
-  // 使用LocaleContext获取国际化翻译
-  const { t, locale: contextLocale } = useLocale();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (isModalOpen) {
-      logger.info('模态框打开 - 新版双面板布局', {
+      logger.info('模态框打开 - 多视频库支持', {
         searchQuery,
         searchOrientation,
-        previousResultsCount: searchResults.length,
-        previousSelectionCount: selectedResults.size,
-        layoutType: 'search_and_selection_panels'
+        activeLibrary,
+        officialResultsCount: searchResults.length,
+        youtubeResultsCount: youtubeSearchResults.length,
+        officialSelectionCount: selectedResults.size,
+        youtubeSelectionCount: youtubeSelectedResults.size,
+        layoutType: 'tabbed_search_panels'
       });
     }
   }, [isModalOpen]);
 
   useEffect(() => {
-    logger.info('选择状态变化', {
-      selectionCount: selectedResults.size,
-      selectedVideoIds: Array.from(selectedResults),
-      totalResults: searchResults.length,
-      selectionRatio: searchResults.length > 0 ? selectedResults.size / searchResults.length : 0
-    });
-  }, [selectedResults]);
+    if (activeLibrary === 'official') {
+      logger.info('官方视频库选择状态变化', {
+        selectionCount: selectedResults.size,
+        selectedVideoIds: Array.from(selectedResults),
+        totalResults: searchResults.length,
+        selectionRatio: searchResults.length > 0 ? selectedResults.size / searchResults.length : 0
+      });
+    } else {
+      logger.info('Youtube视频库选择状态变化', {
+        selectionCount: youtubeSelectedResults.size,
+        selectedVideoIds: Array.from(youtubeSelectedResults),
+        totalResults: youtubeSearchResults.length,
+        selectionRatio: youtubeSearchResults.length > 0 ? youtubeSelectedResults.size / youtubeSearchResults.length : 0
+      });
+    }
+  }, [selectedResults, youtubeSelectedResults, activeLibrary]);
 
   const handleClose = () => {
     logger.info('模态框关闭', {
       searchQuery,
-      resultsCount: searchResults.length,
-      selectedCount: selectedResults.size,
+      activeLibrary,
+      officialResultsCount: searchResults.length,
+      youtubeResultsCount: youtubeSearchResults.length,
+      officialSelectedCount: selectedResults.size,
+      youtubeSelectedCount: youtubeSelectedResults.size,
       userAction: 'close_button'
     });
     
@@ -77,82 +103,93 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
     logger.info('执行搜索', {
       query: searchQuery,
       orientation: searchOrientation,
+      activeLibrary,
       queryLength: searchQuery.length,
       userAction: 'search_button'
     });
     
-    handleSearch();
+    if (activeLibrary === 'official') {
+      handleSearch();
+    } else {
+      handleYoutubeSearch();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && searchQuery.trim()) {
-      logger.info('回车键搜索', {
-        query: searchQuery,
-        orientation: searchOrientation,
-        userAction: 'keyboard_enter'
-      });
-      
-      handleSearch();
+      handleSearchClick();
     }
   };
 
-  const handleResultSelect = (videoId: number, isSelected: boolean) => {
-    logger.info('搜索结果选择变更', {
-      videoId,
-      isSelected,
-      totalSelected: selectedResults.size + (isSelected ? 1 : -1),
-      totalResults: searchResults.length,
-      userAction: 'video_card_click'
-    });
-    
-    handleSearchResultSelect(videoId, isSelected);
-  };
-
   const handleVideoClick = (video: any) => {
-    const isCurrentlySelected = selectedResults.has(video.id);
+    // 只处理预览，不处理选择
+    if (activeLibrary === 'official') {
+      handleVideoPreview(video);
+    } else {
+      handleYoutubeVideoPreview(video);
+    }
     
-    logger.info('视频卡片点击', {
+    logger.info('用户点击视频进行预览', {
       videoId: video.id,
       videoTitle: video.title,
-      currentlySelected: isCurrentlySelected,
-      willBeSelected: !isCurrentlySelected,
-      userAction: 'video_card_toggle_and_preview'
+      activeLibrary,
+      userAction: 'video_preview_click',
+      videoDimensions: `${video.width}x${video.height}`,
+      videoOrientation: video.width > video.height ? 'landscape' : 'portrait',
+      videoAspectRatio: (video.width / video.height).toFixed(2),
+      layoutConstraints: 'max-height-320px-object-contain'
     });
-    
-    // 设置预览视频
-    handleVideoPreview(video);
-    // 同时切换选择状态
-    handleSearchResultSelect(video.id, !isCurrentlySelected);
   };
 
-  const handleConfirmAdd = () => {
-    logger.info('确认添加按钮点击', {
-      selectedCount: selectedResults.size,
-      totalResults: searchResults.length,
-      selectedIds: Array.from(selectedResults),
-      userAction: 'confirm_add_button'
-    });
+  // 新增：处理单个视频添加到合成
+  const handleAddToComposition = (video: any, event: React.MouseEvent) => {
+    event.stopPropagation(); // 阻止事件冒泡到视频条目点击
     
-    handleAddSelectedVideos();
+    if (activeLibrary === 'official') {
+      const isSelected = selectedResults.has(video.id);
+      handleSearchResultSelect(video.id, !isSelected);
+      
+      logger.info('用户点击添加合成按钮 - 官方视频', {
+        videoId: video.id,
+        videoTitle: video.title,
+        action: isSelected ? 'remove' : 'add',
+        userAction: 'add_composition_button'
+      });
+    } else {
+      const isSelected = youtubeSelectedResults.has(video.id);
+      handleYoutubeResultSelect(video.id, !isSelected);
+      
+      logger.info('用户点击添加合成按钮 - Youtube视频', {
+        videoId: video.id,
+        videoTitle: video.title,
+        action: isSelected ? 'remove' : 'add',
+        userAction: 'add_composition_button'
+      });
+    }
+  };
+
+  const handleRemoveSelected = (videoId: number | string) => {
+    if (activeLibrary === 'official' && typeof videoId === 'number') {
+      handleSearchResultSelect(videoId, false);
+    } else if (activeLibrary === 'youtube' && typeof videoId === 'string') {
+      handleYoutubeResultSelect(videoId, false);
+    }
   };
 
   const handleReselect = () => {
-    logger.info('重新选择按钮点击', {
-      previousSelectionCount: selectedResults.size,
-      userAction: 'reselect_button'
-    });
-    
-    handleClearSelection();
+    if (activeLibrary === 'official') {
+      handleClearSelection();
+    } else {
+      handleClearYoutubeSelection();
+    }
   };
 
-  const handleRemoveSelected = (videoId: number) => {
-    logger.info('移除单个选中视频', {
-      videoId,
-      previousSelectionCount: selectedResults.size,
-      userAction: 'remove_from_selection'
-    });
-    
-    handleSearchResultSelect(videoId, false);
+  const handleConfirmAdd = () => {
+    if (activeLibrary === 'official') {
+      handleAddSelectedVideos();
+    } else {
+      handleAddSelectedYoutubeVideos();
+    }
   };
 
   const formatDuration = (duration?: number) => {
@@ -163,12 +200,45 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   };
 
   const getSelectedVideos = () => {
-    return searchResults.filter(video => selectedResults.has(video.id));
+    if (activeLibrary === 'official') {
+      return searchResults.filter(video => selectedResults.has(video.id));
+    } else {
+      return youtubeSearchResults.filter(video => youtubeSelectedResults.has(video.id));
+    }
+  };
+
+  const getCurrentResults = () => {
+    return activeLibrary === 'official' ? searchResults : youtubeSearchResults;
+  };
+
+  const getCurrentSelectedResults = () => {
+    return activeLibrary === 'official' ? selectedResults : youtubeSelectedResults;
+  };
+
+  const getCurrentPreviewVideo = () => {
+    return activeLibrary === 'official' ? previewVideo : youtubePreviewVideo;
+  };
+
+  const getCurrentSearching = () => {
+    return activeLibrary === 'official' ? isSearching : isYoutubeSearching;
+  };
+
+  const handleLibrarySwitch = (library: VideoLibraryType) => {
+    logger.info('用户切换视频库', {
+      fromLibrary: activeLibrary,
+      toLibrary: library,
+      userAction: 'tab_click'
+    });
+    setActiveLibrary(library);
   };
 
   if (!isModalOpen) return null;
 
   const selectedVideos = getSelectedVideos();
+  const currentResults = getCurrentResults();
+  const currentSelectedResults = getCurrentSelectedResults();
+  const currentPreviewVideo = getCurrentPreviewVideo();
+  const currentSearching = getCurrentSearching();
 
   return (
     <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
@@ -182,8 +252,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">{t.videoSearchModal.title}</h2>
-              <p className="text-sm text-gray-500">{t.videoSearchModal.subtitle}</p>
+              <h2 className="text-xl font-semibold text-gray-900">搜索在线视频</h2>
+              <p className="text-sm text-gray-500">发现高质量的免费视频素材</p>
             </div>
           </div>
           <button
@@ -196,248 +266,263 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           </button>
         </div>
 
+        {/* 新增：视频库页签 */}
+        <div className="px-6 py-3 border-b border-gray-100 bg-white">
+          <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => handleLibrarySwitch('official')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                activeLibrary === 'official'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              官方视频库
+            </button>
+            <button
+              onClick={() => handleLibrarySwitch('youtube')}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                activeLibrary === 'youtube'
+                  ? 'bg-white text-red-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Youtube视频库
+            </button>
+          </div>
+        </div>
+
         {/* 搜索控制区 - Apple风格 */}
         <div className="px-6 py-4 border-b border-gray-100 bg-white">
           <div className="flex items-center space-x-4">
             <div className="flex-1">
               <input
                 type="text"
-                placeholder={t.videoSearchModal.searchPlaceholder}
+                placeholder={activeLibrary === 'official' 
+                  ? "输入搜索关键词，如：自然风景、商务办公、人物肖像..."
+                  : "搜索Youtube视频，如：自然风景、城市夜景、延时摄影..."
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 placeholder-gray-400 text-gray-900"
-                disabled={isSearching}
+                disabled={currentSearching}
               />
             </div>
             <div className="flex items-center space-x-3">
-              <label className="text-sm font-medium text-gray-700">{t.videoSearchModal.orientationLabel}</label>
+              <label className="text-sm font-medium text-gray-700">方向:</label>
               <select
                 value={searchOrientation}
                 onChange={(e) => setSearchOrientation(e.target.value as any)}
                 className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 text-gray-900"
-                disabled={isSearching}
+                disabled={currentSearching}
               >
-                <option value="mixed">{t.videoSearchModal.orientationMixed}</option>
-                <option value="landscape">{t.videoSearchModal.orientationLandscape}</option>
-                <option value="portrait">{t.videoSearchModal.orientationPortrait}</option>
+                <option value="mixed">混合</option>
+                <option value="landscape">横屏</option>
+                <option value="portrait">竖屏</option>
               </select>
             </div>
+            
+            {/* YouTube时间范围选择器 */}
+            {activeLibrary === 'youtube' && (
+              <div className="flex items-center space-x-3">
+                <label className="text-sm font-medium text-gray-700">时长:</label>
+                <select
+                  value={youtubeDurationPreset}
+                  onChange={(e) => {
+                    const preset = e.target.value as any;
+                    setYoutubeDurationPreset(preset);
+                    logger.userAction('YouTube时长预设选择', 'durationPresetSelect', {
+                      preset,
+                      activeLibrary
+                    });
+                  }}
+                  className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all duration-200 text-gray-900"
+                  disabled={currentSearching}
+                >
+                  <option value="under_1min">1分钟内</option>
+                  <option value="under_3min">3分钟内</option>
+                  <option value="under_5min">5分钟内</option>
+                  <option value="under_10min">10分钟内</option>
+                  <option value="custom">自定义</option>
+                </select>
+                
+                {/* 自定义时间范围输入 */}
+                {youtubeDurationPreset === 'custom' && (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      placeholder="最小秒数"
+                      value={youtubeDurationRange.minDuration}
+                      onChange={(e) => {
+                        const minDuration = parseInt(e.target.value) || 0;
+                        setYoutubeDurationRange({
+                          ...youtubeDurationRange,
+                          minDuration
+                        });
+                      }}
+                      className="w-20 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none"
+                      disabled={currentSearching}
+                      min="0"
+                    />
+                    <span className="text-xs text-gray-500">-</span>
+                    <input
+                      type="number"
+                      placeholder="最大秒数"
+                      value={youtubeDurationRange.maxDuration}
+                      onChange={(e) => {
+                        const maxDuration = parseInt(e.target.value) || 300;
+                        setYoutubeDurationRange({
+                          ...youtubeDurationRange,
+                          maxDuration
+                        });
+                      }}
+                      className="w-20 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none"
+                      disabled={currentSearching}
+                      min="1"
+                    />
+                    <span className="text-xs text-gray-500">秒</span>
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={handleSearchClick}
-              disabled={isSearching || !searchQuery.trim()}
-              className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 font-medium shadow-sm"
+              disabled={currentSearching || !searchQuery.trim()}
+              className={`px-6 py-3 rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 font-medium shadow-sm ${
+                activeLibrary === 'official'
+                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-red-500 text-white hover:bg-red-600'
+              }`}
             >
-              {isSearching ? (
+              {currentSearching ? (
                 <>
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span>{t.videoSearchModal.searching}</span>
+                  <span>搜索中...</span>
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  <span>{t.videoSearchModal.searchButton}</span>
+                  <span>搜索</span>
                 </>
               )}
             </button>
           </div>
         </div>
 
-        {/* 主内容区域 - 左右分栏 */}
+        {/* 主内容区域 - 左中右三栏布局 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 左侧 - 搜索结果列表 */}
-          <div className="w-3/5 border-r border-gray-100 flex flex-col">
-            {/* 结果统计栏 */}
-            {searchResults.length > 0 && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  {t.videoSearchModal.foundVideos} <span className="font-semibold text-gray-900">{searchResults.length}</span> {t.videoSearchModal.items}{t.videoSearchModal.selected} <span className="font-semibold text-blue-600">{selectedResults.size}</span> 个
-                </div>
-              </div>
-            )}
-
-            {/* 搜索结果内容 */}
-            <div className="flex-1 overflow-y-auto">
-              {isSearching ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <svg className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <p className="text-gray-600 font-medium">{t.videoSearchModal.searchingVideos}</p>
-                  </div>
-                </div>
-              ) : searchResults.length > 0 ? (
-                <div className="p-4 space-y-3">
-                  {searchResults.map((video) => {
-                    const isSelected = selectedResults.has(video.id);
-                    const isPreviewActive = previewVideo?.id === video.id;
-                    
-                    return (
-                      <div
-                        key={video.id}
-                        className={`group relative bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all duration-200 cursor-pointer ${
-                          isSelected ? 'border-blue-300 bg-blue-50/30 shadow-sm' : 'border-gray-200 hover:border-gray-300'
-                        } ${isPreviewActive ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}
-                        onClick={() => handleVideoClick(video)}
-                      >
-                        <div className="flex p-4 space-x-4">
-                          {/* 视频缩略图 */}
-                          <div className="relative w-32 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                            {video.thumbnail ? (
-                              <img 
-                                src={video.thumbnail} 
-                                alt={video.title}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              </div>
-                            )}
-                            
-                            {/* 播放按钮覆盖 */}
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all">
-                              <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <svg className="w-4 h-4 text-gray-800 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M8 5v14l11-7z"/>
-                                </svg>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 视频信息 */}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-semibold text-gray-900 truncate mb-1">{video.title}</h4>
-                            <p className="text-xs text-gray-500 mb-2">{t.videoSearchModal.author} {video.author}</p>
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                              <span className="bg-gray-100 px-2 py-1 rounded">{video.width} × {video.height}</span>
-                              {video.duration && (
-                                <span className="bg-gray-100 px-2 py-1 rounded">{formatDuration(video.duration)}</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 选择指示器 */}
-                          <div className="flex-shrink-0">
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
-                              isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300 group-hover:border-blue-400'
-                            }`}>
-                              {isSelected && (
-                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <p className="text-gray-500 text-lg mb-2 font-medium">{t.videoSearchModal.enterKeywordPrompt}</p>
-                    <p className="text-gray-400 text-sm">{t.videoSearchModal.searchHighQualityPrompt}</p>
-                  </div>
-                </div>
-              )}
+          {/* 左栏 - 视频预览区域 */}
+          <div className="w-1/3 border-r border-gray-100 flex flex-col bg-gray-50/30">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h4 className="font-medium text-gray-900">视频预览</h4>
             </div>
-          </div>
-
-          {/* 右侧 - 视频预览和已选择视频区域 */}
-          <div className="w-2/5 bg-gray-50/30 flex flex-col">
-            {/* 上方区域 - 视频预览 (50%高度) */}
-            <div className="h-1/2 flex flex-col">
-              {previewVideo ? (
+            <div className="flex-1 flex flex-col bg-white">
+              {currentPreviewVideo ? (
                 <>
                   {/* 预览视频标题栏 */}
-                  <div className="px-6 py-3 border-b border-gray-100 bg-white">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0 pr-4">
-                        <h3 className="font-semibold text-gray-900 truncate">{previewVideo.title}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{t.videoSearchModal.author} {previewVideo.author}</p>
-                      </div>
-                      <div className="flex-shrink-0 flex items-center space-x-3 text-xs">
-                        <div className="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded-md">
-                          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                          </svg>
-                          <span className="text-gray-700 font-medium">{previewVideo.width} × {previewVideo.height}</span>
-                        </div>
-                        {previewVideo.duration && (
-                          <div className="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded-md">
-                            <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="text-gray-700 font-medium">{formatDuration(previewVideo.duration)}</span>
-                          </div>
-                        )}
-                      </div>
+                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                    <h5 className="font-medium text-gray-900 truncate text-sm">{currentPreviewVideo.title}</h5>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {activeLibrary === 'official' ? (
+                        <span>作者: {currentPreviewVideo.author}</span>
+                      ) : (
+                        <span>频道: {currentPreviewVideo.channelTitle}</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* 视频播放器区域 */}
-                  <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* 视频播放器 - 固定比例，避免过度拉伸 */}
-                    <div className="flex-shrink-0 mx-4 mt-4 mb-3">
-                      <div className="aspect-video bg-black rounded-xl overflow-hidden">
-                        {previewVideo.video_url ? (
-                          <video
-                            ref={videoRef}
-                            src={previewVideo.video_url}
-                            poster={previewVideo.thumbnail}
-                            controls
-                            className="w-full h-full object-contain"
-                            onLoadStart={() => {
-                              logger.info('视频预览开始加载', {
-                                videoId: previewVideo.id,
-                                videoUrl: previewVideo.video_url
-                              });
-                            }}
-                            onCanPlay={() => {
-                              logger.info('视频预览可播放', {
-                                videoId: previewVideo.id
+                  {/* 预览视频内容 */}
+                  <div className="flex-1 p-4 max-h-96 overflow-y-auto">
+                    <div className="w-full h-full min-h-[200px] max-h-[320px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+                      {(currentPreviewVideo.video_url || currentPreviewVideo.videoUrl) ? (
+                        activeLibrary === 'youtube' ? (
+                          // YouTube视频使用嵌入式播放器
+                          <iframe
+                            src={`https://www.youtube.com/embed/${currentPreviewVideo.id}?autoplay=0&controls=1&modestbranding=1&rel=0`}
+                            className="w-full h-full max-h-[320px] object-contain"
+                            style={{ aspectRatio: 'auto' }}
+                            frameBorder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            onLoad={() => {
+                              logger.info('YouTube视频预览加载完成', {
+                                videoId: currentPreviewVideo.id,
+                                videoTitle: currentPreviewVideo.title,
+                                activeLibrary,
+                                videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
+                                videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
+                                previewContainerMaxHeight: '320px',
+                                layoutType: 'constrained_height_preview'
                               });
                             }}
                             onError={(e) => {
-                              logger.error('视频预览加载失败', new Error('Video load error'), {
-                                videoId: previewVideo.id,
-                                error: e.currentTarget.error?.message
+                              logger.error('YouTube视频预览加载失败', new Error('YouTube iframe load error'), {
+                                videoId: currentPreviewVideo.id,
+                                activeLibrary
                               });
                             }}
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            {previewVideo.thumbnail ? (
-                              <img 
-                                src={previewVideo.thumbnail} 
-                                alt={previewVideo.title}
-                                className="max-w-full max-h-full object-contain"
-                              />
-                            ) : (
-                              <div className="text-center text-gray-400">
-                                <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                                <p className="text-sm">{t.videoSearchModal.previewUnavailable}</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                          // 官方视频库使用video元素
+                          <video
+                            ref={videoRef}
+                            src={currentPreviewVideo.video_url || currentPreviewVideo.videoUrl}
+                            className="w-full h-full max-h-[320px] object-contain"
+                            style={{ maxWidth: '100%', maxHeight: '320px' }}
+                            controls
+                            preload="metadata"
+                            onLoadStart={() => {
+                              logger.info('视频预览开始加载', {
+                                videoId: currentPreviewVideo.id,
+                                videoUrl: currentPreviewVideo.video_url || currentPreviewVideo.videoUrl,
+                                activeLibrary
+                              });
+                            }}
+                            onCanPlay={() => {
+                              const videoElement = videoRef.current;
+                              logger.info('视频预览可播放', {
+                                videoId: currentPreviewVideo.id,
+                                activeLibrary,
+                                videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
+                                videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
+                                actualVideoSize: videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : 'unknown',
+                                previewContainerMaxHeight: '320px',
+                                layoutType: 'constrained_height_preview'
+                              });
+                            }}
+                            onError={(e) => {
+                              logger.error('视频预览加载失败', new Error('Video load error'), {
+                                videoId: currentPreviewVideo.id,
+                                error: e.currentTarget.error?.message || 'MEDIA_ELEMENT_ERROR: Format error',
+                                activeLibrary
+                              });
+                            }}
+                          />
+                        )
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          {(currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl) ? (
+                            <img 
+                              src={currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl} 
+                              alt={currentPreviewVideo.title}
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          ) : (
+                            <div className="text-center text-gray-400">
+                              <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <p className="text-sm">无预览视频</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -447,20 +532,206 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-lg font-medium mb-2">{t.videoSearchModal.clickToPreview}</p>
-                    <p className="text-sm">{t.videoSearchModal.clickToPreviewDesc}</p>
+                    <p className="text-lg font-medium mb-2">点击视频进行预览</p>
+                    <p className="text-sm">在中间选择一个视频来查看详情</p>
                   </div>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* 下方区域 - 已选择视频列表 (50%高度) */}
-            <div className="h-1/2 border-t border-gray-100 flex flex-col bg-white">
+          {/* 中栏 - 搜索结果展示区域 */}
+          <div className="w-1/3 border-r border-gray-100 flex flex-col">
+            {/* 标题栏 */}
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <h4 className="font-medium text-gray-900">搜索结果</h4>
+            </div>
+            
+            {/* 结果统计栏 */}
+            {currentResults.length > 0 && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  找到 <span className="font-semibold text-gray-900">{currentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-blue-600' : 'text-red-600'}`}>{currentSelectedResults.size}</span> 个
+                </div>
+              </div>
+            )}
+
+            {/* 搜索结果内容 */}
+            <div className="flex-1 overflow-y-auto">
+              {currentSearching ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <svg className={`w-12 h-12 animate-spin mx-auto mb-4 ${activeLibrary === 'official' ? 'text-blue-500' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p className="text-gray-600 font-medium">正在搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频...</p>
+                  </div>
+                </div>
+              ) : currentResults.length > 0 ? (
+                <div className="p-3 space-y-3">
+                  {currentResults.map((video) => {
+                    const isSelected = currentSelectedResults.has(video.id);
+                    const isPreviewActive = currentPreviewVideo?.id === video.id;
+                    
+                    return (
+                      <div
+                        key={video.id}
+                        className={`group relative bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all duration-200 cursor-pointer ${
+                          isPreviewActive 
+                            ? `ring-2 ${activeLibrary === 'official' ? 'ring-blue-500 border-blue-500' : 'ring-red-500 border-red-500'}` 
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => handleVideoClick(video)}
+                      >
+                        {activeLibrary === 'official' ? (
+                          // 官方视频库 - 紧凑横向布局（小缩略图）
+                          <div className="flex items-center p-3 space-x-3">
+                            {/* 视频缩略图 */}
+                            <div className="relative w-16 h-12 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
+                              {(video.thumbnail || video.thumbnailUrl) ? (
+                                <img 
+                                  src={video.thumbnail || video.thumbnailUrl} 
+                                  alt={video.title}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 视频信息 */}
+                            <div className="flex-1 min-w-0">
+                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight mb-1">{video.title}</h5>
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                  <span>{video.width} × {video.height}</span>
+                                  {video.duration && (
+                                    <span>• {formatDuration(video.duration)}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  <span>作者: {video.author}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 添加合成按钮 */}
+                            <button
+                              onClick={(e) => handleAddToComposition(video, e)}
+                              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
+                                isSelected
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>已添加</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  <span>添加合成</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          // YouTube视频库 - 紧凑的文字列表布局（无缩略图）
+                          <div className="flex items-center p-3 space-x-3">
+                            {/* 视频图标 */}
+                            <div className="flex-shrink-0 w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
+                              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+
+                            {/* 视频信息 */}
+                            <div className="flex-1 min-w-0">
+                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight mb-1">{video.title}</h5>
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                  <span>{video.width} × {video.height}</span>
+                                  {video.duration && (
+                                    <span>• {formatDuration(video.duration)}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  <span>频道: {video.channelTitle}</span>
+                                  {video.viewCount && (
+                                    <span> • {video.viewCount.toLocaleString()} 次观看</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 添加合成按钮 */}
+                            <button
+                              onClick={(e) => handleAddToComposition(video, e)}
+                              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
+                                isSelected
+                                  ? 'bg-red-500 text-white'
+                                  : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>已添加</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  <span>添加合成</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <div className="text-center text-gray-400">
+                    <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <p className="text-lg font-medium mb-2">开始搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频</p>
+                    <p className="text-sm">输入关键词并点击搜索按钮</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右栏 - 已选择的视频列表区域 */}
+          <div className="w-1/3 flex flex-col bg-gray-50/30">
+            <div className="flex flex-col bg-white h-full">
               {/* 已选择标题栏 */}
               <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/50">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-gray-900">{t.videoSearchModal.selectedVideos}</h4>
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                  <h4 className="font-medium text-gray-900">已选择的视频</h4>
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    activeLibrary === 'official' 
+                      ? 'text-blue-600 bg-blue-100' 
+                      : 'text-red-600 bg-red-100'
+                  }`}>
                     {selectedVideos.length} 个
                   </span>
                 </div>
@@ -478,9 +749,9 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                         <div className="flex p-2 space-x-3">
                           {/* 视频缩略图 */}
                           <div className="relative w-16 h-10 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
-                            {video.thumbnail ? (
+                            {(video.thumbnail || video.thumbnailUrl) ? (
                               <img 
-                                src={video.thumbnail} 
+                                src={video.thumbnail || video.thumbnailUrl} 
                                 alt={video.title}
                                 className="w-full h-full object-cover"
                               />
@@ -523,8 +794,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                       <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
-                      <p className="text-sm font-medium mb-1">{t.videoSearchModal.noSelection}</p>
-                      <p className="text-xs">{t.videoSearchModal.noSelectionDesc}</p>
+                      <p className="text-sm font-medium mb-1">暂无选择</p>
+                      <p className="text-xs">点击"添加合成"按钮选择视频</p>
                     </div>
                   </div>
                 )}
@@ -544,9 +815,9 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-red-800 mb-1">{t.videoSearchModal.validationErrorTitle}</h4>
+                <h4 className="text-sm font-medium text-red-800 mb-1">视频时长不足</h4>
                 <p className="text-sm text-red-700">{validationError}</p>
-                <p className="text-xs text-red-600 mt-1">{t.videoSearchModal.validationErrorDesc}</p>
+                <p className="text-xs text-red-600 mt-1">请选择更多视频或时长更长的视频素材。</p>
               </div>
               <button
                 onClick={() => setValidationError(null)}
@@ -565,17 +836,19 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               onClick={handleReselect}
               className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium"
             >
-              {t.videoSearchModal.reselectButton}
+              重新选择
             </button>
             <button
               onClick={handleConfirmAdd}
-              disabled={selectedResults.size === 0}
-              className="px-6 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium shadow-sm flex items-center space-x-2"
+              disabled={currentSelectedResults.size === 0}
+              className={`px-6 py-2.5 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium shadow-sm flex items-center space-x-2 ${
+                activeLibrary === 'official' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-red-500 hover:bg-red-600'
+              }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <span>{t.videoSearchModal.confirmAddButton} ({selectedResults.size})</span>
+              <span>确认添加 ({currentSelectedResults.size})</span>
             </button>
           </div>
         </div>

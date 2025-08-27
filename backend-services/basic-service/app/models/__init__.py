@@ -15,13 +15,18 @@ from .video_models import (
     VideoCompositionItem,
     AudioCompositionItem,
     SubtitleCompositionItem,
+    ImageCompositionItem,
+    ImagePosition,
     VideoCompositionRequest,
     VideoCompositionResponse,
     VideoDownloadRequest,
     VideoDownloadResponse,
     AspectRatio,
     SubtitleAddRequest,
-    SubtitleAddResponse
+    SubtitleAddResponse,
+    VideoProcessingStage,
+    VideoProcessingError,
+    CompositionErrorDetails
 )
 
 from .tts_models import (
@@ -60,6 +65,19 @@ from .audio_models import (
     BatchAudioTranscriptionErrorResponse
 )
 
+from .audio_search_models import (
+    AudioSearchRequest,
+    AudioInfo,
+    AudioSearchResponse
+)
+
+from .video_analysis import (
+    FrameAnalysis,
+    VideoAnalysisRequest,
+    VideoAnalysisResponse,
+    VideoAnalysisStatusResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -70,6 +88,8 @@ __all__ = [
     "VideoCompositionItem",
     "AudioCompositionItem", 
     "SubtitleCompositionItem",
+    "ImageCompositionItem",
+    "ImagePosition",
     "VideoCompositionRequest",
     "VideoCompositionResponse",
     "VideoDownloadRequest",
@@ -77,6 +97,9 @@ __all__ = [
     "AspectRatio",
     "SubtitleAddRequest",
     "SubtitleAddResponse",
+    "VideoProcessingStage",
+    "VideoProcessingError", 
+    "CompositionErrorDetails",
     "TTSRequest",
     "TTSResponse",
     "VoiceType",
@@ -103,5 +126,16 @@ __all__ = [
     "BatchAudioTranscriptionRequest",
     "AudioItemTranscription",
     "BatchAudioTranscriptionResponse",
-    "BatchAudioTranscriptionErrorResponse"
+    "BatchAudioTranscriptionErrorResponse",
+    
+    # Audio Search Models
+    "AudioSearchRequest",
+    "AudioInfo",
+    "AudioSearchResponse",
+    
+    # Video Analysis Models
+    "FrameAnalysis",
+    "VideoAnalysisRequest", 
+    "VideoAnalysisResponse",
+    "VideoAnalysisStatusResponse"
 ] 

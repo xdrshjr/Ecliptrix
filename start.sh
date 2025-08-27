@@ -2,6 +2,7 @@
 
 # Ecliptrix 一键启动脚本
 # 同时启动前端Next.js应用和后端FastAPI服务
+unset all_proxy; unset ALL_PROXY
 
 # 颜色定义
 RED='\033[0;31m'
@@ -13,7 +14,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 默认配置
-FRONTEND_PORT=3000
+FRONTEND_PORT=3010
 BACKEND_DIR="backend-services/basic-service"
 LOG_DIR="logs"
 FRONTEND_LOG="$LOG_DIR/frontend.log"

@@ -83,8 +83,10 @@ const FONT_FAMILY_OPTIONS: { value: SubtitleFontFamily; label: string }[] = [
 
 // Position options
 const POSITION_OPTIONS: { value: SubtitlePosition; label: string }[] = [
-  { value: 'top', label: '顶部' },
+  { value: 'top', label: '顶部居中' },
+  { value: 'upper-3/4', label: '上3/4高度' },
   { value: 'center', label: '居中' },
+  { value: 'lower-3/4', label: '下3/4高度' },
   { value: 'bottom', label: '底部' }
 ];
 
@@ -435,21 +437,17 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                   {/* Position */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">字幕位置</label>
-                    <div className="grid grid-cols-1 gap-2">
+                    <select
+                      value={currentStyle.position}
+                      onChange={(e) => handleStyleChange('position', e.target.value as SubtitlePosition)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors"
+                    >
                       {POSITION_OPTIONS.map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => handleStyleChange('position', option.value)}
-                          className={`px-3 py-2 text-sm border rounded-lg transition-colors ${
-                            currentStyle.position === option.value
-                              ? 'bg-blue-100 border-blue-300 text-blue-700'
-                              : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
-                          }`}
-                        >
+                        <option key={option.value} value={option.value}>
                           {option.label}
-                        </button>
+                        </option>
                       ))}
-                    </div>
+                    </select>
                   </div>
 
                   {/* Preview */}

@@ -100,7 +100,35 @@ async def get_config() -> BaseResponse:
         "debug": settings.debug,
         "llm_api_url": settings.llm_api_url,  # URL is generally safe to expose
         "host": settings.host,
-        "port": settings.port
+        "port": settings.port,
+        "youtube": {
+            "download": {
+                "max_concurrent_downloads": settings.youtube.download.max_concurrent_downloads,
+                "download_timeout": settings.youtube.download.download_timeout,
+                "max_retries": settings.youtube.download.max_retries,
+                "retry_delay": settings.youtube.download.retry_delay
+            },
+            "upload": {
+                "upload_timeout": settings.youtube.upload.upload_timeout,
+                "max_retries": settings.youtube.upload.max_retries,
+                "retry_delay": settings.youtube.upload.retry_delay
+            },
+            "quality": {
+                "default_video_quality": settings.youtube.quality.default_video_quality,
+                "default_audio_quality": settings.youtube.quality.default_audio_quality,
+                "default_format": settings.youtube.quality.default_format
+            },
+            "file_management": {
+                "auto_cleanup": settings.youtube.file_management.auto_cleanup,
+                "temp_file_retention_hours": settings.youtube.file_management.temp_file_retention_hours,
+                "generate_thumbnail": settings.youtube.file_management.generate_thumbnail
+            },
+            "logging": {
+                "enable_detailed_logging": settings.youtube.logging.enable_detailed_logging,
+                "log_download_progress": settings.youtube.logging.log_download_progress,
+                "progress_log_interval": settings.youtube.logging.progress_log_interval
+            }
+        }
     }
     
     logger.debug(f"Configuration info returned: {config_info}")

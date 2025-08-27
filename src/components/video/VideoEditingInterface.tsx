@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -12,7 +12,9 @@ import {
   useScriptGeneration,
   useMaterialManagement,
   useVideoSearch,
-  useTimelineComposition
+  useAudioSearch,
+  useTimelineComposition,
+  useVideoAnalysis
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
 import {
@@ -21,9 +23,11 @@ import {
   MaterialsPanel,
   VideoPlayerPanel,
   VideoSearchModal,
+  AudioSearchModal,
   ContentPolishModal,
   ScriptGenerationModal,
-  CreativeBrainstormingModal
+  CreativeBrainstormingModal,
+  VideoAnalysisModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -41,6 +45,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
   // 新增：管理时间轴状态，用于导出功能
   const [currentTimelineState, setCurrentTimelineState] = useState<TimelineState | null>(null);
+  // 新增：批量视频解析状态
+  const [isBatchAnalyzing, setIsBatchAnalyzing] = useState<boolean>(false);
   
   // 智能润色弹窗状态
   const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(false);
@@ -75,9 +81,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
   const materialManagement = useMaterialManagement(taskId);
   const videoSearch = useVideoSearch(taskId, materialManagement.addMaterials);
+  const audioSearch = useAudioSearch(taskId, materialManagement.addMaterials);
   
   // 添加时间轴组合播放功能
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
+  
+  // 添加视频解析功能
+  const videoAnalysis = useVideoAnalysis(taskId);
 
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
@@ -175,6 +185,222 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsCreativeBrainstormingModalOpen(false);
   }, [taskId, documentState.markdownValue, documentState.handleMarkdownChange]);
 
+  // 处理视频AI解析
+  const handleVideoAnalysis = useCallback(async (material: MaterialItem) => {
+    console.log(`[VideoEditingInterface] 开始视频AI解析`, {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      videoUrl: material.url,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!material.url) {
+      console.error(`[VideoEditingInterface] 视频素材缺少URL`, {
+        materialId: material.id,
+        materialName: material.name
+      });
+      return;
+    }
+
+    try {
+      // 检查当前状态，如果已完成则打开结果弹窗，否则开始解析
+      const currentStatus = videoAnalysis.getAnalysisStatus(material.url);
+      
+      if (currentStatus === 'completed') {
+        // 已完成解析，打开结果弹窗
+        videoAnalysis.openAnalysisModal(material.url);
+      } else if (currentStatus === 'idle') {
+        // 开始新的解析
+        await videoAnalysis.analyzeVideo(material.url, 5); // 默认5秒间隔
+      }
+    } catch (error) {
+      console.error(`[VideoEditingInterface] 视频解析失败`, {
+        taskId,
+        materialId: material.id,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [taskId, videoAnalysis]);
+
+  // 处理批量视频AI解析
+  const handleBatchVideoAnalysis = useCallback(async () => {
+    if (isBatchAnalyzing) {
+      console.warn(`[VideoEditingInterface] 批量解析已在进行中，忽略重复请求`, { taskId });
+      return;
+    }
+
+    setIsBatchAnalyzing(true);
+    
+    try {
+      console.log(`[VideoEditingInterface] 开始批量视频AI解析`, {
+        taskId,
+        totalMaterialsCount: materialManagement.materials.length,
+        concurrentLimit: 3,
+        timestamp: new Date().toISOString()
+      });
+
+      // 筛选所有视频素材
+      const videoMaterials = materialManagement.materials.filter(material => {
+        return material.type === 'video' && material.url;
+      });
+
+      console.log(`[VideoEditingInterface] 筛选出视频素材`, {
+        totalMaterials: materialManagement.materials.length,
+        videoMaterialsCount: videoMaterials.length,
+        videoMaterials: videoMaterials.map(m => ({
+          id: m.id,
+          name: m.name,
+          url: m.url,
+          currentStatus: videoAnalysis.getAnalysisStatus(m.url!)
+        }))
+      });
+
+      if (videoMaterials.length === 0) {
+        console.warn(`[VideoEditingInterface] 没有找到可解析的视频素材`, {
+          taskId,
+          totalMaterials: materialManagement.materials.length
+        });
+        return;
+      }
+
+      // 筛选需要解析的视频（跳过已完成或正在解析的）
+      const videosToAnalyze = videoMaterials.filter(material => {
+        const currentStatus = videoAnalysis.getAnalysisStatus(material.url!);
+        return currentStatus === 'idle' || currentStatus === 'error';
+      });
+
+      console.log(`[VideoEditingInterface] 需要解析的视频`, {
+        totalVideos: videoMaterials.length,
+        videosToAnalyze: videosToAnalyze.length,
+        skippedVideos: videoMaterials.length - videosToAnalyze.length
+      });
+
+      if (videosToAnalyze.length === 0) {
+        console.log(`[VideoEditingInterface] 所有视频都已完成解析或正在解析中`, { taskId });
+        return;
+      }
+
+      // 3个视频并发处理
+      const concurrentLimit = 3;
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: Array<{materialId: string, materialName: string, error: string}> = [];
+
+      // 分批处理，每批最多3个视频
+      for (let i = 0; i < videosToAnalyze.length; i += concurrentLimit) {
+        const batch = videosToAnalyze.slice(i, i + concurrentLimit);
+        const batchNumber = Math.floor(i / concurrentLimit) + 1;
+        const totalBatches = Math.ceil(videosToAnalyze.length / concurrentLimit);
+
+        console.log(`[VideoEditingInterface] 开始处理第${batchNumber}批视频 (${batch.length}个视频)`, {
+          taskId,
+          batchNumber,
+          totalBatches,
+          batchVideos: batch.map(m => ({
+            id: m.id,
+            name: m.name,
+            url: m.url
+          }))
+        });
+
+        // 并发处理当前批次的视频
+        const batchPromises = batch.map(async (material) => {
+          try {
+            console.log(`[VideoEditingInterface] 开始解析视频`, {
+              taskId,
+              materialId: material.id,
+              materialName: material.name,
+              videoUrl: material.url,
+              batchNumber
+            });
+
+            await videoAnalysis.analyzeVideo(material.url!, 5); // 默认5秒间隔
+            
+            console.log(`[VideoEditingInterface] 视频解析完成`, {
+              taskId,
+              materialId: material.id,
+              materialName: material.name,
+              batchNumber
+            });
+
+            return { success: true, material };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            
+            console.error(`[VideoEditingInterface] 视频解析失败`, {
+              taskId,
+              materialId: material.id,
+              materialName: material.name,
+              error: errorMessage,
+              batchNumber
+            });
+
+            return { 
+              success: false, 
+              material, 
+              error: errorMessage 
+            };
+          }
+        });
+
+        // 等待当前批次完成
+        const batchResults = await Promise.all(batchPromises);
+        
+        // 统计结果
+        batchResults.forEach(result => {
+          if (result.success) {
+            successCount++;
+          } else {
+            errorCount++;
+            errors.push({
+              materialId: result.material.id,
+              materialName: result.material.name,
+              error: result.error || '未知错误'
+            });
+          }
+        });
+
+        console.log(`[VideoEditingInterface] 第${batchNumber}批处理完成`, {
+          taskId,
+          batchNumber,
+          totalBatches,
+          batchSuccessCount: batchResults.filter(r => r.success).length,
+          batchErrorCount: batchResults.filter(r => !r.success).length,
+          totalSuccessCount: successCount,
+          totalErrorCount: errorCount
+        });
+
+        // 如果还有下一批，添加短暂延迟
+        if (i + concurrentLimit < videosToAnalyze.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      // 输出最终结果
+      console.log(`[VideoEditingInterface] 批量视频解析完成`, {
+        taskId,
+        totalVideos: videosToAnalyze.length,
+        successCount,
+        errorCount,
+        errors: errors.length > 0 ? errors : undefined,
+        concurrentLimit,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error(`[VideoEditingInterface] 批量视频解析异常`, {
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsBatchAnalyzing(false);
+    }
+
+  }, [taskId, materialManagement.materials, videoAnalysis, isBatchAnalyzing]);
+
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
     console.log(`[VideoEditingInterface] Timeline时间变化同步到视频播放器`, {
@@ -199,6 +425,38 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // 因为这会造成循环调用
     setCurrentTimelineState(timelineState);
   }, []);
+
+  // 新增：处理图片叠加位置变化
+  const handleImagePositionChange = useCallback((itemId: string, position: ImagePosition) => {
+    console.log(`[VideoEditingInterface] 更新图片叠加位置`, {
+      itemId,
+      position,
+      timestamp: new Date().toISOString()
+    });
+
+    setCurrentTimelineState(prev => {
+      if (!prev) return prev;
+
+      const updatedTracks = prev.tracks.map(track => ({
+        ...track,
+        items: track.items.map(item => 
+          item.id === itemId 
+            ? { ...item, imagePosition: position }
+            : item
+        )
+      }));
+
+      const updatedState = {
+        ...prev,
+        tracks: updatedTracks
+      };
+
+      // 同步到timeline组合管理
+      timelineComposition.handleTimelineStateChange(updatedState);
+
+      return updatedState;
+    });
+  }, [timelineComposition]);
 
   // 新增：AI自动混剪功能
   const handleAutoMixAudio = useCallback(() => {
@@ -249,12 +507,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     if (scriptAudioMaterials.length === 0 && scriptVideoMaterials.length === 0) {
       console.warn(`[VideoEditingInterface] 未找到从文本脚本转换的音频或视频素材`, {
         taskId,
+        troubleshooting: {
+          message: '请确保：1) 已完成文本转语音 2) 已完成AI匹配视频 3) 素材包含正确的segment_id和segment_number元数据',
+          audioMaterialsWithSegmentData: materialManagement.materials.filter(m => m.type === 'audio' && m.metadata?.segment_id).length,
+          videoMaterialsWithSegmentData: materialManagement.materials.filter(m => m.type === 'video' && m.metadata?.segment_id).length
+        },
         availableMaterials: materialManagement.materials.map(m => ({
           id: m.id,
           name: m.name,
           type: m.type,
           hasSegmentId: !!m.metadata?.segment_id,
-          hasSegmentNumber: typeof m.metadata?.segment_number === 'number'
+          hasSegmentNumber: typeof m.metadata?.segment_number === 'number',
+          segmentId: m.metadata?.segment_id,
+          segmentNumber: m.metadata?.segment_number
         }))
       });
       return;
@@ -313,7 +578,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       setTimeout(() => {
         setMaterialsToAddToTimeline({
           materials: sortedVideoMaterials,
-          targetTrackId: 'video-track-1', // 指定添加到第一个视频轨道
+          targetTrackId: 'video-track-1', // 指定添加到视频轨道（不是图片轨道）
           timestamp: Date.now()
         });
 
@@ -381,9 +646,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onGenerateScript={scriptGeneration.handleGenerateScript}
               isGenerating={scriptGeneration.isGeneratingScript}
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
-              onAddMaterial={(material) => materialManagement.addMaterials([material])}
+              onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
               taskId={taskId}
               materials={materialManagement.materials}
+              getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
             />
           </div>
           
@@ -394,7 +660,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               <MaterialsPanel
                 {...materialManagement}
                 onSearchVideos={videoSearch.openSearchModal}
+                onSearchAudios={audioSearch.openSearchModal}
                 onAutoMixAudio={handleAutoMixAudio}
+                onVideoAnalysis={handleVideoAnalysis}
+                onBatchVideoAnalysis={handleBatchVideoAnalysis}
+                isBatchAnalyzing={isBatchAnalyzing}
+                getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
+                onRetryDownload={videoSearch.retryVideoDownload}
                 taskId={taskId}
               />
 
@@ -412,6 +684,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
                 timelineState={currentTimelineState || undefined}
                 materials={materialManagement.materials}
+                onImagePositionChange={handleImagePositionChange}
               />
             </div>
 
@@ -433,6 +706,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <VideoSearchModal
         {...videoSearch}
+        taskId={taskId}
+      />
+
+      <AudioSearchModal
+        {...audioSearch}
         taskId={taskId}
       />
       
@@ -457,6 +735,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onExportContent={handleCreativeBrainstormingExport}
         taskId={taskId}
         currentContent={documentState.markdownValue}
+      />
+
+      <VideoAnalysisModal
+        isOpen={videoAnalysis.isModalOpen}
+        onClose={videoAnalysis.closeAnalysisModal}
+        analysisResult={videoAnalysis.currentAnalysisResult}
+        videoUrl={videoAnalysis.currentVideoUrl || undefined}
       />
     </div>
   );

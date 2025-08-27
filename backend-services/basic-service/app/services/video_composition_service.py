@@ -12,6 +12,8 @@ import tempfile
 import subprocess
 import threading
 import asyncio
+import yaml
+import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,16 +23,24 @@ import cv2
 from pydub import AudioSegment
 
 from app.logger import get_logger
+from app.config import settings
 from app.models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
     VideoCompositionItem,
     AudioCompositionItem,
     SubtitleCompositionItem,
+    ImageCompositionItem,
+    ImagePosition,
     AspectRatio,
-    SubtitleAddRequest
+    SubtitleAddRequest,
+    VideoProcessingError,
+    CompositionErrorDetails,
+    VideoProcessingStage
 )
+from app.models.youtube_models import YoutubeVideoDownloadRequest
 from app.services.subtitle_service import SubtitleService
+from app.services.youtube_service import YouTubeService
 
 logger = get_logger(__name__)
 
@@ -46,13 +56,19 @@ class VideoCompositionService:
         self.output_dir = Path("static/video/composed")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
+        # Load video download configuration
+        self._load_video_download_config()
+        
         # Initialize subtitle service for subtitle composition
         self.subtitle_service = SubtitleService()
+        
+        # Initialize YouTube service for YouTube video downloads
+        self.youtube_service = YouTubeService()
         
         # Check ffmpeg availability
         self._check_ffmpeg()
         
-        logger.info("VideoCompositionService initialized with subtitle support")
+        logger.info("VideoCompositionService initialized with subtitle and YouTube support")
     
     def _check_ffmpeg(self) -> bool:
         """Check if ffmpeg is available."""
@@ -75,6 +91,57 @@ class VideoCompositionService:
             logger.error("ffmpeg not available")
             return None
     
+    def _load_video_download_config(self):
+        """Load video download configuration from YAML file."""
+        try:
+            config_path = Path("config/video-download.yaml")
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    self.video_download_config = yaml.safe_load(f)
+                logger.info("Video download configuration loaded successfully")
+            else:
+                # Default configuration if file doesn't exist
+                self.video_download_config = {
+                    'pexels': {
+                        'retry': {
+                            'max_retries': 5,
+                            'switch_api_key_on_retry': True,
+                            'download_timeout': 120,
+                            'retry_delay': 2.0
+                        },
+                        'download': {
+                            'max_file_size_mb': 500,
+                            'min_file_size_kb': 1
+                        }
+                    },
+                    'general': {
+                        'cleanup_temp_files': True,
+                        'detailed_logging': True
+                    }
+                }
+                logger.warning("Video download config file not found, using defaults")
+        except Exception as e:
+            logger.error(f"Failed to load video download configuration: {str(e)}")
+            # Use default configuration
+            self.video_download_config = {
+                'pexels': {
+                    'retry': {
+                        'max_retries': 5,
+                        'switch_api_key_on_retry': True,
+                        'download_timeout': 120,
+                        'retry_delay': 2.0
+                    }
+                }
+            }
+    
+    def _is_youtube_url(self, url: str) -> bool:
+        """Check if the URL is a YouTube URL."""
+        return "youtube.com" in url or "youtu.be" in url
+    
+    def _is_pexels_url(self, url: str) -> bool:
+        """Check if URL is a Pexels video URL."""
+        return "pexels.com" in url.lower()
+    
     def _get_video_properties(self, video_path: str) -> tuple:
         """Get video properties (width, height, fps)."""
         try:
@@ -92,6 +159,127 @@ class VideoCompositionService:
             logger.error(f"Failed to get video properties: {str(e)}")
             return None, None, None
     
+    def _download_video_with_retry(self, video_url: str, temp_dir: str, index: int, video_item: VideoCompositionItem, max_retries: int = 3) -> Dict[str, Any]:
+        """Download a single video file with retry mechanism."""
+        thread_id = threading.current_thread().ident
+        video_name = f"video_{index}.mp4"
+        video_path = os.path.join(temp_dir, video_name)
+        
+        logger.info(f"[Thread {thread_id}] Starting video download with retry: {video_url} (max_retries: {max_retries})")
+        
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"[Thread {thread_id}] Download attempt {attempt + 1}/{max_retries + 1} for video {index}")
+                
+                # Call the existing download method
+                result = self._download_video(video_url, temp_dir, index)
+                
+                if result.get('success'):
+                    if attempt > 0:
+                        logger.info(f"[Thread {thread_id}] Video download succeeded on retry attempt {attempt + 1}")
+                    else:
+                        logger.info(f"[Thread {thread_id}] Video download succeeded on first attempt")
+                    return result
+                else:
+                    last_error = result.get('error', 'Unknown download error')
+                    logger.warning(f"[Thread {thread_id}] Download attempt {attempt + 1} failed: {last_error}")
+                    
+                    if attempt >= max_retries:
+                        break
+                        
+                    # Wait before retry with exponential backoff
+                    wait_time = min(2 ** attempt, 10)  # Cap at 10 seconds
+                    logger.info(f"[Thread {thread_id}] Waiting {wait_time}s before retry {attempt + 2}")
+                    time.sleep(wait_time)
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"[Thread {thread_id}] Download attempt {attempt + 1} exception: {last_error}")
+                
+                if attempt >= max_retries:
+                    break
+                    
+                # Wait before retry
+                wait_time = min(2 ** attempt, 10)
+                logger.info(f"[Thread {thread_id}] Waiting {wait_time}s before retry {attempt + 2}")
+                time.sleep(wait_time)
+        
+        # All attempts failed
+        error_details = {
+            "success": False,
+            "error": f"Video download failed after {max_retries + 1} attempts",
+            "last_error": last_error,
+            "attempts": max_retries + 1,
+            "video_details": {
+                "index": index,
+                "id": video_item.id,
+                "name": video_item.name,
+                "url": video_url,
+                "timeline_position": video_item.start_time,
+                "duration": video_item.duration
+            }
+        }
+        
+        logger.error(f"[Thread {thread_id}] All download attempts failed for video {index}: {last_error}")
+        return error_details
+
+    def _normalize_video_with_retry(self, video_info: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
+        """Normalize a single video with retry mechanism."""
+        logger.info(f"Starting video normalization with retry: index {video_info['index']} (max_retries: {max_retries})")
+        
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"Normalization attempt {attempt + 1}/{max_retries + 1} for video {video_info['index']}")
+                
+                # Call the existing normalization method
+                result = self._normalize_video(video_info)
+                
+                if result.get('success'):
+                    if attempt > 0:
+                        logger.info(f"Video normalization succeeded on retry attempt {attempt + 1}")
+                    else:
+                        logger.info(f"Video normalization succeeded on first attempt")
+                    return result
+                else:
+                    last_error = result.get('error', 'Unknown normalization error')
+                    logger.warning(f"Normalization attempt {attempt + 1} failed: {last_error}")
+                    
+                    if attempt >= max_retries:
+                        break
+                        
+                    # Wait before retry with exponential backoff
+                    wait_time = min(2 ** attempt, 10)
+                    logger.info(f"Waiting {wait_time}s before normalization retry {attempt + 2}")
+                    time.sleep(wait_time)
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"Normalization attempt {attempt + 1} exception: {last_error}")
+                
+                if attempt >= max_retries:
+                    break
+                    
+                # Wait before retry
+                wait_time = min(2 ** attempt, 10)
+                logger.info(f"Waiting {wait_time}s before normalization retry {attempt + 2}")
+                time.sleep(wait_time)
+        
+        # All attempts failed
+        error_details = {
+            "success": False,
+            "error": f"Video normalization failed after {max_retries + 1} attempts",
+            "last_error": last_error,
+            "attempts": max_retries + 1,
+            "video_details": video_info
+        }
+        
+        logger.error(f"All normalization attempts failed for video {video_info['index']}: {last_error}")
+        return error_details
+    
     def _download_video(self, video_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
         """Download a single video file."""
         thread_id = threading.current_thread().ident
@@ -100,6 +288,131 @@ class VideoCompositionService:
         
         logger.info(f"[Thread {thread_id}] Downloading video: {video_url}")
         
+        # Check if it's a YouTube URL
+        if self._is_youtube_url(video_url):
+            logger.info(f"[Thread {thread_id}] Detected YouTube URL, using yt-dlp for download")
+            return self._download_youtube_video(video_url, video_path, thread_id)
+        # Check if it's a Pexels URL
+        elif self._is_pexels_url(video_url):
+            logger.info(f"[Thread {thread_id}] Detected Pexels URL, using retry logic with API key switching")
+            return self._download_pexels_video_with_retry(video_url, video_path, thread_id)
+        else:
+            logger.info(f"[Thread {thread_id}] Using FFmpeg for direct video URL download")
+            return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
+    
+    def _download_youtube_video(self, video_url: str, target_path: str, thread_id: int) -> Dict[str, Any]:
+        """Download YouTube video using YouTubeService."""
+        try:
+            # Create download request
+            download_request = YoutubeVideoDownloadRequest(
+                url=video_url,
+                video_quality="720p",  # Use reasonable quality for composition
+                format_type="mp4"
+            )
+            
+            logger.info(f"[Thread {thread_id}] Starting YouTube download with yt-dlp")
+            
+            # Download using YouTube service
+            result = self.youtube_service.download_video(download_request)
+            
+            if not result.success:
+                error_msg = f"YouTube download failed: {result.error or result.message}"
+                logger.error(f"[Thread {thread_id}] {error_msg}")
+                return {"success": False, "error": error_msg}
+            
+            # Move downloaded file to target location
+            if result.file_path and os.path.exists(result.file_path):
+                try:
+                    shutil.move(result.file_path, target_path)
+                    file_size = os.path.getsize(target_path)
+                    logger.info(f"[Thread {thread_id}] YouTube download successful: {file_size / 1024 / 1024:.2f}MB")
+                    return {"success": True, "output_path": target_path}
+                except Exception as e:
+                    error_msg = f"Failed to move downloaded file: {str(e)}"
+                    logger.error(f"[Thread {thread_id}] {error_msg}")
+                    return {"success": False, "error": error_msg}
+            else:
+                error_msg = "Downloaded file not found"
+                logger.error(f"[Thread {thread_id}] {error_msg}")
+                return {"success": False, "error": error_msg}
+                
+        except Exception as e:
+            error_msg = f"YouTube download error: {str(e)}"
+            logger.error(f"[Thread {thread_id}] {error_msg}", exc_info=True)
+            return {"success": False, "error": error_msg}
+    
+    def _download_pexels_video_with_retry(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
+        """Download Pexels video with API key retry logic."""
+        config = self.video_download_config.get('pexels', {})
+        retry_config = config.get('retry', {})
+        
+        max_retries = retry_config.get('max_retries', 5)
+        switch_api_key = retry_config.get('switch_api_key_on_retry', True)
+        retry_delay = retry_config.get('retry_delay', 2.0)
+        
+        logger.info(f"[Thread {thread_id}] Starting Pexels video download with retry logic (max_retries: {max_retries})")
+        
+        # Get available API keys
+        api_keys = getattr(settings, 'pexels_api_keys', [])
+        if not api_keys:
+            logger.error(f"[Thread {thread_id}] No Pexels API keys available for retry logic")
+            return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
+        
+        # Try with different API keys if configured
+        used_keys = set()
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Select API key for this attempt
+                if switch_api_key and len(api_keys) > 1:
+                    # Get unused API keys
+                    available_keys = [key for key in api_keys if key not in used_keys]
+                    if not available_keys:
+                        # If all keys used, reset and use all keys again
+                        used_keys.clear()
+                        available_keys = api_keys
+                    
+                    current_api_key = random.choice(available_keys)
+                    used_keys.add(current_api_key)
+                else:
+                    current_api_key = api_keys[0] if api_keys else None
+                
+                if attempt > 0:
+                    logger.info(f"[Thread {thread_id}] Retry attempt {attempt}/{max_retries} for Pexels download")
+                    if switch_api_key:
+                        logger.info(f"[Thread {thread_id}] Using API key: {current_api_key[:10]}...{current_api_key[-5:] if current_api_key else 'None'}")
+                    time.sleep(retry_delay)
+                
+                # Attempt download with current configuration
+                result = self._download_video_with_ffmpeg(video_url, video_path, thread_id)
+                
+                if result.get('success'):
+                    if attempt > 0:
+                        logger.info(f"[Thread {thread_id}] Pexels download succeeded on retry attempt {attempt}")
+                    else:
+                        logger.info(f"[Thread {thread_id}] Pexels download succeeded on first attempt")
+                    return result
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.warning(f"[Thread {thread_id}] Pexels download attempt {attempt + 1} failed: {error_msg}")
+                    
+                    # If this is the last attempt, return the error
+                    if attempt >= max_retries:
+                        logger.error(f"[Thread {thread_id}] All Pexels download attempts failed after {max_retries + 1} tries")
+                        return result
+                
+            except Exception as e:
+                error_msg = f"Pexels download attempt {attempt + 1} error: {str(e)}"
+                logger.error(f"[Thread {thread_id}] {error_msg}")
+                
+                if attempt >= max_retries:
+                    return {"success": False, "error": f"All retry attempts failed. Last error: {error_msg}"}
+        
+        # This should not be reached, but just in case
+        return {"success": False, "error": "Maximum retry attempts exceeded"}
+    
+    def _download_video_with_ffmpeg(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
+        """Download video using FFmpeg (for non-YouTube URLs)."""
         ffmpeg_path = self._get_ffmpeg_path()
         if not ffmpeg_path:
             return {"success": False, "error": "ffmpeg not available"}
@@ -114,11 +427,12 @@ class VideoCompositionService:
         ]
         
         try:
+            logger.info(f"[Thread {thread_id}] Executing FFmpeg download command")
             result = subprocess.run(download_cmd, capture_output=True, 
                                   text=True, timeout=120)
             
             if result.returncode != 0:
-                error_msg = f"Download failed: {result.stderr}"
+                error_msg = f"FFmpeg download failed: {result.stderr}"
                 logger.error(f"[Thread {thread_id}] {error_msg}")
                 return {"success": False, "error": error_msg}
             
@@ -130,7 +444,7 @@ class VideoCompositionService:
             if file_size < 1024:  # Less than 1KB
                 return {"success": False, "error": "Downloaded file too small"}
             
-            logger.info(f"[Thread {thread_id}] Download successful: {file_size / 1024 / 1024:.2f}MB")
+            logger.info(f"[Thread {thread_id}] FFmpeg download successful: {file_size / 1024 / 1024:.2f}MB")
             return {"success": True, "output_path": video_path}
             
         except subprocess.TimeoutExpired:
@@ -314,7 +628,7 @@ class VideoCompositionService:
         start_time = time.time()
         
         logger.info(f"Starting video composition {composition_id} for task {request.task_id}")
-        logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
+        logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}, Image items: {len(request.image_items)}")
         logger.info(f"Frontend provided total duration: {request.total_duration}s")
         
         # Calculate actual total duration from clipped video segments
@@ -366,6 +680,18 @@ class VideoCompositionService:
                     "track_id": item.track_id
                 }
                 for i, item in enumerate(request.audio_items)
+            ],
+            "image_items_order": [
+                {
+                    "index": i,
+                    "id": item.id,
+                    "name": item.name,
+                    "start_time": item.start_time,
+                    "duration": item.duration,
+                    "track_id": item.track_id,
+                    "position": item.position.__dict__ if hasattr(item.position, '__dict__') else item.position
+                }
+                for i, item in enumerate(request.image_items)
             ]
         })
         
@@ -402,6 +728,16 @@ class VideoCompositionService:
                        f"is_trimmed={is_trimmed}, "
                        f"url={audio_item.url}")
                        
+        # Log individual image items for debugging
+        for i, image_item in enumerate(request.image_items):
+            logger.info(f"Image item {i+1} (叠加详情): "
+                       f"timeline_start={image_item.start_time}s, "
+                       f"timeline_duration={image_item.duration}s, "
+                       f"timeline_end={image_item.start_time + image_item.duration}s, "
+                       f"position={{x:{image_item.position.x}, y:{image_item.position.y}, w:{image_item.position.width}, h:{image_item.position.height}}}, "
+                       f"opacity={image_item.opacity}, "
+                       f"url={image_item.url}")
+                       
         # 统计裁剪信息
         trimmed_video_count = sum(1 for item in request.video_items 
                                 if (hasattr(item, 'clip_start') and item.clip_start > 0.0) or
@@ -430,14 +766,15 @@ class VideoCompositionService:
             if composition_id in self.compositions:
                 self.compositions[composition_id]["progress"] = 0.1
             
-            # Download videos
-            logger.info("Starting video downloads...")
+            # Download videos with retry mechanism
+            logger.info("Starting video downloads with retry mechanism...")
             video_urls = [item.url for item in request.video_items]
             downloaded_videos = []
+            failed_downloads = []
             
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {
-                    executor.submit(self._download_video, url, temp_dir, i): i 
+                    executor.submit(self._download_video_with_retry, url, temp_dir, i, request.video_items[i]): i 
                     for i, url in enumerate(video_urls)
                 }
                 
@@ -450,7 +787,57 @@ class VideoCompositionService:
                         results[original_index] = result['output_path']
                         logger.info(f"Downloaded video {len(results)}/{len(video_urls)} (index: {original_index})")
                     else:
-                        raise Exception(f"Video download failed at index {original_index}: {result['error']}")
+                        # Record detailed failure information
+                        video_item = request.video_items[original_index]
+                        failed_download = VideoProcessingError(
+                            video_index=original_index,
+                            video_id=video_item.id,
+                            video_name=video_item.name,
+                            video_url=video_item.url,
+                            stage=VideoProcessingStage.DOWNLOAD,
+                            attempts=result.get('attempts', 1),
+                            max_retries=3,
+                            error_message=result.get('error', 'Unknown download error'),
+                            last_error=result.get('last_error', 'Unknown error'),
+                            timeline_position=video_item.start_time,
+                            duration=video_item.duration
+                        )
+                        failed_downloads.append(failed_download)
+                        logger.error(f"Video download failed permanently at index {original_index}: {result['error']}")
+                
+                # Check if any downloads failed
+                if failed_downloads:
+                    error_details = CompositionErrorDetails(
+                        failed_videos=failed_downloads,
+                        total_videos=len(request.video_items),
+                        successful_videos=len(results),
+                        composition_stage="video_download",
+                        error_summary=f"{len(failed_downloads)} out of {len(request.video_items)} videos failed to download after 3 retry attempts",
+                        recovery_suggestions=[
+                            "Check if the video URLs are accessible",
+                            "Verify your internet connection",
+                            "Try using different video sources",
+                            "Contact support if the issue persists"
+                        ]
+                    )
+                    
+                    # Return detailed error response
+                    logger.error(f"Video composition failed: {len(failed_downloads)} videos failed to download")
+                    self.compositions[composition_id] = {
+                        "status": "failed", 
+                        "progress": 0.3,
+                        "error": error_details.error_summary,
+                        "error_details": error_details
+                    }
+                    
+                    return VideoCompositionResponse(
+                        success=False,
+                        message=error_details.error_summary,
+                        composition_id=composition_id,
+                        status="failed",
+                        progress=0.3,
+                        error_details=error_details
+                    )
                 
                 # 按原始顺序添加到列表
                 for i in range(len(video_urls)):
@@ -500,8 +887,9 @@ class VideoCompositionService:
                     logger.info(f"Video {i+1} clipping: {video_item.clip_start:.2f}s - {video_item.clip_end:.2f}s")
             
             normalized_videos = []
+            failed_normalizations = []
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {executor.submit(self._normalize_video, task): task['index'] for task in video_tasks}
+                futures = {executor.submit(self._normalize_video_with_retry, task): task['index'] for task in video_tasks}
                 
                 # 收集结果并保持原始顺序
                 norm_results = {}
@@ -512,7 +900,57 @@ class VideoCompositionService:
                         norm_results[original_index] = result['normalized_path']
                         logger.info(f"Normalized video {len(norm_results)}/{len(video_tasks)} (index: {original_index})")
                     else:
-                        raise Exception(f"Video normalization failed at index {original_index}: {result['error']}")
+                        # Record detailed failure information
+                        video_item = request.video_items[original_index]
+                        failed_normalization = VideoProcessingError(
+                            video_index=original_index,
+                            video_id=video_item.id,
+                            video_name=video_item.name,
+                            video_url=video_item.url,
+                            stage=VideoProcessingStage.NORMALIZATION,
+                            attempts=result.get('attempts', 1),
+                            max_retries=3,
+                            error_message=result.get('error', 'Unknown normalization error'),
+                            last_error=result.get('last_error', 'Unknown error'),
+                            timeline_position=video_item.start_time,
+                            duration=video_item.duration
+                        )
+                        failed_normalizations.append(failed_normalization)
+                        logger.error(f"Video normalization failed permanently at index {original_index}: {result['error']}")
+                
+                # Check if any normalizations failed
+                if failed_normalizations:
+                    error_details = CompositionErrorDetails(
+                        failed_videos=failed_normalizations,
+                        total_videos=len(request.video_items),
+                        successful_videos=len(norm_results),
+                        composition_stage="video_normalization",
+                        error_summary=f"{len(failed_normalizations)} out of {len(request.video_items)} videos failed to normalize after 3 retry attempts",
+                        recovery_suggestions=[
+                            "Check if the downloaded video files are corrupted",
+                            "Verify that FFmpeg is properly installed and accessible",
+                            "Try reducing the target resolution or frame rate",
+                            "Ensure there is enough disk space for video processing"
+                        ]
+                    )
+                    
+                    # Return detailed error response
+                    logger.error(f"Video composition failed: {len(failed_normalizations)} videos failed to normalize")
+                    self.compositions[composition_id] = {
+                        "status": "failed", 
+                        "progress": 0.6,
+                        "error": error_details.error_summary,
+                        "error_details": error_details
+                    }
+                    
+                    return VideoCompositionResponse(
+                        success=False,
+                        message=error_details.error_summary,
+                        composition_id=composition_id,
+                        status="failed",
+                        progress=0.6,
+                        error_details=error_details
+                    )
                 
                 # 按原始顺序添加到列表
                 for i in range(len(video_tasks)):
@@ -639,6 +1077,41 @@ class VideoCompositionService:
             else:
                 logger.info("No audio tracks to process")
             
+            # 处理图片叠加 - 使用专门的图片轨道
+            all_image_items = list(request.image_items)
+            
+            if all_image_items:
+                logger.info("Processing image overlay tracks...")
+                logger.info(f"Found {len(request.image_items)} image items to process")
+                logger.info(f"Total image overlay items to process: {len(all_image_items)}")
+                
+                try:
+                    # 使用与音频处理相同的方式，在原始视频目录生成临时文件
+                    video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
+                    
+                    # Process image overlays and add them to the video
+                    success = self._process_image_overlays(
+                        all_image_items,
+                        str(output_path), 
+                        video_with_images_path,
+                        temp_dir,
+                        request.output_resolution
+                    )
+                    
+                    if success and os.path.exists(video_with_images_path):
+                        # Replace the original video with the image-processed version
+                        os.replace(video_with_images_path, str(output_path))
+                        logger.info("Image overlays successfully added to video")
+                        
+                        # Verify final file with image overlays
+                        final_size = os.path.getsize(output_path)
+                        logger.info(f"Final video file size with image overlays: {final_size} bytes")
+                    else:
+                        logger.warning("Image overlay processing did not produce output file")
+                        
+                except Exception as e:
+                    logger.error(f"Image overlay processing error: {str(e)}", exc_info=True)
+
             # Handle subtitles if present  
             if request.subtitle_items:
                 logger.info("Processing subtitle tracks...")
@@ -720,10 +1193,27 @@ class VideoCompositionService:
             error_msg = f"Video composition failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
+            # Create proper error details
+            error_details = CompositionErrorDetails(
+                failed_videos=[],
+                total_videos=len(request.video_items),
+                successful_videos=0,
+                composition_stage="finalization",
+                error_summary=error_msg,
+                recovery_suggestions=[
+                    "Check if all video files are accessible and not corrupted",
+                    "Verify that FFmpeg is properly configured",
+                    "Ensure there is enough disk space and memory",
+                    "Try simplifying the composition or reducing video quality",
+                    "Contact support if the issue persists"
+                ]
+            )
+            
             # Update composition info
             self.compositions[composition_id].update({
                 "status": "failed",
-                "error_details": {"error": error_msg},
+                "error": error_msg,
+                "error_details": error_details,
                 "failed_at": datetime.utcnow()
             })
             
@@ -740,7 +1230,7 @@ class VideoCompositionService:
                 composition_id=composition_id,
                 status="failed",
                 progress=0.0,
-                error_details={"error": error_msg}
+                error_details=error_details
             )
     
     def get_composition_status(self, composition_id: str) -> Optional[Dict[str, Any]]:
@@ -940,94 +1430,154 @@ class VideoCompositionService:
                         return None
                     
             else:
-                # Multiple audio items - create complex mix
-                logger.info(f"Mixing {len(request.audio_items)} audio tracks")
+                # Multiple audio items - create proper parallel mix
+                logger.info(f"Mixing {len(request.audio_items)} audio tracks with independent volume control")
                 
-                # Create a silent base track with the actual total duration
-                base_audio_path = os.path.join(temp_dir, "silent_base.wav")
-                silent_cmd = [
-                    ffmpeg_path,
-                    '-y',
-                    '-f', 'lavfi',
-                    '-i', f'anullsrc=r=44100:cl=stereo',
-                    '-t', str(actual_total_duration),
-                    '-ar', '44100',
-                    '-ac', '2',
-                    base_audio_path
-                ]
-                
-                logger.info(f"Creating silent base track: {' '.join(silent_cmd)}")
-                result = subprocess.run(silent_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    logger.error(f"Failed to create silent base track: {result.stderr}")
-                    return None
-                
-                # Process each audio item and overlay on the base
-                current_mix = base_audio_path
-                
+                # Pre-process each audio item individually to apply volume and clipping
+                processed_audio_paths = []
                 for i, audio_item in enumerate(request.audio_items):
                     try:
                         local_audio_path = self._convert_url_to_local_path(audio_item.url)
-                        temp_mix_path = os.path.join(temp_dir, f"temp_mix_{i}.wav")
+                        processed_path = os.path.join(temp_dir, f"processed_audio_{i}.wav")
                         
-                        logger.info(f"Overlaying audio {i+1}/{len(request.audio_items)}: {audio_item.name}")
-                        logger.info(f"Audio clipping: start={audio_item.clip_start}s, end={audio_item.clip_end}s")
+                        logger.info(f"Pre-processing audio {i+1}/{len(request.audio_items)}: {audio_item.name}", {
+                            'volume': audio_item.volume,
+                            'start_time': audio_item.start_time,
+                            'clip_start': audio_item.clip_start,
+                            'clip_end': audio_item.clip_end,
+                            'track_id': audio_item.track_id
+                        })
                         
                         # Calculate clipped duration for this audio item
                         clip_duration = audio_item.clip_end - audio_item.clip_start
                         
-                        # Create overlay command with clipping support
-                        overlay_cmd = [
+                        # Pre-process this audio item with volume and clipping
+                        process_cmd = [
                             ffmpeg_path,
-                            '-y',
-                            '-i', current_mix,  # Base mix
+                            '-y'
                         ]
                         
                         # Add clipping parameters for the audio input
                         if audio_item.clip_start > 0:
-                            overlay_cmd.extend(['-ss', str(audio_item.clip_start)])
+                            process_cmd.extend(['-ss', str(audio_item.clip_start)])
                         
-                        overlay_cmd.extend([
-                            '-i', local_audio_path,  # Audio to overlay
-                            '-filter_complex',
-                            f'[1:a]atrim=duration={clip_duration},adelay={int(audio_item.start_time * 1000)}|{int(audio_item.start_time * 1000)},volume={audio_item.volume}[delayed];[0:a][delayed]amix=inputs=2:duration=first:dropout_transition=3[out]',
-                            '-map', '[out]',
+                        process_cmd.extend([
+                            '-i', local_audio_path,
+                            '-af', f'volume={audio_item.volume}',
+                            '-t', str(clip_duration),
                             '-ar', '44100',
                             '-ac', '2',
-                            temp_mix_path
+                            processed_path
                         ])
                         
-                        logger.info(f"Running overlay command: {' '.join(overlay_cmd)}")
-                        result = subprocess.run(overlay_cmd, capture_output=True, text=True)
+                        logger.info(f"Pre-processing audio command: {' '.join(process_cmd)}")
+                        result = subprocess.run(process_cmd, capture_output=True, text=True)
                         
                         if result.returncode != 0:
-                            logger.error(f"Audio overlay failed for item {i+1}", {
-                                'command': ' '.join(overlay_cmd),
+                            logger.error(f"Audio pre-processing failed for item {i+1}", {
+                                'command': ' '.join(process_cmd),
                                 'stderr': result.stderr,
                                 'audio_item': audio_item.name
                             })
                             continue
                         
-                        # Update current mix to the new temp file
-                        if current_mix != base_audio_path and os.path.exists(current_mix):
-                            os.remove(current_mix)
-                        current_mix = temp_mix_path
+                        processed_audio_paths.append({
+                            'path': processed_path,
+                            'start_time': audio_item.start_time,
+                            'name': audio_item.name,
+                            'track_id': audio_item.track_id
+                        })
                         
-                        logger.info(f"Successfully overlaid audio: {audio_item.name}")
+                        logger.info(f"Successfully pre-processed audio: {audio_item.name}")
                         
                     except Exception as e:
-                        logger.error(f"Failed to process audio item {audio_item.name}: {str(e)}")
+                        logger.error(f"Failed to pre-process audio item {audio_item.name}: {str(e)}")
                         continue
                 
-                # Move final mix to output path
-                if current_mix != base_audio_path:
-                    os.rename(current_mix, audio_mix_path)
-                    logger.info("Audio mixing completed successfully")
-                    return audio_mix_path
-                else:
-                    logger.warning("No audio tracks were successfully processed")
+                if not processed_audio_paths:
+                    logger.error("No audio tracks were successfully pre-processed")
                     return None
+                
+                # Now create the final mix using all processed audio files
+                logger.info(f"Creating final mix with {len(processed_audio_paths)} processed audio tracks")
+                
+                # Log detailed timing information for debugging
+                for i, audio_info in enumerate(processed_audio_paths):
+                    logger.info(f"Audio track {i+1} timing details", {
+                        'name': audio_info['name'],
+                        'start_time': audio_info['start_time'],
+                        'track_id': audio_info['track_id'],
+                        'processed_path': audio_info['path']
+                    })
+                
+                logger.info(f"Total video duration for audio mixing: {actual_total_duration}s")
+                
+                # Build the complex FFmpeg command for mixing
+                mix_cmd = [ffmpeg_path, '-y']
+                
+                # Add all processed audio inputs
+                for audio_info in processed_audio_paths:
+                    mix_cmd.extend(['-i', audio_info['path']])
+                
+                # Build the filter complex for proper mixing with timing
+                filter_parts = []
+                for i, audio_info in enumerate(processed_audio_paths):
+                    delay_ms = int(audio_info['start_time'] * 1000)
+                    if delay_ms > 0:
+                        # Use adelay to position audio at correct time, and apad to ensure it doesn't get cut off
+                        filter_parts.append(f'[{i}:a]adelay={delay_ms}|{delay_ms},apad=pad_dur={actual_total_duration}[delayed{i}]')
+                    else:
+                        # For audio starting at 0, still add padding to ensure full duration
+                        filter_parts.append(f'[{i}:a]apad=pad_dur={actual_total_duration}[delayed{i}]')
+                
+                # Create the mix filter with longest duration to ensure all audio is preserved
+                input_labels = [f'[delayed{i}]' for i in range(len(processed_audio_paths))]
+                mix_filter = f"{';'.join(filter_parts)};{' '.join(input_labels)}amix=inputs={len(processed_audio_paths)}:duration=longest:dropout_transition=3,atrim=duration={actual_total_duration}[out]"
+                
+                mix_cmd.extend([
+                    '-filter_complex', mix_filter,
+                    '-map', '[out]',
+                    '-t', str(actual_total_duration),
+                    '-ar', '44100',
+                    '-ac', '2',
+                    audio_mix_path
+                ])
+                
+                logger.info(f"Running final mix command: {' '.join(mix_cmd)}")
+                logger.info(f"Filter complex: {mix_filter}")
+                
+                result = subprocess.run(mix_cmd, capture_output=True, text=True)
+                
+                logger.info(f"Audio mixing result: returncode={result.returncode}")
+                if result.stdout:
+                    logger.info(f"Audio mixing stdout: {result.stdout}")
+                if result.stderr:
+                    logger.info(f"Audio mixing stderr: {result.stderr}")
+                
+                # Clean up processed audio files
+                for audio_info in processed_audio_paths:
+                    try:
+                        if os.path.exists(audio_info['path']):
+                            os.remove(audio_info['path'])
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up processed audio file {audio_info['path']}: {str(e)}")
+                
+                if result.returncode != 0:
+                    logger.error(f"Audio mixing failed", {
+                        'command': ' '.join(mix_cmd),
+                        'stderr': result.stderr,
+                        'stdout': result.stdout
+                    })
+                    return None
+                else:
+                    # Verify the output file
+                    if os.path.exists(audio_mix_path):
+                        audio_size = os.path.getsize(audio_mix_path)
+                        logger.info(f"Audio mixing completed successfully, output size: {audio_size} bytes")
+                        return audio_mix_path
+                    else:
+                        logger.error("Audio mixing completed but output file not found")
+                        return None
                     
         except Exception as e:
             logger.error(f"Audio processing failed with exception: {str(e)}")
@@ -1141,6 +1691,10 @@ class VideoCompositionService:
         """
         Process subtitle tracks and add them to the video.
         
+        Based on the verified test script test_subtitle_aspect_ratio.py,
+        this method uses consistent parameters for proper subtitle rendering
+        with aspect ratio adaptation.
+        
         Args:
             subtitle_items: List of subtitle items from the timeline
             video_path: Path to the video file to add subtitles to
@@ -1151,10 +1705,15 @@ class VideoCompositionService:
         """
         try:
             logger.info(f"Starting subtitle processing for {len(subtitle_items)} subtitle items")
+            logger.info(f"Using enhanced subtitle parameters based on test_subtitle_aspect_ratio.py")
             
             # Log subtitle details for debugging
             for i, subtitle in enumerate(subtitle_items):
                 logger.info(f"Subtitle {i+1}: '{subtitle.text}' at {subtitle.start_time}s for {subtitle.duration}s")
+                logger.debug(f"  Font size: {getattr(subtitle, 'font_size', 'default')}, "
+                           f"Font color: {getattr(subtitle, 'font_color', 'default')}, "
+                           f"Background color: {getattr(subtitle, 'background_color', 'default')}, "
+                           f"Position: {getattr(subtitle, 'position', 'default')}")
             
             # Create SRT file from subtitle items
             srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
@@ -1165,27 +1724,49 @@ class VideoCompositionService:
             
             logger.info(f"Created SRT file: {srt_path}")
             
-            # Use the first subtitle item's properties as defaults for all subtitles
+            # Use the first subtitle item's properties, with proper defaults from frontend
             first_subtitle = subtitle_items[0]
             
-            # Create subtitle addition request
+            # Get font size from frontend (respect user settings)
+            font_family = getattr(first_subtitle, 'font_family', 'default')
+            font_size = getattr(first_subtitle, 'font_size', 24)  # Use frontend value or standard default
+            font_color = getattr(first_subtitle, 'font_color', '#FFFFFF')
+            background_color = getattr(first_subtitle, 'background_color', None)
+            position = getattr(first_subtitle, 'position', 'bottom')
+            
+            # Log the font size to verify it's being used correctly
+            logger.info(f"Using subtitle font size from frontend: {font_size}px (user setting: {hasattr(first_subtitle, 'font_size')})")
+            
+            # Use semi-transparent black background as default (from test script)
+            if not background_color:
+                background_color = "#000000@0.5"
+                logger.info("Using default semi-transparent black background for subtitles")
+            
+            # Create subtitle addition request with parameters matching test script
             subtitle_request = SubtitleAddRequest(
                 video_file_path=video_path,
                 subtitle_file_path=srt_path,
-                font_family=getattr(first_subtitle, 'font_family', 'default'),
-                font_size=first_subtitle.font_size,
-                font_color=first_subtitle.font_color,
-                background_color=first_subtitle.background_color,  # 不强制设置默认背景色，保持None值
-                border_width=2,
-                border_color="#000000",
-                position=first_subtitle.position,
-                margin_vertical=50,
-                margin_horizontal=50
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                background_color=background_color,
+                border_width=2,  # Verified in test script
+                border_color="#000000",  # Verified in test script
+                position=position,
+                margin_vertical=50,  # Verified in test script
+                margin_horizontal=50  # Verified in test script
             )
             
-            logger.info(f"Subtitle request configuration: font_family={subtitle_request.font_family}, "
-                       f"font_size={subtitle_request.font_size}, font_color={subtitle_request.font_color}, "
-                       f"background_color={subtitle_request.background_color}, position={subtitle_request.position}")
+            logger.info(f"Subtitle request configuration (enhanced): "
+                       f"font_family={subtitle_request.font_family}, "
+                       f"font_size={subtitle_request.font_size}, "
+                       f"font_color={subtitle_request.font_color}, "
+                       f"background_color={subtitle_request.background_color}, "
+                       f"position={subtitle_request.position}, "
+                       f"border_width={subtitle_request.border_width}, "
+                       f"border_color={subtitle_request.border_color}, "
+                       f"margin_vertical={subtitle_request.margin_vertical}, "
+                       f"margin_horizontal={subtitle_request.margin_horizontal}")
             
             # Add subtitles to video using SubtitleService
             # Note: SubtitleService.add_subtitles is async, but we're in a sync context
@@ -1211,6 +1792,15 @@ class VideoCompositionService:
             if result.success:
                 logger.info(f"Subtitle addition successful: {result.output_video_path}")
                 logger.info(f"Processed {result.subtitle_count} subtitles in {result.processing_time:.2f}s")
+                logger.info(f"Video dimensions: {result.video_width}x{result.video_height}")
+                
+                # Add aspect ratio information for better tracking
+                if result.video_width and result.video_height:
+                    aspect_ratio = result.video_width / result.video_height
+                    video_type = "portrait" if aspect_ratio < 1.0 else "landscape"
+                    logger.info(f"Video type: {video_type} (aspect ratio: {aspect_ratio:.2f})")
+                
+                logger.info(f"Output file size: {result.file_size} bytes")
                 return result.output_video_path
             else:
                 logger.error(f"Subtitle addition failed: {result.message}")
@@ -1255,6 +1845,7 @@ class VideoCompositionService:
                     logger.debug(f"SRT entry {i}: {start_time_srt} --> {end_time_srt} | {subtitle.text}")
             
             logger.info(f"SRT file created successfully: {srt_path}")
+            logger.info(f"SRT file uses standard format (HH:MM:SS,mmm) compatible with SubtitleService")
             return srt_path
             
         except Exception as e:
@@ -1263,17 +1854,194 @@ class VideoCompositionService:
     
     def _seconds_to_srt_time(self, seconds: float) -> str:
         """
-        Convert seconds to SRT time format compatible with SubtitleService (MM:SS.mm).
+        Convert seconds to standard SRT time format (HH:MM:SS,mmm).
         
         Args:
             seconds: Time in seconds
             
         Returns:
-            Time in SubtitleService compatible format (MM:SS.mm)
+            Time in standard SRT format (HH:MM:SS,mmm)
         """
-        # SubtitleService expects MM:SS.mm format, not standard HH:MM:SS,mmm
-        minutes = int(seconds // 60)
+        # Convert to standard SRT format: HH:MM:SS,mmm
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
-        centiseconds = int((seconds % 1) * 100)  # Use centiseconds (2 digits) instead of milliseconds
+        milliseconds = int((seconds % 1) * 1000)  # Convert to milliseconds
         
-        return f"{minutes:02d}:{secs:02d}.{centiseconds:02d}" 
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+    
+    def _process_image_overlays(self, image_items: List, video_path: str, output_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> bool:
+        """
+        Process image overlays and add them to the video.
+        
+        Args:
+            image_items: List of video items that are actually image overlays
+            video_path: Path to the input video file
+            output_path: Path for the output video with overlays
+            temp_dir: Temporary directory for processing
+            output_resolution: Video output resolution dict with 'width' and 'height'
+            
+        Returns:
+            True if processing succeeded, False otherwise
+        """
+        try:
+            logger.info(f"Starting image overlay processing for {len(image_items)} image items")
+            
+            # Get FFmpeg path
+            ffmpeg_path = self._get_ffmpeg_path()
+            
+            # Build FFmpeg command for image overlays
+            cmd = [ffmpeg_path, '-y', '-i', video_path]
+            
+            # Add each image as input
+            valid_items = []
+            for i, item in enumerate(image_items):
+                image_url = item.url
+                local_image_path = self._convert_url_to_local_path(image_url)
+                
+                if not os.path.exists(local_image_path):
+                    # Download image if it's a remote URL
+                    downloaded_image = self._download_image(image_url, temp_dir, i)
+                    if downloaded_image and downloaded_image.get('success'):
+                        local_image_path = downloaded_image['output_path']
+                    else:
+                        logger.warning(f"Failed to download image {image_url}, skipping overlay")
+                        continue
+                
+                cmd.extend(['-i', local_image_path])
+                valid_items.append(item)
+            
+            if len(valid_items) == 0:
+                logger.warning("No valid image items to overlay")
+                return False
+            
+            # Build filter complex for image overlays
+            filter_parts = []
+            base_input = "[0:v]"
+            
+            video_width = output_resolution['width']
+            video_height = output_resolution['height']
+            
+            for i, item in enumerate(valid_items):
+                input_idx = i + 1  # +1 because [0] is the video
+                
+                # Handle position from either image_position (video track items) or position (dedicated image items)
+                pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
+                if not pos:
+                    logger.warning(f"No position information for image item {item.id}, using default position")
+                    # Create default position
+                    pos = type('Position', (), {
+                        'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
+                    })()
+                
+                # Calculate actual pixel positions
+                x = int(pos.x * video_width)
+                y = int(pos.y * video_height)
+                w = int(pos.width * video_width)
+                h = int(pos.height * video_height)
+                
+                # Calculate time filters based on item timing
+                start_time = item.start_time
+                end_time = item.start_time + item.duration
+                
+                logger.info(f"Image overlay {i+1}: position=({x},{y}) size=({w}x{h}) time={start_time}s-{end_time}s")
+                
+                # 保持图片原始比例的缩放滤镜
+                # 使用force_original_aspect_ratio=decrease确保图片不超出指定尺寸且保持比例
+                # 然后使用pad滤镜将图片填充到目标尺寸，居中放置
+                scale_filter = f"[{input_idx}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
+                filter_parts.append(scale_filter)
+                
+                # Create overlay filter with timing
+                if i == 0:
+                    overlay_filter = f"{base_input}[img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
+                else:
+                    overlay_filter = f"[v{i-1}][img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
+                filter_parts.append(overlay_filter)
+            
+            # Combine all filter parts
+            filter_complex = ";".join(filter_parts)
+            final_output = f"[v{len(valid_items)-1}]"
+            
+            logger.info(f"Image overlay filter complex: {filter_complex}")
+            
+            cmd.extend([
+                '-filter_complex', filter_complex,
+                '-map', final_output,
+                '-map', '0:a?',  # Copy audio if it exists
+                '-c:a', 'copy',  # Copy audio codec
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-pix_fmt', 'yuv420p',
+                output_path
+            ])
+            
+            logger.info(f"Running image overlay command: {' '.join(cmd)}")
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info(f"Image overlay processing completed successfully")
+                logger.info(f"Output file: {output_path} (size: {os.path.getsize(output_path)} bytes)")
+                return True
+            else:
+                logger.error(f"Image overlay processing failed: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing image overlays: {str(e)}", exc_info=True)
+            return False
+    
+    def _download_image(self, image_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
+        """
+        Download an image file from URL.
+        
+        Args:
+            image_url: URL of the image to download
+            temp_dir: Temporary directory to save the image
+            index: Index for naming the downloaded file
+            
+        Returns:
+            Dictionary with success status and output path
+        """
+        try:
+            import requests
+            from urllib.parse import urlparse, unquote
+            
+            # Parse URL to get file extension
+            parsed_url = urlparse(image_url)
+            path = unquote(parsed_url.path)
+            
+            # Try to get file extension from URL
+            file_ext = os.path.splitext(path)[1].lower()
+            if not file_ext or file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
+                file_ext = '.jpg'  # Default to jpg
+            
+            output_filename = f"image_{index}{file_ext}"
+            output_path = os.path.join(temp_dir, output_filename)
+            
+            logger.info(f"Downloading image from {image_url} to {output_path}")
+            
+            # Download the image
+            response = requests.get(image_url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            file_size = os.path.getsize(output_path)
+            logger.info(f"Image downloaded successfully: {file_size} bytes")
+            
+            return {
+                "success": True,
+                "output_path": output_path,
+                "file_size": file_size
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to download image {image_url}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            } 
