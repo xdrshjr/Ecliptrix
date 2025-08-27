@@ -65,7 +65,8 @@ export const useAIImageGeneration = (
             // 使用prompt_id下载图片（ComfyUI API服务按prompt_id提供下载）
             try {
               const url = await aiImageService.downloadImageByPromptId(promptId);
-              setGeneratedImages([url]);
+              // 修复：将新图片添加到最前面，而不是替换整个数组
+              setGeneratedImages(prev => [url, ...prev]);
               
               logger.info('AI图片下载完成', {
                 promptId,
@@ -158,7 +159,7 @@ export const useAIImageGeneration = (
 
     setIsGenerating(true);
     setGenerationProgress(0);
-    setGeneratedImages([]);
+    // 修复：不再清空已生成的图片
     setGenerationError(null);
     setGenerationStatus('pending');
 
@@ -194,7 +195,7 @@ export const useAIImageGeneration = (
     isGenerating, aiImageService, startPolling, logger
   ]);
 
-  // 添加到素材库
+  // 添加到素材库（批量）
   const handleAddToMaterials = useCallback(async (imageUrls: string[]) => {
     if (imageUrls.length === 0) {
       logger.warn('没有图片可添加到素材库');
@@ -256,6 +257,57 @@ export const useAIImageGeneration = (
     }
   }, [onAddMaterials, positivePrompt, width, height, steps, cfg, guidance, checkpoint, logger]);
 
+  // 添加单张图片到素材库
+  const handleAddSingleToMaterials = useCallback(async (imageUrl: string) => {
+    logger.userAction('添加单张AI生成图片到素材库', 'addSingleToMaterials', {
+      imageUrl: imageUrl.substring(0, 100)
+    });
+
+    try {
+      const material: MaterialItem = {
+        id: `ai-image-${Date.now()}`,
+        name: `AI生成图片_${new Date().toISOString().split('T')[0]}`,
+        type: 'image',
+        format: 'png',
+        url: imageUrl,
+        size: 0,
+        duration: 0,
+        width,
+        height,
+        thumbnailUrl: imageUrl,
+        createdAt: new Date(),
+        metadata: {
+          source: 'ai-generated',
+          generatedAt: new Date().toISOString(),
+          prompt: positivePrompt.substring(0, 200),
+          parameters: {
+            width,
+            height,
+            steps,
+            cfg,
+            guidance,
+            checkpoint
+          }
+        }
+      };
+
+      const success = onAddMaterials([material]);
+      
+      if (success) {
+        logger.info('单张AI生成图片成功添加到素材库', {
+          imageUrl: imageUrl.substring(0, 100)
+        });
+        return true;
+      } else {
+        logger.error('添加单张AI生成图片到素材库失败', new Error('onAddMaterials returned false'));
+        return false;
+      }
+    } catch (error) {
+      logger.error('添加单张AI生成图片异常', error as Error);
+      return false;
+    }
+  }, [onAddMaterials, positivePrompt, width, height, steps, cfg, guidance, checkpoint, logger]);
+
   // 清除错误
   const clearError = useCallback(() => {
     setGenerationError(null);
@@ -292,6 +344,7 @@ export const useAIImageGeneration = (
     closeModal,
     handleGenerate,
     handleAddToMaterials,
+    handleAddSingleToMaterials,
     setPositivePrompt,
     setNegativePrompt,
     setWidth,

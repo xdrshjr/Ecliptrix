@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UseAIImageGenerationReturn } from '../../types';
 import { VideoEditingLogger } from '../../utils';
+import ImagePreviewModal from '../ImagePreviewModal';
 
 interface AIImageGenerationModalProps extends UseAIImageGenerationReturn {}
 
@@ -85,6 +86,7 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
   closeModal,
   handleGenerate,
   handleAddToMaterials,
+  handleAddSingleToMaterials,
   setPositivePrompt,
   setNegativePrompt,
   setWidth,
@@ -102,6 +104,9 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     taskId,
     component: 'AIImageGenerationModal'
   });
+
+  // 图片预览状态
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
 
   useEffect(() => {
     if (isModalOpen) {
@@ -145,11 +150,40 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     }
   };
 
-  const handleAddSingleToMaterials = (imageUrl: string, index: number) => {
+  const handleAddSingleImageToMaterials = (imageUrl: string, index: number) => {
     logger.userAction('添加单张图片到素材库', 'addSingleButton', {
       imageIndex: index
     });
     handleAddToMaterials([imageUrl]);
+  };
+
+  // 处理图片点击预览
+  const handleImageClick = (imageUrl: string, index: number) => {
+    logger.userAction('点击图片进行预览', 'imagePreview', {
+      imageIndex: index
+    });
+    setPreviewImage({
+      url: imageUrl,
+      name: `AI生成图片 ${index + 1}`
+    });
+  };
+
+  // 关闭预览
+  const handleClosePreview = () => {
+    logger.info('关闭图片预览');
+    setPreviewImage(null);
+  };
+
+  // 从预览弹窗添加到素材
+  const handleAddFromPreview = async (imageUrl: string) => {
+    try {
+      const success = await handleAddSingleToMaterials(imageUrl);
+      if (!success) {
+        logger.error('从预览弹窗添加图片到素材库失败', new Error('添加图片失败'));
+      }
+    } catch (error) {
+      logger.error('从预览弹窗添加图片异常', error as Error);
+    }
   };
 
   const commonDimensions = [
@@ -453,10 +487,30 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
           </div>
 
           {/* 右侧结果展示面板 */}
-          <div className="w-[70%] p-4 overflow-y-auto">
-            <div className="h-full">
+          <div className="w-[70%] flex flex-col overflow-hidden">
+            {/* 标题栏 */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white/80 backdrop-blur-sm">
+              {generatedImages.length > 0 ? (
+                <>
+                  <h3 className="text-lg font-medium text-gray-900">
+                    生成结果 ({generatedImages.length}张)
+                  </h3>
+                  <button
+                    onClick={handleAddAllToMaterials}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    添加全部到素材库
+                  </button>
+                </>
+              ) : (
+                <h3 className="text-lg font-medium text-gray-900">生成结果</h3>
+              )}
+            </div>
+
+            {/* 内容区域 - 支持滚动 */}
+            <div className="flex-1 overflow-y-auto">
               {generatedImages.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
+                <div className="h-full flex items-center justify-center p-8">
                   <div className="text-center">
                     <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                       <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -470,32 +524,29 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      生成结果 ({generatedImages.length}张)
-                    </h3>
-                    <button
-                      onClick={handleAddAllToMaterials}
-                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
-                    >
-                      添加全部到素材库
-                    </button>
-                  </div>
-                  
-                  {/* 瀑布流布局 */}
-                  <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+                <div className="p-4">
+                  {/* 网格布局 - 支持滚动查看所有图片 */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {generatedImages.map((imageUrl, index) => (
-                      <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden group break-inside-avoid mb-4">
+                      <div 
+                        key={`${imageUrl}-${index}`} 
+                        className="relative bg-gray-100 rounded-lg overflow-hidden group cursor-pointer hover:shadow-lg transition-all duration-200"
+                        onClick={() => handleImageClick(imageUrl, index)}
+                      >
                         <img
                           src={imageUrl}
                           alt={`AI生成图片 ${index + 1}`}
-                          className="w-full h-auto object-cover"
+                          className="w-full aspect-square object-cover"
                         />
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                        
+                        {/* 悬停操作层 */}
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-200 flex items-center justify-center">
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity space-x-2">
                             <button
-                              onClick={() => handleAddSingleToMaterials(imageUrl, index)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddSingleImageToMaterials(imageUrl, index);
+                              }}
                               className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                               title="添加到素材库"
                             >
@@ -504,12 +555,23 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
                             <a
                               href={imageUrl}
                               download={`ai-generated-image-${index + 1}.png`}
+                              onClick={(e) => e.stopPropagation()}
                               className="inline-block px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
                               title="下载图片"
                             >
                               下载
                             </a>
                           </div>
+                        </div>
+
+                        {/* 图片序号 */}
+                        <div className="absolute top-2 left-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
+                          #{index + 1}
+                        </div>
+
+                        {/* 点击预览提示 */}
+                        <div className="absolute bottom-2 right-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                          点击预览
                         </div>
                       </div>
                     ))}
@@ -520,6 +582,18 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 图片预览弹窗 */}
+      {previewImage && (
+        <ImagePreviewModal
+          isOpen={!!previewImage}
+          imageUrl={previewImage.url}
+          imageName={previewImage.name}
+          onClose={handleClosePreview}
+          onAddToMaterials={handleAddFromPreview}
+          taskId={taskId}
+        />
+      )}
     </div>
     </>
   );
