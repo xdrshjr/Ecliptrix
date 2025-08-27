@@ -15,7 +15,8 @@ import {
   useAudioSearch,
   useTimelineComposition,
   useVideoAnalysis,
-  useAIImageGeneration
+  useAIImageGeneration,
+  useComfyUIHealth
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
 import {
@@ -93,6 +94,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加AI生图功能
   const aiImageGeneration = useAIImageGeneration(taskId, materialManagement.addMaterials);
+  
+  // 添加ComfyUI健康检查功能
+  const comfyuiHealth = useComfyUIHealth(taskId, true);
 
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
@@ -674,6 +678,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
                 onRetryDownload={videoSearch.retryVideoDownload}
                 taskId={taskId}
+                comfyuiHealthStatus={comfyuiHealth}
               />
 
               <VideoPlayerPanel

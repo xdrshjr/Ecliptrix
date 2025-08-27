@@ -57,4 +57,15 @@ export type {
 export {
   AIImageGenerationServiceImpl,
   createAIImageGenerationService
-} from './aiImageGenerationService'; 
+} from './aiImageGenerationService';
+
+// ComfyUI Health Service
+export type {
+  ComfyUIHealthService,
+  ComfyUIHealthStatus
+} from './comfyuiHealthService';
+
+export {
+  ComfyUIHealthServiceImpl,
+  createComfyUIHealthService
+} from './comfyuiHealthService'; 

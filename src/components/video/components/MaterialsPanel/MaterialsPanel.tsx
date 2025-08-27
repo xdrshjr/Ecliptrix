@@ -7,6 +7,7 @@ import { VideoEditingLogger } from '../../utils/logger';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useLocale } from '@/contexts/LocaleContext';
+import { UseComfyUIHealthReturn } from '../../hooks/useComfyUIHealth';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -18,6 +19,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   isBatchAnalyzing?: boolean; // 新增：批量解析状态
   getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
   onRetryDownload?: (material: MaterialItem) => void; // 新增：重试下载回调
+  comfyuiHealthStatus?: UseComfyUIHealthReturn; // 新增：ComfyUI健康状态
   taskId: string;
   className?: string;
 }
@@ -38,6 +40,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   isBatchAnalyzing = false, // 新增：批量解析状态
   getVideoAnalysisStatus, // 新增：获取视频解析状态
   onRetryDownload, // 新增：重试下载回调
+  comfyuiHealthStatus, // 新增：ComfyUI健康状态
   taskId,
   className = '',
   // 新增的删除功能
@@ -132,9 +135,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   };
 
   const handleAIImageGenerationClick = () => {
+    // 检查ComfyUI服务是否可用
+    if (!comfyuiHealthStatus?.isServiceAvailable) {
+      logger.warn('AI生图服务不可用，阻止操作', {
+        healthStatus: comfyuiHealthStatus?.healthStatus?.status,
+        comfyuiStatus: comfyuiHealthStatus?.healthStatus?.comfyui_status,
+        error: comfyuiHealthStatus?.error
+      });
+      return;
+    }
+
     logger.info('用户点击AI生图按钮', {
       materialsCount: materials.length,
-      selectedType: selectedMaterialType
+      selectedType: selectedMaterialType,
+      serviceAvailable: comfyuiHealthStatus?.isServiceAvailable
     });
     
     if (onAIImageGeneration) {
@@ -809,8 +823,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
               <button
                 onClick={handleAIImageGenerationClick}
-                className="flex items-center space-x-1 text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded transition-colors"
-                title="AI生图"
+                disabled={!comfyuiHealthStatus?.isServiceAvailable}
+                className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
+                  comfyuiHealthStatus?.isServiceAvailable 
+                    ? 'text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 cursor-pointer' 
+                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                }`}
+                title={
+                  comfyuiHealthStatus?.isServiceAvailable 
+                    ? "AI生图" 
+                    : "AI生图服务不可用，请联系管理员"
+                }
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
