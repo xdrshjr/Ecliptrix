@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -426,6 +426,38 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setCurrentTimelineState(timelineState);
   }, []);
 
+  // 新增：处理图片叠加位置变化
+  const handleImagePositionChange = useCallback((itemId: string, position: ImagePosition) => {
+    console.log(`[VideoEditingInterface] 更新图片叠加位置`, {
+      itemId,
+      position,
+      timestamp: new Date().toISOString()
+    });
+
+    setCurrentTimelineState(prev => {
+      if (!prev) return prev;
+
+      const updatedTracks = prev.tracks.map(track => ({
+        ...track,
+        items: track.items.map(item => 
+          item.id === itemId 
+            ? { ...item, imagePosition: position }
+            : item
+        )
+      }));
+
+      const updatedState = {
+        ...prev,
+        tracks: updatedTracks
+      };
+
+      // 同步到timeline组合管理
+      timelineComposition.handleTimelineStateChange(updatedState);
+
+      return updatedState;
+    });
+  }, [timelineComposition]);
+
   // 新增：AI自动混剪功能
   const handleAutoMixAudio = useCallback(() => {
     console.log(`[VideoEditingInterface] 开始AI自动混剪`, {
@@ -652,6 +684,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
                 timelineState={currentTimelineState || undefined}
                 materials={materialManagement.materials}
+                onImagePositionChange={handleImagePositionChange}
               />
             </div>
 

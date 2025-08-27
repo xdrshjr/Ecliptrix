@@ -246,7 +246,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         originalDuration: duration,
         
         // 新增：标记素材的原始类型，用于区分图片和视频
-        originalMaterialType: material.type
+        originalMaterialType: material.type,
+        
+        // 新增：图片类型素材的默认位置
+        imagePosition: material.type === 'image' ? {
+          x: 0.1,
+          y: 0.1,
+          width: 0.3,
+          height: 0.3,
+          zIndex: 10
+        } : undefined
       };
 
       console.log(`[TimelinePanel] 创建新时间轴项目`, {

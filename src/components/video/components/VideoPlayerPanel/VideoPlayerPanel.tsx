@@ -2,10 +2,11 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
-import { TimelineState, MaterialItem } from '@/types';
+import { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useVideoExport } from '../../hooks/useVideoExport';
 import VideoExportProgressModal from './VideoExportProgressModal';
+import ImageOverlay from './ImageOverlay';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -75,6 +76,8 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   // 新增：导出功能相关props
   timelineState?: TimelineState;
   materials?: MaterialItem[];
+  // 新增：图片叠加位置更新回调
+  onImagePositionChange?: (itemId: string, position: ImagePosition) => void;
 }
 
 const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
@@ -100,7 +103,8 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   currentTimelineTime,
   onSequenceIndexUpdate,
   timelineState,
-  materials
+  materials,
+  onImagePositionChange
 }) => {
   const logger = new VideoEditingLogger({
     taskId,
@@ -113,6 +117,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   
   // 新增：视频比例状态
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>(ASPECT_RATIOS[0]);
+
+  // 新增：图片叠加相关状态
+  const [selectedImageOverlay, setSelectedImageOverlay] = useState<string | null>(null);
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   // 新增：音频同步播放管理
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -298,7 +307,186 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     setActiveAudioSequences(activeIds);
   }, [compositionPlayback?.audioSequences, getActiveAudioSequencesAtTime, getOrCreateAudioElement, logger]);
 
+  // 新增：获取当前时间的图片叠加项
+  const getCurrentImageOverlays = useCallback(() => {
+    if (!timelineState) {
+      console.log('[VideoPlayerPanel] No timeline state available for image overlays');
+      return [];
+    }
 
+    // 使用多个时间源，优先使用有效的时间
+    const currentPlaybackTime = compositionCurrentTime || currentTime || timelineState.currentTime || 0;
+    
+    console.log('[VideoPlayerPanel] Getting image overlays', {
+      currentPlaybackTime: currentPlaybackTime.toFixed(2),
+      compositionCurrentTime: compositionCurrentTime.toFixed(2),
+      currentTime: currentTime.toFixed(2),
+      timelineCurrentTime: timelineState.currentTime.toFixed(2),
+      tracksCount: timelineState.tracks.length,
+      materialsCount: materials?.length || 0
+    });
+
+    const imageOverlays: Array<{
+      id: string;
+      url: string;
+      position: ImagePosition;
+      materialId?: string;
+    }> = [];
+
+    // 遍历所有轨道，找到图片轨道中的图片素材
+    timelineState.tracks.forEach(track => {
+      console.log(`[VideoPlayerPanel] Checking track: ${track.id} (type: ${track.type}, items: ${track.items.length})`);
+      
+      if (track.id === 'image-track-1' || track.type === 'video') {
+        track.items.forEach(item => {
+          console.log(`[VideoPlayerPanel] Checking item: ${item.id}`, {
+            originalMaterialType: item.originalMaterialType,
+            startTime: item.startTime,
+            duration: item.duration,
+            endTime: item.startTime + item.duration,
+            currentTime: currentPlaybackTime,
+            isInTimeRange: currentPlaybackTime >= item.startTime && currentPlaybackTime < item.startTime + item.duration,
+            materialId: item.materialId
+          });
+          
+          // 检查是否为图片类型且在当前时间范围内
+          if (item.originalMaterialType === 'image' && 
+              currentPlaybackTime >= item.startTime && 
+              currentPlaybackTime < item.startTime + item.duration) {
+            
+            // 查找对应的素材
+            const material = materials?.find(m => m.id === item.materialId);
+            console.log(`[VideoPlayerPanel] Found material for item ${item.id}:`, material);
+            
+            if (material && material.url) {
+              // 为图片设置默认位置（如果没有设置的话）
+              const defaultPosition: ImagePosition = {
+                x: 0.1,
+                y: 0.1,
+                width: 0.3,
+                height: 0.3,
+                zIndex: 10
+              };
+
+              const overlay = {
+                id: item.id,
+                url: material.url,
+                position: item.imagePosition || defaultPosition,
+                materialId: item.materialId
+              };
+
+              console.log(`[VideoPlayerPanel] Adding image overlay:`, overlay);
+              imageOverlays.push(overlay);
+            } else {
+              console.warn(`[VideoPlayerPanel] No material found for item ${item.id} with materialId ${item.materialId}`);
+            }
+          }
+        });
+      }
+    });
+
+    console.log(`[VideoPlayerPanel] Total image overlays found: ${imageOverlays.length}`, imageOverlays);
+    return imageOverlays;
+  }, [timelineState, compositionCurrentTime, currentTime, materials]);
+
+  // 新增：处理图片位置变化
+  const handleImagePositionChange = useCallback((itemId: string, newPosition: ImagePosition) => {
+    logger.info('图片叠加位置更新', {
+      itemId,
+      newPosition,
+      timestamp: new Date().toISOString()
+    });
+
+    // 调用外部回调更新timeline状态
+    onImagePositionChange?.(itemId, newPosition);
+  }, [onImagePositionChange, logger]);
+
+  // 新增：处理图片选择
+  const handleImageOverlaySelect = useCallback((itemId: string) => {
+    setSelectedImageOverlay(itemId);
+    logger.info('选择图片叠加', { itemId });
+  }, [logger]);
+
+  // 新增：监听容器尺寸变化
+  useEffect(() => {
+    const updateContainerDimensions = () => {
+      if (videoContainerRef.current) {
+        const rect = videoContainerRef.current.getBoundingClientRect();
+        const newDimensions = {
+          width: rect.width,
+          height: rect.height
+        };
+        
+        console.log('[VideoPlayerPanel] Container dimensions updated:', {
+          previous: containerDimensions,
+          new: newDimensions,
+          element: videoContainerRef.current.className
+        });
+        
+        setContainerDimensions(newDimensions);
+      } else {
+        console.warn('[VideoPlayerPanel] Video container ref not available');
+      }
+    };
+
+    // 多次尝试更新尺寸以确保获取到正确的值
+    const timers = [
+      setTimeout(updateContainerDimensions, 100),
+      setTimeout(updateContainerDimensions, 500),
+      setTimeout(updateContainerDimensions, 1000)
+    ];
+    
+    updateContainerDimensions();
+    
+    window.addEventListener('resize', updateContainerDimensions);
+
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+      window.removeEventListener('resize', updateContainerDimensions);
+    };
+  }, []);
+
+  // 新增：测试添加图片函数
+  const addTestImage = useCallback(() => {
+    const testImageUrl = 'https://via.placeholder.com/300x200/ff0000/ffffff?text=Test+Image';
+    console.log('[VideoPlayerPanel] Adding test image');
+    
+    // 模拟一个图片素材
+    const testMaterial = {
+      id: 'test-image-' + Date.now(),
+      name: 'Test Image',
+      type: 'image' as const,
+      format: 'png',
+      size: 1024,
+      width: 300,
+      height: 200,
+      url: testImageUrl,
+      createdAt: new Date(),
+      duration: 5
+    };
+    
+    // 触发材料添加（如果有回调的话）
+    // 这里我们直接更新timeline状态来测试
+    console.log('Test material:', testMaterial);
+  }, []);
+
+  // 新增：调试信息显示（开发环境下）
+  const debugInfo = timelineState && (
+    <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
+      <div>播放模式: {playbackMode}</div>
+      <div>当前时间: {compositionCurrentTime.toFixed(2)}s</div>
+      <div>容器尺寸: {containerDimensions.width}x{containerDimensions.height}</div>
+      <div>轨道数量: {timelineState.tracks.length}</div>
+      <div>素材数量: {materials?.length || 0}</div>
+      <div>图片叠加数量: {getCurrentImageOverlays().length}</div>
+      <button 
+        onClick={addTestImage}
+        className="mt-2 px-2 py-1 bg-blue-500 text-white text-xs rounded"
+      >
+        添加测试图片
+      </button>
+    </div>
+  );
 
   // 处理视频比例切换
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
@@ -967,10 +1155,18 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           {/* 视频播放器区域 - 固定占用70%高度 */}
           <div className="video-player-wrapper flex-1 flex flex-col">
             {/* 视频预览容器 - 固定高度70% */}
-            <div className="video-preview-container flex-1 flex items-center justify-center bg-gray-100 rounded-xl overflow-hidden">
+            <div 
+              ref={videoContainerRef}
+              className="video-preview-container flex-1 flex items-center justify-center bg-gray-100 rounded-xl overflow-hidden relative">
+              {/* 调试信息 */}
+              {debugInfo}
               {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
                 // 组合播放模式
-                <div className={`${selectedAspectRatio.cssClass} bg-black rounded-xl overflow-hidden shadow-lg`} style={{ maxHeight: '100%', maxWidth: '100%' }}>
+                <div 
+                  className={`${selectedAspectRatio.cssClass} bg-black rounded-xl overflow-hidden shadow-lg relative`} 
+                  style={{ maxHeight: '100%', maxWidth: '100%' }}
+                  onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
+                >
                   <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
@@ -1032,10 +1228,46 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                       });
                     }}
                   />
+                  
+                  {/* 新增：图片叠加层 */}
+                  {(() => {
+                    const overlays = getCurrentImageOverlays();
+                    console.log('[VideoPlayerPanel] Rendering image overlays:', {
+                      overlayCount: overlays.length,
+                      containerDimensions,
+                      hasValidDimensions: containerDimensions.width > 0 && containerDimensions.height > 0,
+                      overlays: overlays.map(o => ({
+                        id: o.id,
+                        url: o.url,
+                        position: o.position
+                      }))
+                    });
+                    
+                    if (containerDimensions.width === 0 || containerDimensions.height === 0) {
+                      console.warn('[VideoPlayerPanel] Container dimensions are zero, overlays will not be visible');
+                    }
+                    
+                    return overlays.map((overlay) => (
+                      <ImageOverlay
+                        key={overlay.id}
+                        imageId={overlay.id}
+                        imageUrl={overlay.url}
+                        position={overlay.position}
+                        containerWidth={containerDimensions.width}
+                        containerHeight={containerDimensions.height}
+                        onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
+                        isSelected={selectedImageOverlay === overlay.id}
+                        onSelect={() => handleImageOverlaySelect(overlay.id)}
+                      />
+                    ));
+                  })()}
                 </div>
               ) : (
                 // 预览模式占位符 - 充满整个容器
-                <div className="video-placeholder-container">
+                <div 
+                  className="video-placeholder-container relative"
+                  onClick={() => setSelectedImageOverlay(null)}
+                >
                   {/* 比例预览框 */}
                   <div className={`${selectedAspectRatio.cssClass} video-placeholder-frame`}>
                     <div className="placeholder-content">
@@ -1049,6 +1281,30 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                       </div>
                     </div>
                   </div>
+                  
+                  {/* 在预览模式下也显示图片叠加 */}
+                  {(() => {
+                    const overlays = getCurrentImageOverlays();
+                    console.log('[VideoPlayerPanel] Rendering image overlays in preview mode:', {
+                      overlayCount: overlays.length,
+                      containerDimensions,
+                      playbackMode: 'preview'
+                    });
+                    
+                    return overlays.map((overlay) => (
+                      <ImageOverlay
+                        key={overlay.id}
+                        imageId={overlay.id}
+                        imageUrl={overlay.url}
+                        position={overlay.position}
+                        containerWidth={containerDimensions.width}
+                        containerHeight={containerDimensions.height}
+                        onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
+                        isSelected={selectedImageOverlay === overlay.id}
+                        onSelect={() => handleImageOverlaySelect(overlay.id)}
+                      />
+                    ));
+                  })()}
                 </div>
               )}
             </div>
