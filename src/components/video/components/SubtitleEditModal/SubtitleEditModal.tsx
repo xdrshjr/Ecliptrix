@@ -3,7 +3,8 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { TimelineItem, SubtitleStyle, SubtitleStylePreset, SubtitleFontFamily, SubtitlePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils';
-import { getTranslations, SupportedLocale, defaultLocale } from '../../../../lib/i18n';
+import { SupportedLocale } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface SubtitleEditModalProps {
   isOpen: boolean;
@@ -11,7 +12,7 @@ interface SubtitleEditModalProps {
   onSave: (subtitles: TimelineItem[]) => void;
   subtitles: TimelineItem[];
   taskId: string;
-  locale?: SupportedLocale;
+  locale?: SupportedLocale; // 保持向后兼容性，但context优先
 }
 
 // Predefined subtitle style presets
@@ -95,7 +96,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
   onSave,
   subtitles,
   taskId,
-  locale = defaultLocale
+  locale // 保持向后兼容性，但不再使用
 }) => {
   const [editedSubtitles, setEditedSubtitles] = useState<TimelineItem[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
@@ -107,7 +108,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
     component: 'SubtitleEditModal'
   }), [taskId]);
 
-  const t = getTranslations(locale);
+  const { t } = useLocale();
 
   // Initialize edited subtitles when modal opens or subtitles change
   useEffect(() => {

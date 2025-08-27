@@ -4,6 +4,7 @@ import React from 'react';
 import { Task, ChatTaskContent, VideoEditingTaskContent } from '@/types';
 import ChatInterface from './chat/ChatInterface';
 import VideoEditingInterface from './video/VideoEditingInterface';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ContainerProps {
   activeTask: Task | null;
@@ -11,17 +12,14 @@ interface ContainerProps {
 }
 
 const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
+  const { t } = useLocale();
+
   const handleUpdateChatContent = (content: ChatTaskContent) => {
     if (activeTask && onUpdateTask) {
       onUpdateTask(activeTask.id, { 
         content,
         updatedAt: new Date(),
         status: 'active' as const,
-      });
-      console.log(`[Container] Updated chat content for task: ${activeTask.id}`, {
-        conversationsCount: content.conversations.length,
-        activeConversationId: content.activeConversationId,
-        timestamp: new Date().toISOString()
       });
     }
   };
@@ -33,19 +31,10 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
         updatedAt: new Date(),
         status: 'active' as const,
       });
-      console.log(`[Container] Updated video editing content for task: ${activeTask.id}`, {
-        markdownLength: content.markdownContent.length,
-        lastModified: content.lastModified.toISOString(),
-        timestamp: new Date().toISOString()
-      });
     }
   };
 
-  if (!activeTask) {
-    console.log('[Container] 显示欢迎界面 - 无活动任务', {
-      timestamp: new Date().toISOString()
-    });
-    
+  if (!activeTask) {    
     return (
       <div className="flex-1 bg-white flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-6">
@@ -55,11 +44,10 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
             </svg>
           </div>
           <h2 className="text-2xl font-semibold text-gray-900 mb-3">
-            Welcome to Ecliptrix
+            {t.welcome.title}
           </h2>
           <p className="text-gray-600 mb-6">
-            Where light and shadow collide to create extraordinary content. 
-            Start by creating a new task to begin your creative journey.
+            {t.welcome.description}
           </p>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="bg-gray-50 rounded-xl p-4">
@@ -68,17 +56,17 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
                 </svg>
               </div>
-              <h3 className="font-medium text-gray-900 mb-1">Content Creation</h3>
-              <p className="text-gray-600">Generate engaging social media content</p>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.contentCreation}</h3>
+              <p className="text-gray-600">{t.welcome.contentCreationDesc}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
                 <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 002 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="font-medium text-gray-900 mb-1">Video Editing</h3>
-              <p className="text-gray-600">Automatic video mixing and editing</p>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.videoEditing}</h3>
+              <p className="text-gray-600">{t.welcome.videoEditingDesc}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mb-3">
@@ -86,8 +74,8 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
-              <h3 className="font-medium text-gray-900 mb-1">Brainstorming</h3>
-              <p className="text-gray-600">Creative ideation and inspiration</p>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.brainstorming}</h3>
+              <p className="text-gray-600">{t.welcome.brainstormingDesc}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mb-3">
@@ -95,8 +83,8 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="font-medium text-gray-900 mb-1">AI Chat</h3>
-              <p className="text-gray-600">Intelligent conversation and assistance</p>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.aiChat}</h3>
+              <p className="text-gray-600">{t.welcome.aiChatDesc}</p>
             </div>
           </div>
         </div>
@@ -105,13 +93,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
   }
 
   // Handle chat task type
-  if (activeTask.type === 'chat') {
-    console.log(`[Container] 渲染聊天任务界面`, {
-      taskId: activeTask.id,
-      taskTitle: activeTask.title,
-      timestamp: new Date().toISOString()
-    });
-    
+  if (activeTask.type === 'chat') {    
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <ChatInterface
@@ -124,14 +106,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
   }
 
   // Handle video editing task type
-  if (activeTask.type === 'video') {
-    console.log(`[Container] 渲染视频编辑任务界面`, {
-      taskId: activeTask.id,
-      taskTitle: activeTask.title,
-      hasContent: !!activeTask.content,
-      timestamp: new Date().toISOString()
-    });
-    
+  if (activeTask.type === 'video') {    
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <VideoEditingInterface
@@ -144,13 +119,6 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
   }
 
   // Handle other task types (existing functionality)
-  console.log(`[Container] 渲染通用任务界面`, {
-    taskId: activeTask.id,
-    taskType: activeTask.type,
-    taskTitle: activeTask.title,
-    timestamp: new Date().toISOString()
-  });
-
   return (
     <div className="flex-1 bg-white p-6">
       <div className="max-w-4xl mx-auto">
@@ -178,11 +146,10 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Task content will be implemented here
+            {t.taskContent.willBeImplemented}
           </h3>
           <p className="text-gray-600 max-w-md mx-auto">
-            This is where the {activeTask.type} workspace will be displayed. 
-            The specific functionality for each task type will be implemented in future iterations.
+            {t.taskContent.workspaceDescription.replace('{type}', activeTask.type)}
           </p>
         </div>
       </div>

@@ -7,6 +7,7 @@ import { VideoEditingLogger } from '../../utils/logger';
 import { useVideoExport } from '../../hooks/useVideoExport';
 import VideoExportProgressModal from './VideoExportProgressModal';
 import ImageOverlay from './ImageOverlay';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -17,44 +18,7 @@ interface AspectRatio {
   cssClass: string;
 }
 
-// 预定义的视频比例
-const ASPECT_RATIOS: AspectRatio[] = [
-  {
-    id: '16:9',
-    label: '16:9',
-    ratio: '16/9',
-    description: '横屏视频 (标准)',
-    cssClass: 'aspect-video'
-  },
-  {
-    id: '9:16',
-    label: '9:16',
-    ratio: '9/16',
-    description: '竖屏视频 (手机)',
-    cssClass: 'aspect-[9/16]'
-  },
-  {
-    id: '4:3',
-    label: '4:3',
-    ratio: '4/3',
-    description: '传统屏幕',
-    cssClass: 'aspect-[4/3]'
-  },
-  {
-    id: '1:1',
-    label: '1:1',
-    ratio: '1/1',
-    description: '正方形',
-    cssClass: 'aspect-square'
-  },
-  {
-    id: '21:9',
-    label: '21:9',
-    ratio: '21/9',
-    description: '超宽屏',
-    cssClass: 'aspect-[21/9]'
-  }
-];
+
 
 interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   videoPreview: VideoPreview;
@@ -106,10 +70,50 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   materials,
   onImagePositionChange
 }) => {
+  const { t } = useLocale();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'VideoPlayerPanel'
   });
+
+  // 基于翻译的视频比例配置
+  const ASPECT_RATIOS = useMemo((): AspectRatio[] => [
+    {
+      id: '16:9',
+      label: '16:9',
+      ratio: '16/9',
+      description: t.videoPlayerPanel.aspectRatios.landscapeStandard,
+      cssClass: 'aspect-video'
+    },
+    {
+      id: '9:16',
+      label: '9:16',
+      ratio: '9/16',
+      description: t.videoPlayerPanel.aspectRatios.portraitMobile,
+      cssClass: 'aspect-[9/16]'
+    },
+    {
+      id: '4:3',
+      label: '4:3',
+      ratio: '4/3',
+      description: t.videoPlayerPanel.aspectRatios.traditionalScreen,
+      cssClass: 'aspect-[4/3]'
+    },
+    {
+      id: '1:1',
+      label: '1:1',
+      ratio: '1/1',
+      description: t.videoPlayerPanel.aspectRatios.square,
+      cssClass: 'aspect-square'
+    },
+    {
+      id: '21:9',
+      label: '21:9',
+      ratio: '21/9',
+      description: t.videoPlayerPanel.aspectRatios.ultrawide,
+      cssClass: 'aspect-[21/9]'
+    }
+  ], [t]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
@@ -1008,7 +1012,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     if (playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0) {
       const currentSequence = compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex];
       return {
-        title: `组合播放 (${compositionPlayback.currentSequenceIndex + 1}/${compositionPlayback.videoSequences.length}): ${currentSequence?.name || '未知'}`,
+        title: `${t.videoPlayerPanel.playback.compositionPlay} (${compositionPlayback.currentSequenceIndex + 1}/${compositionPlayback.videoSequences.length}): ${currentSequence?.name || t.videoPlayerPanel.info.unknown}`,
         resolution: videoPreview.resolution, // 使用默认分辨率
         frameRate: videoPreview.frameRate,
         format: videoPreview.format
@@ -1028,7 +1032,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     <div 
       className={`video-editing-composition-panel ${className}`}
       tabIndex={0}
-      aria-label="视频合成播放面板"
+      aria-label={t.videoPlayerPanel.accessibility.videoCompositionPanel}
     >
       <div className="composition-panel-header">
         <div className="flex items-center justify-between">
@@ -1039,17 +1043,17 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-gray-900">
-              {playbackMode === 'composition' ? '视频合成播放' : '视频预览播放'}
+              {playbackMode === 'composition' ? t.videoPlayerPanel.playback.videoCompositionPlayback : t.videoPlayerPanel.playback.videoPreviewPlayback}
             </h3>
             {playbackMode === 'composition' && (
               <div className="flex items-center space-x-2">
                 <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
-                  {compositionPlayback?.videoSequences.length || 0} 个视频
+                  {compositionPlayback?.videoSequences.length || 0} {t.videoPlayerPanel.playback.videosCount}
                 </span>
                 {compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0 && (
-                  <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">
-                    {compositionPlayback.audioSequences.length} 个音频
-                  </span>
+                                      <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">
+                      {compositionPlayback.audioSequences.length} {t.videoPlayerPanel.playback.audioCount}
+                    </span>
                 )}
               </div>
             )}
@@ -1068,7 +1072,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 }
               `}
               tabIndex={0}
-              aria-label={videoExport.isExporting ? `正在导出视频 (${selectedAspectRatio.id})...` : `导出视频 (${selectedAspectRatio.id})`}
+              aria-label={videoExport.isExporting ? `${t.videoPlayerPanel.export.exporting} (${selectedAspectRatio.id})...` : `${t.videoPlayerPanel.export.exportVideo} (${selectedAspectRatio.id})`}
               onKeyDown={(e) => {
                 if ((e.key === 'Enter' || e.key === ' ') && !videoExport.isExporting) {
                   e.preventDefault();
@@ -1090,8 +1094,8 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                   </div>
                   <span>
                     {videoExport.exportProgress > 0 
-                      ? `导出中 ${Math.round(videoExport.exportProgress)}%` 
-                      : '导出中...'
+                      ? t.videoPlayerPanel.export.exportingProgress.replace('{progress}', Math.round(videoExport.exportProgress).toString())
+                      : t.videoPlayerPanel.export.exporting
                     }
                   </span>
                 </>
@@ -1100,7 +1104,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
                   </svg>
-                  <span>导出视频</span>
+                  <span>{t.videoPlayerPanel.export.exportVideo}</span>
                 </>
               )}
             </button>
@@ -1229,11 +1233,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                     <div className="placeholder-content">
                       <p className="placeholder-text">
                         {playbackMode === 'composition' 
-                          ? '时间轴中没有视频素材\n请在时间轴中添加视频素材后播放'
-                          : '点击播放按钮预览视频'}
+                          ? t.videoPlayerPanel.placeholders.noMaterialsInTimeline
+                          : t.videoPlayerPanel.placeholders.clickPlayToPreview}
                       </p>
                       <div className="placeholder-aspect-info">
-                        当前比例: {selectedAspectRatio.label} ({selectedAspectRatio.description})
+                        {t.videoPlayerPanel.placeholders.currentAspectRatioLabel}: {selectedAspectRatio.label} ({selectedAspectRatio.description})
                       </div>
                     </div>
                   </div>
@@ -1275,7 +1279,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 <button
                   onClick={handlePlayPauseClick}
                   className="control-btn play-pause-btn"
-                  title={getCurrentlyPlaying() ? "暂停" : "播放"}
+                  title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
                 >
                   {getCurrentlyPlaying() ? (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1312,7 +1316,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 <div className="volume-control">
                   <button
                     className="control-btn volume-btn"
-                    title="音量"
+                    title={t.videoPlayerPanel.controls.volume}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6.343 6.343A8 8 0 004.222 12a8 8 0 002.121 5.657l1.414-1.414A6 6 0 016.222 12a6 6 0 011.535-4.243l-1.414-1.414zM12 6l-2 2H7a1 1 0 00-1 1v6a1 1 0 001 1h3l2 2V6z" />
@@ -1333,7 +1337,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                   value={playbackRate}
                   onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
                   className="speed-select"
-                  title="播放速度"
+                  title={t.videoPlayerPanel.controls.playbackSpeed}
                 >
                   <option value={0.5}>0.5x</option>
                   <option value={0.75}>0.75x</option>
@@ -1346,7 +1350,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 <button
                   onClick={handleFullscreenToggle}
                   className="control-btn fullscreen-btn"
-                  title="全屏"
+                  title={t.videoPlayerPanel.controls.fullscreen}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
@@ -1361,22 +1365,22 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
             <div className="video-info-row">
               <div className="video-info-group">
                 <div className="info-item-inline">
-                  <span className="info-label">标题</span>
+                  <span className="info-label">{t.videoPlayerPanel.info.title}</span>
                   <span className="info-value info-title">{currentVideoInfo.title}</span>
                 </div>
                 <div className="info-separator"></div>
                 <div className="info-item-inline">
-                  <span className="info-label">分辨率</span>
+                  <span className="info-label">{t.videoPlayerPanel.info.resolution}</span>
                   <span className="info-value">{currentVideoInfo.resolution.width}×{currentVideoInfo.resolution.height}</span>
                 </div>
                 <div className="info-separator"></div>
                 <div className="info-item-inline">
-                  <span className="info-label">帧率</span>
+                  <span className="info-label">{t.videoPlayerPanel.info.frameRate}</span>
                   <span className="info-value">{currentVideoInfo.frameRate}fps</span>
                 </div>
                 <div className="info-separator"></div>
                 <div className="info-item-inline">
-                  <span className="info-label">格式</span>
+                  <span className="info-label">{t.videoPlayerPanel.info.format}</span>
                   <span className="info-value">{currentVideoInfo.format}</span>
                 </div>
               </div>
@@ -1385,7 +1389,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
             {/* 第二行：视频比例选择器 */}
             <div className="aspect-ratio-row">
               <div className="aspect-ratio-group">
-                <span className="info-label">比例</span>
+                <span className="info-label">{t.videoPlayerPanel.info.aspectRatio}</span>
                 <div className="aspect-ratio-buttons">
                   {ASPECT_RATIOS.map((aspectRatio) => (
                     <button
@@ -1400,7 +1404,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                       `}
                       title={aspectRatio.description}
                       tabIndex={0}
-                      aria-label={`选择${aspectRatio.description}比例`}
+                      aria-label={`${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description}`}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
