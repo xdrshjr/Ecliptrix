@@ -30,6 +30,8 @@ from app.models import (
     VideoCompositionItem,
     AudioCompositionItem,
     SubtitleCompositionItem,
+    ImageCompositionItem,
+    ImagePosition,
     AspectRatio,
     SubtitleAddRequest
 )
@@ -502,7 +504,7 @@ class VideoCompositionService:
         start_time = time.time()
         
         logger.info(f"Starting video composition {composition_id} for task {request.task_id}")
-        logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
+        logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}, Image items: {len(request.image_items)}")
         logger.info(f"Frontend provided total duration: {request.total_duration}s")
         
         # Calculate actual total duration from clipped video segments
@@ -554,6 +556,18 @@ class VideoCompositionService:
                     "track_id": item.track_id
                 }
                 for i, item in enumerate(request.audio_items)
+            ],
+            "image_items_order": [
+                {
+                    "index": i,
+                    "id": item.id,
+                    "name": item.name,
+                    "start_time": item.start_time,
+                    "duration": item.duration,
+                    "track_id": item.track_id,
+                    "position": item.position.__dict__ if hasattr(item.position, '__dict__') else item.position
+                }
+                for i, item in enumerate(request.image_items)
             ]
         })
         
@@ -589,6 +603,16 @@ class VideoCompositionService:
                        f"clip_duration={clip_end - clip_start}s, "
                        f"is_trimmed={is_trimmed}, "
                        f"url={audio_item.url}")
+                       
+        # Log individual image items for debugging
+        for i, image_item in enumerate(request.image_items):
+            logger.info(f"Image item {i+1} (叠加详情): "
+                       f"timeline_start={image_item.start_time}s, "
+                       f"timeline_duration={image_item.duration}s, "
+                       f"timeline_end={image_item.start_time + image_item.duration}s, "
+                       f"position={{x:{image_item.position.x}, y:{image_item.position.y}, w:{image_item.position.width}, h:{image_item.position.height}}}, "
+                       f"opacity={image_item.opacity}, "
+                       f"url={image_item.url}")
                        
         # 统计裁剪信息
         trimmed_video_count = sum(1 for item in request.video_items 
@@ -827,24 +851,33 @@ class VideoCompositionService:
             else:
                 logger.info("No audio tracks to process")
             
-            # 新增：处理图片叠加 
+            # 新增：处理图片叠加 - 包括从视频轨道和专门图片轨道来的图片
             image_video_items = [item for item in request.video_items if item.original_material_type == 'image' and item.image_position]
-            if image_video_items:
+            
+            # 合并专门的图片项目和从视频轨道来的图片项目
+            all_image_items = list(request.image_items) + image_video_items
+            
+            if all_image_items:
                 logger.info("Processing image overlay tracks...")
-                logger.info(f"Found {len(image_video_items)} image overlay items")
+                logger.info(f"Found {len(request.image_items)} dedicated image items and {len(image_video_items)} image items from video tracks")
+                logger.info(f"Total image overlay items to process: {len(all_image_items)}")
                 
                 try:
+                    # 使用与音频处理相同的方式，在原始视频目录生成临时文件
+                    video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
+                    
                     # Process image overlays and add them to the video
-                    image_processed_path = self._process_image_overlays(
-                        image_video_items,
+                    success = self._process_image_overlays(
+                        all_image_items,
                         str(output_path), 
+                        video_with_images_path,
                         temp_dir,
                         request.output_resolution
                     )
                     
-                    if image_processed_path and os.path.exists(image_processed_path):
+                    if success and os.path.exists(video_with_images_path):
                         # Replace the original video with the image-processed version
-                        os.replace(image_processed_path, str(output_path))
+                        os.replace(video_with_images_path, str(output_path))
                         logger.info("Image overlays successfully added to video")
                         
                         # Verify final file with image overlays
@@ -1597,27 +1630,25 @@ class VideoCompositionService:
         
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
     
-    def _process_image_overlays(self, image_items: List, video_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> Optional[str]:
+    def _process_image_overlays(self, image_items: List, video_path: str, output_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> bool:
         """
         Process image overlays and add them to the video.
         
         Args:
             image_items: List of video items that are actually image overlays
             video_path: Path to the input video file
+            output_path: Path for the output video with overlays
             temp_dir: Temporary directory for processing
             output_resolution: Video output resolution dict with 'width' and 'height'
             
         Returns:
-            Path to the video with image overlays added, or None if failed
+            True if processing succeeded, False otherwise
         """
         try:
             logger.info(f"Starting image overlay processing for {len(image_items)} image items")
             
             # Get FFmpeg path
             ffmpeg_path = self._get_ffmpeg_path()
-            
-            # Output path for video with overlays
-            output_path = os.path.join(temp_dir, "video_with_overlays.mp4")
             
             # Build FFmpeg command for image overlays
             cmd = [ffmpeg_path, '-y', '-i', video_path]
@@ -1642,7 +1673,7 @@ class VideoCompositionService:
             
             if len(valid_items) == 0:
                 logger.warning("No valid image items to overlay")
-                return None
+                return False
             
             # Build filter complex for image overlays
             filter_parts = []
@@ -1653,7 +1684,15 @@ class VideoCompositionService:
             
             for i, item in enumerate(valid_items):
                 input_idx = i + 1  # +1 because [0] is the video
-                pos = item.image_position
+                
+                # Handle position from either image_position (video track items) or position (dedicated image items)
+                pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
+                if not pos:
+                    logger.warning(f"No position information for image item {item.id}, using default position")
+                    # Create default position
+                    pos = type('Position', (), {
+                        'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
+                    })()
                 
                 # Calculate actual pixel positions
                 x = int(pos.x * video_width)
@@ -1665,8 +1704,12 @@ class VideoCompositionService:
                 start_time = item.start_time
                 end_time = item.start_time + item.duration
                 
-                # Scale the image and overlay it
-                scale_filter = f"[{input_idx}:v]scale={w}:{h}[img{i}]"
+                logger.info(f"Image overlay {i+1}: position=({x},{y}) size=({w}x{h}) time={start_time}s-{end_time}s")
+                
+                # 保持图片原始比例的缩放滤镜
+                # 使用force_original_aspect_ratio=decrease确保图片不超出指定尺寸且保持比例
+                # 然后使用pad滤镜将图片填充到目标尺寸，居中放置
+                scale_filter = f"[{input_idx}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
                 filter_parts.append(scale_filter)
                 
                 # Create overlay filter with timing
@@ -1700,14 +1743,14 @@ class VideoCompositionService:
             if result.returncode == 0:
                 logger.info(f"Image overlay processing completed successfully")
                 logger.info(f"Output file: {output_path} (size: {os.path.getsize(output_path)} bytes)")
-                return output_path
+                return True
             else:
                 logger.error(f"Image overlay processing failed: {result.stderr}")
-                return None
+                return False
                 
         except Exception as e:
             logger.error(f"Error processing image overlays: {str(e)}", exc_info=True)
-            return None
+            return False
     
     def _download_image(self, image_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
         """

@@ -11,6 +11,7 @@ const logRequest = (requestData: any) => {
   console.log(`[Video Compose API] Video items count: ${requestData.video_items?.length || 0}`);
   console.log(`[Video Compose API] Audio items count: ${requestData.audio_items?.length || 0}`);
   console.log(`[Video Compose API] Subtitle items count: ${requestData.subtitle_items?.length || 0}`);
+  console.log(`[Video Compose API] Image items count: ${requestData.image_items?.length || 0}`);
   console.log(`[Video Compose API] Total duration: ${requestData.total_duration || 0}s`);
   console.log(`[Video Compose API] Output resolution: ${requestData.output_resolution?.width || 1920}x${requestData.output_resolution?.height || 1080}`);
   console.log(`[Video Compose API] Output FPS: ${requestData.output_fps || 30}`);
@@ -21,6 +22,18 @@ const logRequest = (requestData: any) => {
     console.log(`[Video Compose API] Using aspect ratio: ${requestData.aspect_ratio} (backend will calculate resolution automatically)`);
   } else {
     console.log(`[Video Compose API] No aspect ratio specified, using fixed resolution: ${requestData.output_resolution?.width || 1920}x${requestData.output_resolution?.height || 1080}`);
+  }
+
+  // Log image items details if present
+  if (requestData.image_items && requestData.image_items.length > 0) {
+    console.log(`[Video Compose API] Image overlay details:`, requestData.image_items.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      start_time: item.start_time,
+      duration: item.duration,
+      position: item.position,
+      opacity: item.opacity
+    })));
   }
 };
 
@@ -43,6 +56,7 @@ export async function POST(request: NextRequest) {
       video_items, 
       audio_items, 
       subtitle_items, 
+      image_items, // Add image items extraction
       total_duration, 
       output_resolution, 
       output_fps, 
@@ -124,6 +138,7 @@ export async function POST(request: NextRequest) {
       video_items,
       audio_items: audio_items || [],
       subtitle_items: subtitle_items || [],
+      image_items: image_items || [], // Include image items in backend request
       total_duration,
       output_resolution: output_resolution || { width: 1920, height: 1080 },
       output_fps: output_fps || 30,

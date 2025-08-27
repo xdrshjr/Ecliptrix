@@ -156,6 +156,24 @@ class SubtitleCompositionItem(BaseModel):
     position: str = Field("bottom", description="Subtitle position (top, center, bottom, upper-3/4, lower-3/4)")
 
 
+class ImageCompositionItem(BaseModel):
+    """
+    Individual image item in the composition timeline for overlay purposes.
+    """
+    id: str = Field(..., description="Unique identifier for the timeline item")
+    name: str = Field(..., description="Display name of the image item")
+    url: str = Field(..., description="Image URL (can be local file path or remote URL)")
+    start_time: float = Field(..., ge=0, description="Start time in the timeline (seconds)")
+    duration: float = Field(..., gt=0, description="Duration of the image display (seconds)")
+    track_id: str = Field(..., description="ID of the track this item belongs to")
+    position: ImagePosition = Field(..., description="Position and size of the image overlay")
+    opacity: float = Field(1.0, ge=0, le=1, description="Opacity level (0.0 to 1.0)")
+    
+    # 新增：图片动画和效果属性
+    fade_in_duration: float = Field(0.0, ge=0, description="Fade-in duration in seconds")
+    fade_out_duration: float = Field(0.0, ge=0, description="Fade-out duration in seconds")
+
+
 class AspectRatio(str, Enum):
     """Supported aspect ratios for video composition."""
     RATIO_16_9 = "16:9"
@@ -173,6 +191,7 @@ class VideoCompositionRequest(BaseModel):
     video_items: List[VideoCompositionItem] = Field(..., description="List of video items to compose")
     audio_items: List[AudioCompositionItem] = Field(default_factory=list, description="List of audio items to compose")
     subtitle_items: List[SubtitleCompositionItem] = Field(default_factory=list, description="List of subtitle items to compose")
+    image_items: List[ImageCompositionItem] = Field(default_factory=list, description="List of image items to compose as overlays")
     total_duration: float = Field(..., gt=0, description="Total duration of the composition (seconds)")
     aspect_ratio: AspectRatio = Field(AspectRatio.RATIO_16_9, description="Output video aspect ratio")
     output_resolution: Optional[Dict[str, int]] = Field(
