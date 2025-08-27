@@ -40,7 +40,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     const initialTracks: Track[] = [
       {
         id: 'video-track-1',
-        name: '视频轨道 1',
+        name: '视频轨道',
         type: 'video',
         height: 80,
         isLocked: false,
@@ -51,14 +51,14 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         items: []
       },
       {
-        id: 'video-track-2',
-        name: '视频轨道 2',
-        type: 'video',
+        id: 'image-track-1',
+        name: '图片轨道',
+        type: 'video', // 图片轨道也使用video类型，但通过trackId区分
         height: 80,
         isLocked: false,
         isMuted: false,
         isVisible: true,
-        volume: 100, // 视频轨道默认音量100%
+        volume: 100, // 图片轨道音量（虽然图片没有音频，但保持一致性）
         order: 1,
         items: []
       },
@@ -194,11 +194,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       } else {
         // 根据素材类型自动选择轨道
         const compatibleTracks = prev.tracks.filter(track => {
-          // 视频可以放在视频轨道，音频可以放在音频轨道，图片可以放在视频轨道，字幕可以放在字幕轨道
-          if (material.type === 'video') return track.type === 'video';
+          // 图片优先放在图片轨道（image-track-1）
+          if (material.type === 'image') {
+            return track.id === 'image-track-1' || track.type === 'video';
+          }
+          // 视频放在视频轨道，但不包括图片轨道
+          if (material.type === 'video') {
+            return track.type === 'video' && !track.id.startsWith('image-track');
+          }
+          // 音频可以放在音频轨道
           if (material.type === 'audio') return track.type === 'audio';
-          if (material.type === 'image') return track.type === 'video'; // 图片放在视频轨道
-          if (material.type === 'subtitle') return track.type === 'subtitle'; // 字幕放在字幕轨道
+          // 字幕可以放在字幕轨道
+          if (material.type === 'subtitle') return track.type === 'subtitle';
           return false;
         });
 
@@ -236,15 +243,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         // 初始化剪辑属性：默认使用完整的原始素材
         clipStart: 0,
         clipEnd: duration,
-        originalDuration: duration
+        originalDuration: duration,
+        
+        // 新增：标记素材的原始类型，用于区分图片和视频
+        originalMaterialType: material.type
       };
 
       console.log(`[TimelinePanel] 创建新时间轴项目`, {
         itemId: newTimelineItem.id,
         trackId: targetTrack.id,
+        trackName: targetTrack.name,
         startTime: startTime.toFixed(2),
         duration: duration.toFixed(2),
         materialType: material.type,
+        originalMaterialType: material.type,
+        isImageInImageTrack: material.type === 'image' && targetTrack.id === 'image-track-1',
         timestamp: new Date().toISOString()
       });
 

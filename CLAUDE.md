@@ -1,3 +1,8 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Development Rules
 [Basic Rules]
 EXPERTISE & APPROACH:
 You are an experienced AI engineer with Stanford PhD background and extensive Google engineering experience. Demonstrate
@@ -150,3 +155,105 @@ Key Conventions
     - Structure routes and dependencies clearly to optimize readability and maintainability.
 
 Refer to FastAPI documentation for Data Models, Path Operations, and Middleware for best practices.
+
+## Essential Commands
+
+### Frontend Development (Next.js)
+```bash
+# Development server
+npm run dev
+
+# Production build
+npm run build
+npm start
+
+# Linting and type checking
+npm run lint
+npm run type-check
+```
+
+### Backend Development (FastAPI)
+```bash
+# Navigate to backend service
+cd backend-services/basic-service
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run development server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Run single test
+pytest tests/test_specific.py -v
+
+# Run all tests with coverage
+pytest tests/ --cov=app --cov-report=html
+
+# Run specific functionality tests
+pytest tests/test_video_composition.py -v
+pytest tests/test_subtitle_*.py -v
+```
+
+## High-Level Architecture
+
+### Full Stack Structure
+Ecliptrix is a dual-architecture application combining a **Next.js 15 frontend** with a **FastAPI backend service**. The frontend handles UI/UX and client-side logic, while the backend provides AI-powered content creation services.
+
+### Frontend Architecture (Next.js App Router)
+- **Video Editing Interface**: Complex state management using custom hooks for video playback, timeline composition, AI assistance, and material management
+- **Multi-tab Interface**: Task-based workflow allowing users to work on multiple projects simultaneously
+- **Modular Components**: Organized by feature domains (video editing, chat interface, UI components)
+- **Service Layer**: Abstracted API communication for video analysis, audio search, script generation, and AI matching services
+
+### Backend Architecture (FastAPI Microservice)
+- **Router-based API**: Modular routing for video, audio, TTS, YouTube, and Supabase operations  
+- **Service Layer Pattern**: Business logic separated into dedicated service modules
+- **Model-driven Configuration**: Pydantic models for request/response validation and configuration management
+- **Comprehensive Middleware**: Request logging, CORS handling, error management, and processing time tracking
+
+### Key Integration Patterns
+
+#### Video Processing Pipeline
+The application implements a sophisticated video processing workflow:
+1. **Video Analysis Service** (`video_analysis_service.py`) - AI-powered video content analysis using VL LLM models
+2. **Video Composition Service** (`video_composition_service.py`) - Automated video editing and timeline composition
+3. **Subtitle Services** - Multiple subtitle generation and styling approaches (artistic, recognition-based)
+4. **Timeline Management** - Frontend-backend coordination for complex multi-track editing
+
+#### Multi-Provider AI Integration
+- **LLM Configuration**: Supports multiple LLM providers (OpenAI, Anthropic, Google, Azure, Custom)
+- **Specialized VL Models**: Separate configuration for video analysis using vision-language models
+- **TTS Integration**: Multiple TTS providers including Volcano TTS and OpenAI TTS
+- **Content Analysis**: PEXELS API integration for stock media matching
+
+#### State Management Patterns
+- **Frontend**: Custom hooks pattern for complex state management (useVideoPlayback, useTimelineComposition, useAIAssistant)
+- **Backend**: Settings-driven configuration with YAML overrides for complex service configurations
+- **Real-time Sync**: Timeline state synchronization between video player and editing interface
+
+### Critical Configuration Management
+- **Environment-based**: Dual `.env` files for frontend and backend with clear separation of concerns
+- **YAML Configuration**: Complex service configurations (batch TTS, YouTube processing) managed via YAML files
+- **Dynamic Settings**: Pydantic-based configuration with runtime validation and type safety
+
+### Testing Architecture
+- **Backend Testing**: Pytest with async support, comprehensive API endpoint testing, and service layer validation
+- **Test Data Organization**: Structured test materials and outputs in dedicated directories
+- **Integration Testing**: Full pipeline testing for video composition, subtitle generation, and audio processing
+
+## Development Notes
+
+### Working with Video Processing
+- Video composition tests are found in `backend-services/basic-service/tests/test_video_composition*.py`
+- Material assets for testing are organized in `tests/test-subtitle-style/materials/`
+- Static file serving is configured for generated audio and video outputs
+
+### Backend Service Patterns
+- All routers follow consistent error handling patterns using `ErrorResponse` models
+- Logging is comprehensive with structured middleware for request/response tracking  
+- Third-party library logging is intentionally limited to prevent sensitive data leakage
+
+### Frontend Component Architecture
+- Video editing interface uses a hook-driven architecture for complex state management
+- Components are organized by feature with index.ts barrel exports
+- TypeScript types are centralized in dedicated type definition files

@@ -546,7 +546,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       setTimeout(() => {
         setMaterialsToAddToTimeline({
           materials: sortedVideoMaterials,
-          targetTrackId: 'video-track-1', // 指定添加到第一个视频轨道
+          targetTrackId: 'video-track-1', // 指定添加到视频轨道（不是图片轨道）
           timestamp: Date.now()
         });
 

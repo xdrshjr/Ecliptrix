@@ -56,7 +56,10 @@ const Track: React.FC<TrackProps> = ({
   const isMaterialCompatible = (materialType: string): boolean => {
     switch (materialType) {
       case 'video':
+        // 视频只能放在视频轨道，但不包括图片轨道
+        return track.type === 'video' && !track.id.startsWith('image-track');
       case 'image':
+        // 图片优先放在图片轨道，也可以放在普通视频轨道
         return track.type === 'video';
       case 'audio':
         return track.type === 'audio';
@@ -150,6 +153,15 @@ const Track: React.FC<TrackProps> = ({
 
   // 获取轨道类型对应的图标
   const getTrackIcon = () => {
+    // 检查是否为图片轨道
+    if (track.type === 'video' && track.id.startsWith('image-track')) {
+      return (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+        </svg>
+      );
+    }
+    
     switch (track.type) {
       case 'video':
         return (
@@ -176,6 +188,11 @@ const Track: React.FC<TrackProps> = ({
 
   // 获取轨道类型对应的颜色
   const getTrackColor = () => {
+    // 检查是否为图片轨道
+    if (track.type === 'video' && track.id.startsWith('image-track')) {
+      return 'text-purple-600';
+    }
+    
     switch (track.type) {
       case 'video':
         return 'text-blue-600';
