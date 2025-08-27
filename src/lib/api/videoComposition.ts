@@ -30,6 +30,7 @@ export interface SubtitleCompositionItem {
   start_time: number;
   duration: number;
   track_id: string;
+  font_family?: string;
   font_size?: number;
   font_color?: string;
   background_color?: string;
@@ -112,7 +113,19 @@ export class VideoCompositionAPI {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Try to get detailed error information from response
+        let errorData: any = null;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          // If parsing fails, create a generic error
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Create an error object with the response data for better error handling
+        const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        (error as any).response = { json: async () => errorData };
+        throw error;
       }
 
       const result: VideoCompositionResponse = await response.json();

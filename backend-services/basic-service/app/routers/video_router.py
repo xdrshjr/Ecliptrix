@@ -13,9 +13,12 @@ from app.models import (
     VideoDownloadRequest,
     VideoDownloadResponse,
     SubtitleAddRequest,
-    SubtitleAddResponse
+    SubtitleAddResponse,
+    VideoAnalysisRequest,
+    VideoAnalysisResponse,
+    VideoAnalysisStatusResponse
 )
-from app.services import VideoSearchService, VideoCompositionService, SubtitleService
+from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
 from app.logger import get_logger
 
 # Initialize router and logger
@@ -473,4 +476,114 @@ async def add_subtitles(request: SubtitleAddRequest) -> SubtitleAddResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.post("/analyze", response_model=VideoAnalysisResponse)
+async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
+    """
+    Analyze video content using VL LLM with concurrent processing.
+    
+    This endpoint extracts frames from a video at specified intervals and analyzes
+    each frame using a Vision-Language Model to provide detailed descriptions.
+    The analysis is performed concurrently using configurable thread count for improved performance.
+    
+    Args:
+        request (VideoAnalysisRequest): Video analysis parameters including video URL,
+                                      frame interval, and optional custom prompt
+    
+    Returns:
+        VideoAnalysisResponse: Analysis results with frame-by-frame descriptions
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for analysis errors
+    """
+    logger.info(f"Video analysis request received - Video: {request.video_url}")
+    
+    # Get configuration for logging
+    config = video_analysis_service.config
+    concurrent_threads = config['vlm_processing']['concurrent_threads']
+    default_frame_interval = config['frame_extraction']['default_frame_interval_seconds']
+    
+    # Use default frame interval if not specified or invalid
+    effective_frame_interval = request.frame_interval if request.frame_interval and request.frame_interval > 0 else default_frame_interval
+    
+    logger.info(f"Frame interval: {effective_frame_interval}s (requested: {request.frame_interval}, default: {default_frame_interval}), Custom prompt: {bool(request.custom_prompt)}, Concurrent threads: {concurrent_threads}")
+    
+    try:
+        # Validate request parameters
+        if not request.video_url.strip():
+            logger.warning("Empty video URL provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video URL cannot be empty"
+            )
+        
+        # Note: We allow frame_interval to be None or 0, service will use config default
+        if request.frame_interval is not None and request.frame_interval <= 0:
+            logger.warning(f"Invalid frame interval: {request.frame_interval}, using default: {default_frame_interval}")
+        
+        # Perform video analysis
+        logger.debug(f"Starting video analysis with concurrent processing", extra={
+            "video_url": request.video_url,
+            "requested_frame_interval": request.frame_interval,
+            "effective_frame_interval": effective_frame_interval,
+            "concurrent_threads": concurrent_threads,
+            "has_custom_prompt": bool(request.custom_prompt),
+            "custom_prompt_length": len(request.custom_prompt) if request.custom_prompt else 0
+        })
+        
+        result = await video_analysis_service.analyze_video(
+            video_url=request.video_url,
+            frame_interval=effective_frame_interval if request.frame_interval and request.frame_interval > 0 else None,
+            custom_prompt=request.custom_prompt
+        )
+        
+        # Log analysis results (without detailed frame analysis content)
+        logger.info(f"Video analysis completed", extra={
+            "success": result.success,
+            "video_url": result.video_url,
+            "frames_extracted": result.total_frames_extracted,
+            "video_duration": result.video_duration,
+            "processing_time": result.processing_time,
+            "concurrent_threads": concurrent_threads,
+            "effective_frame_interval": effective_frame_interval,
+            "total_analysis_length": sum(len(frame.analysis) for frame in result.frame_analyses) if result.frame_analyses else 0
+        })
+        
+        if not result.success:
+            logger.warning(f"Video analysis failed: {result.message}", extra={
+                "video_url": result.video_url,
+                "processing_time": result.processing_time,
+                "concurrent_threads": concurrent_threads
+            })
+        else:
+            # Log performance improvement information
+            estimated_sequential_time = result.total_frames_extracted * 6  # Assuming ~6s per frame sequentially
+            actual_concurrent_time = result.processing_time
+            estimated_speedup = estimated_sequential_time / actual_concurrent_time if actual_concurrent_time > 0 else 0
+            
+            logger.info(f"Concurrent processing performance", extra={
+                "estimated_sequential_time": estimated_sequential_time,
+                "actual_processing_time": actual_concurrent_time,
+                "estimated_speedup_factor": estimated_speedup,
+                "frames_processed": result.total_frames_extracted,
+                "concurrent_threads": concurrent_threads
+            })
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+        
+    except Exception as e:
+        logger.error(f"Unexpected error during video analysis: {str(e)}", exc_info=True, extra={
+            "video_url": request.video_url,
+            "concurrent_threads": concurrent_threads,
+            "effective_frame_interval": effective_frame_interval
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred during video analysis"
         ) 

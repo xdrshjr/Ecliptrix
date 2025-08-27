@@ -83,6 +83,9 @@ export interface ScriptGenerationConfig {
 // Materials Management related types
 export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
 
+// 下载状态类型
+export type MaterialDownloadStatus = 'idle' | 'downloading' | 'completed' | 'error';
+
 export interface MaterialItem {
   id: string;
   name: string;
@@ -98,6 +101,11 @@ export interface MaterialItem {
   createdAt: Date;
   tags?: string[]; // 标签
   description?: string; // 描述
+  // 新增：下载状态相关字段
+  downloadStatus?: MaterialDownloadStatus; // 下载状态
+  downloadProgress?: number; // 下载进度 (0-100)
+  downloadError?: string; // 下载错误信息
+  youtubeUrl?: string; // 原始Youtube URL
   metadata?: { // 额外元数据
     originalUrl?: string; // 原始远程URL
     fileName?: string; // 文件名
@@ -121,7 +129,7 @@ export interface LLMConfig {
 
 // Subtitle styling related types
 export type SubtitleFontFamily = 'default' | 'serif' | 'sans-serif' | 'monospace';
-export type SubtitlePosition = 'top' | 'center' | 'bottom';
+export type SubtitlePosition = 'top' | 'center' | 'bottom' | 'upper-3/4' | 'lower-3/4';
 
 export interface SubtitleStyle {
   fontFamily: SubtitleFontFamily;
@@ -139,6 +147,16 @@ export interface SubtitleStylePreset {
 }
 
 // Timeline and Video Editing related types
+
+// 新增：图片叠加位置信息
+export interface ImagePosition {
+  x: number; // X坐标（0-1，相对于视频宽度）
+  y: number; // Y坐标（0-1，相对于视频高度）
+  width: number; // 宽度（0-1，相对于视频宽度）
+  height: number; // 高度（0-1，相对于视频高度）
+  zIndex?: number; // 层级，用于多图片叠加时的前后顺序
+}
+
 export interface TimelineItem {
   id: string;
   name: string;
@@ -160,8 +178,14 @@ export interface TimelineItem {
   clipEnd?: number;        // 原始素材中的结束时间（秒）
   originalDuration?: number; // 原始素材的总时长（秒）
   
+  // 新增：原始素材类型，用于区分图片和视频素材
+  originalMaterialType?: MaterialType;
+  
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）
+  
+  // 新增：图片位置信息，用于图片叠加定位
+  imagePosition?: ImagePosition; // 图片在视频中的位置信息（仅图片类型使用）
 }
 
 export interface Track {
@@ -172,6 +196,7 @@ export interface Track {
   isLocked: boolean; // 是否锁定
   isMuted: boolean;  // 是否静音（音频轨道）
   isVisible: boolean; // 是否可见
+  volume: number;    // 音量大小（0-200，默认100，仅音频轨道有效）
   items: TimelineItem[];
   order: number;     // 轨道顺序
 }
@@ -202,7 +227,7 @@ export type TimelineToolType =
   | 'export';    // 导出
 
 export interface TimelineAction {
-  type: 'ADD_ITEM' | 'REMOVE_ITEM' | 'UPDATE_ITEM' | 'MOVE_ITEM' | 'SELECT_ITEM' | 'DESELECT_ALL';
+  type: 'ADD_ITEM' | 'REMOVE_ITEM' | 'UPDATE_ITEM' | 'MOVE_ITEM' | 'SELECT_ITEM' | 'DESELECT_ALL' | 'SELECT_ALL_TRACK_ITEMS';
   payload?: any;
   timestamp: Date;
 } 

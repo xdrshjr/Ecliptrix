@@ -7,6 +7,8 @@ The Video Compose API provides Next.js API routes that proxy video composition r
 **Key Features:**
 - **Asynchronous Processing**: Video composition runs in background, returns immediately
 - **10-Minute Timeout**: Extended timeout support for complex video processing
+- **Enhanced Retry Mechanism**: 3-retry logic for individual video processing failures *(NEW)*
+- **Detailed Error Reporting**: Comprehensive error details with specific failure reasons *(NEW)*
 - **Chinese Subtitle Support**: Fixed Ubuntu Chinese subtitle rendering issues (v2024.01)
 - Proxies requests to backend video composition service
 - Comprehensive request validation and error handling
@@ -14,6 +16,23 @@ The Video Compose API provides Next.js API routes that proxy video composition r
 - Consistent response format across all endpoints
 - Automatic file download handling for composed videos
 - Real-time progress tracking through status polling
+
+## Retry Mechanism *(NEW)*
+
+### Individual Video Processing Retry
+Each video in the composition timeline is processed with a robust 3-retry mechanism:
+
+- **Download Phase**: Up to 3 retry attempts for video download failures
+- **Normalization Phase**: Up to 3 retry attempts for video processing failures
+- **Exponential Backoff**: Progressive delay between retry attempts (1s, 2s, 4s, max 10s)
+- **Strict Timeline Order**: Videos are processed in timeline order, no video is lost
+- **Detailed Logging**: Each retry attempt is logged with specific failure reasons
+
+### Error Handling Flow
+1. **Individual Video Failure**: If a video fails after 3 retries, detailed error information is collected
+2. **Immediate Failure Response**: The entire composition fails immediately if any video cannot be processed
+3. **Detailed Error Details**: Specific failure reasons, suggestions, and affected video information are returned
+4. **Frontend Toast Notifications**: Users receive informative error messages with actionable suggestions
 
 ## Base URL
 
@@ -35,6 +54,8 @@ Initiates video composition by proxying the request to the backend service. The 
 
 **⚠️ Timeout Configuration**: This endpoint has a 10-minute (600 seconds) timeout to accommodate complex video processing operations. For very complex compositions, ensure the backend service can complete processing within this timeframe.
 
+**✨ Enhanced Error Handling**: The endpoint now provides detailed error information when individual videos fail to process, including specific failure reasons and recovery suggestions.
+
 #### Request Body
 
 ```json
@@ -43,28 +64,28 @@ Initiates video composition by proxying the request to the backend service. The 
   "video_items": [
     {
       "id": "string",
-      "name": "string",
+      "name": "string", 
       "url": "string",
-      "start_time": 0.0,
-      "duration": 5.0,
+      "start_time": 0,
+      "duration": 30,
       "track_id": "string",
+      "clip_start": 0,
+      "clip_end": 30,
       "volume": 1.0,
-      "opacity": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 5.0
+      "opacity": 1.0
     }
   ],
   "audio_items": [
     {
       "id": "string",
-      "name": "string", 
-      "url": "string",
-      "start_time": 0.0,
-      "duration": 5.0,
+      "name": "string",
+      "url": "string", 
+      "start_time": 0,
+      "duration": 30,
       "track_id": "string",
       "volume": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 5.0
+      "clip_start": 0,
+      "clip_end": 30
     }
   ],
   "subtitle_items": [
@@ -72,16 +93,38 @@ Initiates video composition by proxying the request to the backend service. The 
       "id": "string",
       "name": "string",
       "text": "string",
-      "start_time": 0.0,
-      "duration": 5.0,
+      "start_time": 0,
+      "duration": 5,
       "track_id": "string",
+      "font_family": "default",
       "font_size": 24,
       "font_color": "#FFFFFF",
-      "background_color": "#000000",
       "position": "bottom"
     }
   ],
-  "total_duration": 10.0,
+  "image_items": [
+    {
+      "id": "string",
+      "name": "string",
+      "url": "string",
+      "start_time": 0,
+      "duration": 10,
+      "track_id": "string",
+      "position": {
+        "x": 0.1,
+        "y": 0.1,
+        "width": 0.3,
+        "height": 0.3,
+        "rotation": 0,
+        "z_index": 10
+      },
+      "opacity": 1.0,
+      "fade_in_duration": 0.5,
+      "fade_out_duration": 0.5
+    }
+  ],
+  "total_duration": 60,
+  "aspect_ratio": "16:9",
   "output_resolution": {
     "width": 1920,
     "height": 1080
@@ -91,430 +134,213 @@ Initiates video composition by proxying the request to the backend service. The 
 }
 ```
 
-#### Request Validation
+#### Request Parameters
 
-- `task_id`: Required string identifier
-- `video_items`: Required non-empty array with valid video items
-- `total_duration`: Required positive number
-- Each video/audio item must have: `id`, `name`, `url`, `start_time`, `duration`
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `task_id` | string | Yes | Unique identifier for this composition task |
+| `video_items` | array | Yes | List of video items to compose in timeline order |
+| `audio_items` | array | No | List of audio items to mix |
+| `subtitle_items` | array | No | List of subtitle overlays |
+| `image_items` | array | No | List of image overlays |
+| `total_duration` | number | Yes | Total duration of the final video (seconds) |
+| `aspect_ratio` | string | No | Video aspect ratio (default: "16:9") |
+| `output_resolution` | object | No | Output resolution (auto-calculated if not provided) |
+| `output_fps` | number | No | Output frame rate (default: 30) |
+| `output_format` | string | No | Output format (default: "mp4") |
 
-#### Response
+#### Response Format
 
-The endpoint returns immediately with the composition details:
-
+**Success Response:**
 ```json
 {
   "success": true,
   "message": "Video composition started successfully",
-  "composition_id": "comp_1234567890",
+  "composition_id": "comp_123456789",
   "status": "processing",
-  "progress": 0.0
+  "progress": 0.0,
+  "data": {
+    "task_id": "video_export_task_001",
+    "estimated_completion": "2024-01-15T10:30:00Z"
+  }
 }
 ```
 
-**Note**: The `status` will always be `"processing"` initially. Use the status endpoint to track progress.
+**Error Response (Enhanced):**
+```json
+{
+  "success": false,
+  "message": "2 out of 5 videos failed to download after 3 retry attempts",
+  "error_details": {
+    "failed_videos": [
+      {
+        "video_index": 0,
+        "video_id": "video_001",
+        "video_name": "intro.mp4",
+        "video_url": "https://example.com/intro.mp4",
+        "stage": "download",
+        "attempts": 4,
+        "max_retries": 3,
+        "error_message": "Video download failed after 4 attempts",
+        "last_error": "Connection timeout after 30 seconds",
+        "timeline_position": 0.0,
+        "duration": 10.0
+      },
+      {
+        "video_index": 2,
+        "video_id": "video_003",
+        "video_name": "content.mp4", 
+        "video_url": "https://example.com/content.mp4",
+        "stage": "normalization",
+        "attempts": 4,
+        "max_retries": 3,
+        "error_message": "Video normalization failed after 4 attempts",
+        "last_error": "FFmpeg processing error: Invalid video format",
+        "timeline_position": 20.0,
+        "duration": 15.0
+      }
+    ],
+    "total_videos": 5,
+    "successful_videos": 3,
+    "composition_stage": "video_download",
+    "error_summary": "2 out of 5 videos failed to download after 3 retry attempts",
+    "recovery_suggestions": [
+      "Check if the video URLs are accessible",
+      "Verify your internet connection", 
+      "Try using different video sources",
+      "Contact support if the issue persists"
+    ]
+  },
+  "data": null
+}
+```
 
-#### Status Codes
+#### Error Codes
 
-- `200 OK`: Composition started successfully
-- `400 Bad Request`: Invalid request data or validation error
-- `500 Internal Server Error`: Backend service unavailable or internal error
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Success - Composition started |
+| 400 | Bad Request - Invalid request parameters |
+| 500 | Internal Server Error - Composition failed with detailed error information |
+| 503 | Service Unavailable - Backend service temporarily unavailable |
 
-#### Logging
+#### Processing Stages
 
-The API logs the following information:
-- Request timestamp and parameters
-- Video/audio/subtitle item counts
-- Total duration and output settings
-- Backend service response status
-- Success/failure with composition ID
+The composition process includes the following stages with retry mechanisms:
 
-### 2. Get Composition Status
+1. **Request Validation** - Validates all input parameters
+2. **Video Download** *(with 3 retries)* - Downloads all video files
+3. **Video Normalization** *(with 3 retries)* - Processes videos to consistent format
+4. **Video Concatenation** - Combines videos in timeline order
+5. **Audio Processing** - Mixes and synchronizes audio tracks
+6. **Subtitle Overlay** - Adds subtitle tracks
+7. **Image Overlay** - Adds image overlays
+8. **Finalization** - Creates final output file
 
-**GET** `/api/video-compose/{compositionId}/status`
+### 2. Check Composition Status
 
-Retrieves the current status of a video composition.
+**GET** `/api/video-compose/{composition_id}/status`
 
-**⚠️ Timeout Configuration**: This endpoint has a 30-second timeout for quick status responses.
+Retrieves the current status and progress of a video composition job.
 
-#### Path Parameters
-
-- `compositionId` (string): The composition ID returned from the compose request
-
-#### Response
+#### Response Format
 
 ```json
 {
-  "composition_id": "comp_1234567890",
-  "task_id": "export_1234567890",
-  "status": "processing|completed|failed",
-  "progress": 0.75,
-  "start_time": 1640995200,
-  "processing_time": 45.2,
-  "output_file_size": 52428800,
-  "error_details": null
+  "success": true,
+  "composition_id": "comp_123456789",
+  "status": "processing", // "processing", "completed", "failed"
+  "progress": 0.75, // 0.0 to 1.0
+  "message": "Video composition in progress",
+  "estimated_completion": "2024-01-15T10:35:00Z",
+  "data": {
+    "current_stage": "audio_processing",
+    "processed_videos": 4,
+    "total_videos": 5
+  }
 }
 ```
-
-#### Status Codes
-
-- `200 OK`: Status retrieved successfully
-- `400 Bad Request`: Invalid composition ID
-- `404 Not Found`: Composition not found
-- `500 Internal Server Error`: Backend service unavailable
-
-#### Logging
-
-- Request timestamp and composition ID
-- Backend service response status
-- Composition status and progress percentage
 
 ### 3. Download Composed Video
 
-**GET** `/api/video-compose/{compositionId}/download?task_id={task_id}&filename={filename}`
+**GET** `/api/video-compose/{composition_id}/download`
 
 Downloads the completed video file.
 
-**⚠️ Timeout Configuration**: This endpoint has a 10-minute (600 seconds) timeout to accommodate large video file downloads.
-
-#### Path Parameters
-
-- `compositionId` (string): The composition ID
-
 #### Query Parameters
 
-- `task_id` (optional): Task identifier for tracking
-- `filename` (optional): Suggested filename for download
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `task_id` | string | No | Task ID for logging purposes |
 
 #### Response
 
-Binary video file with headers:
-- `Content-Type`: `video/mp4`
-- `Content-Length`: File size in bytes
-- `X-Composition-ID`: Composition ID
-- `Content-Disposition`: `attachment; filename="composed_video.mp4"`
-
-#### Status Codes
-
-- `200 OK`: File download successful
-- `400 Bad Request`: Invalid composition ID
-- `404 Not Found`: Composition not found or not ready
-- `500 Internal Server Error`: Backend service unavailable
-
-#### Logging
-
-- Request timestamp, composition ID, task ID, and filename
-- Backend service response status
-- File size in MB for successful downloads
-
-### 4. Health Check
-
-**GET** `/api/video-compose/health`
-
-Checks the health status of the video composition service.
-
-**⚠️ Timeout Configuration**: This endpoint has a 10-second timeout for quick health checks.
-
-#### Response
-
-```json
-{
-  "service": "video_composition",
-  "status": "healthy|degraded|error",
-  "ffmpeg_available": true,
-  "active_compositions": 2,
-  "message": "Service is operational",
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-#### Status Codes
-
-- `200 OK`: Health check successful
-- `503 Service Unavailable`: Backend service unavailable
-- `500 Internal Server Error`: Internal error
-
-#### Logging
-
-- Request timestamp
-- Backend service response status
-- Service status and availability
-
-## Error Handling
-
-### Common Error Response Format
-
-```json
-{
-  "success": false,
-  "message": "Error description",
-  "data": null
-}
-```
-
-### Error Types
-
-1. **Validation Errors** (400): Invalid request parameters
-2. **Not Found Errors** (404): Composition not found
-3. **Timeout Errors** (408/500): Request timeout after configured limits
-4. **Service Unavailable** (500/503): Backend service issues
-5. **Internal Errors** (500): Unexpected server errors
-
-### Timeout Handling
-
-The API implements different timeout configurations for different operations:
-
-- **Video Composition** (`POST /api/video-compose`): 10 minutes (600s)
-- **Video Download** (`GET /api/video-compose/{id}/download`): 10 minutes (600s)  
-- **Status Check** (`GET /api/video-compose/{id}/status`): 30 seconds
-- **Health Check** (`GET /api/video-compose/health`): 10 seconds
-
-**Timeout Error Response:**
-```json
-{
-  "success": false,
-  "message": "Request timeout - operation exceeded time limit",
-  "data": null
-}
-```
-
-**Frontend Timeout Handling:**
-- All API calls from the frontend include appropriate timeout configurations
-- Timeout errors are logged with detailed context information
-- Users receive clear error messages when timeouts occur
-
-## Environment Configuration
-
-The API uses the following environment variable:
-
-- `BACKEND_URL`: Backend service URL (default: `http://localhost:8000`)
-
-## Asynchronous Processing
-
-The API uses asynchronous processing for video composition to provide better user experience:
-
-### How It Works
-
-1. **Immediate Response**: The `/api/video-compose` endpoint returns immediately with a `composition_id`
-2. **Background Processing**: Video composition runs in a background thread on the server
-3. **Status Polling**: Frontend polls the status endpoint to track progress
-4. **Completion Notification**: When complete, status changes to `"completed"` and download is available
-
-### Benefits
-
-- **No Timeouts**: Frontend doesn't wait for long-running operations
-- **Progress Tracking**: Real-time progress updates through status polling
-- **Better UX**: Users can see progress and aren't blocked by long waits
-- **Scalability**: Server can handle multiple compositions simultaneously
-
-## Logging Format
-
-All API routes use consistent logging with the following format:
-
-```
-[Video Compose API] YYYY-MM-DDTHH:mm:ss.sssZ - Action description
-[Video Compose API] Parameter: value
-```
-
-Example:
-```
-[Video Compose API] 2024-01-15T10:30:00.000Z - Video composition request
-[Video Compose API] Task ID: export_20240115_103000
-[Video Compose API] Video items count: 3
-[Video Compose API] Audio items count: 2
-[Video Compose API] Total duration: 45.5s
-```
-
-## Usage Examples
-
-### Frontend Integration
-
-```typescript
-import { videoCompositionAPI } from '@/lib/api/videoComposition';
-
-// Start composition (returns immediately)
-const response = await videoCompositionAPI.composeVideo({
-  task_id: 'export_20240115_103000',
-  video_items: [...],
-  audio_items: [...],
-  total_duration: 45.5,
-  output_resolution: { width: 1920, height: 1080 }
-});
-
-console.log('Composition started:', response.composition_id);
-// Response: { success: true, composition_id: "comp_123", status: "processing", progress: 0.0 }
-
-// Poll for completion with progress updates
-await videoCompositionAPI.pollCompositionStatus(
-  response.composition_id,
-  (status) => {
-    console.log(`Progress: ${(status.progress * 100).toFixed(1)}%`);
-    console.log(`Status: ${status.status}`);
-    // Update your progress bar here
-  }
-);
-
-// Download when complete (handled automatically by pollCompositionStatus)
-await videoCompositionAPI.triggerDownload(
-  response.composition_id,
-  'export_20240115_103000',
-  'my_video.mp4'
-);
-```
-
-### Direct API Calls
-
-```javascript
-// Start composition
-const response = await fetch('/api/video-compose', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    task_id: 'export_20240115_103000',
-    video_items: [...],
-    total_duration: 45.5
-  })
-});
-
-// Check status
-const status = await fetch(`/api/video-compose/${compositionId}/status`);
-
-// Download
-const downloadUrl = `/api/video-compose/${compositionId}/download?filename=my_video.mp4`;
-```
-
-## Performance Notes
-
-- All requests are proxied to the backend service
-- File downloads stream through Next.js for consistent error handling
-- Comprehensive logging may impact performance in high-traffic scenarios
-- Backend service availability directly affects API response times
-
-### Video Composition Performance
-
-Video composition is a CPU-intensive operation that can take significant time depending on:
-
-- **Video Resolution**: Higher resolutions (4K, 1080p) take longer than lower resolutions
-- **Video Duration**: Longer videos require more processing time
-- **Number of Tracks**: Multiple video/audio tracks increase complexity
-- **Video Codecs**: Some codecs require more processing than others
-- **Server Resources**: CPU and memory availability affect processing speed
-
-**Typical Processing Times:**
-- Simple composition (1-2 videos, 30s): 30-60 seconds
-- Complex composition (3+ videos, 60s+): 2-5 minutes
-- Very complex (multiple tracks, effects): 5-10 minutes
-
-**Optimization Recommendations:**
-1. Use lower resolution source videos when possible
-2. Limit the number of simultaneous tracks
-3. Pre-process videos to consistent formats
-4. Consider breaking long compositions into segments
-
-## Chinese Subtitle Support (Ubuntu Fix)
-
-### Issue Fixed (v2024.01)
-
-Previously, Chinese subtitles would appear as garbled characters (乱码) when composing videos on Ubuntu systems. This was caused by incorrect font priority in the subtitle rendering system.
-
-### Solution Implemented
-
-The subtitle service now includes:
-
-1. **Smart Font Detection**: Automatically detects Chinese characters in subtitle text
-2. **Prioritized Font Selection**: When Chinese characters are detected, Chinese fonts are prioritized:
-   - Noto CJK fonts (primary)
-   - WenQuanYi fonts (secondary)
-   - Source Han fonts (tertiary)
-3. **Enhanced Ubuntu Font Support**: Added comprehensive Chinese font paths for Ubuntu systems
-
-### System Requirements
-
-For optimal Chinese subtitle support on Ubuntu, install recommended fonts:
-
-```bash
-# Install Noto CJK fonts (recommended)
-sudo apt-get install fonts-noto-cjk
-
-# Install WenQuanYi fonts (alternative)
-sudo apt-get install fonts-wqy-microhei fonts-wqy-zenhei
-
-# Install Source Han fonts (optional)
-sudo apt-get install fonts-source-han-sans-cn
-```
-
-### Verification
-
-To verify Chinese font availability:
-
-```bash
-# List all Chinese fonts
-fc-list :lang=zh
-
-# Check specific font
-ls /usr/share/fonts/opentype/noto/NotoSansCJK*
-```
-
-### Testing Chinese Subtitles
-
-Example request with Chinese subtitles:
-
-```json
-{
-  "task_id": "chinese_test_001",
-  "video_items": [...],
-  "subtitle_items": [
-    {
-      "id": "sub_cn_1",
-      "text": "这是中文字幕测试",
-      "start_time": 0.0,
-      "duration": 3.0,
-      "font_size": 24,
-      "font_color": "#FFFFFF",
-      "position": "bottom"
-    },
-    {
-      "id": "sub_mixed_1", 
-      "text": "Mixed 中英文 subtitles",
-      "start_time": 3.0,
-      "duration": 3.0,
-      "font_size": 24,
-      "font_color": "#FFFFFF"
-    }
-  ],
-  "total_duration": 30.0
-}
-```
-
-### Troubleshooting
-
-If Chinese subtitles still appear garbled:
-
-1. **Check system fonts**:
-   ```bash
-   python backend-services/basic-service/test_chinese_subtitle_fix.py
-   ```
-
-2. **Install missing fonts**:
-   ```bash
-   sudo apt-get update
-   sudo apt-get install fonts-noto-cjk fonts-wqy-microhei
-   ```
-
-3. **Check logs** for font selection details:
-   ```bash
-   tail -f backend-services/basic-service/logs/app.log | grep "font"
-   ```
-
-## Migration from Direct Backend Calls
-
-This API replaces direct calls to `http://localhost:8000/api/video/compose` with Next.js routes:
-
-| Old Direct Call | New Next.js Route |
-|----------------|-------------------|
-| `POST http://localhost:8000/api/video/compose` | `POST /api/video-compose` |
-| `GET http://localhost:8000/api/video/compose/{id}/status` | `GET /api/video-compose/{id}/status` |
-| `GET http://localhost:8000/api/video/compose/{id}/download` | `GET /api/video-compose/{id}/download` |
-| `GET http://localhost:8000/api/video/compose/health` | `GET /api/video-compose/health` |
-
-The `VideoCompositionAPI` class has been updated to use these new routes automatically. 
+- **Success**: Returns the video file as a binary download
+- **Error**: Returns JSON error response if file not found or composition not completed
+
+## Error Recovery
+
+### Frontend Error Handling
+
+The frontend now provides enhanced error handling with:
+
+- **Toast Notifications**: Replace alert dialogs with user-friendly toast messages
+- **Detailed Error Display**: Show specific failure reasons and affected videos
+- **Recovery Suggestions**: Provide actionable steps to resolve issues
+- **Extended Display Time**: Error messages show for 15 seconds to allow reading
+
+### Common Error Scenarios
+
+1. **Video Download Failures**
+   - Network connectivity issues
+   - Invalid or inaccessible video URLs
+   - Video source server downtime
+
+2. **Video Processing Failures**
+   - Corrupted video files
+   - Unsupported video formats
+   - Insufficient system resources
+
+3. **System Resource Issues**
+   - Insufficient disk space
+   - Memory limitations
+   - FFmpeg processing errors
+
+### Recovery Recommendations
+
+1. **For Download Errors**:
+   - Verify video URLs are accessible
+   - Check network connectivity
+   - Try alternative video sources
+   - Contact video provider if needed
+
+2. **For Processing Errors**:
+   - Verify video file integrity
+   - Check available disk space
+   - Reduce output resolution/quality
+   - Ensure FFmpeg is properly configured
+
+3. **For Timeout Issues**:
+   - Reduce video complexity
+   - Lower output resolution
+   - Decrease number of simultaneous tracks
+   - Retry during off-peak hours
+
+## Best Practices
+
+1. **Timeline Order**: Ensure videos are properly ordered in the timeline before composition
+2. **URL Accessibility**: Verify all video URLs are accessible before starting composition
+3. **Resource Management**: Monitor system resources during large compositions
+4. **Error Monitoring**: Use the detailed error information for troubleshooting
+5. **Retry Strategy**: Allow users to retry failed compositions with modifications
+
+## Logging
+
+The API provides comprehensive logging for:
+- All retry attempts with specific failure reasons
+- Timeline order verification
+- Processing stage transitions
+- Error details and recovery suggestions
+- Performance metrics and timing information
+
+This enhanced logging helps with debugging and provides insights into composition performance and reliability. 

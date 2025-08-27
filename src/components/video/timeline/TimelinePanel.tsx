@@ -2,9 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
-import { SupportedLocale } from '@/lib/i18n';
-import { useLocale } from '@/contexts/LocaleContext';
-import { useVideoExport } from '../hooks/useVideoExport';
+import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
 import TimelineToolbar from './TimelineToolbar';
@@ -23,11 +21,11 @@ interface TimelinePanelProps {
   onTimelineCompositionChange?: (timelineState: TimelineState) => void;
   // 新增：程序化添加素材到时间轴的回调（外部传入要添加的素材）
   materialsToAdd?: { materials: MaterialItem[], targetTrackId?: string, timestamp: number };
-  // 国际化支持 - 保持向后兼容性，但context优先
+  // 国际化支持
   locale?: SupportedLocale;
 }
 
-const TimelinePanel: React.FC<TimelinePanelProps> = ({
+const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
   className = '', 
   onTimelineStateChange, 
   externalCurrentTime,
@@ -35,33 +33,32 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   materials = [],
   onTimelineCompositionChange,
   materialsToAdd,
-  locale // 保持向后兼容性，但不再使用
+  locale = defaultLocale
 }) => {
-  // 使用LocaleContext获取国际化翻译
-  const { t, locale: contextLocale } = useLocale();
-
   // 创建初始空轨道状态
   const createInitialTimelineState = (): TimelineState => {
     const initialTracks: Track[] = [
       {
         id: 'video-track-1',
-        name: '视频轨道 1',
+        name: '视频轨道',
         type: 'video',
         height: 80,
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 100, // 视频轨道默认音量100%
         order: 0,
         items: []
       },
       {
-        id: 'video-track-2',
-        name: '视频轨道 2',
-        type: 'video',
+        id: 'image-track-1',
+        name: '图片轨道',
+        type: 'video', // 图片轨道也使用video类型，但通过trackId区分
         height: 80,
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 100, // 图片轨道音量（虽然图片没有音频，但保持一致性）
         order: 1,
         items: []
       },
@@ -73,6 +70,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 200, // 音频轨道1默认音量200%
         order: 2,
         items: []
       },
@@ -84,6 +82,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 10, // 音频轨道2默认音量10%
         order: 3,
         items: []
       },
@@ -95,6 +94,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         isLocked: false,
         isMuted: false,
         isVisible: true,
+        volume: 100, // 字幕轨道不使用音量，但保持一致性
         order: 4,
         items: []
       }
@@ -123,13 +123,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // 字幕编辑模态框状态
   const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
-
-  // 使用导出hook
-  const videoExport = useVideoExport({
-    timelineState,
-    materials,
-    taskId: `timeline_export`
-  });
 
   // 使用通知hook
   const { showSuccess, showError } = useNotification();
@@ -201,11 +194,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       } else {
         // 根据素材类型自动选择轨道
         const compatibleTracks = prev.tracks.filter(track => {
-          // 视频可以放在视频轨道，音频可以放在音频轨道，图片可以放在视频轨道，字幕可以放在字幕轨道
-          if (material.type === 'video') return track.type === 'video';
+          // 图片优先放在图片轨道（image-track-1）
+          if (material.type === 'image') {
+            return track.id === 'image-track-1' || track.type === 'video';
+          }
+          // 视频放在视频轨道，但不包括图片轨道
+          if (material.type === 'video') {
+            return track.type === 'video' && !track.id.startsWith('image-track');
+          }
+          // 音频可以放在音频轨道
           if (material.type === 'audio') return track.type === 'audio';
-          if (material.type === 'image') return track.type === 'video'; // 图片放在视频轨道
-          if (material.type === 'subtitle') return track.type === 'subtitle'; // 字幕放在字幕轨道
+          // 字幕可以放在字幕轨道
+          if (material.type === 'subtitle') return track.type === 'subtitle';
           return false;
         });
 
@@ -243,15 +243,30 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         // 初始化剪辑属性：默认使用完整的原始素材
         clipStart: 0,
         clipEnd: duration,
-        originalDuration: duration
+        originalDuration: duration,
+        
+        // 新增：标记素材的原始类型，用于区分图片和视频
+        originalMaterialType: material.type,
+        
+        // 新增：图片类型素材的默认位置
+        imagePosition: material.type === 'image' ? {
+          x: 0.1,
+          y: 0.1,
+          width: 0.3,
+          height: 0.3,
+          zIndex: 10
+        } : undefined
       };
 
       console.log(`[TimelinePanel] 创建新时间轴项目`, {
         itemId: newTimelineItem.id,
         trackId: targetTrack.id,
+        trackName: targetTrack.name,
         startTime: startTime.toFixed(2),
         duration: duration.toFixed(2),
         materialType: material.type,
+        originalMaterialType: material.type,
+        isImageInImageTrack: material.type === 'image' && targetTrack.id === 'image-track-1',
         timestamp: new Date().toISOString()
       });
 
@@ -292,6 +307,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       payload: { materialId: material.id, materialName: material.name },
       timestamp: new Date()
     });
+
+    // 新增：如果添加的是视频素材，记录详细日志
+    if (material.type === 'video') {
+      console.log(`[TimelinePanel] 视频素材已添加到时间轴`, {
+        materialId: material.id,
+        materialName: material.name,
+        materialUrl: material.url,
+        materialServerUrl: material.serverUrl,
+        duration: material.duration?.toFixed(2),
+        targetTrackId: targetTrackId,
+        message: '视频素材已成功添加到时间轴，右侧播放器应显示视频画面但保持暂停状态',
+        nextAction: '等待VideoPlayerPanel接收compositionPlayback状态更新',
+        timestamp: new Date().toISOString()
+      });
+    }
   }, []);
 
   // 程序化添加多个素材到时间轴
@@ -431,6 +461,52 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       timestamp: new Date()
     });
   }, [timelineState.selectedItems, addToHistory]);
+
+  const handleSelectAllTrackItems = useCallback((trackId: string) => {
+    console.log(`[TimelinePanel] 全选轨道素材`, {
+      trackId,
+      timestamp: new Date().toISOString()
+    });
+
+    setTimelineState(prev => {
+      const track = prev.tracks.find(t => t.id === trackId);
+      if (!track) {
+        console.warn(`[TimelinePanel] 未找到轨道: ${trackId}`);
+        return prev;
+      }
+
+      const trackItemIds = track.items.map(item => item.id);
+      
+      // 检查当前轨道的所有素材是否都已被选中
+      const allSelected = trackItemIds.every(id => prev.selectedItems.includes(id));
+      
+      let newSelectedItems: string[];
+      if (allSelected) {
+        // 如果全部已选中，则取消选择该轨道的所有素材
+        newSelectedItems = prev.selectedItems.filter(id => !trackItemIds.includes(id));
+        console.log(`[TimelinePanel] 取消选择轨道 ${trackId} 的所有素材`, {
+          unselectedCount: trackItemIds.length,
+          remainingSelected: newSelectedItems.length
+        });
+      } else {
+        // 否则，选中该轨道的所有素材（保留其他轨道已选中的素材）
+        const existingSelected = prev.selectedItems.filter(id => !trackItemIds.includes(id));
+        newSelectedItems = [...existingSelected, ...trackItemIds];
+        console.log(`[TimelinePanel] 选择轨道 ${trackId} 的所有素材`, {
+          selectedCount: trackItemIds.length,
+          totalSelected: newSelectedItems.length
+        });
+      }
+
+      return { ...prev, selectedItems: newSelectedItems };
+    });
+
+    addToHistory({
+      type: 'SELECT_ALL_TRACK_ITEMS',
+      payload: { trackId },
+      timestamp: new Date()
+    });
+  }, [timelineState.tracks, addToHistory]);
 
   // 计算非重叠位置的辅助函数
   const calculateNonOverlappingPosition = useCallback((
@@ -883,9 +959,25 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }));
   }, []);
 
+  const handleTrackVolumeChange = useCallback((trackId: string, volume: number) => {
+    console.log(`[TimelinePanel] 调整轨道音量`, { 
+      trackId, 
+      volume, 
+      timestamp: new Date().toISOString() 
+    });
+    
+    setTimelineState(prev => ({
+      ...prev,
+      tracks: prev.tracks.map(track => 
+        track.id === trackId ? { ...track, volume } : track
+      )
+    }));
+  }, []);
+
   const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
     const trackId = `${type}-track-${Date.now()}`;
     // 使用国际化轨道名称
+    const t = getTranslations(locale);
     const baseTrackName = type === 'video' ? t.timeline.track.videoTrack : 
                          type === 'audio' ? t.timeline.track.audioTrack : 
                          t.timeline.track.subtitleTrack;
@@ -907,6 +999,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       isLocked: false,
       isMuted: false,
       isVisible: true,
+      volume: type === 'audio' ? 100 : 100, // 音频轨道默认100%音量，其他轨道也设为100保持一致性
       order: timelineState.tracks.length,
       items: []
     };
@@ -915,7 +1008,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       ...prev,
       tracks: [...prev.tracks, newTrack]
     }));
-  }, [timelineState.tracks, t]);
+  }, [timelineState.tracks]);
 
   const handleRemoveTrack = useCallback((trackId: string) => {
     console.log(`[TimelinePanel] 删除轨道`, { trackId, timestamp: new Date().toISOString() });
@@ -1237,7 +1330,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       // 清除加载状态
       setIsExtractingSubtitles(false);
     }
-  }, [timelineState, materials, showError]);
+  }, [timelineState, materials]);
 
   // 处理字幕编辑
   const handleSubtitleEdit = useCallback((itemId: string, newText: string) => {
@@ -1300,8 +1393,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     handleCloseSubtitleEditModal();
   }, [editingTrackId, handleCloseSubtitleEditModal]);
 
-  // 导出逻辑现在使用useVideoExport hook
-
   return (
     <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
       {/* 工具栏 */}
@@ -1321,10 +1412,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
         isExtractingSubtitles={isExtractingSubtitles}
-        onExport={videoExport.handleExport}
-        isExporting={videoExport.isExporting}
-        exportProgress={videoExport.exportProgress}
-        locale={contextLocale}
+        locale={locale}
       />
 
       {/* 时间刻度尺 */}
@@ -1349,11 +1437,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onToggleTrackMute={handleToggleTrackMute}
         onToggleTrackLock={handleToggleTrackLock}
         onToggleTrackVisibility={handleToggleTrackVisibility}
+        onTrackVolumeChange={handleTrackVolumeChange}
+        onSelectAllTrackItems={handleSelectAllTrackItems}
         onAddTrack={handleAddTrack}
         onRemoveTrack={handleRemoveTrack}
         onReorderTracks={handleReorderTracks}
         onMaterialDrop={handleMaterialDrop}
-        locale={contextLocale}
+        locale={locale}
       />
 
       {/* 字幕编辑模态框 */}
@@ -1364,7 +1454,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           onSave={handleSaveSubtitleChanges}
           subtitles={timelineState.tracks.find(track => track.id === editingTrackId)?.items.filter(item => item.type === 'subtitle') || []}
           taskId="timeline_subtitle_edit"
-          locale={contextLocale}
+          locale={locale}
         />
       )}
     </div>

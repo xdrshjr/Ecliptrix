@@ -1,381 +1,29 @@
-# Video Composition API
+# Video Composition API Documentation
 
 ## Overview
-
-The Video Composition API provides endpoints for composing multiple video, audio, and subtitle tracks into a single video file. This API is designed to work with timeline data from video editing interfaces.
-
-**Recent Updates:**
-- **NEW**: Added subtitle composition support - subtitles from timeline are now automatically rendered into the final video
-- **NEW**: Added aspect ratio support with automatic letterboxing/pillarboxing
-- **FIXED**: Video truncation issue when audio is shorter than video content
-- Enhanced audio processing to support multiple audio tracks with proper mixing
-- Added support for server-side audio file URLs (e.g., TTS generated audio)
-- Improved error handling and logging for audio processing
-- Audio tracks are now properly extended/padded to match total video duration
+The Video Composition API provides functionality to compose videos from timeline data, including video clips, audio tracks, subtitles, and image overlays.
 
 ## Base URL
-
 ```
-/api/video
-```
-
-## Authentication
-
-Currently, no authentication is required for these endpoints.
-
-## Endpoints
-
-### 1. Compose Video
-
-**POST** `/compose`
-
-Compose a video from timeline data containing video, audio, and subtitle items with support for different aspect ratios.
-
-#### Request Body
-
-```json
-{
-  "task_id": "string",
-  "aspect_ratio": "16:9",
-  "video_items": [
-    {
-      "id": "string",
-      "name": "string",
-      "url": "string",
-      "start_time": 0.0,
-      "duration": 5.0,
-      "track_id": "string",
-      "volume": 1.0,
-      "opacity": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 5.0
-    }
-  ],
-  "audio_items": [
-    {
-      "id": "string",
-      "name": "string", 
-      "url": "string",
-      "start_time": 0.0,
-      "duration": 5.0,
-      "track_id": "string",
-      "volume": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 5.0
-    }
-  ],
-  "subtitle_items": [
-    {
-      "id": "string",
-      "name": "string",
-      "text": "string",
-      "start_time": 0.0,
-      "duration": 5.0,
-      "track_id": "string",
-      "font_size": 24,
-      "font_color": "#FFFFFF",
-      "background_color": "#000000",
-      "position": "bottom"
-    }
-  ],
-  "total_duration": 10.0,
-  "output_resolution": {
-    "width": 1920,
-    "height": 1080
-  },
-  "output_fps": 30,
-  "output_format": "mp4"
-}
+POST /api/video/compose
 ```
 
-#### New Parameter: aspect_ratio
+## Request Model
 
-The `aspect_ratio` parameter controls the output video aspect ratio and automatically handles video scaling with letterboxing/pillarboxing to maintain original video proportions.
+### VideoCompositionRequest
 
-**Supported Values:**
-- `"16:9"` - Standard widescreen (1920x1080) - **Default**
-- `"9:16"` - Vertical/Portrait (1080x1920) 
-- `"4:3"` - Traditional TV (1440x1080)
-- `"1:1"` - Square (1080x1080)
-- `"21:9"` - Ultra-wide (2560x1080)
-
-**Behavior:**
-- When converting between different aspect ratios, the system preserves the original video's aspect ratio
-- Black bars (letterboxing/pillarboxing) are added as needed instead of stretching the video
-- For example: Converting a 16:9 video to 9:16 will add black bars at the top and bottom
-- The `output_resolution` parameter is optional and will be auto-calculated from `aspect_ratio` if not provided
-
-#### Aspect Ratio Examples
-
-**Example 1: Convert to Vertical (9:16) for Social Media**
-```json
-{
-  "task_id": "social_media_vertical",
-  "aspect_ratio": "9:16",
-  "video_items": [
-    {
-      "id": "video1",
-      "name": "landscape_video.mp4",
-      "url": "https://example.com/landscape_video.mp4",
-      "start_time": 0.0,
-      "duration": 10.0,
-      "track_id": "track1",
-      "volume": 1.0,
-      "opacity": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 10.0
-    }
-  ],
-  "total_duration": 10.0,
-  "output_fps": 30
-}
-```
-
-**Example 2: Square Format (1:1) for Instagram**
-```json
-{
-  "task_id": "instagram_square",
-  "aspect_ratio": "1:1",
-  "video_items": [
-    {
-      "id": "video1", 
-      "name": "widescreen_video.mp4",
-      "url": "https://example.com/widescreen_video.mp4",
-      "start_time": 0.0,
-      "duration": 15.0,
-      "track_id": "track1",
-      "volume": 1.0,
-      "opacity": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 15.0
-    }
-  ],
-  "total_duration": 15.0,
-  "output_fps": 30
-}
-```
-
-**Example 3: Ultra-wide (21:9) for Cinematic Content**
-```json
-{
-  "task_id": "cinematic_ultrawide",
-  "aspect_ratio": "21:9",
-  "video_items": [
-    {
-      "id": "video1",
-      "name": "standard_video.mp4", 
-      "url": "https://example.com/standard_video.mp4",
-      "start_time": 0.0,
-      "duration": 30.0,
-      "track_id": "track1",
-      "volume": 1.0,
-      "opacity": 1.0,
-      "clip_start": 0.0,
-      "clip_end": 30.0
-    }
-  ],
-  "total_duration": 30.0,
-  "output_fps": 24
-}
-```
-
-#### Important: total_duration Parameter
-
-The `total_duration` parameter is **critical** for proper video composition:
-
-- **Purpose**: Defines the final duration of the composed video in seconds
-- **Calculation**: Should be the maximum end time (`start_time + duration`) across all video and audio items in all tracks
-- **Audio Handling**: Audio tracks are automatically extended/padded with silence to match this duration
-- **Video Preservation**: Video content is never truncated - the full video timeline is preserved
-- **Fix Applied**: Removed video truncation when audio tracks are shorter than video content
-
-**Example**: If you have a 25-second video timeline with a 13-second audio track, set `total_duration: 25.0` to preserve the full video length.
-
-#### Audio URL Formats
-
-The API supports multiple audio URL formats:
-
-1. **Server URLs** (for TTS generated audio): `/api/audio/generated/filename.mp3`
-   - These are automatically converted to local file paths
-   - Used for audio generated by the Text-to-Speech service
-
-2. **HTTP URLs**: `http://example.com/audio.mp3`
-   - Processed directly by ffmpeg
-
-3. **Local file paths**: `static/audio/uploaded/audio.mp3`
-   - Direct file system paths
-
-#### Audio Processing Features
-
-- **Single Audio Track**: Direct processing with volume control and timing
-- **Multiple Audio Tracks**: Advanced mixing with:
-  - Proper time-based positioning (`start_time`)
-  - Individual volume control per track
-  - Overlay mixing preserving all audio content
-  - Automatic duration management
-
-#### Video and Audio Clipping Support
-
-**NEW**: Timeline-based clipping allows extracting specific portions of video and audio files:
-
-- **clip_start**: Start time within the source media file (seconds, ≥ 0)
-- **clip_end**: End time within the source media file (seconds, > clip_start)
-- **Use Case**: When users resize clips in the timeline interface, the system tracks which portion of the original media should be used
-- **Processing**: Uses FFmpeg `-ss` (seek start) and `-t` (duration) parameters for efficient clipping
-- **Validation**: Ensures clip bounds are within the original media duration
-
-**Example**: A 18-second video clip trimmed to 6.4 seconds:
-```json
-{
-  "id": "video_001",
-  "name": "Trimmed Video",
-  "url": "original_video.mp4",
-  "start_time": 5.0,
-  "duration": 6.4,
-  "clip_start": 0.0,
-  "clip_end": 6.4
-}
-```
-
-This extracts seconds 0.0-6.4 from the original video and places it at timeline position 5.0.
-
-#### Subtitle Processing
-
-**NEW**: Subtitle composition automatically renders subtitle tracks into the final video:
-
-- **Subtitle Items**: Timeline subtitle items are converted to SRT format and rendered directly into the video
-- **Font Customization**: Supports font size, color, background color, and position settings
-- **Automatic Processing**: Subtitles are processed after video and audio composition
-- **Error Handling**: If subtitle processing fails, video composition continues without subtitles
-
-**Subtitle Item Properties**:
-- `text`: The subtitle text content
-- `start_time`: When the subtitle appears (seconds)
-- `duration`: How long the subtitle is displayed (seconds)
-- `font_size`: Font size in pixels (8-72, default: 24)
-- `font_color`: Font color in hex format (default: "#FFFFFF")
-- `background_color`: Background color in hex format (optional)
-- `position`: Subtitle position - "top", "center", or "bottom" (default: "bottom")
-
-**Example Subtitle Processing**:
-```json
-{
-  "subtitle_items": [
-    {
-      "id": "sub_001",
-      "name": "Opening Subtitle",
-      "text": "Welcome to our video tutorial",
-      "start_time": 0.0,
-      "duration": 3.0,
-      "track_id": "subtitle-track-1",
-      "font_size": 28,
-      "font_color": "#FFFFFF",
-      "background_color": "#000000",
-      "position": "bottom"
-    }
-  ]
-}
-```
-
-The subtitle processing:
-1. Converts timeline subtitle items to SRT format
-2. Uses the SubtitleService to render subtitles into the video
-3. Applies font styling and positioning
-4. Returns the final video with embedded subtitles
-
-#### Response
-
-```json
-{
-  "success": true,
-  "message": "Video composition started successfully",
-  "composition_id": "comp_1234567890",
-  "status": "processing",
-  "progress": 0.0
-}
-```
-
-#### Status Codes
-
-- `200 OK`: Composition started successfully
-- `400 Bad Request`: Invalid request data
-- `422 Unprocessable Entity`: Validation error
-- `500 Internal Server Error`: Server error
-
-### 2. Get Composition Status
-
-**GET** `/compose/{composition_id}/status`
-
-Get the current status of a video composition.
-
-#### Response
-
-```json
-{
-  "composition_id": "comp_1234567890",
-  "task_id": "export_1234567890",
-  "status": "processing|completed|failed",
-  "progress": 0.75,
-  "start_time": 1640995200,
-  "processing_time": 45.2,
-  "output_file_size": 52428800,
-  "error_details": null
-}
-```
-
-#### Status Codes
-
-- `200 OK`: Status retrieved successfully
-- `404 Not Found`: Composition not found
-
-### 3. Download Composed Video
-
-**GET** `/compose/{composition_id}/download?task_id={task_id}&filename={filename}`
-
-Download the completed video file.
-
-#### Query Parameters
-
-- `task_id` (optional): Task identifier for tracking
-- `filename` (optional): Suggested filename for download
-
-#### Response
-
-Binary video file with headers:
-- `Content-Type`: `video/mp4`
-- `Content-Length`: File size in bytes
-- `X-Composition-ID`: Composition ID
-- `Content-Disposition`: `attachment; filename="composed_video.mp4"`
-
-#### Status Codes
-
-- `200 OK`: File download successful
-- `404 Not Found`: Composition not found or not ready
-- `500 Internal Server Error`: Download error
-
-### 4. Composition Service Health
-
-**GET** `/compose/health`
-
-Check the health status of the video composition service.
-
-#### Response
-
-```json
-{
-  "service": "video_composition",
-  "status": "healthy|degraded|error",
-  "ffmpeg_available": true,
-  "active_compositions": 2,
-  "message": "Service is operational"
-}
-```
-
-#### Status Codes
-
-- `200 OK`: Health check successful
-
-## Data Models
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| task_id | string | Yes | Task ID for tracking and logging |
+| video_items | VideoCompositionItem[] | Yes | List of video items to compose |
+| audio_items | AudioCompositionItem[] | No | List of audio items to compose |
+| subtitle_items | SubtitleCompositionItem[] | No | List of subtitle items to compose |
+| image_items | ImageCompositionItem[] | No | List of image items to compose as overlays |
+| total_duration | float | Yes | Total duration of the composition (seconds) |
+| aspect_ratio | AspectRatio | No | Output video aspect ratio (default: 16:9) |
+| output_resolution | Dict[str, int] | No | Output video resolution (auto-calculated if not provided) |
+| output_fps | int | No | Output video frame rate (default: 30) |
+| output_format | string | No | Output video format (default: mp4) |
 
 ### VideoCompositionItem
 
@@ -383,12 +31,16 @@ Check the health status of the video composition service.
 |-------|------|----------|-------------|
 | id | string | Yes | Unique identifier for the timeline item |
 | name | string | Yes | Display name of the video item |
-| url | string | Yes | Video URL (local or remote) |
-| start_time | float | Yes | Start time in timeline (seconds, ≥ 0) |
-| duration | float | Yes | Duration of video segment (seconds, > 0) |
+| url | string | Yes | Video URL (local file path or remote URL) |
+| start_time | float | Yes | Start time in the timeline (seconds) |
+| duration | float | Yes | Duration of the video segment (seconds) |
 | track_id | string | Yes | ID of the track this item belongs to |
 | volume | float | No | Volume level (0.0 to 2.0, default: 1.0) |
 | opacity | float | No | Opacity level (0.0 to 1.0, default: 1.0) |
+| clip_start | float | No | Start time within the source video file (seconds) |
+| clip_end | float | Yes | End time within the source video file (seconds) |
+| original_material_type | string | No | Original material type (video, image, audio, etc.) |
+| image_position | ImagePosition | No | Position for image overlay (only for image materials) |
 
 ### AudioCompositionItem
 
@@ -396,11 +48,13 @@ Check the health status of the video composition service.
 |-------|------|----------|-------------|
 | id | string | Yes | Unique identifier for the timeline item |
 | name | string | Yes | Display name of the audio item |
-| url | string | Yes | Audio URL (server URL, HTTP URL, or local path) |
-| start_time | float | Yes | Start time in timeline (seconds, ≥ 0) |
-| duration | float | Yes | Duration of audio segment (seconds, > 0) |
+| url | string | Yes | Audio URL (local file path or remote URL) |
+| start_time | float | Yes | Start time in the timeline (seconds) |
+| duration | float | Yes | Duration of the audio segment (seconds) |
 | track_id | string | Yes | ID of the track this item belongs to |
 | volume | float | No | Volume level (0.0 to 2.0, default: 1.0) |
+| clip_start | float | No | Start time within the source audio file (seconds) |
+| clip_end | float | Yes | End time within the source audio file (seconds) |
 
 ### SubtitleCompositionItem
 
@@ -409,129 +63,185 @@ Check the health status of the video composition service.
 | id | string | Yes | Unique identifier for the timeline item |
 | name | string | Yes | Display name of the subtitle item |
 | text | string | Yes | Subtitle text content |
-| start_time | float | Yes | Start time in timeline (seconds, ≥ 0) |
-| duration | float | Yes | Duration of subtitle display (seconds, > 0) |
+| start_time | float | Yes | Start time in the timeline (seconds) |
+| duration | float | Yes | Duration of the subtitle display (seconds) |
 | track_id | string | Yes | ID of the track this item belongs to |
-| font_size | integer | No | Font size in pixels (default: 24) |
-| font_color | string | No | Font color in hex format (default: "#FFFFFF") |
-| background_color | string | No | Background color in hex format (default: transparent) |
-| position | string | No | Subtitle position: "top", "center", "bottom" (default: "bottom") |
+| font_family | string | No | Font family (default, serif, sans-serif, monospace) |
+| font_size | int | No | Font size in pixels (8-72, default: 24) |
+| font_color | string | No | Font color in hex format (default: #FFFFFF) |
+| background_color | string | No | Background color in hex format (optional) |
+| position | string | No | Subtitle position (top, center, bottom, upper-3/4, lower-3/4) |
 
-## Error Handling
+### ImageCompositionItem (New)
 
-### Common Error Response Format
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | string | Yes | Unique identifier for the timeline item |
+| name | string | Yes | Display name of the image item |
+| url | string | Yes | Image URL (local file path or remote URL) |
+| start_time | float | Yes | Start time in the timeline (seconds) |
+| duration | float | Yes | Duration of the image display (seconds) |
+| track_id | string | Yes | ID of the track this item belongs to |
+| position | ImagePosition | Yes | Position and size of the image overlay |
+| opacity | float | No | Opacity level (0.0 to 1.0, default: 1.0) |
+| fade_in_duration | float | No | Fade-in duration in seconds (default: 0.0) |
+| fade_out_duration | float | No | Fade-out duration in seconds (default: 0.0) |
+
+### ImagePosition
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| x | float | Yes | X coordinate (0-1, relative to video width) |
+| y | float | Yes | Y coordinate (0-1, relative to video height) |
+| width | float | Yes | Width (0-1, relative to video width) |
+| height | float | Yes | Height (0-1, relative to video height) |
+| z_index | int | No | Layer order for multiple image overlays (default: 10) |
+
+## Response Model
+
+### VideoCompositionResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| success | boolean | Whether the operation was successful |
+| message | string | Human-readable message about the operation |
+| composition_id | string | Unique identifier for the composition job |
+| status | string | Composition status (processing, completed, failed) |
+| progress | float | Composition progress (0.0 to 1.0) |
+| output_file_path | string | Path to the composed video file (when completed) |
+| output_file_size | int | Size of the output file in bytes (when completed) |
+| processing_time | float | Total processing time in seconds (when completed) |
+| error_details | object | Error details if composition failed |
+
+## Example Request
 
 ```json
 {
-  "success": false,
-  "message": "Error description",
-  "error_details": {
-    "type": "validation_error|processing_error|file_error",
-    "field": "field_name",
-    "code": "ERROR_CODE"
-  }
-}
-```
-
-### Audio Processing Errors
-
-- **File Not Found**: When server URLs point to non-existent audio files
-- **Format Not Supported**: When audio format is not supported by ffmpeg
-- **Processing Failed**: When audio mixing or conversion fails
-
-## Performance Notes
-
-- Audio processing time scales with the number of audio tracks and total duration
-- Multiple audio tracks are processed using advanced mixing algorithms
-- Server URLs are validated and converted to local paths for optimal performance
-- Temporary files are automatically cleaned up after processing
-
-## Examples
-
-### Single Audio Track Example
-
-```json
-{
-  "task_id": "export_20240115_143022",
+  "task_id": "export_video_123",
+  "aspect_ratio": "16:9",
   "video_items": [
     {
-      "id": "video_001",
+      "id": "video_1",
       "name": "Main Video",
-      "url": "static/video/main.mp4",
+      "url": "https://example.com/video1.mp4",
       "start_time": 0.0,
-      "duration": 30.0,
+      "duration": 10.0,
       "track_id": "video-track-1",
       "volume": 1.0,
-      "opacity": 1.0
+      "opacity": 1.0,
+      "clip_start": 0.0,
+      "clip_end": 10.0
     }
   ],
   "audio_items": [
     {
-      "id": "tts_audio_001",
-      "name": "Generated Speech",
-      "url": "/api/audio/generated/tts_segment-1_20240115_143022_abc123.mp3",
-      "start_time": 2.0,
-      "duration": 25.0,
+      "id": "audio_1",
+      "name": "Background Music",
+      "url": "https://example.com/audio1.mp3",
+      "start_time": 0.0,
+      "duration": 10.0,
       "track_id": "audio-track-1",
-      "volume": 0.8
+      "volume": 0.5,
+      "clip_start": 0.0,
+      "clip_end": 10.0
     }
   ],
-  "total_duration": 30.0,
-  "output_resolution": {"width": 1920, "height": 1080},
-  "output_fps": 30
+  "image_items": [
+    {
+      "id": "image_1",
+      "name": "Logo Overlay",
+      "url": "https://example.com/logo.png",
+      "start_time": 2.0,
+      "duration": 5.0,
+      "track_id": "image-track-1",
+      "position": {
+        "x": 0.8,
+        "y": 0.05,
+        "width": 0.15,
+        "height": 0.15,
+        "z_index": 10
+      },
+      "opacity": 0.8,
+      "fade_in_duration": 0.5,
+      "fade_out_duration": 0.5
+    }
+  ],
+  "subtitle_items": [
+    {
+      "id": "subtitle_1",
+      "name": "Opening Text",
+      "text": "Welcome to our video",
+      "start_time": 1.0,
+      "duration": 3.0,
+      "track_id": "subtitle-track-1",
+      "font_family": "default",
+      "font_size": 32,
+      "font_color": "#FFFFFF",
+      "position": "bottom"
+    }
+  ],
+  "total_duration": 10.0,
+  "output_fps": 30,
+  "output_format": "mp4"
 }
 ```
 
-### Multiple Audio Tracks Example
+## Example Response
 
 ```json
 {
-  "task_id": "export_20240115_143022",
-  "video_items": [
-    {
-      "id": "video_001",
-      "name": "Main Video",
-      "url": "static/video/main.mp4",
-      "start_time": 0.0,
-      "duration": 60.0,
-      "track_id": "video-track-1"
-    }
-  ],
-  "audio_items": [
-    {
-      "id": "tts_audio_001",
-      "name": "Narration",
-      "url": "/api/audio/generated/tts_segment-1_20240115_143022_abc123.mp3",
-      "start_time": 0.0,
-      "duration": 30.0,
-      "track_id": "audio-track-1",
-      "volume": 0.8
-    },
-    {
-      "id": "bg_music_001",
-      "name": "Background Music",
-      "url": "static/audio/music/background.mp3",
-      "start_time": 0.0,
-      "duration": 60.0,
-      "track_id": "audio-track-2",
-      "volume": 0.3
-    },
-    {
-      "id": "tts_audio_002",
-      "name": "Second Narration",
-      "url": "/api/audio/generated/tts_segment-2_20240115_143022_def456.mp3",
-      "start_time": 35.0,
-      "duration": 20.0,
-      "track_id": "audio-track-1",
-      "volume": 0.8
-    }
-  ],
-  "total_duration": 60.0
+  "success": true,
+  "message": "Video composition started successfully",
+  "composition_id": "comp_abc123def456",
+  "status": "processing",
+  "progress": 0.0
 }
 ```
 
-This example demonstrates:
-- Multiple audio tracks with different start times
-- Overlapping audio (background music throughout, narration at specific times)
-- Different volume levels for different types of audio
-- Mix of TTS-generated and uploaded audio files 
+## Image Overlay Features
+
+### Positioning
+- Image overlays are positioned using relative coordinates (0-1) for responsive scaling
+- X and Y coordinates represent the top-left corner of the image
+- Width and height are also relative to the video dimensions
+- Z-index controls layering when multiple images overlap
+
+### Timing
+- Images can be displayed for any duration within the video timeline
+- Start time and duration control when and how long the image appears
+- Multiple images can overlap in time for complex compositions
+
+### Effects
+- Opacity control for transparency effects
+- Fade-in and fade-out animations for smooth transitions
+- Images maintain their aspect ratio and can be scaled to fit the specified dimensions
+
+### Supported Formats
+- PNG (recommended for images with transparency)
+- JPG/JPEG (for photographs)
+- GIF (static frames only)
+- WebP (where supported)
+
+## Status Endpoints
+
+### Get Composition Status
+```
+GET /api/video/compose/{composition_id}/status
+```
+
+### Download Completed Video
+```
+GET /api/video/compose/{composition_id}/download
+```
+
+## Notes
+
+1. **Performance**: Image overlay processing adds computational overhead. Complex overlays with many images may increase processing time.
+
+2. **File Handling**: Both local file paths and remote URLs are supported for images. Remote images are downloaded and cached during processing.
+
+3. **Resolution**: Image overlays are processed at the output video resolution for optimal quality.
+
+4. **Memory Usage**: Large images or many simultaneous overlays may require additional system memory.
+
+5. **Error Handling**: If an image fails to load or process, the composition continues with remaining items and logs the error. 

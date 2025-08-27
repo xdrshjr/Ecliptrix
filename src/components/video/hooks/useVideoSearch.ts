@@ -1,8 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
-import { UseVideoSearchReturn, SearchOrientation } from '../types';
+import { UseVideoSearchReturn, SearchOrientation, VideoLibraryType, YoutubeVideoSearchResult, YoutubeDurationRange, YoutubeDurationPreset } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createVideoSearchService, VideoSearchService, VideoSearchResult } from '../services';
+import { createYoutubeVideoSearchService, YoutubeVideoSearchService } from '../services';
+import { getMaxConcurrentDownloads } from '@/lib/api/config';
 
 export const useVideoSearch = (
   taskId: string,
@@ -14,21 +16,129 @@ export const useVideoSearch = (
   }), [taskId]);
 
   const videoSearchService = useMemo(() => createVideoSearchService(taskId), [taskId]);
+  const youtubeVideoSearchService = useMemo(() => createYoutubeVideoSearchService(taskId), [taskId]);
 
+  // 加载YouTube配置
+  useEffect(() => {
+    const loadYoutubeConfig = async () => {
+      try {
+        logger.info('开始加载YouTube配置', { taskId });
+        const concurrentDownloads = await getMaxConcurrentDownloads();
+        setMaxConcurrentDownloads(concurrentDownloads);
+        logger.info('YouTube配置加载成功', { 
+          taskId,
+          maxConcurrentDownloads: concurrentDownloads 
+        });
+      } catch (error) {
+        logger.error('YouTube配置加载失败，使用默认值', error as Error, { 
+          taskId,
+          defaultValue: 3 
+        });
+        // 保持默认值3
+      }
+    };
+
+    loadYoutubeConfig();
+  }, [taskId, logger]);
+
+  // 通用状态
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOrientation, setSearchOrientation] = useState<SearchOrientation>('mixed');
+  const [validationError, setValidationError] = useState<string | null>(null);
+  
+  // 视频库切换状态
+  const [activeLibrary, setActiveLibrary] = useState<VideoLibraryType>('official');
+  
+  // 官方视频库状态
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
   const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
   const [previewVideo, setPreviewVideo] = useState<VideoSearchResult | null>(null);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  
+  // Youtube视频库状态
+  const [isYoutubeSearching, setIsYoutubeSearching] = useState(false);
+  const [youtubeSearchResults, setYoutubeSearchResults] = useState<YoutubeVideoSearchResult[]>([]);
+  const [youtubeSelectedResults, setYoutubeSelectedResults] = useState<Set<string>>(new Set());
+  const [youtubePreviewVideo, setYoutubePreviewVideo] = useState<YoutubeVideoSearchResult | null>(null);
+  
+  // YouTube配置状态
+  const [maxConcurrentDownloads, setMaxConcurrentDownloads] = useState(3); // 默认值
+  
+  // YouTube时间范围状态
+  const [youtubeDurationRange, setYoutubeDurationRange] = useState<YoutubeDurationRange>({
+    minDuration: 0,
+    maxDuration: 300 // 默认5分钟
+  });
+  const [youtubeDurationPreset, setYoutubeDurationPresetState] = useState<YoutubeDurationPreset>('under_5min');
+
+  // 处理YouTube时间预设变化
+  const handleYoutubeDurationPresetChange = useCallback((preset: YoutubeDurationPreset) => {
+    setYoutubeDurationPresetState(preset);
+    
+    // 根据预设更新时间范围
+    let newRange: YoutubeDurationRange | undefined;
+    switch (preset) {
+      case 'under_1min':
+        newRange = { minDuration: 0, maxDuration: 60 };
+        break;
+      case 'under_3min':
+        newRange = { minDuration: 0, maxDuration: 180 };
+        break;
+      case 'under_5min':
+        newRange = { minDuration: 0, maxDuration: 300 };
+        break;
+      case 'under_10min':
+        newRange = { minDuration: 0, maxDuration: 600 };
+        break;
+      case 'custom':
+        // 自定义模式不自动更新范围
+        newRange = undefined;
+        break;
+      default:
+        newRange = { minDuration: 0, maxDuration: 300 };
+    }
+    
+    if (newRange) {
+      setYoutubeDurationRange(newRange);
+    }
+    
+    logger.userAction('YouTube时间预设变化', 'durationPresetChange', {
+      preset,
+      newRange: preset !== 'custom' ? newRange : undefined,
+      activeLibrary
+    });
+  }, [logger, activeLibrary]);
+
+  // 处理自定义时间范围变化
+  const handleYoutubeDurationRangeChange = useCallback((range: YoutubeDurationRange) => {
+    setYoutubeDurationRange(range);
+    
+    // 如果不是预设范围，切换到自定义模式
+    const isPresetRange = 
+      (range.minDuration === 0 && range.maxDuration === 60) ||   // 1分钟
+      (range.minDuration === 0 && range.maxDuration === 180) ||  // 3分钟
+      (range.minDuration === 0 && range.maxDuration === 300) ||  // 5分钟
+      (range.minDuration === 0 && range.maxDuration === 600);    // 10分钟
+    
+    if (!isPresetRange && youtubeDurationPreset !== 'custom') {
+      setYoutubeDurationPresetState('custom');
+    }
+    
+    logger.userAction('YouTube自定义时间范围变化', 'durationRangeChange', {
+      range,
+      wasPresetRange: isPresetRange,
+      currentPreset: youtubeDurationPreset,
+      activeLibrary
+    });
+  }, [youtubeDurationPreset, logger, activeLibrary]);
 
   const openSearchModal = useCallback((initialKeywords?: string[]) => {
     logger.userAction('打开视频搜索模态框', 'searchButton', {
       hasInitialKeywords: !!initialKeywords,
       keywordCount: initialKeywords?.length || 0,
-      keywords: initialKeywords
+      keywords: initialKeywords,
+      activeLibrary
     });
     
     // 如果有初始关键词，自动填充搜索框
@@ -37,26 +147,35 @@ export const useVideoSearch = (
       setSearchQuery(keywordsString);
       logger.info('自动填充搜索关键词', {
         keywords: initialKeywords,
-        searchQuery: keywordsString
+        searchQuery: keywordsString,
+        activeLibrary
       });
     }
     
     setIsModalOpen(true);
-  }, [logger]);
+  }, [logger, activeLibrary]);
 
   const closeSearchModal = useCallback(() => {
     setIsModalOpen(false);
     setSearchQuery('');
+    
+    // 清理官方视频库状态
     setSearchResults([]);
     setSelectedResults(new Set());
     setPreviewVideo(null);
+    
+    // 清理Youtube视频库状态
+    setYoutubeSearchResults([]);
+    setYoutubeSelectedResults(new Set());
+    setYoutubePreviewVideo(null);
+    
     setValidationError(null);
-    logger.userAction('关闭视频搜索模态框', 'closeButton');
-  }, [logger]);
+    logger.userAction('关闭视频搜索模态框', 'closeButton', { activeLibrary });
+  }, [logger, activeLibrary]);
 
   const handleVideoPreview = useCallback((video: VideoSearchResult) => {
     setPreviewVideo(video);
-    logger.userAction('预览视频', 'videoPreview', {
+    logger.userAction('预览官方视频', 'videoPreview', {
       videoId: video.id,
       videoTitle: video.title,
       videoAuthor: video.author,
@@ -66,13 +185,26 @@ export const useVideoSearch = (
     });
   }, [logger]);
 
+  const handleYoutubeVideoPreview = useCallback((video: YoutubeVideoSearchResult) => {
+    setYoutubePreviewVideo(video);
+    logger.userAction('预览Youtube视频', 'youtubeVideoPreview', {
+      videoId: video.id,
+      videoTitle: video.title,
+      channelTitle: video.channelTitle,
+      videoDimensions: `${video.width}x${video.height}`,
+      videoDuration: video.duration,
+      viewCount: video.viewCount,
+      hasVideoUrl: !!video.videoUrl
+    });
+  }, [logger]);
+
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       alert('请输入搜索关键词');
       return;
     }
 
-          setIsSearching(true);
+    setIsSearching(true);
     setSearchResults([]);
     setPreviewVideo(null);
 
@@ -86,133 +218,471 @@ export const useVideoSearch = (
 
       if (result.success && result.videos) {
         setSearchResults(result.videos);
-        logger.info('视频搜索成功', {
+        logger.info('官方视频搜索成功', {
           totalFound: result.total_found,
           videosCount: result.videos.length
         });
       } else {
         alert(result.error || result.message || '搜索失败，请稍后重试');
-        logger.warn('视频搜索无结果', {
+        logger.warn('官方视频搜索无结果', {
           error: result.error,
           message: result.message
         });
       }
     } catch (error) {
-      logger.error('视频搜索异常', error as Error);
+      logger.error('官方视频搜索异常', error as Error);
       alert('搜索失败，请检查网络连接');
     } finally {
       setIsSearching(false);
     }
   }, [searchQuery, searchOrientation, logger, videoSearchService]);
 
-  const handleSearchResultSelect = useCallback((videoId: number, isSelected: boolean) => {
-    const newSelection = new Set(selectedResults);
-    if (isSelected) {
-      newSelection.add(videoId);
-    } else {
-      newSelection.delete(videoId);
-    }
-    setSelectedResults(newSelection);
-
-    logger.userAction('搜索结果选择', 'videoCard', {
-      videoId,
-      isSelected,
-      totalSelected: newSelection.size
-    });
-  }, [selectedResults, logger]);
-
-  const handleAddSelectedVideos = useCallback(() => {
-    const selectedVideos = searchResults.filter(video => selectedResults.has(video.id));
-    
-    logger.info('开始添加选中视频到素材库', {
-      selectedCount: selectedVideos.length,
-      videoIds: selectedVideos.map(v => v.id),
-      selectedVideosDetail: selectedVideos.map(v => ({
-        id: v.id,
-        title: v.title,
-        hasVideoUrl: !!v.video_url
-      }))
-    });
-
-    if (selectedVideos.length === 0) {
-      alert('请先选择要添加的视频');
-      logger.warn('添加视频失败 - 未选择任何视频');
+  const handleYoutubeSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      alert('请输入搜索关键词');
       return;
     }
 
-    // 使用视频搜索服务将视频转换为素材项
-    const newMaterials = videoSearchService.convertToMaterials(selectedVideos);
-    
-    logger.info('视频转换为素材项完成', {
-      convertedCount: newMaterials.length,
-      materialsDetail: newMaterials.map(m => ({
-        id: m.id,
-        name: m.name,
-        type: m.type,
-        hasUrl: !!m.url
-      }))
-    });
+    setIsYoutubeSearching(true);
+    setYoutubeSearchResults([]);
+    setYoutubePreviewVideo(null);
 
-    // 调用回调函数添加素材
-    const success = onAddMaterials(newMaterials);
-    
-    logger.info('素材添加回调完成', {
-      attemptedCount: newMaterials.length,
-      success: success
-    });
+    try {
+      // 使用Youtube视频搜索服务进行搜索
+      const result = await youtubeVideoSearchService.searchVideos({
+        query: searchQuery,
+        maxVideos: 20,
+        orientation: searchOrientation,
+        minDuration: youtubeDurationRange.minDuration,
+        maxDuration: youtubeDurationRange.maxDuration
+      });
 
-    // 只有成功时才清除选择状态并关闭模态框
-    if (success) {
-      setSelectedResults(new Set());
-      setIsModalOpen(false);
-      setSearchQuery('');
-      setSearchResults([]);
-      setPreviewVideo(null);
+      if (result.success && result.videos) {
+        setYoutubeSearchResults(result.videos);
+        logger.info('Youtube视频搜索成功', {
+          totalFound: result.total_found,
+          videosCount: result.videos.length,
+          isMockData: true
+        });
+      } else {
+        alert(result.error || result.message || '搜索失败，请稍后重试');
+        logger.warn('Youtube视频搜索无结果', {
+          error: result.error,
+          message: result.message
+        });
+      }
+    } catch (error) {
+      logger.error('Youtube视频搜索异常', error as Error);
+      alert('搜索失败，请检查网络连接');
+    } finally {
+      setIsYoutubeSearching(false);
+    }
+  }, [searchQuery, searchOrientation, youtubeDurationRange, logger, youtubeVideoSearchService]);
+
+  const handleSearchResultSelect = useCallback((videoId: number | string, isSelected: boolean) => {
+    if (typeof videoId === 'number') {
+      // 官方视频库
+      setSelectedResults(prev => {
+        const newSet = new Set(prev);
+        if (isSelected) {
+          newSet.add(videoId);
+        } else {
+          newSet.delete(videoId);
+        }
+        return newSet;
+      });
       
-      logger.info('视频添加成功，模态框已关闭', {
-        addedVideosCount: newMaterials.length,
-        modalClosed: true
+      logger.userAction('选择官方视频', isSelected ? 'select' : 'deselect', {
+        videoId,
+        totalSelected: isSelected ? selectedResults.size + 1 : selectedResults.size - 1
       });
     } else {
-      logger.info('视频添加失败，模态框保持开启等待用户调整', {
-        attemptedCount: newMaterials.length,
-        modalStaysOpen: true
+      // Youtube视频库
+      handleYoutubeResultSelect(videoId, isSelected);
+    }
+  }, [selectedResults.size, logger]);
+
+  const handleYoutubeResultSelect = useCallback((videoId: string, isSelected: boolean) => {
+    setYoutubeSelectedResults(prev => {
+      const newSet = new Set(prev);
+      if (isSelected) {
+        newSet.add(videoId);
+      } else {
+        newSet.delete(videoId);
+      }
+      return newSet;
+    });
+    
+    logger.userAction('选择Youtube视频', isSelected ? 'select' : 'deselect', {
+      videoId,
+      totalSelected: isSelected ? youtubeSelectedResults.size + 1 : youtubeSelectedResults.size - 1
+    });
+  }, [youtubeSelectedResults.size, logger]);
+
+  const handleAddSelectedVideos = useCallback(() => {
+    if (activeLibrary === 'official') {
+      const selectedVideos = searchResults.filter(video => selectedResults.has(video.id));
+      
+      if (selectedVideos.length === 0) {
+        alert('请先选择要添加的视频');
+        return;
+      }
+
+      logger.info('开始添加选中的官方视频', {
+        selectedCount: selectedVideos.length,
+        videoIds: selectedVideos.map(v => v.id)
+      });
+
+      const materials = videoSearchService.convertToMaterials(selectedVideos);
+      const success = onAddMaterials(materials);
+
+      if (success) {
+        logger.info('官方视频添加成功', {
+          addedCount: materials.length,
+          materialIds: materials.map(m => m.id)
+        });
+        closeSearchModal();
+      } else {
+        logger.warn('官方视频添加失败', {
+          attemptedCount: materials.length
+        });
+      }
+    } else {
+      handleAddSelectedYoutubeVideos();
+    }
+  }, [activeLibrary, searchResults, selectedResults, logger, videoSearchService, onAddMaterials, closeSearchModal]);
+
+  const handleAddSelectedYoutubeVideos = useCallback(async () => {
+    const selectedVideos = youtubeSearchResults.filter(video => youtubeSelectedResults.has(video.id));
+    
+    if (selectedVideos.length === 0) {
+      alert('请先选择要添加的Youtube视频');
+      return;
+    }
+
+    logger.info('开始添加选中的Youtube视频', {
+      selectedCount: selectedVideos.length,
+      videoIds: selectedVideos.map(v => v.id)
+    });
+
+    // 转换为素材并设置初始下载状态
+    const materials = youtubeVideoSearchService.convertToMaterials(selectedVideos).map(material => ({
+      ...material,
+      downloadStatus: 'downloading' as const,
+      downloadProgress: 0,
+      youtubeUrl: selectedVideos.find(v => v.id === material.id)?.videoUrl || material.url
+    }));
+
+    const success = onAddMaterials(materials);
+
+    if (success) {
+      logger.info('Youtube视频添加成功，开始下载', {
+        addedCount: materials.length,
+        materialIds: materials.map(m => m.id)
+      });
+      
+      // 关闭搜索模态框
+      closeSearchModal();
+      
+      // 并发下载视频，使用配置的线程数
+      logger.info('开始并发下载YouTube视频', {
+        materialCount: materials.length,
+        maxConcurrentDownloads,
+        configSource: 'youtube.yaml'
+      });
+      downloadVideosInParallel(materials, maxConcurrentDownloads);
+    } else {
+      logger.warn('Youtube视频添加失败', {
+        attemptedCount: materials.length
       });
     }
-  }, [searchResults, selectedResults, onAddMaterials, videoSearchService, logger]);
+  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal, taskId, maxConcurrentDownloads]);
+
+  // 下载单个视频的函数
+  const downloadSingleVideo = useCallback(async (material: MaterialItem): Promise<void> => {
+    try {
+      logger.info('开始下载单个YouTube视频', {
+        materialId: material.id,
+        youtubeUrl: material.youtubeUrl,
+        materialName: material.name
+      });
+
+      const response = await fetch('/api/youtube/download-and-upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: material.youtubeUrl,
+          task_id: taskId,
+          video_quality: '720p',
+          format_type: 'mp4',
+          generate_thumbnail: true
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        logger.info('YouTube视频下载并上传成功', {
+          materialId: material.id,
+          videoUrl: result.video_url,
+          thumbnailUrl: result.thumbnail_url,
+          fileSize: result.file_size,
+          duration: result.duration,
+          width: result.width,
+          height: result.height
+        });
+
+        // 更新素材状态为完成，包含完整的视频信息
+        const updatedMaterial: MaterialItem = {
+          ...material,
+          downloadStatus: 'completed' as const,
+          downloadProgress: 100,
+          url: result.video_url,
+          serverUrl: result.video_url,
+          size: result.file_size || material.size,
+          thumbnailUrl: result.thumbnail_url || material.thumbnailUrl,
+          duration: result.duration || material.duration,
+          width: result.width || material.width,
+          height: result.height || material.height,
+          metadata: {
+            ...material.metadata,
+            originalUrl: material.youtubeUrl,
+            supabaseUrl: result.video_url,
+            thumbnailUrl: result.thumbnail_url,
+            videoMetadata: {
+              duration: result.duration,
+              width: result.width,
+              height: result.height,
+              fileSize: result.file_size
+            },
+            uploadTime: new Date().toISOString(),
+            isYoutubeVideo: true
+          }
+        };
+
+        onAddMaterials([updatedMaterial]);
+
+        logger.info('素材信息更新完成', {
+          materialId: material.id,
+          updatedFields: {
+            url: result.video_url,
+            thumbnailUrl: result.thumbnail_url,
+            duration: result.duration,
+            width: result.width,
+            height: result.height,
+            size: result.file_size
+          }
+        });
+      } else {
+        throw new Error(result.error || '下载失败');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      logger.error('YouTube视频下载失败', error instanceof Error ? error : new Error(errorMessage), {
+        materialId: material.id,
+        youtubeUrl: material.youtubeUrl
+      });
+
+      // 更新素材状态为错误
+      onAddMaterials([{
+        ...material,
+        downloadStatus: 'error' as const,
+        downloadError: errorMessage
+      }]);
+
+      // 重新抛出错误以便上层处理
+      throw error;
+    }
+  }, [logger, taskId, onAddMaterials]);
+
+  // 并发下载视频的函数
+  const downloadVideosInParallel = useCallback(async (materials: MaterialItem[], maxConcurrency: number = 3) => {
+    logger.info('开始并发下载YouTube视频', {
+      totalCount: materials.length,
+      maxConcurrency,
+      materialIds: materials.map(m => m.id)
+    });
+
+    // 创建一个简单的并发控制器
+    const concurrencyController = async () => {
+      const downloadPromises: Promise<void>[] = [];
+      let currentIndex = 0;
+
+      const executeDownload = async () => {
+        while (currentIndex < materials.length) {
+          const material = materials[currentIndex++];
+          
+          logger.info('启动单个视频下载任务', {
+            materialId: material.id,
+            materialName: material.name,
+            queuePosition: currentIndex,
+            totalCount: materials.length
+          });
+
+          try {
+            await downloadSingleVideo(material);
+          } catch (error) {
+            // 错误已在downloadSingleVideo中处理，这里只记录
+            logger.info('单个视频下载任务完成（失败）', {
+              materialId: material.id,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      };
+
+      // 创建并启动并发下载任务
+      for (let i = 0; i < Math.min(maxConcurrency, materials.length); i++) {
+        downloadPromises.push(executeDownload());
+      }
+
+      await Promise.all(downloadPromises);
+    };
+
+    try {
+      await concurrencyController();
+      
+      logger.info('所有YouTube视频下载任务完成', {
+        totalCount: materials.length,
+        maxConcurrency
+      });
+    } catch (error) {
+      logger.error('并发下载过程出现错误', error instanceof Error ? error : new Error(String(error)), {
+        totalCount: materials.length,
+        maxConcurrency
+      });
+    }
+  }, [downloadSingleVideo, logger]);
+
+  // 重试单个视频下载的函数
+  const retryVideoDownload = useCallback(async (material: MaterialItem): Promise<void> => {
+    logger.info('开始重试YouTube视频下载', {
+      materialId: material.id,
+      materialName: material.name,
+      youtubeUrl: material.youtubeUrl,
+      previousError: material.downloadError
+    });
+
+    // 首先将状态重置为下载中
+    const retryingMaterial: MaterialItem = {
+      ...material,
+      downloadStatus: 'downloading' as const,
+      downloadProgress: 0,
+      downloadError: undefined
+    };
+
+    // 更新UI状态为重新下载中
+    onAddMaterials([retryingMaterial]);
+
+    try {
+      // 调用下载函数进行重试
+      await downloadSingleVideo(retryingMaterial);
+      
+      logger.info('YouTube视频重试下载成功', {
+        materialId: material.id,
+        materialName: material.name
+      });
+    } catch (error) {
+      // 错误处理已在downloadSingleVideo中完成
+      logger.warn('YouTube视频重试下载失败', {
+        materialId: material.id,
+        materialName: material.name,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }, [downloadSingleVideo, onAddMaterials, logger]);
 
   const handleClearSelection = useCallback(() => {
-    logger.info('用户清除所有选择', {
-      previousSelectionCount: selectedResults.size,
-      selectedVideoIds: Array.from(selectedResults)
+    if (activeLibrary === 'official') {
+      setSelectedResults(new Set());
+      logger.userAction('清空官方视频选择', 'clearSelection');
+    } else {
+      handleClearYoutubeSelection();
+    }
+  }, [activeLibrary, logger]);
+
+  const handleClearYoutubeSelection = useCallback(() => {
+    setYoutubeSelectedResults(new Set());
+    logger.userAction('清空Youtube视频选择', 'clearYoutubeSelection');
+  }, [logger]);
+
+  const handleLibrarySwitch = useCallback((library: VideoLibraryType) => {
+    logger.userAction('切换视频库', 'librarySwitch', {
+      fromLibrary: activeLibrary,
+      toLibrary: library
     });
     
-    setSelectedResults(new Set());
+    setActiveLibrary(library);
     
-    logger.info('选择状态已清除', {
-      currentSelectionCount: 0
-    });
-  }, [selectedResults, logger]);
+    // 清理当前预览状态
+    setPreviewVideo(null);
+    setYoutubePreviewVideo(null);
+    setValidationError(null);
+  }, [activeLibrary, logger]);
 
   return {
+    // 通用状态
     isModalOpen,
     searchQuery,
     searchOrientation,
+    validationError,
+    
+    // 视频库相关状态
+    activeLibrary,
+    
+    // 官方视频库状态
     isSearching,
     searchResults,
     selectedResults,
     previewVideo,
-    validationError,
+    
+    // Youtube视频库状态
+    isYoutubeSearching,
+    youtubeSearchResults,
+    youtubeSelectedResults,
+    youtubePreviewVideo,
+    
+    // YouTube时间范围状态
+    youtubeDurationRange,
+    youtubeDurationPreset,
+    
+    // 通用方法
     openSearchModal,
     closeSearchModal,
-    handleSearch,
-    handleSearchResultSelect,
-    handleVideoPreview,
-    handleAddSelectedVideos,
-    handleClearSelection,
     setSearchQuery,
     setSearchOrientation,
     setValidationError,
-    taskId
+    
+    // 视频库切换方法
+    setActiveLibrary: handleLibrarySwitch,
+    
+    // 官方视频库方法
+    handleSearch,
+    handleVideoPreview,
+    handleSearchResultSelect,
+    handleAddSelectedVideos,
+    handleClearSelection,
+    
+    // Youtube视频库方法
+    handleYoutubeSearch,
+    handleYoutubeVideoPreview,
+    handleYoutubeResultSelect,
+    handleAddSelectedYoutubeVideos,
+    handleClearYoutubeSelection,
+    
+    // YouTube时间范围方法
+    setYoutubeDurationRange: handleYoutubeDurationRangeChange,
+    setYoutubeDurationPreset: handleYoutubeDurationPresetChange,
+    
+    taskId,
+    // 新增：重试下载功能
+    retryVideoDownload
   };
 };

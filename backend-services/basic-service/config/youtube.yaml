@@ -1,0 +1,61 @@
+# YouTube Video Download and Upload Configuration
+# 配置YouTube视频下载和上传的相关参数
+
+# 并发下载配置
+download:
+  # 并发下载线程数，默认为3
+  # 建议值：1-10，根据服务器性能和网络带宽调整
+  max_concurrent_downloads: 3
+  
+  # 下载超时时间（秒）
+  download_timeout: 300
+  
+  # 重试次数
+  max_retries: 3
+  
+  # 重试间隔（秒）
+  retry_delay: 5
+
+# 上传配置
+upload:
+  # 上传超时时间（秒）
+  upload_timeout: 600
+  
+  # 上传重试次数
+  max_retries: 3
+  
+  # 重试间隔（秒）
+  retry_delay: 10
+
+# 视频质量配置
+quality:
+  # 默认视频质量
+  default_video_quality: "720p"
+  
+  # 默认音频质量
+  default_audio_quality: "best"
+  
+  # 默认输出格式
+  default_format: "mp4"
+
+# 文件管理配置
+file_management:
+  # 是否自动清理临时文件
+  auto_cleanup: true
+  
+  # 临时文件保留时间（小时）
+  temp_file_retention_hours: 24
+  
+  # 是否生成缩略图
+  generate_thumbnail: true
+
+# 日志配置
+logging:
+  # 是否启用详细日志
+  enable_detailed_logging: true
+  
+  # 是否记录下载进度
+  log_download_progress: true
+  
+  # 进度日志间隔（秒）
+  progress_log_interval: 10

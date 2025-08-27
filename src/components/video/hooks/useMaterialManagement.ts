@@ -503,24 +503,59 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
     input.click();
   }, [isUploading, uploadProgress, taskId, logger]);
 
-  // 添加素材到列表
+  // 添加或更新素材到列表
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
-    logger.info('添加素材到列表', {
+    logger.info('添加或更新素材到列表', {
       materialCount: newMaterials.length,
       materials: newMaterials.map(m => ({
         id: m.id,
         name: m.name,
-        type: m.type
+        type: m.type,
+        downloadStatus: m.downloadStatus
       }))
     });
 
     setMaterials(prev => {
-      const updatedMaterials = [...prev, ...newMaterials];
+      let updatedMaterials = [...prev];
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      newMaterials.forEach(newMaterial => {
+        // 查找是否已存在相同ID的素材
+        const existingIndex = updatedMaterials.findIndex(material => material.id === newMaterial.id);
+        
+        if (existingIndex !== -1) {
+          // 更新现有素材
+          const oldMaterial = updatedMaterials[existingIndex];
+          updatedMaterials[existingIndex] = newMaterial;
+          updatedCount++;
+          
+          logger.info('更新现有素材', {
+            materialId: newMaterial.id,
+            materialName: newMaterial.name,
+            oldDownloadStatus: oldMaterial.downloadStatus,
+            newDownloadStatus: newMaterial.downloadStatus,
+            oldUrl: oldMaterial.url,
+            newUrl: newMaterial.url
+          });
+        } else {
+          // 添加新素材
+          updatedMaterials.push(newMaterial);
+          addedCount++;
+          
+          logger.info('添加新素材', {
+            materialId: newMaterial.id,
+            materialName: newMaterial.name,
+            downloadStatus: newMaterial.downloadStatus
+          });
+        }
+      });
       
       logger.info('素材列表更新完成', {
         previousCount: prev.length,
         newCount: updatedMaterials.length,
-        addedCount: newMaterials.length
+        addedCount,
+        updatedCount
       });
       
       return updatedMaterials;
@@ -528,6 +563,63 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 
     // Return boolean success indicator instead of count
     return newMaterials.length > 0;
+  }, [logger]);
+
+  // 添加或替换单个素材（用于AI匹配视频场景）
+  const addOrReplaceMaterial = useCallback((newMaterial: MaterialItem) => {
+    logger.info('添加或替换素材', {
+      materialId: newMaterial.id,
+      materialName: newMaterial.name,
+      materialType: newMaterial.type,
+      hasSegmentId: !!newMaterial.metadata?.segment_id,
+      segmentId: newMaterial.metadata?.segment_id,
+      segmentNumber: newMaterial.metadata?.segment_number
+    });
+
+    setMaterials(prev => {
+      // 如果是带有segment_id的视频素材，检查是否需要替换
+      if (newMaterial.type === 'video' && newMaterial.metadata?.segment_id) {
+        const segmentId = newMaterial.metadata.segment_id;
+        
+        // 查找是否已存在相同segment_id的视频素材
+        const existingIndex = prev.findIndex(material => 
+          material.type === 'video' && 
+          material.metadata?.segment_id === segmentId
+        );
+
+        if (existingIndex !== -1) {
+          // 替换现有素材
+          const updatedMaterials = [...prev];
+          const oldMaterial = updatedMaterials[existingIndex];
+          updatedMaterials[existingIndex] = newMaterial;
+          
+          logger.info('替换现有视频素材', {
+            segmentId,
+            oldMaterialId: oldMaterial.id,
+            oldMaterialName: oldMaterial.name,
+            newMaterialId: newMaterial.id,
+            newMaterialName: newMaterial.name,
+            replacedIndex: existingIndex
+          });
+          
+          return updatedMaterials;
+        }
+      }
+      
+      // 如果不需要替换，则直接添加
+      const updatedMaterials = [...prev, newMaterial];
+      
+      logger.info('添加新素材到列表', {
+        materialId: newMaterial.id,
+        materialName: newMaterial.name,
+        previousCount: prev.length,
+        newCount: updatedMaterials.length
+      });
+      
+      return updatedMaterials;
+    });
+
+    return true;
   }, [logger]);
 
   // 过滤后的素材列表
@@ -550,6 +642,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
     handleMaterialDelete,
     handleMaterialUpload,
     addMaterials,
+    addOrReplaceMaterial, // 新增：添加或替换单个素材
     // 新增的删除功能
     handleDeleteAllMaterials,
     confirmationDialog,
