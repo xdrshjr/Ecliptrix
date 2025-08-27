@@ -147,6 +147,7 @@ export const useVideoExport = ({
     const videoItems: any[] = [];
     const audioItems: any[] = [];
     const subtitleItems: any[] = [];
+    const imageItems: any[] = []; // 新增：用于存储图片项目
 
     // 设置导出状态
     setIsExporting(true);
@@ -172,6 +173,66 @@ export const useVideoExport = ({
             // Find the material to get the URL
             const material = materials?.find(m => m.id === item.materialId);
             if (material) {
+              // 检查是否为图片材料但在视频轨道中（需要特殊处理）
+              if (material.type === 'image' || item.originalMaterialType === 'image') {
+                // 这是图片材料，应该作为图片叠加处理，而不是视频处理
+                console.log(`[useVideoExport] 发现图片材料在视频轨道中`, {
+                  itemId: item.id,
+                  itemName: item.name,
+                  materialType: material.type,
+                  originalMaterialType: item.originalMaterialType,
+                  trackId: track.id,
+                  taskId
+                });
+
+                // 优先使用服务器URL，如果没有则使用本地URL
+                const imageUrl = material.serverUrl || material.url;
+                
+                // 获取图片位置信息，如果没有则使用默认位置
+                const imagePosition = item.imagePosition || {
+                  x: 0.1,
+                  y: 0.1,
+                  width: 0.3,
+                  height: 0.3,
+                  zIndex: 10
+                };
+
+                console.log(`[useVideoExport] 处理图片项目`, {
+                  itemId: item.id,
+                  itemName: item.name,
+                  materialUrl: material.url,
+                  serverUrl: material.serverUrl,
+                  finalUrl: imageUrl,
+                  trackId: track.id,
+                  position: imagePosition,
+                  startTime: item.startTime,
+                  duration: item.duration,
+                  taskId
+                });
+
+                imageItems.push({
+                  id: item.id,
+                  name: item.name,
+                  url: imageUrl,
+                  start_time: item.startTime,
+                  duration: item.duration,
+                  track_id: track.id,
+                  position: imagePosition,
+                  opacity: item.opacity || 1.0,
+                  fade_in_duration: 0.0,
+                  fade_out_duration: 0.0
+                });
+                
+                console.log(`[useVideoExport] 图片项目添加完成`, {
+                  itemId: item.id,
+                  position: imagePosition,
+                  taskId
+                });
+                
+                return; // 跳过视频处理逻辑
+              }
+
+              // 正常视频处理逻辑
               // 优先使用服务器URL（Supabase URL），如果没有则使用本地URL
               // 这样确保视频合成时后端能够正确下载文件
               const videoUrl = material.serverUrl || material.url;
@@ -323,11 +384,13 @@ export const useVideoExport = ({
       videoItems.sort((a, b) => a.start_time - b.start_time);
       audioItems.sort((a, b) => a.start_time - b.start_time);
       subtitleItems.sort((a, b) => a.start_time - b.start_time);
+      imageItems.sort((a, b) => a.start_time - b.start_time); // 对图片项目也进行排序
 
       console.log(`[useVideoExport] 完成前端排序`, {
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
+        imageItemsCount: imageItems.length, // 添加图片项目计数
         taskId,
         videoOrder: videoItems.map((item, index) => ({
           index,
@@ -342,12 +405,19 @@ export const useVideoExport = ({
           name: item.name,
           start_time: item.start_time.toFixed(2),
           track_id: item.track_id
+        })),
+        imageOrder: imageItems.map((item, index) => ({
+          index,
+          id: item.id,
+          name: item.name,
+          start_time: item.start_time.toFixed(2),
+          track_id: item.track_id
         }))
       });
 
       // Validate we have content to export
-      if (videoItems.length === 0) {
-        console.warn(`[useVideoExport] 没有视频内容可导出`, { taskId });
+      if (videoItems.length === 0 && audioItems.length === 0 && imageItems.length === 0) {
+        console.warn(`[useVideoExport] 没有视频、音频或图片内容可导出`, { taskId });
         alert('没有视频内容可导出，请先添加视频素材到时间轴');
         return;
       }
@@ -355,19 +425,23 @@ export const useVideoExport = ({
       // 计算各轨道的最大结束时间用于验证
       const videoEndTimes = videoItems.map(item => item.start_time + item.duration);
       const audioEndTimes = audioItems.map(item => item.start_time + item.duration);
+      const imageEndTimes = imageItems.map(item => item.start_time + item.duration); // 计算图片项目的结束时间
       const maxVideoEndTime = videoEndTimes.length > 0 ? Math.max(...videoEndTimes) : 0;
       const maxAudioEndTime = audioEndTimes.length > 0 ? Math.max(...audioEndTimes) : 0;
-      const calculatedTotalDuration = Math.max(maxVideoEndTime, maxAudioEndTime);
+      const maxImageEndTime = imageEndTimes.length > 0 ? Math.max(...imageEndTimes) : 0; // 获取图片项目的最大结束时间
+      const calculatedTotalDuration = Math.max(maxVideoEndTime, maxAudioEndTime, maxImageEndTime); // 计算总时长
 
       console.log(`[useVideoExport] 准备导出内容`, {
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
+        imageItemsCount: imageItems.length, // 添加图片项目计数
         originalTimelineDuration: timelineState.totalDuration,
         actualClippedDuration: actualTotalDuration,
         calculatedTotalDuration: calculatedTotalDuration,
         maxVideoEndTime: maxVideoEndTime,
         maxAudioEndTime: maxAudioEndTime,
+        maxImageEndTime: maxImageEndTime, // 添加图片项目最大结束时间
         durationMatch: Math.abs(timelineState.totalDuration - calculatedTotalDuration) < 0.1,
         taskId,
         videoItems: videoItems.map(item => ({
@@ -385,6 +459,18 @@ export const useVideoExport = ({
           duration: item.duration,
           end_time: item.start_time + item.duration,
           isServerUrl: item.url.includes('/api/audio/generated/')
+        })),
+        imageItems: imageItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          url: item.url,
+          start_time: item.start_time,
+          duration: item.duration,
+          end_time: item.start_time + item.duration,
+          position: item.position,
+          opacity: item.opacity,
+          fade_in_duration: item.fade_in_duration,
+          fade_out_duration: item.fade_out_duration
         }))
       });
 
@@ -397,6 +483,7 @@ export const useVideoExport = ({
         video_items: videoItems,
         audio_items: audioItems,
         subtitle_items: subtitleItems,
+        image_items: imageItems, // 添加图片项目到合成请求
         total_duration: actualTotalDuration, // Use actualTotalDuration for composition
         // Only include output_resolution if no aspect_ratio is specified (let backend calculate resolution from aspect ratio)
         ...(aspectRatio ? {} : {
@@ -417,6 +504,7 @@ export const useVideoExport = ({
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
+        imageItemsCount: imageItems.length, // 添加图片项目计数
         totalDuration: actualTotalDuration,
         timestamp: new Date().toISOString()
       });

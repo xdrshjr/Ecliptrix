@@ -446,48 +446,6 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     };
   }, []);
 
-  // 新增：测试添加图片函数
-  const addTestImage = useCallback(() => {
-    const testImageUrl = 'https://via.placeholder.com/300x200/ff0000/ffffff?text=Test+Image';
-    console.log('[VideoPlayerPanel] Adding test image');
-    
-    // 模拟一个图片素材
-    const testMaterial = {
-      id: 'test-image-' + Date.now(),
-      name: 'Test Image',
-      type: 'image' as const,
-      format: 'png',
-      size: 1024,
-      width: 300,
-      height: 200,
-      url: testImageUrl,
-      createdAt: new Date(),
-      duration: 5
-    };
-    
-    // 触发材料添加（如果有回调的话）
-    // 这里我们直接更新timeline状态来测试
-    console.log('Test material:', testMaterial);
-  }, []);
-
-  // 新增：调试信息显示（开发环境下）
-  const debugInfo = timelineState && (
-    <div className="absolute top-4 right-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
-      <div>播放模式: {playbackMode}</div>
-      <div>当前时间: {compositionCurrentTime.toFixed(2)}s</div>
-      <div>容器尺寸: {containerDimensions.width}x{containerDimensions.height}</div>
-      <div>轨道数量: {timelineState.tracks.length}</div>
-      <div>素材数量: {materials?.length || 0}</div>
-      <div>图片叠加数量: {getCurrentImageOverlays().length}</div>
-      <button 
-        onClick={addTestImage}
-        className="mt-2 px-2 py-1 bg-blue-500 text-white text-xs rounded"
-      >
-        添加测试图片
-      </button>
-    </div>
-  );
-
   // 处理视频比例切换
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
     console.log(`[VideoPlayerPanel] 比例切换调试`, {
@@ -1158,8 +1116,6 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
             <div 
               ref={videoContainerRef}
               className="video-preview-container flex-1 flex items-center justify-center bg-gray-100 rounded-xl overflow-hidden relative">
-              {/* 调试信息 */}
-              {debugInfo}
               {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
                 // 组合播放模式
                 <div 
