@@ -55,25 +55,24 @@ class VideoInfo(BaseModel):
     )
 
 
-class VideoSearchResponse(BaseModel):
+class VideoSearchResponse(BaseResponse):
     """Video search response model."""
     
-    success: bool = Field(description="Whether the search was successful")
-    message: str = Field(description="Response message")
-    videos: List[VideoInfo] = Field(default=[], description="List of found videos")
-    total_found: int = Field(description="Total number of videos found")
-    query: str = Field(description="Original search query")
+    videos: List[VideoInfo] = Field(default_factory=list, description="List of found videos")
+    total_results: int = Field(0, description="Total number of videos found")
+    page: int = Field(1, description="Current page number")
+    per_page: int = Field(20, description="Number of results per page")
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "success": True,
-                "message": "Found 20 videos",
+                "message": "Videos retrieved successfully",
                 "videos": [
                     {
                         "id": 12345,
-                        "title": "Video by John Doe",
-                        "author": "John Doe",
+                        "title": "Beautiful Landscape",
+                        "author": "John Doe", 
                         "duration": 30,
                         "video_url": "https://example.com/video.mp4",
                         "thumbnail": "https://example.com/thumbnail.jpg",
@@ -81,22 +80,21 @@ class VideoSearchResponse(BaseModel):
                         "height": 1080
                     }
                 ],
-                "total_found": 20,
-                "query": "nature landscape"
+                "total_results": 100,
+                "page": 1,
+                "per_page": 20
             }
         }
-    ) 
+    )
 
-# Video Composition Models
 
 class ImagePosition(BaseModel):
-    """
-    Position information for image overlays in video composition.
-    """
-    x: float = Field(..., ge=0, le=1, description="X coordinate (0-1, relative to video width)")
-    y: float = Field(..., ge=0, le=1, description="Y coordinate (0-1, relative to video height)")
-    width: float = Field(..., ge=0, le=1, description="Width (0-1, relative to video width)")
-    height: float = Field(..., ge=0, le=1, description="Height (0-1, relative to video height)")
+    """Position and size configuration for image overlays."""
+    x: float = Field(..., description="X position as percentage (0.0 to 1.0)")
+    y: float = Field(..., description="Y position as percentage (0.0 to 1.0)")
+    width: float = Field(..., description="Width as percentage (0.0 to 1.0)")
+    height: float = Field(..., description="Height as percentage (0.0 to 1.0)")
+    rotation: float = Field(0.0, description="Rotation angle in degrees")
     z_index: Optional[int] = Field(10, description="Layer order for multiple image overlays")
 
 
@@ -108,17 +106,17 @@ class VideoCompositionItem(BaseModel):
     name: str = Field(..., description="Display name of the video item")
     url: str = Field(..., description="Video URL (can be local file path or remote URL)")
     start_time: float = Field(..., ge=0, description="Start time in the timeline (seconds)")
-    duration: float = Field(..., gt=0, description="Duration of the video segment (seconds)")
+    duration: float = Field(..., gt=0, description="Duration in the timeline (seconds)")
     track_id: str = Field(..., description="ID of the track this item belongs to")
-    volume: float = Field(1.0, ge=0, le=2, description="Volume level (0.0 to 2.0)")
-    opacity: float = Field(1.0, ge=0, le=1, description="Opacity level (0.0 to 1.0)")
     
-    # 新增：视频剪辑属性，用于支持时间轴上的素材缩放
-    clip_start: float = Field(0.0, ge=0, description="Start time within the source video file (seconds)")
-    clip_end: float = Field(..., gt=0, description="End time within the source video file (seconds)")
+    # Video trimming/clipping properties (may be None for untrimmed videos)
+    clip_start: Optional[float] = Field(None, description="Start time for trimming within the original video (seconds)")
+    clip_end: Optional[float] = Field(None, description="End time for trimming within the original video (seconds)")
+    original_duration: Optional[float] = Field(None, description="Original video duration before trimming (seconds)")
     
-    # 新增：图片叠加相关属性
-    original_material_type: Optional[str] = Field(None, description="Original material type (video, image, audio, etc.)")
+    # Video transformation properties
+    volume: Optional[float] = Field(1.0, ge=0, le=2, description="Volume level (0.0 to 2.0)")
+    opacity: Optional[float] = Field(1.0, ge=0, le=1, description="Opacity level (0.0 to 1.0)")
     image_position: Optional[ImagePosition] = Field(None, description="Position for image overlay (only for image materials)")
 
 
@@ -130,13 +128,15 @@ class AudioCompositionItem(BaseModel):
     name: str = Field(..., description="Display name of the audio item")
     url: str = Field(..., description="Audio URL (can be local file path or remote URL)")
     start_time: float = Field(..., ge=0, description="Start time in the timeline (seconds)")
-    duration: float = Field(..., gt=0, description="Duration of the audio segment (seconds)")
+    duration: float = Field(..., gt=0, description="Duration in the timeline (seconds)")
     track_id: str = Field(..., description="ID of the track this item belongs to")
+    
+    # Audio properties
     volume: float = Field(1.0, ge=0, le=2, description="Volume level (0.0 to 2.0)")
     
-    # 新增：音频剪辑属性，用于支持时间轴上的素材缩放
-    clip_start: float = Field(0.0, ge=0, description="Start time within the source audio file (seconds)")
-    clip_end: float = Field(..., gt=0, description="End time within the source audio file (seconds)")
+    # Audio trimming/clipping properties (may be None for untrimmed audio)
+    clip_start: Optional[float] = Field(None, description="Start time for trimming within the original audio (seconds)")
+    clip_end: Optional[float] = Field(None, description="End time for trimming within the original audio (seconds)")
 
 
 class SubtitleCompositionItem(BaseModel):
@@ -181,6 +181,40 @@ class AspectRatio(str, Enum):
     RATIO_4_3 = "4:3"
     RATIO_1_1 = "1:1"
     RATIO_21_9 = "21:9"
+
+
+class VideoProcessingStage(str, Enum):
+    """Video processing stages for error tracking."""
+    DOWNLOAD = "download"
+    NORMALIZATION = "normalization"
+    CONCATENATION = "concatenation"
+    AUDIO_PROCESSING = "audio_processing"
+    FINALIZATION = "finalization"
+
+
+class VideoProcessingError(BaseModel):
+    """Detailed error information for individual video processing failures."""
+    video_index: int = Field(..., description="Index of the failed video in the timeline order")
+    video_id: str = Field(..., description="ID of the failed video item")
+    video_name: str = Field(..., description="Name of the failed video item")
+    video_url: str = Field(..., description="URL of the failed video")
+    stage: VideoProcessingStage = Field(..., description="Processing stage where the failure occurred")
+    attempts: int = Field(..., description="Number of retry attempts made")
+    max_retries: int = Field(..., description="Maximum number of retries allowed")
+    error_message: str = Field(..., description="Detailed error message")
+    last_error: str = Field(..., description="The final error that caused all retries to fail")
+    timeline_position: float = Field(..., description="Position in timeline where this video should appear (seconds)")
+    duration: float = Field(..., description="Expected duration of this video in the timeline (seconds)")
+
+
+class CompositionErrorDetails(BaseModel):
+    """Comprehensive error details for video composition failures."""
+    failed_videos: List[VideoProcessingError] = Field(default_factory=list, description="Details of videos that failed to process")
+    total_videos: int = Field(..., description="Total number of videos in the composition")
+    successful_videos: int = Field(..., description="Number of videos that processed successfully")
+    composition_stage: str = Field(..., description="Overall composition stage where failure occurred")
+    error_summary: str = Field(..., description="Human-readable summary of what went wrong")
+    recovery_suggestions: List[str] = Field(default_factory=list, description="Suggestions for resolving the issues")
 
 
 class VideoCompositionRequest(BaseModel):
@@ -236,7 +270,7 @@ class VideoCompositionResponse(BaseResponse):
     output_file_path: Optional[str] = Field(None, description="Path to the composed video file")
     output_file_size: Optional[int] = Field(None, description="Size of the output file in bytes")
     processing_time: Optional[float] = Field(None, description="Total processing time in seconds")
-    error_details: Optional[Dict[str, Any]] = Field(None, description="Error details if composition failed")
+    error_details: Optional[CompositionErrorDetails] = Field(None, description="Detailed error information if composition failed")
 
 
 class VideoDownloadRequest(BaseModel):

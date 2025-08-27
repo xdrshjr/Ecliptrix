@@ -612,13 +612,41 @@ export const useVideoExport = ({
           timeout: '10 minutes',
           error: error.message 
         });
-        alert(`视频导出超时：处理时间超过10分钟限制。请尝试以下方法：
-1. 减少视频时长或复杂度
-2. 降低输出分辨率
-3. 减少同时处理的轨道数量
-4. 稍后重试`);
+        showError(`视频导出超时：处理时间超过10分钟限制。请尝试减少视频时长或复杂度，降低输出分辨率，减少同时处理的轨道数量，或稍后重试。`, 10000);
       } else {
-        alert(`视频导出失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        // 尝试解析详细错误信息
+        let errorMessage = '视频导出失败';
+        
+        if (error?.response) {
+          try {
+            const errorData = await error.response.json();
+            if (errorData.error_details) {
+              const details = errorData.error_details;
+              errorMessage = `${details.error_summary}`;
+              
+              // 如果有失败的视频，显示具体信息
+              if (details.failed_videos && details.failed_videos.length > 0) {
+                const failedVideos = details.failed_videos.map((v: any) => 
+                  `• ${v.video_name} (${v.stage}阶段): ${v.error_message}`
+                ).join('\n');
+                errorMessage += `\n\n失败的视频:\n${failedVideos}`;
+                
+                // 添加恢复建议
+                if (details.recovery_suggestions && details.recovery_suggestions.length > 0) {
+                  errorMessage += `\n\n建议解决方案:\n${details.recovery_suggestions.map((s: string) => `• ${s}`).join('\n')}`;
+                }
+              }
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            }
+          } catch (parseError) {
+            console.warn('Failed to parse error details, using fallback message');
+          }
+        } else if (error instanceof Error) {
+          errorMessage = `视频导出失败: ${error.message}`;
+        }
+        
+        showError(errorMessage, 15000); // 显示15秒以便用户阅读详细信息
       }
     } finally {
       // 重置导出状态

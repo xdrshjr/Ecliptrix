@@ -197,17 +197,26 @@ export async function POST(request: NextRequest) {
     console.log(`[Video Compose API] Backend response status: ${backendResponse.status}`);
 
     if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
-      console.error(`[Video Compose API] Backend error: ${backendResponse.status} - ${errorText}`);
+      let errorData: any = null;
+      try {
+        const errorText = await backendResponse.text();
+        errorData = JSON.parse(errorText);
+        console.error(`[Video Compose API] Backend error: ${backendResponse.status} - ${errorText}`);
+      } catch (parseError) {
+        console.error(`[Video Compose API] Backend error (non-JSON): ${backendResponse.status}`);
+        errorData = { message: 'Video composition service temporarily unavailable' };
+      }
+      
       logResponse(false, undefined, undefined, `Backend error: ${backendResponse.status}`);
       
       return NextResponse.json(
         { 
           success: false,
-          message: 'Video composition service temporarily unavailable',
+          message: errorData.message || 'Video composition service temporarily unavailable',
+          error_details: errorData.error_details || null,
           data: null
         },
-        { status: 500 }
+        { status: backendResponse.status }
       );
     }
 

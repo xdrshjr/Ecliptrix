@@ -33,7 +33,10 @@ from app.models import (
     ImageCompositionItem,
     ImagePosition,
     AspectRatio,
-    SubtitleAddRequest
+    SubtitleAddRequest,
+    VideoProcessingError,
+    CompositionErrorDetails,
+    VideoProcessingStage
 )
 from app.models.youtube_models import YoutubeVideoDownloadRequest
 from app.services.subtitle_service import SubtitleService
@@ -155,6 +158,127 @@ class VideoCompositionService:
         except Exception as e:
             logger.error(f"Failed to get video properties: {str(e)}")
             return None, None, None
+    
+    def _download_video_with_retry(self, video_url: str, temp_dir: str, index: int, video_item: VideoCompositionItem, max_retries: int = 3) -> Dict[str, Any]:
+        """Download a single video file with retry mechanism."""
+        thread_id = threading.current_thread().ident
+        video_name = f"video_{index}.mp4"
+        video_path = os.path.join(temp_dir, video_name)
+        
+        logger.info(f"[Thread {thread_id}] Starting video download with retry: {video_url} (max_retries: {max_retries})")
+        
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"[Thread {thread_id}] Download attempt {attempt + 1}/{max_retries + 1} for video {index}")
+                
+                # Call the existing download method
+                result = self._download_video(video_url, temp_dir, index)
+                
+                if result.get('success'):
+                    if attempt > 0:
+                        logger.info(f"[Thread {thread_id}] Video download succeeded on retry attempt {attempt + 1}")
+                    else:
+                        logger.info(f"[Thread {thread_id}] Video download succeeded on first attempt")
+                    return result
+                else:
+                    last_error = result.get('error', 'Unknown download error')
+                    logger.warning(f"[Thread {thread_id}] Download attempt {attempt + 1} failed: {last_error}")
+                    
+                    if attempt >= max_retries:
+                        break
+                        
+                    # Wait before retry with exponential backoff
+                    wait_time = min(2 ** attempt, 10)  # Cap at 10 seconds
+                    logger.info(f"[Thread {thread_id}] Waiting {wait_time}s before retry {attempt + 2}")
+                    time.sleep(wait_time)
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"[Thread {thread_id}] Download attempt {attempt + 1} exception: {last_error}")
+                
+                if attempt >= max_retries:
+                    break
+                    
+                # Wait before retry
+                wait_time = min(2 ** attempt, 10)
+                logger.info(f"[Thread {thread_id}] Waiting {wait_time}s before retry {attempt + 2}")
+                time.sleep(wait_time)
+        
+        # All attempts failed
+        error_details = {
+            "success": False,
+            "error": f"Video download failed after {max_retries + 1} attempts",
+            "last_error": last_error,
+            "attempts": max_retries + 1,
+            "video_details": {
+                "index": index,
+                "id": video_item.id,
+                "name": video_item.name,
+                "url": video_url,
+                "timeline_position": video_item.start_time,
+                "duration": video_item.duration
+            }
+        }
+        
+        logger.error(f"[Thread {thread_id}] All download attempts failed for video {index}: {last_error}")
+        return error_details
+
+    def _normalize_video_with_retry(self, video_info: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
+        """Normalize a single video with retry mechanism."""
+        logger.info(f"Starting video normalization with retry: index {video_info['index']} (max_retries: {max_retries})")
+        
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"Normalization attempt {attempt + 1}/{max_retries + 1} for video {video_info['index']}")
+                
+                # Call the existing normalization method
+                result = self._normalize_video(video_info)
+                
+                if result.get('success'):
+                    if attempt > 0:
+                        logger.info(f"Video normalization succeeded on retry attempt {attempt + 1}")
+                    else:
+                        logger.info(f"Video normalization succeeded on first attempt")
+                    return result
+                else:
+                    last_error = result.get('error', 'Unknown normalization error')
+                    logger.warning(f"Normalization attempt {attempt + 1} failed: {last_error}")
+                    
+                    if attempt >= max_retries:
+                        break
+                        
+                    # Wait before retry with exponential backoff
+                    wait_time = min(2 ** attempt, 10)
+                    logger.info(f"Waiting {wait_time}s before normalization retry {attempt + 2}")
+                    time.sleep(wait_time)
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"Normalization attempt {attempt + 1} exception: {last_error}")
+                
+                if attempt >= max_retries:
+                    break
+                    
+                # Wait before retry
+                wait_time = min(2 ** attempt, 10)
+                logger.info(f"Waiting {wait_time}s before normalization retry {attempt + 2}")
+                time.sleep(wait_time)
+        
+        # All attempts failed
+        error_details = {
+            "success": False,
+            "error": f"Video normalization failed after {max_retries + 1} attempts",
+            "last_error": last_error,
+            "attempts": max_retries + 1,
+            "video_details": video_info
+        }
+        
+        logger.error(f"All normalization attempts failed for video {video_info['index']}: {last_error}")
+        return error_details
     
     def _download_video(self, video_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
         """Download a single video file."""
@@ -642,14 +766,15 @@ class VideoCompositionService:
             if composition_id in self.compositions:
                 self.compositions[composition_id]["progress"] = 0.1
             
-            # Download videos
-            logger.info("Starting video downloads...")
+            # Download videos with retry mechanism
+            logger.info("Starting video downloads with retry mechanism...")
             video_urls = [item.url for item in request.video_items]
             downloaded_videos = []
+            failed_downloads = []
             
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {
-                    executor.submit(self._download_video, url, temp_dir, i): i 
+                    executor.submit(self._download_video_with_retry, url, temp_dir, i, request.video_items[i]): i 
                     for i, url in enumerate(video_urls)
                 }
                 
@@ -662,7 +787,57 @@ class VideoCompositionService:
                         results[original_index] = result['output_path']
                         logger.info(f"Downloaded video {len(results)}/{len(video_urls)} (index: {original_index})")
                     else:
-                        raise Exception(f"Video download failed at index {original_index}: {result['error']}")
+                        # Record detailed failure information
+                        video_item = request.video_items[original_index]
+                        failed_download = VideoProcessingError(
+                            video_index=original_index,
+                            video_id=video_item.id,
+                            video_name=video_item.name,
+                            video_url=video_item.url,
+                            stage=VideoProcessingStage.DOWNLOAD,
+                            attempts=result.get('attempts', 1),
+                            max_retries=3,
+                            error_message=result.get('error', 'Unknown download error'),
+                            last_error=result.get('last_error', 'Unknown error'),
+                            timeline_position=video_item.start_time,
+                            duration=video_item.duration
+                        )
+                        failed_downloads.append(failed_download)
+                        logger.error(f"Video download failed permanently at index {original_index}: {result['error']}")
+                
+                # Check if any downloads failed
+                if failed_downloads:
+                    error_details = CompositionErrorDetails(
+                        failed_videos=failed_downloads,
+                        total_videos=len(request.video_items),
+                        successful_videos=len(results),
+                        composition_stage="video_download",
+                        error_summary=f"{len(failed_downloads)} out of {len(request.video_items)} videos failed to download after 3 retry attempts",
+                        recovery_suggestions=[
+                            "Check if the video URLs are accessible",
+                            "Verify your internet connection",
+                            "Try using different video sources",
+                            "Contact support if the issue persists"
+                        ]
+                    )
+                    
+                    # Return detailed error response
+                    logger.error(f"Video composition failed: {len(failed_downloads)} videos failed to download")
+                    self.compositions[composition_id] = {
+                        "status": "failed", 
+                        "progress": 0.3,
+                        "error": error_details.error_summary,
+                        "error_details": error_details
+                    }
+                    
+                    return VideoCompositionResponse(
+                        success=False,
+                        message=error_details.error_summary,
+                        composition_id=composition_id,
+                        status="failed",
+                        progress=0.3,
+                        error_details=error_details
+                    )
                 
                 # 按原始顺序添加到列表
                 for i in range(len(video_urls)):
@@ -712,8 +887,9 @@ class VideoCompositionService:
                     logger.info(f"Video {i+1} clipping: {video_item.clip_start:.2f}s - {video_item.clip_end:.2f}s")
             
             normalized_videos = []
+            failed_normalizations = []
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {executor.submit(self._normalize_video, task): task['index'] for task in video_tasks}
+                futures = {executor.submit(self._normalize_video_with_retry, task): task['index'] for task in video_tasks}
                 
                 # 收集结果并保持原始顺序
                 norm_results = {}
@@ -724,7 +900,57 @@ class VideoCompositionService:
                         norm_results[original_index] = result['normalized_path']
                         logger.info(f"Normalized video {len(norm_results)}/{len(video_tasks)} (index: {original_index})")
                     else:
-                        raise Exception(f"Video normalization failed at index {original_index}: {result['error']}")
+                        # Record detailed failure information
+                        video_item = request.video_items[original_index]
+                        failed_normalization = VideoProcessingError(
+                            video_index=original_index,
+                            video_id=video_item.id,
+                            video_name=video_item.name,
+                            video_url=video_item.url,
+                            stage=VideoProcessingStage.NORMALIZATION,
+                            attempts=result.get('attempts', 1),
+                            max_retries=3,
+                            error_message=result.get('error', 'Unknown normalization error'),
+                            last_error=result.get('last_error', 'Unknown error'),
+                            timeline_position=video_item.start_time,
+                            duration=video_item.duration
+                        )
+                        failed_normalizations.append(failed_normalization)
+                        logger.error(f"Video normalization failed permanently at index {original_index}: {result['error']}")
+                
+                # Check if any normalizations failed
+                if failed_normalizations:
+                    error_details = CompositionErrorDetails(
+                        failed_videos=failed_normalizations,
+                        total_videos=len(request.video_items),
+                        successful_videos=len(norm_results),
+                        composition_stage="video_normalization",
+                        error_summary=f"{len(failed_normalizations)} out of {len(request.video_items)} videos failed to normalize after 3 retry attempts",
+                        recovery_suggestions=[
+                            "Check if the downloaded video files are corrupted",
+                            "Verify that FFmpeg is properly installed and accessible",
+                            "Try reducing the target resolution or frame rate",
+                            "Ensure there is enough disk space for video processing"
+                        ]
+                    )
+                    
+                    # Return detailed error response
+                    logger.error(f"Video composition failed: {len(failed_normalizations)} videos failed to normalize")
+                    self.compositions[composition_id] = {
+                        "status": "failed", 
+                        "progress": 0.6,
+                        "error": error_details.error_summary,
+                        "error_details": error_details
+                    }
+                    
+                    return VideoCompositionResponse(
+                        success=False,
+                        message=error_details.error_summary,
+                        composition_id=composition_id,
+                        status="failed",
+                        progress=0.6,
+                        error_details=error_details
+                    )
                 
                 # 按原始顺序添加到列表
                 for i in range(len(video_tasks)):
@@ -851,15 +1077,12 @@ class VideoCompositionService:
             else:
                 logger.info("No audio tracks to process")
             
-            # 新增：处理图片叠加 - 包括从视频轨道和专门图片轨道来的图片
-            image_video_items = [item for item in request.video_items if item.original_material_type == 'image' and item.image_position]
-            
-            # 合并专门的图片项目和从视频轨道来的图片项目
-            all_image_items = list(request.image_items) + image_video_items
+            # 处理图片叠加 - 使用专门的图片轨道
+            all_image_items = list(request.image_items)
             
             if all_image_items:
                 logger.info("Processing image overlay tracks...")
-                logger.info(f"Found {len(request.image_items)} dedicated image items and {len(image_video_items)} image items from video tracks")
+                logger.info(f"Found {len(request.image_items)} image items to process")
                 logger.info(f"Total image overlay items to process: {len(all_image_items)}")
                 
                 try:
@@ -970,10 +1193,27 @@ class VideoCompositionService:
             error_msg = f"Video composition failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
+            # Create proper error details
+            error_details = CompositionErrorDetails(
+                failed_videos=[],
+                total_videos=len(request.video_items),
+                successful_videos=0,
+                composition_stage="finalization",
+                error_summary=error_msg,
+                recovery_suggestions=[
+                    "Check if all video files are accessible and not corrupted",
+                    "Verify that FFmpeg is properly configured",
+                    "Ensure there is enough disk space and memory",
+                    "Try simplifying the composition or reducing video quality",
+                    "Contact support if the issue persists"
+                ]
+            )
+            
             # Update composition info
             self.compositions[composition_id].update({
                 "status": "failed",
-                "error_details": {"error": error_msg},
+                "error": error_msg,
+                "error_details": error_details,
                 "failed_at": datetime.utcnow()
             })
             
@@ -990,7 +1230,7 @@ class VideoCompositionService:
                 composition_id=composition_id,
                 status="failed",
                 progress=0.0,
-                error_details={"error": error_msg}
+                error_details=error_details
             )
     
     def get_composition_status(self, composition_id: str) -> Optional[Dict[str, Any]]:

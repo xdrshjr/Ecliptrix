@@ -23,7 +23,10 @@ from .video_models import (
     VideoDownloadResponse,
     AspectRatio,
     SubtitleAddRequest,
-    SubtitleAddResponse
+    SubtitleAddResponse,
+    VideoProcessingStage,
+    VideoProcessingError,
+    CompositionErrorDetails
 )
 
 from .tts_models import (
@@ -94,6 +97,9 @@ __all__ = [
     "AspectRatio",
     "SubtitleAddRequest",
     "SubtitleAddResponse",
+    "VideoProcessingStage",
+    "VideoProcessingError", 
+    "CompositionErrorDetails",
     "TTSRequest",
     "TTSResponse",
     "VoiceType",
