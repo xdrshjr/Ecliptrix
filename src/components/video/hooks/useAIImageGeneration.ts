@@ -259,7 +259,7 @@ export const useAIImageGeneration = (
   const handleAddToMaterials = useCallback(async (imageUrls: string[]) => {
     if (imageUrls.length === 0) {
       logger.warn('没有图片可添加到素材库');
-      return;
+      return false;
     }
 
     logger.userAction('添加AI生成图片到素材库', 'addToMaterials', {

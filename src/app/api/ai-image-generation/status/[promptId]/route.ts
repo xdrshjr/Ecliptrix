@@ -17,10 +17,13 @@ const logResponse = (success: boolean, promptId: string, status?: string, error?
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { promptId: string } }
+  { params }: { params: Promise<{ promptId: string }> }
 ) {
+  let promptId: string | undefined;
+  
   try {
-    const { promptId } = params;
+    const resolvedParams = await params;
+    promptId = resolvedParams.promptId;
 
     if (!promptId) {
       console.error('[AI Image Status API] Invalid request: promptId is required');
@@ -103,7 +106,7 @@ export async function GET(
 
   } catch (error) {
     console.error('[AI Image Status API] Unexpected error:', error);
-    logResponse(false, params.promptId, undefined, error instanceof Error ? error.message : 'Unknown error');
+    logResponse(false, promptId || 'unknown', undefined, error instanceof Error ? error.message : 'Unknown error');
     
     return NextResponse.json(
       { 

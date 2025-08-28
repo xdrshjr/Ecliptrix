@@ -370,7 +370,7 @@ export interface UseAIImageGenerationReturn {
   openModal: () => void;
   closeModal: () => void;
   handleGenerate: () => void;
-  handleAddToMaterials: (imageUrls: string[]) => void;
+  handleAddToMaterials: (imageUrls: string[]) => Promise<boolean>;
   handleAddSingleToMaterials: (imageUrl: string) => Promise<boolean>;
   setPositivePrompt: (prompt: string) => void;
   setNegativePrompt: (prompt: string) => void;

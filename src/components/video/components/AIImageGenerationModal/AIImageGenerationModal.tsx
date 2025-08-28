@@ -151,13 +151,13 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     handleGenerate();
   };
 
-  const handleAddAllToMaterials = () => {
+  const handleAddAllToMaterials = async () => {
     if (generatedImages.length > 0) {
       logger.userAction('添加所有生成图片到素材库', 'addAllButton', {
         imagesCount: generatedImages.length
       });
       
-      const success = handleAddToMaterials(generatedImages);
+      const success = await handleAddToMaterials(generatedImages);
       
       // 显示Toast通知
       if (success) {
@@ -168,12 +168,12 @@ const AIImageGenerationModal: React.FC<AIImageGenerationModalProps> = ({
     }
   };
 
-  const handleAddSingleImageToMaterials = (imageUrl: string, index: number) => {
+  const handleAddSingleImageToMaterials = async (imageUrl: string, index: number) => {
     logger.userAction('添加单张图片到素材库', 'addSingleButton', {
       imageIndex: index
     });
     
-    const success = handleAddToMaterials([imageUrl]);
+    const success = await handleAddToMaterials([imageUrl]);
     
     // 显示Toast通知
     if (success) {

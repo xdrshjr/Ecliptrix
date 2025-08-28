@@ -17,10 +17,13 @@ const logResponse = (success: boolean, filename: string, size?: number, error?: 
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { filename: string } }
+  { params }: { params: Promise<{ filename: string }> }
 ) {
+  let filename: string | undefined;
+  
   try {
-    const { filename } = params;
+    const resolvedParams = await params;
+    filename = resolvedParams.filename;
 
     if (!filename) {
       console.error('[AI Image Download API] Invalid request: filename is required');
@@ -95,7 +98,7 @@ export async function GET(
 
   } catch (error) {
     console.error('[AI Image Download API] Unexpected error:', error);
-    logResponse(false, params.filename, undefined, error instanceof Error ? error.message : 'Unknown error');
+    logResponse(false, filename || 'unknown', undefined, error instanceof Error ? error.message : 'Unknown error');
     
     return NextResponse.json(
       { 

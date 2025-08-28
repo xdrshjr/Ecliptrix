@@ -59,9 +59,10 @@ class VideoSearchResponse(BaseResponse):
     """Video search response model."""
     
     videos: List[VideoInfo] = Field(default_factory=list, description="List of found videos")
-    total_results: int = Field(0, description="Total number of videos found")
+    total_found: int = Field(0, description="Total number of videos found")
     page: int = Field(1, description="Current page number")
     per_page: int = Field(20, description="Number of results per page")
+    query: str = Field(default="", description="Search query used")
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -80,9 +81,10 @@ class VideoSearchResponse(BaseResponse):
                         "height": 1080
                     }
                 ],
-                "total_results": 100,
+                "total_found": 100,
                 "page": 1,
-                "per_page": 20
+                "per_page": 20,
+                "query": "nature landscape"
             }
         }
     )
