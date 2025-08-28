@@ -17,12 +17,18 @@
   flex-direction: column;
 }
 
-/* MD编辑器标题头部样式 */
+/* MD编辑器标题头部样式 - 统一标题栏高度 */
 .markdown-panel-header {
   padding: 16px;
   border-bottom: 1px solid #e5e7eb;
   background-color: #f8fafc;
   flex-shrink: 0;
+  min-height: 60px;
+  max-height: 60px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* 脚本面板标题头部样式 - 与其他面板保持一致 */
@@ -261,11 +267,17 @@
   border: 1px solid #3b82f6;
 }
 
-/* 素材管理面板内部样式 */
+/* 素材管理面板内部样式 - 统一标题栏高度 */
 .materials-panel-header {
   padding: 16px;
   border-bottom: 1px solid #e5e7eb;
   background-color: #f8fafc;
+  min-height: 60px;
+  max-height: 60px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .materials-panel-content {
@@ -441,11 +453,17 @@
   font-weight: 500;
 }
 
-/* 视频合成播放面板内部样式 */
+/* 视频合成播放面板内部样式 - 统一标题栏高度 */
 .composition-panel-header {
   padding: 16px;
   border-bottom: 1px solid #e5e7eb;
   background-color: #f8fafc;
+  min-height: 60px;
+  max-height: 60px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .composition-panel-content {
