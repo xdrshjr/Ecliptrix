@@ -337,3 +337,54 @@ class SubtitleAddResponse(BaseResponse):
     subtitle_count: Optional[int] = Field(None, description="Number of subtitle entries processed")
     processing_time: Optional[float] = Field(None, description="Processing time in seconds")
     file_size: Optional[int] = Field(None, description="Size of the output file in bytes") 
+
+# Image to Video Conversion Models
+class ImageToVideoEffect(str, Enum):
+    """Image to video effect types."""
+    STATIC = "static"
+    KEN_BURNS = "ken_burns"
+    PAN = "pan"
+
+class ImageToVideoRequest(BaseModel):
+    """Request model for image to video conversion."""
+    image_url: Optional[str] = Field(None, description="URL of the image to convert (for remote images)")
+    image_data: Optional[str] = Field(None, description="Base64 encoded image data (for blob/local images)")
+    image_filename: Optional[str] = Field(None, description="Original filename of the image")
+    effect: ImageToVideoEffect = Field(..., description="Video effect to apply")
+    duration: float = Field(default=5.0, ge=1.0, le=30.0, description="Video duration in seconds")
+    task_id: Optional[str] = Field(None, description="Task ID for organization")
+    custom_filename: Optional[str] = Field(None, description="Custom filename for the output video")
+    
+    # Ken Burns effect parameters
+    ken_burns_direction: Optional[str] = Field(default="zoom_in", description="Ken Burns direction: zoom_in or zoom_out")
+    
+    # Pan effect parameters  
+    pan_direction: Optional[str] = Field(default="left_to_right", description="Pan direction: left_to_right or right_to_left")
+
+    @validator('image_data')
+    def validate_image_source(cls, v, values):
+        """Ensure either image_url or image_data is provided."""
+        image_url = values.get('image_url')
+        if not image_url and not v:
+            raise ValueError('Either image_url or image_data must be provided')
+        return v
+
+class ImageToVideoResponse(BaseModel):
+    """Response model for image to video conversion."""
+    success: bool = Field(..., description="Whether the conversion was successful")
+    message: str = Field(..., description="Response message")
+    video_url: Optional[str] = Field(None, description="URL of the generated video")
+    thumbnail_url: Optional[str] = Field(None, description="URL of the video thumbnail")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    duration: Optional[float] = Field(None, description="Video duration in seconds")
+    width: Optional[int] = Field(None, description="Video width in pixels")
+    height: Optional[int] = Field(None, description="Video height in pixels")
+    effect_applied: Optional[str] = Field(None, description="Effect that was applied")
+    processing_time: Optional[float] = Field(None, description="Processing time in seconds")
+
+class ImageToVideoErrorResponse(BaseModel):
+    """Error response model for image to video conversion."""
+    success: bool = Field(False, description="Always false for error responses")
+    message: str = Field(..., description="Error message")
+    error_code: str = Field(..., description="Error code")
+    details: Optional[str] = Field(None, description="Additional error details") 

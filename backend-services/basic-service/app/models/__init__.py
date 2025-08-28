@@ -26,7 +26,11 @@ from .video_models import (
     SubtitleAddResponse,
     VideoProcessingStage,
     VideoProcessingError,
-    CompositionErrorDetails
+    CompositionErrorDetails,
+    ImageToVideoEffect,
+    ImageToVideoRequest,
+    ImageToVideoResponse,
+    ImageToVideoErrorResponse
 )
 
 from .tts_models import (

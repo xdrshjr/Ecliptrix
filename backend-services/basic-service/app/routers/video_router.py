@@ -16,10 +16,14 @@ from app.models import (
     SubtitleAddResponse,
     VideoAnalysisRequest,
     VideoAnalysisResponse,
-    VideoAnalysisStatusResponse
+    VideoAnalysisStatusResponse,
+    ImageToVideoRequest,
+    ImageToVideoResponse,
+    ImageToVideoErrorResponse
 )
 from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
 from app.logger import get_logger
+from typing import Union
 
 # Initialize router and logger
 router = APIRouter(prefix="/video", tags=["Video"])
@@ -586,4 +590,81 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred during video analysis"
+        ) 
+
+
+@router.post("/image-to-video", response_model=Union[ImageToVideoResponse, ImageToVideoErrorResponse])
+async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToVideoResponse, ImageToVideoErrorResponse]:
+    """
+    Convert image to video with various effects.
+    
+    This endpoint converts a static image to a video with specified effects:
+    - Static: Simple image-to-video conversion
+    - Ken Burns: Zoom in/out effect
+    - Pan: Left-to-right or right-to-left panning
+    
+    Args:
+        request (ImageToVideoRequest): Image conversion parameters
+    
+    Returns:
+        ImageToVideoResponse: Conversion result with video URL and metadata
+        ImageToVideoErrorResponse: Error response if conversion fails
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for conversion errors
+    """
+    logger.info(f"Image-to-video conversion request received", {
+        "image_url": request.image_url,
+        "effect": request.effect,
+        "duration": request.duration,
+        "task_id": request.task_id
+    })
+    
+    try:
+        # Validate request parameters
+        if not request.image_url and not request.image_data:
+            logger.error("Either image URL or image data is required")
+            return ImageToVideoErrorResponse(
+                success=False,
+                message="Either image URL or image data is required",
+                error_code="MISSING_IMAGE_SOURCE"
+            )
+        
+        if request.duration <= 0 or request.duration > 30:
+            logger.error(f"Invalid duration: {request.duration}")
+            return ImageToVideoErrorResponse(
+                success=False,
+                message="Duration must be between 1 and 30 seconds",
+                error_code="INVALID_DURATION"
+            )
+        
+        # Initialize image-to-video service
+        from app.services.image_to_video_service import ImageToVideoService
+        image_to_video_service = ImageToVideoService()
+        
+        # Convert image to video
+        result = await image_to_video_service.convert_image_to_video(request)
+        
+        if result.success:
+            logger.info(f"Image-to-video conversion completed successfully", {
+                "task_id": request.task_id,
+                "effect": request.effect,
+                "processing_time": result.processing_time,
+                "video_url": result.video_url
+            })
+        else:
+            logger.error(f"Image-to-video conversion failed", {
+                "task_id": request.task_id,
+                "error": result.message
+            })
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Image-to-video conversion error: {str(e)}")
+        return ImageToVideoErrorResponse(
+            success=False,
+            message=f"Internal server error: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            details=str(e)
         ) 

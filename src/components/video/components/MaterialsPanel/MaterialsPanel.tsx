@@ -31,6 +31,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   uploadProgress,
   handleMaterialTypeFilter,
   handleMaterialUpload,
+  addOrReplaceMaterial,
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
   onAIImageGeneration, // 新增：AI生图回调
@@ -59,6 +60,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const materialsGridRef = useRef<HTMLDivElement | null>(null);
+  
+  // Image to video conversion state
+  const [imageToVideoStatus, setImageToVideoStatus] = useState<Record<string, 'idle' | 'converting' | 'completed' | 'error'>>({});
+  const [showImageToVideoModal, setShowImageToVideoModal] = useState(false);
+  const [selectedImageForConversion, setSelectedImageForConversion] = useState<MaterialItem | null>(null);
 
   useEffect(() => {
     logger.info('组件初始化 - 素材网格滚动优化版本，按钮样式已优化为图标形式', {
@@ -436,6 +442,167 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   };
 
+  // 处理图片转视频
+  const handleImageToVideo = (material: MaterialItem, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    logger.userAction('点击图片转视频按钮', 'imageToVideo', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      imageUrl: material.url
+    });
+
+    setSelectedImageForConversion(material);
+    setShowImageToVideoModal(true);
+  };
+
+  // 将blob URL转换为base64数据
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // 执行图片转视频转换
+  const convertImageToVideo = async (effect: string, duration: number = 5.0, options: any = {}) => {
+    if (!selectedImageForConversion) return;
+
+    const materialId = selectedImageForConversion.id;
+    
+    // 立即关闭弹窗
+    setShowImageToVideoModal(false);
+    
+    try {
+      // 设置转换状态
+      setImageToVideoStatus(prev => ({
+        ...prev,
+        [materialId]: 'converting'
+      }));
+
+      logger.info('开始图片转视频转换', {
+        materialId,
+        effect,
+        duration,
+        imageUrl: selectedImageForConversion.url
+      });
+
+      let requestBody: any = {
+        effect,
+        duration,
+        task_id: taskId,
+        custom_filename: `${selectedImageForConversion.name}_${effect}`,
+        ken_burns_direction: options.kenBurnsDirection || 'zoom_in',
+        pan_direction: options.panDirection || 'left_to_right'
+      };
+
+      // 检查是否是blob URL
+      if (selectedImageForConversion.url.startsWith('blob:')) {
+        try {
+          // 获取blob数据并转换为base64
+          const response = await fetch(selectedImageForConversion.url);
+          const blob = await response.blob();
+          const base64Data = await blobToBase64(blob);
+          
+          requestBody.image_data = base64Data;
+          requestBody.image_filename = selectedImageForConversion.name;
+          
+          logger.info('使用base64数据进行转换', {
+            materialId,
+            dataSize: base64Data.length
+          });
+        } catch (error) {
+          logger.error('转换blob为base64失败', error instanceof Error ? error : new Error(String(error)));
+          throw new Error('无法读取图片数据');
+        }
+      } else {
+        // 使用URL
+        requestBody.image_url = selectedImageForConversion.url;
+      }
+
+      const response = await fetch('/api/video/image-to-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // 转换成功，添加生成的视频到素材管理
+        const newVideoMaterial: MaterialItem = {
+          id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name: `${selectedImageForConversion.name}_${effect}`,
+          type: 'video',
+          format: 'mp4',
+          size: result.file_size || 0,
+          duration: result.duration || duration,
+          width: result.width || selectedImageForConversion.width,
+          height: result.height || selectedImageForConversion.height,
+          thumbnailUrl: result.thumbnail_url,
+          url: result.video_url,
+          serverUrl: result.video_url,
+          createdAt: new Date(),
+          description: `从图片"${selectedImageForConversion.name}"生成的${effect}效果视频`,
+          metadata: {
+            originalImageId: selectedImageForConversion.id,
+            effect,
+            processingTime: result.processing_time,
+            generatedFromImage: true
+          }
+        };
+
+        // 添加到素材管理
+        if (addOrReplaceMaterial) {
+          addOrReplaceMaterial(newVideoMaterial);
+        }
+
+        setImageToVideoStatus(prev => ({
+          ...prev,
+          [materialId]: 'completed'
+        }));
+
+        logger.info('图片转视频转换成功', {
+          materialId,
+          videoUrl: result.video_url,
+          processingTime: result.processing_time
+        });
+
+        // 清除选中的图片（弹窗已经在开始时关闭了）
+        setSelectedImageForConversion(null);
+
+      } else {
+        throw new Error(result.message || '转换失败');
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      
+      setImageToVideoStatus(prev => ({
+        ...prev,
+        [materialId]: 'error'
+      }));
+
+      logger.error('图片转视频转换失败', error instanceof Error ? error : new Error(errorMessage), {
+        materialId,
+        effect,
+        duration
+      });
+
+      // 可以在这里显示错误提示
+      alert(`转换失败: ${errorMessage}`);
+      
+      // 清除选中的图片
+      setSelectedImageForConversion(null);
+    }
+  };
+
   return (
     <div className={`video-editing-materials-panel border-r border-gray-200 ${className}`}>
       <div className="materials-panel-header">
@@ -711,7 +878,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </button>
                     </div>
                     
-                    {/* 右下角区域 - 时长和AI解析按钮 */}
+                    {/* 右下角区域 - 时长和功能按钮 */}
                     <div className="absolute bottom-1 right-1 flex items-center space-x-1">
                       {/* AI视频解析按钮 - 仅对视频素材显示 */}
                       {material.type === 'video' && (() => {
@@ -758,6 +925,36 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           </button>
                         );
                       })()}
+
+                      {/* 图片转视频按钮 - 仅对图片素材显示 */}
+                      {material.type === 'image' && (
+                        <button
+                          onClick={(e) => handleImageToVideo(material, e)}
+                          disabled={imageToVideoStatus[material.id] === 'converting'}
+                          className={`w-5 h-5 rounded flex items-center justify-center transition-all duration-200 hover:scale-110 ${
+                            imageToVideoStatus[material.id] === 'converting'
+                              ? 'bg-blue-500 cursor-not-allowed' 
+                              : 'bg-orange-500 hover:bg-orange-600'
+                          } text-white`}
+                          title={
+                            imageToVideoStatus[material.id] === 'converting'
+                              ? '正在转换为视频...'
+                              : '转视频'
+                          }
+                        >
+                          {imageToVideoStatus[material.id] === 'converting' ? (
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            // 视频转换图标
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
                       
                       {/* 时长显示 */}
                       {material.duration && (
@@ -871,6 +1068,77 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onConfirm={confirmationDialog.onConfirm}
         onCancel={handleCloseConfirmationDialog}
       />
+
+      {/* 图片转视频效果选择弹窗 */}
+      {showImageToVideoModal && selectedImageForConversion && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">选择视频效果</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              将图片 "{selectedImageForConversion.name}" 转换为视频
+            </p>
+            
+            <div className="space-y-3 mb-6">
+              {/* 静态效果 */}
+              <button
+                onClick={() => convertImageToVideo('static')}
+                className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+              >
+                <div className="font-medium">静态视频</div>
+                <div className="text-sm text-gray-500">直接将图片转换为静态视频</div>
+              </button>
+
+              {/* Ken Burns效果 */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => convertImageToVideo('ken_burns', 5.0, { kenBurnsDirection: 'zoom_in' })}
+                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="font-medium">Ken Burns - 放大</div>
+                  <div className="text-sm text-gray-500">从正常大小逐渐放大</div>
+                </button>
+                <button
+                  onClick={() => convertImageToVideo('ken_burns', 5.0, { kenBurnsDirection: 'zoom_out' })}
+                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="font-medium">Ken Burns - 缩小</div>
+                  <div className="text-sm text-gray-500">从放大状态逐渐缩小</div>
+                </button>
+              </div>
+
+              {/* 平移效果 */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => convertImageToVideo('pan', 5.0, { panDirection: 'left_to_right' })}
+                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="font-medium">平移 - 从左到右</div>
+                  <div className="text-sm text-gray-500">水平从左向右平移</div>
+                </button>
+                <button
+                  onClick={() => convertImageToVideo('pan', 5.0, { panDirection: 'right_to_left' })}
+                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="font-medium">平移 - 从右到左</div>
+                  <div className="text-sm text-gray-500">水平从右向左平移</div>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowImageToVideoModal(false);
+                  setSelectedImageForConversion(null);
+                }}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
