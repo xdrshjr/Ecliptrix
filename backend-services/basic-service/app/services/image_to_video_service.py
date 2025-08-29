@@ -179,6 +179,13 @@ class ImageToVideoService:
             logger.error(f"Failed to get image dimensions: {str(e)}")
             return (1920, 1080)  # Default dimensions
     
+    def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
+        """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
+        # Round up to next even number if odd
+        even_width = width if width % 2 == 0 else width + 1
+        even_height = height if height % 2 == 0 else height + 1
+        return even_width, even_height
+    
     def _build_static_ffmpeg_command(
         self, 
         input_image: str, 
@@ -192,6 +199,9 @@ class ImageToVideoService:
         min_width = max(width, 64)  # Minimum 64 pixels width
         min_height = max(height, 64)  # Minimum 64 pixels height
         
+        # Ensure dimensions are even for H.264 encoding
+        even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
+        
         return [
             'ffmpeg',
             '-loop', '1',
@@ -199,7 +209,7 @@ class ImageToVideoService:
             '-c:v', 'libx264',
             '-t', str(duration),
             '-pix_fmt', 'yuv420p',
-            '-vf', f'scale={min_width}:{min_height}:force_original_aspect_ratio=decrease,pad={min_width}:{min_height}:(ow-iw)/2:(oh-ih)/2:color=black',
+            '-vf', f'scale={even_width}:{even_height}:force_original_aspect_ratio=decrease,pad={even_width}:{even_height}:(ow-iw)/2:(oh-ih)/2:color=black',
             '-r', '30',
             '-y',
             output_video
@@ -219,6 +229,12 @@ class ImageToVideoService:
         min_width = max(width, 64)
         min_height = max(height, 64)
         
+        # Ensure dimensions are even for H.264 encoding
+        even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
+        
+        # Ensure doubled dimensions are also even
+        scale_width, scale_height = self._ensure_even_dimensions(even_width * 2, even_height * 2)
+        
         if direction == "zoom_out":
             # Start zoomed in, zoom out
             scale_start = "1.3"
@@ -230,11 +246,11 @@ class ImageToVideoService:
         
         # Ken Burns effect with smooth zoom
         filter_complex = (
-            f"scale={min_width*2}:{min_height*2}:force_original_aspect_ratio=increase,"
-            f"crop={min_width*2}:{min_height*2},"
+            f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=increase,"
+            f"crop={scale_width}:{scale_height},"
             f"zoompan=z='if(lte(zoom,1.0),{scale_start},max(1.001,zoom-0.0015))'"
             f":d={int(duration*30)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-            f":s={min_width}x{min_height}"
+            f":s={even_width}x{even_height}"
         )
         
         return [
@@ -264,22 +280,26 @@ class ImageToVideoService:
         min_width = max(width, 64)
         min_height = max(height, 64)
         
-        # Scale image larger than output for panning
-        scale_width = int(min_width * 1.5)
+        # Ensure dimensions are even for H.264 encoding
+        even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
+        
+        # Scale image larger than output for panning, ensure it's also even
+        scale_width_raw = int(even_width * 1.5)
+        scale_width, _ = self._ensure_even_dimensions(scale_width_raw, even_height)
         
         if direction == "right_to_left":
             # Start from right, pan to left
-            x_start = f"{scale_width - min_width}"
+            x_start = f"{scale_width - even_width}"
             x_end = "0"
         else:
             # Start from left, pan to right
             x_start = "0"
-            x_end = f"{scale_width - min_width}"
+            x_end = f"{scale_width - even_width}"
         
         filter_complex = (
-            f"scale={scale_width}:{min_height}:force_original_aspect_ratio=increase,"
-            f"crop={scale_width}:{min_height},"
-            f"crop={min_width}:{min_height}:x='if(lte(t,0),{x_start},{x_start}+({x_end}-{x_start})*t/{duration})':y=0"
+            f"scale={scale_width}:{even_height}:force_original_aspect_ratio=increase,"
+            f"crop={scale_width}:{even_height},"
+            f"crop={even_width}:{even_height}:x='if(lte(t,0),{x_start},{x_start}+({x_end}-{x_start})*t/{duration})':y=0"
         )
         
         return [

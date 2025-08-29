@@ -91,6 +91,13 @@ class VideoCompositionService:
             logger.error("ffmpeg not available")
             return None
     
+    def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
+        """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
+        # Round up to next even number if odd
+        even_width = width if width % 2 == 0 else width + 1
+        even_height = height if height % 2 == 0 else height + 1
+        return even_width, even_height
+    
     def _load_video_download_config(self):
         """Load video download configuration from YAML file."""
         try:
@@ -1628,12 +1635,13 @@ class VideoCompositionService:
                    f"target={target_width}x{target_height} (ratio={target_ratio:.3f})")
         
         if abs(source_ratio - target_ratio) < 0.01:  # Same aspect ratio
-            # Direct scaling
+            # Direct scaling - ensure dimensions are even
+            even_target_width, even_target_height = self._ensure_even_dimensions(target_width, target_height)
             return {
-                "scale_width": target_width,
-                "scale_height": target_height,
-                "pad_width": target_width,
-                "pad_height": target_height,
+                "scale_width": even_target_width,
+                "scale_height": even_target_height,
+                "pad_width": even_target_width,
+                "pad_height": even_target_height,
                 "pad_x": 0,
                 "pad_y": 0,
                 "needs_padding": False
@@ -1652,14 +1660,26 @@ class VideoCompositionService:
             pad_x = (target_width - scale_width) // 2
             pad_y = 0
         
-        logger.info(f"Scaling result: scale={scale_width}x{scale_height}, "
-                   f"pad=({pad_x},{pad_y}), final={target_width}x{target_height}")
+        # Ensure all dimensions are even for H.264 encoding
+        even_scale_width, even_scale_height = self._ensure_even_dimensions(scale_width, scale_height)
+        even_target_width, even_target_height = self._ensure_even_dimensions(target_width, target_height)
+        
+        # Recalculate padding with even dimensions
+        if source_ratio > target_ratio:
+            pad_x = 0
+            pad_y = (even_target_height - even_scale_height) // 2
+        else:
+            pad_x = (even_target_width - even_scale_width) // 2
+            pad_y = 0
+        
+        logger.info(f"Scaling result: scale={even_scale_width}x{even_scale_height}, "
+                   f"pad=({pad_x},{pad_y}), final={even_target_width}x{even_target_height}")
         
         return {
-            "scale_width": scale_width,
-            "scale_height": scale_height,
-            "pad_width": target_width,
-            "pad_height": target_height,
+            "scale_width": even_scale_width,
+            "scale_height": even_scale_height,
+            "pad_width": even_target_width,
+            "pad_height": even_target_height,
             "pad_x": pad_x,
             "pad_y": pad_y,
             "needs_padding": True
@@ -1940,16 +1960,19 @@ class VideoCompositionService:
                 w = int(pos.width * video_width)
                 h = int(pos.height * video_height)
                 
+                # Ensure dimensions are even for H.264 encoding
+                even_w, even_h = self._ensure_even_dimensions(w, h)
+                
                 # Calculate time filters based on item timing
                 start_time = item.start_time
                 end_time = item.start_time + item.duration
                 
-                logger.info(f"Image overlay {i+1}: position=({x},{y}) size=({w}x{h}) time={start_time}s-{end_time}s")
+                logger.info(f"Image overlay {i+1}: position=({x},{y}) size=({even_w}x{even_h}) time={start_time}s-{end_time}s")
                 
                 # 保持图片原始比例的缩放滤镜
                 # 使用force_original_aspect_ratio=decrease确保图片不超出指定尺寸且保持比例
                 # 然后使用pad滤镜将图片填充到目标尺寸，居中放置
-                scale_filter = f"[{input_idx}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
+                scale_filter = f"[{input_idx}:v]scale={even_w}:{even_h}:force_original_aspect_ratio=decrease,pad={even_w}:{even_h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
                 filter_parts.append(scale_filter)
                 
                 # Create overlay filter with timing

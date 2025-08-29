@@ -8,6 +8,8 @@ import localAudioManager from '@/lib/utils/localAudioManager';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useLocale } from '@/contexts/LocaleContext';
 import { UseComfyUIHealthReturn } from '../../hooks/useComfyUIHealth';
+import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -51,9 +53,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   handleCloseConfirmationDialog
 }) => {
   const { t } = useLocale();
+  const { showSuccess, showError } = useNotification();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'MaterialsPanel'
+  });
+
+  // 预览弹窗状态
+  const [previewModal, setPreviewModal] = useState<{
+    isOpen: boolean;
+    material: MaterialItem | null;
+  }>({
+    isOpen: false,
+    material: null
   });
 
   const [draggedMaterial, setDraggedMaterial] = useState<MaterialItem | null>(null);
@@ -244,59 +256,146 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   };
 
-  const handleSubtitleDownload = (material: MaterialItem) => {
+  // 预览素材
+  const handlePreviewMaterial = (material: MaterialItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    
+    logger.userAction('预览素材', 'previewMaterial', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type
+    });
+
+    setPreviewModal({
+      isOpen: true,
+      material
+    });
+  };
+
+  // 关闭预览弹窗
+  const handleClosePreview = () => {
+    setPreviewModal({
+      isOpen: false,
+      material: null
+    });
+    
+    logger.info('关闭素材预览弹窗');
+  };
+
+  // 下载素材
+  const handleDownloadMaterial = async (material: MaterialItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+
     try {
-      logger.userAction('下载字幕文件', 'subtitleDownload', {
+      logger.userAction('下载素材文件', 'downloadMaterial', {
         materialId: material.id,
         materialName: material.name,
+        materialType: material.type,
         format: material.format
       });
 
-      // 从metadata中获取SRT内容或从URL下载
-      const srtContent = material.metadata?.srt_content;
-      const fileName = material.metadata?.fileName || `${material.name}.srt`;
+      // 处理字幕文件下载
+      if (material.type === 'subtitle') {
+        const srtContent = material.metadata?.srt_content;
+        const fileName = material.metadata?.fileName || `${material.name}.srt`;
 
-      if (srtContent) {
-        // 直接使用metadata中的SRT内容
-        const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        if (srtContent) {
+          const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
 
-        logger.info('字幕文件下载成功', {
-          materialId: material.id,
-          fileName,
-          contentLength: srtContent.length
-        });
-      } else if (material.url) {
-        // 从URL下载
-        const a = document.createElement('a');
-        a.href = material.url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+          logger.info('字幕文件下载成功', {
+            materialId: material.id,
+            fileName,
+            contentLength: srtContent.length
+          });
+          showSuccess(`${t.materialsPanel.downloadMaterial}: ${fileName}`);
+        } else if (material.url) {
+          const a = document.createElement('a');
+          a.href = material.url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
 
-        logger.info('字幕文件下载触发', {
-          materialId: material.id,
-          fileName,
-          url: material.url
-        });
+          logger.info('字幕文件下载触发', {
+            materialId: material.id,
+            fileName,
+            url: material.url
+          });
+          showSuccess(`${t.materialsPanel.downloadMaterial}: ${fileName}`);
+        } else {
+          throw new Error(t.materialsPanel.subtitleContentError);
+        }
       } else {
-        throw new Error(t.materialsPanel.subtitleContentError);
+        // 处理其他类型文件下载
+        const fileName = material.metadata?.fileName || material.name;
+        const fileExtension = material.format ? `.${material.format}` : '';
+        const downloadFileName = fileName.includes('.') ? fileName : `${fileName}${fileExtension}`;
+
+        if (material.url.startsWith('blob:') || material.url.startsWith('data:')) {
+          // 本地blob URL，直接下载
+          const a = document.createElement('a');
+          a.href = material.url;
+          a.download = downloadFileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          logger.info('本地文件下载触发', {
+            materialId: material.id,
+            fileName: downloadFileName,
+            url: material.url.substring(0, 50)
+          });
+          showSuccess(`${t.materialsPanel.downloadMaterial}: ${downloadFileName}`);
+        } else {
+          // 远程URL，先获取文件再下载
+          const response = await fetch(material.url);
+          if (!response.ok) {
+            throw new Error(`下载失败: ${response.status} ${response.statusText}`);
+          }
+          
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = downloadFileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          logger.info('远程文件下载成功', {
+            materialId: material.id,
+            fileName: downloadFileName,
+            fileSize: blob.size,
+            originalUrl: material.url
+          });
+          showSuccess(`${t.materialsPanel.downloadMaterial}: ${downloadFileName}`);
+        }
       }
     } catch (error) {
-      logger.error('字幕文件下载失败', new Error(error instanceof Error ? error.message : String(error)), {
+      logger.error('素材文件下载失败', new Error(error instanceof Error ? error.message : String(error)), {
         materialId: material.id,
-        materialName: material.name
+        materialName: material.name,
+        materialType: material.type
       });
-      alert(`${t.materialsPanel.subtitleDownloadError}: ${error instanceof Error ? error.message : String(error)}`);
+      showError(`${t.materialsPanel.subtitleDownloadError}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  };
+
+  const handleSubtitleDownload = (material: MaterialItem) => {
+    handleDownloadMaterial(material);
   };
 
   const handleAudioPlayPause = (material: MaterialItem) => {
@@ -974,6 +1073,32 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     </div>
                   </div>
                   
+                  {/* 操作按钮横条 */}
+                  <div className="border-b border-gray-100 bg-gray-50 px-1.5 py-0.5 flex items-center justify-center space-x-1">
+                    <button
+                      onClick={(e) => handlePreviewMaterial(material, e)}
+                      className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-all duration-200 group"
+                      title={t.materialsPanel.previewMaterial}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
+                    
+                    <div className="w-px h-3 bg-gray-200"></div>
+                    
+                    <button
+                      onClick={(e) => handleDownloadMaterial(material, e)}
+                      className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-all duration-200 group"
+                      title={t.materialsPanel.downloadMaterial}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </button>
+                  </div>
+
                   {/* 素材信息 */}
                   <div className="p-1.5">
                     <h4 className="text-xs font-medium text-gray-900 truncate mb-1" title={material.name}>{material.name}</h4>
@@ -984,7 +1109,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       <span className="text-blue-600 text-xs">{material.format?.toUpperCase()}</span>
                     </div>
                   </div>
-                  
 
                 </div>
               ))}
@@ -1139,6 +1263,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* 媒体预览弹窗 */}
+      <MediaPreviewModal
+        isOpen={previewModal.isOpen}
+        material={previewModal.material}
+        onClose={handleClosePreview}
+        taskId={taskId}
+      />
     </div>
   );
 };

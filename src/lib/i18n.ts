@@ -150,9 +150,13 @@ export interface Translations {
     downloadingVideo: string;
     downloadFailed: string;
     retryDownload: string;
-    aiAnalyzing: string;
-    viewAnalysisResult: string;
-    aiVideoAnalysis: string;
+          aiAnalyzing: string;
+      viewAnalysisResult: string;
+      aiVideoAnalysis: string;
+      preview: string;
+      download: string;
+      previewMaterial: string;
+      downloadMaterial: string;
   };
   videoSearchModal: {
     title: string;
@@ -374,6 +378,10 @@ export const translations: Record<string, Translations> = {
       aiAnalyzing: 'AI analyzing...',
       viewAnalysisResult: 'View Analysis Result',
       aiVideoAnalysis: 'AI Video Analysis',
+      preview: 'Preview',
+      download: 'Download',
+      previewMaterial: 'Preview Material',
+      downloadMaterial: 'Download Material',
     },
     timeline: {
       toolbar: {
@@ -675,6 +683,10 @@ export const translations: Record<string, Translations> = {
               aiAnalyzing: 'AI解析中...',
         viewAnalysisResult: '查看解析结果',
         aiVideoAnalysis: 'AI视频解析',
+        preview: '预览',
+        download: '下载',
+        previewMaterial: '预览素材',
+        downloadMaterial: '下载素材',
     },
     timeline: {
       toolbar: {
