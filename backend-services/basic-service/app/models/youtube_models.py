@@ -13,7 +13,7 @@ class SearchOrientation(str, Enum):
 class YoutubeSearchRequest(BaseModel):
     """YouTube视频搜索请求模型"""
     query: str = Field(..., min_length=1, max_length=200, description="搜索关键词")
-    max_videos: int = Field(default=20, ge=1, le=50, description="最大返回视频数量")
+    max_videos: int = Field(default=20, ge=1, le=100, description="最大返回视频数量")
     orientation: SearchOrientation = Field(default=SearchOrientation.MIXED, description="视频方向")
     min_duration: Optional[int] = Field(default=None, ge=0, description="最小时长（秒）")
     max_duration: Optional[int] = Field(default=None, ge=0, description="最大时长（秒）")

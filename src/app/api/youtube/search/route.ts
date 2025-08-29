@@ -37,16 +37,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (max_videos < 1 || max_videos > 50) {
-      console.error('[YouTube Search API] Invalid request: max_videos must be between 1 and 50');
+    if (max_videos < 1 || max_videos > 100) {
+      console.error('[YouTube Search API] Invalid request: max_videos must be between 1 and 100');
       return NextResponse.json(
         { 
           success: false,
-          message: 'max_videos must be between 1 and 50',
+          message: 'max_videos must be between 1 and 100',
           videos: [],
           total_found: 0,
           query: query,
-          error: 'max_videos must be between 1 and 50'
+          error: 'max_videos must be between 1 and 100'
         },
         { status: 400 }
       );

@@ -194,6 +194,10 @@ export interface UseVideoSearchReturn {
   // 新增：YouTube时间范围相关状态
   youtubeDurationRange: YoutubeDurationRange;
   youtubeDurationPreset: YoutubeDurationPreset;
+  // 新增：分页相关状态
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
   openSearchModal: (initialKeywords?: string[]) => void;
   closeSearchModal: () => void;
   handleSearch: () => Promise<void>;
@@ -214,6 +218,10 @@ export interface UseVideoSearchReturn {
   // 新增：YouTube时间范围相关方法
   setYoutubeDurationRange: (range: YoutubeDurationRange) => void;
   setYoutubeDurationPreset: (preset: YoutubeDurationPreset) => void;
+  // 新增：分页相关方法
+  goToPage: (page: number) => void;
+  goToPreviousPage: () => void;
+  goToNextPage: () => void;
   taskId: string;
   // 新增：重试下载功能
   retryVideoDownload: (material: MaterialItem) => Promise<void>;

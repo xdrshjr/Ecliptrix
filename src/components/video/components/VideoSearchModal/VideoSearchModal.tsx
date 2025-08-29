@@ -43,6 +43,13 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   youtubeDurationPreset,
   setYoutubeDurationRange,
   setYoutubeDurationPreset,
+  // 新增：分页相关props
+  currentPage,
+  totalPages,
+  pageSize,
+  goToPage,
+  goToPreviousPage,
+  goToNextPage,
   taskId
 }) => {
   const logger = new VideoEditingLogger({
@@ -208,6 +215,13 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   };
 
   const getCurrentResults = () => {
+    const allResults = activeLibrary === 'official' ? searchResults : youtubeSearchResults;
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return allResults.slice(startIndex, endIndex);
+  };
+
+  const getAllCurrentResults = () => {
     return activeLibrary === 'official' ? searchResults : youtubeSearchResults;
   };
 
@@ -236,6 +250,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
   const selectedVideos = getSelectedVideos();
   const currentResults = getCurrentResults();
+  const allCurrentResults = getAllCurrentResults();
   const currentSelectedResults = getCurrentSelectedResults();
   const currentPreviewVideo = getCurrentPreviewVideo();
   const currentSearching = getCurrentSearching();
@@ -548,11 +563,16 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
             </div>
             
             {/* 结果统计栏 */}
-            {currentResults.length > 0 && (
+            {allCurrentResults.length > 0 && (
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  找到 <span className="font-semibold text-gray-900">{currentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-blue-600' : 'text-red-600'}`}>{currentSelectedResults.size}</span> 个
+                  找到 <span className="font-semibold text-gray-900">{allCurrentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-blue-600' : 'text-red-600'}`}>{currentSelectedResults.size}</span> 个
                 </div>
+                {totalPages > 1 && (
+                  <div className="text-sm text-gray-500">
+                    第 {currentPage} / {totalPages} 页
+                  </div>
+                )}
               </div>
             )}
 
@@ -714,6 +734,62 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     </svg>
                     <p className="text-lg font-medium mb-2">开始搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频</p>
                     <p className="text-sm">输入关键词并点击搜索按钮</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* 分页控件 */}
+              {totalPages > 1 && allCurrentResults.length > 0 && (
+                <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/30">
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      onClick={goToPreviousPage}
+                      disabled={currentPage === 1}
+                      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors duration-200 ${
+                        currentPage === 1
+                          ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                          : `border-gray-300 text-gray-700 hover:bg-gray-50 ${
+                              activeLibrary === 'official' ? 'hover:border-blue-300' : 'hover:border-red-300'
+                            }`
+                      }`}
+                    >
+                      上一页
+                    </button>
+                    
+                    <div className="flex items-center space-x-1">
+                      {[...Array(totalPages)].map((_, index) => {
+                        const page = index + 1;
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => goToPage(page)}
+                            className={`w-8 h-8 text-sm rounded-lg transition-colors duration-200 ${
+                              currentPage === page
+                                ? `${activeLibrary === 'official' ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'}`
+                                : `text-gray-700 hover:bg-gray-100 ${
+                                    activeLibrary === 'official' ? 'hover:text-blue-600' : 'hover:text-red-600'
+                                  }`
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <button
+                      onClick={goToNextPage}
+                      disabled={currentPage === totalPages}
+                      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors duration-200 ${
+                        currentPage === totalPages
+                          ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                          : `border-gray-300 text-gray-700 hover:bg-gray-50 ${
+                              activeLibrary === 'official' ? 'hover:border-blue-300' : 'hover:border-red-300'
+                            }`
+                      }`}
+                    >
+                      下一页
+                    </button>
                   </div>
                 </div>
               )}

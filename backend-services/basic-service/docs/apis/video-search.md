@@ -17,7 +17,7 @@ Content-Type: application/json
 | 参数名 | 类型 | 必需 | 描述 |
 |-------|------|------|------|
 | query | string | 是 | 搜索关键词 |
-| max_videos | number | 否 | 最大返回视频数量，默认20，最大100 |
+| max_videos | number | 否 | 最大返回视频数量，默认20，最大100（支持分页显示，推荐60条分3页） |
 | orientation | string | 否 | 视频方向："mixed"(混合)、"landscape"(横屏)、"portrait"(竖屏)，默认"mixed" |
 
 ### 示例请求

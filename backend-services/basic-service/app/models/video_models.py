@@ -13,7 +13,7 @@ class VideoSearchRequest(BaseModel):
     """Video search request model."""
     
     query: str = Field(description="Search query for videos", min_length=1, max_length=200)
-    max_videos: int = Field(default=20, description="Maximum number of videos to return", ge=1, le=50)
+    max_videos: int = Field(default=20, description="Maximum number of videos to return", ge=1, le=100)
     orientation: str = Field(default="mixed", description="Video orientation filter", pattern="^(landscape|portrait|mixed)$")
     
     model_config = ConfigDict(

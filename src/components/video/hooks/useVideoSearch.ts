@@ -72,6 +72,14 @@ export const useVideoSearch = (
   });
   const [youtubeDurationPreset, setYoutubeDurationPresetState] = useState<YoutubeDurationPreset>('under_5min');
 
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20; // 每页20条
+  const totalPages = useMemo(() => {
+    const currentResults = activeLibrary === 'official' ? searchResults : youtubeSearchResults;
+    return Math.ceil(currentResults.length / pageSize);
+  }, [activeLibrary, searchResults.length, youtubeSearchResults.length, pageSize]);
+
   // 处理YouTube时间预设变化
   const handleYoutubeDurationPresetChange = useCallback((preset: YoutubeDurationPreset) => {
     setYoutubeDurationPresetState(preset);
@@ -207,12 +215,13 @@ export const useVideoSearch = (
     setIsSearching(true);
     setSearchResults([]);
     setPreviewVideo(null);
+    setCurrentPage(1); // 重置到第一页
 
     try {
       // 使用视频搜索服务进行搜索
       const result = await videoSearchService.searchVideos({
         query: searchQuery,
-        maxVideos: 20,
+        maxVideos: 60,
         orientation: searchOrientation
       });
 
@@ -246,12 +255,13 @@ export const useVideoSearch = (
     setIsYoutubeSearching(true);
     setYoutubeSearchResults([]);
     setYoutubePreviewVideo(null);
+    setCurrentPage(1); // 重置到第一页
 
     try {
       // 使用Youtube视频搜索服务进行搜索
       const result = await youtubeVideoSearchService.searchVideos({
         query: searchQuery,
-        maxVideos: 20,
+        maxVideos: 60,
         orientation: searchOrientation,
         minDuration: youtubeDurationRange.minDuration,
         maxDuration: youtubeDurationRange.maxDuration
@@ -627,6 +637,31 @@ export const useVideoSearch = (
     setValidationError(null);
   }, [activeLibrary, logger]);
 
+  // 分页相关方法
+  const goToPage = useCallback((page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      logger.userAction('跳转页面', 'pagination', {
+        fromPage: currentPage,
+        toPage: page,
+        totalPages,
+        activeLibrary
+      });
+    }
+  }, [currentPage, totalPages, activeLibrary, logger]);
+
+  const goToPreviousPage = useCallback(() => {
+    if (currentPage > 1) {
+      goToPage(currentPage - 1);
+    }
+  }, [currentPage, goToPage]);
+
+  const goToNextPage = useCallback(() => {
+    if (currentPage < totalPages) {
+      goToPage(currentPage + 1);
+    }
+  }, [currentPage, totalPages, goToPage]);
+
   return {
     // 通用状态
     isModalOpen,
@@ -652,6 +687,11 @@ export const useVideoSearch = (
     // YouTube时间范围状态
     youtubeDurationRange,
     youtubeDurationPreset,
+    
+    // 分页状态
+    currentPage,
+    totalPages,
+    pageSize,
     
     // 通用方法
     openSearchModal,
@@ -680,6 +720,11 @@ export const useVideoSearch = (
     // YouTube时间范围方法
     setYoutubeDurationRange: handleYoutubeDurationRangeChange,
     setYoutubeDurationPreset: handleYoutubeDurationPresetChange,
+    
+    // 分页方法
+    goToPage,
+    goToPreviousPage,
+    goToNextPage,
     
     taskId,
     // 新增：重试下载功能

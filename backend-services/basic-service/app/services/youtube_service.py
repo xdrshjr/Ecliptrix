@@ -139,7 +139,7 @@ class YouTubeService:
             # 如果有过滤条件，搜索更多结果以便过滤
             search_limit = request.max_videos
             if any([request.min_duration, request.max_duration, request.min_views, request.max_views]):
-                search_limit = min(request.max_videos * 3, 50)  # 搜索3倍数量，但不超过50
+                search_limit = min(request.max_videos * 3, 150)  # 搜索3倍数量，但不超过150
                 
             search_url = f"ytsearch{search_limit}:{request.query}"
             

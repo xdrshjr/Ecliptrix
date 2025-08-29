@@ -98,8 +98,8 @@ export class YoutubeVideoSearchServiceImpl implements YoutubeVideoSearchService 
       };
     }
 
-    if (maxVideos <= 0 || maxVideos > 50) {
-      const error = 'Max videos must be between 1 and 50';
+    if (maxVideos <= 0 || maxVideos > 100) {
+      const error = 'Max videos must be between 1 and 100';
       this.logger.error('Youtube视频搜索参数验证失败', new Error(error), { 
         maxVideos,
         reason: 'invalid_max_videos'

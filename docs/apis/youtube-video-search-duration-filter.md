@@ -35,7 +35,7 @@
 | 参数名 | 类型 | 必需 | 默认值 | 说明 |
 |--------|------|------|--------|------|
 | query | string | 是 | - | 搜索关键词 |
-| max_videos | number | 否 | 20 | 返回视频数量，范围1-50 |
+| max_videos | number | 否 | 20 | 返回视频数量，范围1-100（支持分页显示，推荐60条分3页） |
 | orientation | string | 否 | "mixed" | 视频方向：landscape/portrait/mixed |
 | min_duration | number | 否 | - | 最小时长（秒），必须≥0 |
 | max_duration | number | 否 | - | 最大时长（秒），必须>min_duration |
