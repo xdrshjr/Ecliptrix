@@ -50,6 +50,7 @@ class YouTubeService:
     def sanitize_filename(self, title: str, max_length: int = 200) -> str:
         """
         文件名规范化函数，移除特殊字符、emoji和不安全字符
+        将中文字符转换为ASCII安全的替代字符，确保云存储兼容性
         
         Args:
             title: 原始标题
@@ -61,23 +62,29 @@ class YouTubeService:
         if not title or not title.strip():
             return "video"
             
+        # 保存原始标题用于生成备用名称
+        original_title = title.strip()
+        
         # Unicode规范化，将组合字符转换为分解形式
         title = unicodedata.normalize('NFKD', title)
         
-        # 移除emoji和其他符号字符
-        # 保留基本拉丁字母、数字、常见标点符号
+        # 移除emoji和其他符号字符，并处理中文字符
+        # 只保留ASCII字母、数字、常见标点符号
         allowed_chars = []
         for char in title:
             # 获取字符的Unicode类别
             category = unicodedata.category(char)
-            # 保留字母、数字、标点符号（部分）、空格
-            if (category.startswith('L') or  # Letters
-                category.startswith('N') or  # Numbers
-                char in ' .-_()[]{}' or      # Safe punctuation
-                category == 'Zs'):          # Space separators
+            
+            # 只保留ASCII范围内的安全字符
+            if (ord(char) < 128 and  # ASCII范围内
+                (category.startswith('L') or  # Letters
+                 category.startswith('N') or  # Numbers
+                 char in ' .-_()[]{}' or      # Safe punctuation
+                 category == 'Zs')):         # Space separators
                 allowed_chars.append(char)
             else:
-                # 将其他字符替换为下划线
+                # 将非ASCII字符（包括中文）替换为下划线
+                # 这确保了云存储的兼容性
                 allowed_chars.append('_')
         
         title = ''.join(allowed_chars)
@@ -101,9 +108,13 @@ class YouTubeService:
         # 移除开头和结尾的点号（Windows系统不允许）
         title = title.strip('.')
         
-        # 确保不为空
-        if not title:
-            title = "video"
+        # 如果清理后为空或只有下划线，生成基于原始标题长度的备用名称
+        if not title or title == '_':
+            # 使用原始标题的哈希值生成唯一标识符
+            import hashlib
+            hash_obj = hashlib.md5(original_title.encode('utf-8'))
+            hash_str = hash_obj.hexdigest()[:8]  # 取前8位
+            title = f"video_{hash_str}"
             
         # 截断过长的文件名，预留扩展名和唯一标识符的空间
         max_base_length = max_length - 20  # 为 .mp4 和时间戳预留空间
@@ -492,7 +503,8 @@ class YouTubeService:
                     '-show_format', '-show_streams', download_result.file_path
                 ]
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                # 明确指定UTF-8编码，避免Windows系统上的GBK编码问题
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
                 
                 if result.returncode == 0:
                     probe_data = json.loads(result.stdout)
