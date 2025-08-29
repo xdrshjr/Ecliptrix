@@ -48,6 +48,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   isPlaying,
   currentTime,
   volume,
+  effectiveVolume, // 新增：实际应用到video元素的有效音量
   playbackRate,
   handlePlayPause,
   handleTimeSeek,
@@ -126,6 +127,20 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const [selectedImageOverlay, setSelectedImageOverlay] = useState<string | null>(null);
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  // 新增：应用音量到video元素
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = effectiveVolume;
+      logger.info('应用最终有效音量到视频元素', {
+        masterVolume: volume.toFixed(3), // 播放器显示的主音量
+        effectiveVolume: effectiveVolume.toFixed(3), // 实际应用的有效音量
+        videoCurrentTime: videoRef.current.currentTime?.toFixed(2) || '0.00',
+        note: '有效音量 = 轨道音量 × 主音量',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [effectiveVolume, volume, logger]);
 
   // 新增：音频同步播放管理
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());

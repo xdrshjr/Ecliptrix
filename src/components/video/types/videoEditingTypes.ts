@@ -22,6 +22,9 @@ export interface VideoSequenceItem {
   clipStart?: number;      // 原始素材中的开始时间（秒）
   clipEnd?: number;        // 原始素材中的结束时间（秒）
   originalDuration?: number; // 原始素材的总时长（秒）
+  
+  // 新增：音量属性，用于支持视频轨道音量控制
+  volume?: number;         // 音量 (0-1)，结合轨道音量和项目音量
 }
 
 // 新增：音频序列项目接口，用于组合播放时的音频同步
@@ -86,7 +89,8 @@ export interface UseDocumentStateReturn {
 export interface UseVideoPlaybackReturn {
   isPlaying: boolean;
   currentTime: number;
-  volume: number;
+  volume: number; // 主音量，用于播放器控件显示
+  effectiveVolume: number; // 有效音量，实际应用到video元素（轨道音量 × 主音量）
   playbackRate: number;
   previewQuality: PreviewQuality;
   isFullscreen: boolean;

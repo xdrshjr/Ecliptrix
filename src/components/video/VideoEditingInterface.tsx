@@ -77,9 +77,62 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setTimelineCurrentTime(currentTime);
   }, [timelineCurrentTime]);
 
+  // 新增：计算当前时间点的有效音量
+  const calculateEffectiveVolume = useCallback((timelineState: TimelineState | null, currentTime: number): number => {
+    if (!timelineState) return 0.8; // 默认音量
+
+    // 找到当前时间点所有活跃的视频轨道
+    const activeVideoTracks = timelineState.tracks.filter(track => 
+      track.type === 'video' && 
+      track.isVisible && 
+      !track.isLocked && 
+      !track.isMuted &&
+      track.items.some(item => 
+        item.type === 'video' && 
+        currentTime >= item.startTime && 
+        currentTime < item.startTime + item.duration
+      )
+    );
+
+    if (activeVideoTracks.length === 0) return 0.8; // 没有活跃视频轨道时使用默认音量
+
+    // 计算所有活跃视频轨道的平均音量
+    const totalVolume = activeVideoTracks.reduce((sum, track) => {
+      // 找到当前时间点的活跃项目
+      const activeItems = track.items.filter(item => 
+        item.type === 'video' && 
+        currentTime >= item.startTime && 
+        currentTime < item.startTime + item.duration
+      );
+      
+      if (activeItems.length === 0) return sum;
+      
+      // 计算轨道音量和项目音量的组合
+      const trackVolume = track.volume / 100; // 轨道音量转换为0-1范围
+      const itemVolume = activeItems.reduce((itemSum, item) => itemSum + (item.volume ?? 1), 0) / activeItems.length;
+      
+      return sum + (trackVolume * itemVolume);
+    }, 0);
+
+    const effectiveVolume = Math.max(0, Math.min(totalVolume / activeVideoTracks.length, 1));
+    
+    console.log(`[VideoEditingInterface] 计算有效音量`, {
+      currentTime: currentTime.toFixed(2),
+      activeVideoTracks: activeVideoTracks.length,
+      trackVolumes: activeVideoTracks.map(t => ({ id: t.id, name: t.name, volume: t.volume })),
+      effectiveVolume: effectiveVolume.toFixed(3),
+      timestamp: new Date().toISOString()
+    });
+
+    return effectiveVolume;
+  }, []);
+
+  // 计算当前的有效音量
+  const currentEffectiveVolume = calculateEffectiveVolume(currentTimelineState, timelineCurrentTime);
+
   // 使用自定义钩子管理各个功能域的状态
   const documentState = useDocumentState(content, onUpdateContent, taskId);
-  const videoPlayback = useVideoPlayback(taskId, handleVideoTimeUpdate, timelineCurrentTime);
+  const videoPlayback = useVideoPlayback(taskId, handleVideoTimeUpdate, timelineCurrentTime, currentEffectiveVolume);
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
   const materialManagement = useMaterialManagement(taskId);

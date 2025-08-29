@@ -12,9 +12,10 @@ import { mockVideoPreview } from '../data';
  * @returns 视频播放相关的状态和控制方法
  */
 export const useVideoPlayback = (
-  taskId: string, 
+  taskId: string,
   onTimeUpdate?: (currentTime: number) => void,
-  currentTimelineTime?: number
+  currentTimelineTime?: number,
+  externalTrackVolume?: number // 重命名：外部轨道音量，来自timeline轨道计算
 ): UseVideoPlaybackReturn => {
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
@@ -25,11 +26,15 @@ export const useVideoPlayback = (
   // 播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(45); // 当前播放时间（秒）
-  const [volume, setVolume] = useState(0.8); // 音量 (0-1)
+  const [masterVolume, setMasterVolume] = useState(0.8); // 主音量 (0-1)，由播放器控制
   const [playbackRate, setPlaybackRate] = useState(1.0); // 播放速度
   const [previewQuality, setPreviewQuality] = useState<PreviewQuality>('high');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+
+  // 新增：计算最终有效音量 = 轨道音量 × 主音量
+  const trackVolume = externalTrackVolume !== undefined ? externalTrackVolume : 1.0; // 默认轨道音量为1.0
+  const effectiveVolume = trackVolume * masterVolume;
 
   // 记录初始化日志
   useEffect(() => {
@@ -43,12 +48,25 @@ export const useVideoPlayback = (
       initialState: {
         isPlaying,
         currentTime,
-        volume,
+        masterVolume, // 主音量
+        trackVolume, // 轨道音量
+        effectiveVolume, // 最终有效音量
         playbackRate,
         previewQuality
       }
     });
   }, []);
+
+  // 新增：记录音量组合变化
+  useEffect(() => {
+    logger.info('音量组合更新', {
+      trackVolume: trackVolume.toFixed(3),
+      masterVolume: masterVolume.toFixed(3),
+      effectiveVolume: effectiveVolume.toFixed(3),
+      source: externalTrackVolume !== undefined ? 'timeline_track_volume' : 'default_track_volume',
+      timestamp: new Date().toISOString()
+    });
+  }, [trackVolume, masterVolume, effectiveVolume, externalTrackVolume, logger]);
 
   // 播放/暂停控制
   const handlePlayPause = useCallback(() => {
@@ -92,15 +110,18 @@ export const useVideoPlayback = (
   const handleVolumeChange = useCallback((newVolume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     
-    logger.userAction('音量调节', 'volumeSlider', {
-      previousVolume: volume,
-      newVolume: clampedVolume,
-      volumeDelta: clampedVolume - volume,
+    logger.userAction('主音量调节', 'masterVolumeSlider', {
+      previousMasterVolume: masterVolume,
+      newMasterVolume: clampedVolume,
+      masterVolumeDelta: clampedVolume - masterVolume,
+      currentTrackVolume: trackVolume,
+      previousEffectiveVolume: effectiveVolume,
+      newEffectiveVolume: trackVolume * clampedVolume,
       isMuted: clampedVolume === 0
     });
 
-    setVolume(clampedVolume);
-  }, [volume, logger]);
+    setMasterVolume(clampedVolume);
+  }, [masterVolume, trackVolume, effectiveVolume, logger]);
 
   // 播放速度控制
   const handlePlaybackRateChange = useCallback((rate: number) => {
@@ -237,7 +258,8 @@ export const useVideoPlayback = (
   return {
     isPlaying,
     currentTime,
-    volume,
+    volume: masterVolume, // 播放器控件显示的主音量，不受轨道音量影响
+    effectiveVolume, // 实际应用到video元素的有效音量（轨道音量 × 主音量）
     playbackRate,
     previewQuality,
     isFullscreen,

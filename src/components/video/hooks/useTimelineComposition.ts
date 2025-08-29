@@ -72,13 +72,15 @@ export const useTimelineComposition = (
                 // 新增：传递裁剪信息
                 clipStart,
                 clipEnd,
-                originalDuration
+                originalDuration,
+                // 新增：音量控制，结合轨道音量和项目音量
+                volume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 1)) // 限制在[0,1]范围
               };
               allVideoItems.push(videoSequence);
               
               // 记录裁剪信息（仅在调试时启用）
               if (process.env.NODE_ENV === 'development') {
-                logger.info('添加视频序列项目（包含裁剪信息）', {
+                logger.info('添加视频序列项目（包含裁剪信息和音量）', {
                   itemId: item.id,
                   itemName: item.name,
                   timelineStartTime: item.startTime,
@@ -89,7 +91,11 @@ export const useTimelineComposition = (
                   isTrimmed: clipStart > 0 || clipEnd < originalDuration,
                   trimmedDuration: (clipEnd - clipStart).toFixed(2),
                   materialUrl: material.url,
-                  trackId: item.trackId
+                  trackId: item.trackId,
+                  // 新增：音量信息
+                  itemVolume: item.volume ?? 1,
+                  trackVolume: track.volume,
+                  finalVolume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 1))
                 });
               }
             }
