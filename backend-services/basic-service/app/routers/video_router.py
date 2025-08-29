@@ -617,7 +617,10 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
         "image_url": request.image_url,
         "effect": request.effect,
         "duration": request.duration,
-        "task_id": request.task_id
+        "task_id": request.task_id,
+        "ken_burns_direction": request.ken_burns_direction,
+        "pan_direction": request.pan_direction,
+        "custom_filename": request.custom_filename
     })
     
     try:

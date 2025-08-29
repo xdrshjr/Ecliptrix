@@ -75,6 +75,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   
   // Image to video conversion state
   const [imageToVideoStatus, setImageToVideoStatus] = useState<Record<string, 'idle' | 'converting' | 'completed' | 'error'>>({});
+  const [downloadingMaterials, setDownloadingMaterials] = useState<Set<string>>(new Set());
   const [showImageToVideoModal, setShowImageToVideoModal] = useState(false);
   const [selectedImageForConversion, setSelectedImageForConversion] = useState<MaterialItem | null>(null);
 
@@ -290,6 +291,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       e.stopPropagation();
     }
 
+    // 设置下载状态
+    setDownloadingMaterials(prev => new Set([...Array.from(prev), material.id]));
+
     try {
       logger.userAction('下载素材文件', 'downloadMaterial', {
         materialId: material.id,
@@ -341,7 +345,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         // 处理其他类型文件下载
         const fileName = material.metadata?.fileName || material.name;
         const fileExtension = material.format ? `.${material.format}` : '';
-        const downloadFileName = fileName.includes('.') ? fileName : `${fileName}${fileExtension}`;
+        
+        // 确保视频文件有正确的扩展名
+        let downloadFileName;
+        if (fileName.includes('.')) {
+          downloadFileName = fileName;
+        } else {
+          // 如果是视频类型但没有扩展名，确保添加.mp4
+          if (material.type === 'video' && !fileExtension) {
+            downloadFileName = `${fileName}.mp4`;
+          } else {
+            downloadFileName = `${fileName}${fileExtension}`;
+          }
+        }
 
         if (material.url.startsWith('blob:') || material.url.startsWith('data:')) {
           // 本地blob URL，直接下载
@@ -391,6 +407,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         materialType: material.type
       });
       showError(`${t.materialsPanel.subtitleDownloadError}: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      // 清除下载状态
+      setDownloadingMaterials(prev => {
+        const newSet = new Set(Array.from(prev));
+        newSet.delete(material.id);
+        return newSet;
+      });
     }
   };
 
@@ -587,7 +610,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         materialId,
         effect,
         duration,
-        imageUrl: selectedImageForConversion.url
+        imageUrl: selectedImageForConversion.url,
+        kenBurnsDirection: options.kenBurnsDirection,
+        panDirection: options.panDirection,
+        imageName: selectedImageForConversion.name,
+        imageSize: `${selectedImageForConversion.width}x${selectedImageForConversion.height}`
       });
 
       let requestBody: any = {
@@ -635,9 +662,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
       if (result.success) {
         // 转换成功，添加生成的视频到素材管理
+        // 确保视频文件名包含正确的扩展名
+        const baseFileName = selectedImageForConversion.name.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+        const videoFileName = `${baseFileName}_${effect}.mp4`;
+        
         const newVideoMaterial: MaterialItem = {
           id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: `${selectedImageForConversion.name}_${effect}`,
+          name: videoFileName,
           type: 'video',
           format: 'mp4',
           size: result.file_size || 0,
@@ -1090,12 +1121,23 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     
                     <button
                       onClick={(e) => handleDownloadMaterial(material, e)}
-                      className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-all duration-200 group"
-                      title={t.materialsPanel.downloadMaterial}
+                      disabled={downloadingMaterials.has(material.id)}
+                      className={`flex-1 flex items-center justify-center px-1.5 py-0.5 rounded transition-all duration-200 group ${
+                        downloadingMaterials.has(material.id)
+                          ? 'text-blue-600 bg-blue-50 cursor-not-allowed'
+                          : 'text-gray-600 hover:text-green-600 hover:bg-green-50'
+                      }`}
+                      title={downloadingMaterials.has(material.id) ? '下载中...' : t.materialsPanel.downloadMaterial}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
+                      {downloadingMaterials.has(material.id) ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      )}
                     </button>
                   </div>
 
@@ -1219,14 +1261,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
                 >
                   <div className="font-medium">Ken Burns - 放大</div>
-                  <div className="text-sm text-gray-500">从正常大小逐渐放大</div>
+                  <div className="text-sm text-gray-500">从正常大小缓慢细微放大（稳定渐变效果）</div>
                 </button>
                 <button
                   onClick={() => convertImageToVideo('ken_burns', 5.0, { kenBurnsDirection: 'zoom_out' })}
                   className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
                 >
                   <div className="font-medium">Ken Burns - 缩小</div>
-                  <div className="text-sm text-gray-500">从放大状态逐渐缩小</div>
+                  <div className="text-sm text-gray-500">从细微放大状态缓慢缩小至正常大小（稳定渐变效果）</div>
                 </button>
               </div>
 

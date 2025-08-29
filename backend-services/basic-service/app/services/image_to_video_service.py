@@ -232,26 +232,47 @@ class ImageToVideoService:
         # Ensure dimensions are even for H.264 encoding
         even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
         
-        # Ensure doubled dimensions are also even
+        # Ensure doubled dimensions are also even for scaling
         scale_width, scale_height = self._ensure_even_dimensions(even_width * 2, even_height * 2)
         
-        if direction == "zoom_out":
-            # Start zoomed in, zoom out
-            scale_start = "1.3"
-            scale_end = "1.0"
-        else:
-            # Start normal, zoom in
-            scale_start = "1.0"
-            scale_end = "1.3"
+        # Calculate total frames for the duration
+        fps = 30
+        total_frames = int(duration * fps)
         
-        # Ken Burns effect with smooth zoom
+        # Define zoom range for Ken Burns effect (subtle zoom for natural look)
+        if direction == "zoom_out":
+            # Start slightly zoomed in, zoom out to normal
+            zoom_start = 1.1
+            zoom_end = 1.0
+            logger.info(f"Ken Burns zoom_out effect: {zoom_start} -> {zoom_end} over {duration}s ({total_frames} frames)")
+        else:
+            # Start normal, zoom in slightly
+            zoom_start = 1.0
+            zoom_end = 1.1
+            logger.info(f"Ken Burns zoom_in effect: {zoom_start} -> {zoom_end} over {duration}s ({total_frames} frames)")
+        
+        # Create smooth linear interpolation for zoom
+        # Formula: zoom_start + (zoom_end - zoom_start) * (frame / total_frames)
+        # Using 'on' variable which represents current frame number in zoompan
+        zoom_formula = f"{zoom_start}+({zoom_end}-{zoom_start})*on/{total_frames}"
+        
+        # Ken Burns effect with smooth zoom transition and absolutely stable center position
+        # Use a different approach: scale to exact output size and use zoompan with fixed center
+        # This eliminates any potential for coordinate drift or jitter
+        
         filter_complex = (
-            f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=increase,"
-            f"crop={scale_width}:{scale_height},"
-            f"zoompan=z='if(lte(zoom,1.0),{scale_start},max(1.001,zoom-0.0015))'"
-            f":d={int(duration*30)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            f"scale={even_width}:{even_height}:force_original_aspect_ratio=increase,"
+            f"crop={even_width}:{even_height},"
+            f"zoompan=z='{zoom_formula}'"
+            f":d={total_frames}"
+            f":x='(iw-ow)/2'"
+            f":y='(ih-oh)/2'"
             f":s={even_width}x{even_height}"
+            f":fps={fps}"
         )
+        
+        logger.info(f"Ken Burns effect configured with stable center positioning using (iw-ow)/2, (ih-oh)/2")
+        logger.info(f"Ken Burns filter complex: {filter_complex}")
         
         return [
             'ffmpeg',
@@ -261,7 +282,7 @@ class ImageToVideoService:
             '-t', str(duration),
             '-pix_fmt', 'yuv420p',
             '-vf', filter_complex,
-            '-r', '30',
+            '-r', str(fps),
             '-y',
             output_video
         ]
@@ -355,7 +376,10 @@ class ImageToVideoService:
                 "has_image_data": bool(request.image_data),
                 "effect": request.effect,
                 "duration": request.duration,
-                "task_id": request.task_id
+                "task_id": request.task_id,
+                "ken_burns_direction": request.ken_burns_direction,
+                "pan_direction": request.pan_direction,
+                "custom_filename": request.custom_filename
             })
             
             # Get image (either download from URL or save from base64 data)

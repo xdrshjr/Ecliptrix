@@ -5,10 +5,11 @@ The Image to Video Conversion API transforms static images into videos with vari
 
 ### Key Features
 - **Multiple Effects**: Static, Ken Burns (zoom in/out), Pan (left-to-right/right-to-left)
+- **Smooth Ken Burns Effect**: Enhanced with linear interpolation for gradual and fluid zoom transitions
 - **Automatic Upload**: Generated videos are automatically uploaded to Supabase storage
 - **Thumbnail Generation**: Automatic thumbnail creation for generated videos
 - **Flexible Duration**: Configurable video duration (1-30 seconds)
-- **High Quality**: Uses FFmpeg for professional video generation
+- **High Quality**: Uses FFmpeg for professional video generation with optimized scaling
 
 ## Base URL
 ```
@@ -57,25 +58,56 @@ Simple conversion of image to video with no motion effects.
 }
 ```
 
-#### Ken Burns
-Zoom effect that gradually zooms in or out during the video.
+#### Ken Burns Effect
+Creates smooth zoom transitions on images with enhanced linear interpolation.
+
+**Zoom In** (zoom_in): Starts at normal size (1.0x) and gradually zooms to 1.1x over the duration for a subtle effect
 ```json
 {
   "image_url": "https://example.com/image.jpg",
   "effect": "ken_burns",
-  "duration": 5.0,
-  "ken_burns_direction": "zoom_in"
+  "ken_burns_direction": "zoom_in",
+  "duration": 5.0
 }
 ```
 
-#### Pan
-Horizontal panning effect that moves across the image.
+**Zoom Out** (zoom_out): Starts at zoomed in state (1.1x) and gradually zooms out to normal size (1.0x)
+```json
+{
+  "image_url": "https://example.com/image.jpg",
+  "effect": "ken_burns",
+  "ken_burns_direction": "zoom_out",
+  "duration": 5.0
+}
+```
+
+**Technical Details:**
+- Uses linear interpolation formula: `zoom_start + (zoom_end - zoom_start) * (frame / total_frames)`
+- Zoom range: 1.0x to 1.1x for subtle, natural-looking transitions
+- Frame rate: 30 fps for fluid motion
+- Stable center positioning using `(iw-ow)/2, (ih-oh)/2` to eliminate jitter
+- No camera movement or shaking - pure zoom effect only
+
+#### Pan Effect
+Creates horizontal movement across the image.
+
+**Left to Right**:
 ```json
 {
   "image_url": "https://example.com/image.jpg",
   "effect": "pan",
-  "duration": 5.0,
-  "pan_direction": "left_to_right"
+  "pan_direction": "left_to_right",
+  "duration": 5.0
+}
+```
+
+**Right to Left**:
+```json
+{
+  "image_url": "https://example.com/image.jpg",
+  "effect": "pan",
+  "pan_direction": "right_to_left",
+  "duration": 5.0
 }
 ```
 
