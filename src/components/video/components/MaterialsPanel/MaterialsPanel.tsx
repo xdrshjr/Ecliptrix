@@ -888,6 +888,21 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         src={material.thumbnailUrl} 
                         alt={material.name}
                         className="w-full h-full object-cover pointer-events-none"
+                        onLoad={() => {
+                          console.log(`[MaterialsPanel] 缩略图加载成功: ${material.name}`, {
+                            materialId: material.id,
+                            thumbnailUrl: material.thumbnailUrl,
+                            materialType: material.type
+                          });
+                        }}
+                        onError={(e) => {
+                          console.error(`[MaterialsPanel] 缩略图加载失败: ${material.name}`, {
+                            materialId: material.id,
+                            thumbnailUrl: material.thumbnailUrl,
+                            materialType: material.type,
+                            error: e
+                          });
+                        }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">

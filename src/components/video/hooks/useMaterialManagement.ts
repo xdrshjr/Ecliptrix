@@ -413,7 +413,8 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
               logger.info('文件上传到Supabase成功', {
                 fileName: file.name,
                 fileUrl: result.file_url,
-                fileSize: result.file_size
+                fileSize: result.file_size,
+                materialType: materialType
               });
 
               // 下载文件到本地（音频使用音频管理器，图片暂时也用视频管理器）
@@ -426,6 +427,37 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
               // 创建本地URL
               const localUrl = URL.createObjectURL(fileBlob);
 
+              // 对于图片类型，获取图片尺寸信息
+              let imageWidth: number | undefined;
+              let imageHeight: number | undefined;
+              
+              if (materialType === 'image') {
+                try {
+                  // 创建临时图片元素来获取尺寸
+                  const img = new Image();
+                  await new Promise<void>((resolve, reject) => {
+                    img.onload = () => {
+                      imageWidth = img.naturalWidth;
+                      imageHeight = img.naturalHeight;
+                      resolve();
+                    };
+                    img.onerror = () => reject(new Error('无法加载图片'));
+                    img.src = localUrl;
+                  });
+                  
+                  logger.info('图片尺寸获取成功', {
+                    fileName: file.name,
+                    width: imageWidth,
+                    height: imageHeight
+                  });
+                } catch (error) {
+                  logger.warn('获取图片尺寸失败', {
+                    fileName: file.name,
+                    error: error instanceof Error ? error.message : String(error)
+                  });
+                }
+              }
+
               // 创建素材项
               const material: MaterialItem = {
                 id: `${materialType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -435,6 +467,11 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
                 size: result.file_size,
                 url: localUrl,
                 serverUrl: result.file_url,
+                // 对于图片类型，使用服务器URL作为缩略图
+                thumbnailUrl: materialType === 'image' ? result.file_url : undefined,
+                // 设置图片尺寸信息
+                width: imageWidth,
+                height: imageHeight,
                 createdAt: new Date(),
                 metadata: {
                   originalUrl: result.file_url,
@@ -442,6 +479,20 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
                   isLocalFile: true
                 }
               };
+
+              logger.info('素材项创建完成', {
+                materialId: material.id,
+                fileName: file.name,
+                materialType: material.type,
+                localUrl: localUrl,
+                serverUrl: result.file_url,
+                thumbnailUrl: material.thumbnailUrl,
+                hasServerUrl: !!result.file_url,
+                hasThumbnail: !!material.thumbnailUrl,
+                size: result.file_size,
+                width: material.width,
+                height: material.height
+              });
 
               uploadedMaterials.push(material);
             }
