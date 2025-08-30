@@ -211,6 +211,7 @@ export interface TimelineState {
   isPlaying: boolean;     // 是否正在播放
   snapToGrid: boolean;    // 是否吸附到网格
   gridSize: number;       // 网格大小（秒）
+  scrollLeft: number;     // 水平滚动位置（像素）
 }
 
 export type TimelineToolType = 

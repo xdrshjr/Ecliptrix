@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { RefObject } from 'react';
 import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
 import { SupportedLocale } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -23,6 +23,9 @@ interface TrackContainerProps {
   onReorderTracks: (sourceIndex: number, destinationIndex: number) => void;
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
   locale?: SupportedLocale; // 保持向后兼容性，但context优先
+  scrollRef?: RefObject<HTMLDivElement | null>;
+  onScroll?: (scrollLeft: number) => void;
+  scrollLeft?: number;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -41,7 +44,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onRemoveTrack,
   onReorderTracks,
   onMaterialDrop,
-  locale // 保持向后兼容性，但不再使用
+  locale, // 保持向后兼容性，但不再使用
+  scrollRef,
+  onScroll,
+  scrollLeft = 0
 }) => {
   // 使用LocaleContext获取国际化翻译
   const { t, locale: contextLocale } = useLocale();
@@ -76,32 +82,45 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     <div className="track-container flex-1 flex flex-col overflow-hidden bg-gray-50">
       {/* 轨道列表 */}
       <div 
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto overflow-x-auto"
         onClick={handleContainerClick}
+        onScroll={(e) => {
+          if (onScroll) {
+            onScroll(e.currentTarget.scrollLeft);
+          }
+        }}
       >
-        {sortedTracks.length > 0 ? (
-          sortedTracks.map((track) => (
-            <Track
-              key={track.id}
-              track={track}
-              pixelsPerSecond={pixelsPerSecond}
-              selectedItems={timelineState.selectedItems}
-              onSelectItem={onSelectItem}
-              onMoveItem={onMoveItem}
-              onResizeItem={onResizeItem}
-              onSubtitleEdit={onSubtitleEdit}
-              onEditSubtitles={onEditSubtitles}
-              onToggleMute={onToggleTrackMute}
-              onToggleLock={onToggleTrackLock}
-              onToggleVisibility={onToggleTrackVisibility}
-              onVolumeChange={onTrackVolumeChange}
-              onSelectAllItems={onSelectAllTrackItems}
-              onMaterialDrop={onMaterialDrop}
-              totalDuration={totalDuration}
-              locale={contextLocale} // 传递context中的locale
-            />
-          ))
-        ) : (
+        {/* 滚动内容容器 */}
+        <div 
+          className="relative"
+          style={{ 
+            minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`
+          }}
+        >
+          {sortedTracks.length > 0 ? (
+            sortedTracks.map((track) => (
+              <Track
+                key={track.id}
+                track={track}
+                pixelsPerSecond={pixelsPerSecond}
+                selectedItems={timelineState.selectedItems}
+                onSelectItem={onSelectItem}
+                onMoveItem={onMoveItem}
+                onResizeItem={onResizeItem}
+                onSubtitleEdit={onSubtitleEdit}
+                onEditSubtitles={onEditSubtitles}
+                onToggleMute={onToggleTrackMute}
+                onToggleLock={onToggleTrackLock}
+                onToggleVisibility={onToggleTrackVisibility}
+                onVolumeChange={onTrackVolumeChange}
+                onSelectAllItems={onSelectAllTrackItems}
+                onMaterialDrop={onMaterialDrop}
+                totalDuration={totalDuration}
+                locale={contextLocale} // 传递context中的locale
+              />
+            ))
+          ) : (
           /* 空状态显示 */
           <div className="flex-1 flex items-center justify-center py-16">
             <div className="text-center">
@@ -146,6 +165,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* 底部轨道管理栏 - 高度与时间刻度轴一致 */}

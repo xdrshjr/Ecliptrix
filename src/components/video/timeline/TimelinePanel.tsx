@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -108,7 +108,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       playbackRate: 1.0,
       isPlaying: false,
       snapToGrid: true,
-      gridSize: 0.5
+      gridSize: 0.5,
+      scrollLeft: 0
     };
   }, [t]);
 
@@ -122,6 +123,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // 字幕编辑模态框状态
   const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+
+  // 滚动同步相关refs
+  const rulerScrollRef = useRef<HTMLDivElement | null>(null);
+  const trackScrollRef = useRef<HTMLDivElement | null>(null);
+  const isScrollingSyncRef = useRef(false);
 
   // 使用通知hook
   const { showSuccess, showError } = useNotification();
@@ -1446,6 +1452,59 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     handleCloseSubtitleEditModal();
   }, [editingTrackId, handleCloseSubtitleEditModal]);
 
+  // 处理水平滚动同步
+  const handleRulerScroll = useCallback((scrollLeft: number) => {
+    if (isScrollingSyncRef.current) return;
+    
+    console.log(`[TimelinePanel] 时间刻度尺滚动同步`, {
+      scrollLeft,
+      timestamp: new Date().toISOString()
+    });
+
+    isScrollingSyncRef.current = true;
+    
+    // 同步轨道容器滚动
+    if (trackScrollRef.current) {
+      trackScrollRef.current.scrollLeft = scrollLeft;
+    }
+    
+    // 更新状态
+    setTimelineState(prev => ({
+      ...prev,
+      scrollLeft
+    }));
+    
+    setTimeout(() => {
+      isScrollingSyncRef.current = false;
+    }, 10);
+  }, []);
+
+  const handleTrackScroll = useCallback((scrollLeft: number) => {
+    if (isScrollingSyncRef.current) return;
+    
+    console.log(`[TimelinePanel] 轨道容器滚动同步`, {
+      scrollLeft,
+      timestamp: new Date().toISOString()
+    });
+
+    isScrollingSyncRef.current = true;
+    
+    // 同步时间刻度尺滚动
+    if (rulerScrollRef.current) {
+      rulerScrollRef.current.scrollLeft = scrollLeft;
+    }
+    
+    // 更新状态
+    setTimelineState(prev => ({
+      ...prev,
+      scrollLeft
+    }));
+    
+    setTimeout(() => {
+      isScrollingSyncRef.current = false;
+    }, 10);
+  }, []);
+
   return (
     <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
       {/* 工具栏 */}
@@ -1477,6 +1536,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         zoomLevel={timelineState.zoomLevel}
         onZoomChange={handleZoomChange}
         isPlaying={timelineState.isPlaying}
+        scrollRef={rulerScrollRef}
+        onScroll={handleRulerScroll}
+        scrollLeft={timelineState.scrollLeft}
       />
 
       {/* 轨道容器 */}
@@ -1497,6 +1559,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onReorderTracks={handleReorderTracks}
         onMaterialDrop={handleMaterialDrop}
         locale={locale}
+        scrollRef={trackScrollRef}
+        onScroll={handleTrackScroll}
+        scrollLeft={timelineState.scrollLeft}
       />
 
       {/* 字幕编辑模态框 */}

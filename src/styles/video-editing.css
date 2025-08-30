@@ -2077,4 +2077,61 @@
     font-size: 11px;
     padding: 4px 8px;
   }
+}
+
+/* Timeline Horizontal Scrollbar Styles */
+.timeline-ruler::-webkit-scrollbar,
+.track-container > div:first-child::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.timeline-ruler::-webkit-scrollbar-track,
+.track-container > div:first-child::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.timeline-ruler::-webkit-scrollbar-thumb,
+.track-container > div:first-child::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.timeline-ruler::-webkit-scrollbar-thumb:hover,
+.track-container > div:first-child::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.timeline-ruler::-webkit-scrollbar-corner,
+.track-container > div:first-child::-webkit-scrollbar-corner {
+  background: #f1f5f9;
+}
+
+/* Timeline Content Width Animation */
+.timeline-content-wrapper {
+  transition: min-width 0.3s ease-in-out;
+}
+
+/* Timeline Scroll Synchronization Indicator */
+.timeline-scroll-sync {
+  position: relative;
+}
+
+.timeline-scroll-sync::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(to bottom, transparent 0%, #3b82f6 50%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.timeline-scroll-sync.scrolling::after {
+  opacity: 0.6;
 } 

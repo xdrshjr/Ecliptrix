@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, RefObject } from 'react';
 
 interface TimelineRulerProps {
   currentTime: number;
@@ -10,6 +10,9 @@ interface TimelineRulerProps {
   zoomLevel: number;
   onZoomChange: (zoomLevel: number) => void;
   isPlaying: boolean;
+  scrollRef?: RefObject<HTMLDivElement | null>;
+  onScroll?: (scrollLeft: number) => void;
+  scrollLeft?: number;
 }
 
 const TimelineRuler: React.FC<TimelineRulerProps> = ({
@@ -19,7 +22,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   onTimeChange,
   zoomLevel,
   onZoomChange,
-  isPlaying
+  isPlaying,
+  scrollRef,
+  onScroll,
+  scrollLeft = 0
 }) => {
   const rulerRef = useRef<HTMLDivElement>(null);
   const controlPanelRef = useRef<HTMLDivElement>(null);
@@ -267,58 +273,69 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
       {/* 时间刻度区域 */}
       <div 
-        ref={rulerRef}
-        className="flex-1 relative cursor-pointer overflow-hidden"
+        ref={scrollRef || rulerRef}
+        className="flex-1 relative cursor-pointer overflow-x-auto overflow-y-hidden"
         onMouseDown={handleMouseDown}
+        onScroll={(e) => {
+          if (onScroll) {
+            onScroll(e.currentTarget.scrollLeft);
+          }
+        }}
       >
-        {/* 背景 */}
-        <div className="absolute inset-0 bg-white" />
-        
-        {/* 时间刻度 */}
-        <div className="absolute inset-0">
-          {generateTimeMarks()}
-        </div>
-
-        {/* 播放头 */}
-        <div
-          className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+        {/* 滚动内容容器 */}
+        <div 
+          className="relative bg-white"
           style={{ 
-            left: `${currentTime * pixelsPerSecond}px`,
-            boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
+            minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`,
+            height: '100%'
           }}
         >
-          {/* 播放头顶部三角形 */}
-          <div 
-            className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 transform rotate-45"
-            style={{ clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }}
-          />
-          
-          {/* 播放头底部手柄 */}
-          <div 
-            className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-ew-resize"
-            style={{ pointerEvents: 'auto' }}
-          />
-        </div>
-
-        {/* 播放状态指示器 */}
-        {isPlaying && (
-          <div
-            className="absolute top-1 right-2 flex items-center space-x-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full"
-          >
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-            <span>播放中</span>
+          {/* 时间刻度 */}
+          <div className="absolute inset-0">
+            {generateTimeMarks()}
           </div>
-        )}
 
-        {/* 时间网格线延伸到刻度尺 */}
-        <div className="absolute inset-0 pointer-events-none">
-          {[...Array(Math.ceil(totalDuration))].map((_, i) => (
-            <div
-              key={i}
-              className="absolute top-0 bottom-0 border-l border-gray-100"
-              style={{ left: `${i * pixelsPerSecond}px` }}
+          {/* 播放头 */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+            style={{ 
+              left: `${currentTime * pixelsPerSecond}px`,
+              boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
+            }}
+          >
+            {/* 播放头顶部三角形 */}
+            <div 
+              className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 transform rotate-45"
+              style={{ clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }}
             />
-          ))}
+            
+            {/* 播放头底部手柄 */}
+            <div 
+              className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-ew-resize"
+              style={{ pointerEvents: 'auto' }}
+            />
+          </div>
+
+          {/* 播放状态指示器 */}
+          {isPlaying && (
+            <div
+              className="absolute top-1 right-2 flex items-center space-x-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full"
+            >
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <span>播放中</span>
+            </div>
+          )}
+
+          {/* 时间网格线延伸到刻度尺 */}
+          <div className="absolute inset-0 pointer-events-none">
+            {[...Array(Math.ceil(totalDuration))].map((_, i) => (
+              <div
+                key={i}
+                className="absolute top-0 bottom-0 border-l border-gray-100"
+                style={{ left: `${i * pixelsPerSecond}px` }}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
