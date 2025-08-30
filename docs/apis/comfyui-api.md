@@ -6,9 +6,10 @@ The ComfyUI API Service provides a RESTful API for generating images using Comfy
 
 ## Base Configuration
 
-- **Base URL**: `http://localhost:8000` (configurable via environment variables)
+- **Base URL**: `http://localhost:8001` (default port when started via start.sh script)
 - **ComfyUI Integration**: Connects to ComfyUI instance specified in configuration
 - **Authentication**: None (for internal use)
+- **Note**: When using the main start.sh script, this service runs on port 8001 to avoid conflicts with the basic-service (port 8000)
 
 ## Environment Configuration
 
@@ -18,7 +19,7 @@ Create a `.env` file in the service root directory:
 COMFYUI_BASE_URL=http://comfyui-tako.hk.cpolar.io
 LOG_LEVEL=DEBUG
 HOST=0.0.0.0
-PORT=8000
+PORT=8001
 DEBUG=false
 
 # Application Configuration
@@ -247,7 +248,7 @@ import requests
 import time
 
 # Base URL of the service
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8001"
 
 # 1. Check service health
 health_response = requests.get(f"{BASE_URL}/api/v1/health")
@@ -297,10 +298,10 @@ if response.status_code == 200:
 
 ```bash
 # Health check
-curl -X GET "http://localhost:8000/api/v1/health"
+curl -X GET "http://localhost:8001/api/v1/health"
 
 # Generate image
-curl -X POST "http://localhost:8000/api/v1/generate-image" \
+curl -X POST "http://localhost:8001/api/v1/generate-image" \
   -H "Content-Type: application/json" \
   -d '{
     "positive_prompt": "A beautiful landscape",

@@ -16,9 +16,11 @@ NC='\033[0m' # No Color
 # 默认配置
 FRONTEND_PORT=3010
 BACKEND_DIR="backend-services/basic-service"
+COMFYUI_API_DIR="backend-services/comfyui-api-service"
 LOG_DIR="logs"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 BACKEND_LOG="$LOG_DIR/backend.log"
+COMFYUI_API_LOG="$LOG_DIR/comfyui-api.log"
 STARTUP_LOG="$LOG_DIR/startup.log"
 
 # 创建日志目录
@@ -73,6 +75,12 @@ cleanup() {
         kill $BACKEND_PID 2>/dev/null
     fi
     
+    # 停止ComfyUI API进程
+    if [ ! -z "$COMFYUI_API_PID" ]; then
+        log_info "停止ComfyUI API服务 (PID: $COMFYUI_API_PID)..."
+        kill $COMFYUI_API_PID 2>/dev/null
+    fi
+    
     # 等待进程结束
     sleep 2
     
@@ -85,6 +93,11 @@ cleanup() {
     if [ ! -z "$BACKEND_PID" ] && kill -0 $BACKEND_PID 2>/dev/null; then
         log_warning "强制停止后端服务..."
         kill -9 $BACKEND_PID 2>/dev/null
+    fi
+    
+    if [ ! -z "$COMFYUI_API_PID" ] && kill -0 $COMFYUI_API_PID 2>/dev/null; then
+        log_warning "强制停止ComfyUI API服务..."
+        kill -9 $COMFYUI_API_PID 2>/dev/null
     fi
     
     log_info "所有服务已停止"
@@ -114,6 +127,7 @@ log_info "=========================================="
 log_info "工作目录: $(pwd)"
 log_info "前端端口: $FRONTEND_PORT"
 log_info "后端目录: $BACKEND_DIR"
+log_info "ComfyUI API目录: $COMFYUI_API_DIR"
 
 # 环境检查
 log_step "检查运行环境..."
@@ -173,37 +187,16 @@ if [ ! -f "$BACKEND_DIR/run.py" ]; then
     exit 1
 fi
 
-## 前端依赖安装
-#log_step "检查前端依赖..."
-#if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
-#    log_info "安装前端依赖..."
-#    npm install
-#    if [ $? -ne 0 ]; then
-#        log_error "前端依赖安装失败"
-#        handle_error
-#    fi
-#    log_success "前端依赖安装完成"
-#else
-#    log_info "前端依赖已存在，跳过安装"
-#fi
-#
-## 后端依赖安装
-#log_step "检查后端依赖..."
-#cd "$BACKEND_DIR"
-#
-## 安装后端依赖
-#if [ -f "requirements.txt" ]; then
-#    log_info "安装后端依赖..."
-#    $PIP_CMD install -r requirements.txt
-#    if [ $? -ne 0 ]; then
-#        log_error "后端依赖安装失败"
-#        cd "$SCRIPT_DIR"
-#        handle_error
-#    fi
-#    log_success "后端依赖安装完成"
-#else
-#    log_warning "requirements.txt 文件不存在"
-#fi
+# 检查ComfyUI API目录
+if [ ! -d "$COMFYUI_API_DIR" ]; then
+    log_error "ComfyUI API服务目录不存在: $COMFYUI_API_DIR"
+    exit 1
+fi
+
+if [ ! -f "$COMFYUI_API_DIR/run.py" ]; then
+    log_error "ComfyUI API启动文件不存在: $COMFYUI_API_DIR/run.py"
+    exit 1
+fi
 
 cd "$SCRIPT_DIR"
 
@@ -237,6 +230,24 @@ else
     handle_error
 fi
 
+# 启动ComfyUI API服务
+log_info "启动ComfyUI API服务..."
+cd "$COMFYUI_API_DIR"
+nohup $PYTHON_CMD run.py > "../../$COMFYUI_API_LOG" 2>&1 &
+COMFYUI_API_PID=$!
+cd "$SCRIPT_DIR"
+
+# 等待ComfyUI API启动
+sleep 3
+
+# 检查ComfyUI API是否启动成功
+if kill -0 $COMFYUI_API_PID 2>/dev/null; then
+    log_success "ComfyUI API服务启动成功 (PID: $COMFYUI_API_PID)"
+else
+    log_error "ComfyUI API服务启动失败"
+    handle_error
+fi
+
 # 启动前端服务
 log_info "启动前端服务..."
 nohup npm start -- -p $FRONTEND_PORT > "$FRONTEND_LOG" 2>&1 &
@@ -259,13 +270,16 @@ log_success "🚀 Ecliptrix 启动成功！"
 log_info "=========================================="
 log_info "前端地址: http://localhost:$FRONTEND_PORT"
 log_info "后端地址: http://localhost:8000"
+log_info "ComfyUI API地址: http://localhost:8001"
 log_info "前端PID: $FRONTEND_PID"
 log_info "后端PID: $BACKEND_PID"
+log_info "ComfyUI API PID: $COMFYUI_API_PID"
 log_info "=========================================="
 log_info "日志文件:"
 log_info "  启动日志: $STARTUP_LOG"
 log_info "  前端日志: $FRONTEND_LOG"
 log_info "  后端日志: $BACKEND_LOG"
+log_info "  ComfyUI API日志: $COMFYUI_API_LOG"
 log_info "=========================================="
 log_info "按 Ctrl+C 停止所有服务"
 
@@ -279,6 +293,11 @@ while true; do
     
     if ! kill -0 $BACKEND_PID 2>/dev/null; then
         log_error "后端服务已停止"
+        break
+    fi
+
+    if ! kill -0 $COMFYUI_API_PID 2>/dev/null; then
+        log_error "ComfyUI API服务已停止"
         break
     fi
     

@@ -3,9 +3,8 @@
  * 用于与后端Supabase服务通信的客户端函数
  */
 
-// 注意：这个文件中的API调用应该通过Next.js API路由代理
-// 如果需要直接调用后台服务，请确保使用正确的服务器地址配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+// 注意：这个文件中的API调用通过Next.js API路由代理到后端服务
+// 使用相对路径调用Next.js API路由，避免直接调用后台服务
 
 export interface VideoUploadRequest {
   file: File;
@@ -82,7 +81,7 @@ export async function uploadVideoToSupabase(
       formData.append('generate_thumbnail', request.generateThumbnail.toString());
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/supabase/upload-video`, {
+    const response = await fetch('/api/supabase/upload-video', {
       method: 'POST',
       body: formData
     });
@@ -145,7 +144,7 @@ export async function uploadFileToSupabase(
       formData.append('bucket_path', bucketPath);
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/supabase/upload-file`, {
+    const response = await fetch('/api/supabase/upload-file', {
       method: 'POST',
       body: formData
     });
