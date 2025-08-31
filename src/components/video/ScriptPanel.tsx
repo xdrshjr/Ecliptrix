@@ -94,12 +94,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   });
 
   // 视频搜索hook
-  const videoSearch = useVideoSearch(taskId || 'unknown', (materials: MaterialItem[]) => {
-    if (currentSegmentId) {
-      return handleAddVideosToSegment(currentSegmentId, materials);
-    }
-    return false;
-  });
+  const videoSearch = useVideoSearch(
+    taskId || 'unknown', 
+    (materials: MaterialItem[]) => {
+      if (currentSegmentId) {
+        return handleAddVideosToSegment(currentSegmentId, materials);
+      }
+      return false;
+    },
+    currentSegmentId,
+    segments,
+    materials || []
+  );
 
   // 视频AI匹配hook
   const videoAIMatch = useVideoAIMatch(taskId || 'unknown');

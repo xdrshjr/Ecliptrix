@@ -1,19 +1,25 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { MaterialItem, MaterialType } from '@/types';
+import { MaterialItem, MaterialType, ScriptSegment } from '@/types';
 import { UseVideoSearchReturn, SearchOrientation, VideoLibraryType, YoutubeVideoSearchResult, YoutubeDurationRange, YoutubeDurationPreset } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createVideoSearchService, VideoSearchService, VideoSearchResult } from '../services';
 import { createYoutubeVideoSearchService, YoutubeVideoSearchService } from '../services';
 import { getMaxConcurrentDownloads } from '@/lib/api/config';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export const useVideoSearch = (
   taskId: string,
-  onAddMaterials: (materials: MaterialItem[]) => boolean
+  onAddMaterials: (materials: MaterialItem[]) => boolean,
+  currentSegmentId: string | null = null,
+  segments: ScriptSegment[] = [],
+  materials: MaterialItem[] = []
 ): UseVideoSearchReturn => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
     component: 'useVideoSearch'
   }), [taskId]);
+
+  const { showError } = useNotification();
 
   const videoSearchService = useMemo(() => createVideoSearchService(taskId), [taskId]);
   const youtubeVideoSearchService = useMemo(() => createYoutubeVideoSearchService(taskId), [taskId]);
@@ -79,6 +85,75 @@ export const useVideoSearch = (
     const currentResults = activeLibrary === 'official' ? searchResults : youtubeSearchResults;
     return Math.ceil(currentResults.length / pageSize);
   }, [activeLibrary, searchResults.length, youtubeSearchResults.length, pageSize]);
+
+  // 视频时长验证函数
+  const validateVideoDuration = useCallback((selectedVideoMaterials: MaterialItem[]): boolean => {
+    if (!currentSegmentId) {
+      logger.warn('视频时长验证跳过：没有当前段落ID', { currentSegmentId });
+      return true; // 如果没有当前段落ID，跳过验证
+    }
+
+    // 查找当前段落
+    const currentSegment = segments.find(seg => seg.id === currentSegmentId);
+    if (!currentSegment) {
+      logger.warn('视频时长验证跳过：找不到当前段落', { 
+        currentSegmentId,
+        availableSegmentIds: segments.map(s => s.id)
+      });
+      return true; // 如果找不到段落，跳过验证
+    }
+
+    // 查找该段落对应的音频素材
+    const audioMaterial = materials.find(material => 
+      material.type === 'audio' && 
+      material.metadata?.segment_id === currentSegmentId
+    );
+
+    if (!audioMaterial || !audioMaterial.duration) {
+      logger.warn('视频时长验证跳过：找不到段落音频或音频时长', { 
+        currentSegmentId,
+        segmentTitle: currentSegment.title,
+        audioMaterialFound: !!audioMaterial,
+        audioDuration: audioMaterial?.duration
+      });
+      return true; // 如果没有音频素材或音频时长，跳过验证
+    }
+
+    // 计算所有选中视频的总时长
+    const totalVideoDuration = selectedVideoMaterials.reduce((total, video) => {
+      return total + (video.duration || 0);
+    }, 0);
+
+    const audioDuration = audioMaterial.duration;
+    const isValid = totalVideoDuration >= audioDuration;
+
+    logger.info('视频时长验证结果', {
+      currentSegmentId,
+      segmentTitle: currentSegment.title,
+      audioDuration,
+      totalVideoDuration,
+      videoCount: selectedVideoMaterials.length,
+      videoDurations: selectedVideoMaterials.map(v => ({ id: v.id, name: v.name, duration: v.duration })),
+      isValid,
+      validationResult: isValid ? 'PASS' : 'FAIL'
+    });
+
+    if (!isValid) {
+      const errorMessage = '当前所有添加的视频总长度必须大于语音段落的时间长度，请继续添加视频';
+      showError(errorMessage);
+      
+      logger.userAction('视频时长验证失败', 'videoDurationValidation', {
+        currentSegmentId,
+        segmentTitle: currentSegment.title,
+        audioDuration,
+        totalVideoDuration,
+        shortfall: audioDuration - totalVideoDuration,
+        errorMessage
+      });
+    }
+
+    return isValid;
+  }, [currentSegmentId, segments, materials, logger, showError]);
 
   // 处理YouTube时间预设变化
   const handleYoutubeDurationPresetChange = useCallback((preset: YoutubeDurationPreset) => {
@@ -344,6 +419,16 @@ export const useVideoSearch = (
       });
 
       const materials = videoSearchService.convertToMaterials(selectedVideos);
+      
+      // 执行视频时长验证
+      if (!validateVideoDuration(materials)) {
+        logger.warn('官方视频添加被阻止：视频时长验证失败', {
+          attemptedCount: materials.length,
+          materialDurations: materials.map(m => ({ id: m.id, name: m.name, duration: m.duration }))
+        });
+        return; // 验证失败，不继续添加
+      }
+
       const success = onAddMaterials(materials);
 
       if (success) {
@@ -360,7 +445,7 @@ export const useVideoSearch = (
     } else {
       handleAddSelectedYoutubeVideos();
     }
-  }, [activeLibrary, searchResults, selectedResults, logger, videoSearchService, onAddMaterials, closeSearchModal]);
+  }, [activeLibrary, searchResults, selectedResults, logger, videoSearchService, onAddMaterials, closeSearchModal, validateVideoDuration]);
 
   const handleAddSelectedYoutubeVideos = useCallback(async () => {
     const selectedVideos = youtubeSearchResults.filter(video => youtubeSelectedResults.has(video.id));
@@ -382,6 +467,15 @@ export const useVideoSearch = (
       downloadProgress: 0,
       youtubeUrl: selectedVideos.find(v => v.id === material.id)?.videoUrl || material.url
     }));
+
+    // 执行视频时长验证
+    if (!validateVideoDuration(materials)) {
+      logger.warn('Youtube视频添加被阻止：视频时长验证失败', {
+        attemptedCount: materials.length,
+        materialDurations: materials.map(m => ({ id: m.id, name: m.name, duration: m.duration }))
+      });
+      return; // 验证失败，不继续添加
+    }
 
     const success = onAddMaterials(materials);
 
@@ -406,7 +500,7 @@ export const useVideoSearch = (
         attemptedCount: materials.length
       });
     }
-  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal, taskId, maxConcurrentDownloads]);
+  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal, taskId, maxConcurrentDownloads, validateVideoDuration]);
 
   // 下载单个视频的函数
   const downloadSingleVideo = useCallback(async (material: MaterialItem): Promise<void> => {

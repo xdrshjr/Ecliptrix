@@ -627,41 +627,34 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     });
 
     setMaterials(prev => {
-      // 如果是带有segment_id的视频素材，检查是否需要替换
-      if (newMaterial.type === 'video' && newMaterial.metadata?.segment_id) {
-        const segmentId = newMaterial.metadata.segment_id;
+      // 检查是否已存在相同ID的素材（避免重复添加）
+      const existingIndex = prev.findIndex(material => material.id === newMaterial.id);
+      
+      if (existingIndex !== -1) {
+        // 如果素材ID已存在，替换现有素材
+        const updatedMaterials = [...prev];
+        const oldMaterial = updatedMaterials[existingIndex];
+        updatedMaterials[existingIndex] = newMaterial;
         
-        // 查找是否已存在相同segment_id的视频素材
-        const existingIndex = prev.findIndex(material => 
-          material.type === 'video' && 
-          material.metadata?.segment_id === segmentId
-        );
-
-        if (existingIndex !== -1) {
-          // 替换现有素材
-          const updatedMaterials = [...prev];
-          const oldMaterial = updatedMaterials[existingIndex];
-          updatedMaterials[existingIndex] = newMaterial;
-          
-          logger.info('替换现有视频素材', {
-            segmentId,
-            oldMaterialId: oldMaterial.id,
-            oldMaterialName: oldMaterial.name,
-            newMaterialId: newMaterial.id,
-            newMaterialName: newMaterial.name,
-            replacedIndex: existingIndex
-          });
-          
-          return updatedMaterials;
-        }
+        logger.info('替换现有素材（相同ID）', {
+          materialId: newMaterial.id,
+          oldMaterialName: oldMaterial.name,
+          newMaterialName: newMaterial.name,
+          replacedIndex: existingIndex
+        });
+        
+        return updatedMaterials;
       }
       
-      // 如果不需要替换，则直接添加
+      // 如果素材ID不存在，直接添加新素材
       const updatedMaterials = [...prev, newMaterial];
       
       logger.info('添加新素材到列表', {
         materialId: newMaterial.id,
         materialName: newMaterial.name,
+        materialType: newMaterial.type,
+        segmentId: newMaterial.metadata?.segment_id,
+        segmentNumber: newMaterial.metadata?.segment_number,
         previousCount: prev.length,
         newCount: updatedMaterials.length
       });
