@@ -142,6 +142,7 @@ export interface Translations {
     uploadingProgress: string;
     searchVideosTooltip: string;
     deleteMaterialTooltip: string;
+    addToTimelineTooltip: string;
     deleteAllTooltip: string;
     subtitleContentError: string;
     subtitleDownloadError: string;
@@ -367,6 +368,7 @@ export const translations: Record<string, Translations> = {
       uploadingProgress: 'Uploading...',
       searchVideosTooltip: 'Search Online Videos',
       deleteMaterialTooltip: 'Delete material: {name}',
+      addToTimelineTooltip: 'Add to timeline',
       deleteAllTooltip: 'Delete all materials in current tab ({count} items)',
       subtitleContentError: 'Cannot get subtitle content',
       subtitleDownloadError: 'Subtitle file download failed',
@@ -672,6 +674,7 @@ export const translations: Record<string, Translations> = {
       uploadingProgress: '上传中...',
       searchVideosTooltip: '搜索在线视频',
       deleteMaterialTooltip: '删除素材: {name}',
+      addToTimelineTooltip: '添加到轨道中',
       deleteAllTooltip: '删除当前选项卡的所有素材 ({count}个)',
       subtitleContentError: '无法获取字幕内容',
       subtitleDownloadError: '字幕文件下载失败',

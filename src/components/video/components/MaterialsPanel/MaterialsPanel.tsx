@@ -21,6 +21,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   isBatchAnalyzing?: boolean; // 新增：批量解析状态
   getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
   onRetryDownload?: (material: MaterialItem) => void; // 新增：重试下载回调
+  onAddToTimeline?: (material: MaterialItem) => void; // 新增：添加到时间轴回调
   comfyuiHealthStatus?: UseComfyUIHealthReturn; // 新增：ComfyUI健康状态
   taskId: string;
   className?: string;
@@ -43,6 +44,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   isBatchAnalyzing = false, // 新增：批量解析状态
   getVideoAnalysisStatus, // 新增：获取视频解析状态
   onRetryDownload, // 新增：重试下载回调
+  onAddToTimeline, // 新增：添加到时间轴回调
   comfyuiHealthStatus, // 新增：ComfyUI健康状态
   taskId,
   className = '',
@@ -1010,8 +1012,30 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </span>
                     </div>
                     
-                    {/* 删除按钮 - 右上角 */}
-                    <div className="absolute top-1 right-1">
+                    {/* 右上角按钮组 - 添加到时间轴和删除按钮 */}
+                    <div className="absolute top-1 right-1 flex items-center space-x-1">
+                      {/* 添加到时间轴按钮 */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onAddToTimeline) {
+                            logger.userAction('添加素材到时间轴', 'addToTimelineButton', {
+                              materialId: material.id,
+                              materialName: material.name,
+                              materialType: material.type
+                            });
+                            onAddToTimeline(material);
+                          }
+                        }}
+                        className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
+                        title={t.materialsPanel.addToTimelineTooltip}
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                      
+                      {/* 删除按钮 */}
                       <button
                         onClick={(e) => handleSingleMaterialDelete(material, e)}
                         className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"

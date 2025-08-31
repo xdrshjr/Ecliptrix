@@ -215,6 +215,49 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     scriptGeneration.handleGenerateScriptWithConfig(config);
   }, [taskId, documentState.markdownValue.length, scriptGeneration]);
 
+  // 处理添加素材到时间轴
+  const handleAddMaterialToTimeline = useCallback((material: MaterialItem) => {
+    console.log(`[VideoEditingInterface] 添加素材到时间轴`, {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      timestamp: new Date().toISOString()
+    });
+
+    // 根据素材类型确定目标轨道
+    let targetTrackId: string;
+    switch (material.type) {
+      case 'video':
+        targetTrackId = 'video-track-1';
+        break;
+      case 'image':
+        targetTrackId = 'image-track-1';
+        break;
+      case 'audio':
+        targetTrackId = 'audio-track-1';
+        break;
+      case 'subtitle':
+        targetTrackId = 'subtitle-track-1';
+        break;
+      default:
+        console.warn(`[VideoEditingInterface] 未知的素材类型: ${material.type}`);
+        return;
+    }
+
+    // 设置要添加到时间轴的素材
+    setMaterialsToAddToTimeline({
+      materials: [material],
+      targetTrackId,
+      timestamp: Date.now()
+    });
+
+    // 清除状态，避免重复添加
+    setTimeout(() => {
+      setMaterialsToAddToTimeline(undefined);
+    }, 100);
+  }, [taskId]);
+
   // 处理创意构思弹窗
   const handleCreativeBrainstormingClick = useCallback(() => {
     console.log(`[VideoEditingInterface] 用户点击创意构思按钮`, {
@@ -730,6 +773,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 isBatchAnalyzing={isBatchAnalyzing}
                 getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
                 onRetryDownload={videoSearch.retryVideoDownload}
+                onAddToTimeline={handleAddMaterialToTimeline}
                 taskId={taskId}
                 comfyuiHealthStatus={comfyuiHealth}
               />
