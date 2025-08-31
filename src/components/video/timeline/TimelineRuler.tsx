@@ -69,14 +69,16 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     isDragging.current = true;
     
     const rect = rulerRef.current?.getBoundingClientRect();
-    if (rect) {
-      // 修复：rulerRef指向的是时间刻度区域，其left已经是正确的起始位置
-      const x = e.clientX - rect.left;
+    const scrollContainer = scrollRef?.current;
+    if (rect && scrollContainer) {
+      // 计算相对于内容容器的位置，考虑滚动偏移
+      const x = e.clientX - rect.left + scrollContainer.scrollLeft;
       const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
       
       console.log(`[TimelineRuler] 播放头点击定位`, {
         mouseX: e.clientX,
         rectLeft: rect.left.toFixed(2),
+        scrollLeft: scrollContainer.scrollLeft.toFixed(2),
         relativeX: x.toFixed(2),
         calculatedTime: time.toFixed(2),
         pixelsPerSecond: pixelsPerSecond.toFixed(2),
@@ -92,20 +94,24 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging.current && rulerRef.current) {
         const rect = rulerRef.current.getBoundingClientRect();
-        // 修复：rulerRef指向的是时间刻度区域，其left已经是正确的起始位置
-        const x = e.clientX - rect.left;
-        const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
-        
-        console.log(`[TimelineRuler] 拖拽播放头移动`, {
-          newTime: time.toFixed(2),
-          mouseX: e.clientX,
-          rectLeft: rect.left.toFixed(2),
-          relativeX: x.toFixed(2),
-          pixelsPerSecond: pixelsPerSecond.toFixed(2),
-          timestamp: new Date().toISOString()
-        });
-        
-        onTimeChange(time);
+        const scrollContainer = scrollRef?.current;
+        if (scrollContainer) {
+          // 计算相对于内容容器的位置，考虑滚动偏移
+          const x = e.clientX - rect.left + scrollContainer.scrollLeft;
+          const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
+          
+          console.log(`[TimelineRuler] 拖拽播放头移动`, {
+            newTime: time.toFixed(2),
+            mouseX: e.clientX,
+            rectLeft: rect.left.toFixed(2),
+            scrollLeft: scrollContainer.scrollLeft.toFixed(2),
+            relativeX: x.toFixed(2),
+            pixelsPerSecond: pixelsPerSecond.toFixed(2),
+            timestamp: new Date().toISOString()
+          });
+          
+          onTimeChange(time);
+        }
       }
     };
 
@@ -273,9 +279,8 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
       {/* 时间刻度区域 */}
       <div 
-        ref={scrollRef || rulerRef}
-        className="flex-1 relative cursor-pointer overflow-x-auto overflow-y-hidden"
-        onMouseDown={handleMouseDown}
+        ref={scrollRef}
+        className="flex-1 relative overflow-x-hidden overflow-y-hidden"
         onScroll={(e) => {
           if (onScroll) {
             onScroll(e.currentTarget.scrollLeft);
@@ -284,37 +289,20 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       >
         {/* 滚动内容容器 */}
         <div 
-          className="relative bg-white"
+          ref={rulerRef}
+          className="relative bg-white cursor-pointer"
           style={{ 
             minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`,
             height: '100%'
           }}
+          onMouseDown={handleMouseDown}
         >
           {/* 时间刻度 */}
           <div className="absolute inset-0">
             {generateTimeMarks()}
           </div>
 
-          {/* 播放头 */}
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
-            style={{ 
-              left: `${currentTime * pixelsPerSecond}px`,
-              boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
-            }}
-          >
-            {/* 播放头顶部三角形 */}
-            <div 
-              className="absolute -top-1 -left-1.5 w-3 h-3 bg-red-500 transform rotate-45"
-              style={{ clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }}
-            />
-            
-            {/* 播放头底部手柄 */}
-            <div 
-              className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-ew-resize"
-              style={{ pointerEvents: 'auto' }}
-            />
-          </div>
+
 
           {/* 播放状态指示器 */}
           {isPlaying && (

@@ -2079,34 +2079,39 @@
   }
 }
 
-/* Timeline Horizontal Scrollbar Styles */
-.timeline-ruler::-webkit-scrollbar,
+/* Timeline Horizontal Scrollbar Styles - Only for TrackContainer */
 .track-container > div:first-child::-webkit-scrollbar {
   height: 8px;
   width: 8px;
 }
 
-.timeline-ruler::-webkit-scrollbar-track,
 .track-container > div:first-child::-webkit-scrollbar-track {
   background: #f1f5f9;
   border-radius: 4px;
 }
 
-.timeline-ruler::-webkit-scrollbar-thumb,
 .track-container > div:first-child::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
   transition: background-color 0.2s ease;
 }
 
-.timeline-ruler::-webkit-scrollbar-thumb:hover,
 .track-container > div:first-child::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-.timeline-ruler::-webkit-scrollbar-corner,
 .track-container > div:first-child::-webkit-scrollbar-corner {
   background: #f1f5f9;
+}
+
+/* Hide TimelineRuler scrollbar completely */
+.timeline-ruler {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.timeline-ruler::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 /* Timeline Content Width Animation */

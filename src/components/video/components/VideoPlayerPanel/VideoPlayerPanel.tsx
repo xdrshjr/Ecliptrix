@@ -157,7 +157,8 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       playbackRate: 1,
       isPlaying: false,
       snapToGrid: false,
-      gridSize: 1
+      gridSize: 1,
+      scrollLeft: 0
     },
     materials: materials || [],
     taskId,

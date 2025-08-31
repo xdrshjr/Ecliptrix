@@ -1506,7 +1506,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, []);
 
   return (
-    <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
+    <div className={`timeline-panel flex flex-col h-full bg-white relative ${className}`}>
       {/* 工具栏 */}
       <TimelineToolbar
         activeTool={activeTool}
@@ -1563,6 +1563,37 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onScroll={handleTrackScroll}
         scrollLeft={timelineState.scrollLeft}
       />
+
+      {/* 全局播放头 - 贯穿整个时间轴 */}
+      <div
+        className="absolute pointer-events-none z-50"
+        style={{
+          left: `${timelineState.currentTime * (timelineState.zoomLevel * 50) - timelineState.scrollLeft}px`,
+          top: '48px', // 工具栏高度
+          bottom: '0px',
+          width: '2px',
+          background: 'linear-gradient(to bottom, #ef4444, #dc2626)',
+          boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+          transform: 'translateX(-1px)', // 居中对齐
+        }}
+      >
+        {/* 播放头顶部三角形指示器 */}
+        <div 
+          className="absolute -top-2 -left-2 w-4 h-4 bg-red-500 pointer-events-auto cursor-ew-resize"
+          style={{ 
+            clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+          }}
+        />
+        
+        {/* 播放头底部手柄 */}
+        <div 
+          className="absolute -bottom-1 -left-2 w-4 h-3 bg-red-500 rounded-b pointer-events-auto cursor-ew-resize"
+          style={{ 
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+          }}
+        />
+      </div>
 
       {/* 字幕编辑模态框 */}
       {editingTrackId && (
