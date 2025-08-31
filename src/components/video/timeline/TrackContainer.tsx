@@ -8,6 +8,7 @@ import Track from './Track';
 
 interface TrackContainerProps {
   timelineState: TimelineState;
+  currentTime: number; // 当前播放时间，用于垂直对齐线定位
   onSelectItem: (itemId: string, isMultiSelect?: boolean) => void;
   onMoveItem: (itemId: string, newStartTime: number) => void;
   onResizeItem: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
@@ -30,6 +31,7 @@ interface TrackContainerProps {
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
   timelineState,
+  currentTime,
   onSelectItem,
   onMoveItem,
   onResizeItem,
@@ -53,6 +55,28 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   const { t, locale: contextLocale } = useLocale();
   const { tracks, selectedItems, totalDuration, zoomLevel } = timelineState;
   const pixelsPerSecond = zoomLevel * 50; // 基础像素比例
+
+  // 轨道标题栏宽度常量 (对应 Tailwind 的 w-48 = 192px)
+  const TRACK_HEADER_WIDTH = 192;
+
+  // 计算垂直对齐线位置 - 需要加上轨道标题栏的宽度偏移
+  const alignmentLinePosition = currentTime * pixelsPerSecond + TRACK_HEADER_WIDTH;
+
+  // 记录垂直对齐线位置变化（仅在开发环境）
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[TrackContainer] 垂直对齐线位置更新`, {
+        currentTime: currentTime.toFixed(2),
+        pixelsPerSecond: pixelsPerSecond.toFixed(2),
+        trackHeaderWidth: TRACK_HEADER_WIDTH,
+        basePosition: (currentTime * pixelsPerSecond).toFixed(2),
+        alignmentLinePosition: alignmentLinePosition.toFixed(2),
+        totalDuration: totalDuration.toFixed(2),
+        tracksCount: tracks.length,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [currentTime, pixelsPerSecond, totalDuration, tracks.length, alignmentLinePosition]);
 
   // 按顺序排序轨道
   const sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
@@ -98,6 +122,32 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
             minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`
           }}
         >
+          {/* 垂直对齐线 - 与播放头位置对齐 */}
+          {sortedTracks.length > 0 && (
+            <div
+              className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-red-400 pointer-events-none"
+              style={{ 
+                left: `${alignmentLinePosition}px`,
+                height: '100%',
+                opacity: 0.7,
+                zIndex: 5,
+                boxShadow: '0 0 2px rgba(239, 68, 68, 0.3)'
+              }}
+            >
+              {/* 顶部指示器 */}
+              <div 
+                className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white shadow-sm"
+                style={{ opacity: 0.9 }}
+              />
+              
+              {/* 底部指示器 */}
+              <div 
+                className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white shadow-sm"
+                style={{ opacity: 0.9 }}
+              />
+            </div>
+          )}
+
           {sortedTracks.length > 0 ? (
             sortedTracks.map((track) => (
               <Track

@@ -62,55 +62,76 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     console.log(`[TimelineRuler] 开始拖拽播放头`, {
       currentTime: currentTime.toFixed(2),
       mouseX: e.clientX,
+      scrollLeft: scrollLeft.toFixed(2),
       timestamp: new Date().toISOString()
     });
 
     e.preventDefault();
     isDragging.current = true;
     
-    const rect = rulerRef.current?.getBoundingClientRect();
-    const scrollContainer = scrollRef?.current;
-    if (rect && scrollContainer) {
-      // 计算相对于内容容器的位置，考虑滚动偏移
-      const x = e.clientX - rect.left + scrollContainer.scrollLeft;
+    // 使用正确的ref - 与事件监听器绑定的同一个元素
+    const targetElement = scrollRef?.current || rulerRef.current;
+    const rect = targetElement?.getBoundingClientRect();
+    
+    if (rect) {
+      // 计算相对于时间轴的实际位置，需要加上滚动偏移
+      const x = e.clientX - rect.left + scrollLeft;
       const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
       
       console.log(`[TimelineRuler] 播放头点击定位`, {
         mouseX: e.clientX,
         rectLeft: rect.left.toFixed(2),
-        scrollLeft: scrollContainer.scrollLeft.toFixed(2),
-        relativeX: x.toFixed(2),
+        scrollLeft: scrollLeft.toFixed(2),
+        relativeX: (e.clientX - rect.left).toFixed(2),
+        adjustedX: x.toFixed(2),
         calculatedTime: time.toFixed(2),
         pixelsPerSecond: pixelsPerSecond.toFixed(2),
+        totalDuration: totalDuration.toFixed(2),
         timestamp: new Date().toISOString()
       });
       
       onTimeChange(time);
+    } else {
+      console.error(`[TimelineRuler] 无法获取时间轴元素的边界信息`, {
+        hasScrollRef: !!scrollRef?.current,
+        hasRulerRef: !!rulerRef.current,
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
   // 处理鼠标移动和释放
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging.current && rulerRef.current) {
-        const rect = rulerRef.current.getBoundingClientRect();
-        const scrollContainer = scrollRef?.current;
-        if (scrollContainer) {
-          // 计算相对于内容容器的位置，考虑滚动偏移
-          const x = e.clientX - rect.left + scrollContainer.scrollLeft;
+      if (isDragging.current) {
+        // 使用正确的ref - 与事件监听器绑定的同一个元素
+        const targetElement = scrollRef?.current || rulerRef.current;
+        const rect = targetElement?.getBoundingClientRect();
+        
+        if (rect) {
+          // 计算相对于时间轴的实际位置，需要加上滚动偏移
+          const x = e.clientX - rect.left + scrollLeft;
           const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
           
           console.log(`[TimelineRuler] 拖拽播放头移动`, {
             newTime: time.toFixed(2),
             mouseX: e.clientX,
             rectLeft: rect.left.toFixed(2),
-            scrollLeft: scrollContainer.scrollLeft.toFixed(2),
-            relativeX: x.toFixed(2),
+            scrollLeft: scrollLeft.toFixed(2),
+            relativeX: (e.clientX - rect.left).toFixed(2),
+            adjustedX: x.toFixed(2),
             pixelsPerSecond: pixelsPerSecond.toFixed(2),
+            totalDuration: totalDuration.toFixed(2),
             timestamp: new Date().toISOString()
           });
           
           onTimeChange(time);
+        } else {
+          console.error(`[TimelineRuler] 拖拽时无法获取时间轴元素的边界信息`, {
+            hasScrollRef: !!scrollRef?.current,
+            hasRulerRef: !!rulerRef.current,
+            timestamp: new Date().toISOString()
+          });
         }
       }
     };
@@ -134,7 +155,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [currentTime, totalDuration, pixelsPerSecond, onTimeChange]);
+  }, [currentTime, totalDuration, pixelsPerSecond, onTimeChange, scrollRef, scrollLeft]);
 
   // 生成时间刻度
   const generateTimeMarks = () => {
@@ -279,8 +300,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
       {/* 时间刻度区域 */}
       <div 
-        ref={scrollRef}
-        className="flex-1 relative overflow-x-hidden overflow-y-hidden"
+        ref={scrollRef || rulerRef}
+        className="flex-1 relative cursor-pointer overflow-x-hidden overflow-y-hidden"
+        onMouseDown={handleMouseDown}
         onScroll={(e) => {
           if (onScroll) {
             onScroll(e.currentTarget.scrollLeft);
@@ -289,20 +311,37 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       >
         {/* 滚动内容容器 */}
         <div 
-          ref={rulerRef}
-          className="relative bg-white cursor-pointer"
+          className="relative bg-white"
           style={{ 
             minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`,
             height: '100%'
           }}
-          onMouseDown={handleMouseDown}
         >
           {/* 时间刻度 */}
           <div className="absolute inset-0">
             {generateTimeMarks()}
           </div>
 
-
+          {/* 播放头 */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+            style={{ 
+              left: `${currentTime * pixelsPerSecond}px`,
+              boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
+            }}
+          >
+            {/* 播放头顶部手柄 */}
+            <div 
+              className="absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t cursor-ew-resize"
+              style={{ pointerEvents: 'auto' }}
+            />
+            
+            {/* 播放头底部手柄 */}
+            <div 
+              className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-ew-resize"
+              style={{ pointerEvents: 'auto' }}
+            />
+          </div>
 
           {/* 播放状态指示器 */}
           {isPlaying && (
