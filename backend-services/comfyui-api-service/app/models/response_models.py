@@ -25,12 +25,22 @@ class ImageInfo(BaseModel):
     size_bytes: Optional[int] = Field(default=None, description="File size in bytes")
 
 
+class VideoInfo(BaseModel):
+    """Information about a generated video."""
+    filename: str = Field(..., description="Video filename")
+    subfolder: str = Field(default="", description="Video subfolder")
+    type: str = Field(default="output", description="Video type")
+    url: Optional[str] = Field(default=None, description="Download URL")
+    size_bytes: Optional[int] = Field(default=None, description="File size in bytes")
+    duration: Optional[float] = Field(default=None, description="Video duration in seconds")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
-    status: str = Field(default="healthy", description="Service status")
-    comfyui_status: str = Field(..., description="ComfyUI connection status")
+    status: str = Field(..., description="Overall service status")
+    message: str = Field(..., description="Status message")
     timestamp: datetime = Field(default_factory=datetime.now, description="Check timestamp")
-    version: str = Field(..., description="Service version")
+    details: Optional[dict] = Field(default=None, description="Detailed health information")
     
     @field_serializer('timestamp')
     def serialize_timestamp(self, timestamp: datetime) -> str:
@@ -56,12 +66,35 @@ class ImageGenerationResponse(BaseModel):
     estimated_time: Optional[int] = Field(default=None, description="Estimated completion time in seconds")
 
 
+class DigitalHumanGenerationResponse(BaseModel):
+    """Response for digital human video generation request."""
+    prompt_id: str = Field(..., description="Unique identifier for the generation task")
+    status: GenerationStatus = Field(default=GenerationStatus.PENDING, description="Current status")
+    message: str = Field(..., description="Status message")
+    estimated_time: Optional[int] = Field(default=None, description="Estimated completion time in seconds")
+
+
 class StatusResponse(BaseModel):
     """Response for status check."""
     prompt_id: str = Field(..., description="Generation task identifier")
     status: GenerationStatus = Field(..., description="Current status")
     progress: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Progress percentage (0-1)")
     images: List[ImageInfo] = Field(default=[], description="Generated images if completed")
+    error_message: Optional[str] = Field(default=None, description="Error message if failed")
+    created_at: Optional[datetime] = Field(default=None, description="Task creation timestamp")
+    completed_at: Optional[datetime] = Field(default=None, description="Task completion timestamp")
+    
+    @field_serializer('created_at', 'completed_at')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return dt.isoformat() if dt else None
+
+
+class DigitalHumanStatusResponse(BaseModel):
+    """Response for digital human status check."""
+    prompt_id: str = Field(..., description="Generation task identifier")
+    status: GenerationStatus = Field(..., description="Current status")
+    progress: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Progress percentage (0-1)")
+    videos: List[VideoInfo] = Field(default=[], description="Generated videos if completed")
     error_message: Optional[str] = Field(default=None, description="Error message if failed")
     created_at: Optional[datetime] = Field(default=None, description="Task creation timestamp")
     completed_at: Optional[datetime] = Field(default=None, description="Task completion timestamp")

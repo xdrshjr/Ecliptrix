@@ -17,6 +17,7 @@ class ComfyUIConfig(BaseModel):
     request_timeout: int = Field(default=30, description="Request timeout in seconds")
     max_wait_time: int = Field(default=300, description="Maximum wait time for completion")
     poll_interval: int = Field(default=5, description="Status polling interval in seconds")
+    input_dir: str = Field(default=os.getenv("COMFYUI_INPUT_DIR", "./comfyui_input"), description="ComfyUI input directory for uploaded files")
 
 
 class WorkflowConfig(BaseModel):

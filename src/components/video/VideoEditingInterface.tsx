@@ -16,6 +16,7 @@ import {
   useTimelineComposition,
   useVideoAnalysis,
   useAIImageGeneration,
+  useDigitalHumanGeneration,
   useComfyUIHealth
 } from './hooks';
 import { mockScriptSegments, mockVideoPreview } from './data';
@@ -30,7 +31,8 @@ import {
   ScriptGenerationModal,
   CreativeBrainstormingModal,
   VideoAnalysisModal,
-  AIImageGenerationModal
+  AIImageGenerationModal,
+  DigitalHumanGenerationModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -147,6 +149,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加AI生图功能
   const aiImageGeneration = useAIImageGeneration(taskId, materialManagement.addMaterials);
+  const digitalHumanGeneration = useDigitalHumanGeneration(taskId, materialManagement.addMaterials);
   
   // 添加ComfyUI健康检查功能
   const comfyuiHealth = useComfyUIHealth(taskId, true);
@@ -767,6 +770,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onSearchVideos={videoSearch.openSearchModal}
                 onSearchAudios={audioSearch.openSearchModal}
                 onAIImageGeneration={aiImageGeneration.openModal}
+                onDigitalHumanGeneration={digitalHumanGeneration.openModal}
                 onAutoMixAudio={handleAutoMixAudio}
                 onVideoAnalysis={handleVideoAnalysis}
                 onBatchVideoAnalysis={handleBatchVideoAnalysis}
@@ -854,6 +858,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <AIImageGenerationModal
         {...aiImageGeneration}
+      />
+
+      <DigitalHumanGenerationModal
+        {...digitalHumanGeneration}
       />
     </div>
   );

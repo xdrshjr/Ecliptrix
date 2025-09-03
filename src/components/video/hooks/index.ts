@@ -8,4 +8,5 @@ export { useAudioSearch } from './useAudioSearch';
 export { useTimelineComposition } from './useTimelineComposition';
 export { useVideoAnalysis } from './useVideoAnalysis';
 export { useAIImageGeneration } from './useAIImageGeneration';
+export { useDigitalHumanGeneration } from './useDigitalHumanGeneration';
 export { useComfyUIHealth } from './useComfyUIHealth'; 

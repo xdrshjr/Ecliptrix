@@ -15,6 +15,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
   onAIImageGeneration?: () => void; // 新增：AI生图回调
+  onDigitalHumanGeneration?: () => void; // 新增：数字人生成回调
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
   onVideoAnalysis?: (material: MaterialItem) => void; // 新增：视频AI解析回调
   onBatchVideoAnalysis?: () => Promise<void>; // 新增：批量视频AI解析回调
@@ -38,6 +39,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
   onAIImageGeneration, // 新增：AI生图回调
+  onDigitalHumanGeneration, // 新增：数字人生成回调
   onAutoMixAudio, // 新增：AI自动混剪回调
   onVideoAnalysis, // 新增：视频AI解析回调
   onBatchVideoAnalysis, // 新增：批量视频AI解析回调
@@ -174,6 +176,28 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     
     if (onAIImageGeneration) {
       onAIImageGeneration();
+    }
+  };
+
+  const handleDigitalHumanGenerationClick = () => {
+    // 检查ComfyUI服务是否可用
+    if (!comfyuiHealthStatus?.isServiceAvailable) {
+      logger.warn('数字人生成服务不可用，阻止操作', {
+        healthStatus: comfyuiHealthStatus?.healthStatus?.status,
+        comfyuiStatus: comfyuiHealthStatus?.healthStatus?.comfyui_status,
+        error: comfyuiHealthStatus?.error
+      });
+      return;
+    }
+
+    logger.info('用户点击数字人生成按钮', {
+      materialsCount: materials.length,
+      selectedType: selectedMaterialType,
+      serviceAvailable: comfyuiHealthStatus?.isServiceAvailable
+    });
+    
+    if (onDigitalHumanGeneration) {
+      onDigitalHumanGeneration();
     }
   };
 
@@ -1241,6 +1265,26 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <span>AI生图</span>
+              </button>
+
+              <button
+                onClick={handleDigitalHumanGenerationClick}
+                disabled={!comfyuiHealthStatus?.isServiceAvailable}
+                className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
+                  comfyuiHealthStatus?.isServiceAvailable 
+                    ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer' 
+                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                }`}
+                title={
+                  comfyuiHealthStatus?.isServiceAvailable 
+                    ? "数字人" 
+                    : "数字人服务不可用，请联系管理员"
+                }
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span>数字人</span>
               </button>
               
               {/* 新增：删除全部按钮 */}
