@@ -84,7 +84,7 @@ export interface ScriptGenerationConfig {
 export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
 
 // 下载状态类型
-export type MaterialDownloadStatus = 'idle' | 'downloading' | 'completed' | 'error';
+export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'completed' | 'error';
 
 export interface MaterialItem {
   id: string;

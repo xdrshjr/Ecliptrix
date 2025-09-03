@@ -386,8 +386,8 @@ export interface UseAIImageGenerationReturn {
   
   // Actions
   handleGenerate: () => Promise<void>;
-  handleAddToMaterials: () => void;
-  handleAddSingleToMaterials: (imageUrl: string) => void;
+  handleAddToMaterials: (imageUrls: string[]) => Promise<boolean>;
+  handleAddSingleToMaterials: (imageUrl: string) => Promise<boolean>;
   setPositivePrompt: (prompt: string) => void;
   setNegativePrompt: (prompt: string) => void;
   setWidth: (width: number) => void;
@@ -479,8 +479,8 @@ export interface UseDigitalHumanGenerationReturn {
   
   // Actions
   handleGenerate: () => Promise<void>;
-  handleAddToMaterials: () => void;
-  handleAddSingleToMaterials: (videoInfo: VideoInfo) => void;
+  handleAddToMaterials: () => boolean;
+  handleAddSingleToMaterials: (videoInfo: VideoInfo) => boolean;
   setPositivePrompt: (prompt: string) => void;
   setNegativePrompt: (prompt: string) => void;
   setWidth: (width: number) => void;

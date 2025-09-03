@@ -691,7 +691,7 @@ class ComfyUIService:
             },
             "8": {
                 "inputs": {
-                    "samples": ["31", 0],
+                    "samples": ["3", 0],
                     "vae": ["30", 2]
                 },
                 "class_type": "VAEDecode",

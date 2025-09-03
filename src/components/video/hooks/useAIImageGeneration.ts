@@ -390,6 +390,7 @@ export const useAIImageGeneration = (
     generatedImages,
     generationError,
     generationStatus,
+    currentPromptId,
     
     // 参数
     positivePrompt,

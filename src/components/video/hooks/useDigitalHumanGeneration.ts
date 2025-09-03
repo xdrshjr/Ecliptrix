@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { MaterialItem } from '@/types';
+import { MaterialItem, MaterialType } from '@/types';
 import { UseDigitalHumanGenerationReturn, DigitalHumanGenerationRequest, VideoInfo } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createDigitalHumanGenerationService, DigitalHumanGenerationService } from '../services/digitalHumanGenerationService';
@@ -15,6 +15,7 @@ export const useDigitalHumanGeneration = (
 
   const digitalHumanService = useMemo(() => createDigitalHumanGenerationService(taskId), [taskId]);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const downloadedPromptIds = useRef<Set<string>>(new Set());
 
   // 弹窗状态
@@ -54,15 +55,43 @@ export const useDigitalHumanGeneration = (
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
-      logger.debug('数字人生成轮询已清理');
     }
-  }, [logger]);
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
 
   // 开始轮询状态
   const startPolling = useCallback((promptId: string) => {
     clearPolling();
     
     logger.info('开始轮询数字人生成状态', { promptId });
+    
+    // 添加生成中的素材到素材库
+    const generatingMaterial: MaterialItem = {
+      id: `digital-human-generating-${promptId}`,
+      name: '数字人视频生成中...',
+      type: 'video' as MaterialType,
+      format: 'mp4',
+      size: 0,
+      url: '', // 占位URL
+      downloadStatus: 'generating' as const,
+      downloadProgress: 0,
+      createdAt: new Date(),
+      metadata: {
+        promptId,
+        isDigitalHumanGeneration: true
+      }
+    };
+    
+    const addResult = onAddMaterials([generatingMaterial]);
+    if (addResult) {
+      logger.info('已添加生成中的数字人素材到素材库', { 
+        materialId: generatingMaterial.id,
+        promptId 
+      });
+    }
     
     const poll = async () => {
       try {
@@ -71,19 +100,56 @@ export const useDigitalHumanGeneration = (
         setGenerationStatus(status.status);
         setGenerationProgress(status.progress || 0);
         
+        // 更新素材库中的进度
+        const updatedMaterial: MaterialItem = {
+          ...generatingMaterial,
+          downloadProgress: Math.round((status.progress || 0) * 100)
+        };
+        onAddMaterials([updatedMaterial]);
+        
         if (status.status === 'completed') {
           setGeneratedVideos(status.videos);
           setIsGenerating(false);
           clearPolling();
           
-          logger.info('数字人生成完成', {
+          // 更新素材库 - 移除生成中的素材，添加完成的素材
+          const completedMaterials: MaterialItem[] = status.videos.map((video, index) => ({
+            id: `digital-human-${promptId}-${index}`,
+            name: `数字人视频_${index + 1}`,
+            type: 'video' as MaterialType,
+            format: 'mp4',
+            size: video.size_bytes || 0,
+            duration: video.duration,
+            url: video.url || '',
+            downloadStatus: 'completed' as const,
+            createdAt: new Date(),
+            metadata: {
+              promptId,
+              isDigitalHumanGeneration: true,
+              originalFilename: video.filename
+            }
+          }));
+          
+          onAddMaterials(completedMaterials);
+          
+          logger.info('数字人生成完成，已更新素材库', {
             promptId,
-            videosCount: status.videos.length
+            videosCount: status.videos.length,
+            completedMaterialsCount: completedMaterials.length
           });
         } else if (status.status === 'failed') {
           setGenerationError(status.error_message || '数字人生成失败');
           setIsGenerating(false);
           clearPolling();
+          
+          // 更新素材库中的错误状态
+          const errorMaterial: MaterialItem = {
+            ...generatingMaterial,
+            name: '数字人视频生成失败',
+            downloadStatus: 'error' as const,
+            downloadError: status.error_message || '生成失败'
+          };
+          onAddMaterials([errorMaterial]);
           
           logger.error('数字人生成失败', new Error(status.error_message || '未知错误'), {
             promptId
@@ -100,7 +166,25 @@ export const useDigitalHumanGeneration = (
     
     // 设置定时轮询
     pollIntervalRef.current = setInterval(poll, 5000);
-  }, [digitalHumanService, logger, clearPolling]);
+    
+    // 设置20分钟超时
+    pollTimeoutRef.current = setTimeout(() => {
+      logger.warn('数字人生成超时（20分钟），停止轮询', { promptId });
+      setGenerationError('生成超时，请稍后重试');
+      setIsGenerating(false);
+      clearPolling();
+      
+      // 更新素材库中的超时状态
+      const timeoutMaterial: MaterialItem = {
+        ...generatingMaterial,
+        name: '数字人视频生成超时',
+        downloadStatus: 'error' as const,
+        downloadError: '生成超时（20分钟）'
+      };
+      onAddMaterials([timeoutMaterial]);
+    }, 20 * 60 * 1000); // 20分钟 = 1200000ms
+    
+  }, [digitalHumanService, logger, clearPolling, onAddMaterials]);
 
   // 打开弹窗
   const openModal = useCallback(() => {
@@ -205,6 +289,10 @@ export const useDigitalHumanGeneration = (
       // 开始轮询状态
       startPolling(response.prompt_id);
       
+      // 关闭弹窗
+      setIsModalOpen(false);
+      logger.info('数字人生成开始，弹窗已关闭', { promptId: response.prompt_id });
+      
     } catch (error) {
       setIsGenerating(false);
       setGenerationStatus('failed');
@@ -223,7 +311,7 @@ export const useDigitalHumanGeneration = (
   const handleAddToMaterials = useCallback(() => {
     if (generatedVideos.length === 0) {
       logger.warn('没有可添加的数字人视频');
-      return;
+      return false;
     }
 
     const materials: MaterialItem[] = generatedVideos.map((video, index) => ({
@@ -256,6 +344,8 @@ export const useDigitalHumanGeneration = (
         totalDownloadedPrompts: downloadedPromptIds.current.size
       });
     }
+    
+    return success;
   }, [generatedVideos, currentPromptId, onAddMaterials, logger, digitalHumanService]);
 
   // 添加单个视频到素材库
@@ -285,6 +375,8 @@ export const useDigitalHumanGeneration = (
         filename: videoInfo.filename
       });
     }
+    
+    return success;
   }, [currentPromptId, onAddMaterials, logger, digitalHumanService]);
 
   // 上传视频文件
