@@ -319,12 +319,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   };
 
-  // 根据类型获取样式 - 针对32px轨道高度优化
+  // 根据类型获取样式 - 动态适应轨道高度
   const getItemStyles = () => {
+    // 计算基于轨道高度的动态尺寸
+    const padding = Math.max(2, Math.floor(trackHeight * 0.125)); // 轨道高度的12.5%作为上下边距
+    const itemHeight = trackHeight - padding * 2; // 素材条高度 = 轨道高度 - 上下边距
+    
     const baseStyles = {
       position: 'absolute' as const,
       left: `${left}px`,
       width: `${Math.max(width, 20)}px`, // 最小宽度20px
+      height: `${Math.max(itemHeight, 16)}px`, // 最小高度16px
+      top: `${padding}px`,
       borderRadius: '3px',
       cursor: isDragging ? 'grabbing' : 'grab',
       userSelect: 'none' as const,
@@ -332,13 +338,21 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       zIndex: isSelected ? 10 : 1,
     };
 
-    // 根据素材类型设置不同的颜色和样式 - 为32px轨道高度优化
+    console.log(`[TimelineItem] 动态计算素材条尺寸`, {
+      itemId: item.id,
+      itemType: item.type,
+      trackHeight,
+      padding,
+      itemHeight,
+      finalHeight: Math.max(itemHeight, 16),
+      timestamp: new Date().toISOString()
+    });
+
+    // 根据素材类型设置不同的颜色和样式
     switch (item.type) {
       case 'video':
         return {
           ...baseStyles,
-          height: '24px', // 32px - 8px = 24px
-          top: '4px',
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
@@ -346,8 +360,6 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'audio':
         return {
           ...baseStyles,
-          height: '20px', // 32px - 12px = 20px  
-          top: '6px',
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
@@ -355,8 +367,6 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'subtitle':
         return {
           ...baseStyles,
-          height: '16px', // 32px - 16px = 16px
-          top: '8px',
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
@@ -366,16 +376,35 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   };
 
-  // 渲染项目内容 - 针对紧凑高度优化
+  // 渲染项目内容 - 动态适应轨道高度
   const renderItemContent = () => {
+    // 根据轨道高度动态计算内容样式参数
+    const padding = Math.max(2, Math.floor(trackHeight * 0.125));
+    const itemHeight = trackHeight - padding * 2;
+    const contentPadding = Math.max(2, Math.floor(itemHeight * 0.15)); // 内容内边距
+    const iconSize = Math.max(12, Math.min(24, Math.floor(itemHeight * 0.6))); // 图标大小
+    const fontSize = Math.max(10, Math.min(14, Math.floor(itemHeight * 0.4))); // 字体大小
+    const thumbnailSize = Math.max(12, Math.min(20, Math.floor(itemHeight * 0.7))); // 缩略图大小
+    
     const contentStyle = {
-      padding: '2px 6px', // 减少内边距以适应更小高度
+      padding: `${Math.floor(contentPadding / 2)}px ${contentPadding}px`,
       height: '100%',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       overflow: 'hidden',
     };
+
+    console.log(`[TimelineItem] 动态计算内容样式`, {
+      itemId: item.id,
+      trackHeight,
+      itemHeight,
+      contentPadding,
+      iconSize,
+      fontSize,
+      thumbnailSize,
+      timestamp: new Date().toISOString()
+    });
 
     switch (item.type) {
       case 'video':
@@ -386,14 +415,24 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                 <img 
                   src={item.thumbnailUrl} 
                   alt={item.name}
-                  className="w-4 h-4 rounded object-cover flex-shrink-0" // 缩小缩略图
+                  className="rounded object-cover flex-shrink-0"
+                  style={{ 
+                    width: `${thumbnailSize}px`, 
+                    height: `${thumbnailSize}px` 
+                  }}
                 />
               )}
-              <span className="text-white text-xs font-medium truncate">
+              <span 
+                className="text-white font-medium truncate"
+                style={{ fontSize: `${fontSize}px` }}
+              >
                 {item.name}
               </span>
             </div>
-            <span className="text-white text-xs opacity-75 flex-shrink-0 ml-1">
+            <span 
+              className="text-white opacity-75 flex-shrink-0 ml-1"
+              style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
+            >
               {item.duration.toFixed(1)}s
             </span>
           </div>
@@ -402,22 +441,30 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         return (
           <div style={contentStyle}>
             <div className="flex items-center space-x-1 min-w-0">
-              <div className="w-3 h-3 flex-shrink-0"> {/* 缩小图标 */}
+              <div 
+                className="flex-shrink-0"
+                style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
+              >
                 <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                 </svg>
               </div>
-              <span className="text-white text-xs font-medium truncate">
+              <span 
+                className="text-white font-medium truncate"
+                style={{ fontSize: `${fontSize}px` }}
+              >
                 {item.name}
               </span>
             </div>
-            {/* 简化的波形显示 */}
+            {/* 动态调整的波形显示 */}
             <div className="flex items-center space-x-0.5 flex-shrink-0">
-              {[...Array(6)].map((_, i) => ( // 减少波形条数
+              {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
                 <div 
                   key={i}
                   className="w-0.5 bg-white opacity-60"
-                  style={{ height: `${Math.random() * 8 + 2}px` }} // 减少波形高度
+                  style={{ 
+                    height: `${Math.max(2, Math.random() * (iconSize * 0.6) + 2)}px` 
+                  }}
                 />
               ))}
             </div>
@@ -435,8 +482,11 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                   onChange={(e) => setEditingText(e.target.value)}
                   onKeyDown={handleSubtitleEditKeyDown}
                   onBlur={handleSubtitleEditComplete}
-                  className="flex-1 bg-transparent text-white text-xs font-medium border-none outline-none"
-                  style={{ minWidth: '0' }}
+                  className="flex-1 bg-transparent text-white font-medium border-none outline-none"
+                  style={{ 
+                    minWidth: '0',
+                    fontSize: `${fontSize}px`
+                  }}
                   autoFocus
                   placeholder="输入字幕内容..."
                 />
@@ -444,12 +494,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
             ) : (
               // 显示模式
               <div className="flex items-center space-x-1 min-w-0">
-                <div className="w-3 h-3 flex-shrink-0"> {/* 缩小图标 */}
+                <div 
+                  className="flex-shrink-0"
+                  style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
+                >
                   <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                   </svg>
                 </div>
-                <span className="text-white text-xs font-medium truncate">
+                <span 
+                  className="text-white font-medium truncate"
+                  style={{ fontSize: `${fontSize}px` }}
+                >
                   {item.text || item.name}
                 </span>
               </div>
