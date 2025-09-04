@@ -209,6 +209,11 @@ Content-Type: application/json
 ### 端点
 `GET /api/tts/voice-types`
 
+### 查询参数
+| 参数名 | 类型 | 必需 | 默认值 | 描述 |
+|-------|------|------|-------|------|
+| locale | string | 否 | zh-CN | 语言环境，支持 zh-CN(中文) 和 en(英文) |
+
 ### 响应格式
 
 #### 成功响应

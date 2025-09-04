@@ -21,10 +21,16 @@ export async function GET(request: NextRequest) {
   try {
     logRequest();
 
-    // 调用后端服务
-    console.log(`[TTS Voice Types API] Calling backend service: ${BACKEND_URL}/api/tts/voice-types`);
+    // 获取语言参数
+    const { searchParams } = new URL(request.url);
+    const locale = searchParams.get('locale') || 'zh-CN';
     
-    const backendResponse = await fetch(`${BACKEND_URL}/api/tts/voice-types`, {
+    console.log(`[TTS Voice Types API] Request with locale: ${locale}`);
+
+    // 调用后端服务
+    console.log(`[TTS Voice Types API] Calling backend service: ${BACKEND_URL}/api/tts/voice-types?locale=${locale}`);
+    
+    const backendResponse = await fetch(`${BACKEND_URL}/api/tts/voice-types?locale=${locale}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

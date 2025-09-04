@@ -19,7 +19,8 @@ import {
   useDigitalHumanGeneration,
   useComfyUIHealth
 } from './hooks';
-import { mockScriptSegments, mockVideoPreview } from './data';
+import { getMockScriptSegments, mockVideoPreview } from './data';
+import { useLocale } from '@/contexts/LocaleContext';
 import {
   DocumentPanel,
   AIAssistantPanel,
@@ -46,6 +47,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   content,
   onUpdateContent,
 }) => {
+  // 获取国际化上下文
+  const { locale } = useLocale();
   // 新增：时间同步状态管理
   const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
   // 新增：管理时间轴状态，用于导出功能
@@ -749,7 +752,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           {/* 脚本面板 - 占右侧面板的20%宽度 */}
           <div className="video-editing-script-panel bg-gray-50 border-r border-gray-200">
             <ScriptPanel 
-              segments={content?.scriptSegments || mockScriptSegments} 
+              segments={content?.scriptSegments || getMockScriptSegments(locale)} 
               className="h-full"
               onGenerateScript={scriptGeneration.handleGenerateScript}
               isGenerating={scriptGeneration.isGeneratingScript}

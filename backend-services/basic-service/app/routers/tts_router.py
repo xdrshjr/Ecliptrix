@@ -176,7 +176,7 @@ async def convert_batch_text_to_speech(request: BatchTTSRequest) -> BatchTTSResp
     summary="获取可用音色列表",
     description="获取所有可用的TTS音色类型及其详细信息"
 )
-async def get_voice_types() -> VoiceTypesResponse:
+async def get_voice_types(locale: str = "zh-CN") -> VoiceTypesResponse:
     """
     获取可用的TTS音色类型列表
     
@@ -184,17 +184,20 @@ async def get_voice_types() -> VoiceTypesResponse:
         VoiceTypesResponse: 包含所有可用音色信息的响应
     """
     try:
-        logger.info("收到获取音色列表请求")
+        logger.info("收到获取音色列表请求", {
+            "locale": locale
+        })
         
-        voice_types = tts_service.get_available_voice_types()
+        voice_types = tts_service.get_available_voice_types(locale=locale)
         
         logger.info("获取音色列表成功", {
-            "voice_types_count": len(voice_types)
+            "voice_types_count": len(voice_types),
+            "locale": locale
         })
         
         return VoiceTypesResponse(
             success=True,
-            message="获取音色列表成功",
+            message="获取音色列表成功" if locale == "zh-CN" else "Voice types retrieved successfully",
             data=voice_types
         )
         

@@ -658,8 +658,204 @@ class TTSService:
                 # 等待后重试
                 time.sleep(2 * (attempt + 1))
     
-    def get_available_voice_types(self) -> Dict[str, VoiceTypeInfo]:
+    def get_available_voice_types(self, locale: str = "zh-CN") -> Dict[str, VoiceTypeInfo]:
         """获取可用的音色类型列表，从配置文件读取"""
+        
+        # 分类翻译映射
+        category_translations = {
+            'zh-CN': {
+                '通用场景': '通用场景',
+                '趣味方言': '趣味方言', 
+                '角色扮演': '角色扮演',
+                '播报解说': '播报解说',
+                '有声阅读': '有声阅读',
+                '其他': '其他'
+            },
+            'en': {
+                '通用场景': 'General Scenes',
+                '趣味方言': 'Fun Dialects',
+                '角色扮演': 'Role Playing', 
+                '播报解说': 'Broadcasting',
+                '有声阅读': 'Audio Reading',
+                '其他': 'Others'
+            }
+        }
+        
+        # 音色名称和描述的英文翻译映射
+        voice_translations = {
+            'en': {
+                # 通用场景
+                'zh_male_shaonianzixin_moon_bigtts': {
+                    'name': 'Young Zixin/Brayan (Male)',
+                    'description': 'Young Zixin, clear male voice, suitable for youthful content'
+                },
+                'zh_female_linjianvhai_moon_bigtts': {
+                    'name': 'Girl Next Door (Female)',
+                    'description': 'Girl next door, warm and natural female voice'
+                },
+                'zh_male_yuanboxiaoshu_moon_bigtts': {
+                    'name': 'Knowledgeable Uncle (Male)',
+                    'description': 'Knowledgeable uncle, wise male voice'
+                },
+                'zh_male_yangguangqingnian_moon_bigtts': {
+                    'name': 'Sunny Youth (Male)',
+                    'description': 'Sunny youth, positive and upbeat male voice'
+                },
+                'zh_female_shuangkuaisisi_moon_bigtts': {
+                    'name': 'Straightforward Sisi/Skye (Female)',
+                    'description': 'Straightforward Sisi, crisp and decisive female voice'
+                },
+                'zh_female_tianmeixiaoyuan_moon_bigtts': {
+                    'name': 'Sweet Xiaoyuan (Female)',
+                    'description': 'Sweet Xiaoyuan, sweet and lovely female voice'
+                },
+                'zh_female_qingchezizi_moon_bigtts': {
+                    'name': 'Clear Zizi (Female)',
+                    'description': 'Clear Zizi, crystal clear female voice'
+                },
+                'zh_male_jieshuoxiaoming_moon_bigtts': {
+                    'name': 'Narrator Xiaoming (Male)',
+                    'description': 'Narrator Xiaoming, professional commentary male voice'
+                },
+                'zh_female_kailangjiejie_moon_bigtts': {
+                    'name': 'Cheerful Sister (Female)',
+                    'description': 'Cheerful sister, lively and cheerful female voice'
+                },
+                'zh_male_linjiananhai_moon_bigtts': {
+                    'name': 'Boy Next Door (Male)',
+                    'description': 'Boy next door, warm and natural male voice'
+                },
+                'zh_female_tianmeiyueyue_moon_bigtts': {
+                    'name': 'Sweet Yueyue (Female)',
+                    'description': 'Sweet Yueyue, sweet and charming female voice'
+                },
+                'zh_female_xinlingjitang_moon_bigtts': {
+                    'name': 'Soul Chicken Soup (Female)',
+                    'description': 'Soul chicken soup, warm and healing female voice'
+                },
+                'zh_female_cancan_mars_bigtts': {
+                    'name': 'Cancan (Female)',
+                    'description': 'Cancan, bright and brilliant female voice'
+                },
+                'zh_female_zhixingnvsheng_mars_bigtts': {
+                    'name': 'Intellectual Woman (Female)',
+                    'description': 'Intellectual woman, elegant and wise female voice'
+                },
+                'zh_female_qingxinnvsheng_mars_bigtts': {
+                    'name': 'Fresh Woman (Female)',
+                    'description': 'Fresh woman, fresh and natural female voice'
+                },
+                'zh_male_qingshuangnanda_mars_bigtts': {
+                    'name': 'Refreshing Big Guy (Male)',
+                    'description': 'Refreshing big guy, clean and refreshing male voice'
+                },
+                'zh_female_tiexinnvsheng_mars_bigtts': {
+                    'name': 'Caring Woman (Female)',
+                    'description': 'Caring woman, thoughtful and warm female voice'
+                },
+                # 趣味方言
+                'zh_female_wanqudashu_moon_bigtts': {
+                    'name': 'Bay Area Uncle (Male)',
+                    'description': 'Bay Area uncle, male voice with Bay Area characteristics'
+                },
+                'zh_female_daimengchuanmei_moon_bigtts': {
+                    'name': 'Cute Sichuan Girl (Female)',
+                    'description': 'Cute Sichuan girl, lovely female voice with Sichuan dialect'
+                },
+                'zh_male_guozhoudege_moon_bigtts': {
+                    'name': 'Guangzhou Brother De (Male)',
+                    'description': 'Guangzhou Brother De, male voice with Cantonese characteristics'
+                },
+                'zh_male_beijingxiaoye_moon_bigtts': {
+                    'name': 'Beijing Young Master (Male)',
+                    'description': 'Beijing young master, male voice with Beijing accent'
+                },
+                'zh_male_haoyuxiaoge_moon_bigtts': {
+                    'name': 'Haoyu Brother (Male)',
+                    'description': 'Haoyu brother, male voice with Northeast accent'
+                },
+                'zh_male_guangxiyuanzhou_moon_bigtts': {
+                    'name': 'Guangxi Yuanzhou (Male)',
+                    'description': 'Guangxi Yuanzhou, male voice with Guangxi dialect'
+                },
+                'zh_female_meituojieer_moon_bigtts': {
+                    'name': 'Sister Meituo (Female)',
+                    'description': 'Sister Meituo, female voice with Chongqing dialect'
+                },
+                'zh_male_yuzhouzixuan_moon_bigtts': {
+                    'name': 'Yuzhou Zixuan (Male)',
+                    'description': 'Yuzhou Zixuan, male voice with Henan dialect'
+                },
+                'zh_male_jingqiangkanye_moon_bigtts': {
+                    'name': 'Beijing Accent Kanye/Harmony (Male)',
+                    'description': 'Beijing accent Kanye, male voice with strong Beijing flavor'
+                },
+                # 角色扮演
+                'zh_female_meilinvyou_moon_bigtts': {
+                    'name': 'Charming Girlfriend (Female)',
+                    'description': 'Charming girlfriend, charming female voice'
+                },
+                'zh_male_shenyeboke_moon_bigtts': {
+                    'name': 'Late Night Podcaster (Male)',
+                    'description': 'Late night podcaster, deep and magnetic male voice'
+                },
+                'zh_female_sajiaonvyou_moon_bigtts': {
+                    'name': 'Gentle Girlfriend (Female)',
+                    'description': 'Gentle girlfriend, soft and tender female voice'
+                },
+                'zh_female_yuanqinvyou_moon_bigtts': {
+                    'name': 'Sweet Junior (Female)',
+                    'description': 'Sweet junior, cute and playful female voice'
+                },
+                'zh_female_gaolengyujie_moon_bigtts': {
+                    'name': 'Cool Queen (Female)',
+                    'description': 'Cool queen, aloof and elegant female voice'
+                },
+                'zh_male_aojiaobazong_moon_bigtts': {
+                    'name': 'Arrogant CEO (Male)',
+                    'description': 'Arrogant CEO, domineering male voice'
+                },
+                # 播报解说
+                'en_female_anna_mars_bigtts': {
+                    'name': 'Anna (Female)',
+                    'description': 'Anna, professional English female broadcasting voice'
+                },
+                'zh_male_changtianyi_mars_bigtts': {
+                    'name': 'Mystery Narrator (Male)',
+                    'description': 'Mystery narrator, male voice suitable for suspenseful content'
+                },
+                'zh_male_jieshuonansheng_mars_bigtts': {
+                    'name': 'Magnetic Narrator Male (Male)',
+                    'description': 'Magnetic narrator male voice, professional and magnetic commentary voice'
+                },
+                'zh_female_jitangmeimei_mars_bigtts': {
+                    'name': 'Chicken Soup Sister (Female)',
+                    'description': 'Chicken soup sister, warm and healing female commentary voice'
+                },
+                'zh_male_chunhui_mars_bigtts': {
+                    'name': 'Advertisement Narrator (Male)',
+                    'description': 'Advertisement narrator, professional male advertising voice'
+                },
+                # 有声阅读
+                'zh_male_ruyaqingnian_mars_bigtts': {
+                    'name': 'Elegant Youth (Male)',
+                    'description': 'Elegant youth, refined male voice suitable for reading'
+                },
+                'zh_male_baqiqingshu_mars_bigtts': {
+                    'name': 'Domineering Uncle (Male)',
+                    'description': 'Domineering uncle, powerful male reading voice'
+                },
+                'zh_male_qingcang_mars_bigtts': {
+                    'name': 'Qingcang (Male)',
+                    'description': 'Qingcang, deep and powerful male reading voice'
+                },
+                'zh_male_yangguangqingnian_mars_bigtts': {
+                    'name': 'Energetic Brother (Male)',
+                    'description': 'Energetic brother, vibrant male reading voice'
+                }
+            }
+        }
+        
         try:
             # 获取配置文件路径
             config_path = Path(__file__).parent.parent.parent / "config" / "batch_tts_config.yaml"
@@ -673,7 +869,7 @@ class TTSService:
                 logger.error("音色配置文件不存在", {
                     "config_path": str(config_path)
                 })
-                return self._get_fallback_voice_types()
+                return self._get_fallback_voice_types(locale)
             
             # 读取配置文件
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -688,16 +884,28 @@ class TTSService:
                 "engine_name": volcano_config.get('name', 'Unknown')
             })
             
+            # 获取当前语言的翻译映射
+            translations = category_translations.get(locale, category_translations['zh-CN'])
+            voice_trans = voice_translations.get(locale, {})
+            
             for voice in voices_list:
                 voice_id = voice.get('value')
                 if voice_id:
+                    original_category = voice.get('category', '其他')
+                    translated_category = translations.get(original_category, original_category)
+                    
+                    # 获取翻译的名称和描述
+                    voice_translation = voice_trans.get(voice_id, {})
+                    translated_name = voice_translation.get('name', voice.get('label', voice_id))
+                    translated_description = voice_translation.get('description', voice.get('description', ''))
+                    
                     voice_types[voice_id] = VoiceTypeInfo(
                         id=voice_id,
-                        name=voice.get('label', voice_id),
+                        name=translated_name,
                         language=voice.get('language', 'zh-CN'),
                         gender=voice.get('gender', 'unknown'),
-                        description=voice.get('description', ''),
-                        category=voice.get('category', '其他')
+                        description=translated_description,
+                        category=translated_category
                     )
             
             logger.info("音色列表加载成功", {
@@ -712,11 +920,36 @@ class TTSService:
                 "error": str(e),
                 "config_path": str(config_path) if 'config_path' in locals() else 'unknown'
             })
-            return self._get_fallback_voice_types()
+            return self._get_fallback_voice_types(locale)
     
-    def _get_fallback_voice_types(self) -> Dict[str, VoiceTypeInfo]:
+    def _get_fallback_voice_types(self, locale: str = "zh-CN") -> Dict[str, VoiceTypeInfo]:
         """获取备用音色类型列表（硬编码）"""
-        logger.warning("使用备用音色列表")
+        logger.warning("使用备用音色列表", {
+            "locale": locale
+        })
+        
+        # 分类翻译映射（与上面的保持一致）
+        category_translations = {
+            'zh-CN': {
+                '通用场景': '通用场景',
+                '趣味方言': '趣味方言', 
+                '角色扮演': '角色扮演',
+                '播报解说': '播报解说',
+                '有声阅读': '有声阅读',
+                '其他': '其他'
+            },
+            'en': {
+                '通用场景': 'General Scenes',
+                '趣味方言': 'Fun Dialects',
+                '角色扮演': 'Role Playing', 
+                '播报解说': 'Broadcasting',
+                '有声阅读': 'Audio Reading',
+                '其他': 'Others'
+            }
+        }
+        
+        # 获取当前语言的翻译映射
+        translations = category_translations.get(locale, category_translations['zh-CN'])
         
         voice_types = {
             VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value: VoiceTypeInfo(
@@ -725,7 +958,7 @@ class TTSService:
                 language="zh-CN",
                 gender="female",
                 description="温柔甜美的女性声音，适合讲解和叙述",
-                category="通用场景"
+                category=translations.get("通用场景", "通用场景")
             ),
             VoiceType.ZH_FEMALE_SWEET.value: VoiceTypeInfo(
                 id=VoiceType.ZH_FEMALE_SWEET.value,
@@ -733,7 +966,7 @@ class TTSService:
                 language="zh-CN",
                 gender="female", 
                 description="清甜可爱的女性声音，适合轻松愉快的内容",
-                category="通用场景"
+                category=translations.get("通用场景", "通用场景")
             ),
             VoiceType.ZH_FEMALE_GENTLE.value: VoiceTypeInfo(
                 id=VoiceType.ZH_FEMALE_GENTLE.value,
@@ -741,7 +974,7 @@ class TTSService:
                 language="zh-CN",
                 gender="female",
                 description="温和亲切的女性声音，适合教育和介绍类内容",
-                category="通用场景"
+                category=translations.get("通用场景", "通用场景")
             ),
             VoiceType.ZH_MALE_WARM.value: VoiceTypeInfo(
                 id=VoiceType.ZH_MALE_WARM.value,
@@ -749,7 +982,7 @@ class TTSService:
                 language="zh-CN", 
                 gender="male",
                 description="温暖磁性的男性声音，适合深度内容和专业讲解",
-                category="通用场景"
+                category=translations.get("通用场景", "通用场景")
             ),
             VoiceType.ZH_MALE_POWERFUL.value: VoiceTypeInfo(
                 id=VoiceType.ZH_MALE_POWERFUL.value,
@@ -757,7 +990,7 @@ class TTSService:
                 language="zh-CN",
                 gender="male",
                 description="有力坚定的男性声音，适合激励和宣传内容",
-                category="通用场景"
+                category=translations.get("通用场景", "通用场景")
             ),
             VoiceType.ZH_MALE_STEADY.value: VoiceTypeInfo(
                 id=VoiceType.ZH_MALE_STEADY.value,
@@ -765,7 +998,7 @@ class TTSService:
                 language="zh-CN",
                 gender="male",
                 description="稳重可靠的男性声音，适合新闻和正式内容",
-                category="通用场景"
+                category=translations.get("通用场景", "通用场景")
             )
         }
         

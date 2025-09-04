@@ -26,6 +26,7 @@ import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
 import { VideoAnalysisResponse } from './services/videoAnalysisService';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -57,6 +58,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   // 使用通知hook
   const { showSuccess, showError } = useNotification();
+  
+  // 获取国际化翻译
+  const { t } = useLocale();
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -635,7 +639,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       const totalVideoDuration = matchedMaterials.reduce((total, video) => total + (video.duration || 0), 0);
       
       if (totalVideoDuration < segment.duration) {
-        const errorMessage = `视频总时长 (${Math.ceil(totalVideoDuration)}秒) 需要大于当前音频时长 (${Math.ceil(segment.duration)}秒)`;
+        const errorMessage = t.scriptPanel.errors.videoDurationInsufficient
+          .replace('{videoDuration}', Math.ceil(totalVideoDuration).toString())
+          .replace('{audioDuration}', Math.ceil(segment.duration).toString());
         logger.warn('AI匹配视频时长验证失败', {
           segmentId,
           totalVideoDuration,
@@ -1328,7 +1334,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 onClick={handleGenerateScript}
                 disabled={isGenerating}
                 className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title="生成脚本"
+                title={t.scriptPanel.header.generateScript}
               >
                 {isGenerating ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1351,9 +1357,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <p className="text-sm text-gray-600">暂无脚本内容</p>
+            <p className="text-sm text-gray-600">{t.scriptPanel.emptyState.noScript}</p>
             <p className="text-xs text-gray-500 mt-1">
-              {onGenerateScript ? '点击"生成脚本"按钮根据左侧内容生成脚本' : '文本脚本将显示在这里'}
+              {onGenerateScript ? t.scriptPanel.emptyState.clickGenerate : t.scriptPanel.emptyState.scriptWillAppear}
             </p>
           </div>
         </div>
@@ -1372,9 +1378,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t.scriptPanel.header.title}</h3>
             <span className="text-xs text-gray-500 ml-3">
-              {segments.length} 个片段 · {segments.reduce((sum, segment) => sum + segment.sentences.length, 0)} 句话
+              {t.scriptPanel.header.segmentsCount.replace('{count}', segments.length.toString())} · {t.scriptPanel.header.sentencesCount.replace('{count}', segments.reduce((sum, segment) => sum + segment.sentences.length, 0).toString())}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -1393,7 +1399,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               onClick={handleBatchConvertToSpeech}
               disabled={isBatchConverting || segments.length === 0}
               className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              title="转换全部语音"
+              title={t.scriptPanel.header.convertAllSpeech}
             >
               {isBatchConverting ? (
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1413,7 +1419,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 onClick={handleGenerateScript}
                 disabled={isGenerating}
                 className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title="生成脚本"
+                title={t.scriptPanel.header.generateScript}
               >
                 {isGenerating ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1453,7 +1459,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   onClick={() => handleConvertToSpeech(segment)}
                   disabled={convertingSegments.has(segment.id) || isBatchConverting}
                   className="p-1.5 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  title="转换语音"
+                  title={t.scriptPanel.actions.convertSpeech}
                 >
                   {convertingSegments.has(segment.id) ? (
                     <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1476,7 +1482,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       ? 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
                       : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
                   }`}
-                  title={completedSegments.has(segment.id) ? "搜索在线视频" : "请先完成语音转换"}
+                  title={completedSegments.has(segment.id) ? t.scriptPanel.actions.searchOnlineVideos : t.scriptPanel.actions.completeConversionFirst}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1576,16 +1582,16 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                               onClick={handleSaveEdit}
                               className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors duration-150"
                             >
-                              保存
+                              {t.scriptPanel.editing.save}
                             </button>
                             <button
                               onClick={handleCancelEdit}
                               className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors duration-150"
                             >
-                              取消
+                              {t.scriptPanel.editing.cancel}
                             </button>
                             <span className="text-xs text-gray-500">
-                              Enter保存 · Esc取消
+                              {t.scriptPanel.editing.saveHint}
                             </span>
                           </div>
                         </div>
@@ -1608,7 +1614,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                         <button
                           onClick={() => handleStartEdit(sentence)}
                           className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors duration-150"
-                          title="编辑句子"
+                          title={t.scriptPanel.actions.editSentence}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1787,7 +1793,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           <button
                             onClick={() => handleVideoNavigation(segment.id, 'prev')}
                             className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                            title="上一个视频"
+                            title={t.scriptPanel.actions.previousVideo}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -1796,7 +1802,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           <button
                             onClick={() => handleVideoNavigation(segment.id, 'next')}
                             className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                            title="下一个视频"
+                            title={t.scriptPanel.actions.nextVideo}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

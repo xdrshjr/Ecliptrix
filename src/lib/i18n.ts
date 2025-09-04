@@ -296,12 +296,45 @@ export interface Translations {
       generatedFrom: string;
       associatedVideo: string;
     };
+    voiceSelector: {
+      selectVoice: string;
+      voiceType: string;
+      retryLoad: string;
+      loadingVoices: string;
+      loadFailed: string;
+      noVoicesAvailable: string;
+      categories: {
+        '通用场景': string;
+        '趣味方言': string;
+        '角色扮演': string;
+        '播报解说': string;
+        '有声阅读': string;
+        '其他': string;
+      };
+    };
   };
   documentPanel: {
     title: string;
     creativeBrainstorming: string;
     creativeBrainstormingAriaLabel: string;
     placeholder: string;
+  };
+  defaultContent: {
+    documentDefault: string;
+    scriptSegments: {
+      segment1: {
+        title: string;
+        sentences: string[];
+      };
+      segment2: {
+        title: string;
+        sentences: string[];
+      };
+      segment3: {
+        title: string;
+        sentences: string[];
+      };
+    };
   };
 }
 
@@ -604,12 +637,60 @@ export const translations: Record<string, Translations> = {
          generatedFrom: 'Speech recognition generated subtitle from "Segment{index}"',
          associatedVideo: 'Segment{index} - {videoName}',
        },
+       voiceSelector: {
+         selectVoice: 'Select Voice',
+         voiceType: 'Voice Type',
+         retryLoad: 'Retry',
+         loadingVoices: 'Loading voices...',
+         loadFailed: 'Failed to load voice types',
+         noVoicesAvailable: 'No voices available',
+         categories: {
+           '通用场景': 'General Scenes',
+           '趣味方言': 'Fun Dialects',
+           '角色扮演': 'Role Playing',
+           '播报解说': 'Broadcasting',
+           '有声阅读': 'Audio Reading',
+           '其他': 'Others'
+         },
+       },
      },
      documentPanel: {
        title: 'Project Documentation',
        creativeBrainstorming: 'Creative Brainstorming',
        creativeBrainstormingAriaLabel: 'Start creative brainstorming',
        placeholder: 'Start writing your video project documentation...',
+     },
+     defaultContent: {
+       documentDefault: '# Video Editing Project\n\nStart editing your video project documentation here...\n\n## Notes\n- Add your project notes\n- Document your editing workflow\n- Track your progress\n\n## Resources\n- List your video assets\n- Note important timestamps\n- Reference materials',
+       scriptSegments: {
+         segment1: {
+           title: 'Opening Introduction',
+           sentences: [
+             'Hello everyone, welcome to today\'s video tutorial.',
+             'Today we will learn how to use this powerful video editing tool.',
+             'This tool can help us quickly create professional-level video content.'
+           ]
+         },
+         segment2: {
+           title: 'Feature Demonstration',
+           sentences: [
+             'First, let\'s take a look at the basic layout of the interface.',
+             'On the left is our project document editing area, where project-related information can be recorded.',
+             'On the right is the video preview and script display area.',
+             'This layout design allows us to handle documents and video content simultaneously.'
+           ]
+         },
+         segment3: {
+           title: 'Practical Operation',
+           sentences: [
+             'Now let\'s start with the practical operation demonstration.',
+             'We can input project-related document content in the left editor.',
+             'At the same time, the script panel on the right will display the corresponding text content.',
+             'This design makes content creation more efficient and intuitive.',
+             'Each script segment corresponds to a specific paragraph in the video.'
+           ]
+         }
+       }
      },
   },
   'zh-CN': {
@@ -910,12 +991,60 @@ export const translations: Record<string, Translations> = {
          generatedFrom: '从"段落{index}"语音识别生成的字幕',
          associatedVideo: '段落{index} - {videoName}',
        },
+       voiceSelector: {
+         selectVoice: '选择音色',
+         voiceType: '音色类型',
+         retryLoad: '重试',
+         loadingVoices: '正在加载音色...',
+         loadFailed: '加载音色类型失败',
+         noVoicesAvailable: '暂无可用音色',
+         categories: {
+           '通用场景': '通用场景',
+           '趣味方言': '趣味方言',
+           '角色扮演': '角色扮演',
+           '播报解说': '播报解说',
+           '有声阅读': '有声阅读',
+           '其他': '其他'
+         },
+       },
      },
      documentPanel: {
        title: '项目文档编辑',
        creativeBrainstorming: '创意构思',
        creativeBrainstormingAriaLabel: '开启创意构思',
        placeholder: '开始编写您的视频项目文档...',
+     },
+     defaultContent: {
+       documentDefault: '# 视频编辑项目\n\n开始编辑您的视频项目文档...\n\n## 笔记\n- 添加您的项目笔记\n- 记录您的编辑工作流程\n- 跟踪您的进度\n\n## 资源\n- 列出您的视频素材\n- 记录重要时间戳\n- 参考资料',
+       scriptSegments: {
+         segment1: {
+           title: '开场介绍',
+           sentences: [
+             '大家好，欢迎来到今天的视频教程。',
+             '今天我们要学习如何使用这个强大的视频编辑工具。',
+             '这个工具可以帮助我们快速创建专业级的视频内容。'
+           ]
+         },
+         segment2: {
+           title: '功能演示',
+           sentences: [
+             '首先，我们来看看界面的基本布局。',
+             '左侧是我们的项目文档编辑区域，可以记录项目相关信息。',
+             '右侧是视频预览和脚本显示区域。',
+             '这样的布局设计让我们能够同时处理文档和视频内容。'
+           ]
+         },
+         segment3: {
+           title: '实际操作',
+           sentences: [
+             '现在让我们开始实际操作演示。',
+             '我们可以在左侧编辑器中输入项目相关的文档内容。',
+             '同时，右侧的脚本面板会显示对应的文本内容。',
+             '这种设计让内容创作变得更加高效和直观。',
+             '每个脚本片段都对应着视频中的一个具体段落。'
+           ]
+         }
+       }
      },
   },
 };

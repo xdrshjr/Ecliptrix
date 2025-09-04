@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { UseAIAssistantReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createAIService, AIService } from '../services';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * useAIAssistant Hook
@@ -17,7 +18,9 @@ export const useAIAssistant = (
   currentContent: string,
   onContentUpdate: (content: string) => void
 ): UseAIAssistantReturn => {
-  const defaultContent = '# Video Editing Project\n\nStart editing your video project documentation here...\n\n## Notes\n- Add your project notes\n- Document your editing workflow\n- Track your progress\n\n## Resources\n- List your video assets\n- Note important timestamps\n- Reference materials';
+  // 获取国际化翻译
+  const { t } = useLocale();
+  const defaultContent = t.defaultContent.documentDefault;
 
   // 初始化日志器和AI服务
   const logger = useMemo(() => new VideoEditingLogger({

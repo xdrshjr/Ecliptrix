@@ -205,11 +205,13 @@ export function convertScriptSegmentsToBatchRequest(
 /**
  * Get available voice types
  */
-export async function getVoiceTypes(): Promise<VoiceTypesResponse> {
+export async function getVoiceTypes(locale: string = 'zh-CN'): Promise<VoiceTypesResponse> {
   try {
-    console.log('[TTS API] 获取音色类型列表');
+    console.log('[TTS API] 获取音色类型列表', {
+      locale
+    });
 
-    const response = await fetch('/api/tts/voice-types', {
+    const response = await fetch(`/api/tts/voice-types?locale=${locale}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
