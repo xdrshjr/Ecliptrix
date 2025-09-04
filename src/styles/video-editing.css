@@ -1370,6 +1370,21 @@
   position: relative;
 }
 
+/* Track Controls Styles - 确保控制区域与轨道内容区域高度一致 */
+.track-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 32px; /* 最小高度保证 */
+}
+
+/* Track Content Styles - 确保内容区域正确填充动态高度 */
+.track-content {
+  min-height: 32px; /* 最小高度保证 */
+  display: flex;
+  align-items: center;
+}
+
 .timeline-track:hover {
   background-color: rgba(59, 130, 246, 0.02);
 }

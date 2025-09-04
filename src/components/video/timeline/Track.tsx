@@ -23,6 +23,7 @@ interface TrackProps {
   onMaterialDrop?: (material: MaterialItem, trackId: string) => void;
   totalDuration: number;
   locale?: SupportedLocale;
+  trackHeight?: number; // 新增轨道高度参数，默认为32px
 }
 
 const Track: React.FC<TrackProps> = ({
@@ -41,7 +42,8 @@ const Track: React.FC<TrackProps> = ({
   onSelectAllItems,
   onMaterialDrop,
   totalDuration,
-  locale = defaultLocale
+  locale = defaultLocale,
+  trackHeight = 32 // 默认轨道高度为32px
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
@@ -269,7 +271,10 @@ const Track: React.FC<TrackProps> = ({
       {/* 轨道控制区域 - 紧凑设计 */}
       <div className="track-controls w-48 bg-gray-50 border-r border-gray-200">
         {/* 轨道标题和控制按钮在同一行 */}
-        <div className="flex items-center justify-between p-2 h-8">
+        <div 
+          className="flex items-center justify-between p-2" 
+          style={{ height: trackHeight }}
+        >
           {/* 左侧：图标和标题 */}
           <div className="flex items-center space-x-2 flex-1 min-w-0">
             <div className={`${getTrackColor()}`}>
@@ -470,7 +475,7 @@ const Track: React.FC<TrackProps> = ({
         style={{ 
           opacity: track.isVisible ? 1 : 0.3,
           pointerEvents: track.isLocked ? 'none' : 'auto',
-          height: '32px'  // 固定高度为32px，与标题栏一致
+          height: trackHeight // 使用动态轨道高度
         }}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
@@ -499,7 +504,7 @@ const Track: React.FC<TrackProps> = ({
             onResize={onResizeItem}
             onSubtitleEdit={onSubtitleEdit}
             isSelected={selectedItems.includes(item.id)}
-            trackHeight={32} // 使用固定的32px高度，与轨道内容区域一致
+            trackHeight={trackHeight} // 使用动态轨道高度
           />
         ))}
 

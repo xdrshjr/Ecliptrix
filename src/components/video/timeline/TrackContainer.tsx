@@ -1,6 +1,6 @@
 'use client';
 
-import React, { RefObject } from 'react';
+import React, { RefObject, useRef, useState, useEffect } from 'react';
 import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
 import { SupportedLocale } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -59,6 +59,46 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   // 轨道标题栏宽度常量 (对应 Tailwind 的 w-48 = 192px)
   const TRACK_HEADER_WIDTH = 192;
 
+  // 新增：用于测量容器高度的ref和状态
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [trackHeight, setTrackHeight] = useState(32); // 默认轨道高度32px
+
+  // 新增：动态计算轨道高度
+  useEffect(() => {
+    const calculateTrackHeight = () => {
+      if (containerRef.current && tracks.length > 0) {
+        const containerHeight = containerRef.current.clientHeight;
+        const bottomBarHeight = 32; // 底部轨道管理栏高度 (h-8 = 32px)
+        const availableHeight = containerHeight - bottomBarHeight;
+        const calculatedHeight = Math.max(32, Math.floor(availableHeight / tracks.length)); // 最小32px
+        
+        console.log(`[TrackContainer] 动态计算轨道高度`, {
+          containerHeight,
+          bottomBarHeight,
+          availableHeight,
+          tracksCount: tracks.length,
+          calculatedHeight,
+          timestamp: new Date().toISOString()
+        });
+        
+        setTrackHeight(calculatedHeight);
+      }
+    };
+
+    // 初始计算
+    calculateTrackHeight();
+
+    // 监听容器尺寸变化
+    const resizeObserver = new ResizeObserver(calculateTrackHeight);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [tracks.length]); // 依赖轨道数量变化
+
   // 计算垂直对齐线位置 - 需要加上轨道标题栏的宽度偏移
   const alignmentLinePosition = currentTime * pixelsPerSecond + TRACK_HEADER_WIDTH;
 
@@ -73,10 +113,11 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
         alignmentLinePosition: alignmentLinePosition.toFixed(2),
         totalDuration: totalDuration.toFixed(2),
         tracksCount: tracks.length,
+        trackHeight, // 新增：记录当前轨道高度
         timestamp: new Date().toISOString()
       });
     }
-  }, [currentTime, pixelsPerSecond, totalDuration, tracks.length, alignmentLinePosition]);
+  }, [currentTime, pixelsPerSecond, totalDuration, tracks.length, alignmentLinePosition, trackHeight]);
 
   // 按顺序排序轨道
   const sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
@@ -103,7 +144,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   };
 
   return (
-    <div className="track-container flex-1 flex flex-col overflow-hidden bg-gray-50">
+    <div 
+      ref={containerRef}
+      className="track-container flex-1 flex flex-col overflow-hidden bg-gray-50"
+    >
       {/* 轨道列表 */}
       <div 
         ref={scrollRef}
@@ -168,6 +212,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 onMaterialDrop={onMaterialDrop}
                 totalDuration={totalDuration}
                 locale={contextLocale} // 传递context中的locale
+                trackHeight={trackHeight} // 传递轨道高度
               />
             ))
           ) : (
