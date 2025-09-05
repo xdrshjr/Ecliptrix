@@ -746,10 +746,15 @@ async def download_ai_video(prompt_id: str):
         file_path = f"{settings.storage.generated_images_dir}/{first_video.filename}"
         
         if not os.path.exists(file_path):
-            # Try to find the file with the correct naming pattern
+            # Try to find the file with the correct naming pattern for AI videos
             import glob
-            pattern = f"{settings.storage.generated_images_dir}/AIVideo_{prompt_id}_*.mp4"
+            # First try the ai_video pattern
+            pattern = f"{settings.storage.generated_images_dir}/ai_video_{prompt_id}_*.mp4"
             matching_files = glob.glob(pattern)
+            if not matching_files:
+                # Also try the old pattern for compatibility
+                pattern = f"{settings.storage.generated_images_dir}/digital_human_{prompt_id}_*.mp4"
+                matching_files = glob.glob(pattern)
             if matching_files:
                 file_path = matching_files[0]
             else:
@@ -795,7 +800,7 @@ async def process_ai_video_generation(prompt_id: str):
                 # Download all videos
                 downloaded_videos = []
                 for video in videos:
-                    local_path = await comfyui_service.download_video(video, prompt_id)
+                    local_path = await comfyui_service.download_video(video, prompt_id, "ai_video")
                     if local_path:
                         downloaded_videos.append(video)
                     else:

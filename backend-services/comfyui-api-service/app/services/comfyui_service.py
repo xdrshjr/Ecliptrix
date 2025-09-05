@@ -748,13 +748,14 @@ class ComfyUIService:
             logger.error(f"Unexpected error getting generated videos for {prompt_id}: {e}")
             return []
 
-    async def download_video(self, video_info: VideoInfo, prompt_id: str) -> Optional[str]:
+    async def download_video(self, video_info: VideoInfo, prompt_id: str, task_type: str = "digital_human") -> Optional[str]:
         """
         Download a specific video and save locally.
         
         Args:
             video_info: Video information
             prompt_id: The prompt ID
+            task_type: The type of task ("digital_human" or "ai_video")
             
         Returns:
             Local file path if successful, None otherwise
@@ -774,7 +775,8 @@ class ComfyUIService:
             # Create unique filename with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             file_extension = Path(video_info.filename).suffix or ".mp4"
-            local_filename = f"digital_human_{prompt_id}_{timestamp}{file_extension}"
+            prefix = "ai_video" if task_type == "ai_video" else "digital_human"
+            local_filename = f"{prefix}_{prompt_id}_{timestamp}{file_extension}"
             save_path = self.generated_dir / local_filename
             
             with open(save_path, 'wb') as f:

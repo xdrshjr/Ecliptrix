@@ -495,4 +495,78 @@ export interface UseDigitalHumanGenerationReturn {
   clearUploadError: () => void;
   
   taskId: string;
+}
+
+// AI Video Generation Types
+export interface AIVideoGenerationRequest {
+  positive_prompt: string;
+  negative_prompt?: string;
+  width?: number;
+  height?: number;
+  duration_seconds?: number;
+  steps?: number;
+  seed?: number;
+  enable_lora?: boolean;
+  aspect_ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
+}
+
+export interface AIVideoGenerationResponse {
+  prompt_id: string;
+  status: string;
+  message: string;
+  estimated_time?: number;
+}
+
+export interface AIVideoGenerationStatus {
+  prompt_id: string;
+  status: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
+  progress?: number;
+  videos: VideoInfo[];
+  error_message?: string;
+  created_at?: string;
+  completed_at?: string;
+  request_parameters?: AIVideoGenerationRequest;
+}
+
+export interface UseAIVideoGenerationReturn {
+  // Modal state
+  isModalOpen: boolean;
+  openModal: () => void;
+  closeModal: () => void;
+  
+  // Generation state
+  isGenerating: boolean;
+  generationProgress: number;
+  generatedVideos: VideoInfo[];
+  generationError: string | null;
+  generationStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
+  currentPromptId: string | null;
+  
+  // Generation parameters
+  positivePrompt: string;
+  negativePrompt: string;
+  width: number;
+  height: number;
+  durationSeconds: number;
+  steps: number;
+  seed: number | null;
+  enableLora: boolean;
+  aspectRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | null;
+  
+  // Actions
+  handleGenerate: () => Promise<void>;
+  handleAddToMaterials: () => boolean;
+  handleAddSingleToMaterials: (videoInfo: VideoInfo) => boolean;
+  setPositivePrompt: (prompt: string) => void;
+  setNegativePrompt: (prompt: string) => void;
+  setWidth: (width: number) => void;
+  setHeight: (height: number) => void;
+  setDurationSeconds: (duration: number) => void;
+  setSteps: (steps: number) => void;
+  setSeed: (seed: number | null) => void;
+  setEnableLora: (enable: boolean) => void;
+  setAspectRatio: (ratio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | null) => void;
+  clearError: () => void;
+  
+  taskId: string;
 } 

@@ -59,6 +59,16 @@ export {
   createAIImageGenerationService
 } from './aiImageGenerationService';
 
+// AI Video Generation Service
+export type {
+  AIVideoGenerationService
+} from './aiVideoGenerationService';
+
+export {
+  AIVideoGenerationServiceImpl,
+  createAIVideoGenerationService
+} from './aiVideoGenerationService';
+
 // ComfyUI Health Service
 export type {
   ComfyUIHealthService,
