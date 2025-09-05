@@ -14,7 +14,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.logger import get_logger
-from app.models.request_models import ImageGenerationRequest, DigitalHumanGenerationRequest
+from app.models.request_models import ImageGenerationRequest, DigitalHumanGenerationRequest, AIVideoGenerationRequest
 from app.models.response_models import ImageInfo, VideoInfo, GenerationStatus
 
 logger = get_logger(__name__)
@@ -212,6 +212,101 @@ class ComfyUIService:
                     f"reference_video={video_abs_path}, audio={audio_abs_path}")
         
         return workflow
+
+    def create_ai_video_workflow(self, request: AIVideoGenerationRequest) -> Dict[str, Any]:
+        """
+        Create ComfyUI workflow for AI video generation using WanVideo.
+        
+        Args:
+            request: AI video generation request
+            
+        Returns:
+            ComfyUI workflow JSON
+        """
+        # Load the AI video workflow template
+        workflow_path = Path(__file__).parent.parent.parent / "workflows" / "Wan2.2-KJ-Video-Gen.json"
+        
+        try:
+            with open(workflow_path, 'r', encoding='utf-8') as f:
+                workflow = json.load(f)
+        except FileNotFoundError:
+            logger.error(f"AI video workflow template not found: {workflow_path}")
+            raise ValueError("AI video workflow template not found")
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in AI video workflow template: {e}")
+            raise ValueError("Invalid AI video workflow template")
+        
+        # Get dimensions from aspect ratio if specified
+        width, height = request.get_dimensions_from_aspect_ratio()
+        
+        # Calculate num_frames based on duration (16 FPS as per workflow)
+        num_frames = request.duration_seconds * 16 + 1
+        
+        logger.info(f"Creating AI video workflow with dimensions: {width}x{height}, "
+                   f"duration: {request.duration_seconds}s ({num_frames} frames), "
+                   f"steps: {request.steps}, LoRA enabled: {request.enable_lora}")
+        
+        # Update workflow with request parameters
+        try:
+            # Update positive prompt (node 50 - Text Multiline)
+            if "50" in workflow:
+                workflow["50"]["inputs"]["text"] = request.positive_prompt
+            
+            # Update negative prompt (node 14 - WanVideoTextEncode)
+            if "14" in workflow:
+                workflow["14"]["inputs"]["negative_prompt"] = request.negative_prompt
+            
+            # Update video dimensions (nodes 26, 27 - JWInteger)
+            if "26" in workflow:  # width
+                workflow["26"]["inputs"]["value"] = width
+            if "27" in workflow:  # height
+                workflow["27"]["inputs"]["value"] = height
+            
+            # Update steps (node 60 - easy int)
+            if "60" in workflow:
+                workflow["60"]["inputs"]["value"] = request.steps
+            
+            # Update duration (node 62 - DF_Integer)
+            if "62" in workflow:
+                workflow["62"]["inputs"]["Value"] = request.duration_seconds
+            
+            # Update seed if specified (nodes 16, 20 - WanVideoSampler)
+            if request.seed is not None:
+                if "16" in workflow:
+                    workflow["16"]["inputs"]["seed"] = request.seed
+                if "20" in workflow:
+                    workflow["20"]["inputs"]["seed"] = request.seed
+            
+            # Handle LoRA settings (nodes 9, 10 - WanVideoLoraSelect)
+            if not request.enable_lora:
+                # Disable LoRA by setting strength to 0
+                if "9" in workflow:
+                    workflow["9"]["inputs"]["strength"] = 0
+                if "10" in workflow:
+                    workflow["10"]["inputs"]["strength"] = 0
+                logger.info("LoRA disabled in workflow")
+            else:
+                # Ensure LoRA is enabled with default strengths
+                if "9" in workflow:
+                    workflow["9"]["inputs"]["strength"] = 3  # Default from template
+                if "10" in workflow:
+                    workflow["10"]["inputs"]["strength"] = 1  # Default from template
+                logger.info("LoRA enabled in workflow")
+            
+            # Update video output settings (node 22 - VHS_VideoCombine)
+            if "22" in workflow:
+                workflow["22"]["inputs"]["filename_prefix"] = f"AIVideo_{int(time.time())}"
+                # Set frame rate to 16 FPS as per workflow default
+                workflow["22"]["inputs"]["frame_rate"] = 16
+                
+        except KeyError as e:
+            logger.warning(f"AI video workflow node not found, using default: {e}")
+        
+        logger.debug(f"Created AI video workflow: prompt={request.positive_prompt[:100]}, "
+                    f"dimensions={width}x{height}, steps={request.steps}, duration={request.duration_seconds}s, "
+                    f"LoRA={request.enable_lora}")
+        
+        return workflow
     
     async def submit_workflow(self, request: ImageGenerationRequest) -> Optional[str]:
         """
@@ -341,6 +436,75 @@ class ComfyUIService:
             return None
         except Exception as e:
             logger.error(f"Unexpected error submitting digital human workflow: {e}")
+            return None
+
+    async def submit_ai_video_workflow(self, request: AIVideoGenerationRequest) -> Optional[str]:
+        """
+        Submit AI video workflow to ComfyUI and return prompt_id.
+        
+        Args:
+            request: AI video generation request
+            
+        Returns:
+            Prompt ID if successful, None otherwise
+        """
+        try:
+            workflow = self.create_ai_video_workflow(request)
+            prompt_data = {
+                "prompt": workflow,
+                "client_id": self.client_id
+            }
+            
+            logger.info(f"Submitting AI video workflow to ComfyUI: {request.positive_prompt[:100]}...")
+            logger.info(f"Video parameters - Dimensions: {workflow['26']['inputs']['value']}x{workflow['27']['inputs']['value']}, "
+                       f"Duration: {request.duration_seconds}s, Steps: {request.steps}, LoRA: {request.enable_lora}")
+            logger.debug(f"AI video workflow data: {json.dumps(prompt_data, indent=2)}")
+            
+            response = self.session.post(f"{self.base_url}/prompt", json=prompt_data)
+            response.raise_for_status()
+            result = response.json()
+            
+            prompt_id = result["prompt_id"]
+            logger.info(f"AI video workflow submitted successfully with prompt_id: {prompt_id}")
+            return prompt_id
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error submitting AI video workflow to ComfyUI: {e}")
+            
+            # Log the full response for debugging
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"ComfyUI HTTP Status: {e.response.status_code}")
+                logger.error(f"ComfyUI Response Headers: {dict(e.response.headers)}")
+                try:
+                    response_text = e.response.text
+                    logger.error(f"ComfyUI Response Body: {response_text}")
+                    
+                    # Try to parse as JSON
+                    error_data = e.response.json()
+                    logger.error(f"ComfyUI Error Data: {error_data}")
+                    
+                    # Check for validation error
+                    if 'type' in error_data and error_data['type'] == 'prompt_outputs_failed_validation':
+                        logger.error("=" * 80)
+                        logger.error("COMFYUI AI VIDEO WORKFLOW VALIDATION FAILED")
+                        logger.error("=" * 80)
+                        logger.error("ComfyUI rejected the AI video workflow.")
+                        logger.error("This could be due to:")
+                        logger.error("1. Missing or incorrect workflow nodes")
+                        logger.error("2. Invalid parameter values")
+                        logger.error("3. Missing dependencies or models")
+                        logger.error("4. Incompatible ComfyUI version")
+                        logger.error(f"Workflow template: Wan2.2-KJ-Video-Gen.json")
+                        logger.error(f"ComfyUI instance URL: {self.base_url}")
+                        logger.error("=" * 80)
+                        
+                except Exception as parse_error:
+                    logger.error(f"Could not parse ComfyUI error response as JSON: {parse_error}")
+                    logger.error(f"Raw response: {e.response.text if hasattr(e.response, 'text') else 'No response text'}")
+            
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error submitting AI video workflow: {e}")
             return None
 
     async def _validate_digital_human_files(self, request: DigitalHumanGenerationRequest) -> None:

@@ -12,13 +12,15 @@ from pathlib import Path
 
 from app.config import settings
 from app.logger import get_logger
-from app.models.request_models import ImageGenerationRequest, DigitalHumanGenerationRequest
+from app.models.request_models import ImageGenerationRequest, DigitalHumanGenerationRequest, AIVideoGenerationRequest
 from app.models.response_models import (
     HealthResponse, 
     ImageGenerationResponse, 
     DigitalHumanGenerationResponse,
+    AIVideoGenerationResponse,
     StatusResponse, 
     DigitalHumanStatusResponse,
+    AIVideoStatusResponse,
     GenerationStatus
 )
 from app.services.comfyui_service import ComfyUIService
@@ -593,4 +595,228 @@ async def upload_files(
         raise
     except Exception as e:
         logger.error(f"Error uploading files: {e}")
-        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
+
+@router.post("/generate-ai-video", response_model=AIVideoGenerationResponse)
+async def generate_ai_video(request: AIVideoGenerationRequest, background_tasks: BackgroundTasks):
+    """
+    Generate an AI video using ComfyUI WanVideo workflow.
+    
+    Args:
+        request: AI video generation parameters
+        background_tasks: FastAPI background tasks
+        
+    Returns:
+        Generation response with prompt_id
+    """
+    logger.info(f"AI video generation requested: {request.positive_prompt[:100]}...")
+    logger.debug(f"AI video generation parameters: {request}")
+    
+    try:
+        # Submit AI video workflow to ComfyUI
+        prompt_id = await comfyui_service.submit_ai_video_workflow(request)
+        
+        if not prompt_id:
+            logger.error("Failed to submit AI video workflow to ComfyUI")
+            raise HTTPException(status_code=500, detail="Failed to submit AI video generation request")
+        
+        # Store task information
+        active_tasks[prompt_id] = {
+            "status": GenerationStatus.PENDING,
+            "request": request,
+            "created_at": asyncio.get_event_loop().time(),
+            "type": "ai_video",  # Mark as AI video task
+            "request_parameters": {
+                "positive_prompt": request.positive_prompt,
+                "negative_prompt": request.negative_prompt,
+                "width": request.width,
+                "height": request.height,
+                "duration_seconds": request.duration_seconds,
+                "steps": request.steps,
+                "enable_lora": request.enable_lora,
+                "aspect_ratio": request.aspect_ratio,
+                "seed": request.seed
+            }
+        }
+        
+        # Start background processing
+        background_tasks.add_task(process_ai_video_generation, prompt_id)
+        
+        logger.info(f"AI video generation started with prompt_id: {prompt_id}")
+        
+        # Calculate estimated time based on duration and steps
+        base_time = 60  # Base time for processing
+        duration_factor = request.duration_seconds * 5  # 5 seconds per second of video
+        steps_factor = request.steps * 2  # 2 seconds per step
+        estimated_time = base_time + duration_factor + steps_factor
+        
+        return AIVideoGenerationResponse(
+            prompt_id=prompt_id,
+            status=GenerationStatus.PENDING,
+            message="AI video generation started",
+            estimated_time=estimated_time
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting AI video generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/ai-video-status/{prompt_id}", response_model=AIVideoStatusResponse)
+async def get_ai_video_status(prompt_id: str):
+    """
+    Get the status of an AI video generation task.
+    
+    Args:
+        prompt_id: The prompt ID to check status for
+        
+    Returns:
+        Current status and progress information
+    """
+    logger.debug(f"AI video status check requested for prompt_id: {prompt_id}")
+    
+    try:
+        if prompt_id not in active_tasks:
+            logger.warning(f"AI video task not found: {prompt_id}")
+            raise HTTPException(status_code=404, detail="AI video task not found")
+        
+        task_info = active_tasks[prompt_id]
+        
+        # Ensure this is an AI video task
+        if task_info.get("type") != "ai_video":
+            logger.warning(f"Task {prompt_id} is not an AI video task")
+            raise HTTPException(status_code=400, detail="This is not an AI video generation task")
+        
+        response = AIVideoStatusResponse(
+            prompt_id=prompt_id,
+            status=task_info["status"],
+            progress=task_info.get("progress"),
+            videos=task_info.get("videos", []),
+            error_message=task_info.get("error_message"),
+            created_at=task_info.get("created_at"),
+            completed_at=task_info.get("completed_at"),
+            request_parameters=task_info.get("request_parameters")
+        )
+        
+        logger.debug(f"AI video status for {prompt_id}: {task_info['status']}")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting AI video status for {prompt_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/download-ai-video/{prompt_id}")
+async def download_ai_video(prompt_id: str):
+    """
+    Download generated AI video for a specific prompt_id.
+    
+    Args:
+        prompt_id: The generation task ID
+        
+    Returns:
+        File response with the generated video
+    """
+    logger.info(f"AI video download requested for prompt_id: {prompt_id}")
+    
+    try:
+        if prompt_id not in active_tasks:
+            raise HTTPException(status_code=404, detail="AI video task not found")
+        
+        task_info = active_tasks[prompt_id]
+        
+        # Ensure this is an AI video task
+        if task_info.get("type") != "ai_video":
+            raise HTTPException(status_code=400, detail="This is not an AI video generation task")
+        
+        if task_info["status"] != GenerationStatus.COMPLETED:
+            raise HTTPException(status_code=400, detail="AI video generation not completed yet")
+        
+        videos = task_info.get("videos", [])
+        if not videos:
+            raise HTTPException(status_code=404, detail="No videos found")
+        
+        # Return the first video (in a real implementation, you might want to return all or let user choose)
+        first_video = videos[0]
+        file_path = f"{settings.storage.generated_images_dir}/{first_video.filename}"
+        
+        if not os.path.exists(file_path):
+            # Try to find the file with the correct naming pattern
+            import glob
+            pattern = f"{settings.storage.generated_images_dir}/AIVideo_{prompt_id}_*.mp4"
+            matching_files = glob.glob(pattern)
+            if matching_files:
+                file_path = matching_files[0]
+            else:
+                raise HTTPException(status_code=404, detail="Video file not found")
+        
+        logger.info(f"Serving AI video file: {file_path}")
+        return FileResponse(
+            path=file_path,
+            media_type="video/mp4",
+            filename=f"ai_video_{prompt_id}.mp4"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading AI video for {prompt_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+async def process_ai_video_generation(prompt_id: str):
+    """
+    Background task to process AI video generation.
+    
+    Args:
+        prompt_id: The prompt ID to process
+    """
+    logger.info(f"Starting AI video generation processing for prompt_id: {prompt_id}")
+    
+    try:
+        task_info = active_tasks[prompt_id]
+        task_info["status"] = GenerationStatus.PROCESSING
+        
+        # Wait for completion
+        final_status = await comfyui_service.wait_for_completion(prompt_id)
+        
+        if final_status == GenerationStatus.COMPLETED:
+            logger.info(f"AI video generation completed for prompt_id: {prompt_id}")
+            
+            # Get generated videos
+            videos = await comfyui_service.get_generated_videos(prompt_id)
+            
+            if videos:
+                # Download all videos
+                downloaded_videos = []
+                for video in videos:
+                    local_path = await comfyui_service.download_video(video, prompt_id)
+                    if local_path:
+                        downloaded_videos.append(video)
+                    else:
+                        logger.warning(f"Failed to download AI video: {video.filename}")
+                
+                task_info["videos"] = downloaded_videos
+                task_info["status"] = GenerationStatus.COMPLETED
+                task_info["completed_at"] = asyncio.get_event_loop().time()
+                
+                logger.info(f"AI video generation completed successfully: {len(downloaded_videos)} videos downloaded")
+            else:
+                logger.error(f"No videos generated for prompt_id: {prompt_id}")
+                task_info["status"] = GenerationStatus.FAILED
+                task_info["error_message"] = "No videos were generated"
+        else:
+            logger.error(f"AI video generation failed for prompt_id: {prompt_id}")
+            task_info["status"] = GenerationStatus.FAILED
+            task_info["error_message"] = "Generation failed or timed out"
+            
+    except Exception as e:
+        logger.error(f"Error processing AI video generation for {prompt_id}: {e}")
+        if prompt_id in active_tasks:
+            active_tasks[prompt_id]["status"] = GenerationStatus.FAILED
+            active_tasks[prompt_id]["error_message"] = str(e) 

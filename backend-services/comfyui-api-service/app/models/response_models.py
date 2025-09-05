@@ -101,4 +101,28 @@ class DigitalHumanStatusResponse(BaseModel):
     
     @field_serializer('created_at', 'completed_at')
     def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return dt.isoformat() if dt else None
+
+
+class AIVideoGenerationResponse(BaseModel):
+    """Response for AI video generation request."""
+    prompt_id: str = Field(..., description="Unique identifier for the generation task")
+    status: GenerationStatus = Field(default=GenerationStatus.PENDING, description="Current status")
+    message: str = Field(..., description="Status message")
+    estimated_time: Optional[int] = Field(default=None, description="Estimated completion time in seconds")
+
+
+class AIVideoStatusResponse(BaseModel):
+    """Response for AI video status check."""
+    prompt_id: str = Field(..., description="Generation task identifier")
+    status: GenerationStatus = Field(..., description="Current status")
+    progress: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Progress percentage (0-1)")
+    videos: List[VideoInfo] = Field(default=[], description="Generated videos if completed")
+    error_message: Optional[str] = Field(default=None, description="Error message if failed")
+    created_at: Optional[datetime] = Field(default=None, description="Task creation timestamp")
+    completed_at: Optional[datetime] = Field(default=None, description="Task completion timestamp")
+    request_parameters: Optional[dict] = Field(default=None, description="Original request parameters")
+    
+    @field_serializer('created_at', 'completed_at')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
         return dt.isoformat() if dt else None 
