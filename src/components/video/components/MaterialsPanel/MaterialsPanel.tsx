@@ -14,6 +14,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
+  onAIMaterials?: () => void; // 新增：AI素材回调
   onAIImageGeneration?: () => void; // 新增：AI生图回调
   onAIVideoGeneration?: () => void; // 新增：AI视频生成回调
   onDigitalHumanGeneration?: () => void; // 新增：数字人生成回调
@@ -39,6 +40,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   addOrReplaceMaterial,
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
+  onAIMaterials, // 新增：AI素材回调
   onAIImageGeneration, // 新增：AI生图回调
   onAIVideoGeneration, // 新增：AI视频生成回调
   onDigitalHumanGeneration, // 新增：数字人生成回调
@@ -1274,6 +1276,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                 </svg>
                 <span>{t.materialsPanel.searchAudios}</span>
+              </button>
+
+              <button
+                onClick={onAIMaterials}
+                className="flex items-center space-x-1 text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded transition-colors"
+                title="打开AI素材面板，选择各种AI生成工具"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span>AI素材</span>
               </button>
 
               <button
