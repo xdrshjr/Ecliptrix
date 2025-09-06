@@ -893,6 +893,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <AICreationModal
         {...aiCreation}
+        addMaterial={materialManagement.addOrReplaceMaterial}
       />
     </div>
   );

@@ -3,6 +3,7 @@ Workflow management API routes for creative workflow operations.
 """
 
 from typing import List
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
 from app.models.workflow_models import (
     WorkflowListResponse, 
@@ -12,11 +13,15 @@ from app.models.workflow_models import (
 )
 from app.models import BaseResponse
 from app.services.workflow_service import workflow_service
+from app.services.runninghub_service import GeneralWorkflowService
 from app.logger import get_logger
 
 # Initialize router and logger
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 logger = get_logger(__name__)
+
+# Initialize RunningHub service
+general_workflow_service = GeneralWorkflowService()
 
 
 @router.get("/list", response_model=WorkflowListResponse)
@@ -141,19 +146,44 @@ async def execute_workflow(request: WorkflowExecutionRequest) -> WorkflowExecuti
                 detail="Invalid parameters for workflow execution"
             )
         
-        # TODO: Implement actual workflow execution logic
-        # For now, return a placeholder response
-        logger.info(f"Workflow execution request validated for: {workflow.workflow_name}")
-        logger.warning("Workflow execution logic not yet implemented - returning placeholder response")
+        # Execute workflow using RunningHub API
+        logger.info(f"Executing workflow via RunningHub: {workflow.workflow_name}")
+        
+        # Convert parameters to RunningHub format
+        node_info_list = []
+        for param in request.parameters:
+            node_info_list.append({
+                "nodeId": param.node_id,
+                "fieldName": param.field_name,
+                "fieldValue": param.field_value,
+                "description": f"Parameter for node {param.node_id}"
+            })
+        
+        # Create workflow task
+        result = await general_workflow_service.create_workflow_task(
+            workflow_id=request.workflow_id,
+            node_info_list=node_info_list,
+            task_id=request.task_id
+        )
+        
+        if not result.get('success'):
+            logger.error(f"Workflow execution failed: {result.get('error')}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Workflow execution failed: {result.get('error')}"
+            )
         
         execution_result = {
             "workflow_id": request.workflow_id,
             "workflow_name": workflow.workflow_name,
-            "status": "queued",
-            "message": "Workflow execution has been queued (implementation pending)",
-            "task_id": request.task_id,
+            "status": result.get('status', 'RUNNING'),
+            "message": result.get('message', 'Workflow execution started successfully'),
+            "task_id": result.get('task_id'),
+            "runninghub_task_id": result.get('runninghub_task_id'),
             "parameters": parameter_dict,
-            "timestamp": "2024-01-01T00:00:00Z"
+            "timestamp": datetime.now().isoformat(),
+            "net_wss_url": result.get('net_wss_url'),
+            "client_id": result.get('client_id')
         }
         
         return WorkflowExecutionResponse(
@@ -207,4 +237,101 @@ async def workflow_health_check() -> BaseResponse:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Workflow service is unhealthy: {str(e)}"
+        )
+
+
+@router.get("/status/{runninghub_task_id}", response_model=BaseResponse)
+async def check_workflow_task_status(runninghub_task_id: str) -> BaseResponse:
+    """
+    Check the status of a workflow task by RunningHub task ID.
+    
+    Args:
+        runninghub_task_id: The RunningHub task ID to check
+        
+    Returns:
+        BaseResponse: Task status information
+        
+    Raises:
+        HTTPException: If there's an error checking status
+    """
+    try:
+        logger.info(f"API request: Check workflow task status: {runninghub_task_id}")
+        
+        result = await general_workflow_service.check_workflow_status(runninghub_task_id)
+        
+        if not result.get('success'):
+            logger.error(f"Status check failed: {result.get('message')}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Status check failed: {result.get('message')}"
+            )
+        
+        logger.info(f"Task status retrieved: {result.get('status')}")
+        
+        return BaseResponse(
+            success=True,
+            message=result.get('message', 'Status retrieved successfully'),
+            data={
+                'runninghub_task_id': runninghub_task_id,
+                'status': result.get('status'),
+                'task_id': result.get('task_id')
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking workflow task status {runninghub_task_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to check task status: {str(e)}"
+        )
+
+
+@router.get("/results/{runninghub_task_id}", response_model=BaseResponse)
+async def get_workflow_task_results(runninghub_task_id: str) -> BaseResponse:
+    """
+    Get the results of a completed workflow task by RunningHub task ID.
+    
+    Args:
+        runninghub_task_id: The RunningHub task ID to get results for
+        
+    Returns:
+        BaseResponse: Task results
+        
+    Raises:
+        HTTPException: If there's an error retrieving results
+    """
+    try:
+        logger.info(f"API request: Get workflow task results: {runninghub_task_id}")
+        
+        result = await general_workflow_service.get_workflow_results(runninghub_task_id)
+        
+        if not result.get('success'):
+            logger.error(f"Results retrieval failed: {result.get('message')}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Results retrieval failed: {result.get('message')}"
+            )
+        
+        logger.info(f"Task results retrieved: {len(result.get('results', []))} items")
+        
+        return BaseResponse(
+            success=True,
+            message=result.get('message', 'Results retrieved successfully'),
+            data={
+                'runninghub_task_id': runninghub_task_id,
+                'status': result.get('status'),
+                'results': result.get('results', []),
+                'task_id': result.get('task_id')
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting workflow task results {runninghub_task_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get task results: {str(e)}"
         )

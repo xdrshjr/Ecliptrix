@@ -40,8 +40,11 @@ export interface WorkflowExecutionResult {
   status: string;
   message: string;
   taskId?: string;
+  runninghubTaskId?: string;
   parameters: Record<string, any>;
   timestamp: string;
+  netWssUrl?: string;
+  clientId?: string;
 }
 
 export interface ApiResponse<T> {
@@ -194,10 +197,25 @@ class WorkflowService {
       this.logger.info('Workflow execution started successfully', { 
         workflowId: request.workflowId,
         status: result.data.status,
-        taskId: result.data.taskId
+        taskId: result.data.taskId,
+        runninghubTaskId: result.data.runninghub_task_id
       });
       
-      return result.data;
+      // Convert snake_case to camelCase for frontend consistency
+      const executionResult: WorkflowExecutionResult = {
+        workflowId: result.data.workflow_id,
+        workflowName: result.data.workflow_name,
+        status: result.data.status,
+        message: result.data.message,
+        taskId: result.data.task_id,
+        runninghubTaskId: result.data.runninghub_task_id,
+        parameters: result.data.parameters,
+        timestamp: result.data.timestamp,
+        netWssUrl: result.data.net_wss_url,
+        clientId: result.data.client_id
+      };
+      
+      return executionResult;
 
     } catch (error) {
       this.logger.error('Error executing workflow', { 
@@ -253,6 +271,110 @@ class WorkflowService {
       fieldName: nodeInfo.fieldName,
       fieldValue: userValues[nodeInfo.nodeId] !== undefined ? userValues[nodeInfo.nodeId] : nodeInfo.fieldValue
     }));
+  }
+
+  /**
+   * Check workflow task status
+   */
+  async checkTaskStatus(runninghubTaskId: string): Promise<{ success: boolean; status: string; message: string }> {
+    try {
+      this.logger.info('Checking workflow task status', { runninghubTaskId });
+
+      const response = await fetch(`${this.baseUrl}/api/workflow/status/${runninghubTaskId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error('Failed to check task status', {
+          runninghubTaskId,
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Failed to check task status: ${response.status} ${response.statusText}`);
+      }
+
+      const result: ApiResponse<any> = await response.json();
+
+      if (!result.success) {
+        this.logger.error('Task status check returned error', { runninghubTaskId, message: result.message });
+        throw new Error(result.message || 'Failed to check task status');
+      }
+
+      this.logger.debug('Task status retrieved successfully', { 
+        runninghubTaskId, 
+        status: result.data.status 
+      });
+      
+      return {
+        success: true,
+        status: result.data.status,
+        message: result.message
+      };
+
+    } catch (error) {
+      this.logger.error('Error checking task status', { 
+        runninghubTaskId,
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get workflow task results
+   */
+  async getTaskResults(runninghubTaskId: string): Promise<{ success: boolean; results: any[]; message: string }> {
+    try {
+      this.logger.info('Getting workflow task results', { runninghubTaskId });
+
+      const response = await fetch(`${this.baseUrl}/api/workflow/results/${runninghubTaskId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error('Failed to get task results', {
+          runninghubTaskId,
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Failed to get task results: ${response.status} ${response.statusText}`);
+      }
+
+      const result: ApiResponse<any> = await response.json();
+
+      if (!result.success) {
+        this.logger.error('Task results retrieval returned error', { runninghubTaskId, message: result.message });
+        throw new Error(result.message || 'Failed to get task results');
+      }
+
+      this.logger.info('Task results retrieved successfully', { 
+        runninghubTaskId, 
+        resultCount: result.data.results?.length || 0
+      });
+      
+      return {
+        success: true,
+        results: result.data.results || [],
+        message: result.message
+      };
+
+    } catch (error) {
+      this.logger.error('Error getting task results', { 
+        runninghubTaskId,
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      throw error;
+    }
   }
 
   /**

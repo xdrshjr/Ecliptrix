@@ -4,8 +4,11 @@ import React from 'react';
 import { UseAICreationReturn } from '../../hooks/useAICreation';
 import { WorkflowInfo, WorkflowNodeInfo } from '../../services/workflowService';
 import { VideoEditingLogger } from '../../utils';
+import { MaterialItem } from '@/types';
 
-interface AICreationModalProps extends UseAICreationReturn {}
+interface AICreationModalProps extends UseAICreationReturn {
+  addMaterial: (material: MaterialItem) => boolean;
+}
 
 const AICreationModal: React.FC<AICreationModalProps> = ({
   isModalOpen,
@@ -24,7 +27,8 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
   isExecuting,
   executionResult,
   executionError,
-  taskId
+  taskId,
+  addMaterial
 }) => {
   const logger = new VideoEditingLogger({ taskId, component: 'AICreationModal' });
 
@@ -311,7 +315,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
             返回
           </button>
           <button
-            onClick={handleStartCreation}
+            onClick={() => handleStartCreation(addMaterial)}
             disabled={isExecuting}
             className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >

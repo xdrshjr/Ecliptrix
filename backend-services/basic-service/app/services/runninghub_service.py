@@ -1,5 +1,5 @@
 """
-RunningHub API service for FLUX text-to-image generation.
+RunningHub API service for FLUX text-to-image generation and general workflow execution.
 """
 
 import json
@@ -350,3 +350,284 @@ class RunningHubService:
                 results=[],
                 message=f"Results retrieval error: {str(e)}"
             )
+
+
+class GeneralWorkflowService:
+    """Service for general RunningHub workflow execution."""
+    
+    def __init__(self):
+        """Initialize General Workflow service."""
+        self.api_key = getattr(settings, 'running_hub_api_key', None)
+        if not self.api_key:
+            logger.error("RUNNING_HUB_API_KEY not found in environment variables")
+            raise ValueError("RUNNING_HUB_API_KEY is required")
+        
+        # RunningHub API endpoints
+        self.base_url = "https://www.runninghub.cn"
+        self.endpoints = {
+            'create_task': '/task/openapi/create',
+            'check_status': '/task/openapi/status',
+            'get_results': '/task/openapi/outputs'
+        }
+        
+        logger.info("General RunningHub workflow service initialized")
+    
+    async def create_workflow_task(
+        self, 
+        workflow_id: str, 
+        node_info_list: List[Dict[str, Any]], 
+        task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new workflow task using RunningHub API.
+        
+        Args:
+            workflow_id: The RunningHub workflow ID
+            node_info_list: List of node parameters
+            task_id: Optional internal task ID for tracking
+            
+        Returns:
+            Dict containing task creation response
+        """
+        internal_task_id = task_id or f"workflow_{uuid.uuid4().hex[:8]}"
+        
+        try:
+            logger.info(f"Creating workflow task {internal_task_id}", extra={
+                'task_id': internal_task_id,
+                'workflow_id': workflow_id,
+                'node_count': len(node_info_list)
+            })
+            
+            # Prepare RunningHub request
+            request_data = {
+                "workflowId": workflow_id,
+                "apiKey": self.api_key,
+                "nodeInfoList": node_info_list
+            }
+            
+            # Make API call
+            url = f"{self.base_url}{self.endpoints['create_task']}"
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json=request_data,
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"RunningHub API error: {response.status} - {error_text}")
+                        return {
+                            'success': False,
+                            'error': f"API request failed with status {response.status}",
+                            'error_code': 'API_ERROR',
+                            'task_id': internal_task_id
+                        }
+                    
+                    response_data = await response.json()
+            
+            # Check response
+            if response_data.get('code') != 0:
+                logger.error(f"RunningHub returned error: {response_data.get('msg')}")
+                return {
+                    'success': False,
+                    'error': response_data.get('msg', 'Unknown error'),
+                    'error_code': 'RUNNINGHUB_ERROR',
+                    'task_id': internal_task_id
+                }
+            
+            # Extract task information
+            data = response_data.get('data', {})
+            runninghub_task_id = data.get('taskId')
+            task_status = data.get('taskStatus', 'PENDING')
+            
+            logger.info(f"Workflow task created successfully", extra={
+                'task_id': internal_task_id,
+                'workflow_id': workflow_id,
+                'runninghub_task_id': runninghub_task_id,
+                'status': task_status
+            })
+            
+            return {
+                'success': True,
+                'task_id': internal_task_id,
+                'runninghub_task_id': runninghub_task_id,
+                'status': task_status,
+                'message': 'Workflow task created successfully',
+                'workflow_id': workflow_id,
+                'net_wss_url': data.get('netWssUrl'),
+                'client_id': data.get('clientId'),
+                'prompt_tips': data.get('promptTips')
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating workflow task: {str(e)}", extra={
+                'task_id': internal_task_id,
+                'workflow_id': workflow_id,
+                'error': str(e)
+            })
+            return {
+                'success': False,
+                'error': f"Internal error: {str(e)}",
+                'error_code': 'INTERNAL_ERROR',
+                'task_id': internal_task_id
+            }
+    
+    async def check_workflow_status(self, runninghub_task_id: str, task_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Check the status of a workflow task.
+        
+        Args:
+            runninghub_task_id: RunningHub task ID
+            task_id: Optional internal task ID for tracking
+            
+        Returns:
+            Dict containing task status
+        """
+        try:
+            logger.debug(f"Checking status for RunningHub task {runninghub_task_id}")
+            
+            # Prepare status request
+            request_data = {
+                "apiKey": self.api_key,
+                "taskId": runninghub_task_id
+            }
+            
+            # Make API call
+            url = f"{self.base_url}{self.endpoints['check_status']}"
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json=request_data,
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Status check API error: {response.status} - {error_text}")
+                        return {
+                            'success': False,
+                            'status': 'FAILED',
+                            'message': f"Status check failed: {error_text}",
+                            'task_id': task_id,
+                            'runninghub_task_id': runninghub_task_id
+                        }
+                    
+                    response_data = await response.json()
+            
+            # Check response
+            if response_data.get('code') != 0:
+                logger.error(f"Status check returned error: {response_data.get('msg')}")
+                return {
+                    'success': False,
+                    'status': 'FAILED',
+                    'message': response_data.get('msg', 'Unknown error'),
+                    'task_id': task_id,
+                    'runninghub_task_id': runninghub_task_id
+                }
+            
+            status = response_data.get('data', 'UNKNOWN')
+            
+            logger.debug(f"Task {runninghub_task_id} status: {status}")
+            
+            return {
+                'success': True,
+                'status': status,
+                'message': f"Task status: {status}",
+                'task_id': task_id,
+                'runninghub_task_id': runninghub_task_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking task status: {str(e)}", extra={
+                'task_id': task_id,
+                'runninghub_task_id': runninghub_task_id,
+                'error': str(e)
+            })
+            return {
+                'success': False,
+                'status': 'FAILED',
+                'message': f"Status check error: {str(e)}",
+                'task_id': task_id,
+                'runninghub_task_id': runninghub_task_id
+            }
+    
+    async def get_workflow_results(self, runninghub_task_id: str, task_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get the results of a completed workflow task.
+        
+        Args:
+            runninghub_task_id: RunningHub task ID
+            task_id: Optional internal task ID for tracking
+            
+        Returns:
+            Dict containing task results
+        """
+        try:
+            logger.info(f"Getting results for RunningHub task {runninghub_task_id}")
+            
+            # Prepare results request
+            request_data = {
+                "apiKey": self.api_key,
+                "taskId": runninghub_task_id
+            }
+            
+            # Make API call
+            url = f"{self.base_url}{self.endpoints['get_results']}"
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json=request_data,
+                    headers={'Content-Type': 'application/json'}
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Results API error: {response.status} - {error_text}")
+                        return {
+                            'success': False,
+                            'status': 'FAILED',
+                            'results': [],
+                            'message': f"Results retrieval failed: {error_text}",
+                            'task_id': task_id,
+                            'runninghub_task_id': runninghub_task_id
+                        }
+                    
+                    response_data = await response.json()
+            
+            # Check response
+            if response_data.get('code') != 0:
+                logger.error(f"Results retrieval returned error: {response_data.get('msg')}")
+                return {
+                    'success': False,
+                    'status': 'FAILED',
+                    'results': [],
+                    'message': response_data.get('msg', 'Unknown error'),
+                    'task_id': task_id,
+                    'runninghub_task_id': runninghub_task_id
+                }
+            
+            results = response_data.get('data', [])
+            
+            logger.info(f"Retrieved {len(results)} results for task {runninghub_task_id}")
+            
+            return {
+                'success': True,
+                'status': 'COMPLETED',
+                'results': results,
+                'message': f"Retrieved {len(results)} results",
+                'task_id': task_id,
+                'runninghub_task_id': runninghub_task_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting task results: {str(e)}", extra={
+                'task_id': task_id,
+                'runninghub_task_id': runninghub_task_id,
+                'error': str(e)
+            })
+            return {
+                'success': False,
+                'status': 'FAILED',
+                'results': [],
+                'message': f"Results retrieval error: {str(e)}",
+                'task_id': task_id,
+                'runninghub_task_id': runninghub_task_id
+            }

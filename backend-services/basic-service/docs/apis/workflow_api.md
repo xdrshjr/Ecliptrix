@@ -146,7 +146,84 @@ Executes a creative workflow with provided parameters.
 - **404 Not Found**: Workflow not found
 - **500 Internal Server Error**: Failed to execute workflow
 
-### 4. Workflow Health Check
+### 4. Check Workflow Task Status
+
+**GET** `/api/workflow/status/{runninghub_task_id}`
+
+Checks the status of a workflow task by RunningHub task ID.
+
+#### Parameters
+
+- `runninghub_task_id` (path): The RunningHub task ID to check status for
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "Status retrieved successfully",
+  "data": {
+    "runninghub_task_id": "task_12345",
+    "status": "RUNNING",
+    "task_id": "optional_task_identifier"
+  }
+}
+```
+
+#### Status Values
+
+- `RUNNING`: Task is currently being processed
+- `PENDING`: Task is queued and waiting to be processed
+- `SUCCESS` / `COMPLETED` / `FINISHED` / `DONE`: Task completed successfully
+- `FAILED` / `ERROR`: Task failed to complete
+
+#### Error Responses
+
+- **500 Internal Server Error**: Failed to check task status
+
+### 5. Get Workflow Task Results
+
+**GET** `/api/workflow/results/{runninghub_task_id}`
+
+Gets the results of a completed workflow task by RunningHub task ID.
+
+#### Parameters
+
+- `runninghub_task_id` (path): The RunningHub task ID to get results for
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "Results retrieved successfully",
+  "data": {
+    "runninghub_task_id": "task_12345",
+    "status": "SUCCESS",
+    "results": [
+      {
+        "nodeId": "output_node_1",
+        "fileUrl": "https://example.com/result1.png",
+        "fileType": "png",
+        "taskCostTime": 15.5
+      },
+      {
+        "nodeId": "output_node_2", 
+        "fileUrl": "https://example.com/result2.mp4",
+        "fileType": "mp4",
+        "taskCostTime": 15.5
+      }
+    ],
+    "task_id": "optional_task_identifier"
+  }
+}
+```
+
+#### Error Responses
+
+- **500 Internal Server Error**: Failed to retrieve task results
+
+### 6. Workflow Health Check
 
 **GET** `/api/workflow/health`
 
@@ -233,12 +310,37 @@ const executionResponse = await fetch('/api/workflow/execute', {
   },
   body: JSON.stringify(executionRequest)
 });
+
+const executionResult = await executionResponse.json();
+const runninghubTaskId = executionResult.data.runninghub_task_id;
+
+// Poll task status every 5 seconds
+const pollStatus = async () => {
+  const statusResponse = await fetch(`/api/workflow/status/${runninghubTaskId}`);
+  const statusResult = await statusResponse.json();
+  
+  if (statusResult.data.status === 'SUCCESS') {
+    // Get results
+    const resultsResponse = await fetch(`/api/workflow/results/${runninghubTaskId}`);
+    const results = await resultsResponse.json();
+    console.log('Task completed:', results.data.results);
+  } else if (statusResult.data.status === 'FAILED') {
+    console.log('Task failed');
+  } else {
+    // Continue polling
+    setTimeout(pollStatus, 5000);
+  }
+};
+
+// Start polling
+pollStatus();
 ```
 
 ### Python
 
 ```python
 import requests
+import time
 
 # Get available workflows
 response = requests.get('/api/workflow/list')
@@ -258,6 +360,26 @@ execution_request = {
 }
 
 execution_response = requests.post('/api/workflow/execute', json=execution_request)
+execution_result = execution_response.json()
+runninghub_task_id = execution_result['data']['runninghub_task_id']
+
+# Poll task status every 5 seconds
+while True:
+    status_response = requests.get(f'/api/workflow/status/{runninghub_task_id}')
+    status_result = status_response.json()
+    
+    if status_result['data']['status'] == 'SUCCESS':
+        # Get results
+        results_response = requests.get(f'/api/workflow/results/{runninghub_task_id}')
+        results = results_response.json()
+        print('Task completed:', results['data']['results'])
+        break
+    elif status_result['data']['status'] == 'FAILED':
+        print('Task failed')
+        break
+    else:
+        # Continue polling
+        time.sleep(5)
 ```
 
 ## Error Handling
@@ -285,7 +407,10 @@ Currently, no authentication is required. Consider implementing authentication f
 
 ## Notes
 
-- The workflow execution endpoint currently returns a placeholder response as the actual execution logic is not yet implemented
+- Workflow execution is fully implemented with RunningHub integration
+- Status polling should be performed every 5 seconds after workflow execution
+- Completed tasks provide downloadable file URLs in the results
 - Workflow configurations are loaded from `workflow/workflow-config.json`
 - All timestamps are in ISO 8601 format
 - Parameter validation is performed against the workflow's nodeInfoList configuration
+- Task results are cached and can be retrieved multiple times using the same RunningHub task ID
