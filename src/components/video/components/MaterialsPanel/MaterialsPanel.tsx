@@ -65,6 +65,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     taskId,
     component: 'MaterialsPanel'
   });
+  
+  // 获取AI素材服务配置
+  const aiMaterialService = process.env.NEXT_PUBLIC_AI_MATERIAL_SERVICE || 'local';
+  const shouldShowLocalAIButtons = aiMaterialService === 'local';
 
   // 预览弹窗状态
   const [previewModal, setPreviewModal] = useState<{
@@ -93,7 +97,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       isUploading,
       scrollImplementation: 'materials-grid-container',
       buttonStyleUpdate: 'icon-only-with-tooltip',
-      emptyStateUpdate: 'removed-search-button'
+      emptyStateUpdate: 'removed-search-button',
+      aiMaterialService,
+      shouldShowLocalAIButtons
     });
   }, []);
 
@@ -1289,65 +1295,71 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <span>AI素材</span>
               </button>
 
-              <button
-                onClick={handleAIImageGenerationClick}
-                disabled={!comfyuiHealthStatus?.isServiceAvailable}
-                className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
-                  comfyuiHealthStatus?.isServiceAvailable 
-                    ? 'text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 cursor-pointer' 
-                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                }`}
-                title={
-                  comfyuiHealthStatus?.isServiceAvailable 
-                    ? "AI生图" 
-                    : "AI生图服务不可用，请联系管理员"
-                }
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span>AI生图</span>
-              </button>
+              {shouldShowLocalAIButtons && (
+                <button
+                  onClick={handleAIImageGenerationClick}
+                  disabled={!comfyuiHealthStatus?.isServiceAvailable}
+                  className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
+                    comfyuiHealthStatus?.isServiceAvailable 
+                      ? 'text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 cursor-pointer' 
+                      : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                  }`}
+                  title={
+                    comfyuiHealthStatus?.isServiceAvailable 
+                      ? "AI生图" 
+                      : "AI生图服务不可用，请联系管理员"
+                  }
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>AI生图</span>
+                </button>
+              )}
 
-              <button
-                onClick={handleAIVideoGenerationClick}
-                disabled={!comfyuiHealthStatus?.isServiceAvailable}
-                className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
-                  comfyuiHealthStatus?.isServiceAvailable 
-                    ? 'text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 cursor-pointer' 
-                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                }`}
-                title={
-                  comfyuiHealthStatus?.isServiceAvailable 
-                    ? "AI视频" 
-                    : "AI视频服务不可用，请联系管理员"
-                }
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <span>AI视频</span>
-              </button>
+              {shouldShowLocalAIButtons && (
+                <button
+                  onClick={handleAIVideoGenerationClick}
+                  disabled={!comfyuiHealthStatus?.isServiceAvailable}
+                  className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
+                    comfyuiHealthStatus?.isServiceAvailable 
+                      ? 'text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 cursor-pointer' 
+                      : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                  }`}
+                  title={
+                    comfyuiHealthStatus?.isServiceAvailable 
+                      ? "AI视频" 
+                      : "AI视频服务不可用，请联系管理员"
+                  }
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>AI视频</span>
+                </button>
+              )}
 
-              <button
-                onClick={handleDigitalHumanGenerationClick}
-                disabled={!comfyuiHealthStatus?.isServiceAvailable}
-                className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
-                  comfyuiHealthStatus?.isServiceAvailable 
-                    ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer' 
-                    : 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                }`}
-                title={
-                  comfyuiHealthStatus?.isServiceAvailable 
-                    ? "数字人" 
-                    : "数字人服务不可用，请联系管理员"
-                }
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <span>数字人</span>
-              </button>
+              {shouldShowLocalAIButtons && (
+                <button
+                  onClick={handleDigitalHumanGenerationClick}
+                  disabled={!comfyuiHealthStatus?.isServiceAvailable}
+                  className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
+                    comfyuiHealthStatus?.isServiceAvailable 
+                      ? 'text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer' 
+                      : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                  }`}
+                  title={
+                    comfyuiHealthStatus?.isServiceAvailable 
+                      ? "数字人" 
+                      : "数字人服务不可用，请联系管理员"
+                  }
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>数字人</span>
+                </button>
+              )}
               
             </div>
             <div className="text-gray-500">
