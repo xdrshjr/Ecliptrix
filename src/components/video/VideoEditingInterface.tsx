@@ -163,7 +163,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const comfyuiHealth = useComfyUIHealth(taskId, true);
   
   // 添加AI素材功能
-  const aiMaterials = useAIMaterials(taskId);
+  const aiMaterials = useAIMaterials(taskId, materialManagement.addMaterials);
 
   // 处理智能润色
   const handlePolishClick = useCallback(() => {

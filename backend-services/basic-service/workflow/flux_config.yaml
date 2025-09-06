@@ -1,0 +1,37 @@
+flux_generation:
+  workflow_id: "1964363754437754881"
+  base_url: "https://www.runninghub.cn"
+  
+  # 支持的宽高比选项
+  aspect_ratios:
+    - "1:1 (Square)"
+    - "3:4 (Golden Ratio)"
+    - "4:3 (Standard)"
+    - "16:9 (Widescreen)"
+    - "9:16 (Portrait)"
+    - "2:3 (Portrait)"
+    - "3:2 (Landscape)"
+  
+  # 默认参数
+  defaults:
+    aspect_ratio: "3:4 (Golden Ratio)"
+    prompt_mode: "1"  # 提示词输入方式
+  
+  # API端点
+  endpoints:
+    create_task: "/task/openapi/create"
+    check_status: "/task/openapi/status"
+    get_results: "/task/openapi/outputs"
+  
+  # 轮询配置
+  polling:
+    interval_seconds: 5
+    max_attempts: 120  # 10分钟超时
+  
+  # 任务状态映射
+  status_mapping:
+    RUNNING: "RUNNING"
+    COMPLETED: "COMPLETED"
+    SUCCESS: "COMPLETED"  # RunningHub使用SUCCESS表示完成
+    FAILED: "FAILED"
+    PENDING: "PENDING"

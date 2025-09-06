@@ -1,0 +1,20 @@
+[
+  {
+    "nodeId": "56",
+    "fieldName": "prompt",
+    "fieldValue": "{positive_prompt}",
+    "description": "文本输入框"
+  },
+  {
+    "nodeId": "52",
+    "fieldName": "aspect_ratio",
+    "fieldValue": "{aspect_ratio}",
+    "description": "输出宽高比"
+  },
+  {
+    "nodeId": "66",
+    "fieldName": "select",
+    "fieldValue": "1",
+    "description": "提示词输入方式"
+  }
+]

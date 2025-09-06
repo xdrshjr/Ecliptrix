@@ -1035,6 +1035,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </div>
                     )}
 
+                    {/* FLUX生成状态覆盖层 */}
+                    {material.metadata?.source === 'flux-generating' && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 bg-opacity-90 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
+                        <span className="text-white text-xs font-medium text-center px-1">FLUX生成中...</span>
+                        <div className="w-16 bg-white bg-opacity-30 rounded-full h-1 mt-1">
+                          <div className="bg-white h-1 rounded-full animate-pulse"></div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* 下载错误状态覆盖层 */}
                     {material.downloadStatus === 'error' && (
                       <div className="absolute inset-0 bg-red-500 bg-opacity-50 flex flex-col items-center justify-center">

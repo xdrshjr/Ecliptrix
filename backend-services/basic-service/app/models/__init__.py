@@ -82,6 +82,23 @@ from .video_analysis import (
     VideoAnalysisStatusResponse
 )
 
+from .runninghub_models import (
+    TaskStatus,
+    NodeInfo,
+    FluxGenerationRequest,
+    FluxGenerationResponse,
+    FluxGenerationStatusResponse,
+    FluxGenerationResultResponse,
+    FluxGenerationErrorResponse,
+    RunningHubCreateTaskRequest,
+    RunningHubCreateTaskResponse,
+    RunningHubStatusRequest,
+    RunningHubStatusResponse,
+    RunningHubResultsRequest,
+    RunningHubResultsResponse,
+    RunningHubResultFile
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -141,5 +158,21 @@ __all__ = [
     "FrameAnalysis",
     "VideoAnalysisRequest", 
     "VideoAnalysisResponse",
-    "VideoAnalysisStatusResponse"
+    "VideoAnalysisStatusResponse",
+    
+    # RunningHub Models
+    "TaskStatus",
+    "NodeInfo",
+    "FluxGenerationRequest",
+    "FluxGenerationResponse",
+    "FluxGenerationStatusResponse",
+    "FluxGenerationResultResponse",
+    "FluxGenerationErrorResponse",
+    "RunningHubCreateTaskRequest",
+    "RunningHubCreateTaskResponse",
+    "RunningHubStatusRequest",
+    "RunningHubStatusResponse",
+    "RunningHubResultsRequest",
+    "RunningHubResultsResponse",
+    "RunningHubResultFile"
 ] 

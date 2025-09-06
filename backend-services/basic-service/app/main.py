@@ -267,6 +267,10 @@ app.include_router(audio_router.router, prefix="/api")
 from app.routers import youtube_router
 app.include_router(youtube_router.router, prefix="/api")
 
+# Import and include FLUX router
+from app.routers import flux_router
+app.include_router(flux_router.router)
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)
