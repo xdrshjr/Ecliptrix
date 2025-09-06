@@ -1,0 +1,72 @@
+[
+  {
+    "workflowName": "t2v-wan2.2",
+    "workflowType": "TEXT-2-VIDEO",
+    "showNameCh": "wan2 文生视频",
+    "showNameEn": "wan2 text-video",
+    "workflowId": "1964379800901177345",
+    "description": "出色的文生视频功能",
+    "icon": "https://hlqvzgwmbejiviaekdns.supabase.co/storage/v1/object/sign/articraft-dev/development/audio/2025/09/07/tmp0ccpn9ii.png?token=***REMOVED***LpfyjhrGz3w8qS62lWp5QqfnetWyt-8sHpw5euvG-hU",
+    "nodeInfoList": [
+      {
+        "nodeId": "50",
+        "fieldName": "value",
+        "fieldValue": "2",
+        "description": "设置时长（秒）"
+      },
+      {
+        "nodeId": "94",
+        "fieldName": "select",
+        "fieldValue": "2",
+        "description": "高清版/极速版切换"
+      },
+      {
+        "nodeId": "144",
+        "fieldName": "select",
+        "fieldValue": "4",
+        "description": "设置比例【 9:16\u003d宽:高】"
+      },
+      {
+        "nodeId": "120",
+        "fieldName": "select",
+        "fieldValue": "3",
+        "description": "文本输入方式"
+      },
+      {
+        "nodeId": "90",
+        "fieldName": "text",
+        "fieldValue": "写实摄影电影风格，一个身穿华丽长袍的东方武士，缓慢地挥舞长剑，剑光在阳光下闪烁，转场至一片古老的竹林，微风拂动竹叶，阳光透过缝隙洒下点点光斑，画面充满柔和的暖黄色调，镜头从低角度缓缓拉升至俯视视角，展现整个竹林的广阔与宁静，细腻的光影变化塑造出浓厚的诗意氛围，镜头语言具有电影质感，层次丰富。",
+        "description": "手写/润色文本输入框"
+      }
+    ]
+  },
+  {
+    "workflowName": "flux",
+    "workflowType": "TEXT-2-IMG",
+    "showNameCh": "flux 文生图",
+    "showNameEn": "flux text-img",
+    "workflowId": "1964363754437754881",
+    "description": "出色的文生图功能",
+    "icon": "https://hlqvzgwmbejiviaekdns.supabase.co/storage/v1/object/sign/articraft-dev/development/audio/2025/09/07/tmp0ccpn9ii.png?token=***REMOVED***LpfyjhrGz3w8qS62lWp5QqfnetWyt-8sHpw5euvG-hU",
+    "nodeInfoList": [
+      {
+        "nodeId": "56",
+        "fieldName": "prompt",
+        "fieldValue": "可爱的动漫女孩，有着巨大的蓬松耳廓狐耳朵和一条蓬松的大尾巴，金色凌乱的长发，蓝眼睛，穿着女仆装，带有金箔图案的长黑裙和白色围裙，在一座古老的深色维多利亚式豪宅的厨房里吃着一片苹果派，豪宅的窗户明亮，到处都是非常昂贵的东西",
+        "description": "文本输入框"
+      },
+      {
+        "nodeId": "52",
+        "fieldName": "aspect_ratio",
+        "fieldValue": "3:4 (Golden Ratio)",
+        "description": "输出宽高比"
+      },
+      {
+        "nodeId": "66",
+        "fieldName": "select",
+        "fieldValue": "1",
+        "description": "提示词输入方式"
+      }
+    ]
+  }
+]

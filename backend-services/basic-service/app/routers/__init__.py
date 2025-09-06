@@ -8,6 +8,7 @@ from . import tts_router
 from . import supabase_router
 from . import audio_router
 from . import youtube_router
+from . import workflow_router
 
 __all__ = [
     "api_router",
@@ -15,5 +16,6 @@ __all__ = [
     "tts_router",
     "supabase_router",
     "audio_router",
-    "youtube_router"
+    "youtube_router",
+    "workflow_router"
 ] 

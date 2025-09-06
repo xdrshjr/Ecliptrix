@@ -271,6 +271,10 @@ app.include_router(youtube_router.router, prefix="/api")
 from app.routers import flux_router
 app.include_router(flux_router.router)
 
+# Import and include Workflow router
+from app.routers import workflow_router
+app.include_router(workflow_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

@@ -15,6 +15,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
   onAIMaterials?: () => void; // 新增：AI素材回调
+  onAICreation?: () => void; // 新增：AI创作回调
   onAIImageGeneration?: () => void; // 新增：AI生图回调
   onAIVideoGeneration?: () => void; // 新增：AI视频生成回调
   onDigitalHumanGeneration?: () => void; // 新增：数字人生成回调
@@ -41,6 +42,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
   onAIMaterials, // 新增：AI素材回调
+  onAICreation, // 新增：AI创作回调
   onAIImageGeneration, // 新增：AI生图回调
   onAIVideoGeneration, // 新增：AI视频生成回调
   onDigitalHumanGeneration, // 新增：数字人生成回调
@@ -1304,6 +1306,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
                 <span>AI素材</span>
+              </button>
+
+              <button
+                onClick={onAICreation}
+                className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                title="打开AI创作面板，选择创作工作流进行内容创作"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span>AI创作</span>
               </button>
 
               {shouldShowLocalAIButtons && (

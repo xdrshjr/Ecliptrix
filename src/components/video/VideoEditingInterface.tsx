@@ -19,7 +19,8 @@ import {
   useAIVideoGeneration,
   useDigitalHumanGeneration,
   useComfyUIHealth,
-  useAIMaterials
+  useAIMaterials,
+  useAICreation
 } from './hooks';
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -37,7 +38,8 @@ import {
   AIImageGenerationModal,
   AIVideoGenerationModal,
   DigitalHumanGenerationModal,
-  AIMaterialsModal
+  AIMaterialsModal,
+  AICreationModal
 } from './components';
 
 interface VideoEditingInterfaceProps {
@@ -164,6 +166,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加AI素材功能
   const aiMaterials = useAIMaterials(taskId, materialManagement.addMaterials);
+  
+  // 添加AI创作功能
+  const aiCreation = useAICreation(taskId);
 
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
@@ -781,6 +786,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onSearchVideos={videoSearch.openSearchModal}
                 onSearchAudios={audioSearch.openSearchModal}
                 onAIMaterials={aiMaterials.openModal}
+                onAICreation={aiCreation.openModal}
                 onAIImageGeneration={aiImageGeneration.openModal}
                 onAIVideoGeneration={aiVideoGeneration.openModal}
                 onDigitalHumanGeneration={digitalHumanGeneration.openModal}
@@ -883,6 +889,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <AIMaterialsModal
         {...aiMaterials}
+      />
+
+      <AICreationModal
+        {...aiCreation}
       />
     </div>
   );

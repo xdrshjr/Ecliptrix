@@ -11,4 +11,5 @@ export { useAIImageGeneration } from './useAIImageGeneration';
 export { useAIVideoGeneration } from './useAIVideoGeneration';
 export { useDigitalHumanGeneration } from './useDigitalHumanGeneration';
 export { useComfyUIHealth } from './useComfyUIHealth';
-export { useAIMaterials } from './useAIMaterials'; 
+export { useAIMaterials } from './useAIMaterials';
+export { useAICreation } from './useAICreation'; 

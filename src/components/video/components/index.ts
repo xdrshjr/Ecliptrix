@@ -12,4 +12,5 @@ export { VideoAnalysisModal } from './VideoAnalysisModal';
 export { default as AIImageGenerationModal } from './AIImageGenerationModal';
 export { default as AIVideoGenerationModal } from './AIVideoGenerationModal';
 export { default as DigitalHumanGenerationModal } from './DigitalHumanGenerationModal';
-export { default as AIMaterialsModal } from './AIMaterialsModal'; 
+export { default as AIMaterialsModal } from './AIMaterialsModal';
+export { AICreationModal } from './AICreationModal'; 
