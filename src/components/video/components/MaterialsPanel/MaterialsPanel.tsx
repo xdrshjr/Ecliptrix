@@ -54,7 +54,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   className = '',
   // 新增的删除功能
   handleMaterialDelete,
-  handleDeleteAllMaterials,
   confirmationDialog,
   handleCloseConfirmationDialog
 }) => {
@@ -225,16 +224,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   };
 
-  // 处理删除全部按钮点击
-  const handleDeleteAllClick = () => {
-    logger.info('用户点击删除全部按钮', {
-      selectedMaterialType,
-      materialsCount: materials.length,
-      filteredMaterialsCount: materials.length
-    });
-    
-    handleDeleteAllMaterials();
-  };
 
   // 处理单个素材删除按钮点击
   const handleSingleMaterialDelete = (material: MaterialItem, e: React.MouseEvent) => {
@@ -1347,19 +1336,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <span>数字人</span>
               </button>
               
-              {/* 新增：删除全部按钮 */}
-              {materials.length > 0 && (
-                <button
-                  onClick={handleDeleteAllClick}
-                  className="flex items-center space-x-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded transition-colors"
-                  title={t.materialsPanel.deleteAllTooltip.replace('{count}', materials.length.toString())}
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <span>{t.materialsPanel.deleteAll}</span>
-                </button>
-              )}
             </div>
             <div className="text-gray-500">
               {materials.length}{t.materialsPanel.materialsCount}

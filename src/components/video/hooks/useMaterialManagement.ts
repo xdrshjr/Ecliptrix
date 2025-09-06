@@ -171,51 +171,6 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     });
   }, [materials, logger, executeDelete]);
 
-  // 处理删除当前选项卡的所有素材
-  const handleDeleteAllMaterials = useCallback(() => {
-    // 获取当前选项卡的所有素材
-    const currentTabMaterials = materials.filter(material => 
-      selectedMaterialType === 'all' || material.type === selectedMaterialType
-    );
-    
-    if (currentTabMaterials.length === 0) {
-      logger.info('当前选项卡无素材，忽略删除全部操作', {
-        selectedMaterialType,
-        totalMaterials: materials.length
-      });
-      return;
-    }
-
-    logger.userAction('删除全部素材操作', 'deleteAllButton', {
-      selectedMaterialType,
-      currentTabMaterialCount: currentTabMaterials.length,
-      totalMaterialCount: materials.length
-    });
-
-    const materialIds = currentTabMaterials.map(m => m.id);
-    const tabName = selectedMaterialType === 'all' ? '全部' : 
-                   selectedMaterialType === 'video' ? '视频' :
-                   selectedMaterialType === 'audio' ? '音频' :
-                   selectedMaterialType === 'image' ? '图片' : '字幕';
-
-    setConfirmationDialog({
-      isOpen: true,
-      title: '确认清空素材',
-      message: selectedMaterialType === 'all'
-        ? `确定要清空所有 ${currentTabMaterials.length} 个素材吗？此操作将删除素材管理面板中的所有内容，且不可撤销。`
-        : `确定要清空「${tabName}」选项卡中的所有 ${currentTabMaterials.length} 个素材吗？此操作不可撤销。`,
-      type: 'danger',
-      onConfirm: () => {
-        logger.info('用户确认删除全部素材', {
-          selectedMaterialType,
-          materialIds,
-          materialCount: materialIds.length
-        });
-        executeDelete(materialIds);
-        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
-      }
-    });
-  }, [materials, selectedMaterialType, logger, executeDelete]);
 
   // 关闭确认对话框
   const handleCloseConfirmationDialog = useCallback(() => {
@@ -687,7 +642,6 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     addMaterials,
     addOrReplaceMaterial, // 新增：添加或替换单个素材
     // 新增的删除功能
-    handleDeleteAllMaterials,
     confirmationDialog,
     handleCloseConfirmationDialog
   };
