@@ -4,11 +4,38 @@
 
 import { VideoEditingLogger } from '../utils';
 
+export interface UIConfigOption {
+  label: string;
+  value: any;
+  description?: string;
+  default?: boolean;
+}
+
+export interface UIConfigValidation {
+  required?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+}
+
+export interface UIConfig {
+  inputType?: 'text' | 'textarea' | 'number' | 'select' | 'multiselect' | 'slider' | 'toggle';
+  options?: UIConfigOption[];
+  validation?: UIConfigValidation;
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: any;
+}
+
 export interface WorkflowNodeInfo {
   nodeId: string;
   fieldName: string;
   fieldValue: any;
   description: string;
+  uiConfig?: UIConfig;
 }
 
 export interface WorkflowInfo {
@@ -20,6 +47,7 @@ export interface WorkflowInfo {
   description: string;
   icon: string;
   nodeInfoList: WorkflowNodeInfo[];
+  instanceType?: string;
 }
 
 export interface WorkflowParameter {

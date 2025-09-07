@@ -66,10 +66,18 @@ class WorkflowService:
             for workflow_data in config_data:
                 try:
                     # Convert nodeInfoList to WorkflowNodeInfo objects
-                    node_info_list = [
-                        WorkflowNodeInfo(**node_info) 
-                        for node_info in workflow_data.get('nodeInfoList', [])
-                    ]
+                    node_info_list = []
+                    for node_info in workflow_data.get('nodeInfoList', []):
+                        try:
+                            workflow_node = WorkflowNodeInfo(**node_info)
+                            node_info_list.append(workflow_node)
+                            
+                            # Log UI config presence for debugging
+                            if workflow_node.ui_config:
+                                logger.debug(f"Node {workflow_node.node_id} has UI config: {workflow_node.ui_config.input_type}")
+                        except Exception as node_error:
+                            logger.error(f"Error parsing node info {node_info.get('nodeId', 'unknown')}: {str(node_error)}")
+                            continue
                     
                     # Create WorkflowInfo object
                     workflow = WorkflowInfo(

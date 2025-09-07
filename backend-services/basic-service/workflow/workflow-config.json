@@ -6,30 +6,91 @@
     "showNameEn": "wan2 text-video",
     "workflowId": "1964379800901177345",
     "description": "出色的文生视频功能",
+    "instanceType": "plus",
     "icon": "https://hlqvzgwmbejiviaekdns.supabase.co/storage/v1/object/sign/articraft-dev/development/audio/2025/09/07/tmp0ccpn9ii.png?token=***REMOVED***LpfyjhrGz3w8qS62lWp5QqfnetWyt-8sHpw5euvG-hU",
     "nodeInfoList": [
       {
         "nodeId": "50",
         "fieldName": "value",
         "fieldValue": "2",
-        "description": "设置时长（秒）"
+        "description": "设置时长（秒）",
+        "uiConfig": {
+          "inputType": "number",
+          "validation": {
+            "required": true,
+            "min": 1,
+            "max": 10,
+            "step": 1
+          },
+          "helpText": "设置生成视频的时长，范围1-10秒"
+        }
       },
       {
         "nodeId": "94",
         "fieldName": "select",
         "fieldValue": "2",
-        "description": "高清版/极速版切换"
+        "description": "高清版/极速版切换",
+        "uiConfig": {
+          "inputType": "select",
+          "options": [
+            {
+              "label": "极速版",
+              "value": "2",
+              "description": "生成速度快，质量标准"
+            },
+            {
+              "label": "高清版",
+              "value": "1",
+              "description": "生成质量高，速度较慢",
+              "default": true
+            }
+          ],
+          "validation": {
+            "required": true
+          },
+          "helpText": "选择生成模式，高清版质量更好但耗时更长"
+        }
       },
       {
         "nodeId": "144",
         "fieldName": "select",
         "fieldValue": "4",
-        "description": "设置比例【 9:16\u003d宽:高】"
+        "description": "设置比例【 9:16\u003d宽:高】",
+        "uiConfig": {
+          "inputType": "select",
+          "options": [
+            {
+              "label": "1:1 (正方形)",
+              "value": "1",
+              "description": "正方形视频比例"
+            },
+            {
+              "label": "4:3 (标准)",
+              "value": "2",
+              "description": "传统4:3比例"
+            },
+            {
+              "label": "16:9 (横屏)",
+              "value": "3",
+              "description": "宽屏横向比例"
+            },
+            {
+              "label": "9:16 (竖屏)",
+              "value": "4",
+              "description": "竖屏比例，适合手机观看",
+              "default": true
+            }
+          ],
+          "validation": {
+            "required": true
+          },
+          "helpText": "选择视频的宽高比例，影响最终视频的显示效果"
+        }
       },
       {
         "nodeId": "120",
         "fieldName": "select",
-        "fieldValue": "3",
+        "fieldValue": "1",
         "description": "文本输入方式"
       },
       {
@@ -59,13 +120,143 @@
         "nodeId": "52",
         "fieldName": "aspect_ratio",
         "fieldValue": "3:4 (Golden Ratio)",
-        "description": "输出宽高比"
+        "description": "输出宽高比",
+        "uiConfig": {
+          "inputType": "select",
+          "options": [
+            {
+              "label": "1:1 (Perfect Square)",
+              "value": "1:1 (Perfect Square)",
+              "description": "完美正方形，适合头像和社交媒体"
+            },
+            {
+              "label": "2:3 (Classic Portrait)",
+              "value": "2:3 (Classic Portrait)",
+              "description": "经典人像比例"
+            },
+            {
+              "label": "3:4 (Golden Ratio)",
+              "value": "3:4 (Golden Ratio)",
+              "description": "黄金比例，适合人像摄影",
+              "default": true
+            },
+            {
+              "label": "3:5 (Elegant Vertical)",
+              "value": "3:5 (Elegant Vertical)",
+              "description": "优雅的竖向比例"
+            },
+            {
+              "label": "4:5 (Artistic Frame)",
+              "value": "4:5 (Artistic Frame)",
+              "description": "艺术画框比例"
+            },
+            {
+              "label": "5:7 (Balanced Portrait)",
+              "value": "5:7 (Balanced Portrait)",
+              "description": "平衡的人像比例"
+            },
+            {
+              "label": "5:8 (Tall Portrait)",
+              "value": "5:8 (Tall Portrait)",
+              "description": "高挑人像比例"
+            },
+            {
+              "label": "7:9 (Modern Portrait)",
+              "value": "7:9 (Modern Portrait)",
+              "description": "现代人像比例"
+            },
+            {
+              "label": "9:16 (Slim Vertical)",
+              "value": "9:16 (Slim Vertical)",
+              "description": "纤细竖屏，适合手机壁纸"
+            },
+            {
+              "label": "9:19 (Tall Slim)",
+              "value": "9:19 (Tall Slim)",
+              "description": "高瘦比例"
+            },
+            {
+              "label": "9:21 (Ultra Tall)",
+              "value": "9:21 (Ultra Tall)",
+              "description": "超高比例"
+            },
+            {
+              "label": "9:32 (Skyline)",
+              "value": "9:32 (Skyline)",
+              "description": "天际线比例"
+            },
+            {
+              "label": "3:2 (Golden Landscape)",
+              "value": "3:2 (Golden Landscape)",
+              "description": "黄金风景比例"
+            },
+            {
+              "label": "4:3 (Classic Landscape)",
+              "value": "4:3 (Classic Landscape)",
+              "description": "经典风景比例"
+            },
+            {
+              "label": "5:3 (Wide Horizon)",
+              "value": "5:3 (Wide Horizon)",
+              "description": "宽阔地平线"
+            },
+            {
+              "label": "5:4 (Balanced Frame)",
+              "value": "5:4 (Balanced Frame)",
+              "description": "平衡画框"
+            },
+            {
+              "label": "7:5 (Cinema Landscape)",
+              "value": "7:5 (Cinema Landscape)",
+              "description": "电影风景比例"
+            },
+            {
+              "label": "8:5 (Cinematic View)",
+              "value": "8:5 (Cinematic View)",
+              "description": "电影视角"
+            },
+            {
+              "label": "9:7 (Artful Horizon)",
+              "value": "9:7 (Artful Horizon)",
+              "description": "艺术地平线"
+            },
+            {
+              "label": "16:9 (Panorama)",
+              "value": "16:9 (Panorama)",
+              "description": "全景比例"
+            },
+            {
+              "label": "19:9 (Ultra Ultrawide)",
+              "value": "19:9 (Ultra Ultrawide)",
+              "description": "超宽屏比例"
+            },
+            {
+              "label": "21:9 (Epic Ultrawide)",
+              "value": "21:9 (Epic Ultrawide)",
+              "description": "史诗级超宽屏"
+            }
+          ],
+          "validation": {
+            "required": true
+          },
+          "helpText": "选择图片的宽高比例，这将影响最终生成图片的尺寸和构图。包含从正方形到超宽屏的各种专业比例"
+        }
       },
       {
         "nodeId": "66",
         "fieldName": "select",
         "fieldValue": "1",
-        "description": "提示词输入方式"
+        "description": "提示词输入方式",
+        "uiConfig": {
+          "inputType": "select",
+          "options": [
+            {
+              "label": "1 (Default)",
+              "value": "1 (Default)",
+              "description": "Default"
+            }
+          ]
+        }
       }
     ]
   }

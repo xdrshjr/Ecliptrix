@@ -376,7 +376,8 @@ class GeneralWorkflowService:
         self, 
         workflow_id: str, 
         node_info_list: List[Dict[str, Any]], 
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        instance_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create a new workflow task using RunningHub API.
@@ -385,6 +386,7 @@ class GeneralWorkflowService:
             workflow_id: The RunningHub workflow ID
             node_info_list: List of node parameters
             task_id: Optional internal task ID for tracking
+            instance_type: Optional RunningHub instance type (e.g., 'plus')
             
         Returns:
             Dict containing task creation response
@@ -395,7 +397,8 @@ class GeneralWorkflowService:
             logger.info(f"Creating workflow task {internal_task_id}", extra={
                 'task_id': internal_task_id,
                 'workflow_id': workflow_id,
-                'node_count': len(node_info_list)
+                'node_count': len(node_info_list),
+                'instance_type': instance_type
             })
             
             # Prepare RunningHub request
@@ -404,6 +407,15 @@ class GeneralWorkflowService:
                 "apiKey": self.api_key,
                 "nodeInfoList": node_info_list
             }
+            
+            # Add instanceType if specified
+            if instance_type:
+                request_data["instanceType"] = instance_type
+                logger.info(f"Using instance type: {instance_type} for workflow {workflow_id}")
+            
+            # Debug: Print final request data
+            logger.debug(f"RunningHub API request URL: {self.base_url}{self.endpoints['create_task']}")
+            logger.debug(f"RunningHub API request body: {json.dumps(request_data, indent=2, ensure_ascii=False)}")
             
             # Make API call
             url = f"{self.base_url}{self.endpoints['create_task']}"
@@ -424,6 +436,9 @@ class GeneralWorkflowService:
                         }
                     
                     response_data = await response.json()
+            
+            # Debug: Print response data
+            logger.debug(f"RunningHub API response: {json.dumps(response_data, indent=2, ensure_ascii=False)}")
             
             # Check response
             if response_data.get('code') != 0:

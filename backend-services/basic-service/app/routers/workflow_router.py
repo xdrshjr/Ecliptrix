@@ -2,6 +2,7 @@
 Workflow management API routes for creative workflow operations.
 """
 
+import json
 from typing import List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
@@ -149,6 +150,10 @@ async def execute_workflow(request: WorkflowExecutionRequest) -> WorkflowExecuti
         # Execute workflow using RunningHub API
         logger.info(f"Executing workflow via RunningHub: {workflow.workflow_name}")
         
+        # Log instance type if specified
+        if workflow.instance_type:
+            logger.info(f"Using instance type '{workflow.instance_type}' for workflow {workflow.workflow_name}")
+        
         # Convert parameters to RunningHub format
         node_info_list = []
         for param in request.parameters:
@@ -159,11 +164,20 @@ async def execute_workflow(request: WorkflowExecutionRequest) -> WorkflowExecuti
                 "description": f"Parameter for node {param.node_id}"
             })
         
+        # Debug: Log workflow execution details
+        logger.debug(f"Workflow execution details:")
+        logger.debug(f"  - Workflow ID: {request.workflow_id}")
+        logger.debug(f"  - Workflow Name: {workflow.workflow_name}")
+        logger.debug(f"  - Instance Type: {workflow.instance_type}")
+        logger.debug(f"  - Task ID: {request.task_id}")
+        logger.debug(f"  - Node Info List: {json.dumps(node_info_list, indent=2, ensure_ascii=False)}")
+        
         # Create workflow task
         result = await general_workflow_service.create_workflow_task(
             workflow_id=request.workflow_id,
             node_info_list=node_info_list,
-            task_id=request.task_id
+            task_id=request.task_id,
+            instance_type=workflow.instance_type
         )
         
         if not result.get('success'):

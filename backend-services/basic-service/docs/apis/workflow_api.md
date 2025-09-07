@@ -75,17 +75,129 @@ Retrieves a specific workflow by its ID.
     "workflowId": "1964363754437754881",
     "description": "出色的文生图功能",
     "icon": "https://example.com/icon.png",
-    "nodeInfoList": [
-      {
-        "nodeId": "56",
-        "fieldName": "prompt",
-        "fieldValue": "可爱的动漫女孩...",
-        "description": "文本输入框"
-      }
-    ]
+    "instanceType": "plus",
+      "nodeInfoList": [
+        {
+          "nodeId": "56",
+          "fieldName": "prompt",
+          "fieldValue": "可爱的动漫女孩...",
+          "description": "文本输入框",
+          "uiConfig": {
+            "inputType": "textarea",
+            "validation": {
+              "required": true,
+              "maxLength": 1000
+            },
+            "helpText": "描述您想要生成的图片内容，越详细效果越好"
+          }
+        },
+        {
+          "nodeId": "52",
+          "fieldName": "aspect_ratio",
+          "fieldValue": "3:4 (Golden Ratio)",
+          "description": "输出宽高比",
+          "uiConfig": {
+            "inputType": "select",
+            "options": [
+              {
+                "label": "1:1 (Perfect Square)",
+                "value": "1:1 (Perfect Square)",
+                "description": "完美正方形，适合头像和社交媒体"
+              },
+              {
+                "label": "3:4 (Golden Ratio)",
+                "value": "3:4 (Golden Ratio)",
+                "description": "黄金比例，适合人像摄影",
+                "default": true
+              },
+              {
+                "label": "16:9 (Panorama)",
+                "value": "16:9 (Panorama)",
+                "description": "全景比例"
+              },
+              {
+                "label": "21:9 (Epic Ultrawide)",
+                "value": "21:9 (Epic Ultrawide)",
+                "description": "史诗级超宽屏"
+              }
+            ],
+            "validation": {
+              "required": true
+            },
+            "helpText": "选择图片的宽高比例，这将影响最终生成图片的尺寸和构图"
+          }
+        }
+      ]
   }
 }
 ```
+
+#### UI Configuration
+
+Each node in the `nodeInfoList` can optionally include a `uiConfig` field that provides frontend-specific configuration for parameter input rendering:
+
+```json
+{
+  "uiConfig": {
+    "inputType": "select",           // Input component type
+    "options": [                     // Available options (for select inputs)
+      {
+        "label": "Display Label",    // User-visible label
+        "value": "actual_value",     // Value sent to API
+        "description": "Help text",  // Optional tooltip/description
+        "default": true              // Whether this is the default option
+      }
+    ],
+    "validation": {                  // Validation rules
+      "required": true,              // Field is required
+      "min": 1,                      // Minimum value (numbers)
+      "max": 10,                     // Maximum value (numbers)
+      "step": 1,                     // Step value (numbers)
+      "minLength": 5,                // Minimum text length
+      "maxLength": 1000,             // Maximum text length
+      "pattern": "^[a-zA-Z]+$"       // Regex pattern
+    },
+    "placeholder": "Enter text...",  // Input placeholder
+    "helpText": "Guidance text",     // Help text displayed below input
+    "defaultValue": "default"        // Default value override
+  }
+}
+```
+
+**Supported Input Types:**
+- `text`: Single-line text input
+- `textarea`: Multi-line text input
+- `number`: Numeric input with validation
+- `select`: Dropdown selection with predefined options
+- `multiselect`: Multiple selection dropdown
+- `slider`: Range slider for numeric values
+- `toggle`: Boolean toggle switch
+
+**Backward Compatibility:**
+- Nodes without `uiConfig` will use legacy rendering based on `fieldName`
+- All existing workflows continue to work without modification
+
+#### Instance Type Support
+
+Workflows can optionally specify an `instanceType` field to control the RunningHub execution environment:
+
+```json
+{
+  "workflowName": "t2v-wan2.2",
+  "workflowType": "TEXT-2-VIDEO",
+  "instanceType": "plus",
+  ...
+}
+```
+
+**Supported Instance Types:**
+- `plus`: High-performance instance for demanding workflows
+- `standard`: Default instance type (used when not specified)
+
+**Behavior:**
+- When `instanceType` is specified, it's automatically passed to RunningHub API
+- Workflows without `instanceType` use the default RunningHub instance
+- Instance type affects processing speed and resource allocation
 
 #### Error Responses
 
@@ -331,6 +443,7 @@ Checks the health status of the workflow service.
 | workflowId | string | Unique workflow identifier |
 | description | string | Workflow description |
 | icon | string | URL to workflow icon/thumbnail |
+| instanceType | string | Optional RunningHub instance type (e.g., 'plus') |
 | nodeInfoList | array | List of workflow parameters |
 
 ### WorkflowNodeInfo

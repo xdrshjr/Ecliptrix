@@ -7,6 +7,49 @@ from pydantic import BaseModel, Field
 from app.models import BaseResponse
 
 
+class UIConfigOption(BaseModel):
+    """
+    Model for UI configuration option.
+    """
+    label: str = Field(..., description="Display label for the option")
+    value: Any = Field(..., description="Actual value for the option")
+    description: Optional[str] = Field(None, description="Optional description for the option")
+    default: Optional[bool] = Field(False, description="Whether this is the default option")
+
+
+class UIConfigValidation(BaseModel):
+    """
+    Model for UI configuration validation rules.
+    """
+    required: Optional[bool] = Field(None, description="Whether the field is required")
+    min: Optional[float] = Field(None, description="Minimum value for numeric inputs")
+    max: Optional[float] = Field(None, description="Maximum value for numeric inputs")
+    step: Optional[float] = Field(None, description="Step value for numeric inputs")
+    pattern: Optional[str] = Field(None, description="Regex pattern for validation")
+    min_length: Optional[int] = Field(None, alias="minLength", description="Minimum length for text inputs")
+    max_length: Optional[int] = Field(None, alias="maxLength", description="Maximum length for text inputs")
+
+    class Config:
+        populate_by_name = True
+        allow_population_by_field_name = True
+
+
+class UIConfig(BaseModel):
+    """
+    Model for UI configuration of workflow parameters.
+    """
+    input_type: Optional[str] = Field(None, alias="inputType", description="Type of input component (select, number, text, textarea, slider, toggle)")
+    options: Optional[List[UIConfigOption]] = Field(None, description="Available options for select inputs")
+    validation: Optional[UIConfigValidation] = Field(None, description="Validation rules for the input")
+    placeholder: Optional[str] = Field(None, description="Placeholder text for the input")
+    help_text: Optional[str] = Field(None, alias="helpText", description="Help text to guide users")
+    default_value: Optional[Any] = Field(None, alias="defaultValue", description="Default value for the input")
+
+    class Config:
+        populate_by_name = True
+        allow_population_by_field_name = True
+
+
 class WorkflowNodeInfo(BaseModel):
     """
     Model for workflow node information containing parameter definitions.
@@ -15,6 +58,7 @@ class WorkflowNodeInfo(BaseModel):
     field_name: str = Field(..., alias="fieldName", description="Field name for the parameter")
     field_value: Any = Field(..., alias="fieldValue", description="Default value for the parameter")
     description: str = Field(..., description="Human-readable description of the parameter")
+    ui_config: Optional[UIConfig] = Field(None, alias="uiConfig", description="UI configuration for frontend rendering")
 
     class Config:
         populate_by_name = True
@@ -33,6 +77,7 @@ class WorkflowInfo(BaseModel):
     description: str = Field(..., description="Workflow description")
     icon: str = Field(..., description="URL to workflow icon/thumbnail")
     node_info_list: List[WorkflowNodeInfo] = Field(..., alias="nodeInfoList", description="List of workflow parameters")
+    instance_type: Optional[str] = Field(None, alias="instanceType", description="RunningHub instance type (e.g., 'plus')")
 
     class Config:
         populate_by_name = True

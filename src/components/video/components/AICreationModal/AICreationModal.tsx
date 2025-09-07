@@ -35,98 +35,166 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
   if (!isModalOpen) return null;
 
   /**
-   * Render parameter input based on field type
+   * Render parameter input based on UI configuration or field type
    */
   const renderParameterInput = (nodeInfo: WorkflowNodeInfo) => {
     const value = parameters[nodeInfo.nodeId] ?? nodeInfo.fieldValue;
+    const uiConfig = nodeInfo.uiConfig;
+    
+    // Use UI config if available, otherwise fall back to field name
+    const inputType = uiConfig?.inputType || 
+      (nodeInfo.fieldName === 'text' || nodeInfo.fieldName === 'prompt' ? 'textarea' :
+       nodeInfo.fieldName === 'select' ? 'select' :
+       nodeInfo.fieldName === 'value' || nodeInfo.fieldName === 'number' ? 'number' : 'text');
 
-    // Determine input type based on field name and value
-    if (nodeInfo.fieldName === 'text' || nodeInfo.fieldName === 'prompt') {
-      return (
-        <textarea
-          value={value || ''}
-          onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
-          placeholder={nodeInfo.description}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-          rows={4}
-        />
-      );
+    const placeholder = uiConfig?.placeholder || nodeInfo.description;
+    const validation = uiConfig?.validation;
+
+    // Common input classes
+    const inputClasses = "w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent";
+
+    switch (inputType) {
+      case 'textarea':
+        return (
+          <div className="space-y-2">
+            <textarea
+              value={value || ''}
+              onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
+              placeholder={placeholder}
+              className={`${inputClasses} resize-none`}
+              rows={4}
+              required={validation?.required}
+              minLength={validation?.minLength}
+              maxLength={validation?.maxLength}
+            />
+            {uiConfig?.helpText && (
+              <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
+            )}
+          </div>
+        );
+
+      case 'select':
+        const options = uiConfig?.options || [];
+        
+        // Fallback to legacy options if no UI config
+        if (options.length === 0 && nodeInfo.fieldName === 'select') {
+          let fallbackOptions: { value: any; label: string }[] = [];
+          
+          if (nodeInfo.description.includes('比例') || nodeInfo.description.includes('ratio')) {
+            fallbackOptions = [
+              { value: '1', label: '1:1 (正方形)' },
+              { value: '2', label: '4:3 (标准)' },
+              { value: '3', label: '16:9 (宽屏)' },
+              { value: '4', label: '9:16 (竖屏)' },
+              { value: '5', label: '3:4 (竖向标准)' }
+            ];
+          } else if (nodeInfo.description.includes('版本') || nodeInfo.description.includes('质量')) {
+            fallbackOptions = [
+              { value: '1', label: '极速版' },
+              { value: '2', label: '高清版' },
+              { value: '3', label: '超清版' }
+            ];
+          } else if (nodeInfo.description.includes('输入方式')) {
+            fallbackOptions = [
+              { value: '1', label: '简单输入' },
+              { value: '2', label: '详细输入' },
+              { value: '3', label: '专业输入' },
+              { value: '4', label: '自定义输入' }
+            ];
+          } else {
+            fallbackOptions = [
+              { value: '1', label: '选项 1' },
+              { value: '2', label: '选项 2' },
+              { value: '3', label: '选项 3' }
+            ];
+          }
+          
+          return (
+            <div className="space-y-2">
+              <select
+                value={value || ''}
+                onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
+                className={`${inputClasses} bg-white`}
+                required={validation?.required}
+              >
+                {fallbackOptions.map((option) => (
+                  <option key={String(option.value)} value={String(option.value)}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {uiConfig?.helpText && (
+                <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-2">
+            <select
+              value={value || ''}
+              onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
+              className={`${inputClasses} bg-white`}
+              required={validation?.required}
+            >
+              {options.map((option) => (
+                <option 
+                  key={String(option.value)} 
+                  value={String(option.value)}
+                  title={option.description}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {uiConfig?.helpText && (
+              <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
+            )}
+          </div>
+        );
+
+      case 'number':
+        return (
+          <div className="space-y-2">
+            <input
+              type="number"
+              value={value || ''}
+              onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value ? Number(e.target.value) : null)}
+              placeholder={placeholder}
+              className={inputClasses}
+              min={validation?.min ?? (nodeInfo.fieldName === 'value' ? 1 : undefined)}
+              max={validation?.max ?? (nodeInfo.fieldName === 'value' ? 60 : undefined)}
+              step={validation?.step ?? 1}
+              required={validation?.required}
+            />
+            {uiConfig?.helpText && (
+              <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
+            )}
+          </div>
+        );
+
+      case 'text':
+      default:
+        return (
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={value || ''}
+              onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
+              placeholder={placeholder}
+              className={inputClasses}
+              required={validation?.required}
+              minLength={validation?.minLength}
+              maxLength={validation?.maxLength}
+              pattern={validation?.pattern}
+            />
+            {uiConfig?.helpText && (
+              <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
+            )}
+          </div>
+        );
     }
-
-    if (nodeInfo.fieldName === 'select') {
-      // For select fields, we'll create options based on common patterns
-      let options: { value: any; label: string }[] = [];
-      
-      if (nodeInfo.description.includes('比例') || nodeInfo.description.includes('ratio')) {
-        options = [
-          { value: '1', label: '1:1 (正方形)' },
-          { value: '2', label: '4:3 (标准)' },
-          { value: '3', label: '16:9 (宽屏)' },
-          { value: '4', label: '9:16 (竖屏)' },
-          { value: '5', label: '3:4 (竖向标准)' }
-        ];
-      } else if (nodeInfo.description.includes('版本') || nodeInfo.description.includes('质量')) {
-        options = [
-          { value: '1', label: '极速版' },
-          { value: '2', label: '高清版' },
-          { value: '3', label: '超清版' }
-        ];
-      } else if (nodeInfo.description.includes('输入方式')) {
-        options = [
-          { value: '1', label: '简单输入' },
-          { value: '2', label: '详细输入' },
-          { value: '3', label: '专业输入' },
-          { value: '4', label: '自定义输入' }
-        ];
-      } else {
-        // Default options
-        options = [
-          { value: '1', label: '选项 1' },
-          { value: '2', label: '选项 2' },
-          { value: '3', label: '选项 3' }
-        ];
-      }
-
-      return (
-        <select
-          value={value || ''}
-          onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-        >
-          {options.map((option) => (
-            <option key={String(option.value)} value={String(option.value)}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      );
-    }
-
-    if (nodeInfo.fieldName === 'value' || nodeInfo.fieldName === 'number') {
-      return (
-        <input
-          type="number"
-          value={value || ''}
-          onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value ? Number(e.target.value) : null)}
-          placeholder={nodeInfo.description}
-          min={1}
-          max={60}
-          step={1}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      );
-    }
-
-    // Default text input
-    return (
-      <input
-        type="text"
-        value={value || ''}
-        onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
-        placeholder={nodeInfo.description}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      />
-    );
   };
 
   /**
