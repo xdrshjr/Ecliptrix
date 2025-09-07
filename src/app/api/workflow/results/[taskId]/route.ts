@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_BASE_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+const BACKEND_BASE_URL = process.env.BACKEND_SERVICE_URL || 'http://localhost:8000';
 
 /**
  * GET /api/workflow/results/[taskId]

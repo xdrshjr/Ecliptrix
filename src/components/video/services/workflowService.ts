@@ -96,7 +96,8 @@ class WorkflowService {
   private logger: VideoEditingLogger;
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    // Use Next.js frontend URL to route through proxy API routes instead of direct backend calls
+    this.baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
     this.logger = new VideoEditingLogger({ 
       taskId: 'workflow-service',
       component: 'WorkflowService' 
