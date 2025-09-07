@@ -88,11 +88,18 @@ class WorkflowService:
                         workflowId=workflow_data['workflowId'],
                         description=workflow_data['description'],
                         icon=workflow_data['icon'],
-                        nodeInfoList=node_info_list
+                        nodeInfoList=node_info_list,
+                        instanceType=workflow_data.get('instanceType')
                     )
                     
                     workflows.append(workflow)
                     logger.debug(f"Successfully parsed workflow: {workflow.workflow_name}")
+                    
+                    # Log instanceType for debugging
+                    if workflow.instance_type:
+                        logger.debug(f"Workflow {workflow.workflow_name} has instanceType: {workflow.instance_type}")
+                    else:
+                        logger.debug(f"Workflow {workflow.workflow_name} has no instanceType")
                     
                 except Exception as e:
                     logger.error(f"Error parsing workflow {workflow_data.get('workflowName', 'unknown')}: {str(e)}")

@@ -76,8 +76,8 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
       case 'select':
         const options = uiConfig?.options || [];
         
-        // Fallback to legacy options if no UI config
-        if (options.length === 0 && nodeInfo.fieldName === 'select') {
+        // Fallback to legacy options ONLY if no UI config is provided
+        if (options.length === 0 && nodeInfo.fieldName === 'select' && !uiConfig) {
           let fallbackOptions: { value: any; label: string }[] = [];
           
           if (nodeInfo.description.includes('比例') || nodeInfo.description.includes('ratio')) {
@@ -123,6 +123,27 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                   </option>
                 ))}
               </select>
+              {uiConfig?.helpText && (
+                <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
+              )}
+            </div>
+          );
+        }
+
+        // If uiConfig exists but no options, show warning and use fallback
+        if (uiConfig && options.length === 0) {
+          console.warn(`Node ${nodeInfo.nodeId} has uiConfig but no options defined`);
+          return (
+            <div className="space-y-2">
+              <select
+                value={value || ''}
+                onChange={(e) => setParameter(nodeInfo.nodeId, e.target.value)}
+                className={`${inputClasses} bg-white border-orange-300`}
+                required={validation?.required}
+              >
+                <option value="">请配置选项</option>
+              </select>
+              <p className="text-sm text-orange-600">⚠️ 配置错误：uiConfig 中缺少 options</p>
               {uiConfig?.helpText && (
                 <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
               )}

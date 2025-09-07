@@ -90,13 +90,38 @@
       {
         "nodeId": "120",
         "fieldName": "select",
-        "fieldValue": "1",
-        "description": "文本输入方式"
+        "fieldValue": "2",
+        "description": "文本输入方式: 1 随机生成 2 扩写润色 3 原始输入",
+        "uiConfig": {
+          "inputType": "select",
+          "options": [
+            {
+              "label": "随机生成",
+              "value": "1",
+              "description": "随机生成"
+            },
+            {
+              "label": "扩写润色",
+              "value": "2",
+              "description": "扩写润色",
+              "default": true
+            },
+            {
+              "label": "原始输入",
+              "value": "3",
+              "description": "原始输入"
+            }
+          ],
+          "validation": {
+            "required": true
+          },
+          "helpText": "选择文本输入方式，影响AI如何处理您的输入内容"
+        }
       },
       {
         "nodeId": "90",
         "fieldName": "text",
-        "fieldValue": "写实摄影电影风格，一个身穿华丽长袍的东方武士，缓慢地挥舞长剑，剑光在阳光下闪烁，转场至一片古老的竹林，微风拂动竹叶，阳光透过缝隙洒下点点光斑，画面充满柔和的暖黄色调，镜头从低角度缓缓拉升至俯视视角，展现整个竹林的广阔与宁静，细腻的光影变化塑造出浓厚的诗意氛围，镜头语言具有电影质感，层次丰富。",
+        "fieldValue": "一只可爱的约克夏小狗在矿洞中抓老鼠",
         "description": "手写/润色文本输入框"
       }
     ]
