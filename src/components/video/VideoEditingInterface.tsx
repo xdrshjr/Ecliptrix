@@ -19,7 +19,6 @@ import {
   useAIVideoGeneration,
   useDigitalHumanGeneration,
   useComfyUIHealth,
-  useAIMaterials,
   useAICreation
 } from './hooks';
 import { getMockScriptSegments, mockVideoPreview } from './data';
@@ -38,7 +37,6 @@ import {
   AIImageGenerationModal,
   AIVideoGenerationModal,
   DigitalHumanGenerationModal,
-  AIMaterialsModal,
   AICreationModal
 } from './components';
 
@@ -163,9 +161,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加ComfyUI健康检查功能
   const comfyuiHealth = useComfyUIHealth(taskId, true);
-  
-  // 添加AI素材功能
-  const aiMaterials = useAIMaterials(taskId, materialManagement.addMaterials);
   
   // 添加AI创作功能
   const aiCreation = useAICreation(taskId);
@@ -785,7 +780,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 {...materialManagement}
                 onSearchVideos={videoSearch.openSearchModal}
                 onSearchAudios={audioSearch.openSearchModal}
-                onAIMaterials={aiMaterials.openModal}
                 onAICreation={aiCreation.openModal}
                 onAIImageGeneration={aiImageGeneration.openModal}
                 onAIVideoGeneration={aiVideoGeneration.openModal}
@@ -887,9 +881,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         {...digitalHumanGeneration}
       />
 
-      <AIMaterialsModal
-        {...aiMaterials}
-      />
 
       <AICreationModal
         {...aiCreation}
