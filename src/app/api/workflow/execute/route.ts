@@ -30,16 +30,47 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       console.error(`Backend workflow execution request failed: ${response.status} ${response.statusText}`);
-      const errorText = await response.text();
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Failed to execute workflow via backend service',
-          error: `Backend service returned ${response.status}: ${response.statusText}`,
-          error_details: errorText
-        },
-        { status: response.status }
-      );
+      
+      try {
+        // Try to parse the error response as JSON to preserve error structure
+        const errorData = await response.json();
+        
+        // Log detailed error information
+        console.error('Backend error details:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData: errorData,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Check for TASK_QUEUE_MAXED error specifically
+        if (errorData.message && errorData.message.includes('TASK_QUEUE_MAXED')) {
+          console.warn('TASK_QUEUE_MAXED error detected, forwarding to frontend', {
+            errorCode: errorData.error_code,
+            message: errorData.message,
+            timestamp: errorData.timestamp
+          });
+        }
+        
+        // Forward the complete error structure from backend
+        return NextResponse.json(errorData, { status: response.status });
+        
+      } catch (parseError) {
+        // Fallback to text if JSON parsing fails
+        const errorText = await response.text();
+        console.error('Failed to parse backend error response as JSON, falling back to text:', parseError);
+        
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Failed to execute workflow via backend service',
+            error: `Backend service returned ${response.status}: ${response.statusText}`,
+            error_details: errorText,
+            timestamp: new Date().toISOString()
+          },
+          { status: response.status }
+        );
+      }
     }
 
     const data = await response.json();

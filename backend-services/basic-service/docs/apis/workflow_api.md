@@ -146,6 +146,75 @@ Executes a creative workflow with provided parameters.
 - **404 Not Found**: Workflow not found
 - **500 Internal Server Error**: Failed to execute workflow
 
+##### Common Error Response Format
+
+All error responses follow this structure:
+
+```json
+{
+  "success": false,
+  "message": "Error description",
+  "timestamp": "2025-01-07T15:08:02.455031",
+  "data": null,
+  "error_code": "HTTP_XXX",
+  "error_details": {
+    "status_code": 500
+  }
+}
+```
+
+##### Specific Error Cases
+
+**Task Queue Full (TASK_QUEUE_MAXED)**
+
+When the system task queue is at maximum capacity:
+
+```json
+{
+  "success": false,
+  "message": "Workflow execution failed: TASK_QUEUE_MAXED",
+  "timestamp": "2025-01-07T15:08:02.455031",
+  "data": null,
+  "error_code": "HTTP_500",
+  "error_details": {
+    "status_code": 500
+  }
+}
+```
+
+This error indicates that the system is currently processing the maximum number of concurrent tasks. Users should wait a few minutes before retrying their request.
+
+**Invalid Parameters**
+
+```json
+{
+  "success": false,
+  "message": "Invalid parameters for workflow execution",
+  "timestamp": "2025-01-07T15:08:02.455031",
+  "data": null,
+  "error_code": "HTTP_400",
+  "error_details": {
+    "status_code": 400,
+    "validation_errors": ["Missing required parameter: prompt"]
+  }
+}
+```
+
+**Workflow Not Found**
+
+```json
+{
+  "success": false,
+  "message": "Workflow not found: invalid_workflow_id",
+  "timestamp": "2025-01-07T15:08:02.455031",
+  "data": null,
+  "error_code": "HTTP_404",
+  "error_details": {
+    "status_code": 404
+  }
+}
+```
+
 ### 4. Check Workflow Task Status
 
 **GET** `/api/workflow/status/{runninghub_task_id}`

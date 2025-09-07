@@ -206,6 +206,36 @@ RUNNING_HUB_API_KEY=your_api_key_here
 The system integrates with the existing material management system:
 
 - **Generating State:** Shows a placeholder material with "正在生成" status
+- **Supabase Upload:** When generation completes, results are automatically uploaded to Supabase
+- **Final State:** Materials display with Supabase URLs and thumbnails for reliable access
+
+#### Automatic Supabase Upload Process
+
+When a workflow task completes successfully:
+
+1. **Download Results:** The system downloads generated files from RunningHub URLs
+2. **Upload to Supabase:** Files are uploaded to Supabase storage with proper naming
+3. **Generate Thumbnails:** For videos, thumbnails are automatically generated
+4. **Update Materials:** Materials are updated with Supabase URLs and metadata
+5. **Error Handling:** If upload fails, materials fallback to original RunningHub URLs
+
+**Material Metadata Enhancement:**
+```json
+{
+  "metadata": {
+    "workflowId": "1964363754437754881",
+    "workflowName": "flux",
+    "runninghubTaskId": "1964366821157683201",
+    "source": "ai_creation",
+    "supabaseUpload": true,
+    "originalUrl": "https://rh-images.xiaoyaoyou.com/...",
+    "uploadTime": "2024-01-01T00:00:00Z",
+    "isAIGenerated": true,
+    "generatingStatus": "completed"
+  }
+}
+```
+
 - **Completed State:** Replaces placeholder with actual generated content
 - **Error Handling:** Removes placeholder if task fails
 

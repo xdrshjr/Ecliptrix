@@ -274,14 +274,51 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
 
           {/* Execution error */}
           {executionError && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className={`mt-4 p-3 rounded-lg ${
+              executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')
+                ? 'bg-amber-50 border border-amber-200'
+                : 'bg-red-50 border border-red-200'
+            }`}>
               <div className="flex">
-                <svg className="w-5 h-5 text-red-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                {executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试') ? (
+                  // Queue full warning icon
+                  <svg className="w-5 h-5 text-amber-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                ) : (
+                  // Regular error icon
+                  <svg className="w-5 h-5 text-red-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
                 <div>
-                  <h4 className="text-sm font-medium text-red-800">执行失败</h4>
-                  <p className="mt-1 text-sm text-red-700">{executionError}</p>
+                  <h4 className={`text-sm font-medium ${
+                    executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')
+                      ? 'text-amber-800'
+                      : 'text-red-800'
+                  }`}>
+                    {executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')
+                      ? '系统繁忙'
+                      : '执行失败'
+                    }
+                  </h4>
+                  <p className={`mt-1 text-sm ${
+                    executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')
+                      ? 'text-amber-700'
+                      : 'text-red-700'
+                  }`}>
+                    {executionError}
+                  </p>
+                  {(executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')) && (
+                    <div className="mt-2 text-xs text-amber-600">
+                      <p>💡 建议：</p>
+                      <ul className="mt-1 list-disc list-inside space-y-1">
+                        <li>等待 2-3 分钟后重新尝试</li>
+                        <li>可以先准备其他素材或编辑文案</li>
+                        <li>系统会自动处理排队任务</li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

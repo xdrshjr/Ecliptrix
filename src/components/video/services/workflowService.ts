@@ -51,6 +51,16 @@ export interface ApiResponse<T> {
   success: boolean;
   message: string;
   data: T;
+  timestamp?: string;
+  error_code?: string;
+  error_details?: any;
+}
+
+export interface WorkflowError extends Error {
+  errorCode?: string;
+  errorDetails?: any;
+  timestamp?: string;
+  isTaskQueueMaxed?: boolean;
 }
 
 class WorkflowService {
@@ -174,14 +184,43 @@ class WorkflowService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorData: any;
+        try {
+          // Try to parse error response as JSON to get detailed error information
+          errorData = await response.json();
+        } catch (parseError) {
+          // Fallback to text if JSON parsing fails
+          const errorText = await response.text();
+          errorData = { message: errorText };
+        }
+
         this.logger.error('Failed to execute workflow', {
           workflowId: request.workflowId,
           status: response.status,
           statusText: response.statusText,
-          error: errorText
+          errorData: errorData
         });
-        throw new Error(`Failed to execute workflow: ${response.status} ${response.statusText}`);
+
+        // Create enhanced error with detailed information
+        const workflowError: WorkflowError = new Error(
+          errorData.message || `Failed to execute workflow: ${response.status} ${response.statusText}`
+        ) as WorkflowError;
+        
+        workflowError.errorCode = errorData.error_code;
+        workflowError.errorDetails = errorData.error_details;
+        workflowError.timestamp = errorData.timestamp;
+        workflowError.isTaskQueueMaxed = errorData.message?.includes('TASK_QUEUE_MAXED') || false;
+
+        // Log specific handling for TASK_QUEUE_MAXED error
+        if (workflowError.isTaskQueueMaxed) {
+          this.logger.warn('TASK_QUEUE_MAXED error detected in workflow execution', {
+            workflowId: request.workflowId,
+            errorCode: workflowError.errorCode,
+            timestamp: workflowError.timestamp
+          });
+        }
+
+        throw workflowError;
       }
 
       const result: ApiResponse<WorkflowExecutionResult> = await response.json();
@@ -189,9 +228,27 @@ class WorkflowService {
       if (!result.success) {
         this.logger.error('Workflow execution failed', { 
           workflowId: request.workflowId, 
-          message: result.message 
+          message: result.message,
+          errorCode: result.error_code,
+          timestamp: result.timestamp
         });
-        throw new Error(result.message || 'Failed to execute workflow');
+
+        // Create enhanced error for failed workflow execution
+        const workflowError: WorkflowError = new Error(result.message || 'Failed to execute workflow') as WorkflowError;
+        workflowError.errorCode = result.error_code;
+        workflowError.errorDetails = result.error_details;
+        workflowError.timestamp = result.timestamp;
+        workflowError.isTaskQueueMaxed = result.message?.includes('TASK_QUEUE_MAXED') || false;
+
+        if (workflowError.isTaskQueueMaxed) {
+          this.logger.warn('TASK_QUEUE_MAXED error in workflow response', {
+            workflowId: request.workflowId,
+            errorCode: workflowError.errorCode,
+            timestamp: workflowError.timestamp
+          });
+        }
+
+        throw workflowError;
       }
 
       this.logger.info('Workflow execution started successfully', { 

@@ -3,9 +3,10 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { workflowService, WorkflowInfo, WorkflowParameter, WorkflowExecutionResult } from '../services/workflowService';
+import { workflowService, WorkflowInfo, WorkflowParameter, WorkflowExecutionResult, WorkflowError } from '../services/workflowService';
 import { VideoEditingLogger } from '../utils';
 import { MaterialItem } from '@/types';
+import { uploadVideoToSupabase, uploadFileToSupabase } from '@/lib/api/supabase';
 
 export interface UseAICreationReturn {
   // Modal state
@@ -63,7 +64,11 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
 
   // Task polling state
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const currentTaskRef = useRef<{ runninghubTaskId: string; addMaterial: (material: MaterialItem) => boolean } | null>(null);
+  const currentTaskRef = useRef<{ runninghubTaskId: string; addMaterial: (material: MaterialItem) => boolean; startTime: number; pollCount: number; resultsProcessed: boolean } | null>(null);
+  
+  // Polling configuration
+  const MAX_POLLING_TIME = 30 * 60 * 1000; // 30 minutes maximum
+  const MAX_POLL_COUNT = 360; // 360 polls * 5 seconds = 30 minutes
 
   /**
    * Load available workflows
@@ -180,6 +185,14 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
   const stopPolling = useCallback(() => {
     const currentTask = currentTaskRef.current;
     
+    console.log('🛑 AI Creation - stopPolling() called', {
+      hasInterval: !!pollingIntervalRef.current,
+      intervalId: pollingIntervalRef.current,
+      hasCurrentTask: !!currentTask,
+      runninghubTaskId: currentTask?.runninghubTaskId,
+      timestamp: new Date().toISOString()
+    });
+    
     if (pollingIntervalRef.current) {
       logger.info('Stopping task status polling', { 
         runninghubTaskId: currentTask?.runninghubTaskId,
@@ -187,30 +200,239 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         stopTime: new Date().toISOString()
       });
       
+      console.log('🛑 AI Creation - Clearing polling interval', {
+        intervalId: pollingIntervalRef.current,
+        runninghubTaskId: currentTask?.runninghubTaskId
+      });
+      
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
+      
+      console.log('✅ AI Creation - Polling interval cleared successfully');
+    } else {
+      console.log('⚠️ AI Creation - No polling interval to clear');
     }
     
     if (currentTask) {
       logger.info('Clearing current task reference', { 
         runninghubTaskId: currentTask.runninghubTaskId 
       });
+      
+      console.log('🛑 AI Creation - Clearing current task reference', {
+        runninghubTaskId: currentTask.runninghubTaskId
+      });
     }
     
     currentTaskRef.current = null;
+    
+    console.log('✅ AI Creation - stopPolling() completed successfully');
   }, [logger]);
+
+  /**
+   * Upload AI creation result to Supabase
+   */
+  const uploadResultToSupabase = useCallback(async (
+    result: any, 
+    workflowType: string, 
+    workflowName: string,
+    runninghubTaskId: string,
+    resultIndex: number = 0
+  ) => {
+    try {
+      logger.info('开始上传AI创作结果到Supabase', {
+        fileUrl: result.fileUrl,
+        fileType: result.fileType,
+        workflowType,
+        workflowName,
+        runninghubTaskId,
+        resultIndex
+      });
+
+      // Download the file from the AI creation result URL
+      const response = await fetch(result.fileUrl);
+      if (!response.ok) {
+        throw new Error(`下载AI创作结果失败: ${response.status} ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const fileExtension = result.fileType || (workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png');
+      const fileName = `ai_creation_${runninghubTaskId}_${resultIndex}.${fileExtension}`;
+      const file = new File([blob], fileName, { 
+        type: workflowType === 'TEXT-2-VIDEO' ? 'video/mp4' : 'image/png' 
+      });
+
+      logger.info('AI创作结果文件下载完成，准备上传到Supabase', {
+        fileName,
+        fileSize: file.size,
+        fileType: file.type
+      });
+
+      // Upload to Supabase based on file type
+      if (workflowType === 'TEXT-2-VIDEO') {
+        // Upload video to Supabase
+        const uploadResult = await uploadVideoToSupabase({
+          file,
+          taskId,
+          customFilename: `ai_creation_${runninghubTaskId}_${resultIndex}`,
+          generateThumbnail: true
+        });
+
+        if (!uploadResult.success) {
+          throw new Error(`视频上传Supabase失败: ${uploadResult.message}`);
+        }
+
+        logger.info('AI创作视频上传Supabase成功', {
+          videoUrl: uploadResult.video_url,
+          thumbnailUrl: uploadResult.thumbnail_url,
+          fileSize: uploadResult.file_size,
+          duration: uploadResult.duration
+        });
+
+        return {
+          url: uploadResult.video_url,
+          thumbnailUrl: uploadResult.thumbnail_url,
+          size: uploadResult.file_size,
+          duration: uploadResult.duration,
+          width: uploadResult.width,
+          height: uploadResult.height,
+          metadata: {
+            supabaseUpload: true,
+            originalUrl: result.fileUrl,
+            uploadTime: uploadResult.upload_time
+          }
+        };
+      } else {
+        // Upload image to Supabase with proper bucket path
+        const now = new Date();
+        const datePath = now.toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD format
+        const bucketPath = `dev/ai-creations/${datePath}/${taskId}/${fileName}`;
+        
+        const uploadResult = await uploadFileToSupabase(file, taskId, bucketPath);
+
+        if (!uploadResult.success) {
+          throw new Error(`图片上传Supabase失败: ${uploadResult.message}`);
+        }
+
+        logger.info('AI创作图片上传Supabase成功', {
+          fileUrl: uploadResult.file_url,
+          fileSize: uploadResult.file_size,
+          bucketPath
+        });
+
+        return {
+          url: uploadResult.file_url,
+          thumbnailUrl: uploadResult.file_url, // For images, use the same URL as thumbnail
+          size: uploadResult.file_size,
+          metadata: {
+            supabaseUpload: true,
+            originalUrl: result.fileUrl,
+            uploadTime: uploadResult.upload_time,
+            bucketPath
+          }
+        };
+      }
+    } catch (error) {
+      logger.error('AI创作结果上传Supabase失败', error instanceof Error ? error : new Error(String(error)), {
+        fileUrl: result.fileUrl,
+        workflowType,
+        runninghubTaskId,
+        resultIndex
+      });
+      
+      // Return original data if upload fails
+      return {
+        url: result.fileUrl,
+        thumbnailUrl: workflowType === 'TEXT-2-VIDEO' ? undefined : result.fileUrl,
+        size: 0,
+        metadata: {
+          supabaseUpload: false,
+          originalUrl: result.fileUrl,
+          uploadError: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+  }, [logger, taskId]);
 
   /**
    * Poll task status until completion
    */
   const pollTaskStatus = useCallback(async (runninghubTaskId: string, addMaterial: (material: MaterialItem) => boolean) => {
     try {
+      // Check if polling has been stopped
+      if (!currentTaskRef.current || currentTaskRef.current.runninghubTaskId !== runninghubTaskId) {
+        console.log('🛑 AI Creation - Polling stopped or task changed, aborting poll', {
+          runninghubTaskId,
+          hasCurrentTask: !!currentTaskRef.current,
+          currentTaskId: currentTaskRef.current?.runninghubTaskId,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+      
+      // Check polling timeout
+      if (currentTaskRef.current) {
+        const elapsedTime = Date.now() - currentTaskRef.current.startTime;
+        const pollCount = currentTaskRef.current.pollCount;
+        
+        if (elapsedTime > MAX_POLLING_TIME || pollCount > MAX_POLL_COUNT) {
+          logger.error('Polling timeout reached', new Error('Task polling timeout'), {
+            runninghubTaskId,
+            elapsedTime,
+            pollCount,
+            maxTime: MAX_POLLING_TIME,
+            maxCount: MAX_POLL_COUNT
+          });
+          
+          console.error('⏰ AI Creation - Polling timeout', {
+            runninghubTaskId,
+            elapsedTime,
+            pollCount,
+            timeoutMinutes: MAX_POLLING_TIME / 60000
+          });
+          
+          // Update material to show timeout error
+          const timeoutMaterial: MaterialItem = {
+            id: `generating_${runninghubTaskId}`,
+            name: `生成超时 - ${selectedWorkflow?.showNameCh || '未知工作流'}`,
+            type: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'video' : 'image',
+            format: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png',
+            size: 0,
+            url: '',
+            downloadStatus: 'error',
+            downloadError: `任务执行超时 (${Math.round(elapsedTime / 60000)}分钟)`,
+            createdAt: new Date(),
+            metadata: {
+              workflowId: selectedWorkflow?.workflowId,
+              workflowName: selectedWorkflow?.workflowName,
+              runninghubTaskId: runninghubTaskId,
+              isGenerating: false,
+              generatingStatus: 'timeout',
+              elapsedTime,
+              pollCount,
+              source: 'ai_creation'
+            }
+          };
+          
+          addMaterial(timeoutMaterial);
+          stopPolling();
+          return;
+        }
+        
+        // Increment poll count
+        currentTaskRef.current.pollCount++;
+      }
+      
       console.log('🔍 AI Creation - Polling task status', { 
         runninghubTaskId, 
+        pollCount: currentTaskRef.current?.pollCount || 0,
         timestamp: new Date().toISOString() 
       });
       
-      logger.info('Polling task status', { runninghubTaskId, timestamp: new Date().toISOString() });
+      logger.info('Polling task status', { 
+        runninghubTaskId, 
+        pollCount: currentTaskRef.current?.pollCount || 0,
+        timestamp: new Date().toISOString() 
+      });
 
       const statusResult = await workflowService.checkTaskStatus(runninghubTaskId);
       
@@ -228,8 +450,14 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
           message: statusResult.message,
           statusResult
         });
-        logger.error('Failed to check task status during polling', new Error(statusResult.message));
-        stopPolling();
+        logger.error('Failed to check task status during polling', new Error(statusResult.message), {
+          runninghubTaskId,
+          statusResult,
+          pollAttempt: 'continuing_despite_error'
+        });
+        
+        // Don't stop polling immediately on status check failure - it might be a temporary network issue
+        // Only stop if we've had multiple consecutive failures
         return;
       }
 
@@ -243,12 +471,89 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       
       logger.info('Task status polled', { runninghubTaskId, status, timestamp: new Date().toISOString() });
 
+      // Check if task failed
+      if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+        logger.error('Task failed during execution', new Error(`Task status: ${status}`), {
+          runninghubTaskId,
+          status,
+          timestamp: new Date().toISOString()
+        });
+        
+        console.error('❌ AI Creation - Task failed', {
+          runninghubTaskId,
+          status,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Update the generating material to show error state
+        const errorMaterial: MaterialItem = {
+          id: `generating_${runninghubTaskId}`,
+          name: `生成失败 - ${selectedWorkflow?.showNameCh || '未知工作流'}`,
+          type: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'video' : 'image',
+          format: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png',
+          size: 0,
+          url: '',
+          downloadStatus: 'error',
+          downloadError: `任务执行失败: ${status}`,
+          createdAt: new Date(),
+          metadata: {
+            workflowId: selectedWorkflow?.workflowId,
+            workflowName: selectedWorkflow?.workflowName,
+            runninghubTaskId: runninghubTaskId,
+            isGenerating: false,
+            generatingStatus: 'failed',
+            error: status,
+            source: 'ai_creation'
+          }
+        };
+        
+        addMaterial(errorMaterial);
+        stopPolling();
+        return;
+      }
+      
       // Check if task is completed
       // According to RunningHub API documentation, successful completion status could be various values
       if (status === 'SUCCESS' || status === 'COMPLETED' || status === 'FINISHED' || status === 'DONE') {
+        // Check if results have already been processed to prevent duplicate uploads
+        if (currentTaskRef.current?.resultsProcessed) {
+          console.log('🔄 AI Creation - Results already processed, skipping', {
+            runninghubTaskId,
+            status,
+            timestamp: new Date().toISOString()
+          });
+          
+          logger.info('Task results already processed, skipping duplicate processing', { 
+            runninghubTaskId, 
+            status 
+          });
+          
+          // Stop polling since results are already processed
+          stopPolling();
+          return;
+        }
+        
+        // Immediately mark as being processed to prevent race conditions
+        if (currentTaskRef.current) {
+          currentTaskRef.current.resultsProcessed = true;
+          console.log('🔒 AI Creation - Marked results as being processed to prevent race conditions', {
+            runninghubTaskId,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
         logger.info('Task completed successfully, fetching results', { runninghubTaskId });
         
         try {
+          // Double-check that polling hasn't been stopped during the async operation
+          if (!currentTaskRef.current || currentTaskRef.current.runninghubTaskId !== runninghubTaskId) {
+            console.log('🛑 AI Creation - Polling stopped during results fetch, aborting', {
+              runninghubTaskId,
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+          
           const resultsResponse = await workflowService.getTaskResults(runninghubTaskId);
           
           if (resultsResponse.success && resultsResponse.results.length > 0) {
@@ -268,6 +573,74 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
             for (let i = 0; i < resultsResponse.results.length; i++) {
               const result = resultsResponse.results[i];
               
+              console.log(`🔄 AI Creation - Processing result ${i + 1}/${resultsResponse.results.length}`, {
+                runninghubTaskId,
+                resultIndex: i,
+                fileUrl: result.fileUrl,
+                fileType: result.fileType,
+                nodeId: result.nodeId,
+                timestamp: new Date().toISOString()
+              });
+
+              // Upload result to Supabase and get the updated URLs
+              let supabaseResult;
+              try {
+                console.log(`🔄 AI Creation - Starting Supabase upload for result ${i + 1}/${resultsResponse.results.length}`, {
+                  runninghubTaskId,
+                  resultIndex: i,
+                  fileUrl: result.fileUrl,
+                  fileType: result.fileType,
+                  workflowType: selectedWorkflow?.workflowType,
+                  pollCount: currentTaskRef.current?.pollCount,
+                  resultsProcessed: currentTaskRef.current?.resultsProcessed,
+                  timestamp: new Date().toISOString()
+                });
+                
+                supabaseResult = await uploadResultToSupabase(
+                  result,
+                  selectedWorkflow?.workflowType || 'TEXT-2-IMAGE',
+                  selectedWorkflow?.workflowName || '未知工作流',
+                  runninghubTaskId,
+                  i
+                );
+                
+                console.log('✅ AI Creation - Supabase upload successful', {
+                  runninghubTaskId,
+                  resultIndex: i,
+                  supabaseUrl: supabaseResult.url,
+                  thumbnailUrl: supabaseResult.thumbnailUrl,
+                  fileSize: supabaseResult.size,
+                  uploadSuccess: true,
+                  timestamp: new Date().toISOString()
+                });
+                
+              } catch (uploadError) {
+                logger.error('Failed to upload result to Supabase', uploadError instanceof Error ? uploadError : new Error(String(uploadError)), {
+                  runninghubTaskId,
+                  resultIndex: i,
+                  originalFileUrl: result.fileUrl,
+                  fileType: result.fileType
+                });
+                
+                console.error('❌ AI Creation - Supabase upload failed', {
+                  runninghubTaskId,
+                  resultIndex: i,
+                  error: uploadError,
+                  originalFileUrl: result.fileUrl
+                });
+                
+                // Use original URL as fallback if Supabase upload fails
+                supabaseResult = {
+                  url: result.fileUrl,
+                  thumbnailUrl: result.fileUrl,
+                  size: 0,
+                  metadata: {
+                    uploadError: uploadError instanceof Error ? uploadError.message : String(uploadError),
+                    fallbackToOriginal: true
+                  }
+                };
+              }
+              
               // For the first result, replace the generating material (same ID)
               // For additional results, create new materials
               const materialId = i === 0 
@@ -279,12 +652,15 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                 name: `AI创作结果_${selectedWorkflow?.showNameCh || '未知'}_${new Date().toLocaleString()}${i > 0 ? `_${i + 1}` : ''}`,
                 type: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'video' : 'image',
                 format: result.fileType || (selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png'),
-                size: 0, // Size will be determined when downloaded
-                url: result.fileUrl,
-                serverUrl: result.fileUrl,
-                thumbnailUrl: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? undefined : result.fileUrl,
+                size: supabaseResult.size,
+                url: supabaseResult.url, // Use Supabase URL
+                serverUrl: result.fileUrl, // Keep original server URL for reference
+                thumbnailUrl: supabaseResult.thumbnailUrl,
                 downloadStatus: 'completed',
                 createdAt: new Date(),
+                duration: supabaseResult.duration,
+                width: supabaseResult.width,
+                height: supabaseResult.height,
                 metadata: {
                   workflowId: selectedWorkflow?.workflowId,
                   workflowName: selectedWorkflow?.workflowName,
@@ -295,41 +671,71 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                   isGenerating: false, // Mark as no longer generating
                   generatingStatus: 'completed',
                   originalGeneratingId: `generating_${runninghubTaskId}`,
-                  resultIndex: i
+                  resultIndex: i,
+                  source: 'ai_creation',
+                  ...supabaseResult.metadata // Include Supabase upload metadata
                 }
               };
 
               // Add/replace material in the materials panel
               const added = addMaterial(material);
               
-              console.log(`🎯 AI Creation - ${i === 0 ? 'Replaced generating' : 'Added additional'} material`, {
+              console.log(`🎯 AI Creation - ${i === 0 ? 'Replaced generating' : 'Added additional'} material with Supabase URLs`, {
                 materialId: material.id,
                 materialName: material.name,
                 materialType: material.type,
-                fileUrl: result.fileUrl,
+                supabaseUrl: supabaseResult.url,
+                originalUrl: result.fileUrl,
+                thumbnailUrl: supabaseResult.thumbnailUrl,
+                fileSize: supabaseResult.size,
                 taskCostTime: result.taskCostTime,
                 added,
                 isReplacement: i === 0,
-                resultIndex: i
+                resultIndex: i,
+                supabaseUpload: supabaseResult.metadata?.supabaseUpload
               });
               
-              logger.info(`AI creation result ${i === 0 ? 'replaced generating' : 'added as additional'} material`, {
+              logger.info(`AI creation result ${i === 0 ? 'replaced generating' : 'added as additional'} material with Supabase upload`, {
                 materialId: material.id,
                 materialName: material.name,
                 materialType: material.type,
-                fileUrl: result.fileUrl,
+                supabaseUrl: supabaseResult.url,
+                originalUrl: result.fileUrl,
+                thumbnailUrl: supabaseResult.thumbnailUrl,
+                fileSize: supabaseResult.size,
                 taskCostTime: result.taskCostTime,
                 added,
                 isReplacement: i === 0,
-                resultIndex: i
+                resultIndex: i,
+                supabaseUploadSuccess: supabaseResult.metadata?.supabaseUpload,
+                uploadError: supabaseResult.metadata?.uploadError
               });
             }
+            
+            console.log('✅ AI Creation - Results processed successfully', {
+              runninghubTaskId,
+              resultCount: resultsResponse.results.length,
+              timestamp: new Date().toISOString()
+            });
+            
           } else {
             logger.warn('Task completed but no results found');
           }
         } catch (error) {
           logger.error('Failed to fetch task results', error instanceof Error ? error : new Error(String(error)));
         }
+        
+        console.log('✅ AI Creation - Task SUCCESS detected, stopping polling', {
+          runninghubTaskId,
+          status,
+          timestamp: new Date().toISOString()
+        });
+        
+        logger.info('Task SUCCESS detected, stopping polling', {
+          runninghubTaskId,
+          status,
+          timestamp: new Date().toISOString()
+        });
         
         stopPolling();
       } else if (status === 'FAILED' || status === 'ERROR') {
@@ -416,7 +822,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         timestamp: new Date().toISOString()
       });
     }
-  }, [logger, selectedWorkflow, stopPolling]);
+  }, [logger, selectedWorkflow, stopPolling, uploadResultToSupabase]);
 
   /**
    * Start task polling
@@ -434,7 +840,13 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       startTime: new Date().toISOString()
     });
     
-    currentTaskRef.current = { runninghubTaskId, addMaterial };
+    currentTaskRef.current = { 
+      runninghubTaskId, 
+      addMaterial, 
+      startTime: Date.now(), 
+      pollCount: 0,
+      resultsProcessed: false
+    };
     
     // Poll immediately for the first time
     console.log('🔄 AI Creation - Polling immediately (first time)');
@@ -452,8 +864,18 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       if (currentTaskRef.current) {
         logger.debug('Interval polling triggered', { 
           runninghubTaskId: currentTaskRef.current.runninghubTaskId,
+          pollCount: currentTaskRef.current.pollCount,
+          resultsProcessed: currentTaskRef.current.resultsProcessed,
           timestamp: new Date().toISOString()
         });
+        
+        console.log('🔄 AI Creation - Interval polling about to call pollTaskStatus', {
+          runninghubTaskId: currentTaskRef.current.runninghubTaskId,
+          pollCount: currentTaskRef.current.pollCount,
+          resultsProcessed: currentTaskRef.current.resultsProcessed,
+          timestamp: new Date().toISOString()
+        });
+        
         pollTaskStatus(currentTaskRef.current.runninghubTaskId, currentTaskRef.current.addMaterial);
       } else {
         console.warn('⚠️ AI Creation - Polling interval triggered but no current task found');
@@ -588,8 +1010,49 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       }
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to start creation';
-      logger.error('Failed to start workflow creation', error instanceof Error ? error : new Error(errorMessage));
+      let errorMessage = 'Failed to start creation';
+      let isQueueError = false;
+
+      if (error instanceof Error) {
+        const workflowError = error as WorkflowError;
+        
+        // Check if this is a TASK_QUEUE_MAXED error
+        if (workflowError.isTaskQueueMaxed) {
+          isQueueError = true;
+          errorMessage = '当前有用户正在生成内容，请稍后再试。系统正在处理其他任务，请等待几分钟后重新尝试。';
+          
+          logger.warn('TASK_QUEUE_MAXED error in AI creation', {
+            workflowId: selectedWorkflow.workflowId,
+            errorCode: workflowError.errorCode,
+            timestamp: workflowError.timestamp,
+            originalMessage: workflowError.message
+          });
+        } else {
+          errorMessage = workflowError.message;
+          
+          logger.error('Failed to start workflow creation', workflowError, {
+            workflowId: selectedWorkflow.workflowId,
+            errorCode: workflowError.errorCode,
+            errorDetails: workflowError.errorDetails,
+            timestamp: workflowError.timestamp
+          });
+        }
+      } else {
+        logger.error('Failed to start workflow creation', new Error(errorMessage), {
+          workflowId: selectedWorkflow.workflowId,
+          unknownError: error
+        });
+      }
+
+      // Log user-friendly message for queue errors
+      if (isQueueError) {
+        console.warn('🚦 AI Creation - Queue is full, user should try again later', {
+          workflowId: selectedWorkflow.workflowId,
+          userMessage: errorMessage,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       setExecutionError(errorMessage);
     } finally {
       setIsExecuting(false);
