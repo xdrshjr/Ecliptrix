@@ -3,7 +3,7 @@ import { MaterialItem } from '@/types';
 import { UseAIVideoGenerationReturn, AIVideoGenerationRequest, VideoInfo } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createAIVideoGenerationService, AIVideoGenerationService } from '../services/aiVideoGenerationService';
-import { uploadVideoToSupabase } from '@/lib/api/supabase';
+import { uploadVideoToSupabase, VideoUploadErrorResponse } from '@/lib/api/supabase';
 
 export const useAIVideoGeneration = (
   taskId: string,
@@ -134,7 +134,7 @@ export const useAIVideoGeneration = (
           } else {
             logger.error('视频上传Supabase失败', new Error(uploadResult.message), {
               promptId,
-              errorCode: uploadResult.error_code
+              errorCode: (uploadResult as VideoUploadErrorResponse).error_code
             });
           }
 
@@ -277,7 +277,7 @@ export const useAIVideoGeneration = (
     }
 
     if (isGenerating) {
-      logger.warning('生成任务已在进行中，忽略重复请求');
+      logger.warn('生成任务已在进行中，忽略重复请求');
       return;
     }
 
@@ -340,7 +340,7 @@ export const useAIVideoGeneration = (
   // 添加所有视频到素材库
   const handleAddToMaterials = useCallback((): boolean => {
     if (generatedVideos.length === 0) {
-      logger.warning('没有生成的视频可添加到素材库');
+      logger.warn('没有生成的视频可添加到素材库');
       return false;
     }
 

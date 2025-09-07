@@ -97,7 +97,10 @@ class WorkflowService {
 
   constructor() {
     this.baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-    this.logger = new VideoEditingLogger({ component: 'WorkflowService' });
+    this.logger = new VideoEditingLogger({ 
+      taskId: 'workflow-service',
+      component: 'WorkflowService' 
+    });
   }
 
   /**
@@ -116,10 +119,9 @@ class WorkflowService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        this.logger.error('Failed to fetch workflows', {
+        this.logger.error('Failed to fetch workflows', new Error(`${response.status} ${response.statusText}: ${errorText}`), {
           status: response.status,
-          statusText: response.statusText,
-          error: errorText
+          statusText: response.statusText
         });
         throw new Error(`Failed to fetch workflows: ${response.status} ${response.statusText}`);
       }
@@ -127,7 +129,7 @@ class WorkflowService {
       const result: ApiResponse<WorkflowInfo[]> = await response.json();
 
       if (!result.success) {
-        this.logger.error('API returned error', { message: result.message });
+        this.logger.error('API returned error', new Error(result.message));
         throw new Error(result.message || 'Failed to fetch workflows');
       }
 
@@ -135,7 +137,7 @@ class WorkflowService {
       return result.data;
 
     } catch (error) {
-      this.logger.error('Error fetching workflows', { error: error instanceof Error ? error.message : String(error) });
+        this.logger.error('Error fetching workflows', error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   }
@@ -156,11 +158,10 @@ class WorkflowService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        this.logger.error('Failed to fetch workflow', {
+        this.logger.error('Failed to fetch workflow', new Error(`${response.status} ${response.statusText}: ${errorText}`), {
           workflowId,
           status: response.status,
-          statusText: response.statusText,
-          error: errorText
+          statusText: response.statusText
         });
         throw new Error(`Failed to fetch workflow: ${response.status} ${response.statusText}`);
       }
@@ -168,7 +169,7 @@ class WorkflowService {
       const result: ApiResponse<WorkflowInfo> = await response.json();
 
       if (!result.success) {
-        this.logger.error('API returned error', { workflowId, message: result.message });
+        this.logger.error('API returned error', new Error(result.message), { workflowId });
         throw new Error(result.message || 'Failed to fetch workflow');
       }
 
@@ -176,10 +177,7 @@ class WorkflowService {
       return result.data;
 
     } catch (error) {
-      this.logger.error('Error fetching workflow', { 
-        workflowId, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
+      this.logger.error('Error fetching workflow', error instanceof Error ? error : new Error(String(error)), { workflowId });
       throw error;
     }
   }
@@ -222,7 +220,7 @@ class WorkflowService {
           errorData = { message: errorText };
         }
 
-        this.logger.error('Failed to execute workflow', {
+        this.logger.error('Failed to execute workflow', new Error(`${response.status} ${response.statusText}`), {
           workflowId: request.workflowId,
           status: response.status,
           statusText: response.statusText,
@@ -254,9 +252,8 @@ class WorkflowService {
       const result: ApiResponse<WorkflowExecutionResult> = await response.json();
 
       if (!result.success) {
-        this.logger.error('Workflow execution failed', { 
+        this.logger.error('Workflow execution failed', new Error(result.message), { 
           workflowId: request.workflowId, 
-          message: result.message,
           errorCode: result.error_code,
           timestamp: result.timestamp
         });
@@ -279,34 +276,63 @@ class WorkflowService {
         throw workflowError;
       }
 
+      // Access backend response fields (snake_case)
+      const backendData = result.data as any;
+      
       this.logger.info('Workflow execution started successfully', { 
         workflowId: request.workflowId,
-        status: result.data.status,
-        taskId: result.data.taskId,
-        runninghubTaskId: result.data.runninghub_task_id
+        status: backendData.status,
+        taskId: backendData.task_id,
+        runninghubTaskId: backendData.runninghub_task_id
       });
+      
+      // Log detailed response structure for debugging
+      this.logger.debug('Full backend response structure', {
+        workflowId: request.workflowId,
+        responseData: backendData,
+        hasRunninghubTaskId: !!backendData.runninghub_task_id,
+        runninghubTaskIdValue: backendData.runninghub_task_id
+      });
+      
+      // Validate critical fields before creating result
+      if (!backendData.runninghub_task_id) {
+        this.logger.error('Missing runninghub_task_id in workflow execution response', new Error('Missing RunningHub task ID'), {
+          workflowId: request.workflowId,
+          responseData: backendData,
+          availableFields: Object.keys(backendData)
+        });
+        
+        // Create enhanced error for missing RunningHub task ID
+        const workflowError: WorkflowError = new Error('Workflow execution failed: Missing RunningHub task ID in response') as WorkflowError;
+        workflowError.errorCode = 'MISSING_RUNNINGHUB_TASK_ID';
+        workflowError.errorDetails = { 
+          responseData: backendData,
+          availableFields: Object.keys(backendData)
+        };
+        workflowError.timestamp = new Date().toISOString();
+        workflowError.isTaskQueueMaxed = false;
+        
+        throw workflowError;
+      }
       
       // Convert snake_case to camelCase for frontend consistency
       const executionResult: WorkflowExecutionResult = {
-        workflowId: result.data.workflow_id,
-        workflowName: result.data.workflow_name,
-        status: result.data.status,
-        message: result.data.message,
-        taskId: result.data.task_id,
-        runninghubTaskId: result.data.runninghub_task_id,
-        parameters: result.data.parameters,
-        timestamp: result.data.timestamp,
-        netWssUrl: result.data.net_wss_url,
-        clientId: result.data.client_id
+        workflowId: backendData.workflow_id || request.workflowId,
+        workflowName: backendData.workflow_name || '',
+        status: backendData.status || 'UNKNOWN',
+        message: backendData.message || 'Workflow execution started',
+        taskId: backendData.task_id,
+        runninghubTaskId: backendData.runninghub_task_id,
+        parameters: backendData.parameters || {},
+        timestamp: backendData.timestamp || new Date().toISOString(),
+        netWssUrl: backendData.net_wss_url,
+        clientId: backendData.client_id
       };
       
       return executionResult;
 
     } catch (error) {
-      this.logger.error('Error executing workflow', { 
-        workflowId: request.workflowId,
-        error: error instanceof Error ? error.message : String(error) 
-      });
+      this.logger.error('Error executing workflow', error instanceof Error ? error : new Error(String(error)), { workflowId: request.workflowId });
       throw error;
     }
   }
@@ -331,7 +357,7 @@ class WorkflowService {
         const result: ApiResponse<any> = await response.json();
         this.logger.info('Workflow service is healthy', { data: result.data });
       } else {
-        this.logger.warning('Workflow service health check failed', {
+        this.logger.warn('Workflow service health check failed', {
           status: response.status,
           statusText: response.statusText
         });
@@ -340,9 +366,7 @@ class WorkflowService {
       return isHealthy;
 
     } catch (error) {
-      this.logger.error('Error checking workflow service health', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
+      this.logger.error('Error checking workflow service health', error instanceof Error ? error : new Error(String(error)));
       return false;
     }
   }
@@ -374,11 +398,10 @@ class WorkflowService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        this.logger.error('Failed to check task status', {
+        this.logger.error('Failed to check task status', new Error(`${response.status} ${response.statusText}: ${errorText}`), {
           runninghubTaskId,
           status: response.status,
-          statusText: response.statusText,
-          error: errorText
+          statusText: response.statusText
         });
         throw new Error(`Failed to check task status: ${response.status} ${response.statusText}`);
       }
@@ -386,7 +409,7 @@ class WorkflowService {
       const result: ApiResponse<any> = await response.json();
 
       if (!result.success) {
-        this.logger.error('Task status check returned error', { runninghubTaskId, message: result.message });
+        this.logger.error('Task status check returned error', new Error(result.message), { runninghubTaskId });
         throw new Error(result.message || 'Failed to check task status');
       }
 
@@ -402,10 +425,7 @@ class WorkflowService {
       };
 
     } catch (error) {
-      this.logger.error('Error checking task status', { 
-        runninghubTaskId,
-        error: error instanceof Error ? error.message : String(error) 
-      });
+        this.logger.error('Error checking task status', error instanceof Error ? error : new Error(String(error)), { runninghubTaskId });
       throw error;
     }
   }
@@ -426,11 +446,10 @@ class WorkflowService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        this.logger.error('Failed to get task results', {
+        this.logger.error('Failed to get task results', new Error(`${response.status} ${response.statusText}: ${errorText}`), {
           runninghubTaskId,
           status: response.status,
-          statusText: response.statusText,
-          error: errorText
+          statusText: response.statusText
         });
         throw new Error(`Failed to get task results: ${response.status} ${response.statusText}`);
       }
@@ -438,7 +457,7 @@ class WorkflowService {
       const result: ApiResponse<any> = await response.json();
 
       if (!result.success) {
-        this.logger.error('Task results retrieval returned error', { runninghubTaskId, message: result.message });
+        this.logger.error('Task results retrieval returned error', new Error(result.message), { runninghubTaskId });
         throw new Error(result.message || 'Failed to get task results');
       }
 
@@ -454,10 +473,7 @@ class WorkflowService {
       };
 
     } catch (error) {
-      this.logger.error('Error getting task results', { 
-        runninghubTaskId,
-        error: error instanceof Error ? error.message : String(error) 
-      });
+        this.logger.error('Error getting task results', error instanceof Error ? error : new Error(String(error)), { runninghubTaskId });
       throw error;
     }
   }

@@ -123,9 +123,6 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                   </option>
                 ))}
               </select>
-              {uiConfig?.helpText && (
-                <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
-              )}
             </div>
           );
         }

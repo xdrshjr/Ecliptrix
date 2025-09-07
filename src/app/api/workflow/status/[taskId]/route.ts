@@ -9,10 +9,10 @@ const BACKEND_BASE_URL = process.env.BACKEND_URL || 'http://localhost:8000';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const { taskId } = params;
+    const { taskId } = await params;
     
     console.log('Checking workflow task status via backend service', { taskId });
     

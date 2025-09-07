@@ -4,10 +4,10 @@ const BACKEND_BASE_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const { taskId } = params;
+    const { taskId } = await params;
     const { searchParams } = new URL(request.url);
     const runninghubTaskId = searchParams.get('runninghub_task_id');
 
