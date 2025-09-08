@@ -5,6 +5,7 @@ import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, M
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
+import { useVideoCache } from '../hooks/useVideoCache';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
@@ -21,6 +22,8 @@ interface TimelinePanelProps {
   onTimelineCompositionChange?: (timelineState: TimelineState) => void;
   // 新增：程序化添加素材到时间轴的回调（外部传入要添加的素材）
   materialsToAdd?: { materials: MaterialItem[], targetTrackId?: string, timestamp: number };
+  // 新增：任务ID，用于视频缓存日志
+  taskId?: string;
 }
 
 const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
@@ -30,9 +33,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onCurrentTimeChange,
   materials = [],
   onTimelineCompositionChange,
-  materialsToAdd
+  materialsToAdd,
+  taskId = 'timeline'
 }) => {
   const { t, locale } = useLocale();
+  
+  // 初始化视频缓存Hook
+  const videoCache = useVideoCache(taskId);
   
   // 创建初始空轨道状态
   const createInitialTimelineState = useCallback((): TimelineState => {
@@ -359,7 +366,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       timestamp: new Date()
     });
 
-    // 新增：如果添加的是视频素材，记录详细日志
+    // 新增：如果添加的是视频素材，记录详细日志并触发预加载
     if (material.type === 'video') {
       console.log(`[TimelinePanel] 视频素材已添加到时间轴`, {
         materialId: material.id,
@@ -368,10 +375,34 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         materialServerUrl: material.serverUrl,
         duration: material.duration?.toFixed(2),
         targetTrackId: targetTrackId,
-        message: '视频素材已成功添加到时间轴，右侧播放器应显示视频画面但保持暂停状态',
-        nextAction: '等待VideoPlayerPanel接收compositionPlayback状态更新',
+        message: '视频素材已成功添加到时间轴，开始预加载视频',
+        nextAction: '触发视频预加载以优化播放体验',
         timestamp: new Date().toISOString()
       });
+
+      // 立即触发视频预加载
+      const videoUrl = material.serverUrl || material.url;
+      if (videoUrl && material.id) {
+        videoCache.preloadVideo(videoUrl, material.id)
+          .then(() => {
+            console.log(`[TimelinePanel] 视频预加载成功`, {
+              materialId: material.id,
+              materialName: material.name,
+              url: videoUrl,
+              cacheState: videoCache.getCacheState(material.id),
+              timestamp: new Date().toISOString()
+            });
+          })
+          .catch((error) => {
+            console.warn(`[TimelinePanel] 视频预加载失败`, {
+              materialId: material.id,
+              materialName: material.name,
+              url: videoUrl,
+              error: error.message,
+              timestamp: new Date().toISOString()
+            });
+          });
+      }
     }
   }, []);
 

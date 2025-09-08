@@ -25,6 +25,9 @@ export interface VideoSequenceItem {
   
   // 新增：音量属性，用于支持视频轨道音量控制
   volume?: number;         // 音量 (0-1)，结合轨道音量和项目音量
+  
+  // 新增：缓存相关属性
+  cacheState?: 'loading' | 'loaded' | 'error' | 'not-found'; // 预加载状态
 }
 
 // 新增：音频序列项目接口，用于组合播放时的音频同步

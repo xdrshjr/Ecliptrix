@@ -827,6 +827,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 materials={materialManagement.materials}
                 onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
                 materialsToAdd={materialsToAddToTimeline}
+                taskId={taskId}
               />
             </div>
           </div>

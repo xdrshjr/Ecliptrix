@@ -5,6 +5,7 @@ import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenc
 import { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useVideoExport } from '../../hooks/useVideoExport';
+import { useVideoCache } from '../../hooks/useVideoCache';
 import VideoExportProgressModal from './VideoExportProgressModal';
 import ImageOverlay from './ImageOverlay';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -77,6 +78,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     component: 'VideoPlayerPanel'
   });
 
+  // 初始化视频缓存Hook
+  const videoCache = useVideoCache(taskId);
+
   // 基于翻译的视频比例配置
   const ASPECT_RATIOS = useMemo((): AspectRatio[] => [
     {
@@ -116,6 +120,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     }
   ], [t]);
 
+  // Video ref
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
@@ -127,6 +132,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   const [selectedImageOverlay, setSelectedImageOverlay] = useState<string | null>(null);
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  // 获取当前video元素
+  const getCurrentVideoElement = useCallback((): HTMLVideoElement | null => {
+    return videoRef.current;
+  }, []);
 
   // 新增：应用音量到video元素
   useEffect(() => {
@@ -552,10 +562,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       const currentVideoTime = videoRef.current.currentTime;
       
       if (currentSrc !== newSrc || Math.abs(currentVideoTime - clipStart) > 0.1) {
-        logger.info('自动设置视频合成播放的首个视频', {
+        logger.info('自动设置视频合成播放的首个视频（缓存优化）', {
           sequenceIndex: 0,
           sequenceName: firstSequence.name,
           sequenceUrl: firstSequence.url,
+          materialId: firstSequence.materialId,
           clipStart: clipStart.toFixed(2),
           clipEnd: firstSequence.clipEnd?.toFixed(2) || 'N/A',
           originalDuration: firstSequence.originalDuration?.toFixed(2) || 'N/A',
@@ -563,17 +574,46 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           timelineDuration: firstSequence.duration.toFixed(2),
           currentSrc: currentSrc,
           needsUpdate: currentSrc !== newSrc,
-          action: '设置视频源并显示第一帧，保持暂停状态'
+          action: '优先使用缓存设置视频源'
         });
 
-        // 只在需要时设置视频源
+        // 对于首个视频，优先使用缓存但不进行无缝切换（避免复杂性）
         if (currentSrc !== newSrc) {
-          videoRef.current.src = firstSequence.url;
+          let cachedVideo: HTMLVideoElement | null = null;
+          if (firstSequence.materialId) {
+            cachedVideo = videoCache.getCachedVideo(firstSequence.materialId);
+          }
+
+          const currentVideo = getCurrentVideoElement();
+          if (currentVideo) {
+            if (cachedVideo) {
+              // 缓存命中：使用预加载的视频
+              logger.info('首个视频缓存命中，快速加载', {
+                materialId: firstSequence.materialId,
+                sequenceName: firstSequence.name,
+                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%'
+              });
+              
+              currentVideo.src = cachedVideo.src;
+            } else {
+              // 缓存未命中：使用传统方式
+              logger.info('首个视频缓存未命中，传统加载', {
+                materialId: firstSequence.materialId,
+                cacheState: firstSequence.materialId ? videoCache.getCacheState(firstSequence.materialId) : 'no-material-id'
+              });
+              
+              currentVideo.src = firstSequence.url;
+            }
+          }
         }
+        
         // 设置到裁剪起始位置（或视频开始位置）
-        videoRef.current.currentTime = clipStart;
-        // 确保视频处于暂停状态
-        videoRef.current.pause();
+        const currentVideo = getCurrentVideoElement();
+        if (currentVideo) {
+          currentVideo.currentTime = clipStart;
+          // 确保视频处于暂停状态
+          currentVideo.pause();
+        }
         // 重置组合播放状态（仅在状态确实不同时更新）
         if (isCompositionPlaying) {
           setIsCompositionPlaying(false);
@@ -652,24 +692,54 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           // 计算下一个视频的裁剪起始位置
           const nextClipStart = nextSequence.clipStart || 0;
           
-          logger.info('加载下一个视频（考虑裁剪）', {
+          logger.info('切换到下一个视频（缓存优化）', {
             nextIndex,
             sequenceName: nextSequence.name,
             sequenceUrl: nextSequence.url,
+            materialId: nextSequence.materialId,
             clipStart: nextClipStart.toFixed(2),
             clipEnd: nextSequence.clipEnd?.toFixed(2) || 'N/A'
           });
-          
-          // 直接使用nextSequence，因为我们知道它是下一个
-          videoRef.current.src = nextSequence.url;
-          videoRef.current.currentTime = nextClipStart; // 从裁剪起始位置开始
-          videoRef.current.play().catch(error => {
-            logger.error('自动播放下一个视频失败（裁剪模式）', error, {
-              nextIndex,
-              sequenceName: nextSequence.name,
-              clipStart: nextClipStart.toFixed(2)
+
+          // 优先使用缓存中的视频，减少加载延迟
+          let cachedVideo: HTMLVideoElement | null = null;
+          if (nextSequence.materialId) {
+            cachedVideo = videoCache.getCachedVideo(nextSequence.materialId);
+          }
+
+          const currentVideo = getCurrentVideoElement();
+          if (currentVideo) {
+            if (cachedVideo) {
+              // 缓存命中：使用预加载的视频，减少切换延迟
+              logger.info('缓存命中，快速切换视频', {
+                nextIndex,
+                materialId: nextSequence.materialId,
+                sequenceName: nextSequence.name,
+                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%'
+              });
+              
+              currentVideo.src = cachedVideo.src;
+            } else {
+              // 缓存未命中：使用传统方式
+              logger.info('缓存未命中，传统加载', {
+                nextIndex,
+                materialId: nextSequence.materialId,
+                sequenceName: nextSequence.name,
+                cacheState: nextSequence.materialId ? videoCache.getCacheState(nextSequence.materialId) : 'no-material-id'
+              });
+              
+              currentVideo.src = nextSequence.url;
+            }
+            
+            currentVideo.currentTime = nextClipStart;
+            currentVideo.play().catch(error => {
+              logger.error('播放下一个视频失败', error, {
+                nextIndex,
+                sequenceName: nextSequence.name,
+                clipStart: nextClipStart.toFixed(2)
+              });
             });
-          });
+          }
 
           // 新增：切换到下一个视频时同步音频
           const nextVideoStartTime = compositionPlayback.videoSequences.slice(0, nextIndex).reduce((sum, seq) => sum + seq.duration, 0);
@@ -702,9 +772,10 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
 
   // 更新组合播放时间
   const handleTimeUpdate = useCallback(() => {
-    if (playbackMode === 'composition' && compositionPlayback && videoRef.current) {
-      const videoCurrentTime = videoRef.current.currentTime;
-      const currentVideoSrc = videoRef.current.src;
+    const currentVideo = getCurrentVideoElement();
+    if (playbackMode === 'composition' && compositionPlayback && currentVideo) {
+      const videoCurrentTime = currentVideo.currentTime;
+      const currentVideoSrc = currentVideo.src;
       
       // 根据当前播放的视频URL找到正确的序列索引，避免状态更新延迟问题
       let actualSequenceIndex = 0;
@@ -802,9 +873,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
           });
         });
       }
-    } else if (playbackMode === 'preview' && videoRef.current) {
+    } else if (playbackMode === 'preview' && currentVideo) {
       // 预览模式下也需要同步时间到timeline
-      const videoCurrentTime = videoRef.current.currentTime;
+      const videoCurrentTime = currentVideo.currentTime;
       
       logger.info('预览播放时间更新', {
         videoCurrentTime: videoCurrentTime.toFixed(2),
@@ -828,7 +899,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         });
       }
     }
-  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, syncAudioPlayback, logger]);
+  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, syncAudioPlayback, logger, getCurrentVideoElement]);
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
@@ -841,9 +912,10 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         totalSequences: compositionPlayback?.videoSequences.length
       });
 
-      if (videoRef.current) {
+      const currentVideo = getCurrentVideoElement();
+      if (currentVideo) {
         if (isCompositionPlaying) {
-          videoRef.current.pause();
+          currentVideo.pause();
           // 新增：同步暂停音频
           await syncAudioPlayback(compositionCurrentTime, false);
         } else {
@@ -891,8 +963,8 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 accumulatedTime: accumulatedTime.toFixed(2)
               });
               
-              videoRef.current.src = targetSequence.url;
-              videoRef.current.currentTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd)); // 确保在裁剪范围内
+              currentVideo.src = targetSequence.url;
+              currentVideo.currentTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd)); // 确保在裁剪范围内
               setCompositionCurrentTime(startTime);
               
               // 更新当前序列索引
@@ -909,7 +981,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                 }
               }
               
-              videoRef.current.play().catch(error => {
+              currentVideo.play().catch(error => {
                 logger.error('开始播放组合视频失败（裁剪模式）', error, {
                   sequenceIndex: targetSequenceIndex,
                   sequenceName: targetSequence.name,
@@ -1143,39 +1215,45 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                   style={{ maxHeight: '100%', maxWidth: '100%' }}
                   onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
                 >
+                  {/* 视频元素 - 固定尺寸防止闪烁 */}
                   <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
+                    style={{ 
+                      width: '100%', 
+                      height: '100%',
+                      minHeight: '200px' // 确保最小高度，防止容器收缩
+                    }}
                     preload="metadata"
                     onEnded={handleVideoEnded}
                     onTimeUpdate={handleTimeUpdate}
                     onLoadStart={() => {
-                      logger.info('组合视频开始加载', {
+                      logger.info('主video元素开始加载', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
                         sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
                         aspectRatio: selectedAspectRatio.id,
-                        containerHeight: '70% of upper panel'
+                        videoElement: 'primary'
                       });
                     }}
                     onCanPlay={() => {
-                      logger.info('组合视频可播放', {
+                      logger.info('主video元素可播放', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
                         sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
                         aspectRatio: selectedAspectRatio.id,
-                        containerHeight: '70% of upper panel'
+                        videoElement: 'primary'
                       });
                     }}
                     onLoadedData={() => {
-                      logger.info('组合视频数据加载完成', {
+                      logger.info('主video元素数据加载完成', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
                         sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
                         duration: videoRef.current?.duration,
                         aspectRatio: selectedAspectRatio.id,
-                        containerHeight: '70% of upper panel'
+                        videoElement: 'primary'
                       });
                     }}
                     onLoadedMetadata={() => {
-                      logger.info('组合视频元数据加载完成', {
+                      logger.info('主video元素元数据加载完成', {
                         sequenceIndex: compositionPlayback.currentSequenceIndex,
                         sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
                         duration: videoRef.current?.duration,
@@ -1183,27 +1261,11 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
                         videoHeight: videoRef.current?.videoHeight,
                         currentTime: videoRef.current?.currentTime?.toFixed(2),
                         aspectRatio: selectedAspectRatio.id,
-                        message: '视频元数据已加载，第一帧应该可见'
-                      });
-                    }}
-                    onSeeked={() => {
-                      logger.info('组合视频跳转完成', {
-                        sequenceIndex: compositionPlayback.currentSequenceIndex,
-                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
-                        currentTime: videoRef.current?.currentTime?.toFixed(2),
-                        message: '视频已跳转到指定时间点'
-                      });
-                    }}
-                    onError={(e) => {
-                      logger.error('组合视频加载失败', new Error('Video load error'), {
-                        sequenceIndex: compositionPlayback.currentSequenceIndex,
-                        sequenceName: compositionPlayback.videoSequences[compositionPlayback.currentSequenceIndex]?.name,
-                        error: e.currentTarget.error?.message,
-                        aspectRatio: selectedAspectRatio.id,
-                        containerHeight: '70% of upper panel'
+                        videoElement: 'primary'
                       });
                     }}
                   />
+
                   
                   {/* 新增：图片叠加层 */}
                   {(() => {
