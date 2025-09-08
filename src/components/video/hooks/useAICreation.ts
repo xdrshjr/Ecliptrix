@@ -754,7 +754,6 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                 metadata: {
                   workflowId: selectedWorkflow?.workflowId,
                   workflowName: selectedWorkflow?.workflowName,
-                  workflowType: selectedWorkflow?.workflowType,
                   detectedMaterialType: materialType,
                   runninghubTaskId: runninghubTaskId,
                   nodeId: result.nodeId,
@@ -765,7 +764,9 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                   originalGeneratingId: `generating_${runninghubTaskId}`,
                   resultIndex: i,
                   source: 'ai_creation',
-                  ...supabaseResult.metadata // Include Supabase upload metadata
+                  ...supabaseResult.metadata, // Include Supabase upload metadata (includes workflowType)
+                  // Override workflowType to ensure consistency
+                  workflowType: selectedWorkflow?.workflowType
                 }
               };
 
