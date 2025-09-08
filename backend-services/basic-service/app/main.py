@@ -279,6 +279,10 @@ app.include_router(workflow_router.router, prefix="/api")
 from app.routers import image_router
 app.include_router(image_router.router, prefix="/api")
 
+# Import and include File Upload router
+from app.routers import file_upload_router
+app.include_router(file_upload_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

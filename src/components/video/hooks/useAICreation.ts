@@ -5,7 +5,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { workflowService, WorkflowInfo, WorkflowParameter, WorkflowExecutionResult, WorkflowError } from '../services/workflowService';
 import { VideoEditingLogger } from '../utils';
-import { MaterialItem } from '@/types';
+import { MaterialItem, MaterialType } from '@/types';
 import { uploadVideoToSupabase, uploadFileToSupabase } from '@/lib/api/supabase';
 
 export interface UseAICreationReturn {
@@ -39,6 +39,20 @@ export interface UseAICreationReturn {
   // Utility
   taskId: string;
 }
+
+// Helper function to determine material type from workflow type
+const getMaterialTypeFromWorkflowType = (workflowType: string): MaterialType => {
+  if (workflowType.endsWith('-VIDEO')) {
+    return 'video';
+  } else if (workflowType.endsWith('-IMG') || workflowType.endsWith('-IMAGE')) {
+    return 'image';
+  } else if (workflowType.endsWith('-AUDIO')) {
+    return 'audio';
+  } else {
+    // Default to image for unknown types
+    return 'image';
+  }
+};
 
 export const useAICreation = (taskId: string): UseAICreationReturn => {
   const logger = new VideoEditingLogger({ taskId, component: 'useAICreation' });
@@ -255,10 +269,10 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       }
 
       const blob = await response.blob();
-      const fileExtension = result.fileType || (workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png');
+      const fileExtension = result.fileType || (workflowType.endsWith('-VIDEO') ? 'mp4' : 'png');
       const fileName = `ai_creation_${runninghubTaskId}_${resultIndex}.${fileExtension}`;
       const file = new File([blob], fileName, { 
-        type: workflowType === 'TEXT-2-VIDEO' ? 'video/mp4' : 'image/png' 
+        type: workflowType.endsWith('-VIDEO') ? 'video/mp4' : 'image/png' 
       });
 
       logger.info('AI创作结果文件下载完成，准备上传到Supabase', {
@@ -267,9 +281,14 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         fileType: file.type
       });
 
-      // Upload to Supabase based on file type
-      if (workflowType === 'TEXT-2-VIDEO') {
-        // Upload video to Supabase
+      // Upload to Supabase based on workflow type suffix
+      if (workflowType.endsWith('-VIDEO')) {
+        // Upload video to Supabase for any *-VIDEO workflow type
+        logger.info('检测到视频工作流类型，使用视频上传接口', {
+          workflowType,
+          uploadInterface: '/api/supabase/upload-video'
+        });
+
         const uploadResult = await uploadVideoToSupabase({
           file,
           taskId,
@@ -285,7 +304,8 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
           videoUrl: uploadResult.video_url,
           thumbnailUrl: uploadResult.thumbnail_url,
           fileSize: uploadResult.file_size,
-          duration: uploadResult.duration
+          duration: uploadResult.duration,
+          workflowType
         });
 
         return {
@@ -298,11 +318,17 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
           metadata: {
             supabaseUpload: true,
             originalUrl: result.fileUrl,
-            uploadTime: uploadResult.upload_time
+            uploadTime: uploadResult.upload_time,
+            workflowType
           }
         };
-      } else {
-        // Upload image to Supabase with proper bucket path
+      } else if (workflowType.endsWith('-IMG')) {
+        // Upload image to Supabase for any *-IMG workflow type
+        logger.info('检测到图片工作流类型，使用文件上传接口', {
+          workflowType,
+          uploadInterface: '/api/supabase/upload-file'
+        });
+
         const now = new Date();
         const datePath = now.toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD format
         const bucketPath = `dev/ai-creations/${datePath}/${taskId}/${fileName}`;
@@ -316,7 +342,8 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         logger.info('AI创作图片上传Supabase成功', {
           fileUrl: uploadResult.file_url,
           fileSize: uploadResult.file_size,
-          bucketPath
+          bucketPath,
+          workflowType
         });
 
         return {
@@ -327,7 +354,46 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
             supabaseUpload: true,
             originalUrl: result.fileUrl,
             uploadTime: uploadResult.upload_time,
-            bucketPath
+            bucketPath,
+            workflowType
+          }
+        };
+      } else {
+        // For other workflow types, default to image upload with warning
+        logger.warn('未知工作流类型，默认使用图片上传接口', {
+          workflowType,
+          uploadInterface: '/api/supabase/upload-file',
+          recommendation: '建议工作流类型使用-VIDEO或-IMG后缀'
+        });
+
+        const now = new Date();
+        const datePath = now.toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD format
+        const bucketPath = `dev/ai-creations/${datePath}/${taskId}/${fileName}`;
+        
+        const uploadResult = await uploadFileToSupabase(file, taskId, bucketPath);
+
+        if (!uploadResult.success) {
+          throw new Error(`文件上传Supabase失败: ${uploadResult.message}`);
+        }
+
+        logger.info('AI创作文件上传Supabase成功（默认处理）', {
+          fileUrl: uploadResult.file_url,
+          fileSize: uploadResult.file_size,
+          bucketPath,
+          workflowType
+        });
+
+        return {
+          url: uploadResult.file_url,
+          thumbnailUrl: uploadResult.file_url, // Default to same URL as thumbnail
+          size: uploadResult.file_size,
+          metadata: {
+            supabaseUpload: true,
+            originalUrl: result.fileUrl,
+            uploadTime: uploadResult.upload_time,
+            bucketPath,
+            workflowType,
+            defaultHandling: true
           }
         };
       }
@@ -342,12 +408,13 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       // Return original data if upload fails
       return {
         url: result.fileUrl,
-        thumbnailUrl: workflowType === 'TEXT-2-VIDEO' ? undefined : result.fileUrl,
+        thumbnailUrl: workflowType.endsWith('-VIDEO') ? undefined : result.fileUrl,
         size: 0,
         metadata: {
           supabaseUpload: false,
           originalUrl: result.fileUrl,
-          uploadError: error instanceof Error ? error.message : String(error)
+          uploadError: error instanceof Error ? error.message : String(error),
+          workflowType
         }
       };
     }
@@ -647,11 +714,34 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                 ? `generating_${runninghubTaskId}` // Use same ID as generating material to replace it
                 : `ai_creation_${runninghubTaskId}_${result.nodeId || Date.now()}_${i}`;
               
+              // Determine material type based on workflow type suffix
+              const materialType = getMaterialTypeFromWorkflowType(selectedWorkflow?.workflowType || '');
+              const defaultFormat = materialType === 'video' ? 'mp4' : materialType === 'audio' ? 'mp3' : 'png';
+
+              // Log warning for unknown workflow types
+              if (!selectedWorkflow?.workflowType || 
+                  (!selectedWorkflow.workflowType.endsWith('-VIDEO') && 
+                   !selectedWorkflow.workflowType.endsWith('-IMG') && 
+                   !selectedWorkflow.workflowType.endsWith('-IMAGE') && 
+                   !selectedWorkflow.workflowType.endsWith('-AUDIO'))) {
+                logger.warn('未知工作流类型，默认设置为图片类型', {
+                  workflowType: selectedWorkflow?.workflowType,
+                  recommendation: '建议工作流类型使用-VIDEO、-IMG或-AUDIO后缀'
+                });
+              }
+
+              logger.info('根据工作流类型确定素材类型', {
+                workflowType: selectedWorkflow?.workflowType,
+                detectedMaterialType: materialType,
+                defaultFormat,
+                resultIndex: i
+              });
+
               const material: MaterialItem = {
                 id: materialId,
                 name: `AI创作结果_${selectedWorkflow?.showNameCh || '未知'}_${new Date().toLocaleString()}${i > 0 ? `_${i + 1}` : ''}`,
-                type: selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'video' : 'image',
-                format: result.fileType || (selectedWorkflow?.workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png'),
+                type: materialType,
+                format: result.fileType || defaultFormat,
                 size: supabaseResult.size,
                 url: supabaseResult.url, // Use Supabase URL
                 serverUrl: result.fileUrl, // Keep original server URL for reference
@@ -664,6 +754,8 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                 metadata: {
                   workflowId: selectedWorkflow?.workflowId,
                   workflowName: selectedWorkflow?.workflowName,
+                  workflowType: selectedWorkflow?.workflowType,
+                  detectedMaterialType: materialType,
                   runninghubTaskId: runninghubTaskId,
                   nodeId: result.nodeId,
                   taskCostTime: result.taskCostTime,
@@ -957,11 +1049,21 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
       setIsModalOpen(false);
 
       // Add a generating material to the materials panel
+      // Determine generating material type based on workflow type suffix
+      const generatingMaterialType = getMaterialTypeFromWorkflowType(selectedWorkflow.workflowType || '');
+      const generatingFormat = generatingMaterialType === 'video' ? 'mp4' : generatingMaterialType === 'audio' ? 'mp3' : 'png';
+
+      logger.info('创建正在生成的素材', {
+        workflowType: selectedWorkflow.workflowType,
+        detectedMaterialType: generatingMaterialType,
+        format: generatingFormat
+      });
+
       const generatingMaterial: MaterialItem = {
         id: `generating_${result.runninghubTaskId || Date.now()}`,
         name: `正在生成 - ${selectedWorkflow.showNameCh}`,
-        type: selectedWorkflow.workflowType === 'TEXT-2-VIDEO' ? 'video' : 'image',
-        format: selectedWorkflow.workflowType === 'TEXT-2-VIDEO' ? 'mp4' : 'png',
+        type: generatingMaterialType,
+        format: generatingFormat,
         size: 0,
         url: '', // Empty URL for generating state
         downloadStatus: 'generating',

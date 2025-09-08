@@ -89,7 +89,10 @@ class WorkflowService:
                         description=workflow_data['description'],
                         icon=workflow_data['icon'],
                         nodeInfoList=node_info_list,
-                        instanceType=workflow_data.get('instanceType')
+                        instanceType=workflow_data.get('instanceType'),
+                        needUploadImg=workflow_data.get('needUploadImg'),
+                        needUploadVideo=workflow_data.get('needUploadVideo'),
+                        needUploadAudio=workflow_data.get('needUploadAudio')
                     )
                     
                     workflows.append(workflow)
@@ -100,6 +103,12 @@ class WorkflowService:
                         logger.debug(f"Workflow {workflow.workflow_name} has instanceType: {workflow.instance_type}")
                     else:
                         logger.debug(f"Workflow {workflow.workflow_name} has no instanceType")
+                    
+                    # Log upload settings for debugging
+                    if workflow.need_upload_img or workflow.need_upload_video or workflow.need_upload_audio:
+                        logger.debug(f"Workflow {workflow.workflow_name} upload settings: img={workflow.need_upload_img}, video={workflow.need_upload_video}, audio={workflow.need_upload_audio}")
+                    else:
+                        logger.debug(f"Workflow {workflow.workflow_name} has no upload requirements")
                     
                 except Exception as e:
                     logger.error(f"Error parsing workflow {workflow_data.get('workflowName', 'unknown')}: {str(e)}")

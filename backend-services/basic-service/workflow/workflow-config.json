@@ -284,5 +284,50 @@
         }
       }
     ]
+  },
+  {
+    "workflowName": "i2v-wan2.2",
+    "workflowType": "IMAGE-2-VIDEO",
+    "showNameCh": "wan2 图生视频",
+    "showNameEn": "wan2 image-video",
+    "workflowId": "1965039316114227202",
+    "description": "出色的图生视频功能",
+    "needUploadImg": "True",
+    "needUploadVideo": "False",
+    "needUploadAudio": "False",
+    "instanceType": "plus",
+    "icon": "https://images.unsplash.com/photo-1574717025058-2f8737d2e2b7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDk0NTl8MHwxfHNlYXJjaHwxOXx8dmlkZW98ZW58MHx8fHwxNzU3MzQ1MzI2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+    "nodeInfoList": [
+        {
+            "nodeId": "23",
+            "fieldName": "value",
+            "fieldValue": "704",
+            "description": "宽度"
+        },
+        {
+            "nodeId": "24",
+            "fieldName": "value",
+            "fieldValue": "544",
+            "description": "高度"
+        },
+        {
+            "nodeId": "4",
+            "fieldName": "image",
+            "fieldValue": "c5f8f3e3e75e37761bcedc3a9600ced7fd08ea4fe4588daf2c806ba4f33e02fd.png",
+            "description": "参考图"
+        },
+        {
+            "nodeId": "10",
+            "fieldName": "text",
+            "fieldValue": "A girl crouched down and picked up a coin from the ground",
+            "description": "提示词"
+        },
+        {
+            "nodeId": "25",
+            "fieldName": "value",
+            "fieldValue": "81",
+            "description": "总帧数"
+        }
+    ]
   }
 ]

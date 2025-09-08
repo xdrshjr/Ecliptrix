@@ -1,10 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { UseAICreationReturn } from '../../hooks/useAICreation';
 import { WorkflowInfo, WorkflowNodeInfo } from '../../services/workflowService';
 import { VideoEditingLogger } from '../../utils';
 import { MaterialItem } from '@/types';
+import { FileUploadComponent } from '../FileUpload';
+import { fileUploadService, FileUploadResult, UploadType } from '../../services/fileUploadService';
 
 interface AICreationModalProps extends UseAICreationReturn {
   addMaterial: (material: MaterialItem) => boolean;
@@ -31,7 +33,130 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
   addMaterial
 }) => {
   const logger = new VideoEditingLogger({ taskId, component: 'AICreationModal' });
+  
+  // File upload state
+  const [uploadedFiles, setUploadedFiles] = useState<Record<UploadType, FileUploadResult | null>>({
+    img: null,
+    video: null,
+    audio: null
+  });
+  const [uploadErrors, setUploadErrors] = useState<Record<UploadType, string | null>>({
+    img: null,
+    video: null,
+    audio: null
+  });
+  const [copySuccess, setCopySuccess] = useState<Record<UploadType, boolean>>({
+    img: false,
+    video: false,
+    audio: false
+  });
 
+  // Get required upload types for the selected workflow
+  const requiredUploadTypes = selectedWorkflow 
+    ? fileUploadService.getRequiredUploadTypes(selectedWorkflow)
+    : [];
+
+  const createFileUploadCompleteHandler = useCallback((uploadType: UploadType) => {
+    return (result: FileUploadResult) => {
+      logger.info('File upload completed', {
+        uploadType,
+        filename: result.data?.filename,
+        success: result.success
+      });
+
+      setUploadedFiles(prev => ({
+        ...prev,
+        [uploadType]: result
+      }));
+
+      // Clear any previous error for this upload type
+      setUploadErrors(prev => ({
+        ...prev,
+        [uploadType]: null
+      }));
+    };
+  }, [logger]);
+
+  const createFileUploadErrorHandler = useCallback((uploadType: UploadType) => {
+    return (error: string) => {
+      logger.error('File upload error', new Error(error), { uploadType });
+
+      setUploadErrors(prev => ({
+        ...prev,
+        [uploadType]: error
+      }));
+    };
+  }, [logger]);
+
+  // Check if all required files are uploaded
+  const areRequiredFilesUploaded = useCallback(() => {
+    return requiredUploadTypes.every(uploadType => 
+      uploadedFiles[uploadType] && uploadedFiles[uploadType]?.success
+    );
+  }, [requiredUploadTypes, uploadedFiles]);
+
+  // Handle copy filename to clipboard
+  const handleCopyFilename = useCallback(async (uploadType: UploadType) => {
+    const filename = uploadedFiles[uploadType]?.data?.filename;
+    if (!filename) return;
+
+    try {
+      await navigator.clipboard.writeText(filename);
+      setCopySuccess(prev => ({
+        ...prev,
+        [uploadType]: true
+      }));
+      
+      logger.info('Filename copied to clipboard', {
+        uploadType,
+        filename
+      });
+      
+      // Reset copy success state after 2 seconds
+      setTimeout(() => {
+        setCopySuccess(prev => ({
+          ...prev,
+          [uploadType]: false
+        }));
+      }, 2000);
+    } catch (error) {
+      logger.error('Failed to copy filename to clipboard', error instanceof Error ? error : new Error(String(error)), {
+        uploadType,
+        filename
+      });
+      
+      // Fallback for older browsers
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = filename;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        setCopySuccess(prev => ({
+          ...prev,
+          [uploadType]: true
+        }));
+        
+        setTimeout(() => {
+          setCopySuccess(prev => ({
+            ...prev,
+            [uploadType]: false
+          }));
+        }, 2000);
+      } catch (fallbackError) {
+        logger.error('Fallback copy method also failed', fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)), {
+          uploadType,
+          filename
+        });
+      }
+    }
+  }, [uploadedFiles, logger]);
+
+  // Early return after all hooks are called
   if (!isModalOpen) return null;
 
   /**
@@ -325,6 +450,89 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
           </div>
         </div>
 
+        {/* File Upload Section */}
+        {requiredUploadTypes.length > 0 && (
+          <div className="mb-6">
+            <h4 className="text-md font-semibold text-gray-900 mb-4">文件上传</h4>
+            <div className="space-y-4">
+              {requiredUploadTypes.map((uploadType) => (
+                <div key={uploadType} className="space-y-2">
+                  <h5 className="text-sm font-medium text-gray-700">
+                    上传{fileUploadService.getUploadTypeDisplayName(uploadType)}
+                    <span className="text-red-500 ml-1">*</span>
+                  </h5>
+                  
+                  <FileUploadComponent
+                    uploadType={uploadType}
+                    taskId={taskId}
+                    onUploadComplete={createFileUploadCompleteHandler(uploadType)}
+                    onUploadError={createFileUploadErrorHandler(uploadType)}
+                    disabled={isExecuting}
+                    className="mb-2"
+                  />
+                  
+                  {/* Show uploaded filename */}
+                  {uploadedFiles[uploadType]?.success && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 flex-1">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-blue-900">
+                              上传成功：{uploadedFiles[uploadType]?.data?.filename}
+                            </p>
+                            <p className="text-xs text-blue-700">
+                              请在相关输入框中使用此文件名
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Copy button */}
+                        <button
+                          onClick={() => handleCopyFilename(uploadType)}
+                          className="flex-shrink-0 ml-2 p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                          title={copySuccess[uploadType] ? "已复制！" : "复制文件名"}
+                        >
+                          {copySuccess[uploadType] ? (
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      
+                      {/* Copy success feedback */}
+                      {copySuccess[uploadType] && (
+                        <p className="text-xs text-green-600 mt-2 text-center">
+                          已复制到剪贴板！
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Show upload error */}
+                  {uploadErrors[uploadType] && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-sm text-red-800">{uploadErrors[uploadType]}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Parameter form */}
         <div className="flex-1 overflow-y-auto">
           <div className="space-y-6">
@@ -439,13 +647,20 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
           </button>
           <button
             onClick={() => handleStartCreation(addMaterial)}
-            disabled={isExecuting}
+            disabled={isExecuting || (requiredUploadTypes.length > 0 && !areRequiredFilesUploaded())}
             className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
             {isExecuting && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             )}
-            <span>{isExecuting ? '创作中...' : '开始创作'}</span>
+            <span>
+              {isExecuting 
+                ? '创作中...' 
+                : (requiredUploadTypes.length > 0 && !areRequiredFilesUploaded())
+                  ? '请先上传必需文件'
+                  : '开始创作'
+              }
+            </span>
           </button>
         </div>
       </div>

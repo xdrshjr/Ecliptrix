@@ -78,6 +78,9 @@ class WorkflowInfo(BaseModel):
     icon: str = Field(..., description="URL to workflow icon/thumbnail")
     node_info_list: List[WorkflowNodeInfo] = Field(..., alias="nodeInfoList", description="List of workflow parameters")
     instance_type: Optional[str] = Field(None, alias="instanceType", description="RunningHub instance type (e.g., 'plus')")
+    need_upload_img: Optional[str] = Field(None, alias="needUploadImg", description="Whether image upload is required (True/False)")
+    need_upload_video: Optional[str] = Field(None, alias="needUploadVideo", description="Whether video upload is required (True/False)")
+    need_upload_audio: Optional[str] = Field(None, alias="needUploadAudio", description="Whether audio upload is required (True/False)")
 
     class Config:
         populate_by_name = True

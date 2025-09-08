@@ -10,6 +10,7 @@ from . import audio_router
 from . import youtube_router
 from . import workflow_router
 from . import image_router
+from . import file_upload_router
 
 __all__ = [
     "api_router",
@@ -19,5 +20,6 @@ __all__ = [
     "audio_router",
     "youtube_router",
     "workflow_router",
-    "image_router"
+    "image_router",
+    "file_upload_router"
 ] 

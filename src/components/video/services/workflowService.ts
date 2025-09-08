@@ -48,6 +48,9 @@ export interface WorkflowInfo {
   icon: string;
   nodeInfoList: WorkflowNodeInfo[];
   instanceType?: string;
+  needUploadImg?: string;
+  needUploadVideo?: string;
+  needUploadAudio?: string;
 }
 
 export interface WorkflowParameter {
