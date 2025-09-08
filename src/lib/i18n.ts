@@ -135,6 +135,10 @@ export interface Translations {
     searchVideos: string;
     searchAudios: string;
     searchAudiosTooltip: string;
+    searchImages: string;
+    searchImagesTooltip: string;
+    materialLibrary: string;
+    materialLibraryTooltip: string;
     deleteAll: string;
     materialsCount: string;
     aiAutoMixTooltip: string;
@@ -394,6 +398,10 @@ export const translations: Record<string, Translations> = {
       searchVideos: 'Search Videos',
       searchAudios: 'Search Audios',
       searchAudiosTooltip: 'Search Online Audios',
+      searchImages: 'Search Images',
+      searchImagesTooltip: 'Search Online Images',
+      materialLibrary: 'Material Library',
+      materialLibraryTooltip: 'Access material library with videos, audios and images',
       deleteAll: 'Delete All',
       materialsCount: ' materials',
       aiAutoMixTooltip: 'Automatically add all script-converted audio and associated videos to timeline in order',
@@ -748,6 +756,10 @@ export const translations: Record<string, Translations> = {
       searchVideos: '搜索视频',
       searchAudios: '搜索音频',
       searchAudiosTooltip: '搜索在线音频',
+      searchImages: '图片搜索',
+      searchImagesTooltip: '搜索在线图片',
+      materialLibrary: '素材库',
+      materialLibraryTooltip: '访问包含视频、音频和图片的素材库',
       deleteAll: '删除全部',
       materialsCount: '个素材',
       aiAutoMixTooltip: '将所有文本脚本转换的音频和关联的视频按顺序自动添加到时间轴',
