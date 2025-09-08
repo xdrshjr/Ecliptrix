@@ -5,6 +5,7 @@ export { useScriptGeneration } from './useScriptGeneration';
 export { useMaterialManagement } from './useMaterialManagement';
 export { useVideoSearch } from './useVideoSearch';
 export { useAudioSearch } from './useAudioSearch';
+export { useImageSearch } from './useImageSearch';
 export { useTimelineComposition } from './useTimelineComposition';
 export { useVideoAnalysis } from './useVideoAnalysis';
 export { useAIImageGeneration } from './useAIImageGeneration';

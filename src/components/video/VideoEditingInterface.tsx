@@ -13,6 +13,7 @@ import {
   useMaterialManagement,
   useVideoSearch,
   useAudioSearch,
+  useImageSearch,
   useTimelineComposition,
   useVideoAnalysis,
   useAIImageGeneration,
@@ -30,6 +31,7 @@ import {
   VideoPlayerPanel,
   VideoSearchModal,
   AudioSearchModal,
+  ImageSearchModal,
   ContentPolishModal,
   ScriptGenerationModal,
   CreativeBrainstormingModal,
@@ -147,6 +149,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const materialManagement = useMaterialManagement(taskId);
   const videoSearch = useVideoSearch(taskId, materialManagement.addMaterials);
   const audioSearch = useAudioSearch(taskId, materialManagement.addMaterials);
+  const imageSearch = useImageSearch(taskId, materialManagement.addMaterials);
   
   // 添加时间轴组合播放功能
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
@@ -780,6 +783,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 {...materialManagement}
                 onSearchVideos={videoSearch.openSearchModal}
                 onSearchAudios={audioSearch.openSearchModal}
+                onSearchImages={imageSearch.openSearchModal}
                 onAICreation={aiCreation.openModal}
                 onAIImageGeneration={aiImageGeneration.openModal}
                 onAIVideoGeneration={aiVideoGeneration.openModal}
@@ -836,6 +840,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       <AudioSearchModal
         {...audioSearch}
+        taskId={taskId}
+      />
+
+      <ImageSearchModal
+        {...imageSearch}
         taskId={taskId}
       />
       

@@ -291,6 +291,77 @@ export type AudioType = 'all' | 'music' | 'sound-effect' | 'speech' | 'ambient' 
 
 export type SortBy = 'score' | 'downloads' | 'rating' | 'duration_desc' | 'duration_asc' | 'created_desc' | 'created_asc';
 
+// Image Search Types
+export interface ImageSearchResult {
+  id: string;
+  description?: string;
+  alt_description?: string;
+  width: number;
+  height: number;
+  color: string;
+  blur_hash?: string;
+  raw_url: string;
+  full_url: string;
+  regular_url: string;
+  small_url: string;
+  thumb_url: string;
+  user_id: string;
+  user_name: string;
+  user_username: string;
+  user_profile_url: string;
+  user_avatar_url?: string;
+  likes: number;
+  downloads: number;
+  created_at: string;
+  updated_at: string;
+  tags: string[];
+  categories: string[];
+  html_url: string;
+  download_location: string;
+}
+
+export interface ImageSearchResponse {
+  success: boolean;
+  message: string;
+  images: ImageSearchResult[];
+  total_found: number;
+  query: string;
+}
+
+export type ImageOrientation = 'all' | 'landscape' | 'portrait' | 'squarish';
+export type ImageColor = 'all' | 'black_and_white' | 'black' | 'white' | 'yellow' | 'orange' | 'red' | 'purple' | 'magenta' | 'green' | 'teal' | 'blue';
+export type ImageOrderBy = 'relevant' | 'latest' | 'popular';
+
+export interface UseImageSearchReturn {
+  isModalOpen: boolean;
+  searchQuery: string;
+  isSearching: boolean;
+  searchResults: ImageSearchResult[];
+  selectedResults: Set<string>;
+  previewImage: ImageSearchResult | null;
+  validationError: string | null;
+  orientation: ImageOrientation;
+  color: ImageColor;
+  orderBy: ImageOrderBy;
+  currentPage: number;
+  totalPages: number;
+  isAddingImages: boolean;
+  openSearchModal: () => void;
+  closeSearchModal: () => void;
+  handleSearch: () => void;
+  handleSearchResultSelect: (resultId: string) => void;
+  handleImagePreview: (image: ImageSearchResult) => void;
+  handleAddSelectedImages: () => void;
+  handleClearSelection: () => void;
+  setSearchQuery: (query: string) => void;
+  setOrientation: (orientation: ImageOrientation) => void;
+  setColor: (color: ImageColor) => void;
+  setOrderBy: (orderBy: ImageOrderBy) => void;
+  setCurrentPage: (page: number) => void;
+  setValidationError: (error: string | null) => void;
+  taskId: string;
+}
+
 export interface UseAudioSearchReturn {
   isModalOpen: boolean;
   searchQuery: string;
