@@ -15,6 +15,10 @@ export interface UseComfyUIHealthReturn {
  * useComfyUIHealth Hook
  * 管理ComfyUI服务健康检查状态
  * 
+ * 根据NEXT_PUBLIC_AI_MATERIAL_SERVICE环境变量的配置：
+ * - local: 执行实际的ComfyUI健康检查
+ * - runninghub: 跳过健康检查，返回mock健康状态
+ * 
  * @param taskId - 任务ID，用于日志记录
  * @param autoCheck - 是否在组件挂载时自动检查（默认true）
  * @returns ComfyUI健康检查相关的状态和方法
@@ -23,13 +27,22 @@ export const useComfyUIHealth = (
   taskId: string,
   autoCheck: boolean = true
 ): UseComfyUIHealthReturn => {
-  // 初始化日志器和服务
+  // 获取AI素材服务配置
+  const aiMaterialService = process.env.NEXT_PUBLIC_AI_MATERIAL_SERVICE || 'local';
+  
+  // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
     component: 'useComfyUIHealth'
   }), [taskId]);
 
-  const healthService = useMemo(() => createComfyUIHealthService(taskId), [taskId]);
+  // 只有在使用local模式时才创建健康检查服务
+  const healthService = useMemo(() => {
+    if (aiMaterialService === 'local') {
+      return createComfyUIHealthService(taskId);
+    }
+    return null;
+  }, [taskId, aiMaterialService]);
 
   // 状态管理
   const [healthStatus, setHealthStatus] = useState<ComfyUIHealthStatus | null>(null);
@@ -48,12 +61,29 @@ export const useComfyUIHealth = (
 
   // 执行健康检查
   const checkHealth = useCallback(async () => {
+    // 如果使用runninghub模式，跳过健康检查
+    if (aiMaterialService === 'runninghub') {
+      logger.info('使用RunningHub模式，跳过ComfyUI健康检查', {
+        aiMaterialService,
+        reason: 'RunningHub模式下不需要本地ComfyUI服务'
+      });
+      return;
+    }
+
     if (isChecking) {
       logger.warn('健康检查正在进行中，跳过重复请求');
       return;
     }
 
-    logger.userAction('开始ComfyUI健康检查', 'healthCheck');
+    if (!healthService) {
+      logger.error('健康检查服务未初始化');
+      return;
+    }
+
+    logger.userAction('开始ComfyUI健康检查', 'healthCheck', {
+      aiMaterialService,
+      mode: 'local'
+    });
     setIsChecking(true);
     setError(null);
 
@@ -66,7 +96,8 @@ export const useComfyUIHealth = (
         status: result.status,
         comfyui_status: result.comfyui_status,
         isAvailable: result.status === 'healthy' && result.comfyui_status === 'healthy',
-        error: result.error
+        error: result.error,
+        aiMaterialService
       });
 
       // 如果有错误，设置错误状态
@@ -87,17 +118,52 @@ export const useComfyUIHealth = (
       });
       setLastCheckTime(new Date());
       
-      logger.error('ComfyUI健康检查异常', error as Error);
+      logger.error('ComfyUI健康检查异常', error as Error, {
+        aiMaterialService
+      });
     } finally {
       setIsChecking(false);
     }
-  }, [isChecking, healthService, logger]);
+  }, [isChecking, healthService, logger, aiMaterialService]);
 
   // 组件挂载时自动检查，之后每5分钟检查一次
   useEffect(() => {
     if (!autoCheck) return;
 
-    logger.info('组件挂载，开始自动健康检查');
+    // 如果使用runninghub模式，设置mock健康状态并跳过所有健康检查逻辑
+    if (aiMaterialService === 'runninghub') {
+      logger.info('使用RunningHub模式，设置mock健康状态', {
+        aiMaterialService,
+        reason: 'RunningHub模式下不需要本地ComfyUI服务，直接返回健康状态'
+      });
+      
+      // 设置mock健康状态
+      const mockHealthStatus: ComfyUIHealthStatus = {
+        status: 'healthy',
+        comfyui_status: 'healthy',
+        timestamp: new Date().toISOString(),
+        version: 'runninghub-mode'
+      };
+      
+      setHealthStatus(mockHealthStatus);
+      setLastCheckTime(new Date());
+      setError(null);
+      setIsChecking(false);
+      
+      return; // 直接返回，不设置定时器
+    }
+
+    if (!healthService) {
+      logger.error('健康检查服务未初始化，无法进行自动检查', {
+        aiMaterialService
+      });
+      return;
+    }
+
+    logger.info('组件挂载，开始自动健康检查', {
+      aiMaterialService,
+      mode: 'local'
+    });
     
     // 立即执行第一次检查
     const performInitialCheck = async () => {
@@ -110,7 +176,8 @@ export const useComfyUIHealth = (
           status: result.status,
           comfyui_status: result.comfyui_status,
           isAvailable: result.status === 'healthy' && result.comfyui_status === 'healthy',
-          error: result.error
+          error: result.error,
+          aiMaterialService
         });
 
         if (result.error) {
@@ -131,7 +198,9 @@ export const useComfyUIHealth = (
         });
         setLastCheckTime(new Date());
         
-        logger.error('初始ComfyUI健康检查异常', error as Error);
+        logger.error('初始ComfyUI健康检查异常', error as Error, {
+          aiMaterialService
+        });
       }
     };
     
@@ -139,7 +208,9 @@ export const useComfyUIHealth = (
     
     // 设置定时器，每5分钟检查一次
     intervalRef.current = setInterval(async () => {
-      logger.info('定时健康检查开始');
+      logger.info('定时健康检查开始', {
+        aiMaterialService
+      });
       try {
         const result = await healthService.checkHealth();
         setHealthStatus(result);
@@ -149,7 +220,8 @@ export const useComfyUIHealth = (
           status: result.status,
           comfyui_status: result.comfyui_status,
           isAvailable: result.status === 'healthy' && result.comfyui_status === 'healthy',
-          error: result.error
+          error: result.error,
+          aiMaterialService
         });
 
         if (result.error) {
@@ -170,19 +242,23 @@ export const useComfyUIHealth = (
         });
         setLastCheckTime(new Date());
         
-        logger.error('定时ComfyUI健康检查异常', error as Error);
+        logger.error('定时ComfyUI健康检查异常', error as Error, {
+          aiMaterialService
+        });
       }
     }, 5 * 60 * 1000); // 5分钟 = 5 * 60 * 1000 毫秒
 
     // 清理定时器
     return () => {
       if (intervalRef.current) {
-        logger.info('清理健康检查定时器');
+        logger.info('清理健康检查定时器', {
+          aiMaterialService
+        });
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     };
-  }, [autoCheck, healthService, logger]); // 保留必要的依赖
+  }, [autoCheck, healthService, logger, aiMaterialService]); // 添加aiMaterialService到依赖
 
   return {
     healthStatus,
