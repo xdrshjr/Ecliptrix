@@ -230,4 +230,8 @@ export interface TimelineAction {
   type: 'ADD_ITEM' | 'REMOVE_ITEM' | 'UPDATE_ITEM' | 'MOVE_ITEM' | 'SELECT_ITEM' | 'DESELECT_ALL' | 'SELECT_ALL_TRACK_ITEMS';
   payload?: any;
   timestamp: Date;
+  // 新增：保存操作前的时间轴状态快照，用于撤销操作
+  previousState?: TimelineState;
+  // 新增：保存操作后的时间轴状态快照，用于重做操作
+  nextState?: TimelineState;
 } 

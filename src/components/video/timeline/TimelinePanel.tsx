@@ -451,13 +451,48 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   // 历史记录管理
   const addToHistory = useCallback((action: TimelineAction) => {
+    console.log(`[TimelinePanel] 添加历史记录`, {
+      actionType: action.type,
+      hasPayload: !!action.payload,
+      hasPreviousState: !!action.previousState,
+      hasNextState: !!action.nextState,
+      currentHistoryIndex: historyIndex,
+      historyLength: history.length,
+      timestamp: new Date().toISOString()
+    });
+
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(action);
+      newHistory.push({
+        ...action,
+        previousState: action.previousState || timelineState // 如果没有提供previousState，使用当前状态
+      });
       return newHistory.slice(-50); // 保留最近50个操作
     });
     setHistoryIndex(prev => prev + 1);
-  }, [historyIndex]);
+  }, [historyIndex, timelineState, history.length]);
+
+  // 更新最后一个历史记录的nextState
+  const updateLastHistoryNextState = useCallback((nextState: TimelineState) => {
+    setHistory(prev => {
+      if (prev.length === 0) return prev;
+      
+      const newHistory = [...prev];
+      const lastIndex = newHistory.length - 1;
+      newHistory[lastIndex] = {
+        ...newHistory[lastIndex],
+        nextState
+      };
+      
+      console.log(`[TimelinePanel] 更新历史记录的nextState`, {
+        actionType: newHistory[lastIndex].type,
+        historyIndex: lastIndex,
+        timestamp: new Date().toISOString()
+      });
+      
+      return newHistory;
+    });
+  }, []);
 
   // 初始化日志记录
   useEffect(() => {
@@ -1135,26 +1170,93 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [activeTool]);
 
   const handleUndo = useCallback(() => {
-    if (historyIndex >= 0) {
+    if (historyIndex >= 0 && history[historyIndex]) {
+      const actionToUndo = history[historyIndex];
+      
       console.log(`[TimelinePanel] 执行撤销操作`, {
         historyIndex,
-        actionType: history[historyIndex]?.type,
+        actionType: actionToUndo.type,
+        hasPreviewState: !!actionToUndo.previousState,
         timestamp: new Date().toISOString()
       });
+
+      // 恢复到操作前的状态
+      if (actionToUndo.previousState) {
+        setTimelineState(actionToUndo.previousState);
+        
+        console.log(`[TimelinePanel] 撤销操作完成 - 状态已恢复`, {
+          actionType: actionToUndo.type,
+          restoredTrackCount: actionToUndo.previousState.tracks.length,
+          restoredItemCount: actionToUndo.previousState.tracks.reduce((sum, track) => sum + track.items.length, 0),
+          restoredSelectedCount: actionToUndo.previousState.selectedItems.length,
+          restoredTotalDuration: actionToUndo.previousState.totalDuration.toFixed(2),
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.warn(`[TimelinePanel] 撤销操作失败 - 缺少状态快照`, {
+          actionType: actionToUndo.type,
+          historyIndex,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
       setHistoryIndex(prev => prev - 1);
-      // 这里应该实现具体的撤销逻辑
+    } else {
+      console.log(`[TimelinePanel] 撤销操作取消 - 无可撤销的操作`, {
+        historyIndex,
+        historyLength: history.length,
+        timestamp: new Date().toISOString()
+      });
     }
   }, [historyIndex, history]);
 
   const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1) {
+      const actionToRedo = history[historyIndex + 1];
+      
       console.log(`[TimelinePanel] 执行重做操作`, {
         historyIndex,
-        actionType: history[historyIndex + 1]?.type,
+        actionType: actionToRedo?.type,
+        hasNextState: !!actionToRedo?.nextState,
         timestamp: new Date().toISOString()
       });
-      setHistoryIndex(prev => prev + 1);
-      // 这里应该实现具体的重做逻辑
+
+      if (actionToRedo) {
+        setHistoryIndex(prev => prev + 1);
+        
+        // 如果有保存的nextState，直接恢复到该状态
+        if (actionToRedo.nextState) {
+          setTimelineState(actionToRedo.nextState);
+          
+          console.log(`[TimelinePanel] 重做操作完成 - 状态已恢复`, {
+            actionType: actionToRedo.type,
+            restoredTrackCount: actionToRedo.nextState.tracks.length,
+            restoredItemCount: actionToRedo.nextState.tracks.reduce((sum, track) => sum + track.items.length, 0),
+            restoredSelectedCount: actionToRedo.nextState.selectedItems.length,
+            restoredTotalDuration: actionToRedo.nextState.totalDuration.toFixed(2),
+            newHistoryIndex: historyIndex + 1,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.warn(`[TimelinePanel] 重做操作失败 - 缺少nextState快照`, {
+            actionType: actionToRedo.type,
+            historyIndex: historyIndex + 1,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        console.warn(`[TimelinePanel] 重做操作失败 - 操作不存在`, {
+          historyIndex,
+          historyLength: history.length,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else {
+      console.log(`[TimelinePanel] 重做操作取消 - 无可重做的操作`, {
+        historyIndex,
+        historyLength: history.length,
+        timestamp: new Date().toISOString()
+      });
     }
   }, [historyIndex, history]);
 
@@ -1214,6 +1316,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         itemCount: itemsByTrack[trackId].length
       })),
       timestamp: new Date().toISOString()
+    });
+
+    // 先添加到历史记录（保存当前状态作为previousState）
+    addToHistory({
+      type: 'ADD_ITEM',
+      payload: { 
+        operation: 'copy',
+        selectedItemIds: timelineState.selectedItems
+      },
+      timestamp: new Date()
     });
 
     // 创建复制的素材
@@ -1276,6 +1388,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         track.items.map(item => item.startTime + item.duration)
       ));
 
+      const newState = {
+        ...prev,
+        tracks: newTracks,
+        totalDuration: newTotalDuration,
+        selectedItems: newSelectedItemIds // 选中新复制的素材
+      };
+
       console.log(`[TimelinePanel] 复制操作完成`, {
         copiedItemsCount: copiedItems.length,
         newTotalDuration: newTotalDuration.toFixed(2),
@@ -1284,27 +1403,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      return {
-        ...prev,
-        tracks: newTracks,
-        totalDuration: newTotalDuration,
-        selectedItems: newSelectedItemIds // 选中新复制的素材
-      };
-    });
+      // 异步更新历史记录的nextState
+      setTimeout(() => {
+        updateLastHistoryNextState(newState);
+      }, 0);
 
-    // 添加到历史记录
-    addToHistory({
-      type: 'ADD_ITEM',
-      payload: { 
-        copiedItems: copiedItems.map(item => ({
-          id: item.id,
-          name: item.name,
-          trackId: item.trackId,
-          startTime: item.startTime,
-          duration: item.duration
-        }))
-      },
-      timestamp: new Date()
+      return newState;
     });
 
   }, [timelineState.selectedItems, timelineState.tracks, addToHistory]);
@@ -1317,21 +1421,161 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       timestamp: new Date().toISOString()
     });
 
-    setTimelineState(prev => ({
-      ...prev,
-      tracks: prev.tracks.map(track => ({
-        ...track,
-        items: track.items.filter(item => !prev.selectedItems.includes(item.id))
-      })),
-      selectedItems: []
-    }));
-
+    // 先添加到历史记录（保存当前状态作为previousState）
     addToHistory({
       type: 'REMOVE_ITEM',
-      payload: { itemIds: timelineState.selectedItems },
+      payload: { 
+        operation: 'delete',
+        itemIds: timelineState.selectedItems 
+      },
       timestamp: new Date()
     });
-  }, [timelineState.selectedItems, addToHistory]);
+
+    setTimelineState(prev => {
+      const newState = {
+        ...prev,
+        tracks: prev.tracks.map(track => ({
+          ...track,
+          items: track.items.filter(item => !prev.selectedItems.includes(item.id))
+        })),
+        selectedItems: []
+      };
+
+      console.log(`[TimelinePanel] 删除操作完成`, {
+        deletedItemsCount: timelineState.selectedItems.length,
+        remainingItemsCount: newState.tracks.reduce((sum, track) => sum + track.items.length, 0),
+        timestamp: new Date().toISOString()
+      });
+
+      // 异步更新历史记录的nextState
+      setTimeout(() => {
+        updateLastHistoryNextState(newState);
+      }, 0);
+
+      return newState;
+    });
+  }, [timelineState.selectedItems, addToHistory, updateLastHistoryNextState]);
+
+  // 整理轨道中素材 - 去除间隙，使素材紧密相邻
+  const handleOrganizeMaterials = useCallback(() => {
+    console.log(`[TimelinePanel] 开始整理轨道中素材`, {
+      timestamp: new Date().toISOString()
+    });
+
+    // 先检查是否有需要整理的素材
+    setTimelineState(prev => {
+      console.log(`[TimelinePanel] 检查轨道素材`, {
+        totalTracks: prev.tracks.length,
+        totalItems: prev.tracks.reduce((sum, track) => sum + track.items.length, 0),
+        timestamp: new Date().toISOString()
+      });
+
+      // 检查是否有需要整理的素材
+      const hasItemsToOrganize = prev.tracks.some(track => 
+        (track.type === 'video' || track.type === 'audio') && track.items.length > 0
+      );
+
+      if (!hasItemsToOrganize) {
+        console.log(`[TimelinePanel] 整理素材取消 - 没有可整理的素材`, {
+          timestamp: new Date().toISOString()
+        });
+        // 使用setTimeout异步显示错误消息，避免在渲染过程中更新其他组件
+        setTimeout(() => {
+          showError(t.timeline.messages.organizeMaterialsNoItems);
+        }, 0);
+        return prev; // 返回原状态，不做任何修改
+      }
+
+      // 先添加到历史记录（保存当前状态作为previousState）
+      addToHistory({
+        type: 'UPDATE_ITEM',
+        payload: { 
+          operation: 'organize_materials',
+          description: '整理轨道中素材，去除间隙'
+        },
+        timestamp: new Date(),
+        previousState: prev
+      });
+      const newState = {
+        ...prev,
+        tracks: prev.tracks.map(track => {
+          // 只处理视频和音频轨道
+          if (track.type !== 'video' && track.type !== 'audio') {
+            return track;
+          }
+
+          // 如果轨道为空，直接返回
+          if (track.items.length === 0) {
+            return track;
+          }
+
+          // 按开始时间排序轨道中的素材
+          const sortedItems = [...track.items].sort((a, b) => a.startTime - b.startTime);
+          
+          console.log(`[TimelinePanel] 整理轨道 ${track.name}`, {
+            trackId: track.id,
+            trackType: track.type,
+            itemsCount: sortedItems.length,
+            originalPositions: sortedItems.map(item => ({
+              id: item.id,
+              name: item.name,
+              startTime: item.startTime,
+              duration: item.duration
+            })),
+            timestamp: new Date().toISOString()
+          });
+
+          // 重新计算每个素材的位置，使它们紧密相邻
+          let currentTime = 0;
+          const organizedItems = sortedItems.map((item, index) => {
+            const organizedItem = {
+              ...item,
+              startTime: currentTime
+            };
+            
+            currentTime += item.duration;
+            
+            console.log(`[TimelinePanel] 素材重新定位`, {
+              itemId: item.id,
+              itemName: item.name,
+              originalStartTime: item.startTime,
+              newStartTime: organizedItem.startTime,
+              duration: item.duration,
+              index,
+              timestamp: new Date().toISOString()
+            });
+
+            return organizedItem;
+          });
+
+          return {
+            ...track,
+            items: organizedItems
+          };
+        })
+      };
+
+      const organizedItemsCount = newState.tracks.reduce((sum, track) => 
+        (track.type === 'video' || track.type === 'audio') ? sum + track.items.length : sum, 0
+      );
+
+      console.log(`[TimelinePanel] 整理素材操作完成`, {
+        organizedItemsCount,
+        affectedTracksCount: newState.tracks.filter(track => 
+          (track.type === 'video' || track.type === 'audio') && track.items.length > 0
+        ).length,
+        timestamp: new Date().toISOString()
+      });
+
+      // 异步显示成功提示和更新历史记录，避免在渲染过程中更新其他组件
+      setTimeout(() => {
+        showSuccess(t.timeline.messages.organizeMaterialsSuccess);
+        updateLastHistoryNextState(newState);
+      }, 0);
+
+      return newState;
+    });
+  }, [addToHistory, updateLastHistoryNextState, showSuccess, showError, t.timeline.messages.organizeMaterialsSuccess, t.timeline.messages.organizeMaterialsNoItems]);
 
   // 高级功能处理函数
   const handleAddEffect = useCallback(() => {
@@ -1673,6 +1917,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         canRedo={historyIndex < history.length - 1}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onOrganizeMaterials={handleOrganizeMaterials}
         selectedItemsCount={timelineState.selectedItems.length}
         onCut={handleCut}
         onCopy={handleCopy}

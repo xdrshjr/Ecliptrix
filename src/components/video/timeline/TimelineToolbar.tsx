@@ -11,6 +11,7 @@ interface TimelineToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  onOrganizeMaterials: () => void;
   selectedItemsCount: number;
   onCut: () => void;
   onCopy: () => void;
@@ -29,6 +30,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   canRedo,
   onUndo,
   onRedo,
+  onOrganizeMaterials,
   selectedItemsCount,
   onCut,
   onCopy,
@@ -116,6 +118,18 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       label: t.timeline.toolbar.redo,
       shortcut: t.timeline.shortcuts.redoShortcut,
       disabled: !canRedo
+    },
+    {
+      id: 'organize',
+      action: onOrganizeMaterials,
+      icon: (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+        </svg>
+      ),
+      label: t.timeline.toolbar.organizeMaterials,
+      disabled: false,
+      className: 'text-orange-600 hover:text-orange-700 hover:bg-orange-50' // 明显的颜色
     }
   ];
 
@@ -187,12 +201,12 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
             ? 'text-gray-400 cursor-not-allowed bg-gray-100' 
             : isActive
               ? 'text-blue-700 bg-blue-100 border border-blue-300 shadow-sm'
-              : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
+              : button.className || 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
           }
         `}
         disabled={button.disabled}
-        aria-label={`${button.label} (${button.shortcut})`}
-        title={`${button.label} (${button.shortcut})`}
+        aria-label={button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
+        title={button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
       >
         <span className={button.disabled ? 'opacity-50' : ''}>
           {button.icon}
@@ -201,7 +215,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         {/* 悬停提示 - 使用CSS hover，确保显示 */}
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
           <div className="bg-gray-900 text-white text-xs px-3 py-2 rounded-md shadow-2xl whitespace-nowrap border border-gray-600">
-            {button.label} ({button.shortcut})
+            {button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2">
               <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
             </div>

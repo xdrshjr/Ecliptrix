@@ -33,23 +33,37 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     type: 'success' | 'error' | 'info' | 'warning' = 'info', 
     duration: number = 4000
   ) => {
-    const id = generateId();
-    const newToast: ToastItem = {
-      id,
-      message,
-      type,
-      duration
-    };
+    // 检查是否已经存在相同的消息
+    setToasts(prev => {
+      const existingToast = prev.find(toast => toast.message === message && toast.type === type);
+      if (existingToast) {
+        console.log(`[NotificationContext] 跳过重复通知`, {
+          message,
+          type,
+          existingId: existingToast.id,
+          timestamp: new Date().toISOString()
+        });
+        return prev; // 不添加重复的toast
+      }
 
-    setToasts(prev => [...prev, newToast]);
+      const id = generateId();
+      const newToast: ToastItem = {
+        id,
+        message,
+        type,
+        duration
+      };
 
-    // 记录通知日志
-    console.log(`[NotificationContext] 显示通知`, {
-      id,
-      message,
-      type,
-      duration,
-      timestamp: new Date().toISOString()
+      // 记录通知日志
+      console.log(`[NotificationContext] 显示通知`, {
+        id,
+        message,
+        type,
+        duration,
+        timestamp: new Date().toISOString()
+      });
+
+      return [...prev, newToast];
     });
   }, [generateId]);
 

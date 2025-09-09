@@ -35,22 +35,23 @@ export interface Translations {
     willBeImplemented: string;
     workspaceDescription: string;
   };
-  timeline: {
-    toolbar: {
-      select: string;
-      cut: string;
-      copy: string;
-      paste: string;
-      delete: string;
-      undo: string;
-      redo: string;
-      effects: string;
-      transitions: string;
-      subtitles: string;
-      export: string;
-      exporting: string;
-      exportingProgress: string;
-    };
+    timeline: {
+      toolbar: {
+        select: string;
+        cut: string;
+        copy: string;
+        paste: string;
+        delete: string;
+        undo: string;
+        redo: string;
+        organizeMaterials: string;
+        effects: string;
+        transitions: string;
+        subtitles: string;
+        export: string;
+        exporting: string;
+        exportingProgress: string;
+      };
     shortcuts: {
       selectShortcut: string;
       cutShortcut: string;
@@ -100,10 +101,12 @@ export interface Translations {
       noSubtitleTrack: string;
       subtitleExtractionFailed: string;
       subtitleExtractionSuccess: string;
-      subtitleExtractionError: string;
-      subtitlePrefix: string;
-      operationGenerated: string;
-      operationReplaced: string;
+        subtitleExtractionError: string;
+        subtitlePrefix: string;
+        operationGenerated: string;
+        operationReplaced: string;
+        organizeMaterialsSuccess: string;
+        organizeMaterialsNoItems: string;
     };
     subtitleEditModal: {
       title: string;
@@ -435,6 +438,7 @@ export const translations: Record<string, Translations> = {
         delete: 'Delete',
         undo: 'Undo',
         redo: 'Redo',
+        organizeMaterials: 'Organize Materials',
         effects: 'Effects',
         transitions: 'Transitions',
         subtitles: 'Subtitles',
@@ -495,6 +499,8 @@ export const translations: Record<string, Translations> = {
         subtitlePrefix: 'Subtitle',
         operationGenerated: 'Generated',
         operationReplaced: 'Replaced',
+        organizeMaterialsSuccess: 'All materials have been successfully aligned to the left',
+        organizeMaterialsNoItems: 'No material segments found, alignment failed',
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -793,6 +799,7 @@ export const translations: Record<string, Translations> = {
         delete: '删除',
         undo: '撤销',
         redo: '重做',
+        organizeMaterials: '整理轨道中素材',
         effects: '特效',
         transitions: '转场',
         subtitles: '字幕',
@@ -853,6 +860,8 @@ export const translations: Record<string, Translations> = {
           subtitlePrefix: '字幕',
           operationGenerated: '生成',
           operationReplaced: '替换',
+          organizeMaterialsSuccess: '所有素材已向左对齐成功',
+          organizeMaterialsNoItems: '无素材片段，对齐失败',
         },
       subtitleEditModal: {
         title: '编辑字幕',
