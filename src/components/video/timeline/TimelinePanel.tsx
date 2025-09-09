@@ -1168,20 +1168,147 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [timelineState.selectedItems]);
 
   const handleCopy = useCallback(() => {
-    console.log(`[TimelinePanel] 复制选中素材`, {
-      selectedItemsCount: timelineState.selectedItems.length,
-      timestamp: new Date().toISOString()
-    });
-    // 实现复制逻辑
-  }, [timelineState.selectedItems]);
+    if (timelineState.selectedItems.length === 0) {
+      console.log(`[TimelinePanel] 复制操作取消 - 没有选中的素材`, {
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
 
-  const handlePaste = useCallback(() => {
-    console.log(`[TimelinePanel] 粘贴素材`, {
-      currentTime: timelineState.currentTime.toFixed(2),
+    console.log(`[TimelinePanel] 开始复制选中素材`, {
+      selectedItemsCount: timelineState.selectedItems.length,
+      selectedItemIds: timelineState.selectedItems,
       timestamp: new Date().toISOString()
     });
-    // 实现粘贴逻辑
-  }, [timelineState.currentTime]);
+
+    // 收集所有选中的素材
+    const selectedItems: TimelineItem[] = [];
+    timelineState.tracks.forEach(track => {
+      track.items.forEach(item => {
+        if (timelineState.selectedItems.includes(item.id)) {
+          selectedItems.push(item);
+        }
+      });
+    });
+
+    if (selectedItems.length === 0) {
+      console.log(`[TimelinePanel] 复制操作取消 - 未找到选中的素材`, {
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // 按轨道分组选中的素材
+    const itemsByTrack: { [trackId: string]: TimelineItem[] } = {};
+    selectedItems.forEach(item => {
+      if (!itemsByTrack[item.trackId]) {
+        itemsByTrack[item.trackId] = [];
+      }
+      itemsByTrack[item.trackId].push(item);
+    });
+
+    console.log(`[TimelinePanel] 素材按轨道分组完成`, {
+      trackCount: Object.keys(itemsByTrack).length,
+      itemsByTrack: Object.keys(itemsByTrack).map(trackId => ({
+        trackId,
+        itemCount: itemsByTrack[trackId].length
+      })),
+      timestamp: new Date().toISOString()
+    });
+
+    // 创建复制的素材
+    const copiedItems: TimelineItem[] = [];
+    const newSelectedItemIds: string[] = [];
+
+    setTimelineState(prev => {
+      const newTracks = prev.tracks.map(track => {
+        const trackItems = itemsByTrack[track.id];
+        if (!trackItems || trackItems.length === 0) {
+          return track;
+        }
+
+        // 计算当前轨道的结束时间
+        const trackEndTime = getTrackEndTime(track.items);
+        
+        // 为当前轨道的选中素材创建副本
+        const trackCopiedItems: TimelineItem[] = [];
+        let currentPlacementTime = trackEndTime;
+
+        trackItems.forEach((originalItem, index) => {
+          const newId = generateId();
+          const copiedItem: TimelineItem = {
+            ...originalItem,
+            id: newId,
+            name: `${originalItem.name} (副本)`,
+            startTime: currentPlacementTime,
+            isSelected: false
+          };
+
+          trackCopiedItems.push(copiedItem);
+          copiedItems.push(copiedItem);
+          newSelectedItemIds.push(newId);
+          
+          // 下一个素材的开始时间
+          currentPlacementTime += originalItem.duration;
+
+          console.log(`[TimelinePanel] 创建素材副本`, {
+            originalId: originalItem.id,
+            originalName: originalItem.name,
+            newId: newId,
+            newName: copiedItem.name,
+            trackId: track.id,
+            trackName: track.name,
+            originalStartTime: originalItem.startTime.toFixed(2),
+            newStartTime: copiedItem.startTime.toFixed(2),
+            duration: originalItem.duration.toFixed(2),
+            timestamp: new Date().toISOString()
+          });
+        });
+
+        return {
+          ...track,
+          items: [...track.items, ...trackCopiedItems]
+        };
+      });
+
+      // 计算新的总时长
+      const newTotalDuration = Math.max(...newTracks.flatMap(track => 
+        track.items.map(item => item.startTime + item.duration)
+      ));
+
+      console.log(`[TimelinePanel] 复制操作完成`, {
+        copiedItemsCount: copiedItems.length,
+        newTotalDuration: newTotalDuration.toFixed(2),
+        previousTotalDuration: prev.totalDuration.toFixed(2),
+        newSelectedItems: newSelectedItemIds,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        ...prev,
+        tracks: newTracks,
+        totalDuration: newTotalDuration,
+        selectedItems: newSelectedItemIds // 选中新复制的素材
+      };
+    });
+
+    // 添加到历史记录
+    addToHistory({
+      type: 'ADD_ITEM',
+      payload: { 
+        copiedItems: copiedItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          trackId: item.trackId,
+          startTime: item.startTime,
+          duration: item.duration
+        }))
+      },
+      timestamp: new Date()
+    });
+
+  }, [timelineState.selectedItems, timelineState.tracks, addToHistory]);
+
 
   const handleDelete = useCallback(() => {
     console.log(`[TimelinePanel] 删除选中素材`, {
@@ -1549,7 +1676,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         selectedItemsCount={timelineState.selectedItems.length}
         onCut={handleCut}
         onCopy={handleCopy}
-        onPaste={handlePaste}
         onDelete={handleDelete}
         onAddEffect={handleAddEffect}
         onAddTransition={handleAddTransition}

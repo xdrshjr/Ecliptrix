@@ -218,7 +218,6 @@ export type TimelineToolType =
   | 'select'     // 选择工具
   | 'cut'        // 剪切工具
   | 'copy'       // 复制工具
-  | 'paste'      // 粘贴工具
   | 'delete'     // 删除工具
   | 'undo'       // 撤销
   | 'redo'       // 重做
