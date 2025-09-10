@@ -1,10 +1,78 @@
 /* Video Editing Workspace Styles */
 
-/* 左侧面板主容器 */
-.video-editing-left-panel {
-  border-right: 1px solid #e5e7eb;
+/* 新布局：上方面板区域 - 左右分割布局 */
+.video-editing-upper-section {
+  height: 70%; /* 上方区域占70%高度 */
+  flex-shrink: 0;
+}
+
+/* 新布局：下方时间轴区域 - 全宽度 */
+.video-editing-timeline-section {
+  height: 30%; /* 下方区域占30%高度 */
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* 左侧区域 - 包含 Project Documentation 和 Text Script */
+.video-editing-left-section {
+  width: 50%; /* 占上方区域的50%宽度 */
   height: 100%;
-  width: 25%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* 右侧区域 - 包含 Materials Management 和 Play Preview */
+.video-editing-right-section {
+  width: 50%; /* 占上方区域的50%宽度 */
+  height: 100%;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Project Documentation 面板 - 占左侧区域的60%宽度 */
+.video-editing-documentation-panel {
+  width: 60%;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Text Script 面板 - 占左侧区域的40%宽度 */
+.video-editing-script-panel {
+  width: 40%;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Materials Management 面板 - 占右侧区域的50%宽度 */
+.video-editing-materials-panel {
+  width: 50%;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+  background-color: #ffffff;
+}
+
+/* Play Preview 面板 - 占右侧区域的50%宽度 */
+.video-editing-player-panel {
+  width: 50%;
+  height: 100%;
+  flex: 1;
+  overflow: hidden;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 视频合成面板 - 填充整个播放器面板 */
+.video-editing-composition-panel {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* MD编辑器区域 - 扩展占用更多空间 */
@@ -60,27 +128,6 @@
   flex-grow: 0 !important;
   border-top: 1px solid #e5e7eb;
   overflow: hidden !important;
-}
-
-/* 右侧面板 - 现在是flex容器 */
-.video-editing-right-panel {
-  width: 75%;
-  height: 100%;
-}
-
-/* 脚本面板 - 占右侧面板的25%宽度 */
-.video-editing-script-panel {
-  width: 25%;
-  height: 100%;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-/* 视频预览面板 - 占右侧面板的75%宽度 */
-.video-editing-preview-panel {
-  width: 75%;
-  height: 100%;
-  flex: 1;
 }
 
 /* 脚本片段样式 */
@@ -201,71 +248,73 @@
   overflow: hidden !important;
 }
 
-/* 响应式设计 - 小屏幕适配 */
+/* 响应式设计 - 新嵌套布局适配 */
 @media (max-width: 1024px) {
-  .video-editing-script-panel {
-    width: 30%;
+  /* 中等屏幕：调整嵌套面板宽度 */
+  .video-editing-left-section {
+    width: 45%;
   }
   
-  .video-editing-preview-panel {
-    width: 70%;
+  .video-editing-right-section {
+    width: 55%;
+  }
+  
+  .video-editing-documentation-panel {
+    width: 55%;
+  }
+  
+  .video-editing-script-panel {
+    width: 45%;
+  }
+  
+  .video-editing-materials-panel {
+    width: 45%;
+  }
+  
+  .video-editing-player-panel {
+    width: 55%;
   }
 }
 
 @media (max-width: 768px) {
-  .video-editing-right-panel {
+  /* 小屏幕：改为完全垂直布局 */
+  .video-editing-upper-section {
+    height: 60%;
     flex-direction: column;
   }
   
-  .video-editing-script-panel {
-    width: 100%;
+  .video-editing-timeline-section {
     height: 40%;
+  }
+  
+  .video-editing-left-section,
+  .video-editing-right-section {
+    width: 100%;
+    height: 50%;
     border-right: none;
     border-bottom: 1px solid #e5e7eb;
   }
   
-  .video-editing-preview-panel {
-    width: 100%;
-    height: 60%;
+  .video-editing-right-section {
+    border-bottom: none;
+  }
+  
+  .video-editing-documentation-panel,
+  .video-editing-script-panel {
+    width: 50%;
+    height: 100%;
+    border-bottom: none;
+  }
+  
+  .video-editing-materials-panel,
+  .video-editing-player-panel {
+    width: 50%;
+    height: 100%;
+    border-bottom: none;
   }
 }
 
-/* 新增：视频预览面板上方容器 - 70%高度 */
-.video-editing-preview-upper {
-  height: 70%;
-  overflow: hidden;
-}
-
-/* 新增：视频预览面板下方容器 - 30%高度 */
-.video-editing-preview-lower {
-  height: 30%;
-  overflow: hidden;
-  background-color: #f9fafb;
-}
-
-/* 新增：素材管理面板 - 上方容器左侧50% */
-.video-editing-materials-panel {
-  width: 50%;
-  height: 100%;
-  overflow: hidden;
-  background-color: #ffffff;
-}
-
-/* 新增：视频合成播放面板 - 上方容器右侧50% */
-.video-editing-composition-panel {
-  width: 50%;
-  height: 100%;
-  overflow: hidden;
-  background-color: #ffffff;
-  border-radius: 8px;
-  transition: all 0.2s ease-in-out;
-}
-
-.video-editing-composition-panel:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  border: 1px solid #3b82f6;
-}
+/* 移除旧的预览面板样式，因为现在使用新的布局结构 */
 
 /* 素材管理面板内部样式 - 统一标题栏高度 */
 .materials-panel-header {
@@ -464,6 +513,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .composition-panel-content {
@@ -472,27 +522,29 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
-/* 视频播放器容器样式 - 确保固定占用70%高度 */
+/* 视频播放器容器样式 - 固定70%/30%高度分割 */
 .video-player-container {
   display: flex;
   flex-direction: column;
   height: 100%;
   gap: 12px;
+  flex-shrink: 0;
 }
 
-/* 视频播放器包装器 - 占用大部分空间 */
+/* 视频播放器包装器 - 固定占用65%高度 */
 .video-player-wrapper {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0; /* 重要：确保flex子元素可以收缩 */
+  flex: 0 0 65%; /* 调整为65%，给控制区域更多空间 */
+  min-height: 0;
 }
 
-/* 视频预览容器 - 现在占用更多高度 */
+/* 视频预览容器 - 充满video-player-wrapper的100%高度 */
 .video-preview-container {
-  flex: 1; /* 占用大部分空间 */
+  height: 100%; /* 充满包装器高度 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -500,7 +552,7 @@
   border-radius: 12px;
   overflow: hidden;
   position: relative;
-  min-height: 0; /* 重要：确保flex子元素可以收缩 */
+  flex-shrink: 0;
 }
 
 
@@ -609,6 +661,16 @@
   100% { transform: rotate(360deg); }
 }
 
+/* 视频控制栏和信息面板容器 - 占用剩余35%高度 */
+.video-controls-info-container {
+  flex: 1; /* 占用video-player-wrapper之外的剩余空间 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 120px; /* 设置最小高度确保所有内容可见 */
+}
+
 /* 视频控制栏 */
 .video-controls {
   display: flex;
@@ -618,11 +680,14 @@
   background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  flex-shrink: 0;
 }
 
 /* 进度条容器 */
 .progress-container {
   width: 100%;
+  min-width: 0; /* 允许收缩 */
+  flex: 1; /* 在center-controls中占用全部空间 */
 }
 
 .progress-bar {
@@ -673,20 +738,31 @@
 /* 控制按钮行 */
 .controls-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0; /* 允许flex子元素收缩 */
 }
 
 .controls-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0; /* 防止左侧控件被压缩 */
+}
+
+.center-controls {
+  flex: 1; /* 占用剩余空间 */
+  display: flex;
+  align-items: center;
+  min-width: 0; /* 允许收缩 */
 }
 
 .controls-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0; /* 防止右侧控件被压缩 */
 }
 
 /* 控制按钮通用样式 */
@@ -734,7 +810,9 @@
   font-weight: 500;
   color: #6b7280;
   font-variant-numeric: tabular-nums;
-  min-width: 80px;
+  min-width: 70px; /* 减少最小宽度 */
+  flex-shrink: 0; /* 防止被压缩 */
+  white-space: nowrap; /* 防止换行 */
 }
 
 /* 播放速度选择 */
@@ -743,7 +821,7 @@
 }
 
 .speed-select {
-  padding: 4px 8px;
+  padding: 4px 6px; /* 减少padding */
   font-size: 11px;
   background-color: #f9fafb;
   border: 1px solid #d1d5db;
@@ -751,6 +829,8 @@
   color: #374151;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
+  min-width: 50px; /* 设置最小宽度 */
+  flex-shrink: 0; /* 防止被压缩 */
 }
 
 .speed-select:hover {
@@ -767,6 +847,10 @@
 /* 音量控制 */
 .volume-control {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .volume-slider-container {
@@ -782,13 +866,14 @@
 }
 
 .volume-slider {
-  width: 60px;
+  width: 50px; /* 减少宽度 */
   height: 4px;
   background: #374151;
   border-radius: 2px;
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .volume-slider::-webkit-slider-thumb {
@@ -802,18 +887,18 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* 视频信息面板 - 重新设计为优雅简洁的样式 */
+/* 视频信息面板 - 重新设计为优雅简洁的样式，适配35%高度约束 */
 .video-info-panel {
   padding: 12px 16px;
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  margin-top: auto;
-  flex-shrink: 0;
+  flex: 1; /* 占用controls容器中的剩余空间 */
+  min-height: 80px; /* 设置最小高度确保内容可见 */
   transition: all 0.2s ease-in-out;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* 改为visible，允许内容显示 */
 }
 
 /* 面板悬停效果 */
@@ -858,17 +943,19 @@
 .video-info-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px; /* 减少gap */
   flex: 1;
   min-width: 0;
+  flex-wrap: wrap; /* 允许换行 */
 }
 
 /* 内联信息项 */
 .info-item-inline {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px; /* 减少gap */
   min-width: 0;
+  flex-shrink: 1; /* 允许收缩 */
 }
 
 /* 信息分隔符 */
@@ -897,6 +984,9 @@
   color: #1f2937;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px; /* 限制最大宽度，超出时显示省略号 */
 }
 
 /* 标题值特殊样式 */
@@ -1065,22 +1155,8 @@
   background: #a8a8a8;
 }
 
-/* 响应式设计更新 */
+/* 响应式设计更新 - 针对新布局优化 */
 @media (max-width: 1024px) {
-  .video-editing-script-panel {
-    width: 30%;
-  }
-  
-  .video-editing-preview-panel {
-    width: 70%;
-  }
-  
-  /* 调整新面板在中等屏幕的显示 */
-  .video-editing-materials-panel,
-  .video-editing-composition-panel {
-    width: 50%;
-  }
-  
   /* 素材网格在中等屏幕调整为单列 */
   .materials-panel-content .grid-cols-2 {
     grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -1088,7 +1164,7 @@
   
   /* 中等屏幕下信息面板调整 */
   .video-info-group {
-    gap: 12px;
+    gap: 8px; /* 进一步减少gap */
   }
   
   .info-separator {
@@ -1101,6 +1177,7 @@
   
   .info-value {
     font-size: 11px;
+    max-width: 80px; /* 中等屏幕下减少最大宽度 */
   }
   
   .aspect-ratio-btn {
@@ -1112,43 +1189,6 @@
 }
 
 @media (max-width: 768px) {
-  .video-editing-right-panel {
-    flex-direction: column;
-  }
-  
-  .video-editing-script-panel {
-    width: 100%;
-    height: 30%;
-    border-right: none;
-    border-bottom: 1px solid #e5e7eb;
-  }
-  
-  .video-editing-preview-panel {
-    width: 100%;
-    height: 70%;
-  }
-  
-  /* 小屏幕下上方容器改为垂直布局 */
-  .video-editing-preview-upper {
-    flex-direction: column;
-    height: 60%;
-  }
-  
-  .video-editing-preview-lower {
-    height: 40%;
-  }
-  
-  .video-editing-materials-panel,
-  .video-editing-composition-panel {
-    width: 100%;
-    height: 50%;
-    border-right: none;
-  }
-  
-  .video-editing-materials-panel {
-    border-bottom: 1px solid #e5e7eb;
-  }
-  
   /* 小屏幕下素材类型筛选标签调整 */
   .material-type-filter {
     margin-bottom: 12px;
@@ -1164,11 +1204,18 @@
     gap: 8px;
   }
   
-
+  .video-controls-info-container {
+    gap: 6px;
+    min-height: 100px; /* 小屏幕下也确保最小高度 */
+  }
   
   .video-controls {
     padding: 8px;
     gap: 6px;
+  }
+  
+  .controls-row {
+    gap: 8px; /* 减少gap */
   }
   
   .controls-left {
@@ -1186,7 +1233,16 @@
   
   .time-display {
     font-size: 10px;
-    min-width: 70px;
+    min-width: 60px; /* 进一步减少小屏幕下的最小宽度 */
+  }
+  
+  .volume-slider {
+    width: 40px; /* 小屏幕下进一步减少音量滑块宽度 */
+  }
+  
+  .speed-select {
+    min-width: 45px; /* 小屏幕下减少速度选择器宽度 */
+    padding: 3px 4px;
   }
   
   .video-info-panel {
@@ -1226,24 +1282,29 @@
   
   .video-info-group {
     flex-wrap: wrap;
-    gap: 8px;
-    justify-content: space-between;
+    gap: 6px; /* 进一步减少gap */
+    justify-content: flex-start; /* 改为左对齐，更自然的换行 */
   }
   
   .info-item-inline {
-    flex-direction: column;
+    flex-direction: row; /* 保持水平布局 */
     align-items: center;
-    gap: 2px;
-    min-width: 60px;
+    gap: 3px;
+    min-width: 0; /* 允许完全收缩 */
+    flex: 0 1 auto; /* 允许收缩但不强制增长 */
   }
   
   .info-separator {
-    display: none;
+    display: none; /* 小屏幕下隐藏分隔符 */
+  }
+  
+  .info-value {
+    max-width: 60px; /* 小屏幕下进一步减少最大宽度 */
   }
   
   .info-title {
-    max-width: none;
-    text-align: center;
+    max-width: 120px; /* 限制标题宽度 */
+    text-align: left;
   }
   
   .aspect-ratio-group {

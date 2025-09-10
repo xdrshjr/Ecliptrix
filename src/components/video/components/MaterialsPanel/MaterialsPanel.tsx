@@ -854,7 +854,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   };
 
   return (
-    <div className={`video-editing-materials-panel border-r border-gray-200 ${className}`}>
+    <div className={`h-full ${className}`}>
       <div className="materials-panel-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">

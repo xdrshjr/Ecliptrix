@@ -821,68 +821,73 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* 视频编辑工作区 - 左右布局 */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* 左侧面板 - MD编辑器和AI助手 */}
-        <div className="video-editing-left-panel flex flex-col">
-          <DocumentPanel
-            markdownValue={documentState.markdownValue}
-            handleMarkdownChange={documentState.handleMarkdownChange}
-            taskId={taskId}
-            onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
-          />
-          
-          <AIAssistantPanel
-            {...aiAssistant}
-            taskId={taskId}
-            onPolishClick={handlePolishClick}
-            onGenerateScriptClick={handleScriptGenerationClick}
-            onClearContent={documentState.clearContent}
-            isGeneratingScript={scriptGeneration.isGeneratingScript}
-          />
-        </div>
-
-        {/* 右侧面板 - Video Preview 区域，内部分为左右布局 */}
-        <div className="video-editing-right-panel flex bg-white border-l border-gray-200">
-          {/* 脚本面板 - 占右侧面板的20%宽度 */}
-          <div className="video-editing-script-panel bg-gray-50 border-r border-gray-200">
-            <ScriptPanel 
-              segments={content?.scriptSegments || getMockScriptSegments(locale)} 
-              className="h-full"
-              onGenerateScript={scriptGeneration.handleGenerateScript}
-              isGenerating={scriptGeneration.isGeneratingScript}
-              onUpdateSegments={scriptGeneration.handleUpdateSegments}
-              onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
-              taskId={taskId}
-              materials={materialManagement.materials}
-              getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
-            />
-          </div>
-          
-          {/* 视频预览区域 - 占右侧面板的80%宽度，新的上下分割布局 */}
-          <div className="video-editing-preview-panel flex flex-col">
-            {/* 上方容器 - 70%高度，左右分割 */}
-            <div className="video-editing-preview-upper flex">
-              <MaterialsPanel
-                {...materialManagement}
-                onSearchVideos={videoSearch.openSearchModal}
-                onSearchAudios={audioSearch.openSearchModal}
-                onSearchImages={imageSearch.openSearchModal}
-                onAICreation={aiCreation.openModal}
-                onAIImageGeneration={aiImageGeneration.openModal}
-                onAIVideoGeneration={aiVideoGeneration.openModal}
-                onDigitalHumanGeneration={digitalHumanGeneration.openModal}
-                onAutoMixAudio={handleAutoMixAudio}
-                onVideoAnalysis={handleVideoAnalysis}
-                onBatchVideoAnalysis={handleBatchVideoAnalysis}
-                isBatchAnalyzing={isBatchAnalyzing}
-                getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
-                onRetryDownload={videoSearch.retryVideoDownload}
-                onAddToTimeline={handleAddMaterialToTimeline}
+      {/* 视频编辑工作区 - 上下布局 */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* 上方面板区域 - 左右分割布局 */}
+        <div className="video-editing-upper-section flex min-h-0 overflow-hidden">
+          {/* 左侧区域 - 包含 Project Documentation 和 Text Script */}
+          <div className="video-editing-left-section flex border-r border-gray-200">
+            {/* Project Documentation 面板 */}
+            <div className="video-editing-documentation-panel flex flex-col bg-white border-r border-gray-200">
+              <DocumentPanel
+                markdownValue={documentState.markdownValue}
+                handleMarkdownChange={documentState.handleMarkdownChange}
                 taskId={taskId}
-                comfyuiHealthStatus={comfyuiHealth}
+                onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
               />
+              
+              <AIAssistantPanel
+                {...aiAssistant}
+                taskId={taskId}
+                onPolishClick={handlePolishClick}
+                onGenerateScriptClick={handleScriptGenerationClick}
+                onClearContent={documentState.clearContent}
+                isGeneratingScript={scriptGeneration.isGeneratingScript}
+              />
+            </div>
 
+            {/* Text Script 面板 */}
+            <div className="video-editing-script-panel bg-gray-50">
+              <ScriptPanel 
+                segments={content?.scriptSegments || getMockScriptSegments(locale)} 
+                className="h-full"
+                onGenerateScript={scriptGeneration.handleGenerateScript}
+                isGenerating={scriptGeneration.isGeneratingScript}
+                onUpdateSegments={scriptGeneration.handleUpdateSegments}
+                onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
+                taskId={taskId}
+                materials={materialManagement.materials}
+                getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
+              />
+            </div>
+          </div>
+
+          {/* 右侧区域 - 包含 Materials Management 和 Play Preview */}
+          <div className="video-editing-right-section flex">
+            {/* Materials Management 面板 - 占满右侧区域的左侧 */}
+            <MaterialsPanel
+              {...materialManagement}
+              onSearchVideos={videoSearch.openSearchModal}
+              onSearchAudios={audioSearch.openSearchModal}
+              onSearchImages={imageSearch.openSearchModal}
+              onAICreation={aiCreation.openModal}
+              onAIImageGeneration={aiImageGeneration.openModal}
+              onAIVideoGeneration={aiVideoGeneration.openModal}
+              onDigitalHumanGeneration={digitalHumanGeneration.openModal}
+              onAutoMixAudio={handleAutoMixAudio}
+              onVideoAnalysis={handleVideoAnalysis}
+              onBatchVideoAnalysis={handleBatchVideoAnalysis}
+              isBatchAnalyzing={isBatchAnalyzing}
+              getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
+              onRetryDownload={videoSearch.retryVideoDownload}
+              onAddToTimeline={handleAddMaterialToTimeline}
+              taskId={taskId}
+              comfyuiHealthStatus={comfyuiHealth}
+              className="video-editing-materials-panel bg-white border-r border-gray-200"
+            />
+
+            {/* Play Preview 面板 - 占满右侧区域的右侧 */}
+            <div className="video-editing-player-panel bg-white">
               <VideoPlayerPanel
                 ref={videoPlayerRef}
                 {...videoPlayback}
@@ -901,21 +906,21 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 onImagePositionChange={handleImagePositionChange}
               />
             </div>
-
-            {/* 下方容器 - 30%高度 */}
-            <div className="video-editing-preview-lower border-t border-gray-200">
-              <TimelinePanel 
-                className="h-full" 
-                onTimelineStateChange={handleTimelineStateChange}
-                externalCurrentTime={timelineCurrentTime}
-                onCurrentTimeChange={handleTimelineTimeChange}
-                materials={materialManagement.materials}
-                onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
-                materialsToAdd={materialsToAddToTimeline}
-                taskId={taskId}
-              />
-            </div>
           </div>
+        </div>
+
+        {/* 下方时间轴面板 - 全宽度 */}
+        <div className="video-editing-timeline-section border-t border-gray-200 bg-gray-50">
+          <TimelinePanel 
+            className="h-full" 
+            onTimelineStateChange={handleTimelineStateChange}
+            externalCurrentTime={timelineCurrentTime}
+            onCurrentTimeChange={handleTimelineTimeChange}
+            materials={materialManagement.materials}
+            onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
+            materialsToAdd={materialsToAddToTimeline}
+            taskId={taskId}
+          />
         </div>
       </div>
 

@@ -1320,11 +1320,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       <div className="composition-panel-content">
         <div className="video-player-container">
           {/* 视频播放器区域 - 固定占用70%高度 */}
-          <div className="video-player-wrapper flex-1 flex flex-col">
+          <div className="video-player-wrapper">
             {/* 视频预览容器 - 固定高度70% */}
             <div 
               ref={videoContainerRef}
-              className="video-preview-container flex-1 flex items-center justify-center bg-gray-100 rounded-xl overflow-hidden relative">
+              className="video-preview-container">
               {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
                 // 组合播放模式
                 <div 
@@ -1467,95 +1467,97 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
           </div>
 
-          {/* 播放控制栏 */}
-          <div className="video-controls">
-            <div className="controls-row">
-              <div className="left-controls">
-                <button
-                  onClick={handlePlayPauseClick}
-                  className="control-btn play-pause-btn"
-                  title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
-                >
-                  {getCurrentlyPlaying() ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  )}
-                </button>
-
-                <div className="time-display">
-                  <span className="current-time">{formatTime(getCurrentTime())}</span>
-                  <span className="time-separator">/</span>
-                  <span className="total-time">{formatTime(getTotalDuration())}</span>
-                </div>
-              </div>
-
-              <div className="center-controls">
-                <div className="progress-container">
-                  <input
-                    type="range"
-                    min="0"
-                    max={getTotalDuration()}
-                    value={getCurrentTime()}
-                    onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
-                    className="progress-slider"
-                  />
-                </div>
-              </div>
-
-              <div className="right-controls">
-                <div className="volume-control">
+          {/* 控制栏和信息面板容器 - 占用剩余30%高度 */}
+          <div className="video-controls-info-container">
+            {/* 播放控制栏 */}
+            <div className="video-controls">
+              <div className="controls-row">
+                <div className="left-controls">
                   <button
-                    className="control-btn volume-btn"
-                    title={t.videoPlayerPanel.controls.volume}
+                    onClick={handlePlayPauseClick}
+                    className="control-btn play-pause-btn"
+                    title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
+                  >
+                    {getCurrentlyPlaying() ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    )}
+                  </button>
+
+                  <div className="time-display">
+                    <span className="current-time">{formatTime(getCurrentTime())}</span>
+                    <span className="time-separator">/</span>
+                    <span className="total-time">{formatTime(getTotalDuration())}</span>
+                  </div>
+                </div>
+
+                <div className="center-controls">
+                  <div className="progress-container">
+                    <input
+                      type="range"
+                      min="0"
+                      max={getTotalDuration()}
+                      value={getCurrentTime()}
+                      onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
+                      className="progress-slider"
+                    />
+                  </div>
+                </div>
+
+                <div className="right-controls">
+                  <div className="volume-control">
+                    <button
+                      className="control-btn volume-btn"
+                      title={t.videoPlayerPanel.controls.volume}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6.343 6.343A8 8 0 004.222 12a8 8 0 002.121 5.657l1.414-1.414A6 6 0 016.222 12a6 6 0 011.535-4.243l-1.414-1.414zM12 6l-2 2H7a1 1 0 00-1 1v6a1 1 0 001 1h3l2 2V6z" />
+                      </svg>
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={volume}
+                      onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                      className="volume-slider"
+                    />
+                  </div>
+
+                  <select
+                    value={playbackRate}
+                    onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
+                    className="speed-select"
+                    title={t.videoPlayerPanel.controls.playbackSpeed}
+                  >
+                    <option value={0.5}>0.5x</option>
+                    <option value={0.75}>0.75x</option>
+                    <option value={1}>1x</option>
+                    <option value={1.25}>1.25x</option>
+                    <option value={1.5}>1.5x</option>
+                    <option value={2}>2x</option>
+                  </select>
+
+                  <button
+                    onClick={handleFullscreenToggle}
+                    className="control-btn fullscreen-btn"
+                    title={t.videoPlayerPanel.controls.fullscreen}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6.343 6.343A8 8 0 004.222 12a8 8 0 002.121 5.657l1.414-1.414A6 6 0 016.222 12a6 6 0 011.535-4.243l-1.414-1.414zM12 6l-2 2H7a1 1 0 00-1 1v6a1 1 0 001 1h3l2 2V6z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                     </svg>
                   </button>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={volume}
-                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                    className="volume-slider"
-                  />
                 </div>
-
-                <select
-                  value={playbackRate}
-                  onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
-                  className="speed-select"
-                  title={t.videoPlayerPanel.controls.playbackSpeed}
-                >
-                  <option value={0.5}>0.5x</option>
-                  <option value={0.75}>0.75x</option>
-                  <option value={1}>1x</option>
-                  <option value={1.25}>1.25x</option>
-                  <option value={1.5}>1.5x</option>
-                  <option value={2}>2x</option>
-                </select>
-
-                <button
-                  onClick={handleFullscreenToggle}
-                  className="control-btn fullscreen-btn"
-                  title={t.videoPlayerPanel.controls.fullscreen}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                  </svg>
-                </button>
               </div>
             </div>
-          </div>
 
-          <div className="video-info-panel">
+            <div className="video-info-panel">
             {/* 第一行：视频基本信息 */}
             <div className="video-info-row">
               <div className="video-info-group">
@@ -1615,6 +1617,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             </div>
           </div>
         </div>
+      </div>
       </div>
       
       {/* 视频导出进度弹窗 */}
