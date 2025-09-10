@@ -294,6 +294,10 @@ app.include_router(timeline_export_router.router, prefix="/api")
 from app.routers import timeline_import_router
 app.include_router(timeline_import_router.router, prefix="/api")
 
+# Import and include Chat router
+from app.routers import chat_router
+app.include_router(chat_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

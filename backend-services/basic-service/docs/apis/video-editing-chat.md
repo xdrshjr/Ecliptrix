@@ -3,8 +3,10 @@
 ## 概述
 视频编辑AI助手聊天接口，提供基于当前项目内容的智能对话功能。支持流式响应，实时返回AI生成的内容建议和编辑指导。
 
+**架构说明**: 此接口现在由Python FastAPI后端实现，通过Next.js代理层提供服务。LLM调用在Python后端进行，确保更好的性能和配置管理。
+
 ## 端点
-`POST /api/video-editing-chat`
+`POST /api/video-editing-chat` (通过Next.js代理到Python后端)
 
 ## 请求格式
 
@@ -50,7 +52,8 @@ data: [DONE]
 ```json
 {
   "error": "Invalid request parameters",
-  "details": "message cannot be empty"
+  "details": "message cannot be empty",
+  "taskId": "task_123456"
 }
 ```
 
@@ -58,7 +61,8 @@ data: [DONE]
 ```json
 {
   "error": "AI service temporarily unavailable",
-  "message": "请稍后重试"
+  "details": "LLM API not properly configured",
+  "taskId": "task_123456"
 }
 ```
 
@@ -80,7 +84,34 @@ data: [DONE]
 |-------|------|---------|
 | 400 | 请求参数错误 | 缺少必需参数或参数格式不正确 |
 | 429 | 请求过于频繁 | 超出API调用频率限制 |
-| 500 | 服务器内部错误 | AI服务异常或系统故障 |
+| 500 | 内部服务器错误 | LLM API配置错误或服务不可用 |
+
+## 技术实现
+
+### 架构流程
+1. **前端请求** → Next.js API路由 (`/api/video-editing-chat`)
+2. **代理转发** → Python FastAPI后端 (`/api/video-editing-chat`)
+3. **LLM调用** → Python后端调用配置的LLM API
+4. **流式响应** → 通过代理层实时转发到前端
+
+### 配置要求
+Python后端需要配置以下环境变量：
+```env
+LLM_API_KEY=***REMOVED***
+LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=deepseek-v3
+```
+
+Next.js需要配置后端服务地址：
+```env
+BACKEND_SERVICE_URL=http://localhost:8000
+```
+
+### 性能特性
+- **流式传输**: 支持实时流式响应，提供更好的用户体验
+- **错误处理**: 完整的错误处理和日志记录
+- **代理架构**: 通过代理层分离前后端职责
+- **配置集中**: LLM配置统一在Python后端管理
 
 ### 错误处理建议
 1. **400错误**: 检查请求参数的完整性和格式
@@ -254,6 +285,9 @@ describe('Video Editing Chat Integration', () => {
 - 增强错误处理机制
 
 ### v1.2.0 (当前版本)
-- 重构为服务层架构
-- 添加详细日志记录
-- 改进参数验证和错误处理 
+- **架构重构**: 从Next.js直接调用LLM改为Python FastAPI后端实现
+- **性能优化**: LLM调用在Python后端进行，提升响应速度
+- **配置管理**: 统一在Python后端管理LLM API配置
+- **代理架构**: Next.js作为代理层，保持前端接口不变
+- **日志增强**: 添加详细的请求/响应日志记录
+- **错误处理**: 完善的错误处理和用户友好的错误信息 

@@ -120,6 +120,11 @@ from .timeline_import_models import (
     ImportFileUploadRequest
 )
 
+from .chat_models import (
+    VideoChatRequest,
+    VideoChatErrorResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -214,5 +219,9 @@ __all__ = [
     "ProcessedImportData",
     "TimelineImportResponse",
     "TimelineImportErrorResponse",
-    "ImportFileUploadRequest"
+    "ImportFileUploadRequest",
+    
+    # Chat Models
+    "VideoChatRequest",
+    "VideoChatErrorResponse"
 ] 

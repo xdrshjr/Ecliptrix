@@ -103,6 +103,7 @@ class Settings(BaseModel):
     # LLM Configuration
     llm_api_key: str = Field(..., description="LLM API key")
     llm_api_url: str = Field(..., description="LLM API base URL")
+    llm_model: str = Field(default="deepseek-v3", description="LLM model name")
     
     # VL LLM Configuration (for video analysis)
     vl_llm_api_key: str = Field(default="", description="VL LLM API key for video analysis")
@@ -214,6 +215,7 @@ def get_settings() -> Settings:
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
+        llm_model=os.getenv("LLM_MODEL", "deepseek-v3"),
         vl_llm_api_key=os.getenv("VL_LLM_API_KEY", ""),
         vl_llm_api_url=os.getenv("VL_LLM_API_URL", ""),
         vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),

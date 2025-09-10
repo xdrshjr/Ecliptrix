@@ -15,6 +15,7 @@ from .supabase_service import SupabaseService
 from .image_to_video_service import ImageToVideoService
 from .timeline_export_service import TimelineExportService
 from .timeline_import_service import TimelineImportService
+from .chat_service import ChatService
 
 # Initialize video analysis service instance
 video_analysis_service = VideoAnalysisService()
@@ -33,5 +34,6 @@ __all__ = [
     'SupabaseService',
     'ImageToVideoService',
     'TimelineExportService',
-    'TimelineImportService'
+    'TimelineImportService',
+    'ChatService'
 ] 

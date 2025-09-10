@@ -1,40 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 获取环境变量配置
-const getConfig = () => {
-  const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
-
-  if (!apiKey) {
-    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
-  }
-
-  return { apiUrl, apiKey, model };
+// 获取后端服务配置
+const getBackendConfig = () => {
+  const backendUrl = process.env.BACKEND_SERVICE_URL || 'http://localhost:8000';
+  return { backendUrl };
 };
 
-// 转换消息格式，包含当前MD内容作为上下文
-const formatMessages = (message: string, currentContent: string) => [
-  {
-    role: 'system',
-    content: `You are an AI assistant specialized in video editing and content creation. You help users with their video editing projects by providing suggestions, improvements, and content generation.
-
-Current project context:
-${currentContent ? `The user is currently working on a video editing project with the following content:\n\n${currentContent}` : 'The user is starting a new video editing project.'}
-
-Please provide helpful, practical advice and suggestions related to video editing, content creation, project planning, and workflow optimization. When appropriate, you can suggest additions or improvements to their project documentation.`
-  },
-  {
-    role: 'user',
-    content: message
-  }
-];
-
 // 日志记录函数
-const logRequest = (message: string, currentContent: string, taskId: string, config: any) => {
+const logRequest = (message: string, currentContent: string, taskId: string) => {
   console.log(`[Video Editing Chat API] ${new Date().toISOString()} - Incoming chat request`);
   console.log(`[Video Editing Chat API] Task ID: ${taskId}`);
-  console.log(`[Video Editing Chat API] Model: ${config.model}`);
   console.log(`[Video Editing Chat API] Message length: ${message.length} characters`);
   console.log(`[Video Editing Chat API] Message preview: ${message.slice(0, 100)}...`);
   console.log(`[Video Editing Chat API] Current content length: ${currentContent.length} characters`);
@@ -75,101 +50,79 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = getConfig();
-    logRequest(message, currentContent || '', taskId, config);
+    const config = getBackendConfig();
+    logRequest(message, currentContent || '', taskId);
 
-    // 准备请求数据
+    // 准备发送给Python后端的请求数据
     const requestData = {
-      model: config.model,
-      messages: formatMessages(message, currentContent || ''),
-      stream: true,
-      temperature: 0.7,
-      max_tokens: 2000,
+      message: message.trim(),
+      currentContent: currentContent || '',
+      taskId: taskId
     };
 
-    console.log(`[Video Editing Chat API] Calling LLM API: ${config.apiUrl}/chat/completions for task: ${taskId}`);
+    console.log(`[Video Editing Chat API] Calling Python backend: ${config.backendUrl}/api/video-editing-chat for task: ${taskId}`);
 
-    // 调用LLM API
-    const response = await fetch(`${config.apiUrl}/chat/completions`, {
+    // 调用Python后端API
+    const response = await fetch(`${config.backendUrl}/api/video-editing-chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify(requestData),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Video Editing Chat API] LLM API error: ${response.status} - ${errorText} for task: ${taskId}`);
-      logResponse(false, taskId, `LLM API error: ${response.status}`);
+      console.error(`[Video Editing Chat API] Backend error: ${response.status} - ${errorText} for task: ${taskId}`);
+      logResponse(false, taskId, `Backend error: ${response.status}`);
       
       return NextResponse.json(
-        { error: `LLM API error: ${response.status}` },
+        { error: `Backend service error: ${response.status}` },
         { status: response.status }
       );
     }
 
-    // 创建流式响应
-    const encoder = new TextEncoder();
+    // 检查响应是否为流式响应
+    if (!response.body) {
+      const errorMsg = 'No response body from backend';
+      console.error(`[Video Editing Chat API] ${errorMsg} for task: ${taskId}`);
+      logResponse(false, taskId, errorMsg);
+      
+      return NextResponse.json(
+        { error: 'Backend service error' },
+        { status: 500 }
+      );
+    }
+
+    // 创建流式响应，直接转发Python后端的流
     const stream = new ReadableStream({
       async start(controller) {
         try {
           const reader = response.body?.getReader();
           if (!reader) {
-            throw new Error('No reader available');
+            throw new Error('No response body reader available');
           }
 
-          let buffer = '';
-          let totalContent = '';
-          
+          const decoder = new TextDecoder();
+
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += new TextDecoder().decode(value);
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              const trimmedLine = line.trim();
-              if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
-
-              const data = trimmedLine.slice(6);
-              if (data === '[DONE]') {
-                console.log(`[Video Editing Chat API] Stream completed for task: ${taskId}, total content length: ${totalContent.length}`);
-                controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-                continue;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                
-                if (content) {
-                  totalContent += content;
-                  const responseData = { content };
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify(responseData)}\n\n`)
-                  );
-                  
-                  // 定期记录流式传输进度
-                  if (totalContent.length % 100 === 0) {
-                    console.log(`[Video Editing Chat API] Streaming progress for task: ${taskId}, content length: ${totalContent.length}`);
-                  }
-                }
-              } catch (e) {
-                console.error(`[Video Editing Chat API] Error parsing SSE data for task: ${taskId}:`, e);
-              }
+            
+            if (done) {
+              logResponse(true, taskId);
+              controller.close();
+              break;
             }
+
+            // 直接转发从Python后端接收到的数据
+            const chunk = decoder.decode(value, { stream: true });
+            controller.enqueue(new TextEncoder().encode(chunk));
           }
 
-          logResponse(true, taskId);
-          controller.close();
-        } catch (error) {
-          console.error(`[Video Editing Chat API] Stream error for task: ${taskId}:`, error);
-          logResponse(false, taskId, String(error));
-          controller.error(error);
+        } catch (streamError) {
+          console.error(`[Video Editing Chat API] Stream processing error for task ${taskId}:`, streamError);
+          logResponse(false, taskId, String(streamError));
+          controller.error(streamError);
         }
       },
     });
@@ -179,6 +132,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'  // Disable nginx buffering
       },
     });
 
@@ -192,4 +146,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
