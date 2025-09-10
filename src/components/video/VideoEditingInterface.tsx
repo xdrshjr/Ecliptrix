@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
+import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/utils/deviceDetection';
+import { MobileWarningDialog } from '@/components/ui';
 import { 
   useDocumentState,
   useVideoPlayback,
@@ -56,6 +58,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 }) => {
   // 获取国际化上下文
   const { locale } = useLocale();
+  
+  // Mobile device detection and warning state
+  const [showMobileWarning, setShowMobileWarning] = useState(false);
+  const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+  
   // 新增：时间同步状态管理
   const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
   // 新增：管理时间轴状态，用于导出功能
@@ -81,6 +88,35 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
   const videoPlayerRef = useRef<VideoPlayerPanelRef>(null);
+
+  // Mobile device detection effect - backup safety check
+  useEffect(() => {
+    if (shouldRestrictVideoEditing()) {
+      const deviceType = getDeviceType();
+      const deviceInfo = getDeviceInfo();
+      
+      setCurrentDeviceType(deviceType);
+      setShowMobileWarning(true);
+      
+      console.warn('[VideoEditingInterface] Mobile device detected - showing restriction warning:', {
+        taskId,
+        deviceType,
+        deviceInfo,
+        timestamp: new Date().toISOString(),
+        note: 'This is a backup check - primary restriction should happen in Taskbar'
+      });
+    }
+  }, [taskId]);
+
+  // Mobile warning dialog close handler
+  const handleCloseMobileWarning = useCallback(() => {
+    setShowMobileWarning(false);
+    console.log('[VideoEditingInterface] Mobile warning dialog closed:', {
+      taskId,
+      deviceType: currentDeviceType,
+      timestamp: new Date().toISOString()
+    });
+  }, [taskId, currentDeviceType]);
 
   // 新增：处理timeline到视频播放器的实时跳转回调
   const handleVideoSeekRequired = useCallback(async (
@@ -944,6 +980,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       <AICreationModal
         {...aiCreation}
         addMaterial={materialManagement.addOrReplaceMaterial}
+      />
+
+      {/* Mobile Warning Dialog - Backup Safety Check */}
+      <MobileWarningDialog
+        isOpen={showMobileWarning}
+        onClose={handleCloseMobileWarning}
+        deviceType={currentDeviceType}
       />
     </div>
   );

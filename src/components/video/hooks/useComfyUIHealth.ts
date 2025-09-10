@@ -76,7 +76,7 @@ export const useComfyUIHealth = (
     }
 
     if (!healthService) {
-      logger.error('健康检查服务未初始化');
+      logger.error('健康检查服务未初始化', new Error('Health service not initialized'));
       return;
     }
 
@@ -154,7 +154,7 @@ export const useComfyUIHealth = (
     }
 
     if (!healthService) {
-      logger.error('健康检查服务未初始化，无法进行自动检查', {
+      logger.error('健康检查服务未初始化，无法进行自动检查', new Error('Health service not initialized for auto check'), {
         aiMaterialService
       });
       return;

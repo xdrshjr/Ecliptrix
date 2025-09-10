@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { shouldRestrictVideoEditing, getDeviceType } from '@/lib/utils/deviceDetection';
+import { MobileWarningDialog } from '@/components/ui';
 
 interface TaskbarProps {
   tabs: Tab[];
@@ -20,6 +22,8 @@ const Taskbar: React.FC<TaskbarProps> = ({
 }) => {
   const { t } = useLocale();
   const [showTaskMenu, setShowTaskMenu] = useState(false);
+  const [showMobileWarning, setShowMobileWarning] = useState(false);
+  const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
   const getTaskIcon = (type: TaskType) => {
     switch (type) {
@@ -51,8 +55,42 @@ const Taskbar: React.FC<TaskbarProps> = ({
   };
 
   const handleCreateTask = (type: TaskType) => {
+    // Check for mobile device restriction on video editing tasks
+    if (type === 'video' && shouldRestrictVideoEditing()) {
+      const deviceType = getDeviceType();
+      setCurrentDeviceType(deviceType);
+      setShowMobileWarning(true);
+      setShowTaskMenu(false);
+      
+      console.log('[Taskbar] Video editing task creation blocked on mobile device:', {
+        taskType: type,
+        deviceType,
+        timestamp: new Date().toISOString(),
+        userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server-side',
+        restriction: 'Video editing not supported on mobile/tablet devices'
+      });
+      
+      return;
+    }
+
+    // Proceed with task creation for non-restricted cases
+    console.log('[Taskbar] Creating task:', {
+      taskType: type,
+      deviceType: getDeviceType(),
+      timestamp: new Date().toISOString(),
+      restriction: 'none'
+    });
+    
     onCreateTask(type);
     setShowTaskMenu(false);
+  };
+
+  const handleCloseMobileWarning = () => {
+    setShowMobileWarning(false);
+    console.log('[Taskbar] Mobile warning dialog closed:', {
+      deviceType: currentDeviceType,
+      timestamp: new Date().toISOString()
+    });
   };
 
   return (
@@ -140,6 +178,13 @@ const Taskbar: React.FC<TaskbarProps> = ({
           onClick={() => setShowTaskMenu(false)}
         />
       )}
+
+      {/* Mobile Warning Dialog */}
+      <MobileWarningDialog
+        isOpen={showMobileWarning}
+        onClose={handleCloseMobileWarning}
+        deviceType={currentDeviceType}
+      />
     </div>
   );
 };
