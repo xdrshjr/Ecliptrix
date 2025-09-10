@@ -86,6 +86,9 @@ export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
 // 下载状态类型
 export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'completed' | 'error';
 
+// 上传状态类型
+export type MaterialUploadStatus = 'uploading' | 'completed';
+
 export interface MaterialItem {
   id: string;
   name: string;
@@ -106,6 +109,9 @@ export interface MaterialItem {
   downloadProgress?: number; // 下载进度 (0-100)
   downloadError?: string; // 下载错误信息
   youtubeUrl?: string; // 原始Youtube URL
+  // 新增：上传状态相关字段
+  uploadStatus?: MaterialUploadStatus; // 上传状态
+  uploadProgress?: number; // 上传进度 (0-100)
   metadata?: { // 额外元数据
     originalUrl?: string; // 原始远程URL
     fileName?: string; // 文件名

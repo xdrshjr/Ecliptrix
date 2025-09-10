@@ -989,11 +989,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 .map((material) => (
                 <div
                   key={material.id}
-                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating'}
+                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading'}
                   onDragStart={(e) => handleDragStart(e, material)}
                   onDragEnd={(e) => handleDragEnd(e, material)}
                   className={`group bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all ${
-                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating'
+                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading'
                       ? 'opacity-60 cursor-not-allowed' 
                       : 'cursor-grab active:cursor-grabbing'
                   } ${
@@ -1086,6 +1086,22 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                             <div 
                               className="bg-blue-600 h-1 rounded-full transition-all duration-300" 
                               style={{ width: `${material.downloadProgress}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 素材上传状态覆盖层 */}
+                    {material.uploadStatus === 'uploading' && (
+                      <div className="absolute inset-0 bg-green-500 bg-opacity-50 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
+                        <span className="text-white text-xs font-medium">{t.materialsPanel.uploadingMaterial}</span>
+                        {material.uploadProgress !== undefined && (
+                          <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
+                            <div 
+                              className="bg-white h-1 rounded-full transition-all duration-300" 
+                              style={{ width: `${material.uploadProgress}%` }}
                             ></div>
                           </div>
                         )}

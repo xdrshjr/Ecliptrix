@@ -213,7 +213,53 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
       // 注意：这个文件中的API调用通过Next.js API路由代理到后端服务
       // 使用相对路径调用Next.js API路由，避免直接调用后台服务
       const uploadedMaterials: MaterialItem[] = [];
+      const uploadingMaterials: MaterialItem[] = [];
       let completedFiles = 0;
+
+      // 立即创建上传中的素材并添加到列表中
+      Array.from(files).forEach((file, index) => {
+        const materialType: MaterialType = file.type.startsWith('video/') ? 'video' :
+                                         file.type.startsWith('audio/') ? 'audio' : 'image';
+        
+        const uploadingMaterial: MaterialItem = {
+          id: `uploading_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+          name: file.name,
+          type: materialType,
+          format: file.name.split('.').pop() || 'unknown',
+          size: file.size,
+          url: '', // 临时为空
+          createdAt: new Date(),
+          uploadStatus: 'uploading',
+          uploadProgress: 0
+        };
+        
+        uploadingMaterials.push(uploadingMaterial);
+        
+        logger.info('创建上传中素材', {
+          materialId: uploadingMaterial.id,
+          fileName: file.name,
+          fileType: materialType,
+          fileSize: file.size
+        });
+      });
+
+      // 立即将上传中的素材添加到材料列表
+      setMaterials(prev => [...prev, ...uploadingMaterials]);
+
+      // 为每个上传中的素材启动假进度条
+      const progressIntervals: { [key: string]: NodeJS.Timeout } = {};
+      uploadingMaterials.forEach((material) => {
+        progressIntervals[material.id] = setInterval(() => {
+          setMaterials(prev => prev.map(m => {
+            if (m.id === material.id && m.uploadStatus === 'uploading') {
+              const currentProgress = m.uploadProgress || 0;
+              const newProgress = Math.min(currentProgress + Math.random() * 5 + 1, 95); // 最多到95%
+              return { ...m, uploadProgress: newProgress };
+            }
+            return m;
+          }));
+        }, 200 + Math.random() * 300); // 200-500ms间隔，增加随机性
+      });
 
       try {
         // 处理每个文件
@@ -452,6 +498,29 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
               uploadedMaterials.push(material);
             }
 
+            // 找到对应的上传中素材并替换
+            const uploadingMaterial = uploadingMaterials.find(um => um.name === file.name);
+            if (uploadingMaterial) {
+              // 清除该素材的进度条定时器
+              if (progressIntervals[uploadingMaterial.id]) {
+                clearInterval(progressIntervals[uploadingMaterial.id]);
+                delete progressIntervals[uploadingMaterial.id];
+              }
+              
+              // 替换上传中的素材为完成的素材
+              setMaterials(prev => prev.map(m => 
+                m.id === uploadingMaterial.id 
+                  ? { ...uploadedMaterials[uploadedMaterials.length - 1], uploadStatus: 'completed', uploadProgress: 100 }
+                  : m
+              ));
+              
+              logger.info('替换上传中素材为完成素材', {
+                uploadingMaterialId: uploadingMaterial.id,
+                completedMaterialId: uploadedMaterials[uploadedMaterials.length - 1].id,
+                fileName: file.name
+              });
+            }
+
             completedFiles++;
             const progress = (completedFiles / files.length) * 100;
             setUploadProgress(progress);
@@ -469,6 +538,24 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
                fileName: file.name
              });
 
+            // 找到对应的上传中素材并标记为错误
+            const uploadingMaterial = uploadingMaterials.find(um => um.name === file.name);
+            if (uploadingMaterial) {
+              // 清除该素材的进度条定时器
+              if (progressIntervals[uploadingMaterial.id]) {
+                clearInterval(progressIntervals[uploadingMaterial.id]);
+                delete progressIntervals[uploadingMaterial.id];
+              }
+              
+              // 移除失败的上传中素材
+              setMaterials(prev => prev.filter(m => m.id !== uploadingMaterial.id));
+              
+              logger.info('移除失败的上传中素材', {
+                uploadingMaterialId: uploadingMaterial.id,
+                fileName: file.name
+              });
+            }
+
             // 继续处理其他文件，但记录错误
             completedFiles++;
             const progress = (completedFiles / files.length) * 100;
@@ -476,22 +563,20 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           }
         }
 
-        // 添加所有成功上传的素材
-        if (uploadedMaterials.length > 0) {
-          setMaterials(prev => [...prev, ...uploadedMaterials]);
-          
-          logger.info('素材上传完成', {
-            totalFiles: files.length,
-            successfulUploads: uploadedMaterials.length,
-            failedUploads: files.length - uploadedMaterials.length,
-            materials: uploadedMaterials.map(m => ({
-              id: m.id,
-              name: m.name,
-              type: m.type,
-              size: m.size
-            }))
-          });
-        }
+        // 清理所有剩余的进度条定时器
+        Object.values(progressIntervals).forEach(interval => clearInterval(interval));
+        
+        logger.info('素材上传完成', {
+          totalFiles: files.length,
+          successfulUploads: uploadedMaterials.length,
+          failedUploads: files.length - uploadedMaterials.length,
+          materials: uploadedMaterials.map(m => ({
+            id: m.id,
+            name: m.name,
+            type: m.type,
+            size: m.size
+          }))
+        });
 
              } catch (error) {
          const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -499,6 +584,12 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
            completedFiles,
            totalFiles: files.length
          });
+         
+         // 清理所有进度条定时器
+         Object.values(progressIntervals).forEach(interval => clearInterval(interval));
+         
+         // 移除所有上传中的素材
+         setMaterials(prev => prev.filter(m => m.uploadStatus !== 'uploading'));
       } finally {
         setIsUploading(false);
         setUploadProgress(0);
