@@ -99,6 +99,18 @@ from .runninghub_models import (
     RunningHubResultFile
 )
 
+from .timeline_export_models import (
+    TimelineItemModel,
+    TrackModel,
+    TimelineStateModel,
+    MaterialModel,
+    ExportMetadataModel,
+    TimelineExportDataModel,
+    TimelineExportRequest,
+    TimelineExportResponse,
+    TimelineExportErrorResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -174,5 +186,16 @@ __all__ = [
     "RunningHubStatusResponse",
     "RunningHubResultsRequest",
     "RunningHubResultsResponse",
-    "RunningHubResultFile"
+    "RunningHubResultFile",
+    
+    # Timeline Export Models
+    "TimelineItemModel",
+    "TrackModel", 
+    "TimelineStateModel",
+    "MaterialModel",
+    "ExportMetadataModel",
+    "TimelineExportDataModel",
+    "TimelineExportRequest",
+    "TimelineExportResponse",
+    "TimelineExportErrorResponse"
 ] 

@@ -13,6 +13,7 @@ from .audio_transcription_service import AudioTranscriptionService
 from .youtube_service import YouTubeService
 from .supabase_service import SupabaseService
 from .image_to_video_service import ImageToVideoService
+from .timeline_export_service import TimelineExportService
 
 # Initialize video analysis service instance
 video_analysis_service = VideoAnalysisService()
@@ -29,5 +30,6 @@ __all__ = [
     'AudioTranscriptionService',
     'YouTubeService',
     'SupabaseService',
-    'ImageToVideoService'
+    'ImageToVideoService',
+    'TimelineExportService'
 ] 

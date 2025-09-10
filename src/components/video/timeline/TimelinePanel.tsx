@@ -6,6 +6,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
 import { useVideoCache } from '../hooks/useVideoCache';
+import { useTimelineExport } from '../hooks/useTimelineExport';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
@@ -40,6 +41,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   
   // 初始化视频缓存Hook
   const videoCache = useVideoCache(taskId);
+  
+  // 初始化时间轴导出Hook
+  const timelineExport = useTimelineExport(taskId);
   
   // 创建初始空轨道状态
   const createInitialTimelineState = useCallback((): TimelineState => {
@@ -1925,7 +1929,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddEffect={handleAddEffect}
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
+        onExportJSON={() => timelineExport.exportTimelineToJSON(timelineState, materials)}
         isExtractingSubtitles={isExtractingSubtitles}
+        isExportingJSON={timelineExport.isExporting}
         locale={locale}
       />
 

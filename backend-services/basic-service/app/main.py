@@ -283,6 +283,10 @@ app.include_router(image_router.router, prefix="/api")
 from app.routers import file_upload_router
 app.include_router(file_upload_router.router, prefix="/api")
 
+# Import and include Timeline Export router
+from app.routers import timeline_export_router
+app.include_router(timeline_export_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)
@@ -292,5 +296,10 @@ app.mount("/api/audio/generated", StaticFiles(directory=audio_static_dir), name=
 subtitle_static_dir = "static/audio/subtitles"
 os.makedirs(subtitle_static_dir, exist_ok=True)
 app.mount("/api/audio/subtitles", StaticFiles(directory=subtitle_static_dir), name="audio_subtitles")
+
+# Mount static files for timeline exports
+timeline_export_static_dir = "static/timeline_exports"
+os.makedirs(timeline_export_static_dir, exist_ok=True)
+app.mount("/static/timeline_exports", StaticFiles(directory=timeline_export_static_dir), name="timeline_exports")
 
 logger.info("FastAPI application configured successfully") 

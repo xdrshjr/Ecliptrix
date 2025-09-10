@@ -19,7 +19,9 @@ interface TimelineToolbarProps {
   onAddEffect: () => void;
   onAddTransition: () => void;
   onAddSubtitle: () => void;
+  onExportJSON: () => void; // 新增：导出JSON功能
   isExtractingSubtitles?: boolean; // 字幕提取状态
+  isExportingJSON?: boolean; // 新增：JSON导出状态
   locale?: SupportedLocale; // 可选的locale参数，默认使用defaultLocale
 }
 
@@ -38,7 +40,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddEffect,
   onAddTransition,
   onAddSubtitle,
+  onExportJSON,
   isExtractingSubtitles = false,
+  isExportingJSON = false,
   locale = defaultLocale
 }) => {
   // 获取国际化翻译
@@ -135,6 +139,25 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
 
   // 高级功能按钮
   const advancedButtons = [
+    {
+      id: 'export-json',
+      action: onExportJSON,
+      icon: isExportingJSON ? (
+        <div className="relative w-4 h-4">
+          <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+          </svg>
+        </div>
+      ) : (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
+          <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+        </svg>
+      ),
+      label: isExportingJSON ? '导出中...' : '导出为JSON',
+      shortcut: 'Ctrl+E',
+      disabled: isExportingJSON
+    },
     {
       id: 'effects',
       action: onAddEffect,

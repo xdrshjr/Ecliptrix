@@ -74,7 +74,19 @@ export class VideoEditingLogger {
   /**
    * 记录错误级别日志
    */
-  error(action: string, error: Error, data?: Record<string, any>) {
+  error(action: string, error: Error, data?: Record<string, any>): void;
+  error(action: string, data: Record<string, any>): void;
+  error(action: string, errorOrData: Error | Record<string, any>, data?: Record<string, any>) {
+    let error: Error | undefined;
+    let actualData: Record<string, any> | undefined;
+
+    if (errorOrData instanceof Error) {
+      error = errorOrData;
+      actualData = data;
+    } else {
+      actualData = errorOrData;
+    }
+
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level: 'ERROR',
@@ -82,14 +94,14 @@ export class VideoEditingLogger {
       component: this.config.component,
       action,
       error,
-      data
+      data: actualData
     };
 
     console.error(`[${this.config.component}] ${action}`, {
       taskId: this.config.taskId,
-      error: error.message,
-      stack: error.stack,
-      ...data,
+      error: error?.message,
+      stack: error?.stack,
+      ...actualData,
       timestamp: logEntry.timestamp
     });
   }
