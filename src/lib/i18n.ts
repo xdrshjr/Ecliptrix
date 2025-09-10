@@ -147,6 +147,7 @@ export interface Translations {
     aiAutoMixTooltip: string;
     uploadTooltip: string;
     uploadingProgress: string;
+    uploadingMaterial: string;
     searchVideosTooltip: string;
     deleteMaterialTooltip: string;
     addToTimelineTooltip: string;
