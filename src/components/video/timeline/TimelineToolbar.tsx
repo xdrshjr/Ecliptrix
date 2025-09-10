@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { TimelineToolType } from '@/types';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 
@@ -20,8 +20,10 @@ interface TimelineToolbarProps {
   onAddTransition: () => void;
   onAddSubtitle: () => void;
   onExportJSON: () => void; // 新增：导出JSON功能
+  onImportJSON: (file: File) => void; // 新增：导入JSON功能
   isExtractingSubtitles?: boolean; // 字幕提取状态
   isExportingJSON?: boolean; // 新增：JSON导出状态
+  isImportingJSON?: boolean; // 新增：JSON导入状态
   locale?: SupportedLocale; // 可选的locale参数，默认使用defaultLocale
 }
 
@@ -41,21 +43,79 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddTransition,
   onAddSubtitle,
   onExportJSON,
+  onImportJSON,
   isExtractingSubtitles = false,
   isExportingJSON = false,
+  isImportingJSON = false,
   locale = defaultLocale
 }) => {
   // 获取国际化翻译
   const t = getTranslations(locale);
+  
+  // 文件输入引用
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   console.log(`[TimelineToolbar] 工具栏渲染`, {
     activeTool,
     selectedItemsCount,
     canUndo,
     canRedo,
+    isImportingJSON,
     locale,
     timestamp: new Date().toISOString()
   });
+
+  // 处理导入文件选择
+  const handleImportClick = () => {
+    console.log(`[TimelineToolbar] 点击导入项目文件按钮`, {
+      timestamp: new Date().toISOString()
+    });
+    fileInputRef.current?.click();
+  };
+
+  // 处理文件选择
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      console.log(`[TimelineToolbar] 选择导入文件`, {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 验证文件类型
+      if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+        console.error(`[TimelineToolbar] 文件类型不支持`, {
+          fileName: file.name,
+          fileType: file.type
+        });
+        alert('请选择JSON格式的项目文件');
+        return;
+      }
+      
+      onImportJSON(file);
+    }
+    
+    // 清除文件输入，允许重复选择同一文件
+    event.target.value = '';
+  };
+
+  // 导入项目按钮配置
+  const importButton = {
+    id: 'import',
+    action: handleImportClick,
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+        <path d="M12,11L8,15H10.5V19H13.5V15H16L12,11Z"/>
+      </svg>
+    ),
+    label: '导入项目文件',
+    shortcut: '',
+    disabled: isImportingJSON,
+    loading: isImportingJSON
+  };
 
   // 基础编辑按钮配置
   const basicEditButtons = [
@@ -250,8 +310,24 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
 
   return (
     <div className="timeline-toolbar h-8 bg-white border-b border-gray-200 flex items-center justify-between px-4 relative overflow-visible">
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+      
       {/* 左侧基础编辑工具 */}
       <div className="flex items-center space-x-1">
+        {/* 导入项目文件按钮 */}
+        <div className="flex items-center space-x-1">
+          {renderIconButton(importButton)}
+        </div>
+        
+        <div className="w-px h-4 bg-gray-300 mx-1" />
+        
         <div className="flex items-center space-x-1">
           {basicEditButtons.map(button => renderIconButton(button))}
         </div>

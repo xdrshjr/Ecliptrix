@@ -632,6 +632,41 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setCurrentTimelineState(timelineState);
   }, []);
 
+  // 处理项目文件导入完成
+  const handleImportComplete = useCallback((importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => {
+    console.log(`[VideoEditingInterface] 项目文件导入完成`, {
+      taskId,
+      importedMaterialCount: importedMaterials.length,
+      importedTrackCount: importedTimelineState.tracks.length,
+      totalDuration: importedTimelineState.totalDuration,
+      timestamp: new Date().toISOString()
+    });
+
+    // 更新本地时间轴状态
+    setCurrentTimelineState(importedTimelineState);
+    
+    // 将导入的素材添加到素材管理中
+    if (importedMaterials.length > 0) {
+      materialManagement.addMaterials(importedMaterials);
+      console.log(`[VideoEditingInterface] 已将 ${importedMaterials.length} 个素材添加到素材库`, {
+        materialIds: importedMaterials.map(m => m.id),
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // 同步到timeline组合管理
+    timelineComposition.handleTimelineStateChange(importedTimelineState);
+    
+    // 重置当前播放时间
+    setTimelineCurrentTime(0);
+    
+    console.log(`[VideoEditingInterface] 项目导入处理完成`, {
+      taskId,
+      newTotalDuration: importedTimelineState.totalDuration,
+      timestamp: new Date().toISOString()
+    });
+  }, [taskId, materialManagement, timelineComposition]);
+
   // 新增：处理图片叠加位置变化
   const handleImagePositionChange = useCallback((itemId: string, position: ImagePosition) => {
     console.log(`[VideoEditingInterface] 更新图片叠加位置`, {
@@ -920,6 +955,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
             materialsToAdd={materialsToAddToTimeline}
             taskId={taskId}
+            onImportComplete={handleImportComplete}
           />
         </div>
       </div>

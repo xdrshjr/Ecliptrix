@@ -25,6 +25,8 @@ interface TimelinePanelProps {
   materialsToAdd?: { materials: MaterialItem[], targetTrackId?: string, timestamp: number };
   // 新增：任务ID，用于视频缓存日志
   taskId?: string;
+  // 新增：导入完成回调，传递导入的素材和时间轴状态
+  onImportComplete?: (importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => void;
 }
 
 const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
@@ -35,7 +37,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   materials = [],
   onTimelineCompositionChange,
   materialsToAdd,
-  taskId = 'timeline'
+  taskId = 'timeline',
+  onImportComplete
 }) => {
   const { t, locale } = useLocale();
   
@@ -130,6 +133,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [history, setHistory] = useState<TimelineAction[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isExtractingSubtitles, setIsExtractingSubtitles] = useState(false);
+  const [isImportingJSON, setIsImportingJSON] = useState(false);
   
   // 字幕编辑模态框状态
   const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = useState(false);
@@ -1264,6 +1268,110 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
   }, [historyIndex, history]);
 
+  // 导入项目文件处理函数
+  const handleImportJSON = useCallback(async (file: File) => {
+    console.log(`[TimelinePanel] 开始导入项目文件`, {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+
+    setIsImportingJSON(true);
+
+    try {
+      // 读取文件内容
+      const fileContent = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const content = e.target?.result as string;
+          if (content) {
+            resolve(content);
+          } else {
+            reject(new Error('Failed to read file content'));
+          }
+        };
+        reader.onerror = () => reject(new Error('File reading error'));
+        reader.readAsText(file);
+      });
+
+      console.log(`[TimelinePanel] 文件内容读取完成`, {
+        contentLength: fileContent.length,
+        timestamp: new Date().toISOString()
+      });
+
+      // 调用导入API
+      const response = await fetch('/api/timeline-import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: taskId,
+          fileContent: fileContent,
+          fileName: file.name,
+          mergeMode: 'replace', // 替换模式
+          preserveIds: false // 不保留原始ID，生成新ID
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `导入失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || '导入失败');
+      }
+
+      console.log(`[TimelinePanel] 项目导入成功`, {
+        statistics: result.statistics,
+        validationResult: result.validationResult,
+        timestamp: new Date().toISOString()
+      });
+
+      // 处理导入的数据
+      const importedData = result.importedData;
+      if (importedData && importedData.timelineState && importedData.materials) {
+        // 更新时间轴状态
+        const newTimelineState = importedData.timelineState;
+        setTimelineState(newTimelineState);
+        
+        // 清除历史记录，因为这是一个全新的项目状态
+        setHistory([]);
+        setHistoryIndex(-1);
+        
+        // 通知父组件导入完成
+        if (onImportComplete) {
+          onImportComplete(importedData.materials, newTimelineState);
+        }
+        
+        // 通知父组件时间轴状态变化
+        if (onTimelineStateChange) {
+          onTimelineStateChange(newTimelineState);
+        }
+
+        showSuccess(`项目文件导入成功！导入了 ${result.statistics?.imported_track_count || 0} 个轨道和 ${result.statistics?.imported_material_count || 0} 个素材。`);
+      } else {
+        throw new Error('导入数据格式不正确');
+      }
+
+    } catch (error) {
+      console.error(`[TimelinePanel] 项目导入失败`, {
+        fileName: file.name,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+
+      showError(`项目导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsImportingJSON(false);
+    }
+  }, [taskId, onImportComplete, onTimelineStateChange, showSuccess, showError]);
+
   // 编辑操作处理函数
   const handleCut = useCallback(() => {
     console.log(`[TimelinePanel] 剪切选中素材`, {
@@ -1930,8 +2038,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
         onExportJSON={() => timelineExport.exportTimelineToJSON(timelineState, materials)}
+        onImportJSON={handleImportJSON}
         isExtractingSubtitles={isExtractingSubtitles}
         isExportingJSON={timelineExport.isExporting}
+        isImportingJSON={isImportingJSON}
         locale={locale}
       />
 

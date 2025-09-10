@@ -111,6 +111,15 @@ from .timeline_export_models import (
     TimelineExportErrorResponse
 )
 
+from .timeline_import_models import (
+    TimelineImportRequest,
+    TimelineImportValidationResult,
+    ProcessedImportData,
+    TimelineImportResponse,
+    TimelineImportErrorResponse,
+    ImportFileUploadRequest
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -197,5 +206,13 @@ __all__ = [
     "TimelineExportDataModel",
     "TimelineExportRequest",
     "TimelineExportResponse",
-    "TimelineExportErrorResponse"
+    "TimelineExportErrorResponse",
+    
+    # Timeline Import Models
+    "TimelineImportRequest",
+    "TimelineImportValidationResult",
+    "ProcessedImportData",
+    "TimelineImportResponse",
+    "TimelineImportErrorResponse",
+    "ImportFileUploadRequest"
 ] 

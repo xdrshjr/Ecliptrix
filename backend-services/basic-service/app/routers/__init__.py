@@ -12,6 +12,7 @@ from . import workflow_router
 from . import image_router
 from . import file_upload_router
 from . import timeline_export_router
+from . import timeline_import_router
 
 __all__ = [
     "api_router",
@@ -23,5 +24,6 @@ __all__ = [
     "workflow_router",
     "image_router",
     "file_upload_router",
-    "timeline_export_router"
+    "timeline_export_router",
+    "timeline_import_router"
 ] 

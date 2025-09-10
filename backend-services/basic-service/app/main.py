@@ -182,13 +182,16 @@ async def fastapi_http_exception_handler(request: Request, exc: HTTPException):
     """
     logger.warning(f"FastAPI HTTP exception: {exc.status_code} - {exc.detail}")
     
+    # Convert detail to string if it's not already
+    message = str(exc.detail) if not isinstance(exc.detail, str) else exc.detail
+    
     return JSONResponse(
         status_code=exc.status_code,
         content=ErrorResponse(
             success=False,
-            message=exc.detail,
+            message=message,
             error_code=f"HTTP_{exc.status_code}",
-            error_details={"status_code": exc.status_code}
+            error_details={"status_code": exc.status_code, "original_detail": exc.detail}
         ).model_dump()
     )
 
@@ -286,6 +289,10 @@ app.include_router(file_upload_router.router, prefix="/api")
 # Import and include Timeline Export router
 from app.routers import timeline_export_router
 app.include_router(timeline_export_router.router, prefix="/api")
+
+# Import and include Timeline Import router
+from app.routers import timeline_import_router
+app.include_router(timeline_import_router.router, prefix="/api")
 
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
