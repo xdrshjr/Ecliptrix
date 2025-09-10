@@ -27,6 +27,10 @@ interface TimelinePanelProps {
   taskId?: string;
   // 新增：导入完成回调，传递导入的素材和时间轴状态
   onImportComplete?: (importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => void;
+  // 新增：外部时间轴状态，用于AI混剪等外部导入场景
+  externalTimelineState?: TimelineState;
+  // 新增：外部时间轴状态更新标识，用于避免循环更新
+  externalTimelineUpdateId?: string;
 }
 
 const TimelinePanel: React.FC<TimelinePanelProps> = ({ 
@@ -38,7 +42,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onTimelineCompositionChange,
   materialsToAdd,
   taskId = 'timeline',
-  onImportComplete
+  onImportComplete,
+  externalTimelineState,
+  externalTimelineUpdateId
 }) => {
   const { t, locale } = useLocale();
   
@@ -220,6 +226,48 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       }));
     }
   }, [externalCurrentTime, timelineState.currentTime]);
+
+  // 用ref跟踪上次的外部更新ID，避免无限循环
+  const lastExternalUpdateIdRef = useRef<string | null>(null);
+
+  // 处理外部时间轴状态同步（用于AI混剪等场景）
+  useEffect(() => {
+    if (externalTimelineState && externalTimelineUpdateId && 
+        externalTimelineUpdateId !== lastExternalUpdateIdRef.current) {
+      
+      console.log(`[TimelinePanel] 接收到外部时间轴状态更新`, {
+        taskId,
+        updateId: externalTimelineUpdateId,
+        externalTracks: externalTimelineState.tracks.length,
+        externalDuration: externalTimelineState.totalDuration,
+        externalTracksWithItems: externalTimelineState.tracks.map(track => ({
+          id: track.id,
+          name: track.name,
+          type: track.type,
+          itemCount: track.items?.length || 0
+        })),
+        timestamp: new Date().toISOString()
+      });
+
+      // 更新本地时间轴状态
+      setTimelineState(externalTimelineState);
+      
+      // 清除历史记录，因为这是一个全新的状态
+      setHistory([]);
+      setHistoryIndex(-1);
+
+      // 更新ref
+      lastExternalUpdateIdRef.current = externalTimelineUpdateId;
+
+      console.log(`[TimelinePanel] 外部时间轴状态同步完成`, {
+        taskId,
+        updateId: externalTimelineUpdateId,
+        newTracks: externalTimelineState.tracks.length,
+        newDuration: externalTimelineState.totalDuration,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [externalTimelineState, externalTimelineUpdateId, taskId]);
 
   // 生成唯一ID的辅助函数
   const generateId = () => `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

@@ -274,7 +274,12 @@ async function performAIMixedEditing(taskId: string, materials: MaterialItem[]) 
       });
 
       if (importResponse.ok) {
-        console.log('时间轴填充成功');
+        const importResult = await importResponse.json();
+        if (importResult.success && importResult.importedData) {
+          // 处理导入完成，更新UI状态
+          handleImportComplete(importResult.importedData.materials, importResult.importedData.timelineState);
+          console.log('时间轴填充成功，UI已更新');
+        }
       }
     }
   } catch (error) {
