@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
-import { UseTimelineCompositionReturn, VideoSequenceItem, AudioSequenceItem, CompositionPlayback } from '../types';
+import { UseTimelineCompositionReturn, VideoSequenceItem, AudioSequenceItem, CompositionPlayback, VideoSeekCallback } from '../types';
 import { VideoEditingLogger } from '../utils';
 
 /**
@@ -9,11 +9,13 @@ import { VideoEditingLogger } from '../utils';
  * 
  * @param taskId - 任务ID，用于日志记录
  * @param materials - 素材列表，用于获取视频URL
+ * @param onVideoSeekRequired - 视频播放器跳转回调，用于实时同步timeline变化到视频播放器
  * @returns 时间轴组合播放相关的状态和控制方法
  */
 export const useTimelineComposition = (
   taskId: string,
-  materials: MaterialItem[]
+  materials: MaterialItem[],
+  onVideoSeekRequired?: VideoSeekCallback
 ): UseTimelineCompositionReturn => {
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
@@ -302,37 +304,72 @@ export const useTimelineComposition = (
   }, [compositionPlayback, logger]);
 
   // 组合时间跳转
-  const handleCompositionSeek = useCallback((time: number) => {
+  const handleCompositionSeek = useCallback(async (time: number) => {
     const clampedTime = Math.max(0, Math.min(time, compositionPlayback.totalCompositionDuration));
     
-    // 计算当前应该播放的序列索引
+    // 计算当前应该播放的序列索引和视频内时间
     let currentSequenceIndex = 0;
     let accumulatedTime = 0;
+    let targetVideoTime = clampedTime;
     
     for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
       const sequence = compositionPlayback.videoSequences[i];
       if (accumulatedTime + sequence.duration > clampedTime) {
         currentSequenceIndex = i;
+        targetVideoTime = clampedTime - accumulatedTime;
         break;
       }
       accumulatedTime += sequence.duration;
       currentSequenceIndex = i + 1;
     }
 
+    // 获取目标序列
+    const targetSequence = compositionPlayback.videoSequences[currentSequenceIndex];
+
     logger.userAction('组合播放时间跳转', 'compositionSeek', {
       previousTime: compositionPlayback.compositionCurrentTime,
       newTime: clampedTime,
       previousSequenceIndex: compositionPlayback.currentSequenceIndex,
       newSequenceIndex: currentSequenceIndex,
-      totalDuration: compositionPlayback.totalCompositionDuration
+      targetVideoTime: targetVideoTime?.toFixed(2),
+      targetSequenceName: targetSequence?.name,
+      totalDuration: compositionPlayback.totalCompositionDuration,
+      triggeredVideoSeekCallback: !!onVideoSeekRequired
     });
 
+    // 立即更新组合播放状态
     setCompositionPlayback(prev => ({
       ...prev,
       compositionCurrentTime: clampedTime,
       currentSequenceIndex
     }));
-  }, [compositionPlayback, logger]);
+
+    // 新增：如果提供了视频播放器跳转回调，立即触发视频播放器更新
+    if (onVideoSeekRequired && targetSequence) {
+      try {
+        logger.info('触发视频播放器实时跳转', {
+          compositionTime: clampedTime.toFixed(2),
+          targetSequenceIndex: currentSequenceIndex,
+          targetSequenceName: targetSequence.name,
+          targetVideoTime: targetVideoTime?.toFixed(2),
+          sequenceUrl: targetSequence.url
+        });
+
+        await onVideoSeekRequired(clampedTime, targetSequence, targetVideoTime);
+        
+        logger.info('视频播放器实时跳转完成', {
+          compositionTime: clampedTime.toFixed(2),
+          sequenceName: targetSequence.name
+        });
+      } catch (error) {
+        logger.error('视频播放器实时跳转失败', error as Error, {
+          compositionTime: clampedTime.toFixed(2),
+          targetSequenceIndex: currentSequenceIndex,
+          targetSequenceName: targetSequence.name
+        });
+      }
+    }
+  }, [compositionPlayback, logger, onVideoSeekRequired]);
 
   // 新增：切换到下一个视频序列
   const handleNextSequence = useCallback(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
@@ -41,6 +41,7 @@ import {
   DigitalHumanGenerationModal,
   AICreationModal
 } from './components';
+import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
 
 interface VideoEditingInterfaceProps {
   taskId: string;
@@ -77,6 +78,53 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     targetTrackId?: string, 
     timestamp: number 
   } | undefined>(undefined);
+
+  // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
+  const videoPlayerRef = useRef<VideoPlayerPanelRef>(null);
+
+  // 新增：处理timeline到视频播放器的实时跳转回调
+  const handleVideoSeekRequired = useCallback(async (
+    compositionTime: number, 
+    targetSequence: import('./types').VideoSequenceItem, 
+    videoTime: number
+  ) => {
+    console.log(`[VideoEditingInterface] Timeline触发视频播放器跳转`, {
+      compositionTime: compositionTime.toFixed(2),
+      targetSequenceName: targetSequence.name,
+      videoTime: videoTime.toFixed(2),
+      hasVideoPlayerRef: !!videoPlayerRef.current,
+      timestamp: new Date().toISOString()
+    });
+
+    // 通过ref调用VideoPlayerPanel的组合跳转方法
+    if (videoPlayerRef.current) {
+      try {
+        await videoPlayerRef.current.handleCompositionSeek(
+          compositionTime, 
+          targetSequence, 
+          videoTime, 
+          'timeline'
+        );
+        console.log(`[VideoEditingInterface] Timeline触发视频播放器跳转完成`, {
+          compositionTime: compositionTime.toFixed(2),
+          sequenceName: targetSequence.name
+        });
+      } catch (error) {
+        console.error(`[VideoEditingInterface] Timeline触发视频播放器跳转失败`, {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          compositionTime: compositionTime.toFixed(2),
+          targetSequenceName: targetSequence.name,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else {
+      console.warn(`[VideoEditingInterface] VideoPlayerPanel ref不可用，跳过视频跳转`, {
+        compositionTime: compositionTime.toFixed(2),
+        targetSequenceName: targetSequence.name,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, []);
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
@@ -151,8 +199,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const audioSearch = useAudioSearch(taskId, materialManagement.addMaterials);
   const imageSearch = useImageSearch(taskId, materialManagement.addMaterials);
   
-  // 添加时间轴组合播放功能
-  const timelineComposition = useTimelineComposition(taskId, materialManagement.materials);
+  // 添加时间轴组合播放功能（新增视频跳转回调）
+  const timelineComposition = useTimelineComposition(taskId, materialManagement.materials, handleVideoSeekRequired);
   
   // 添加视频解析功能
   const videoAnalysis = useVideoAnalysis(taskId);
@@ -800,6 +848,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               />
 
               <VideoPlayerPanel
+                ref={videoPlayerRef}
                 {...videoPlayback}
                 videoPreview={mockVideoPreview}
                 taskId={taskId}

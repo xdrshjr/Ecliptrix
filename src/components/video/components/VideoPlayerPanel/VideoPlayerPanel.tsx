@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, useImperativeHandle } from 'react';
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
 import { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
@@ -45,7 +45,12 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   onImagePositionChange?: (itemId: string, position: ImagePosition) => void;
 }
 
-const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
+// 新增：VideoPlayerPanel ref接口，用于外部调用内部方法
+export interface VideoPlayerPanelRef {
+  handleCompositionSeek: (compositionTime: number, targetSequence: VideoSequenceItem, videoTime: number, source: 'timeline' | 'player') => Promise<void>;
+}
+
+const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelProps>(({
   isPlaying,
   currentTime,
   volume,
@@ -71,7 +76,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
   timelineState,
   materials,
   onImagePositionChange
-}) => {
+}, ref) => {
   const { t } = useLocale();
   const logger = new VideoEditingLogger({
     taskId,
@@ -1027,15 +1032,134 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
     }
   }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, syncAudioPlayback, logger]);
 
+  // 新增：核心组合播放跳转函数，可被timeline和播放器UI调用
+  const handleCompositionSeek = useCallback(async (
+    compositionTime: number, 
+    targetSequence: VideoSequenceItem, 
+    videoTime: number,
+    source: 'timeline' | 'player' = 'player'
+  ) => {
+    if (!compositionPlayback) return;
+
+    logger.userAction('组合播放视频跳转', source === 'timeline' ? 'timelineCompositionSeek' : 'playerCompositionSeek', {
+      compositionTime: compositionTime.toFixed(2),
+      targetSequenceName: targetSequence.name,
+      targetSequenceUrl: targetSequence.url,
+      videoTime: videoTime.toFixed(2),
+      source,
+      previousCompositionTime: compositionCurrentTime.toFixed(2),
+      wasPlayingBefore: isCompositionPlaying
+    });
+
+    // 立即更新视频播放器
+    if (targetSequence && videoRef.current) {
+      try {
+        const wasPlayingBefore = isCompositionPlaying;
+        
+        // 如果视频源不同，需要切换视频
+        const needsSwitchVideo = videoRef.current.src !== targetSequence.url;
+        
+        if (needsSwitchVideo) {
+          logger.info('切换视频序列', {
+            previousSrc: videoRef.current.src,
+            newSrc: targetSequence.url,
+            sequenceName: targetSequence.name,
+            wasPlayingBefore,
+            source
+          });
+          videoRef.current.src = targetSequence.url;
+          
+          // 如果需要切换视频源，等待视频加载完成再设置时间和播放状态
+          const handleVideoLoaded = () => {
+            if (videoRef.current) {
+              videoRef.current.currentTime = videoTime;
+              
+              // 如果之前是播放状态，恢复播放
+              if (wasPlayingBefore) {
+                videoRef.current.play().then(() => {
+                  logger.info('视频切换后恢复播放', {
+                    compositionTime: compositionTime.toFixed(2),
+                    videoTime: videoTime.toFixed(2),
+                    sequenceName: targetSequence.name
+                  });
+                }).catch((playError) => {
+                  logger.error('视频切换后恢复播放失败', playError, {
+                    compositionTime: compositionTime.toFixed(2),
+                    sequenceName: targetSequence.name
+                  });
+                });
+              }
+            }
+          };
+
+          // 监听视频加载完成事件
+          videoRef.current.addEventListener('loadeddata', handleVideoLoaded, { once: true });
+          
+          // 设置超时清理，防止事件监听器泄漏
+          setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.removeEventListener('loadeddata', handleVideoLoaded);
+            }
+          }, 5000);
+          
+        } else {
+          // 如果不需要切换视频，直接设置时间
+          videoRef.current.currentTime = videoTime;
+          
+          // 如果之前是播放状态且当前已暂停，恢复播放
+          if (wasPlayingBefore && videoRef.current.paused) {
+            videoRef.current.play().then(() => {
+              logger.info('视频跳转后恢复播放', {
+                compositionTime: compositionTime.toFixed(2),
+                videoTime: videoTime.toFixed(2),
+                sequenceName: targetSequence.name
+              });
+            }).catch((playError) => {
+              logger.error('视频跳转后恢复播放失败', playError, {
+                compositionTime: compositionTime.toFixed(2),
+                sequenceName: targetSequence.name
+              });
+            });
+          }
+        }
+        
+        setCompositionCurrentTime(compositionTime);
+        
+        // 同步音频时间跳转，保持之前的播放状态
+        await syncAudioPlayback(compositionTime, wasPlayingBefore);
+        
+        logger.info('组合播放跳转完成', {
+          compositionTime: compositionTime.toFixed(2),
+          videoTime: videoTime.toFixed(2),
+          sequenceName: targetSequence.name,
+          videoSwitched: needsSwitchVideo,
+          wasPlayingBefore,
+          shouldContinuePlaying: wasPlayingBefore,
+          source
+        });
+      } catch (error) {
+        logger.error('组合播放跳转失败', error as Error, {
+          compositionTime: compositionTime.toFixed(2),
+          targetSequenceName: targetSequence.name,
+          source
+        });
+      }
+    }
+
+    // 通知外部组件时间变化
+    if (onCompositionSeek && source === 'player') {
+      onCompositionSeek(compositionTime);
+    }
+  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, syncAudioPlayback, onCompositionSeek, logger]);
+
+  // 新增：通过ref暴露handleCompositionSeek方法给父组件
+  useImperativeHandle(ref, () => ({
+    handleCompositionSeek
+  }), [handleCompositionSeek]);
+
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
     if (playbackMode === 'composition' && compositionPlayback) {
-      logger.userAction('组合播放时间跳转', 'compositionTimeSeek', {
-        previousTime: compositionCurrentTime,
-        newTime,
-        totalDuration: compositionPlayback.totalCompositionDuration
-      });
-
       // 计算应该跳转到哪个视频序列
       let targetSequenceIndex = 0;
       let accumulatedTime = 0;
@@ -1052,17 +1176,10 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       }
 
       const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
-      if (targetSequence && videoRef.current) {
-        videoRef.current.src = targetSequence.url;
-        videoRef.current.currentTime = targetVideoTime;
-        setCompositionCurrentTime(newTime);
-        
-        // 新增：同步音频时间跳转
-        await syncAudioPlayback(newTime, isCompositionPlaying);
-      }
-
-      if (onCompositionSeek) {
-        onCompositionSeek(newTime);
+      
+      // 使用新的组合跳转函数
+      if (targetSequence) {
+        await handleCompositionSeek(newTime, targetSequence, targetVideoTime, 'player');
       }
     } else {
       // 原有的预览模式时间跳转
@@ -1078,7 +1195,7 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
         });
       }
     }
-  }, [playbackMode, compositionPlayback, compositionCurrentTime, isCompositionPlaying, isPlaying, onCompositionSeek, handleTimeSeek, syncAudioPlayback, logger]);
+  }, [playbackMode, compositionPlayback, handleCompositionSeek, handleTimeSeek, syncAudioPlayback, isPlaying, logger]);
 
   // 获取当前显示的时长和当前时间
   const getCurrentTime = () => {
@@ -1508,6 +1625,9 @@ const VideoPlayerPanel: React.FC<VideoPlayerPanelProps> = ({
       />
     </div>
   );
-};
+});
+
+// 设置组件显示名称，便于调试
+VideoPlayerPanel.displayName = 'VideoPlayerPanel';
 
 export default VideoPlayerPanel; 

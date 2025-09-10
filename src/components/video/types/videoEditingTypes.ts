@@ -56,6 +56,9 @@ export interface CompositionPlayback {
   compositionCurrentTime: number;
 }
 
+// 新增：视频播放器跳转回调类型
+export type VideoSeekCallback = (time: number, targetSequence: VideoSequenceItem, videoTime: number) => Promise<void>;
+
 export interface UseTimelineCompositionReturn {
   compositionPlayback: CompositionPlayback;
   handleTimelineStateChange: (timelineState: TimelineState) => void;
