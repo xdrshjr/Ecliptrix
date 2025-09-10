@@ -14,6 +14,7 @@ from . import file_upload_router
 from . import timeline_export_router
 from . import timeline_import_router
 from . import chat_router
+from . import ai_mixed_editing_router
 
 __all__ = [
     "api_router",
@@ -27,5 +28,6 @@ __all__ = [
     "file_upload_router",
     "timeline_export_router",
     "timeline_import_router",
-    "chat_router"
+    "chat_router",
+    "ai_mixed_editing_router"
 ] 

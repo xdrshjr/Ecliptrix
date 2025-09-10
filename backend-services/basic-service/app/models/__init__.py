@@ -125,6 +125,13 @@ from .chat_models import (
     VideoChatErrorResponse
 )
 
+from .ai_mixed_editing_models import (
+    MaterialItemModel,
+    AIMixedEditingRequest,
+    AIMixedEditingResponse,
+    AIMixedEditingErrorResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -223,5 +230,11 @@ __all__ = [
     
     # Chat Models
     "VideoChatRequest",
-    "VideoChatErrorResponse"
+    "VideoChatErrorResponse",
+    
+    # AI Mixed Editing Models
+    "MaterialItemModel",
+    "AIMixedEditingRequest",
+    "AIMixedEditingResponse",
+    "AIMixedEditingErrorResponse"
 ] 

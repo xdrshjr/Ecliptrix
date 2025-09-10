@@ -26,6 +26,7 @@ import {
 } from './hooks';
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import {
   DocumentPanel,
   AIAssistantPanel,
@@ -58,6 +59,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 }) => {
   // 获取国际化上下文
   const { locale } = useLocale();
+  
+  // 获取通知上下文
+  const { showSuccess, showError } = useNotification();
   
   // Mobile device detection and warning state
   const [showMobileWarning, setShowMobileWarning] = useState(false);
@@ -839,6 +843,102 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [taskId, materialManagement.materials]);
 
+  // 新增：AI混剪功能
+  const handleAIMixedEditing = useCallback(async () => {
+    console.log(`[VideoEditingInterface] 开始AI混剪`, {
+      taskId,
+      totalMaterialsCount: materialManagement.materials.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // 检查是否有素材
+    if (materialManagement.materials.length === 0) {
+      console.warn(`[VideoEditingInterface] 无素材可用于AI混剪`, { taskId });
+      showError('无素材可用于AI混剪，请先添加视频、音频或图片素材', 5000);
+      return;
+    }
+
+    // 显示开始处理的提示
+    showSuccess('开始AI混剪，正在分析素材并生成剪辑方案...', 3000);
+
+    try {
+      console.log(`[VideoEditingInterface] 收集素材信息`, {
+        materials: materialManagement.materials.map(m => ({
+          id: m.id,
+          name: m.name,
+          type: m.type,
+          duration: m.duration
+        }))
+      });
+
+      // 调用AI混剪API
+      const response = await fetch('/api/ai-mixed-editing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: taskId,
+          materials: materialManagement.materials
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log(`[VideoEditingInterface] AI混剪API调用成功`, {
+        taskId,
+        hasTimelineData: !!result.timelineData
+      });
+
+      // 使用时间轴导入功能填充时间轴
+      if (result.timelineData) {
+        console.log(`[VideoEditingInterface] 开始导入AI生成的时间轴数据`, { taskId });
+        
+        const importResponse = await fetch('/api/timeline-import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            taskId: taskId,
+            fileContent: JSON.stringify(result.timelineData),
+            fileName: `ai-mixed-editing-${Date.now()}.json`,
+            mergeMode: 'replace',
+            preserveIds: false
+          }),
+        });
+
+        if (!importResponse.ok) {
+          const importErrorData = await importResponse.json();
+          throw new Error(importErrorData.error || `Timeline import failed: ${importResponse.status}`);
+        }
+
+        const importResult = await importResponse.json();
+        console.log(`[VideoEditingInterface] AI混剪时间轴导入成功`, {
+          taskId,
+          success: importResult.success
+        });
+
+        // 显示成功提示
+        console.log(`[VideoEditingInterface] AI混剪完成`, { taskId });
+        showSuccess('AI混剪已完成！时间轴已自动填充，请查看生成的剪辑方案', 8000);
+      } else {
+        throw new Error('AI混剪返回的数据中缺少时间轴信息');
+      }
+
+    } catch (error) {
+      console.error(`[VideoEditingInterface] AI混剪失败`, {
+        taskId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      showError(`AI混剪失败: ${error instanceof Error ? error.message : String(error)}`, 8000);
+    }
+  }, [taskId, materialManagement.materials, showSuccess, showError]);
+
   // 清除添加素材请求状态，避免重复处理
   React.useEffect(() => {
     if (materialsToAddToTimeline) {
@@ -906,6 +1006,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onSearchAudios={audioSearch.openSearchModal}
               onSearchImages={imageSearch.openSearchModal}
               onAICreation={aiCreation.openModal}
+              onAIMixedEditing={handleAIMixedEditing}
               onAIImageGeneration={aiImageGeneration.openModal}
               onAIVideoGeneration={aiVideoGeneration.openModal}
               onDigitalHumanGeneration={digitalHumanGeneration.openModal}

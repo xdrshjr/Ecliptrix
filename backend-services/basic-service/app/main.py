@@ -298,6 +298,10 @@ app.include_router(timeline_import_router.router, prefix="/api")
 from app.routers import chat_router
 app.include_router(chat_router.router, prefix="/api")
 
+# Import and include AI Mixed Editing router
+from app.routers import ai_mixed_editing_router
+app.include_router(ai_mixed_editing_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)
