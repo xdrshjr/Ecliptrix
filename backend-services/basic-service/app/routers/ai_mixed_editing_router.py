@@ -33,19 +33,14 @@ async def ai_mixed_editing(request: AIMixedEditingRequest):
         HTTPException: If request validation fails or service error occurs
     """
     try:
-        # Debug logging: print request body if DEBUG=true
+        # Debug logging: print request body if DEBUG=true (FULL CONTENT - NO TRUNCATION)
         if settings.debug:
             print(f"\n=== DEBUG: AI Mixed Editing Router Request ===")
             print(f"Task ID: {request.taskId}")
             print(f"Materials count: {len(request.materials) if request.materials else 0}")
-            # Create a copy for printing (truncate materials for readability)
-            debug_request = request.model_dump()
-            if debug_request.get("materials") and len(debug_request["materials"]) > 2:
-                debug_request["materials"] = debug_request["materials"][:2] + [
-                    f"... [TRUNCATED - Total materials: {len(request.materials)}]"
-                ]
             print(f"Request Body:")
-            print(json.dumps(debug_request, indent=2, ensure_ascii=False))
+            # Print full request body without any truncation as required
+            print(json.dumps(request.model_dump(), indent=2, ensure_ascii=False))
             print("=" * 50)
         
         # Validate request parameters

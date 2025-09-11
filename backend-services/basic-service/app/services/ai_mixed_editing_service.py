@@ -8,8 +8,9 @@ import httpx
 from typing import Dict, Any, List
 from app.config import settings
 from app.logger import get_logger
-from app.models.ai_mixed_editing_models import MaterialItemModel, SimplifiedTimelineModel
+from app.models.ai_mixed_editing_models import MaterialItemModel, SimplifiedTimelineModel, VideoAnalysisMetadata, VideoFrameAnalysis
 from app.services.timeline_parser_service import TimelineParserService
+from app.services.video_analysis_storage_service import video_analysis_storage
 
 logger = get_logger(__name__)
 
@@ -82,6 +83,76 @@ class AIMixedEditingService:
         }
         return json.dumps(example, indent=2, ensure_ascii=False)
     
+    def _truncate_frame_analysis(self, analysis: str, max_length: int = 200) -> str:
+        """
+        Truncate frame analysis description to specified maximum length.
+        
+        Args:
+            analysis: Original frame analysis text
+            max_length: Maximum allowed length (default 200 characters)
+            
+        Returns:
+            str: Truncated analysis text
+        """
+        if len(analysis) <= max_length:
+            return analysis
+        
+        # Truncate and add ellipsis
+        return analysis[:max_length-3] + "..."
+    
+    def _extract_video_analysis_data(self, material: MaterialItemModel) -> VideoAnalysisMetadata:
+        """
+        Extract video analysis data from material metadata or storage service.
+        
+        This method first checks if video analysis data is provided in the material metadata.
+        If not found, it checks the video analysis storage service for previously analyzed data.
+        
+        Args:
+            material: Material item that may contain video analysis data
+            
+        Returns:
+            VideoAnalysisMetadata: Video analysis data if available, None otherwise
+        """
+        # First, try to get analysis data from material metadata (highest priority)
+        if material.metadata and 'video_analysis' in material.metadata:
+            try:
+                analysis_data = material.metadata['video_analysis']
+                logger.info(f"Found video analysis data in material metadata for {material.id}")
+                
+                # Log the structure of the analysis data for debugging
+                if isinstance(analysis_data, dict):
+                    frame_count = len(analysis_data.get('frame_analyses', []))
+                    logger.info(f"Material {material.id} contains {frame_count} frame analyses")
+                    
+                    # Log sample frame data for debugging
+                    if frame_count > 0:
+                        sample_frame = analysis_data['frame_analyses'][0]
+                        logger.debug(f"Sample frame data for {material.id}: frame_number={sample_frame.get('frame_number')}, timestamp={sample_frame.get('timestamp')}, analysis_length={len(sample_frame.get('analysis', ''))}")
+                
+                # Parse the analysis data
+                video_analysis = VideoAnalysisMetadata(**analysis_data)
+                logger.info(f"Successfully parsed video analysis data for material {material.id}: {len(video_analysis.frame_analyses)} frames")
+                return video_analysis
+                
+            except (ValueError, TypeError) as e:
+                logger.error(f"Failed to parse video analysis data from metadata for material {material.id}: {str(e)}")
+                logger.error(f"Analysis data structure: {analysis_data}")
+        
+        # If not in metadata, try to retrieve from storage service using video URL
+        if material.type == 'video' and material.url:
+            try:
+                stored_analysis = video_analysis_storage.get_analysis_result(material.url)
+                if stored_analysis:
+                    logger.info(f"Retrieved stored video analysis data for material {material.id} from storage service: {len(stored_analysis.frame_analyses)} frames")
+                    return stored_analysis
+                else:
+                    logger.debug(f"No stored video analysis data found for material {material.id} with URL: {material.url}")
+            except Exception as e:
+                logger.error(f"Error retrieving stored video analysis for material {material.id}: {str(e)}")
+        
+        logger.debug(f"No video analysis data found for material {material.id}")
+        return None
+    
     def _format_materials_for_prompt(self, materials: List[MaterialItemModel]) -> str:
         """
         Format materials information for LLM prompt with HTML tags.
@@ -111,6 +182,24 @@ class AIMixedEditingService:
                     materials_info.append(f"  描述: {video.description}")
                 if video.tags:
                     materials_info.append(f"  标签: {', '.join(video.tags)}")
+                
+                # Include video analysis data if available
+                video_analysis = self._extract_video_analysis_data(video)
+                if video_analysis:
+                    materials_info.append(f"  视频解析数据:")
+                    materials_info.append(f"    - 总帧数: {video_analysis.total_frames_extracted}")
+                    materials_info.append(f"    - 视频时长: {video_analysis.video_duration:.2f}秒")
+                    materials_info.append(f"    - 帧解析内容:")
+                    
+                    for frame_analysis in video_analysis.frame_analyses:
+                        # Truncate analysis to 200 characters as required
+                        truncated_analysis = self._truncate_frame_analysis(frame_analysis.analysis)
+                        materials_info.append(f"      * 帧{frame_analysis.frame_number} ({frame_analysis.timestamp:.2f}s): {truncated_analysis}")
+                    
+                    logger.info(f"Included video analysis data for material {video.id}: {len(video_analysis.frame_analyses)} frames")
+                else:
+                    logger.debug(f"No video analysis data found for material {video.id}")
+                
                 materials_info.append("")
             materials_info.append("</video_materials>")
             materials_info.append("")
@@ -340,6 +429,21 @@ class AIMixedEditingService:
         # Create prompt for simplified JSON
         prompt = self._create_prompt(materials)
         
+        # Debug logging: check if video analysis data is included in prompt
+        if settings.debug:
+            video_materials_with_analysis = [m for m in materials if m.type == 'video' and self._extract_video_analysis_data(m) is not None]
+            if video_materials_with_analysis:
+                print(f"\n=== DEBUG: Video Analysis Data Included in LLM Prompt ===")
+                print(f"Videos with analysis data: {len(video_materials_with_analysis)}")
+                for material in video_materials_with_analysis:
+                    analysis = self._extract_video_analysis_data(material)
+                    if analysis:
+                        print(f"- {material.id} ({material.name}): {len(analysis.frame_analyses)} frames")
+                        for i, frame in enumerate(analysis.frame_analyses[:3]):  # Show first 3 frames
+                            truncated_analysis = self._truncate_frame_analysis(frame.analysis, 100)  # Show first 100 chars for debug
+                            print(f"  Frame {frame.frame_number} ({frame.timestamp:.2f}s): {truncated_analysis}")
+                print("=" * 50)
+        
         # Prepare request data with reduced token requirements
         request_data = {
             "model": self.model,
@@ -353,17 +457,14 @@ class AIMixedEditingService:
         
         logger.info(f"Calling Video Cut LLM API for simplified timeline: {self.api_url}/chat/completions for task: {task_id}")
         
-        # Debug logging: print request body if DEBUG=true
+        # Debug logging: print request body if DEBUG=true (FULL CONTENT - NO TRUNCATION)
         if settings.debug:
             print(f"\n=== DEBUG: LLM API Request for task {task_id} ===")
             print(f"URL: {self.api_url}/chat/completions")
             print(f"Headers: Content-Type: application/json, Authorization: Bearer {self.api_key[:10]}...{self.api_key[-4:]}")
             print(f"Request Body:")
-            # Create a copy of request_data for printing (truncate long content)
-            debug_request = request_data.copy()
-            if len(debug_request["messages"][0]["content"]) > 2000:
-                debug_request["messages"][0]["content"] = debug_request["messages"][0]["content"][:2000] + "... [TRUNCATED]"
-            print(json.dumps(debug_request, indent=2, ensure_ascii=False))
+            # Print full request body without truncation as required
+            print(json.dumps(request_data, indent=2, ensure_ascii=False))
             print("=" * 50)
         
         try:

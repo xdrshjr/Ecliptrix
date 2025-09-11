@@ -6,6 +6,30 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
 
+class VideoFrameAnalysis(BaseModel):
+    """Model for individual video frame analysis data."""
+    
+    frame_number: int = Field(..., description="Frame number in the video")
+    timestamp: float = Field(..., description="Timestamp of the frame in seconds")
+    analysis: str = Field(..., description="LLM analysis description of the frame")
+    frame_path: Optional[str] = Field(None, description="Path to the extracted frame image (optional)")
+    
+    model_config = {"extra": "ignore"}  # Allow extra fields from frontend
+
+
+class VideoAnalysisMetadata(BaseModel):
+    """Model for video analysis metadata stored in MaterialItemModel."""
+    
+    video_url: str = Field(..., description="URL of the analyzed video")
+    total_frames_extracted: int = Field(..., description="Total number of frames extracted")
+    video_duration: float = Field(..., description="Duration of the video in seconds")
+    frame_analyses: List[VideoFrameAnalysis] = Field(..., description="List of frame analysis results")
+    processing_time: float = Field(..., description="Time taken to process the video in seconds")
+    analysis_timestamp: str = Field(..., description="Timestamp when analysis was performed")
+    
+    model_config = {"extra": "ignore"}  # Allow extra fields from frontend
+
+
 class MaterialItemModel(BaseModel):
     """Material item model for AI mixed editing."""
     

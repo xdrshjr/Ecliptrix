@@ -12,6 +12,12 @@ AI混剪接口，基于提供的素材自动生成视频剪辑方案。通过优
 - 减少了Token消耗，降低API调用成本
 - 提高了JSON解析成功率和一致性
 
+**视频解析集成**: 
+- 自动检测视频素材是否已通过 `/api/video/analyze` 接口解析
+- 将视频帧分析数据传递给LLM，提升剪辑智能度
+- 帧描述自动截断至200字符，优化LLM处理效率
+- 支持存储和检索历史解析数据
+
 ## 端点
 `POST /api/ai-mixed-editing` (通过Next.js代理到Python后端)
 
@@ -461,6 +467,54 @@ async function performAIMixedEditing(taskId: string, materials: MaterialItem[]) 
 3. **结果验证**: 建议在使用生成的时间轴前进行基本验证
 4. **错误处理**: 实现完善的错误处理和用户反馈机制
 
+## 视频解析数据集成
+
+### 概述
+AI混剪接口现已集成视频解析功能。当视频素材曾经通过 `/api/video/analyze` 接口解析过时，系统会自动包含视频的帧分析数据，提升LLM的剪辑决策智能度。
+
+### 视频解析数据来源
+1. **材料元数据**: 视频解析数据可以直接包含在 `materials[].metadata.video_analysis` 字段中
+2. **自动检索**: 系统会自动检查是否存在该视频URL的历史解析数据
+3. **数据优先级**: 材料元数据中的解析数据优先于历史存储的数据
+
+### 视频解析数据结构
+当视频素材包含解析数据时，`metadata.video_analysis` 对象结构如下：
+
+```json
+{
+  "video_analysis": {
+    "video_url": "https://example.com/video.mp4",
+    "total_frames_extracted": 12,
+    "video_duration": 60.0,
+    "frame_analyses": [
+      {
+        "frame_number": 0,
+        "timestamp": 0.0,
+        "analysis": "这张图片展示了一只橙色的长毛猫在沙发上休息的场景。以下是对图片内容的详细描述：\n\n1"
+      },
+      {
+        "frame_number": 1,
+        "timestamp": 5.0,
+        "analysis": "画面显示猫咪正在伸懒腰，阳光透过窗户洒在它的毛发上，营造出温馨的家居氛围..."
+      }
+    ],
+    "processing_time": 25.3,
+    "analysis_timestamp": "2025-09-11T08:30:00.000Z"
+  }
+}
+```
+
+### 帧分析处理规则
+- **描述截断**: 每个帧的分析描述自动截断至200字符，超出部分用"..."替代
+- **时间信息**: 保留完整的帧序号（frame_number）和时间戳（timestamp）信息
+- **智能剪辑**: LLM将基于帧分析内容进行更精准的视频片段选择和剪辑点确定
+
+### 日志记录增强
+- **视频解析数据检测**: 记录找到的视频解析数据数量和帧数
+- **完整请求体**: DEBUG模式下打印完整请求体，不进行截断
+- **处理统计**: 记录包含解析数据的视频素材统计信息
+
 ## 相关接口
 - [时间轴导入API](./timeline_import_api.md) - 用于将生成的JSON填充到时间轴
 - [视频编辑聊天API](./video-editing-chat.md) - 用于视频编辑相关的AI对话
+- [视频解析API](./video_analysis_api.md) - 用于分析视频内容获取帧描述数据

@@ -22,6 +22,7 @@ from app.models import (
     ImageToVideoErrorResponse
 )
 from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
+from app.services.video_analysis_storage_service import video_analysis_storage
 from app.logger import get_logger
 from typing import Union
 
@@ -562,6 +563,18 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
                 "concurrent_threads": concurrent_threads
             })
         else:
+            # Store analysis result for future use in AI mixed editing
+            try:
+                storage_success = video_analysis_storage.store_analysis_result(result)
+                if storage_success:
+                    logger.info(f"Video analysis result stored successfully for URL: {result.video_url}")
+                else:
+                    logger.warning(f"Failed to store video analysis result for URL: {result.video_url}")
+            except Exception as e:
+                logger.error(f"Error storing video analysis result: {str(e)}", extra={
+                    "video_url": result.video_url
+                }, exc_info=True)
+            
             # Log performance improvement information
             estimated_sequential_time = result.total_frames_extracted * 6  # Assuming ~6s per frame sequentially
             actual_concurrent_time = result.processing_time
