@@ -15,7 +15,7 @@
 
 /* 左侧区域 - 包含 Project Documentation 和 Text Script */
 .video-editing-left-section {
-  width: 50%; /* 占上方区域的50%宽度 */
+  width: 35%; /* 占上方区域的50%宽度 */
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
