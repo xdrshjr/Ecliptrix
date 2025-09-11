@@ -4,10 +4,67 @@ import { useState, useCallback } from 'react';
 import { Task, Tab, TaskType, AppState } from '@/types';
 
 export const useTasks = () => {
-  const [appState, setAppState] = useState<AppState>({
-    tasks: [],
-    tabs: [],
-    activeTabId: null,
+  // 创建默认任务和标签页
+  const createDefaultTasks = () => {
+    const now = new Date();
+    
+    // 创建默认的 AI Chat 任务
+    const chatTask: Task = {
+      id: 'default-chat-task',
+      title: 'AI Chat 1',
+      type: 'chat',
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+      content: null,
+    };
+
+    // 创建默认的 Video Editing 任务
+    const videoTask: Task = {
+      id: 'default-video-task',
+      title: 'Video Editing 1',
+      type: 'video',
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+      content: null,
+    };
+
+    // 创建对应的标签页，但都不激活
+    const chatTab: Tab = {
+      id: 'default-chat-tab',
+      taskId: 'default-chat-task',
+      title: 'AI Chat 1',
+      isActive: false, // 不激活任何任务
+      type: 'chat',
+    };
+
+    const videoTab: Tab = {
+      id: 'default-video-tab',
+      taskId: 'default-video-task',
+      title: 'Video Editing 1',
+      isActive: false, // 不激活任何任务
+      type: 'video',
+    };
+
+    return {
+      tasks: [chatTask, videoTask],
+      tabs: [chatTab, videoTab],
+      activeTabId: null, // 不激活任何标签页，显示主界面
+    };
+  };
+
+  const [appState, setAppState] = useState<AppState>(() => {
+    const defaultState = createDefaultTasks();
+    console.log('[useTasks] Initialized with default tasks (showing main interface):', {
+      tasksCount: defaultState.tasks.length,
+      tabsCount: defaultState.tabs.length,
+      activeTabId: defaultState.activeTabId,
+      tasks: defaultState.tasks.map(t => ({ id: t.id, title: t.title, type: t.type })),
+      showingMainInterface: defaultState.activeTabId === null,
+      timestamp: new Date().toISOString()
+    });
+    return defaultState;
   });
 
   const createTask = useCallback((type: TaskType) => {
@@ -22,9 +79,13 @@ export const useTasks = () => {
       chat: 'AI Chat',
     };
 
+    // 计算同类型任务的数量，包括默认任务
+    const sameTypeTasksCount = appState.tasks.filter(t => t.type === type).length;
+    const taskNumber = sameTypeTasksCount + 1;
+
     const newTask: Task = {
       id: taskId,
-      title: `${taskTypeNames[type]} ${appState.tasks.filter(t => t.type === type).length + 1}`,
+      title: `${taskTypeNames[type]} ${taskNumber}`,
       type,
       status: 'draft',
       createdAt: now,

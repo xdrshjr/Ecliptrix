@@ -1,0 +1,309 @@
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { Tab, TaskType } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
+import { shouldRestrictVideoEditing, getDeviceType } from '@/lib/utils/deviceDetection';
+import { MobileWarningDialog } from '@/components/ui';
+
+interface VerticalTaskbarProps {
+  tabs: Tab[];
+  activeTabId: string | null;
+  onCreateTask: (type: TaskType) => void;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+}
+
+const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
+  tabs,
+  onCreateTask,
+  onSelectTab,
+  onCloseTab,
+}) => {
+  const { t } = useLocale();
+  const [showTaskMenu, setShowTaskMenu] = useState(false);
+  const [showMobileWarning, setShowMobileWarning] = useState(false);
+  const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const taskbarRef = useRef<HTMLDivElement>(null);
+  const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getTaskIcon = (type: TaskType) => {
+    switch (type) {
+      case 'content':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        );
+      case 'video':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        );
+      case 'brainstorm':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        );
+      case 'chat':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        );
+    }
+  };
+
+  const getTaskLabel = (type: TaskType) => {
+    switch (type) {
+      case 'content':
+        return t.tasks.contentCreation;
+      case 'video':
+        return t.tasks.videoEditing;
+      case 'brainstorm':
+        return t.tasks.brainstorming;
+      case 'chat':
+        return t.tasks.aiChat;
+    }
+  };
+
+  const handleCreateTask = (type: TaskType) => {
+    console.log('[VerticalTaskbar] Task creation initiated:', {
+      taskType: type,
+      timestamp: new Date().toISOString(),
+      deviceType: getDeviceType()
+    });
+
+    // Check for mobile device restriction on video editing tasks
+    if (type === 'video' && shouldRestrictVideoEditing()) {
+      const deviceType = getDeviceType();
+      setCurrentDeviceType(deviceType);
+      setShowMobileWarning(true);
+      setShowTaskMenu(false);
+      
+      console.log('[VerticalTaskbar] Video editing task creation blocked on mobile device:', {
+        taskType: type,
+        deviceType,
+        timestamp: new Date().toISOString(),
+        userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server-side',
+        restriction: 'Video editing not supported on mobile/tablet devices'
+      });
+      
+      return;
+    }
+
+    // Proceed with task creation for non-restricted cases
+    try {
+      onCreateTask(type);
+      setShowTaskMenu(false);
+      
+      console.log('[VerticalTaskbar] Task creation successful:', {
+        taskType: type,
+        deviceType: getDeviceType(),
+        timestamp: new Date().toISOString(),
+        restriction: 'none'
+      });
+    } catch (error) {
+      console.error('[VerticalTaskbar] Task creation failed:', {
+        taskType: type,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  const handleCloseMobileWarning = () => {
+    setShowMobileWarning(false);
+    console.log('[VerticalTaskbar] Mobile warning dialog closed:', {
+      deviceType: currentDeviceType,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  const handleTaskbarClick = () => {
+    // 清除任何待执行的折叠操作
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+    
+    setIsExpanded(!isExpanded);
+    console.log('[VerticalTaskbar] Taskbar clicked, toggling expansion:', !isExpanded);
+  };
+
+  const handleMouseEnter = () => {
+    // 鼠标进入时清除折叠定时器
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+    console.log('[VerticalTaskbar] Mouse entered, canceling auto-collapse');
+  };
+
+  const handleMouseLeave = () => {
+    // 只有在展开状态下才设置自动折叠
+    if (isExpanded) {
+      collapseTimeoutRef.current = setTimeout(() => {
+        setIsExpanded(false);
+        setShowTaskMenu(false); // 同时关闭任务菜单
+        console.log('[VerticalTaskbar] Mouse left, auto-collapsing taskbar');
+        collapseTimeoutRef.current = null;
+      }, 300); // 300ms 延迟，给用户足够时间操作
+    }
+  };
+
+  // 点击外部区域时收缩任务栏，并清理定时器
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (taskbarRef.current && !taskbarRef.current.contains(event.target as Node)) {
+        // 清除自动折叠定时器
+        if (collapseTimeoutRef.current) {
+          clearTimeout(collapseTimeoutRef.current);
+          collapseTimeoutRef.current = null;
+        }
+        
+        setIsExpanded(false);
+        setShowTaskMenu(false);
+        console.log('[VerticalTaskbar] Clicked outside, collapsing taskbar');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      // 清理定时器
+      if (collapseTimeoutRef.current) {
+        clearTimeout(collapseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleTabClose = (e: React.MouseEvent, tabId: string) => {
+    e.stopPropagation();
+    onCloseTab(tabId);
+    console.log('[VerticalTaskbar] Tab closed:', {
+      tabId,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  return (
+    <>
+      <div 
+        ref={taskbarRef}
+        className={`vertical-taskbar ${isExpanded ? 'expanded' : 'collapsed'}`}
+        onClick={handleTaskbarClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+
+        {/* New Task Section */}
+        <div className="taskbar-section">
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // 如果任务栏未展开，先展开任务栏
+                if (!isExpanded) {
+                  setIsExpanded(true);
+                  console.log('[VerticalTaskbar] New task button clicked, expanding taskbar first');
+                }
+                // 切换菜单显示状态
+                setShowTaskMenu(!showTaskMenu);
+              }}
+              className={`taskbar-button new-task-button ${showTaskMenu ? 'active' : ''}`}
+              title={!isExpanded ? t.common.newTask : undefined}
+            >
+              <div className="button-icon">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <span className={`button-text ${isExpanded ? 'visible' : 'hidden'}`}>
+                {t.common.newTask}
+              </span>
+            </button>
+
+            {/* Task Type Menu */}
+            {showTaskMenu && (
+              <div className={`task-menu ${isExpanded ? 'expanded-menu' : 'collapsed-menu'}`}>
+                <div className="menu-content">
+                  {(['chat', 'video', 'content', 'brainstorm'] as TaskType[]).map((taskType) => (
+                    <button
+                      key={taskType}
+                      onClick={() => handleCreateTask(taskType)}
+                      className="menu-item"
+                    >
+                      <div className="menu-item-icon">
+                        {getTaskIcon(taskType)}
+                      </div>
+                      <span className="menu-item-text">{getTaskLabel(taskType)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs Section */}
+        <div className="taskbar-section tabs-section">
+          <div className="section-divider"></div>
+          <div className="tabs-container">
+            {tabs.map((tab) => (
+              <div
+                key={tab.id}
+                className={`taskbar-tab ${tab.isActive ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // 如果任务栏未展开，先展开任务栏
+                  if (!isExpanded) {
+                    setIsExpanded(true);
+                    console.log('[VerticalTaskbar] Tab clicked, expanding taskbar first');
+                  }
+                  onSelectTab(tab.id);
+                }}
+                title={!isExpanded ? tab.title : undefined}
+              >
+                <div className="tab-icon">
+                  {getTaskIcon(tab.type)}
+                </div>
+                <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
+                  <span className="tab-title">{tab.title}</span>
+                  <button
+                    onClick={(e) => handleTabClose(e, tab.id)}
+                    className="tab-close"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Click outside to close menu */}
+        {showTaskMenu && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowTaskMenu(false)}
+          />
+        )}
+      </div>
+
+      {/* Mobile Warning Dialog */}
+      <MobileWarningDialog
+        isOpen={showMobileWarning}
+        onClose={handleCloseMobileWarning}
+        deviceType={currentDeviceType}
+      />
+    </>
+  );
+};
+
+export default VerticalTaskbar;
