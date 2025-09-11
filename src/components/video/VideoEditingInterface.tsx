@@ -1223,15 +1223,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 handleMarkdownChange={documentState.handleMarkdownChange}
                 taskId={taskId}
                 onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
+                onPolishClick={handlePolishClick}
+                onGenerateScriptClick={handleScriptGenerationClick}
+                isGeneratingScript={scriptGeneration.isGeneratingScript}
               />
               
               <AIAssistantPanel
                 {...aiAssistant}
                 taskId={taskId}
-                onPolishClick={handlePolishClick}
-                onGenerateScriptClick={handleScriptGenerationClick}
                 onClearContent={documentState.clearContent}
-                isGeneratingScript={scriptGeneration.isGeneratingScript}
               />
             </div>
 
