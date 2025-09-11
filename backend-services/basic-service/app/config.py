@@ -105,6 +105,11 @@ class Settings(BaseModel):
     llm_api_url: str = Field(..., description="LLM API base URL")
     llm_model: str = Field(default="deepseek-v3", description="LLM model name")
     
+    # Video Cut LLM Configuration (for AI mixed editing)
+    video_cut_llm_api_key: str = Field(default="", description="Video Cut LLM API key for AI mixed editing")
+    video_cut_llm_api_url: str = Field(default="", description="Video Cut LLM API base URL for AI mixed editing")
+    video_cut_llm_model: str = Field(default="claude-sonnet-4-20250514", description="Video Cut LLM model name")
+    
     # VL LLM Configuration (for video analysis)
     vl_llm_api_key: str = Field(default="", description="VL LLM API key for video analysis")
     vl_llm_api_url: str = Field(default="", description="VL LLM API base URL for video analysis")
@@ -216,6 +221,9 @@ def get_settings() -> Settings:
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
         llm_model=os.getenv("LLM_MODEL", "deepseek-v3"),
+        video_cut_llm_api_key=os.getenv("VIDEO_CUT_LLM_API_KEY", ""),
+        video_cut_llm_api_url=os.getenv("VIDEO_CUT_LLM_API_URL", ""),
+        video_cut_llm_model=os.getenv("VIDEO_CUT_LLM_MODEL", "claude-sonnet-4-20250514"),
         vl_llm_api_key=os.getenv("VL_LLM_API_KEY", ""),
         vl_llm_api_url=os.getenv("VL_LLM_API_URL", ""),
         vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),

@@ -171,7 +171,7 @@ Content-Type: application/json
 ```json
 {
   "error": "Failed to generate mixed editing timeline",
-  "details": "LLM API not responding",
+  "details": "Video Cut LLM API not responding",
   "taskId": "task_123456"
 }
 ```
@@ -182,8 +182,8 @@ Content-Type: application/json
 | 状态码 | 说明 | 常见原因 |
 |-------|------|---------|
 | 400 | 请求参数错误 | 缺少必需参数、素材列表为空 |
-| 500 | 内部服务器错误 | LLM API配置错误、服务不可用 |
-| 503 | 服务暂时不可用 | LLM服务繁忙或超时 |
+| 500 | 内部服务器错误 | Video Cut LLM API配置错误、服务不可用 |
+| 503 | 服务暂时不可用 | Video Cut LLM服务繁忙或超时 |
 
 ## 技术实现
 
@@ -191,16 +191,16 @@ Content-Type: application/json
 1. **前端请求** → Next.js API路由 (`/api/ai-mixed-editing`)
 2. **代理转发** → Python FastAPI后端 (`/api/ai-mixed-editing`)
 3. **素材分析** → Python后端分析素材信息并格式化
-4. **LLM调用** → 调用配置的LLM API生成时间轴JSON
+4. **Video Cut LLM调用** → 调用配置的Video Cut LLM API生成时间轴JSON
 5. **JSON解析** → 验证和解析LLM返回的JSON数据
 6. **响应返回** → 通过代理层返回到前端
 
 ### 配置要求
 Python后端需要配置以下环境变量：
 ```env
-LLM_API_KEY=***REMOVED***
-LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_MODEL=qwen-max-latest
+VIDEO_CUT_LLM_API_KEY=***REMOVED***
+VIDEO_CUT_LLM_API_URL=https://club.claudecode.site
+VIDEO_CUT_LLM_MODEL=claude-sonnet-4-20250514
 ```
 
 Next.js需要配置后端服务地址：

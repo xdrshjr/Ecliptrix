@@ -1,6 +1,6 @@
 """
 AI Mixed Editing service for automatic video editing.
-Handles LLM API calls with structured prompts and JSON parsing.
+Handles Video Cut LLM API calls with structured prompts and JSON parsing.
 """
 
 import json
@@ -14,16 +14,16 @@ logger = get_logger(__name__)
 
 
 class AIMixedEditingService:
-    """Service for handling AI mixed editing with LLM."""
+    """Service for handling AI mixed editing with Video Cut LLM."""
     
     def __init__(self):
         """Initialize the AI mixed editing service."""
-        self.api_key = settings.llm_api_key
-        self.api_url = settings.llm_api_url
-        self.model = settings.llm_model
+        self.api_key = ***REMOVED***
+        self.api_url = settings.video_cut_llm_api_url
+        self.model = settings.video_cut_llm_model
         
         if not self.api_key or not self.api_url:
-            raise ValueError("LLM API key and URL must be configured")
+            raise ValueError("Video Cut LLM API key and URL must be configured")
     
     def _load_example_json(self) -> str:
         """
@@ -242,7 +242,7 @@ class AIMixedEditingService:
             "max_tokens": 4000   # Increased tokens for complete JSON response
         }
         
-        logger.info(f"Calling LLM API: {self.api_url}/chat/completions for task: {task_id}")
+        logger.info(f"Calling Video Cut LLM API: {self.api_url}/chat/completions for task: {task_id}")
         
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:  # Increased timeout for JSON generation
@@ -257,7 +257,7 @@ class AIMixedEditingService:
                 
                 if response.status_code != 200:
                     error_text = response.text
-                    error_msg = f"LLM API error: {response.status_code} - {error_text}"
+                    error_msg = f"Video Cut LLM API error: {response.status_code} - {error_text}"
                     logger.error(error_msg, extra={"task_id": task_id, "status_code": response.status_code})
                     self._log_response(False, task_id, error_msg)
                     raise Exception(error_msg)
@@ -266,7 +266,7 @@ class AIMixedEditingService:
                 response_data = response.json()
                 
                 if "choices" not in response_data or not response_data["choices"]:
-                    error_msg = "Invalid LLM response format: no choices found"
+                    error_msg = "Invalid Video Cut LLM response format: no choices found"
                     logger.error(error_msg, extra={"task_id": task_id})
                     self._log_response(False, task_id, error_msg)
                     raise Exception(error_msg)
