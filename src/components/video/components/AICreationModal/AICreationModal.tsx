@@ -668,7 +668,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
       <div className="bg-white rounded-2xl shadow-2xl w-[90vw] h-[85vh] max-w-6xl flex overflow-hidden">
         {/* Header */}
         <div className="w-full flex flex-col">

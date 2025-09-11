@@ -129,7 +129,7 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full h-[90vh] flex flex-col overflow-hidden">
         {/* 标题栏 */}
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex-shrink-0">

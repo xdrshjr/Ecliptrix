@@ -113,7 +113,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   return (
     <div 
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-200 ${
+      className={`fixed inset-0 z-[200] flex items-center justify-center p-4 transition-all duration-200 ${
         isAnimating ? 'bg-black bg-opacity-50' : 'bg-black bg-opacity-0'
       }`}
       onClick={handleBackdropClick}
