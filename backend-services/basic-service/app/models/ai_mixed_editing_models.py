@@ -48,6 +48,53 @@ class AIMixedEditingResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class VideoSegmentModel(BaseModel):
+    """Video segment model for simplified AI editing response."""
+    
+    material_id: str = Field(..., description="Material ID reference")
+    start_time: float = Field(..., description="Start time in timeline (seconds)")
+    duration: float = Field(..., description="Duration of the segment (seconds)")
+    clip_start: Optional[float] = Field(default=0.0, description="Start time within the source material (seconds)")
+    clip_end: Optional[float] = Field(default=None, description="End time within the source material (seconds)")
+
+    model_config = {"extra": "forbid"}
+
+
+class AudioSegmentModel(BaseModel):
+    """Audio segment model for simplified AI editing response."""
+    
+    material_id: str = Field(..., description="Material ID reference")
+    start_time: float = Field(..., description="Start time in timeline (seconds)")
+    duration: float = Field(..., description="Duration of the segment (seconds)")
+    track: str = Field(default="audio-track-1", description="Target audio track ID")
+    volume: int = Field(default=200, description="Volume level (0-300)")
+    clip_start: Optional[float] = Field(default=0.0, description="Start time within the source material (seconds)")
+    clip_end: Optional[float] = Field(default=None, description="End time within the source material (seconds)")
+
+    model_config = {"extra": "forbid"}
+
+
+class ImageSegmentModel(BaseModel):
+    """Image segment model for simplified AI editing response."""
+    
+    material_id: str = Field(..., description="Material ID reference")
+    start_time: float = Field(..., description="Start time in timeline (seconds)")
+    duration: float = Field(default=5.0, description="Display duration (seconds)")
+
+    model_config = {"extra": "forbid"}
+
+
+class SimplifiedTimelineModel(BaseModel):
+    """Simplified timeline model for AI mixed editing response."""
+    
+    total_duration: float = Field(..., description="Total timeline duration (seconds)")
+    video_segments: List[VideoSegmentModel] = Field(default=[], description="Video segments arrangement")
+    audio_segments: List[AudioSegmentModel] = Field(default=[], description="Audio segments arrangement")
+    image_segments: List[ImageSegmentModel] = Field(default=[], description="Image segments arrangement")
+
+    model_config = {"extra": "forbid"}
+
+
 class AIMixedEditingErrorResponse(BaseModel):
     """Error response model for AI mixed editing."""
     
