@@ -596,9 +596,9 @@ export const translations: Record<string, Translations> = {
     },
          scriptPanel: {
        header: {
-         title: 'Text Script',
-         segmentsCount: '{count} segments',
-         sentencesCount: '{count} sentences',
+         title: 'Script',
+         segmentsCount: '{count} Seg',
+         sentencesCount: '{count} Seq',
          generateScript: 'Generate Script',
          convertAllSpeech: 'Convert All Speech',
          progress: 'Progress',
@@ -671,8 +671,8 @@ export const translations: Record<string, Translations> = {
        },
      },
      documentPanel: {
-       title: 'Project Documentation',
-       creativeBrainstorming: 'Creative Brainstorming',
+       title: 'Documentation',
+       creativeBrainstorming: 'Brainstorming',
        creativeBrainstormingAriaLabel: 'Start creative brainstorming',
        placeholder: 'Start writing your video project documentation...',
      },
@@ -1033,7 +1033,7 @@ export const translations: Record<string, Translations> = {
        },
      },
      documentPanel: {
-       title: '项目文档编辑',
+       title: '文档编辑',
        creativeBrainstorming: '创意构思',
        creativeBrainstormingAriaLabel: '开启创意构思',
        placeholder: '开始编写您的视频项目文档...',
