@@ -238,8 +238,8 @@ class AIMixedEditingService:
                 {"role": "user", "content": prompt}
             ],
             "stream": False,
-            "temperature": 0.3,  # Lower temperature for more consistent JSON output
-            "max_tokens": 4000   # Increased tokens for complete JSON response
+            "temperature": 0.2,  # Lower temperature for more consistent JSON output
+            "max_tokens": 50000   # Increased tokens for complete JSON response
         }
         
         logger.info(f"Calling Video Cut LLM API: {self.api_url}/chat/completions for task: {task_id}")
