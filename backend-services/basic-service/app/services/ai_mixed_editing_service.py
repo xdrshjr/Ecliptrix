@@ -245,7 +245,7 @@ class AIMixedEditingService:
         logger.info(f"Calling Video Cut LLM API: {self.api_url}/chat/completions for task: {task_id}")
         
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:  # Increased timeout for JSON generation
+            async with httpx.AsyncClient(timeout=360.0) as client:  # Increased timeout for JSON generation
                 response = await client.post(
                     f"{self.api_url}/chat/completions",
                     headers={
