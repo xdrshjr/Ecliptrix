@@ -46,7 +46,7 @@ class BatchTTSConfig(BaseModel):
 
 class YoutubeDownloadConfig(BaseModel):
     """YouTube download configuration."""
-    max_concurrent_downloads: int = 3
+    max_concurrent_downloads: int = 20
     download_timeout: int = 300
     max_retries: int = 3
     retry_delay: int = 5

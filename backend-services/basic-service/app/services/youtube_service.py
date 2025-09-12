@@ -6,10 +6,14 @@ import time
 import re
 import unicodedata
 import hashlib
+import asyncio
+import random
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+from concurrent.futures import ThreadPoolExecutor
 import yt_dlp
 from app.logger import get_logger
+from app.config import get_settings
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse, YoutubeVideoInfo,
     YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
@@ -18,6 +22,67 @@ from app.models.youtube_models import (
 )
 
 logger = get_logger(__name__)
+
+# 获取配置并创建全局并发控制信号量
+_settings = get_settings()
+_max_concurrent_downloads = _settings.youtube.download.max_concurrent_downloads
+_download_semaphore = asyncio.Semaphore(_max_concurrent_downloads)
+
+logger.info(f"YouTube服务初始化 - 最大并发下载数: {_max_concurrent_downloads}")
+
+
+async def retry_with_exponential_backoff(
+    func,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    backoff_factor: float = 2.0,
+    jitter: bool = True
+):
+    """
+    带指数退避的重试装饰器
+    
+    Args:
+        func: 要重试的异步函数
+        max_retries: 最大重试次数
+        base_delay: 基础延迟时间（秒）
+        max_delay: 最大延迟时间（秒）
+        backoff_factor: 退避因子
+        jitter: 是否添加随机抖动
+    
+    Returns:
+        函数执行结果
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            logger.info(f"执行尝试 {attempt + 1}/{max_retries + 1}")
+            return await func()
+            
+        except Exception as e:
+            last_exception = e
+            
+            if attempt == max_retries:
+                logger.error(f"所有重试尝试失败，最终错误: {str(e)}", exc_info=True)
+                break
+                
+            # 计算延迟时间
+            delay = min(base_delay * (backoff_factor ** attempt), max_delay)
+            
+            # 添加随机抖动以避免雷群效应
+            if jitter:
+                delay = delay * (0.5 + random.random() * 0.5)
+            
+            logger.warning(
+                f"尝试 {attempt + 1} 失败: {str(e)}, "
+                f"{delay:.2f}秒后重试 (剩余重试次数: {max_retries - attempt})"
+            )
+            
+            await asyncio.sleep(delay)
+    
+    # 如果所有重试都失败，抛出最后一个异常
+    raise last_exception
 
 
 class YouTubeService:
@@ -433,9 +498,42 @@ class YouTubeService:
                 error=error_msg
             )
 
+    async def download_video_async(self, request: YoutubeVideoDownloadRequest) -> YoutubeVideoDownloadResponse:
+        """
+        异步下载YouTube视频（使用线程池执行同步下载）
+        
+        Args:
+            request: 下载请求参数
+            
+        Returns:
+            YoutubeVideoDownloadResponse: 下载结果
+        """
+        logger.info(f"异步下载YouTube视频 - URL: {request.url}")
+        
+        # 使用线程池执行同步的下载操作
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                # 在线程池中执行同步下载
+                download_result = await loop.run_in_executor(
+                    executor, 
+                    self.download_video, 
+                    request
+                )
+                return download_result
+            except Exception as e:
+                error_msg = f"异步视频下载失败: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                return YoutubeVideoDownloadResponse(
+                    success=False,
+                    message="异步视频下载失败",
+                    error=error_msg
+                )
+
     async def download_and_upload_video(self, request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
         """
         下载YouTube视频并上传到Supabase
+        支持并发控制（最多5个并发）和自动重试（最多3次）
         
         Args:
             request: 下载并上传请求参数
@@ -451,7 +549,80 @@ class YouTubeService:
         import subprocess
         import json
         
-        logger.info(f"开始下载并上传YouTube视频 - URL: {request.url}")
+        # 获取信号量状态信息
+        semaphore_available = _download_semaphore._value
+        try:
+            # 安全地获取等待队列长度
+            if hasattr(_download_semaphore, '_waiters') and _download_semaphore._waiters is not None:
+                semaphore_waiters = len(_download_semaphore._waiters)
+            else:
+                semaphore_waiters = 0
+        except (AttributeError, TypeError):
+            semaphore_waiters = 0
+        
+        logger.info(f"YouTube视频下载请求 - URL: {request.url}, "
+                   f"并发控制状态: 可用槽位={semaphore_available}, 等待队列={semaphore_waiters}")
+        
+        # 使用信号量控制并发
+        async with _download_semaphore:
+            current_concurrent = _max_concurrent_downloads - _download_semaphore._value
+            logger.info(f"🚀 获得下载槽位 - URL: {request.url}, "
+                       f"当前并发数: {current_concurrent}/{_max_concurrent_downloads}, "
+                       f"剩余槽位: {_download_semaphore._value}")
+            
+            # 使用重试机制执行下载和上传
+            async def download_and_upload_with_retry():
+                return await self._download_and_upload_internal(request)
+            
+            try:
+                # 从配置读取重试参数
+                max_retries = _settings.youtube.download.max_retries
+                base_delay = float(_settings.youtube.download.retry_delay)
+                
+                result = await retry_with_exponential_backoff(
+                    download_and_upload_with_retry,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    max_delay=60.0
+                )
+                
+                logger.info(f"YouTube视频下载并上传成功 - URL: {request.url}, "
+                           f"视频URL: {result.video_url}")
+                return result
+                
+            except Exception as e:
+                error_msg = f"YouTube视频下载并上传失败（所有重试均失败）: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                return YoutubeVideoDownloadAndUploadResponse(
+                    success=False,
+                    message=error_msg,
+                    error=error_msg,
+                    original_youtube_url=request.url
+                )
+            finally:
+                logger.info(f"🔓 释放下载槽位 - URL: {request.url}, "
+                           f"释放后可用槽位: {_download_semaphore._value + 1}")
+
+    async def _download_and_upload_internal(self, request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
+        """
+        内部下载和上传实现（用于重试机制）
+        
+        Args:
+            request: 下载并上传请求参数
+            
+        Returns:
+            YoutubeVideoDownloadAndUploadResponse: 操作结果
+        """
+        from app.models.youtube_models import YoutubeVideoDownloadAndUploadResponse
+        from app.services.supabase_service import supabase_service
+        from datetime import datetime
+        import tempfile
+        import os
+        import subprocess
+        import json
+        
+        start_time = time.time()
+        logger.info(f"开始内部下载流程 - URL: {request.url}")
         
         try:
             # 第一步：下载YouTube视频
@@ -462,31 +633,28 @@ class YouTubeService:
                 format_type=request.format_type
             )
             
-            logger.info("步骤1: 下载YouTube视频")
-            download_result = self.download_video(download_request)
+            step_start = time.time()
+            logger.info(f"步骤1: 开始下载YouTube视频 - URL: {request.url}")
+            download_result = await self.download_video_async(download_request)
+            step_duration = time.time() - step_start
+            logger.info(f"步骤1: 视频下载完成，耗时: {step_duration:.2f}秒")
             
             if not download_result.success:
-                logger.error(f"YouTube视频下载失败: {download_result.error}")
-                return YoutubeVideoDownloadAndUploadResponse(
-                    success=False,
-                    message="YouTube视频下载失败",
-                    error=download_result.error,
-                    original_youtube_url=request.url
-                )
+                error_msg = f"YouTube视频下载失败: {download_result.error}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
             if not download_result.file_path or not os.path.exists(download_result.file_path):
-                logger.error("下载的视频文件不存在")
-                return YoutubeVideoDownloadAndUploadResponse(
-                    success=False,
-                    message="下载的视频文件不存在",
-                    error="文件路径无效",
-                    original_youtube_url=request.url
-                )
+                error_msg = "下载的视频文件不存在或路径无效"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
-            logger.info(f"YouTube视频下载成功: {download_result.file_path}")
+            logger.info(f"YouTube视频下载成功: {download_result.file_path}, "
+                       f"文件大小: {download_result.file_size} bytes")
             
             # 第二步：获取视频元数据
-            logger.info("步骤2: 获取视频元数据")
+            step_start = time.time()
+            logger.info(f"步骤2: 开始获取视频元数据 - URL: {request.url}")
             duration = None
             width = None
             height = None
@@ -529,28 +697,22 @@ class YouTubeService:
                         "ffprobe_success": True
                     })
                     
-                    logger.info("成功获取视频元数据", {
-                        "youtube_url": request.url,
-                        "duration": duration,
-                        "width": width,
-                        "height": height
-                    })
+                    logger.info(f"成功获取视频元数据 - 时长: {duration}s, "
+                               f"分辨率: {width}x{height}")
                 else:
-                    logger.warning("无法获取视频元数据", {
-                        "youtube_url": request.url,
-                        "ffprobe_error": result.stderr
-                    })
+                    logger.warning(f"无法获取视频元数据 - ffprobe错误: {result.stderr}")
                     video_metadata["ffprobe_success"] = False
                     
             except Exception as probe_error:
-                logger.warning("获取视频元数据时出错", {
-                    "youtube_url": request.url,
-                    "error": str(probe_error)
-                })
+                logger.warning(f"获取视频元数据时出错: {str(probe_error)}")
                 video_metadata["ffprobe_error"] = str(probe_error)
             
+            step_duration = time.time() - step_start
+            logger.info(f"步骤2: 视频元数据获取完成，耗时: {step_duration:.2f}秒")
+            
             # 第三步：上传视频到Supabase
-            logger.info("步骤3: 上传视频到Supabase")
+            step_start = time.time()
+            logger.info(f"步骤3: 开始上传视频到Supabase - URL: {request.url}")
             
             # 构建自定义文件名
             custom_filename = request.custom_filename
@@ -578,22 +740,19 @@ class YouTubeService:
             if not upload_result.get("success", False):
                 error_msg = upload_result.get("message", "未知错误")
                 logger.error(f"Supabase上传失败: {error_msg}")
-                return YoutubeVideoDownloadAndUploadResponse(
-                    success=False,
-                    message="视频上传到Supabase失败",
-                    error=error_msg,
-                    original_youtube_url=request.url
-                )
+                raise Exception(f"视频上传到Supabase失败: {error_msg}")
             
             video_url = upload_result.get("file_url", "")
-            logger.info(f"视频成功上传到Supabase: {video_url}")
+            step_duration = time.time() - step_start
+            logger.info(f"步骤3: 视频成功上传到Supabase，耗时: {step_duration:.2f}秒, URL: {video_url}")
             
             # 第四步：生成缩略图（如果需要且有时长信息）
             thumbnail_url = None
             thumbnail_path = None
             
             if request.generate_thumbnail and duration is not None:
-                logger.info("步骤4: 生成并上传缩略图")
+                step_start = time.time()
+                logger.info(f"步骤4: 开始生成并上传缩略图 - URL: {request.url}")
                 try:
                     # 生成缩略图
                     thumbnail_filename = f"thumb_{os.path.splitext(custom_filename)[0]}.jpg"
@@ -622,26 +781,19 @@ class YouTubeService:
                         
                         if thumb_result.get("success", False):
                             thumbnail_url = thumb_result.get("file_url", "")
-                            logger.info("缩略图生成并上传成功", {
-                                "thumbnail_url": thumbnail_url,
-                                "youtube_url": request.url
-                            })
+                            step_duration = time.time() - step_start
+                            logger.info(f"步骤4: 缩略图生成并上传成功，耗时: {step_duration:.2f}秒, URL: {thumbnail_url}")
                         else:
-                            logger.warning("缩略图上传失败", {
-                                "error": thumb_result.get("message", "未知错误"),
-                                "youtube_url": request.url
-                            })
+                            logger.warning(f"缩略图上传失败: {thumb_result.get('message', '未知错误')}")
                     else:
-                        logger.warning("缩略图生成失败", {
-                            "youtube_url": request.url,
-                            "ffmpeg_error": result.stderr.decode() if result.stderr else "Unknown error"
-                        })
+                        ffmpeg_error = result.stderr.decode() if result.stderr else "Unknown error"
+                        logger.warning(f"缩略图生成失败: {ffmpeg_error}")
                         
                 except Exception as thumb_error:
-                    logger.warning("生成缩略图时出错", {
-                        "youtube_url": request.url,
-                        "error": str(thumb_error)
-                    })
+                    logger.warning(f"生成缩略图时出错: {str(thumb_error)}")
+                    
+            else:
+                logger.info("跳过缩略图生成（未启用或无时长信息）")
             
             # 清理临时文件
             try:
@@ -656,16 +808,11 @@ class YouTubeService:
             except Exception as cleanup_error:
                 logger.warning(f"清理临时文件失败: {cleanup_error}")
             
-            # 返回成功结果，包含完整的视频信息
-            logger.info("YouTube视频下载并上传完成", {
-                "youtube_url": request.url,
-                "video_url": video_url,
-                "thumbnail_url": thumbnail_url,
-                "file_size": download_result.file_size,
-                "duration": duration,
-                "width": width,
-                "height": height
-            })
+            # 记录总体完成情况
+            total_duration = time.time() - start_time
+            logger.info(f"YouTube视频下载并上传完成 - 总耗时: {total_duration:.2f}秒, "
+                       f"文件大小: {download_result.file_size} bytes, "
+                       f"分辨率: {width}x{height}, 时长: {duration}s")
             
             return YoutubeVideoDownloadAndUploadResponse(
                 success=True,
@@ -680,14 +827,11 @@ class YouTubeService:
             )
             
         except Exception as e:
-            error_msg = f"下载并上传过程中发生错误: {str(e)}"
+            total_duration = time.time() - start_time
+            error_msg = f"内部下载流程失败（耗时: {total_duration:.2f}秒）: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            return YoutubeVideoDownloadAndUploadResponse(
-                success=False,
-                message="下载并上传过程中发生错误",
-                error=error_msg,
-                original_youtube_url=request.url
-            )
+            # 重新抛出异常以便重试机制处理
+            raise Exception(error_msg)
 
 
 # 创建全局YouTube服务实例

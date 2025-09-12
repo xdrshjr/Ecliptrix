@@ -3,9 +3,9 @@
 
 # 并发下载配置
 download:
-  # 并发下载线程数，默认为3
-  # 建议值：1-10，根据服务器性能和网络带宽调整
-  max_concurrent_downloads: 3
+  # 并发下载线程数，默认为20
+  # 建议值：1-50，根据服务器性能和网络带宽调整
+  max_concurrent_downloads: 20
   
   # 下载超时时间（秒）
   download_timeout: 300
