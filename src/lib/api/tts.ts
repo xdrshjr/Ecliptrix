@@ -82,6 +82,48 @@ export interface VoiceTypesResponse {
   data: Record<string, VoiceType>;
 }
 
+export interface SentenceTTSRequest {
+  sentence_id: string;
+  text: string;
+  order: number;
+}
+
+export interface SentenceBatchTTSRequest {
+  segment_id: string;
+  sentences: SentenceTTSRequest[];
+  voice_type: string;
+  speed_ratio: number;
+  task_id?: string;
+  concurrent_threads?: number;
+}
+
+export interface SentenceTTSResult {
+  sentence_id: string;
+  order: number;
+  success: boolean;
+  audio_url?: string;
+  duration?: number;
+  file_size?: number;
+  start_time?: number;
+  end_time?: number;
+  error?: string;
+  processing_time?: number;
+}
+
+export interface SentenceBatchTTSResponse {
+  success: boolean;
+  message: string;
+  segment_id: string;
+  total_sentences: number;
+  successful_sentences: number;
+  failed_sentences: number;
+  total_processing_time: number;
+  concatenated_audio_url?: string;
+  total_duration?: number;
+  concatenated_file_size?: number;
+  sentence_results: SentenceTTSResult[];
+}
+
 /**
  * Convert text to speech
  */
@@ -178,6 +220,62 @@ export async function convertBatchTextToSpeech(request: BatchTTSRequest): Promis
 }
 
 /**
+ * Convert sentences to speech with concatenation and timing information
+ */
+export async function convertSentencesToSpeech(request: SentenceBatchTTSRequest): Promise<SentenceBatchTTSResponse> {
+  try {
+    console.log('[Sentence TTS API] 发送句子级语音转换请求', {
+      segment_id: request.segment_id,
+      sentences_count: request.sentences.length,
+      voice_type: request.voice_type,
+      speed_ratio: request.speed_ratio,
+      task_id: request.task_id,
+      concurrent_threads: request.concurrent_threads,
+      total_text_length: request.sentences.reduce((sum, sentence) => sum + sentence.text.length, 0)
+    });
+
+    const response = await fetch('/api/tts/convert-sentences', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result: SentenceBatchTTSResponse = await response.json();
+
+    console.log('[Sentence TTS API] 句子级语音转换响应', {
+      success: result.success,
+      segment_id: result.segment_id,
+      total_sentences: result.total_sentences,
+      successful_sentences: result.successful_sentences,
+      failed_sentences: result.failed_sentences,
+      total_processing_time: result.total_processing_time,
+      concatenated_audio_url: result.concatenated_audio_url,
+      total_duration: result.total_duration,
+      message: result.message
+    });
+
+    return result;
+  } catch (error) {
+    console.error('[Sentence TTS API] 句子级语音转换请求失败', {
+      error: error instanceof Error ? error.message : String(error),
+      request: {
+        segment_id: request.segment_id,
+        sentences_count: request.sentences.length,
+        voice_type: request.voice_type,
+        task_id: request.task_id
+      }
+    });
+    throw error;
+  }
+}
+
+/**
  * Convert script segments to batch TTS request format
  */
 export function convertScriptSegmentsToBatchRequest(
@@ -195,6 +293,32 @@ export function convertScriptSegmentsToBatchRequest(
 
   return {
     segments: batchSegments,
+    voice_type: voiceType,
+    speed_ratio: speedRatio,
+    task_id: taskId,
+    concurrent_threads: concurrentThreads
+  };
+}
+
+/**
+ * Convert script segment to sentence-level TTS request format
+ */
+export function convertScriptSegmentToSentenceRequest(
+  segment: ScriptSegment,
+  voiceType: string,
+  speedRatio: number = 1.0,
+  taskId?: string,
+  concurrentThreads?: number
+): SentenceBatchTTSRequest {
+  const sentences: SentenceTTSRequest[] = segment.sentences.map((sentence, index) => ({
+    sentence_id: sentence.id,
+    text: sentence.text,
+    order: index
+  }));
+
+  return {
+    segment_id: segment.id,
+    sentences: sentences,
     voice_type: voiceType,
     speed_ratio: speedRatio,
     task_id: taskId,

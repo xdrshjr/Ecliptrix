@@ -303,4 +303,137 @@ class VoiceTypesResponse(BaseModel):
                     }
                 }
             }
+        }
+
+
+class SentenceTTSRequest(BaseModel):
+    """Single sentence request for sentence-level TTS conversion."""
+    
+    sentence_id: str = Field(..., description="Unique sentence identifier")
+    text: str = Field(..., description="Sentence text to convert to speech", max_length=2000)
+    order: int = Field(..., description="Sentence order in the segment for proper sequencing")
+
+
+class SentenceBatchTTSRequest(BaseModel):
+    """Request model for sentence-level batch text-to-speech conversion."""
+    
+    segment_id: str = Field(..., description="Segment identifier for grouping sentences")
+    sentences: List[SentenceTTSRequest] = Field(
+        ..., 
+        description="List of sentences to convert",
+        min_items=1,
+        max_items=20
+    )
+    voice_type: str = Field(
+        default="zh_male_shaonianzixin_moon_bigtts",
+        description="Voice type for speech synthesis"
+    )
+    speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.1, le=3.0)
+    task_id: Optional[str] = Field(None, description="Task ID for reference")
+    concurrent_threads: Optional[int] = Field(
+        None, 
+        description="Number of concurrent threads (overrides config)",
+        ge=1,
+        le=10
+    )
+    
+    @validator('voice_type')
+    def validate_voice_type(cls, v):
+        """验证语音类型是否有效"""
+        if not v or not isinstance(v, str):
+            raise ValueError('Voice type must be a non-empty string')
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "segment_id": "segment-1",
+                "sentences": [
+                    {
+                        "sentence_id": "sentence-1",
+                        "text": "大家好，欢迎来到今天的视频教程。",
+                        "order": 0
+                    },
+                    {
+                        "sentence_id": "sentence-2",
+                        "text": "今天我们要学习如何使用这个强大的视频编辑工具。",
+                        "order": 1
+                    }
+                ],
+                "voice_type": "zh_male_shaonianzixin_moon_bigtts",
+                "speed_ratio": 1.0,
+                "task_id": "task_123",
+                "concurrent_threads": 3
+            }
+        }
+
+
+class SentenceTTSResult(BaseModel):
+    """Result for a single sentence in sentence-level TTS conversion."""
+    
+    sentence_id: str = Field(..., description="Sentence identifier")
+    order: int = Field(..., description="Sentence order in the segment")
+    success: bool = Field(..., description="Conversion success status for this sentence")
+    audio_url: Optional[str] = Field(None, description="Generated audio file URL")
+    duration: Optional[float] = Field(None, description="Audio duration in seconds")
+    file_size: Optional[int] = Field(None, description="Audio file size in bytes")
+    start_time: Optional[float] = Field(None, description="Start time in concatenated audio (seconds)")
+    end_time: Optional[float] = Field(None, description="End time in concatenated audio (seconds)")
+    error: Optional[str] = Field(None, description="Error message if conversion failed")
+    processing_time: Optional[float] = Field(None, description="Processing time in seconds")
+
+
+class SentenceBatchTTSResponse(BaseModel):
+    """Response model for sentence-level batch text-to-speech conversion."""
+    
+    success: bool = Field(..., description="Overall batch success status")
+    message: str = Field(..., description="Response message")
+    segment_id: str = Field(..., description="Segment identifier")
+    total_sentences: int = Field(..., description="Total number of sentences processed")
+    successful_sentences: int = Field(..., description="Number of successfully processed sentences")
+    failed_sentences: int = Field(..., description="Number of failed sentences")
+    total_processing_time: float = Field(..., description="Total processing time in seconds")
+    concatenated_audio_url: Optional[str] = Field(None, description="URL of the concatenated audio file")
+    total_duration: Optional[float] = Field(None, description="Total duration of concatenated audio in seconds")
+    concatenated_file_size: Optional[int] = Field(None, description="File size of concatenated audio in bytes")
+    sentence_results: List[SentenceTTSResult] = Field(..., description="Individual sentence results with timing")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "句子级语音转换完成",
+                "segment_id": "segment-1",
+                "total_sentences": 2,
+                "successful_sentences": 2,
+                "failed_sentences": 0,
+                "total_processing_time": 15.2,
+                "concatenated_audio_url": "/api/audio/generated/segment-1_concatenated_20240101_abc123.mp3",
+                "total_duration": 12.8,
+                "concatenated_file_size": 205440,
+                "sentence_results": [
+                    {
+                        "sentence_id": "sentence-1",
+                        "order": 0,
+                        "success": True,
+                        "audio_url": "/api/audio/generated/sentence-1_20240101_abc123.mp3",
+                        "duration": 5.2,
+                        "file_size": 83456,
+                        "start_time": 0.0,
+                        "end_time": 5.2,
+                        "processing_time": 6.1
+                    },
+                    {
+                        "sentence_id": "sentence-2",
+                        "order": 1,
+                        "success": True,
+                        "audio_url": "/api/audio/generated/sentence-2_20240101_def456.mp3",
+                        "duration": 7.6,
+                        "file_size": 121984,
+                        "start_time": 5.2,
+                        "end_time": 12.8,
+                        "processing_time": 7.3
+                    }
+                ]
+            }
         } 

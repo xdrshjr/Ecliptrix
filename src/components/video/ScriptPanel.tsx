@@ -6,9 +6,13 @@ import {
   convertTextToSpeech, 
   convertBatchTextToSpeech,
   convertScriptSegmentsToBatchRequest,
+  convertSentencesToSpeech,
+  convertScriptSegmentToSentenceRequest,
   downloadAudioFile,
   TTSRequest, 
-  BatchTTSResponse 
+  BatchTTSResponse,
+  SentenceBatchTTSResponse,
+  SentenceTTSResult 
 } from '@/lib/api/tts';
 import { 
   transcribeAudioFromPath, 
@@ -84,6 +88,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [segmentSubtitles, setSegmentSubtitles] = useState<Record<string, SubtitleItem[]>>({});
   const [subtitleErrors, setSubtitleErrors] = useState<Record<string, string>>({});
 
+  // 句子级TTS相关状态
+  const [sentenceTimingInfo, setSentenceTimingInfo] = useState<Record<string, SentenceTTSResult[]>>({});
+  const [segmentConcatenatedAudio, setSegmentConcatenatedAudio] = useState<Record<string, string>>({});
+  
   // 批量转换相关状态
   const [isBatchConverting, setIsBatchConverting] = useState<boolean>(false);
   const [batchProgress, setBatchProgress] = useState<{
@@ -987,7 +995,35 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   }, [segments, segmentVideoIndexes, playingVideos, logger]);
 
-  // TTS转换处理
+  // 格式化时间显示（秒转换为 mm:ss.s 格式）
+  const formatTime = useCallback((seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toFixed(1).padStart(4, '0')}`;
+  }, []);
+
+  // 获取段落的句子时间信息
+  const getSentenceTimingDisplay = useCallback((segmentId: string) => {
+    const timingInfo = sentenceTimingInfo[segmentId];
+    if (!timingInfo || timingInfo.length === 0) {
+      return null;
+    }
+
+    const successfulSentences = timingInfo.filter(result => result.success && result.start_time !== undefined && result.end_time !== undefined);
+    if (successfulSentences.length === 0) {
+      return null;
+    }
+
+    return successfulSentences.map(result => ({
+      sentenceId: result.sentence_id,
+      order: result.order,
+      startTime: result.start_time!,
+      endTime: result.end_time!,
+      duration: result.end_time! - result.start_time!
+    })).sort((a, b) => a.order - b.order);
+  }, [sentenceTimingInfo]);
+
+  // 句子级TTS转换处理
   const handleConvertToSpeech = async (segment: ScriptSegment) => {
     if (convertingSegments.has(segment.id)) {
       console.warn('[ScriptPanel] 该片段正在转换中，忽略重复请求', {
@@ -997,7 +1033,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
 
     try {
-      console.log('[ScriptPanel] 开始转换语音', {
+      console.log('[ScriptPanel] 开始句子级语音转换', {
         segmentId: segment.id,
         segmentTitle: segment.title,
         sentencesCount: segment.sentences.length,
@@ -1009,73 +1045,97 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       setConvertingSegments(prev => new Set([...Array.from(prev), segment.id]));
       setTtsProgress(prev => ({ ...prev, [segment.id]: 0 }));
 
-      // 合并所有句子的文本
-      const fullText = segment.sentences.map(sentence => sentence.text).join(' ');
+      // 检查句子是否为空
+      if (!segment.sentences || segment.sentences.length === 0) {
+        throw new Error('片段中没有句子');
+      }
 
-      if (!fullText.trim()) {
-        throw new Error('片段文本为空');
+      // 检查句子文本是否为空
+      const hasValidText = segment.sentences.some(sentence => sentence.text.trim());
+      if (!hasValidText) {
+        throw new Error('片段中没有有效的文本内容');
       }
 
       // 模拟进度更新
       const progressInterval = setInterval(() => {
         setTtsProgress(prev => ({
           ...prev,
-          [segment.id]: Math.min((prev[segment.id] || 0) + 10, 90)
+          [segment.id]: Math.min((prev[segment.id] || 0) + 8, 85)
         }));
-      }, 200);
+      }, 300);
 
-      const request: TTSRequest = {
-        text: fullText,
-        voice_type: selectedVoiceId,
-        speed_ratio: 1.0,
-        segment_id: segment.id,
-        task_id: taskId
-      };
+      // 准备句子级TTS请求
+      const request = convertScriptSegmentToSentenceRequest(
+        segment,
+        selectedVoiceId,
+        1.0,
+        taskId,
+        3 // 并发线程数
+      );
 
-      const response = await convertTextToSpeech(request);
+      console.log('[ScriptPanel] 发送句子级TTS请求', {
+        segmentId: request.segment_id,
+        sentencesCount: request.sentences.length,
+        concurrentThreads: request.concurrent_threads
+      });
+
+      const response = await convertSentencesToSpeech(request);
 
       clearInterval(progressInterval);
       setTtsProgress(prev => ({ ...prev, [segment.id]: 100 }));
 
-      if (response.success && onAddMaterial) {
-        // 获取和验证音频URL
-        const audioUrl = response.data.audio_url;
-        // 只对公共URL清理查询参数，保留签名URL的token
+      if (response.success && response.concatenated_audio_url && onAddMaterial) {
+        // 存储句子级时间信息
+        setSentenceTimingInfo(prev => ({
+          ...prev,
+          [segment.id]: response.sentence_results
+        }));
+
+        // 存储拼接音频URL
+        setSegmentConcatenatedAudio(prev => ({
+          ...prev,
+          [segment.id]: response.concatenated_audio_url!
+        }));
+
+        // 获取和验证拼接音频URL
+        const audioUrl = response.concatenated_audio_url;
         const cleanAudioUrl = audioUrl.includes('/object/sign/') ? audioUrl : audioUrl.split('?')[0];
         const fileName = audioUrl.split('/').pop()?.split('?')[0] || `audio_${segment.id}_${Date.now()}.mp3`;
         
-        console.log('[ScriptPanel] 语音转换成功，开始下载到本地', {
+        console.log('[ScriptPanel] 句子级语音转换成功，开始下载拼接音频到本地', {
           segmentId: segment.id,
-          originalAudioUrl: response.data.audio_url,
+          originalAudioUrl: audioUrl,
           cleanAudioUrl: cleanAudioUrl,
           fileName: fileName,
-          fileSize: response.data.file_size
+          totalDuration: response.total_duration,
+          successfulSentences: response.successful_sentences,
+          failedSentences: response.failed_sentences
         });
 
         // 标记段落转换完成
         setCompletedSegments(prev => new Set([...Array.from(prev), segment.id]));
 
         try {
-          // 直接从Supabase URL下载音频文件到本地
-          console.log('[ScriptPanel] 开始从Supabase下载音频', {
+          // 直接从Supabase URL下载拼接音频文件到本地
+          console.log('[ScriptPanel] 开始从Supabase下载拼接音频', {
             url: cleanAudioUrl,
             segmentId: segment.id
           });
           
           const fetchResponse = await fetch(cleanAudioUrl);
           if (!fetchResponse.ok) {
-            console.error('[ScriptPanel] Supabase音频下载失败', {
+            console.error('[ScriptPanel] Supabase拼接音频下载失败', {
               url: cleanAudioUrl,
               status: fetchResponse.status,
               statusText: fetchResponse.statusText,
               segmentId: segment.id
             });
-            throw new Error(`Failed to fetch audio from Supabase: ${fetchResponse.status} ${fetchResponse.statusText}`);
+            throw new Error(`Failed to fetch concatenated audio from Supabase: ${fetchResponse.status} ${fetchResponse.statusText}`);
           }
           const audioBlob = await fetchResponse.blob();
           const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
 
-          console.log('[ScriptPanel] 音频文件下载并存储成功', {
+          console.log('[ScriptPanel] 拼接音频文件下载并存储成功', {
             segmentId: segment.id,
             fileName: fileName,
             localUrl: localUrl,
@@ -1089,42 +1149,47 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             name: `段落${segmentNumber} - ${segment.title} - 语音`,
             type: 'audio',
             format: 'mp3',
-            size: response.data.file_size,
-            duration: response.data.duration || Math.ceil(response.data.text_length * 0.15), // 使用服务器返回的实际时长，备用估算
+            size: response.concatenated_file_size || audioBlob.size,
+            duration: response.total_duration || Math.ceil(segment.sentences.reduce((sum, s) => sum + s.text.length, 0) * 0.15),
             url: localUrl, // 使用本地URL
-            serverUrl: response.data.audio_url, // 保存服务器URL，用于导出合成
+            serverUrl: response.concatenated_audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
-            description: `由段落${segmentNumber}"${segment.title}"转换生成的语音`,
+            description: `由段落${segmentNumber}"${segment.title}"的${response.successful_sentences}个句子并发转换并拼接生成的语音`,
             metadata: {
               voice_type: selectedVoiceId,
-              text_length: response.data.text_length,
+              text_length: segment.sentences.reduce((sum, s) => sum + s.text.length, 0),
               segment_id: segment.id,
-              segment_number: segmentNumber, // 添加段落号
+              segment_number: segmentNumber,
               task_id: taskId,
-              server_file_name: fileName, // 保存服务器文件名
-              actual_duration: response.data.duration, // 保存实际时长
-              duration_method: response.data.duration_method, // 保存时长获取方式
-              originalUrl: response.data.audio_url // 保存原始URL
+              server_file_name: fileName,
+              actual_duration: response.total_duration,
+              duration_method: 'concatenated_sentences',
+              originalUrl: response.concatenated_audio_url,
+              sentence_count: response.total_sentences,
+              successful_sentences: response.successful_sentences,
+              failed_sentences: response.failed_sentences,
+              processing_time: response.total_processing_time,
+              sentence_timing: response.sentence_results // 保存句子时间信息
             }
           };
 
           onAddMaterial(audioMaterial);
 
           // 更新脚本段落的音频时长
-          if (response.data.duration && onUpdateSegments) {
+          if (response.total_duration && onUpdateSegments) {
             const updatedSegments = segments.map(seg => {
               if (seg.id === segment.id) {
                 console.log('[ScriptPanel] 更新脚本段落音频时长', {
                   segmentId: seg.id,
                   segmentTitle: seg.title,
                   oldDuration: seg.duration,
-                  newDuration: response.data.duration,
-                  durationMethod: response.data.duration_method,
+                  newDuration: response.total_duration,
+                  durationMethod: 'concatenated_sentences',
                   timestamp: new Date().toISOString()
                 });
                 return {
                   ...seg,
-                  duration: response.data.duration // 使用实际的音频时长
+                  duration: response.total_duration // 使用拼接音频的实际时长
                 };
               }
               return seg;
@@ -1133,45 +1198,58 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             
             console.log('[ScriptPanel] 脚本段落时长更新完成', {
               segmentId: segment.id,
-              updatedDuration: response.data.duration,
+              updatedDuration: response.total_duration,
               totalSegments: updatedSegments.length,
               timestamp: new Date().toISOString()
             });
           }
 
-          console.log('[ScriptPanel] 音频材料添加成功', {
+          console.log('[ScriptPanel] 句子级音频材料添加成功', {
             materialId: audioMaterial.id,
             materialName: audioMaterial.name,
             materialSize: audioMaterial.size,
-            actualDuration: response.data.duration,
-            durationMethod: response.data.duration_method,
+            actualDuration: response.total_duration,
+            durationMethod: 'concatenated_sentences',
             segmentId: segment.id,
-            segmentDurationUpdated: !!response.data.duration
+            segmentDurationUpdated: !!response.total_duration,
+            successfulSentences: response.successful_sentences,
+            totalSentences: response.total_sentences
           });
 
+          // 显示成功消息，包含时间信息
+          showSuccess(`语音转换完成！成功转换 ${response.successful_sentences}/${response.total_sentences} 个句子，总时长 ${response.total_duration?.toFixed(1)}秒`);
+
         } catch (downloadError) {
-          console.error('[ScriptPanel] 音频下载或存储失败', {
+          console.error('[ScriptPanel] 拼接音频下载或存储失败', {
             segmentId: segment.id,
             fileName: fileName,
             error: downloadError instanceof Error ? downloadError.message : String(downloadError)
           });
-          throw new Error(`音频下载失败: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
+          throw new Error(`拼接音频下载失败: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
         }
 
       } else {
-        throw new Error(response.message || '语音转换失败');
+        const errorMsg = response.message || '句子级语音转换失败';
+        console.error('[ScriptPanel] 句子级语音转换失败', {
+          segmentId: segment.id,
+          success: response.success,
+          message: response.message,
+          successfulSentences: response.successful_sentences,
+          failedSentences: response.failed_sentences
+        });
+        throw new Error(errorMsg);
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[ScriptPanel] 语音转换失败', {
+      console.error('[ScriptPanel] 句子级语音转换失败', {
         segmentId: segment.id,
         error: errorMessage,
         taskId
       });
 
       // 显示错误提示
-      showError(`语音转换失败: ${errorMessage}`);
+      showError(`句子级语音转换失败: ${errorMessage}`);
 
     } finally {
       // 清理状态
@@ -1606,11 +1684,32 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     </div>
                     {editingSentenceId !== sentence.id && (
                       <div className="flex items-center space-x-1 ml-2">
-                        {sentence.startTime !== undefined && sentence.endTime !== undefined && (
-                          <span className="text-xs text-gray-400 font-mono">
-                            {sentence.startTime}s-{sentence.endTime}s
-                          </span>
-                        )}
+                        {(() => {
+                          // 优先显示句子级TTS生成的时间信息
+                          const timingDisplay = getSentenceTimingDisplay(segment.id);
+                          const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
+                          
+                          if (sentenceTiming) {
+                            return (
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs text-blue-600 font-mono bg-blue-50 px-1 py-0.5 rounded">
+                                  {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  时长: {sentenceTiming.duration.toFixed(1)}s
+                                </span>
+                              </div>
+                            );
+                          } else if (sentence.startTime !== undefined && sentence.endTime !== undefined) {
+                            // 兼容旧的时间信息
+                            return (
+                              <span className="text-xs text-gray-400 font-mono">
+                                {sentence.startTime}s-{sentence.endTime}s
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                         <button
                           onClick={() => handleStartEdit(sentence)}
                           className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors duration-150"

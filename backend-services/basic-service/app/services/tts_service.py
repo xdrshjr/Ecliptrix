@@ -22,7 +22,7 @@ from app.services.supabase_service import supabase_service
 
 logger = get_logger(__name__)
 
-# 是否启用模拟模式（用于开发测试）
+# 是否启用模拟模式（仅用于开发测试，生产环境应设为False）
 MOCK_MODE = getattr(settings, 'tts_mock_mode', False)
 
 
@@ -96,7 +96,7 @@ class TTSClient:
                 "mock_mode": MOCK_MODE
             })
             
-            # 如果是模拟模式，直接生成模拟音频文件
+            # 如果是模拟模式，直接生成模拟音频文件（仅用于开发测试）
             if MOCK_MODE:
                 return self._create_mock_audio_file(output_file, text, req_id)
             
@@ -107,16 +107,14 @@ class TTSClient:
                 timeout=30
             )
             
-            # 先检查HTTP状态码
+            # 检查HTTP状态码
             if response.status_code == 401:
-                logger.warning("TTS API认证失败，切换到模拟模式", {
+                logger.error("TTS API认证失败", {
                     "request_id": req_id,
                     "status_code": response.status_code,
                     "response_text": response.text[:200]
                 })
-                # 切换到模拟模式并重试
-                MOCK_MODE = True
-                return self._create_mock_audio_file(output_file, text, req_id)
+                return False
             elif response.status_code != 200:
                 logger.error(f"HTTP错误: {response.status_code}", {
                     "request_id": req_id,
@@ -221,10 +219,7 @@ class TTSClient:
                 "request_id": req_id,
                 "error": str(e)
             })
-            # 网络错误时也切换到模拟模式
-            logger.warning("网络请求失败，切换到模拟模式")
-            MOCK_MODE = True
-            return self._create_mock_audio_file(output_file, text, req_id)
+            return False
         except json.JSONDecodeError as e:
             logger.error(f"语音合成响应解析失败", {
                 "request_id": req_id,
@@ -653,6 +648,156 @@ class TTSService:
                     raise HTTPException(
                         status_code=500,
                         detail=f"语音转换失败 (尝试{max_retries}次): {error_msg}"
+                    )
+
+                # 等待后重试
+                time.sleep(2 * (attempt + 1))
+    
+    def convert_text_to_speech_local(
+        self,
+        text: str,
+        voice_type: str = "zh_male_shaonianzixin_moon_bigtts",
+        speed_ratio: float = 1.0,
+        output_path: str = None,
+        segment_id: Optional[str] = None,
+        task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        将文本转换为语音并保存到本地（不上传到Supabase）
+        
+        Args:
+            text: 要转换的文本
+            voice_type: 音色类型
+            speed_ratio: 语速比例
+            output_path: 指定的输出路径，如果为None则自动生成
+            segment_id: 脚本段落ID
+            task_id: 任务ID
+            
+        Returns:
+            Dict: 转换结果信息
+        """
+        # 验证配置
+        self.validate_config()
+        
+        # 验证输入
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="文本内容不能为空")
+        
+        text = text.strip()
+        if len(text) > 5000:
+            logger.warning(f"文本过长，将截断到5000字符", {
+                "original_length": len(text),
+                "segment_id": segment_id,
+                "task_id": task_id
+            })
+            text = text[:5000]
+        
+        # 生成文件名和路径
+        if output_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_id = uuid.uuid4().hex[:8]
+            filename = f"tts_{timestamp}_{file_id}.mp3"
+            
+            if segment_id:
+                filename = f"tts_{segment_id}_{timestamp}_{file_id}.mp3"
+            
+            output_path = os.path.join(self.audio_dir, filename)
+        else:
+            filename = os.path.basename(output_path)
+        
+        # 重试机制
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"开始TTS本地转换 (尝试 {attempt + 1}/{max_retries})", {
+                    "text_length": len(text),
+                    "voice_type": voice_type,
+                    "speed_ratio": speed_ratio,
+                    "segment_id": segment_id,
+                    "task_id": task_id,
+                    "output_path": output_path,
+                    "mock_mode": MOCK_MODE
+                })
+                
+                tts_client = TTSClient(self.appid, self.access_token)
+                success = tts_client.synthesize_speech(
+                    text=text,
+                    output_file=output_path,
+                    voice_type=voice_type,
+                    speed_ratio=speed_ratio
+                )
+                
+                if not success:
+                    raise Exception("语音合成失败")
+
+                # 验证文件
+                if not os.path.exists(output_path):
+                    raise Exception("音频文件生成失败")
+
+                file_size = os.path.getsize(output_path)
+                if file_size == 0:
+                    raise Exception("音频文件为空")
+
+                # 获取音频实际时长
+                actual_duration = self._get_audio_duration_with_ffmpeg(output_path)
+                if actual_duration is None:
+                    # 如果ffmpeg获取失败，使用估算方式
+                    actual_duration = self._estimate_audio_duration(len(text), speed_ratio)
+                    logger.info("使用估算时长作为备用方案", {
+                        "segment_id": segment_id,
+                        "estimated_duration": actual_duration
+                    })
+                
+                # 构造返回数据（本地保存，不上传到Supabase）
+                result = {
+                    "audio_url": f"/api/audio/generated/{filename}",
+                    "file_path": output_path,
+                    "file_name": filename,
+                    "file_size": file_size,
+                    "duration": actual_duration,
+                    "voice_type": voice_type,
+                    "text_length": len(text),
+                    "speed_ratio": speed_ratio,
+                    "request_id": str(uuid.uuid4()),
+                    "created_at": datetime.now().isoformat(),
+                    "segment_id": segment_id,
+                    "task_id": task_id,
+                    "mock_mode": MOCK_MODE,
+                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",
+                    "supabase_upload": False,  # 标记未上传到Supabase
+                    "local_only": True  # 标记仅本地保存
+                }
+
+                logger.info("TTS本地转换成功", {
+                    "output_path": output_path,
+                    "file_size": result["file_size"],
+                    "duration": result["duration"],
+                    "segment_id": segment_id,
+                    "task_id": task_id
+                })
+                return result
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"TTS本地转换失败 (尝试 {attempt + 1}/{max_retries})", {
+                    "error": error_msg,
+                    "output_path": output_path,
+                    "segment_id": segment_id,
+                    "task_id": task_id
+                })
+
+                # 清理失败的文件
+                if os.path.exists(output_path) and os.path.getsize(output_path) == 0:
+                    try:
+                        os.remove(output_path)
+                    except:
+                        pass
+
+                # 最后一次尝试失败
+                if attempt == max_retries - 1:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"语音本地转换失败 (尝试{max_retries}次): {error_msg}"
                     )
 
                 # 等待后重试

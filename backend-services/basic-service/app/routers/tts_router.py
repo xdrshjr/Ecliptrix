@@ -13,18 +13,22 @@ from app.models.tts_models import (
     TTSErrorResponse,
     VoiceTypesResponse,
     BatchTTSRequest,
-    BatchTTSResponse
+    BatchTTSResponse,
+    SentenceBatchTTSRequest,
+    SentenceBatchTTSResponse
 )
 from app.services.tts_service import tts_service
 from app.services.batch_tts_service import BatchTTSService
+from app.services.sentence_tts_service import SentenceTTSService
 from app.logger import get_logger
 
 # Initialize router and logger
 router = APIRouter(prefix="/tts", tags=["Text-to-Speech"])
 logger = get_logger(__name__)
 
-# Initialize batch TTS service
+# Initialize batch TTS services
 batch_tts_service = BatchTTSService()
+sentence_tts_service = SentenceTTSService()
 
 
 @router.post(
@@ -167,6 +171,84 @@ async def convert_batch_text_to_speech(request: BatchTTSRequest) -> BatchTTSResp
             failed_segments=len(request.segments),
             total_processing_time=0.0,
             results=[]
+        )
+
+
+@router.post(
+    "/convert-sentences",
+    response_model=SentenceBatchTTSResponse,
+    summary="句子级批量文本转语音",
+    description="将多个句子并发转换为语音文件并拼接，返回每个句子的时间信息"
+)
+async def convert_sentence_batch_text_to_speech(request: SentenceBatchTTSRequest) -> SentenceBatchTTSResponse:
+    """
+    句子级批量将文本转换为语音文件并拼接
+    
+    Args:
+        request: 句子级批量TTS转换请求，包含多个句子和配置参数
+    
+    Returns:
+        SentenceBatchTTSResponse: 句子级批量转换响应，包含拼接后的音频和每个句子的时间信息
+    """
+    try:
+        logger.info("收到句子级批量TTS转换请求", {
+            "segment_id": request.segment_id,
+            "sentences_count": len(request.sentences),
+            "voice_type": request.voice_type,
+            "speed_ratio": request.speed_ratio,
+            "task_id": request.task_id,
+            "concurrent_threads": request.concurrent_threads,
+            "total_text_length": sum(len(sentence.text) for sentence in request.sentences)
+        })
+        
+        # 调用句子级批量TTS服务进行转换
+        result = sentence_tts_service.convert_sentence_batch(request)
+        
+        logger.info("句子级批量TTS转换请求处理完成", {
+            "success": result.success,
+            "segment_id": result.segment_id,
+            "total_sentences": result.total_sentences,
+            "successful_sentences": result.successful_sentences,
+            "failed_sentences": result.failed_sentences,
+            "total_processing_time": result.total_processing_time,
+            "concatenated_audio_url": result.concatenated_audio_url,
+            "total_duration": result.total_duration,
+            "task_id": request.task_id
+        })
+        
+        return result
+        
+    except HTTPException as e:
+        # FastAPI HTTPException，直接抛出
+        logger.error("句子级批量TTS转换HTTP异常", {
+            "status_code": e.status_code,
+            "detail": e.detail,
+            "segment_id": request.segment_id,
+            "task_id": request.task_id
+        })
+        raise e
+        
+    except Exception as e:
+        # 其他异常，包装为SentenceBatchTTSResponse
+        error_msg = str(e)
+        logger.error("句子级批量TTS转换未知错误", {
+            "error": error_msg,
+            "segment_id": request.segment_id,
+            "task_id": request.task_id
+        })
+        
+        return SentenceBatchTTSResponse(
+            success=False,
+            message=f"句子级语音转换失败: {error_msg}",
+            segment_id=request.segment_id,
+            total_sentences=len(request.sentences),
+            successful_sentences=0,
+            failed_sentences=len(request.sentences),
+            total_processing_time=0.0,
+            concatenated_audio_url=None,
+            total_duration=None,
+            concatenated_file_size=None,
+            sentence_results=[]
         )
 
 

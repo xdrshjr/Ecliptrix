@@ -43,7 +43,11 @@ from .tts_models import (
     BatchTTSRequest,
     BatchTTSResponse,
     BatchTTSSegmentRequest,
-    BatchTTSSegmentResult
+    BatchTTSSegmentResult,
+    SentenceTTSRequest,
+    SentenceBatchTTSRequest,
+    SentenceTTSResult,
+    SentenceBatchTTSResponse
 )
 
 from .supabase_models import (
@@ -164,6 +168,10 @@ __all__ = [
     "BatchTTSResponse",
     "BatchTTSSegmentRequest",
     "BatchTTSSegmentResult",
+    "SentenceTTSRequest",
+    "SentenceBatchTTSRequest",
+    "SentenceTTSResult",
+    "SentenceBatchTTSResponse",
     "SupabaseUploadRequest",
     "SupabaseUploadResponse",
     "SupabaseUploadErrorResponse",

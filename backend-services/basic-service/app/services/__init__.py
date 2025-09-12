@@ -8,6 +8,7 @@ from .subtitle_service import SubtitleService
 from .video_analysis_service import VideoAnalysisService
 from .tts_service import TTSService
 from .batch_tts_service import BatchTTSService
+from .sentence_tts_service import SentenceTTSService
 from .audio_search_service import AudioSearchService
 from .audio_transcription_service import AudioTranscriptionService
 from .youtube_service import YouTubeService
@@ -29,6 +30,7 @@ __all__ = [
     'video_analysis_service',
     'TTSService',
     'BatchTTSService',
+    'SentenceTTSService',
     'AudioSearchService',
     'AudioTranscriptionService',
     'YouTubeService',
