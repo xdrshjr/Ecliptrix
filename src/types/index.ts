@@ -119,6 +119,9 @@ export interface MaterialItem {
     downloadError?: string; // 下载错误信息
     [key: string]: any; // 允许其他自定义属性
   };
+  
+  // 新增：句子段落信息，用于TTS生成的音频素材
+  sentenceSegments?: AudioSentenceSegment; // 句子时间信息（仅TTS生成的音频使用）
 }
 
 export interface MaterialsData {
@@ -153,6 +156,23 @@ export interface SubtitleStylePreset {
 }
 
 // Timeline and Video Editing related types
+
+// 新增：句子时间信息，用于TTS音频的句子级时间轴可视化
+export interface SentenceTimingInfo {
+  sentence_id: string;
+  text: string;
+  order: number;
+  start_time: number; // 相对于音频开始的时间（秒）
+  end_time: number;   // 相对于音频开始的时间（秒）
+  duration: number;   // 句子时长（秒）
+}
+
+// 新增：音频句子段落信息，用于时间轴可视化
+export interface AudioSentenceSegment {
+  sentences: SentenceTimingInfo[];
+  total_duration: number;
+  segment_id: string; // 对应脚本段落的ID
+}
 
 // 新增：图片叠加位置信息
 export interface ImagePosition {
@@ -192,6 +212,9 @@ export interface TimelineItem {
   
   // 新增：图片位置信息，用于图片叠加定位
   imagePosition?: ImagePosition; // 图片在视频中的位置信息（仅图片类型使用）
+  
+  // 新增：句子段落信息，用于TTS音频的时间轴可视化
+  sentenceSegments?: AudioSentenceSegment; // 句子时间信息（仅TTS生成的音频使用）
 }
 
 export interface Track {

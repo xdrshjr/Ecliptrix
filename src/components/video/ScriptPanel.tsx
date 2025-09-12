@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScriptSegment, ScriptSentence, MaterialItem } from '@/types';
+import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment } from '@/types';
 import { 
   convertTextToSpeech, 
   convertBatchTextToSpeech,
@@ -1142,6 +1142,37 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             blobSize: audioBlob.size
           });
 
+          // 创建句子时间信息，用于时间轴可视化
+          const sentenceTimingInfo: SentenceTimingInfo[] = response.sentence_results
+            .filter(result => result.success && result.start_time !== undefined && result.end_time !== undefined)
+            .map(result => ({
+              sentence_id: result.sentence_id,
+              text: segment.sentences.find(s => s.id === result.sentence_id)?.text || '',
+              order: result.order,
+              start_time: result.start_time!,
+              end_time: result.end_time!,
+              duration: result.duration || (result.end_time! - result.start_time!)
+            }));
+
+          const sentenceSegments: AudioSentenceSegment = {
+            sentences: sentenceTimingInfo,
+            total_duration: response.total_duration || 0,
+            segment_id: segment.id
+          };
+
+          console.log('[ScriptPanel] 创建句子时间信息用于时间轴可视化', {
+            segmentId: segment.id,
+            sentencesCount: sentenceTimingInfo.length,
+            totalDuration: sentenceSegments.total_duration,
+            sentences: sentenceTimingInfo.map(s => ({
+              id: s.sentence_id,
+              text: s.text.substring(0, 20) + '...',
+              startTime: s.start_time,
+              endTime: s.end_time,
+              duration: s.duration
+            }))
+          });
+
           // 创建音频材料项（使用本地URL）
           const segmentNumber = getSegmentNumber(segment.id);
           const audioMaterial: MaterialItem = {
@@ -1155,6 +1186,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             serverUrl: response.concatenated_audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
             description: `由段落${segmentNumber}"${segment.title}"的${response.successful_sentences}个句子并发转换并拼接生成的语音`,
+            sentenceSegments: sentenceSegments, // 新增：句子段落信息，用于时间轴可视化
             metadata: {
               voice_type: selectedVoiceId,
               text_length: segment.sentences.reduce((sum, s) => sum + s.text.length, 0),

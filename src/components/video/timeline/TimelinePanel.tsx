@@ -369,7 +369,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           width: 0.3,
           height: 0.3,
           zIndex: 10
-        } : undefined
+        } : undefined,
+        
+        // 新增：句子段落信息，用于TTS音频的时间轴可视化
+        sentenceSegments: material.type === 'audio' ? material.sentenceSegments : undefined
       };
 
       console.log(`[TimelinePanel] 创建新时间轴项目`, {

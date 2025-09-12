@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { TimelineItem as TimelineItemType } from '@/types';
+import SentenceSegmentBar from './SentenceSegmentBar';
 
 interface TimelineItemProps {
   item: TimelineItemType;
@@ -440,34 +441,86 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'audio':
         return (
           <div style={contentStyle}>
-            <div className="flex items-center space-x-1 min-w-0">
-              <div 
-                className="flex-shrink-0"
-                style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
-              >
-                <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                </svg>
-              </div>
-              <span 
-                className="text-white font-medium truncate"
-                style={{ fontSize: `${fontSize}px` }}
-              >
-                {item.name}
-              </span>
-            </div>
-            {/* 动态调整的波形显示 */}
-            <div className="flex items-center space-x-0.5 flex-shrink-0">
-              {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
-                <div 
-                  key={i}
-                  className="w-0.5 bg-white opacity-60"
-                  style={{ 
-                    height: `${Math.max(2, Math.random() * (iconSize * 0.6) + 2)}px` 
-                  }}
+            {/* 如果有句子段落信息，显示句子可视化；否则显示传统的音频界面 */}
+            {item.sentenceSegments && item.sentenceSegments.sentences.length > 0 ? (
+              <>
+                {/* 句子段落可视化背景层 */}
+                <SentenceSegmentBar 
+                  sentenceSegments={item.sentenceSegments}
+                  width={width}
+                  height={trackHeight}
+                  duration={item.duration}
                 />
-              ))}
-            </div>
+                
+                {/* 音频信息覆盖层（半透明） */}
+                <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
+                  <div className="flex items-center space-x-1 min-w-0">
+                    <div 
+                      className="flex-shrink-0 drop-shadow-sm"
+                      style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
+                    >
+                      <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                      </svg>
+                    </div>
+                    <span 
+                      className="text-white font-medium truncate drop-shadow-sm"
+                      style={{ fontSize: `${fontSize}px` }}
+                    >
+                      {item.name}
+                    </span>
+                  </div>
+                  
+                  {/* 句子数量指示器 */}
+                  <div className="flex items-center space-x-1 flex-shrink-0">
+                    <span 
+                      className="text-white opacity-90 bg-black bg-opacity-30 px-1.5 py-0.5 rounded text-xs font-medium drop-shadow-sm"
+                      style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
+                    >
+                      {item.sentenceSegments.sentences.length} 句
+                    </span>
+                    <span 
+                      className="text-white opacity-75 drop-shadow-sm"
+                      style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
+                    >
+                      {item.duration.toFixed(1)}s
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 传统音频界面 */}
+                <div className="flex items-center space-x-1 min-w-0">
+                  <div 
+                    className="flex-shrink-0"
+                    style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
+                  >
+                    <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                    </svg>
+                  </div>
+                  <span 
+                    className="text-white font-medium truncate"
+                    style={{ fontSize: `${fontSize}px` }}
+                  >
+                    {item.name}
+                  </span>
+                </div>
+                {/* 动态调整的波形显示 */}
+                <div className="flex items-center space-x-0.5 flex-shrink-0">
+                  {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
+                    <div 
+                      key={i}
+                      className="w-0.5 bg-white opacity-60"
+                      style={{ 
+                        height: `${Math.max(2, Math.random() * (iconSize * 0.6) + 2)}px` 
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         );
       case 'subtitle':
