@@ -1323,6 +1323,89 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
   };
 
+  // 删除句子
+  const handleDeleteSentence = useCallback(async (segmentId: string, sentenceId: string) => {
+    if (!onUpdateSegments) {
+      logger.warn('无法删除句子：缺少更新回调', { segmentId, sentenceId });
+      return;
+    }
+
+    try {
+      logger.info('开始删除句子', { segmentId, sentenceId });
+
+      const updatedSegments = segments.map(segment => {
+        if (segment.id === segmentId) {
+          const updatedSentences = segment.sentences.filter(sentence => sentence.id !== sentenceId);
+          
+          // 如果删除后没有句子了，至少保留一个空句子
+          if (updatedSentences.length === 0) {
+            updatedSentences.push({
+              id: `sentence-${Date.now()}`,
+              text: ''
+            });
+          }
+
+          return {
+            ...segment,
+            sentences: updatedSentences
+          };
+        }
+        return segment;
+      });
+
+      onUpdateSegments(updatedSegments);
+      
+      logger.info('句子删除成功', { segmentId, sentenceId });
+      showSuccess('句子删除成功');
+
+    } catch (error) {
+      logger.error('删除句子失败', error as Error, { segmentId, sentenceId });
+      showError('删除句子失败');
+    }
+  }, [segments, onUpdateSegments, logger, showSuccess, showError]);
+
+  // 添加句子
+  const handleAddSentence = useCallback(async (segmentId: string) => {
+    if (!onUpdateSegments) {
+      logger.warn('无法添加句子：缺少更新回调', { segmentId });
+      return;
+    }
+
+    try {
+      logger.info('开始添加句子', { segmentId });
+
+      const newSentence: ScriptSentence = {
+        id: `sentence-${Date.now()}`,
+        text: '请输入新的句子内容...'
+      };
+
+      const updatedSegments = segments.map(segment => {
+        if (segment.id === segmentId) {
+          return {
+            ...segment,
+            sentences: [...segment.sentences, newSentence]
+          };
+        }
+        return segment;
+      });
+
+      onUpdateSegments(updatedSegments);
+      
+      logger.info('句子添加成功', { segmentId, newSentenceId: newSentence.id });
+      showSuccess('句子添加成功');
+
+      // 自动开始编辑新添加的句子
+      setTimeout(() => {
+        setEditingSentenceId(newSentence.id);
+        setEditingText(newSentence.text);
+      }, 100);
+
+    } catch (error) {
+      logger.error('添加句子失败', error as Error, { segmentId });
+      showError('添加句子失败');
+    }
+  }, [segments, onUpdateSegments, logger, showSuccess, showError]);
+
   // 批量转换全部语音 - 修改为依次点击每个片段的转换语音按钮
   const handleBatchConvertToSpeech = async () => {
     if (isBatchConverting || segments.length === 0) {
@@ -1745,42 +1828,47 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           </div>
                         </div>
                       ) : (
-                        <p 
-                          className="text-sm text-gray-700 leading-relaxed flex-1 cursor-pointer"
-                          onClick={() => handleStartEdit(sentence)}
-                        >
-                          {sentence.text}
-                        </p>
+                        <div className="flex-1">
+                          <p 
+                            className="text-sm text-gray-700 leading-relaxed cursor-pointer"
+                            onClick={() => handleStartEdit(sentence)}
+                          >
+                            {sentence.text}
+                          </p>
+                          {/* 时间信息显示在句子下方 */}
+                          {(() => {
+                            // 优先显示句子级TTS生成的时间信息
+                            const timingDisplay = getSentenceTimingDisplay(segment.id);
+                            const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
+                            
+                            if (sentenceTiming) {
+                              return (
+                                <div className="flex items-center space-x-2 mt-1">
+                                  <span className="text-xs text-blue-600 font-mono bg-blue-50 px-1 py-0.5 rounded">
+                                    {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    时长: {sentenceTiming.duration.toFixed(1)}s
+                                  </span>
+                                </div>
+                              );
+                            } else if (sentence.startTime !== undefined && sentence.endTime !== undefined) {
+                              // 兼容旧的时间信息
+                              return (
+                                <div className="mt-1">
+                                  <span className="text-xs text-gray-400 font-mono bg-gray-50 px-1 py-0.5 rounded">
+                                    {sentence.startTime}s-{sentence.endTime}s
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                       )}
                     </div>
                     {editingSentenceId !== sentence.id && (
                       <div className="flex items-center space-x-1 ml-2">
-                        {(() => {
-                          // 优先显示句子级TTS生成的时间信息
-                          const timingDisplay = getSentenceTimingDisplay(segment.id);
-                          const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
-                          
-                          if (sentenceTiming) {
-                            return (
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs text-blue-600 font-mono bg-blue-50 px-1 py-0.5 rounded">
-                                  {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
-                                </span>
-                                <span className="text-xs text-gray-400">
-                                  时长: {sentenceTiming.duration.toFixed(1)}s
-                                </span>
-                              </div>
-                            );
-                          } else if (sentence.startTime !== undefined && sentence.endTime !== undefined) {
-                            // 兼容旧的时间信息
-                            return (
-                              <span className="text-xs text-gray-400 font-mono">
-                                {sentence.startTime}s-{sentence.endTime}s
-                              </span>
-                            );
-                          }
-                          return null;
-                        })()}
                         <button
                           onClick={() => handleStartEdit(sentence)}
                           className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors duration-150"
@@ -1790,11 +1878,35 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
+                        <button
+                          onClick={() => handleDeleteSentence(segment.id, sentence.id)}
+                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-150"
+                          title={t.scriptPanel.actions.deleteSentence}
+                          disabled={segment.sentences.length <= 1}
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
                     )}
                   </div>
                 </div>
               ))}
+              
+              {/* 添加句子按钮 */}
+              <div className="mt-3 pt-2">
+                <button
+                  onClick={() => handleAddSentence(segment.id)}
+                  className="w-full py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded transition-colors duration-150 flex items-center justify-center space-x-2"
+                  title={t.scriptPanel.actions.addSentence}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span>{t.scriptPanel.actions.addSentence}</span>
+                </button>
+              </div>
             </div>
 
             {/* 视频预览区域 */}

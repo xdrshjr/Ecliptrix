@@ -261,6 +261,8 @@ export interface Translations {
       previousVideo: string;
       nextVideo: string;
       editSentence: string;
+      deleteSentence: string;
+      addSentence: string;
     };
     progress: {
       conversionProgress: string;
@@ -603,14 +605,16 @@ export const translations: Record<string, Translations> = {
          convertAllSpeech: 'Convert All Speech',
          progress: 'Progress',
        },
-       actions: {
-         convertSpeech: 'Convert Speech',
-         searchOnlineVideos: 'Search Online Videos',
-         completeConversionFirst: 'Please complete speech conversion first',
-         previousVideo: 'Previous Video',
-         nextVideo: 'Next Video',
-         editSentence: 'Edit Sentence',
-       },
+             actions: {
+        convertSpeech: 'Convert Speech',
+        searchOnlineVideos: 'Search Online Videos',
+        completeConversionFirst: 'Please complete speech conversion first',
+        previousVideo: 'Previous Video',
+        nextVideo: 'Next Video',
+        editSentence: 'Edit Sentence',
+        deleteSentence: 'Delete Sentence',
+        addSentence: 'Add Sentence',
+      },
        progress: {
          conversionProgress: 'Conversion Progress',
          progressStatus: 'Progress: {completed}/{total}',
@@ -965,14 +969,16 @@ export const translations: Record<string, Translations> = {
          convertAllSpeech: '转换全部语音',
          progress: '进度',
        },
-       actions: {
-         convertSpeech: '转换语音',
-         searchOnlineVideos: '搜索在线视频',
-         completeConversionFirst: '请先完成语音转换',
-         previousVideo: '上一个视频',
-         nextVideo: '下一个视频',
-         editSentence: '编辑句子',
-       },
+             actions: {
+        convertSpeech: '转换语音',
+        searchOnlineVideos: '搜索在线视频',
+        completeConversionFirst: '请先完成语音转换',
+        previousVideo: '上一个视频',
+        nextVideo: '下一个视频',
+        editSentence: '编辑句子',
+        deleteSentence: '删除句子',
+        addSentence: '添加句子',
+      },
        progress: {
          conversionProgress: '转换进度',
          progressStatus: '进度: {completed}/{total}',
