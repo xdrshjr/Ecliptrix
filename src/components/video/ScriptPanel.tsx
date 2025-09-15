@@ -467,6 +467,17 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     });
   }, [logger]);
 
+  // 获取媒体错误类型描述
+  const getMediaErrorType = useCallback((errorCode: number) => {
+    switch (errorCode) {
+      case 1: return 'MEDIA_ERR_ABORTED - 用户中止了视频加载';
+      case 2: return 'MEDIA_ERR_NETWORK - 网络错误导致视频加载失败';
+      case 3: return 'MEDIA_ERR_DECODE - 视频解码失败';
+      case 4: return 'MEDIA_ERR_SRC_NOT_SUPPORTED - 视频格式不支持或URL无效';
+      default: return `Unknown error code: ${errorCode}`;
+    }
+  }, []);
+
   const handleVideoError = useCallback((videoKey: string, video: MaterialItem, segmentId: string, error: any) => {
     setVideoLoadingStates(prev => ({
       ...prev,
@@ -477,7 +488,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       segmentId,
       videoId: video.id,
       videoUrl: video.url,
-      error: error?.message
+      error: error?.message || error,
+      errorCode: error?.code,
+      errorType: error?.errorType
     });
   }, [logger]);
 
@@ -1507,9 +1520,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {isBatchConverting && (
               <div className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded border border-purple-200">
                 进度: {batchProgress.completed + batchProgress.failed}/{batchProgress.total}
-                {batchProgress.currentSegment && (
-                  <span className="ml-1">({batchProgress.currentSegment})</span>
-                )}
               </div>
             )}
             
@@ -1852,6 +1862,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                               poster={currentVideo.thumbnailUrl}
                               controls
                               preload="metadata"
+                              crossOrigin="anonymous"
                               data-video-key={`${segment.id}_${currentVideo.id}`}
                               onClick={(e) => {
                                 const videoElement = e.currentTarget;
@@ -1875,7 +1886,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                               }}
                               onError={(e) => {
                                 const videoKey = `${segment.id}_${currentVideo.id}`;
-                                handleVideoError(videoKey, currentVideo, segment.id, e.currentTarget.error);
+                                const error = e.currentTarget.error;
+                                const errorDetails = error ? {
+                                  code: error.code,
+                                  message: error.message,
+                                  errorType: getMediaErrorType(error.code)
+                                } : { message: 'Unknown video error' };
+                                
+                                handleVideoError(videoKey, currentVideo, segment.id, errorDetails);
                               }}
                               onPlay={() => {
                                 const videoKey = `${segment.id}_${currentVideo.id}`;
@@ -1898,7 +1916,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                                 });
                               }}
                             >
-                              <source src={currentVideo.url} type={`video/${currentVideo.format}`} />
+                              <source 
+                                src={currentVideo.url} 
+                                type={currentVideo.format ? `video/${currentVideo.format}` : 'video/mp4'} 
+                              />
                               您的浏览器不支持视频播放。
                             </video>
                           )
@@ -1931,13 +1952,43 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           if (loadingState === 'loading') {
                             return (
                               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                                <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <div className="flex flex-col items-center space-y-2">
+                                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  <div className="text-white text-xs">加载中...</div>
+                                </div>
                               </div>
                             );
                           } else if (loadingState === 'error') {
                             return (
-                              <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
-                                <div className="text-white text-sm">加载失败</div>
+                              <div className="absolute inset-0 flex items-center justify-center bg-red-500/20 backdrop-blur-sm">
+                                <div className="text-center p-4">
+                                  <div className="text-red-400 mb-2">
+                                    <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                    </svg>
+                                  </div>
+                                  <div className="text-white text-sm font-medium">视频加载失败</div>
+                                  <div className="text-gray-300 text-xs mt-1">请检查网络连接或视频URL</div>
+                                  <button 
+                                    className="mt-2 px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors"
+                                    onClick={() => {
+                                      // 重置加载状态，触发重新加载
+                                      setVideoLoadingStates(prev => {
+                                        const newState = { ...prev };
+                                        delete newState[videoKey];
+                                        return newState;
+                                      });
+                                      
+                                      // 重新加载视频
+                                      const videoElement = document.querySelector(`[data-video-key="${videoKey}"]`) as HTMLVideoElement;
+                                      if (videoElement) {
+                                        videoElement.load();
+                                      }
+                                    }}
+                                  >
+                                    重试
+                                  </button>
+                                </div>
                               </div>
                             );
                           }

@@ -14,6 +14,9 @@ class VideoItem(BaseModel):
     url: Optional[str] = Field(None, description="Video URL")
     thumbnailUrl: Optional[str] = Field(None, description="Video thumbnail URL")
     duration: Optional[float] = Field(None, description="Video duration in seconds")
+    format: Optional[str] = Field(None, description="Video format (mp4, webm, etc.)")
+    width: Optional[int] = Field(None, description="Video width in pixels")
+    height: Optional[int] = Field(None, description="Video height in pixels")
     analysisData: Optional[Dict[str, Any]] = Field(None, description="Video analysis data from frontend")
 
 

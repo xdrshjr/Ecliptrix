@@ -69,7 +69,8 @@ class VideoUnderstandingScriptService:
                 video_analysis_results,
                 request.referenceText,
                 request.parameters,
-                request.taskId
+                request.taskId,
+                request.selectedVideos
             )
             
             # Step 3: Prepare metadata
@@ -342,7 +343,8 @@ class VideoUnderstandingScriptService:
         analysis_results: List[VideoAnalysisResult],
         reference_text: str,
         parameters,
-        task_id: str
+        task_id: str,
+        original_videos: List[VideoItem] = None
     ) -> List[ScriptSegment]:
         """
         Generate script segments using LLM based on video analysis results.
@@ -352,6 +354,7 @@ class VideoUnderstandingScriptService:
             reference_text: Reference text for context
             parameters: Generation parameters
             task_id: Task identifier
+            original_videos: Original video items with complete information including URLs
             
         Returns:
             List[ScriptSegment]: Generated script segments
@@ -427,7 +430,8 @@ class VideoUnderstandingScriptService:
                     generated_content, 
                     analysis_results, 
                     parameters,
-                    task_id
+                    task_id,
+                    original_videos
                 )
                 
                 logger.info(f"Successfully generated {len(script_segments)} script segments for task: {task_id}")
@@ -470,69 +474,117 @@ class VideoUnderstandingScriptService:
         video_analysis_summary = ""
         for i, result in enumerate(analysis_results, 1):
             video_analysis_summary += f"""
-视频 {i}: {result.videoName} (ID: {result.videoId})
-- 时长: {result.estimatedDuration:.1f}秒
-- 内容描述: {result.contentDescription}
-- 关键主题: {', '.join(result.keyTopics)}
-"""
+<video id="{result.videoId}">
+  <name>{result.videoName}</name>
+  <duration_for_script_length>{result.estimatedDuration:.1f}秒</duration_for_script_length>
+  <content_description>{result.contentDescription}</content_description>
+  <key_topics>{', '.join(result.keyTopics)}</key_topics>"""
             if result.visualElements:
-                video_analysis_summary += f"- 视觉元素: {', '.join(result.visualElements)}\n"
+                video_analysis_summary += f"\n  <visual_elements>{', '.join(result.visualElements)}</visual_elements>"
             if result.audioElements:
-                video_analysis_summary += f"- 音频元素: {', '.join(result.audioElements)}\n"
+                video_analysis_summary += f"\n  <audio_elements>{', '.join(result.audioElements)}</audio_elements>"
             if result.frames:
-                video_analysis_summary += f"- 帧分析样本: {len(result.frames)}个关键帧\n"
-                for frame in result.frames[:2]:  # Show first 2 frames
-                    video_analysis_summary += f"  * 第{frame['frame_number']}帧 ({frame['timestamp']:.1f}s): {frame['analysis'][:100]}...\n"
+                video_analysis_summary += f"\n  <frame_analysis count='{len(result.frames)}'>"
+                for frame in result.frames[:3]:  # Show first 3 frames
+                    video_analysis_summary += f"\n    <frame sequence='{frame['frame_number']}'>{frame['analysis'][:150]}...</frame>"
+                video_analysis_summary += "\n  </frame_analysis>"
+            video_analysis_summary += "\n</video>\n"
         
         # Build reference context
         reference_context = ""
         if reference_text.strip():
             reference_context = f"""
-参考文本内容:
+<user_requirements>
 {reference_text}
-
-请在生成脚本时考虑参考文本的要求和风格。
-"""
+</user_requirements>"""
         
         # Language instruction
         language_instruction = {
-            'chinese': '请使用中文生成脚本内容。',
-            'english': 'Please generate script content in English.',
-            'mixed': '请混合使用中文和英文生成脚本内容，根据内容需要选择合适的语言。'
-        }.get(parameters.language, '请使用中文生成脚本内容。')
+            'chinese': '使用中文生成脚本内容',
+            'english': 'Generate script content in English',
+            'mixed': '混合使用中文和英文生成脚本内容，根据内容需要选择合适的语言'
+        }.get(parameters.language, '使用中文生成脚本内容')
         
         # Analysis depth instruction
         depth_instruction = {
-            'basic': '提供基础的内容描述和要点总结。',
-            'detailed': '提供详细的内容分析和深入的观点阐述。',
-            'comprehensive': '提供全面深入的内容分析，包括多维度的解读和专业见解。'
-        }.get(parameters.analysisDepth, '提供详细的内容分析和深入的观点阐述。')
+            'basic': '提供基础的内容描述和要点总结',
+            'detailed': '提供详细的内容分析和深入的观点阐述',
+            'comprehensive': '提供全面深入的内容分析，包括多维度的解读和专业见解'
+        }.get(parameters.analysisDepth, '提供详细的内容分析和深入的观点阐述')
         
-        prompt = f"""你是一个专业的视频内容分析师和脚本编写专家。基于以下视频分析结果，为视频内容生成对应的脚本段落。
+        prompt = f"""<role>你是一个专业的视频脚本编写专家，擅长基于视频内容分析结果生成连贯、有逻辑的视频脚本文案。</role>
 
-## 视频分析结果
+<task>
+基于提供的视频分析结果，生成一套完整的视频脚本文案。脚本需要上下文关联，形成连贯的叙事结构，严格依据用户输入的要求和视频解析信息。
+</task>
+
+<video_analysis>
 {video_analysis_summary}
-
-## 生成要求
-- 生成 {parameters.segmentCount} 个脚本段落
-- 每个段落包含标题和2-3个句子
-- {language_instruction}
-- {depth_instruction}
-- 每个段落可以关联一个或多个相关的视频（使用video_ids数组）
-- 如果段落内容涉及多个视频的对比、结合或综合分析，可以关联多个视频
-- 为每个段落生成3-5个相关关键词
+</video_analysis>
 
 {reference_context}
 
-## 输出格式
-请严格按照以下JSON格式输出，不要添加任何其他内容:
-- video_ids: 数组格式，包含与该段落相关的视频ID
-- 可以是单个视频: ["video_001"] 
-- 也可以是多个视频: ["video_001", "video_002"]
+<generation_requirements>
+<basic_requirements>
+- 生成 {parameters.segmentCount} 个相互关联的脚本段落
+- 每个段落包含一个吸引人的标题和适量的句子（根据视频长度调整）
+- 段落之间要有逻辑连接，形成完整的叙事流程
+- 严格基于视频分析结果的内容，不得添加视频中没有的信息
+- {language_instruction}
+- {depth_instruction}
+</basic_requirements>
 
+<content_requirements>
+- 脚本文案要具有视频脚本的特点：生动、吸引人、易于理解
+- 开头段落要能够吸引观众注意力，引入主题
+- 中间段落要深入展开内容，提供有价值的信息
+- 结尾段落要总结要点，给观众留下深刻印象
+- 如果用户提供了具体要求，必须严格遵循这些要求
+- 每个段落都要与对应的视频内容紧密相关
+- **重要：生成的脚本文案中不得包含任何时间相关的描述（如"XX秒"、"XX分钟"、"时长"等）**
+- 专注于内容本身的描述，而非时间维度的信息
+</content_requirements>
+
+<script_length_requirements>
+- **根据视频时长调整脚本文案的长度和详细程度：**
+  - 短视频（0-30秒）：每段落2-3个简洁有力的句子，突出核心要点
+  - 中等视频（31-120秒）：每段落3-4个句子，适度展开内容描述
+  - 长视频（121秒以上）：每段落4-5个句子，深入详细地描述内容
+- 文案长度要与视频内容的丰富程度相匹配
+- 确保每个段落的文案能够充分覆盖对应视频的主要内容
+- 避免文案过短导致内容空洞，也避免文案过长导致冗余
+</script_length_requirements>
+
+<video_association>
+- 每个段落必须关联一个或多个相关视频（使用video_ids数组）
+- 单个视频关联：当段落专门讲述某个视频的内容时
+- 多个视频关联：当段落涉及多个视频的对比、结合或综合分析时
+- 视频关联必须与段落内容逻辑一致
+</video_association>
+
+<keywords_generation>
+- 为每个段落生成3-5个相关关键词
+- 关键词要准确反映段落的核心内容
+- 关键词要有助于SEO和内容检索
+</keywords_generation>
+</generation_requirements>
+
+<output_format>
+请严格按照以下JSON格式输出，不要添加任何其他内容：
 {example_output}
+</output_format>
 
-请开始生成脚本:"""
+<instruction>
+现在开始生成视频脚本文案，确保：
+1. 严格依据视频分析结果和用户要求
+2. 段落之间逻辑连贯，形成完整故事线
+3. 语言生动，适合视频脚本
+4. 准确关联对应的视频ID
+5. **绝对不要在生成的文案中提及任何时间信息（时长、秒数、分钟数等）**
+6. 专注于视频内容的实质性描述和分析
+7. **根据每个视频的时长（duration_for_script_length）调整对应段落的文案长度**
+8. 确保文案详细程度与视频内容丰富度相匹配
+</instruction>"""
         
         return prompt
     
@@ -546,41 +598,60 @@ class VideoUnderstandingScriptService:
         Returns:
             str: Example JSON format
         """
-        example = {
-            "segments": [
-                {
-                    "title": "视频内容分析 1",
-                    "sentences": [
-                        "这个视频展现了精彩的内容和创意表达。",
-                        "通过深入分析可以看到其独特的视觉呈现方式。"
-                    ],
-                    "video_ids": ["video_001"],  # 支持多个视频ID
-                    "keywords": ["创意表达", "视觉呈现", "内容分析"]
-                }
-            ]
-        }
+        # 创建不同长度的示例，展示如何根据视频时长调整文案
+        if parameters.segmentCount == 1:
+            example = {
+                "segments": [
+                    {
+                        "title": "精彩内容呈现",
+                        "sentences": [
+                            "这里展现了令人惊叹的创意表达。",
+                            "独特的视觉风格让内容更加引人入胜。"
+                        ],
+                        "video_ids": ["video_001"],
+                        "keywords": ["创意表达", "视觉风格", "引人入胜"]
+                    }
+                ]
+            }
+        else:
+            example = {
+                "segments": [
+                    {
+                        "title": "引人入胜的开场",
+                        "sentences": [
+                            "欢迎来到今天的精彩内容，我们将为您揭示一个令人惊叹的故事。",
+                            "这个内容展现了独特的创意视角和精湛的制作工艺。",
+                            "让我们一起深入探索其中蕴含的丰富内涵。"
+                        ],
+                        "video_ids": ["video_001"],
+                        "keywords": ["精彩内容", "创意视角", "制作工艺", "丰富内涵"]
+                    }
+                ]
+            }
         
         if parameters.segmentCount > 1:
             example["segments"].append({
-                "title": "视频内容分析 2", 
+                "title": "深度内容解析", 
                 "sentences": [
-                    "第二个视频在技术实现上有着出色的表现。",
-                    "整体制作水准体现了专业性和创新性。"
+                    "接下来让我们深入分析内容中的核心要素。",
+                    "从技术层面来看，这里运用了多种先进的制作技巧。",
+                    "这些细节的处理体现了创作者的专业水准和匠心精神。"
                 ],
-                "video_ids": ["video_002"],  # 支持多个视频ID
-                "keywords": ["技术实现", "专业制作", "创新表达"]
+                "video_ids": ["video_002"],
+                "keywords": ["深度解析", "核心要素", "制作技巧", "专业水准"]
             })
         
         # 如果有足够多的视频，添加一个多视频关联的示例
         if parameters.segmentCount > 2:
             example["segments"].append({
-                "title": "综合内容展示", 
+                "title": "精彩总结与展望", 
                 "sentences": [
-                    "这些视频共同展现了完整的内容体系。",
-                    "不同视频之间形成了良好的互补关系。"
+                    "通过对这些内容的综合分析，我们可以看到完整的创作理念。",
+                    "不同内容片段之间形成了完美的呼应和递进关系。",
+                    "这样的内容组合为观众提供了丰富而深刻的体验。"
                 ],
                 "video_ids": ["video_001", "video_002"],  # 多个视频关联示例
-                "keywords": ["综合展示", "内容体系", "互补关系"]
+                "keywords": ["综合分析", "创作理念", "呼应递进", "深刻体验"]
             })
         
         return json.dumps(example, indent=2, ensure_ascii=False)
@@ -590,7 +661,8 @@ class VideoUnderstandingScriptService:
         generated_content: str,
         analysis_results: List[VideoAnalysisResult],
         parameters,
-        task_id: str
+        task_id: str,
+        original_videos: List[VideoItem] = None
     ) -> List[ScriptSegment]:
         """
         Parse generated script content into ScriptSegment objects.
@@ -600,6 +672,7 @@ class VideoUnderstandingScriptService:
             analysis_results: Original video analysis results
             parameters: Generation parameters
             task_id: Task identifier
+            original_videos: Original video items with complete information including URLs
             
         Returns:
             List[ScriptSegment]: Parsed script segments
@@ -647,23 +720,82 @@ class VideoUnderstandingScriptService:
                     for video_id in video_ids:
                         for analysis_result in analysis_results:
                             if analysis_result.videoId == video_id:
-                                associated_videos.append(VideoItem(
-                                    id=analysis_result.videoId,
-                                    name=analysis_result.videoName,
-                                    type="video",
-                                    duration=analysis_result.estimatedDuration
-                                ))
+                                # Find original video data to get complete information including URLs
+                                original_video = self._find_original_video(video_id, original_videos)
+                                if original_video:
+                                    # Use original video data with complete information
+                                    # Auto-detect format from URL if not provided
+                                    video_format = getattr(original_video, 'format', None)
+                                    if not video_format and original_video.url:
+                                        if '.webm' in original_video.url.lower():
+                                            video_format = 'webm'
+                                        elif '.mov' in original_video.url.lower():
+                                            video_format = 'mov'
+                                        elif '.avi' in original_video.url.lower():
+                                            video_format = 'avi'
+                                        else:
+                                            video_format = 'mp4'  # Default to mp4
+                                    
+                                    logger.info(f"Found original video data for {video_id}: url={original_video.url}, thumbnailUrl={original_video.thumbnailUrl}, format={video_format}")
+                                    associated_videos.append(VideoItem(
+                                        id=original_video.id,
+                                        name=original_video.name,
+                                        type=original_video.type,
+                                        url=original_video.url,
+                                        thumbnailUrl=original_video.thumbnailUrl,
+                                        duration=original_video.duration or analysis_result.estimatedDuration,
+                                        format=video_format,
+                                        width=getattr(original_video, 'width', None),
+                                        height=getattr(original_video, 'height', None)
+                                    ))
+                                else:
+                                    # Fallback to analysis result only
+                                    associated_videos.append(VideoItem(
+                                        id=analysis_result.videoId,
+                                        name=analysis_result.videoName,
+                                        type="video",
+                                        duration=analysis_result.estimatedDuration
+                                    ))
                                 break # Found the video, move to the next one
                 
                 # If no specific video_ids, associate with video by index
                 if not associated_videos and i < len(analysis_results):
                     analysis_result = analysis_results[i]
-                    associated_videos.append(VideoItem(
-                        id=analysis_result.videoId,
-                        name=analysis_result.videoName,
-                        type="video",
-                        duration=analysis_result.estimatedDuration
-                    ))
+                    # Find original video data to get complete information including URLs
+                    original_video = self._find_original_video(analysis_result.videoId, original_videos)
+                    if original_video:
+                        # Use original video data with complete information
+                        # Auto-detect format from URL if not provided
+                        video_format = getattr(original_video, 'format', None)
+                        if not video_format and original_video.url:
+                            if '.webm' in original_video.url.lower():
+                                video_format = 'webm'
+                            elif '.mov' in original_video.url.lower():
+                                video_format = 'mov'
+                            elif '.avi' in original_video.url.lower():
+                                video_format = 'avi'
+                            else:
+                                video_format = 'mp4'  # Default to mp4
+                        
+                        associated_videos.append(VideoItem(
+                            id=original_video.id,
+                            name=original_video.name,
+                            type=original_video.type,
+                            url=original_video.url,
+                            thumbnailUrl=original_video.thumbnailUrl,
+                            duration=original_video.duration or analysis_result.estimatedDuration,
+                            format=video_format,
+                            width=getattr(original_video, 'width', None),
+                            height=getattr(original_video, 'height', None)
+                        ))
+                    else:
+                        # Fallback to analysis result only
+                        associated_videos.append(VideoItem(
+                            id=analysis_result.videoId,
+                            name=analysis_result.videoName,
+                            type="video",
+                            duration=analysis_result.estimatedDuration
+                        ))
                 
                 # Create script segment
                 segment = ScriptSegment(
@@ -682,17 +814,38 @@ class VideoUnderstandingScriptService:
             
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON from LLM response for task: {task_id}, falling back to text parsing")
-            return self._fallback_parse_script(generated_content, analysis_results, parameters, task_id)
+            return self._fallback_parse_script(generated_content, analysis_results, parameters, task_id, original_videos)
         except Exception as e:
             logger.warning(f"Failed to parse generated script for task: {task_id}: {str(e)}, creating fallback segments")
-            return self._create_fallback_script_segments(analysis_results, parameters, task_id)
+            return self._create_fallback_script_segments(analysis_results, parameters, task_id, original_videos)
+    
+    def _find_original_video(self, video_id: str, original_videos: List[VideoItem] = None) -> VideoItem:
+        """
+        Find original video data by video ID to get complete information including URLs.
+        
+        Args:
+            video_id: Video ID to find
+            original_videos: List of original video items
+            
+        Returns:
+            VideoItem: Original video item if found, None otherwise
+        """
+        if not original_videos:
+            return None
+            
+        for video in original_videos:
+            if video.id == video_id:
+                return video
+        
+        return None
     
     def _fallback_parse_script(
         self,
         generated_content: str,
         analysis_results: List[VideoAnalysisResult],
         parameters,
-        task_id: str
+        task_id: str,
+        original_videos: List[VideoItem] = None
     ) -> List[ScriptSegment]:
         """
         Fallback script parsing when JSON parsing fails.
@@ -721,7 +874,7 @@ class VideoUnderstandingScriptService:
                     segment_id = f"script-segment-{task_id}-{uuid.uuid4().hex[:8]}"
                     segment = self._create_segment_from_text(
                         segment_id, current_title, current_sentences, 
-                        analysis_results, len(script_segments)
+                        analysis_results, len(script_segments), original_videos
                     )
                     script_segments.append(segment)
                 
@@ -737,13 +890,13 @@ class VideoUnderstandingScriptService:
             segment_id = f"script-segment-{task_id}-{uuid.uuid4().hex[:8]}"
             segment = self._create_segment_from_text(
                 segment_id, current_title, current_sentences,
-                analysis_results, len(script_segments)
+                analysis_results, len(script_segments), original_videos
             )
             script_segments.append(segment)
         
         # If no segments were created, create fallback segments
         if not script_segments:
-            return self._create_fallback_script_segments(analysis_results, parameters, task_id)
+            return self._create_fallback_script_segments(analysis_results, parameters, task_id, original_videos)
         
         return script_segments[:parameters.segmentCount]
     
@@ -753,7 +906,8 @@ class VideoUnderstandingScriptService:
         title: str,
         sentences_text: List[str],
         analysis_results: List[VideoAnalysisResult],
-        segment_index: int
+        segment_index: int,
+        original_videos: List[VideoItem] = None
     ) -> ScriptSegment:
         """
         Create script segment from text components.
@@ -778,12 +932,41 @@ class VideoUnderstandingScriptService:
         associated_videos = []
         if segment_index < len(analysis_results):
             analysis_result = analysis_results[segment_index]
-            associated_videos.append(VideoItem(
-                id=analysis_result.videoId,
-                name=analysis_result.videoName,
-                type="video",
-                duration=analysis_result.estimatedDuration
-            ))
+            # Find original video data to get complete information including URLs
+            original_video = self._find_original_video(analysis_result.videoId, original_videos)
+            if original_video:
+                # Use original video data with complete information
+                # Auto-detect format from URL if not provided
+                video_format = getattr(original_video, 'format', None)
+                if not video_format and original_video.url:
+                    if '.webm' in original_video.url.lower():
+                        video_format = 'webm'
+                    elif '.mov' in original_video.url.lower():
+                        video_format = 'mov'
+                    elif '.avi' in original_video.url.lower():
+                        video_format = 'avi'
+                    else:
+                        video_format = 'mp4'  # Default to mp4
+                
+                associated_videos.append(VideoItem(
+                    id=original_video.id,
+                    name=original_video.name,
+                    type=original_video.type,
+                    url=original_video.url,
+                    thumbnailUrl=original_video.thumbnailUrl,
+                    duration=original_video.duration or analysis_result.estimatedDuration,
+                    format=video_format,
+                    width=getattr(original_video, 'width', None),
+                    height=getattr(original_video, 'height', None)
+                ))
+            else:
+                # Fallback to analysis result only
+                associated_videos.append(VideoItem(
+                    id=analysis_result.videoId,
+                    name=analysis_result.videoName,
+                    type="video",
+                    duration=analysis_result.estimatedDuration
+                ))
         
         return ScriptSegment(
             id=segment_id,
@@ -798,7 +981,8 @@ class VideoUnderstandingScriptService:
         self,
         analysis_results: List[VideoAnalysisResult],
         parameters,
-        task_id: str
+        task_id: str,
+        original_videos: List[VideoItem] = None
     ) -> List[ScriptSegment]:
         """
         Create fallback script segments when parsing fails.
@@ -872,13 +1056,28 @@ class VideoUnderstandingScriptService:
             associated_videos = []
             total_duration = 0.0
             for result in segment_analysis_results:
-                associated_videos.append(VideoItem(
-                    id=result.videoId,
-                    name=result.videoName,
-                    type="video",
-                    duration=result.estimatedDuration
-                ))
-                total_duration += result.estimatedDuration
+                # Find original video data to get complete information including URLs
+                original_video = self._find_original_video(result.videoId, original_videos)
+                if original_video:
+                    # Use original video data with complete information
+                    associated_videos.append(VideoItem(
+                        id=original_video.id,
+                        name=original_video.name,
+                        type=original_video.type,
+                        url=original_video.url,
+                        thumbnailUrl=original_video.thumbnailUrl,
+                        duration=original_video.duration or result.estimatedDuration
+                    ))
+                    total_duration += (original_video.duration or result.estimatedDuration)
+                else:
+                    # Fallback to analysis result only
+                    associated_videos.append(VideoItem(
+                        id=result.videoId,
+                        name=result.videoName,
+                        type="video",
+                        duration=result.estimatedDuration
+                    ))
+                    total_duration += result.estimatedDuration
             
             segment = ScriptSegment(
                 id=segment_id,

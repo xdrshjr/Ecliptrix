@@ -163,7 +163,7 @@ class TestVideoUnderstandingScriptService:
         task_id = "test_task"
         
         segments = service._parse_generated_script(
-            generated_content, analysis_results, parameters, task_id
+            generated_content, analysis_results, parameters, task_id, None
         )
         
         assert len(segments) == 1
@@ -207,7 +207,7 @@ class TestVideoUnderstandingScriptService:
         task_id = "test_task"
         
         segments = service._parse_generated_script(
-            generated_content, analysis_results, parameters, task_id
+            generated_content, analysis_results, parameters, task_id, None
         )
         
         assert len(segments) == 1
