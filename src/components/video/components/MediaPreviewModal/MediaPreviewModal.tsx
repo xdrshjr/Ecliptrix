@@ -53,7 +53,9 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
         materialId: material.id,
         materialName: material.name,
         materialType: material.type,
-        materialUrl: material.url.substring(0, 100)
+        materialUrl: material.url.substring(0, 100),
+        zIndex: 200,
+        modalLayer: '预览弹窗已设置为最高层级，应覆盖taskbar'
       });
     }
   }, [isOpen, material?.id]); // 只依赖 isOpen 和 material.id
@@ -64,6 +66,11 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
       if (!isOpen) return;
       
       if (e.key === 'Escape') {
+        logger.info('按ESC键关闭预览弹窗', {
+          materialId: material?.id,
+          materialName: material?.name,
+          closeMethod: 'escape-key'
+        });
         onClose();
       } else if (material?.type === 'image') {
         if (e.key === '+' || e.key === '=') {
@@ -210,6 +217,11 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
+      logger.info('点击背景关闭预览弹窗', {
+        materialId: material?.id,
+        materialName: material?.name,
+        closeMethod: 'backdrop-click'
+      });
       onClose();
     }
   };
@@ -224,7 +236,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[200]"
       onClick={handleBackdropClick}
     >
       {/* 工具栏 */}

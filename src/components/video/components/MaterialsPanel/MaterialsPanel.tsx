@@ -404,7 +404,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       material: null
     });
     
-    logger.info('关闭素材预览弹窗');
+    logger.info('关闭素材预览弹窗', {
+      previousMaterial: previewModal.material?.id,
+      previousMaterialName: previewModal.material?.name,
+      closeMethod: 'manual-close'
+    });
   };
 
   // 下载素材
