@@ -8,7 +8,7 @@ interface TimelineItemProps {
   item: TimelineItemType;
   pixelsPerSecond: number;
   onSelect: (itemId: string, isMultiSelect?: boolean) => void;
-  onMove: (itemId: string, newStartTime: number) => void;
+  onMove: (itemId: string, newStartTime: number, isPreview?: boolean) => void;
   onResize: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
   onSubtitleEdit?: (itemId: string, newText: string) => void;
   isSelected: boolean;
@@ -124,7 +124,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
           timestamp: new Date().toISOString()
         });
         
-        onMove(item.id, newStartTime);
+        onMove(item.id, newStartTime, true); // 拖拽过程中使用预览模式
       } else if (isResizing) {
         const deltaX = e.clientX - dragStart.x;
         const deltaTime = deltaX / pixelsPerSecond;
@@ -239,11 +239,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     };
 
     const handleMouseUp = () => {
-      if (isDragging || isResizing) {
-        console.log(`[TimelineItem] 完成素材操作`, {
+      if (isDragging) {
+        console.log(`[TimelineItem] 完成拖拽操作`, {
           itemId: item.id,
-          operation: isDragging ? 'move' : 'resize',
           finalStartTime: item.startTime,
+          timestamp: new Date().toISOString()
+        });
+        
+        // 调用完成模式，执行智能插入逻辑
+        onMove(item.id, item.startTime, false);
+      } else if (isResizing) {
+        console.log(`[TimelineItem] 完成调整大小操作`, {
+          itemId: item.id,
           finalDuration: item.duration,
           timestamp: new Date().toISOString()
         });

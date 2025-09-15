@@ -11,6 +11,18 @@ import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
 
+// 新增：拖拽预览状态接口
+interface DragPreviewState {
+  isDragging: boolean;
+  itemId: string | null;
+  trackId: string | null;
+  insertPosition: number; // 插入位置的时间
+  gapSize: number; // 现有空隙大小
+  requiredSize: number; // 需要的空隙大小
+  willPushMaterials: boolean; // 是否会推动后面的素材
+  affectedItems: string[]; // 会被推动的素材ID列表
+}
+
 interface TimelinePanelProps {
   className?: string;
   onTimelineStateChange?: (timelineState: TimelineState) => void;
@@ -54,6 +66,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // 初始化时间轴导出Hook
   const timelineExport = useTimelineExport(taskId);
   
+  // 新增：拖拽预览状态
+  const [dragPreview, setDragPreview] = useState<DragPreviewState>({
+    isDragging: false,
+    itemId: null,
+    trackId: null,
+    insertPosition: 0,
+    gapSize: 0,
+    requiredSize: 0,
+    willPushMaterials: false,
+    affectedItems: []
+  });
+
   // 创建初始空轨道状态
   const createInitialTimelineState = useCallback((): TimelineState => {
     const initialTracks: Track[] = [
@@ -834,10 +858,185 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
   }, []);
 
-  const handleMoveItem = useCallback((itemId: string, newStartTime: number) => {
-    console.log(`[TimelinePanel] 移动素材开始`, {
+  // 新增：计算拖拽预览信息
+  const calculateDragPreview = useCallback((
+    targetItem: TimelineItem,
+    newStartTime: number,
+    trackItems: TimelineItem[]
+  ): DragPreviewState => {
+    const targetEndTime = newStartTime + targetItem.duration;
+    const otherItems = trackItems.filter(item => item.id !== targetItem.id);
+    
+    // 按开始时间排序所有其他素材
+    const sortedItems = otherItems.sort((a, b) => a.startTime - b.startTime);
+    
+    // 找到插入位置前后的素材
+    const itemsBefore = sortedItems.filter(item => item.startTime + item.duration <= newStartTime);
+    const itemsAfter = sortedItems.filter(item => item.startTime >= newStartTime);
+    
+    // 计算现有空隙大小
+    let gapStart = 0;
+    let gapEnd = Infinity;
+    
+    if (itemsBefore.length > 0) {
+      const lastBeforeItem = itemsBefore[itemsBefore.length - 1];
+      gapStart = lastBeforeItem.startTime + lastBeforeItem.duration;
+    }
+    
+    if (itemsAfter.length > 0) {
+      gapEnd = itemsAfter[0].startTime;
+    }
+    
+    const gapSize = gapEnd - Math.max(gapStart, newStartTime);
+    const requiredSize = targetItem.duration;
+    const willPushMaterials = gapSize < requiredSize && itemsAfter.length > 0;
+    
+    // 如果需要推动，计算会被影响的素材
+    const affectedItems: string[] = [];
+    if (willPushMaterials) {
+      const pushDistance = requiredSize - gapSize;
+      for (const item of itemsAfter) {
+        affectedItems.push(item.id);
+      }
+    }
+    
+    console.log(`[TimelinePanel] 计算拖拽预览`, {
+      itemId: targetItem.id,
+      insertPosition: newStartTime.toFixed(2),
+      gapStart: gapStart.toFixed(2),
+      gapEnd: gapEnd === Infinity ? 'Infinity' : gapEnd.toFixed(2),
+      gapSize: gapSize === Infinity ? 'Infinity' : gapSize.toFixed(2),
+      requiredSize: requiredSize.toFixed(2),
+      willPushMaterials,
+      affectedItemsCount: affectedItems.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    return {
+      isDragging: true,
+      itemId: targetItem.id,
+      trackId: targetItem.trackId,
+      insertPosition: newStartTime,
+      gapSize: gapSize === Infinity ? Number.MAX_SAFE_INTEGER : gapSize,
+      requiredSize,
+      willPushMaterials,
+      affectedItems
+    };
+  }, []);
+
+  // 新增：智能插入素材（推动后面的素材）
+  const smartInsertItem = useCallback((
+    targetItem: TimelineItem,
+    newStartTime: number,
+    trackItems: TimelineItem[]
+  ): TimelineItem[] => {
+    const targetEndTime = newStartTime + targetItem.duration;
+    const otherItems = trackItems.filter(item => item.id !== targetItem.id);
+    
+    // 按开始时间排序所有其他素材
+    const sortedItems = otherItems.sort((a, b) => a.startTime - b.startTime);
+    
+    // 找到插入位置后面的素材
+    const itemsAfter = sortedItems.filter(item => item.startTime >= newStartTime);
+    
+    // 计算现有空隙
+    let gapEnd = Infinity;
+    if (itemsAfter.length > 0) {
+      gapEnd = itemsAfter[0].startTime;
+    }
+    
+    const gapSize = gapEnd - newStartTime;
+    const requiredSize = targetItem.duration;
+    
+    console.log(`[TimelinePanel] 智能插入素材`, {
+      itemId: targetItem.id,
+      insertPosition: newStartTime.toFixed(2),
+      gapSize: gapSize === Infinity ? 'Infinity' : gapSize.toFixed(2),
+      requiredSize: requiredSize.toFixed(2),
+      needsPush: gapSize < requiredSize,
+      itemsAfterCount: itemsAfter.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    let updatedItems = [...trackItems];
+    
+    // 如果空隙不够，推动后面的素材
+    if (gapSize < requiredSize && itemsAfter.length > 0) {
+      const pushDistance = requiredSize - gapSize;
+      
+      console.log(`[TimelinePanel] 推动后面的素材`, {
+        pushDistance: pushDistance.toFixed(2),
+        affectedItemsCount: itemsAfter.length,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 推动所有后面的素材
+      updatedItems = updatedItems.map(item => {
+        if (itemsAfter.some(afterItem => afterItem.id === item.id)) {
+          const newItemStartTime = item.startTime + pushDistance;
+          console.log(`[TimelinePanel] 推动素材`, {
+            itemId: item.id,
+            oldStartTime: item.startTime.toFixed(2),
+            newStartTime: newItemStartTime.toFixed(2),
+            pushDistance: pushDistance.toFixed(2)
+          });
+          return { ...item, startTime: newItemStartTime };
+        }
+        return item;
+      });
+    }
+    
+    // 更新目标素材的位置
+    updatedItems = updatedItems.map(item => 
+      item.id === targetItem.id ? { ...item, startTime: newStartTime } : item
+    );
+    
+    return updatedItems;
+  }, []);
+
+  // 新增：处理拖拽预览更新
+  const handleDragPreview = useCallback((itemId: string, newStartTime: number) => {
+    setTimelineState(prev => {
+      // 找到目标素材和所在轨道
+      let targetItem: TimelineItem | null = null;
+      let targetTrack: Track | null = null;
+
+      for (const track of prev.tracks) {
+        const item = track.items.find(item => item.id === itemId);
+        if (item) {
+          targetItem = item;
+          targetTrack = track;
+          break;
+        }
+      }
+
+      if (!targetItem || !targetTrack) {
+        return prev;
+      }
+
+      // 计算拖拽预览信息
+      const previewInfo = calculateDragPreview(targetItem, newStartTime, targetTrack.items);
+      setDragPreview(previewInfo);
+
+      // 仅更新素材位置用于预览，不推动其他素材
+      return {
+        ...prev,
+        tracks: prev.tracks.map(track => ({
+          ...track,
+          items: track.items.map(item => 
+            item.id === itemId ? { ...item, startTime: newStartTime } : item
+          )
+        }))
+      };
+    });
+  }, [calculateDragPreview]);
+
+  // 新增：完成拖拽操作
+  const handleDragComplete = useCallback((itemId: string, newStartTime: number) => {
+    console.log(`[TimelinePanel] 完成拖拽操作`, {
       itemId,
-      requestedStartTime: newStartTime.toFixed(2),
+      finalStartTime: newStartTime.toFixed(2),
+      willPushMaterials: dragPreview.willPushMaterials,
       timestamp: new Date().toISOString()
     });
 
@@ -860,27 +1059,101 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         return prev;
       }
 
-      // 计算防重叠的位置
-      const finalStartTime = calculateNonOverlappingPosition(targetItem, newStartTime, targetTrack.items);
+      // 使用智能插入逻辑
+      const updatedItems = smartInsertItem(targetItem, newStartTime, targetTrack.items);
 
-      console.log(`[TimelinePanel] 移动素材完成`, {
-        itemId,
-        originalStartTime: targetItem.startTime.toFixed(2),
-        requestedStartTime: newStartTime.toFixed(2),
-        finalStartTime: finalStartTime.toFixed(2),
-        positionAdjusted: Math.abs(finalStartTime - newStartTime) > 0.01,
-        timestamp: new Date().toISOString()
-      });
-
-      return {
+      const newState = {
         ...prev,
         tracks: prev.tracks.map(track => ({
           ...track,
-          items: track.items.map(item => 
-            item.id === itemId ? { ...item, startTime: finalStartTime } : item
-          )
+          items: track.id === targetTrack!.id ? updatedItems : track.items
         }))
       };
+
+      // 在拖拽完成后，异步调用整理素材逻辑
+      setTimeout(() => {
+        console.log(`[TimelinePanel] 拖拽完成后自动整理轨道素材`, {
+          itemId,
+          trackId: targetTrack!.id,
+          timestamp: new Date().toISOString()
+        });
+        
+        // 调用整理素材的逻辑（不显示成功提示，因为这是自动调用）
+        setTimelineState(currentState => {
+          const organizedState = {
+            ...currentState,
+            tracks: currentState.tracks.map(track => {
+              // 只处理视频和音频轨道
+              if (track.type !== 'video' && track.type !== 'audio') {
+                return track;
+              }
+
+              // 如果轨道为空，直接返回
+              if (track.items.length === 0) {
+                return track;
+              }
+
+              // 按开始时间排序轨道中的素材
+              const sortedItems = [...track.items].sort((a, b) => a.startTime - b.startTime);
+              
+              console.log(`[TimelinePanel] 自动整理轨道 ${track.name}`, {
+                trackId: track.id,
+                trackType: track.type,
+                itemsCount: sortedItems.length,
+                timestamp: new Date().toISOString()
+              });
+
+              // 重新计算每个素材的位置，使它们紧密相邻
+              let currentTime = 0;
+              const organizedItems = sortedItems.map((item, index) => {
+                const organizedItem = {
+                  ...item,
+                  startTime: currentTime
+                };
+                
+                currentTime += item.duration;
+                
+                console.log(`[TimelinePanel] 自动整理素材重新定位`, {
+                  itemId: item.id,
+                  itemName: item.name,
+                  originalStartTime: item.startTime,
+                  newStartTime: organizedItem.startTime,
+                  duration: item.duration,
+                  index,
+                  timestamp: new Date().toISOString()
+                });
+
+                return organizedItem;
+              });
+
+              return {
+                ...track,
+                items: organizedItems
+              };
+            })
+          };
+
+          console.log(`[TimelinePanel] 拖拽完成后自动整理素材操作完成`, {
+            timestamp: new Date().toISOString()
+          });
+
+          return organizedState;
+        });
+      }, 100); // 短暂延迟，确保拖拽状态更新完成
+
+      return newState;
+    });
+
+    // 清除拖拽预览状态
+    setDragPreview({
+      isDragging: false,
+      itemId: null,
+      trackId: null,
+      insertPosition: 0,
+      gapSize: 0,
+      requiredSize: 0,
+      willPushMaterials: false,
+      affectedItems: []
     });
 
     addToHistory({
@@ -888,7 +1161,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       payload: { itemId, newStartTime },
       timestamp: new Date()
     });
-  }, [addToHistory, calculateNonOverlappingPosition]);
+  }, [dragPreview.willPushMaterials, smartInsertItem, addToHistory]);
+
+  const handleMoveItem = useCallback((itemId: string, newStartTime: number, isPreview: boolean = false) => {
+    if (isPreview) {
+      // 拖拽预览模式：只更新预览状态，不实际移动素材
+      handleDragPreview(itemId, newStartTime);
+    } else {
+      // 完成拖拽模式：使用智能插入逻辑
+      handleDragComplete(itemId, newStartTime);
+    }
+  }, [handleDragPreview, handleDragComplete]);
 
   const handleResizeItem = useCallback((itemId: string, newDuration: number, resizeType: 'start' | 'end') => {
     console.log(`[TimelinePanel] 调整素材大小开始`, {
@@ -2132,6 +2415,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         scrollRef={trackScrollRef}
         onScroll={handleTrackScroll}
         scrollLeft={timelineState.scrollLeft}
+        dragPreview={dragPreview}
       />
 
       {/* 字幕编辑模态框 */}

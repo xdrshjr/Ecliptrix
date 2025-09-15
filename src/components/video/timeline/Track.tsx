@@ -6,12 +6,24 @@ import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n
 import TimelineItem from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
 
+// 拖拽预览状态接口（与TimelinePanel中的定义保持一致）
+interface DragPreviewState {
+  isDragging: boolean;
+  itemId: string | null;
+  trackId: string | null;
+  insertPosition: number; // 插入位置的时间
+  gapSize: number; // 现有空隙大小
+  requiredSize: number; // 需要的空隙大小
+  willPushMaterials: boolean; // 是否会推动后面的素材
+  affectedItems: string[]; // 会被推动的素材ID列表
+}
+
 interface TrackProps {
   track: TrackType;
   pixelsPerSecond: number;
   selectedItems: string[];
   onSelectItem: (itemId: string, isMultiSelect?: boolean) => void;
-  onMoveItem: (itemId: string, newStartTime: number) => void;
+  onMoveItem: (itemId: string, newStartTime: number, isPreview?: boolean) => void;
   onResizeItem: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
   onSubtitleEdit?: (itemId: string, newText: string) => void;
   onEditSubtitles?: (trackId: string) => void;
@@ -24,6 +36,7 @@ interface TrackProps {
   totalDuration: number;
   locale?: SupportedLocale;
   trackHeight?: number; // 新增轨道高度参数，默认为32px
+  dragPreview?: DragPreviewState; // 拖拽预览状态
 }
 
 const Track: React.FC<TrackProps> = ({
@@ -43,7 +56,8 @@ const Track: React.FC<TrackProps> = ({
   onMaterialDrop,
   totalDuration,
   locale = defaultLocale,
-  trackHeight = 32 // 默认轨道高度为32px
+  trackHeight = 32, // 默认轨道高度为32px
+  dragPreview
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
@@ -507,6 +521,41 @@ const Track: React.FC<TrackProps> = ({
             trackHeight={trackHeight} // 使用动态轨道高度
           />
         ))}
+
+        {/* 拖拽预览高亮显示 */}
+        {dragPreview?.isDragging && dragPreview?.trackId === track.id && (
+          <div
+            className={`absolute top-0 bottom-0 pointer-events-none border-2 border-dashed rounded ${
+              dragPreview.willPushMaterials 
+                ? 'border-orange-400 bg-orange-50 bg-opacity-50' 
+                : 'border-blue-400 bg-blue-50 bg-opacity-50'
+            }`}
+            style={{
+              left: `${dragPreview.insertPosition * pixelsPerSecond}px`,
+              width: `${dragPreview.requiredSize * pixelsPerSecond}px`,
+            }}
+          >
+            {/* 插入位置指示器 */}
+            <div 
+              className={`absolute top-0 bottom-0 w-0.5 ${
+                dragPreview.willPushMaterials ? 'bg-orange-400' : 'bg-blue-400'
+              }`}
+              style={{ left: '0px' }}
+            />
+            
+            {/* 提示文本 */}
+            <div className={`absolute top-1 left-1 text-xs px-1 py-0.5 rounded ${
+              dragPreview.willPushMaterials 
+                ? 'bg-orange-100 text-orange-700' 
+                : 'bg-blue-100 text-blue-700'
+            }`}>
+              {dragPreview.willPushMaterials 
+                ? `推动${dragPreview.affectedItems.length}个素材` 
+                : '插入到此位置'
+              }
+            </div>
+          </div>
+        )}
 
         {/* 拖拽放置区域提示 */}
         {track.items.length === 0 && (

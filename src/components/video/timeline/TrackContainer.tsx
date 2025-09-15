@@ -6,11 +6,23 @@ import { SupportedLocale } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
 import Track from './Track';
 
+// 拖拽预览状态接口（与TimelinePanel中的定义保持一致）
+interface DragPreviewState {
+  isDragging: boolean;
+  itemId: string | null;
+  trackId: string | null;
+  insertPosition: number; // 插入位置的时间
+  gapSize: number; // 现有空隙大小
+  requiredSize: number; // 需要的空隙大小
+  willPushMaterials: boolean; // 是否会推动后面的素材
+  affectedItems: string[]; // 会被推动的素材ID列表
+}
+
 interface TrackContainerProps {
   timelineState: TimelineState;
   currentTime: number; // 当前播放时间，用于垂直对齐线定位
   onSelectItem: (itemId: string, isMultiSelect?: boolean) => void;
-  onMoveItem: (itemId: string, newStartTime: number) => void;
+  onMoveItem: (itemId: string, newStartTime: number, isPreview?: boolean) => void;
   onResizeItem: (itemId: string, newDuration: number, resizeType: 'start' | 'end') => void;
   onSubtitleEdit?: (itemId: string, newText: string) => void;
   onEditSubtitles?: (trackId: string) => void;
@@ -27,6 +39,7 @@ interface TrackContainerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
   onScroll?: (scrollLeft: number) => void;
   scrollLeft?: number;
+  dragPreview?: DragPreviewState; // 拖拽预览状态
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -49,7 +62,8 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   locale, // 保持向后兼容性，但不再使用
   scrollRef,
   onScroll,
-  scrollLeft = 0
+  scrollLeft = 0,
+  dragPreview
 }) => {
   // 使用LocaleContext获取国际化翻译
   const { t, locale: contextLocale } = useLocale();
@@ -213,6 +227,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 totalDuration={totalDuration}
                 locale={contextLocale} // 传递context中的locale
                 trackHeight={trackHeight} // 传递轨道高度
+                dragPreview={dragPreview} // 传递拖拽预览状态
               />
             ))
           ) : (
