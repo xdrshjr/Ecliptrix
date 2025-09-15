@@ -24,8 +24,10 @@ import {
 } from '@/lib/api/audioTranscription';
 import VoiceSelector from './components/VoiceSelector';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
+import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
+import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
 import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -121,6 +123,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   // 视频AI匹配hook
   const videoAIMatch = useVideoAIMatch(taskId || 'unknown');
+
+  // 视频理解生成脚本hook
+  const videoUnderstandingScript = useVideoUnderstandingScript(taskId || 'unknown', onUpdateSegments);
 
   // 字幕识别处理函数
   const handleSubtitleRecognition = useCallback(async (segmentId: string) => {
@@ -1543,6 +1548,26 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 )}
               </button>
             )}
+
+            {/* 视频理解生成脚本按钮 */}
+            <button
+              onClick={videoUnderstandingScript.openModal}
+              disabled={videoUnderstandingScript.isGenerating}
+              className="p-2 text-purple-600 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              title="视频理解生成脚本"
+            >
+              {videoUnderstandingScript.isGenerating ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 002 2v8a2 2 0 002 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
 
@@ -1966,9 +1991,19 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       </div>
 
       {/* 视频搜索模态框 */}
-      <VideoSearchModal
+            <VideoSearchModal 
         {...videoSearch}
         taskId={taskId || 'unknown'}
+      />
+
+      {/* 视频理解生成脚本弹窗 */}
+      <VideoUnderstandingScriptModal
+        isOpen={videoUnderstandingScript.isModalOpen}
+        onClose={videoUnderstandingScript.closeModal}
+        materials={materials || []}
+        taskId={taskId || 'unknown'}
+        onGenerateScript={videoUnderstandingScript.generateScript}
+        isGenerating={videoUnderstandingScript.isGenerating}
       />
     </div>
   );
