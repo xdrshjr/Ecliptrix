@@ -180,6 +180,52 @@ class VideoAnalysisStorageService:
             logger.error(f"Failed to clear video analysis cache: {str(e)}", exc_info=True)
             return 0
     
+    def get_video_analysis(self, video_id: str) -> Optional[VideoAnalysisMetadata]:
+        """
+        Get video analysis result by video ID.
+        This method searches through cached analysis results to find a match by video ID.
+        
+        Args:
+            video_id: Video ID to retrieve analysis for
+            
+        Returns:
+            VideoAnalysisMetadata: Analysis data if available, None otherwise
+        """
+        try:
+            # Search through all cached analysis results
+            for cache_key, analysis_data in self._analysis_cache.items():
+                # Try to match by video ID - this could be the material ID from the frontend
+                # We'll also check if the video_id appears in the video_url or cache_key
+                if (video_id in cache_key or 
+                    (hasattr(analysis_data, 'video_id') and analysis_data.video_id == video_id)):
+                    logger.debug(f"Found video analysis result for video ID: {video_id}", extra={
+                        "video_id": video_id,
+                        "cache_key": cache_key,
+                        "total_frames": analysis_data.total_frames_extracted
+                    })
+                    return analysis_data
+            
+            # If not found by ID, try to find by video URL containing the ID
+            for cache_key, analysis_data in self._analysis_cache.items():
+                if video_id in str(cache_key):
+                    logger.debug(f"Found video analysis result by URL match for video ID: {video_id}", extra={
+                        "video_id": video_id,
+                        "cache_key": cache_key
+                    })
+                    return analysis_data
+            
+            logger.debug(f"No video analysis result found for video ID: {video_id}", extra={
+                "video_id": video_id,
+                "cache_entries": len(self._analysis_cache)
+            })
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve video analysis result by ID: {str(e)}", extra={
+                "video_id": video_id
+            }, exc_info=True)
+            return None
+    
     def get_cache_stats(self) -> Dict[str, int]:
         """
         Get cache statistics.

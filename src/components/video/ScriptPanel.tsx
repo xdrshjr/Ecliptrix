@@ -125,7 +125,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const videoAIMatch = useVideoAIMatch(taskId || 'unknown');
 
   // 视频理解生成脚本hook
-  const videoUnderstandingScript = useVideoUnderstandingScript(taskId || 'unknown', onUpdateSegments);
+  const videoUnderstandingScript = useVideoUnderstandingScript(
+    taskId || 'unknown', 
+    onUpdateSegments,
+    getVideoAnalysisResult
+  );
 
   // 字幕识别处理函数
   const handleSubtitleRecognition = useCallback(async (segmentId: string) => {
@@ -1787,7 +1791,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {segment.videos && segment.videos.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
-                  <h5 className="text-xs font-medium text-gray-600">关联视频</h5>
+                  <h5 className="text-xs font-medium text-gray-600 flex items-center">
+                    关联视频
+                    {segment.videos.length > 1 && (
+                      <span className="ml-1 text-xs text-blue-600 bg-blue-100 px-1 py-0.5 rounded">
+                        多个
+                      </span>
+                    )}
+                  </h5>
                   <span className="text-xs text-gray-500">
                     {(segmentVideoIndexes[segment.id] || 0) + 1} / {segment.videos.length}
                   </span>
