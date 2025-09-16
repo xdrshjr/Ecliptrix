@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { useLocale } from '@/contexts/LocaleContext';
 
 const Header: React.FC = () => {
@@ -32,8 +33,14 @@ const Header: React.FC = () => {
       <div className="h-full px-6 flex items-center justify-between">
         {/* Logo and Brand */}
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <div className="w-4 h-4 bg-white rounded-sm opacity-90"></div>
+          <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
+            <Image 
+              src="/logo-basic.png" 
+              alt="Ecliptrix Logo" 
+              width={32} 
+              height={32}
+              className="w-full h-full object-contain"
+            />
           </div>
           <div className="flex flex-col">
             <h1 className="text-lg font-semibold text-gray-900 leading-none">

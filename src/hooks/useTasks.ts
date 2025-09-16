@@ -11,7 +11,7 @@ export const useTasks = () => {
     // 创建默认的 AI Chat 任务
     const chatTask: Task = {
       id: 'default-chat-task',
-      title: 'AI Chat 1',
+      title: 'AI Chat',
       type: 'chat',
       status: 'draft',
       createdAt: now,
@@ -22,8 +22,30 @@ export const useTasks = () => {
     // 创建默认的 Video Editing 任务
     const videoTask: Task = {
       id: 'default-video-task',
-      title: 'Video Editing 1',
+      title: 'Video Editing',
       type: 'video',
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+      content: null,
+    };
+
+    // 创建默认的 Content Creation 任务
+    const contentTask: Task = {
+      id: 'default-content-task',
+      title: 'Content Creation',
+      type: 'content',
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+      content: null,
+    };
+
+    // 创建默认的 Brainstorming 任务
+    const brainstormTask: Task = {
+      id: 'default-brainstorm-task',
+      title: 'Brainstorming',
+      type: 'brainstorm',
       status: 'draft',
       createdAt: now,
       updatedAt: now,
@@ -34,7 +56,7 @@ export const useTasks = () => {
     const chatTab: Tab = {
       id: 'default-chat-tab',
       taskId: 'default-chat-task',
-      title: 'AI Chat 1',
+      title: 'AI Chat',
       isActive: false, // 不激活任何任务
       type: 'chat',
     };
@@ -42,14 +64,30 @@ export const useTasks = () => {
     const videoTab: Tab = {
       id: 'default-video-tab',
       taskId: 'default-video-task',
-      title: 'Video Editing 1',
+      title: 'Video Editing',
       isActive: false, // 不激活任何任务
       type: 'video',
     };
 
+    const contentTab: Tab = {
+      id: 'default-content-tab',
+      taskId: 'default-content-task',
+      title: 'Content Creation',
+      isActive: false, // 不激活任何任务
+      type: 'content',
+    };
+
+    const brainstormTab: Tab = {
+      id: 'default-brainstorm-tab',
+      taskId: 'default-brainstorm-task',
+      title: 'Brainstorming',
+      isActive: false, // 不激活任何任务
+      type: 'brainstorm',
+    };
+
     return {
-      tasks: [chatTask, videoTask],
-      tabs: [chatTab, videoTab],
+      tasks: [chatTask, videoTask, contentTask, brainstormTask],
+      tabs: [chatTab, videoTab, contentTab, brainstormTab],
       activeTabId: null, // 不激活任何标签页，显示主界面
     };
   };

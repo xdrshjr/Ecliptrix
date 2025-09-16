@@ -3,27 +3,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
-import { shouldRestrictVideoEditing, getDeviceType } from '@/lib/utils/deviceDetection';
-import { MobileWarningDialog } from '@/components/ui';
 
 interface VerticalTaskbarProps {
   tabs: Tab[];
   activeTabId: string | null;
-  onCreateTask: (type: TaskType) => void;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
 }
 
 const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   tabs,
-  onCreateTask,
   onSelectTab,
   onCloseTab,
 }) => {
   const { t } = useLocale();
-  const [showTaskMenu, setShowTaskMenu] = useState(false);
-  const [showMobileWarning, setShowMobileWarning] = useState(false);
-  const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   const [isExpanded, setIsExpanded] = useState(false);
   const taskbarRef = useRef<HTMLDivElement>(null);
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -70,58 +63,7 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     }
   };
 
-  const handleCreateTask = (type: TaskType) => {
-    console.log('[VerticalTaskbar] Task creation initiated:', {
-      taskType: type,
-      timestamp: new Date().toISOString(),
-      deviceType: getDeviceType()
-    });
 
-    // Check for mobile device restriction on video editing tasks
-    if (type === 'video' && shouldRestrictVideoEditing()) {
-      const deviceType = getDeviceType();
-      setCurrentDeviceType(deviceType);
-      setShowMobileWarning(true);
-      setShowTaskMenu(false);
-      
-      console.log('[VerticalTaskbar] Video editing task creation blocked on mobile device:', {
-        taskType: type,
-        deviceType,
-        timestamp: new Date().toISOString(),
-        userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server-side',
-        restriction: 'Video editing not supported on mobile/tablet devices'
-      });
-      
-      return;
-    }
-
-    // Proceed with task creation for non-restricted cases
-    try {
-      onCreateTask(type);
-      setShowTaskMenu(false);
-      
-      console.log('[VerticalTaskbar] Task creation successful:', {
-        taskType: type,
-        deviceType: getDeviceType(),
-        timestamp: new Date().toISOString(),
-        restriction: 'none'
-      });
-    } catch (error) {
-      console.error('[VerticalTaskbar] Task creation failed:', {
-        taskType: type,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      });
-    }
-  };
-
-  const handleCloseMobileWarning = () => {
-    setShowMobileWarning(false);
-    console.log('[VerticalTaskbar] Mobile warning dialog closed:', {
-      deviceType: currentDeviceType,
-      timestamp: new Date().toISOString()
-    });
-  };
 
   const handleTaskbarClick = () => {
     // 清除任何待执行的折叠操作
@@ -148,7 +90,6 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     if (isExpanded) {
       collapseTimeoutRef.current = setTimeout(() => {
         setIsExpanded(false);
-        setShowTaskMenu(false); // 同时关闭任务菜单
         console.log('[VerticalTaskbar] Mouse left, auto-collapsing taskbar');
         collapseTimeoutRef.current = null;
       }, 300); // 300ms 延迟，给用户足够时间操作
@@ -166,7 +107,6 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
         }
         
         setIsExpanded(false);
-        setShowTaskMenu(false);
         console.log('[VerticalTaskbar] Clicked outside, collapsing taskbar');
       }
     };
@@ -200,58 +140,8 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
         onMouseLeave={handleMouseLeave}
       >
 
-        {/* New Task Section */}
-        <div className="taskbar-section">
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // 如果任务栏未展开，先展开任务栏
-                if (!isExpanded) {
-                  setIsExpanded(true);
-                  console.log('[VerticalTaskbar] New task button clicked, expanding taskbar first');
-                }
-                // 切换菜单显示状态
-                setShowTaskMenu(!showTaskMenu);
-              }}
-              className={`taskbar-button new-task-button ${showTaskMenu ? 'active' : ''}`}
-              title={!isExpanded ? t.common.newTask : undefined}
-            >
-              <div className="button-icon">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-                </svg>
-              </div>
-              <span className={`button-text ${isExpanded ? 'visible' : 'hidden'}`}>
-                {t.common.newTask}
-              </span>
-            </button>
-
-            {/* Task Type Menu */}
-            {showTaskMenu && (
-              <div className={`task-menu ${isExpanded ? 'expanded-menu' : 'collapsed-menu'}`}>
-                <div className="menu-content">
-                  {(['chat', 'video', 'content', 'brainstorm'] as TaskType[]).map((taskType) => (
-                    <button
-                      key={taskType}
-                      onClick={() => handleCreateTask(taskType)}
-                      className="menu-item"
-                    >
-                      <div className="menu-item-icon">
-                        {getTaskIcon(taskType)}
-                      </div>
-                      <span className="menu-item-text">{getTaskLabel(taskType)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Tabs Section */}
         <div className="taskbar-section tabs-section">
-          <div className="section-divider"></div>
           <div className="tabs-container">
             {tabs.map((tab) => (
               <div
@@ -287,21 +177,7 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
           </div>
         </div>
 
-        {/* Click outside to close menu */}
-        {showTaskMenu && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setShowTaskMenu(false)}
-          />
-        )}
       </div>
-
-      {/* Mobile Warning Dialog */}
-      <MobileWarningDialog
-        isOpen={showMobileWarning}
-        onClose={handleCloseMobileWarning}
-        deviceType={currentDeviceType}
-      />
     </>
   );
 };

@@ -39,7 +39,6 @@ export default function HomePage() {
         <VerticalTaskbar
           tabs={tabs}
           activeTabId={activeTabId}
-          onCreateTask={createTask}
           onSelectTab={selectTab}
           onCloseTab={closeTab}
         />
