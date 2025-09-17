@@ -27,6 +27,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
   onRetryDownload?: (material: MaterialItem) => void; // 新增：重试下载回调
   onAddToTimeline?: (material: MaterialItem) => void; // 新增：添加到时间轴回调
+  onCutMaterial?: (material: MaterialItem) => void; // 新增：剪切素材回调
   comfyuiHealthStatus?: UseComfyUIHealthReturn; // 新增：ComfyUI健康状态
   taskId: string;
   className?: string;
@@ -55,6 +56,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   getVideoAnalysisStatus, // 新增：获取视频解析状态
   onRetryDownload, // 新增：重试下载回调
   onAddToTimeline, // 新增：添加到时间轴回调
+  onCutMaterial, // 新增：剪切素材回调
   comfyuiHealthStatus, // 新增：ComfyUI健康状态
   taskId,
   className = '',
@@ -409,6 +411,26 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       previousMaterialName: previewModal.material?.name,
       closeMethod: 'manual-close'
     });
+  };
+
+  // 剪切素材
+  const handleCutMaterial = (material: MaterialItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+
+    logger.userAction('打开视频剪切弹窗', 'cutMaterial', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type
+    });
+
+    if (onCutMaterial) {
+      onCutMaterial(material);
+    } else {
+      // 如果没有传入回调，显示提示信息
+      showSuccess(`即将打开视频剪切功能：${material.name}`);
+    }
   };
 
   // 下载素材
@@ -1322,6 +1344,22 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                     </button>
+                    
+                    {/* 剪切素材按钮 - 仅对视频素材显示 */}
+                    {material.type === 'video' && (
+                      <>
+                        <div className="w-px h-3 bg-gray-200"></div>
+                        <button
+                          onClick={(e) => handleCutMaterial(material, e)}
+                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded transition-all duration-200 group"
+                          title="剪切素材"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6.4-6.4a4 4 0 015.656 0L16 5.344a4 4 0 010 5.656l-1.8 1.8a4 4 0 01-5.656 0L7 11.344a4 4 0 010-5.656l1.8-1.8z" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
                     
                     <div className="w-px h-3 bg-gray-200"></div>
                     

@@ -45,6 +45,7 @@ import {
   AICreationModal,
   AIMixingProgressModal
 } from './components';
+import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
 
 interface VideoEditingInterfaceProps {
@@ -96,6 +97,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     targetTrackId?: string, 
     timestamp: number 
   } | undefined>(undefined);
+
+  // 视频剪切弹窗状态
+  const [videoCutModal, setVideoCutModal] = useState<{
+    isOpen: boolean;
+    material: MaterialItem | null;
+  }>({
+    isOpen: false,
+    material: null
+  });
 
   // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
   const videoPlayerRef = useRef<VideoPlayerPanelRef>(null);
@@ -401,6 +411,89 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     documentState.handleMarkdownChange(updatedContent);
     setIsCreativeBrainstormingModalOpen(false);
   }, [taskId, documentState.markdownValue, documentState.handleMarkdownChange]);
+
+  // 处理视频剪切
+  const handleCutMaterial = useCallback((material: MaterialItem) => {
+    console.log(`[VideoEditingInterface] 打开视频剪切弹窗`, {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      timestamp: new Date().toISOString()
+    });
+
+    setVideoCutModal({
+      isOpen: true,
+      material
+    });
+  }, [taskId]);
+
+  // 关闭视频剪切弹窗
+  const handleCloseCutModal = useCallback(() => {
+    console.log(`[VideoEditingInterface] 关闭视频剪切弹窗`, {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+
+    setVideoCutModal({
+      isOpen: false,
+      material: null
+    });
+  }, [taskId]);
+
+  // 处理导出切片到素材管理面板
+  const handleExportClips = useCallback((clips: VideoClip[], originalMaterial: MaterialItem) => {
+    console.log(`[VideoEditingInterface] 导出视频切片到素材管理面板`, {
+      taskId,
+      clipsCount: clips.length,
+      originalMaterialId: originalMaterial.id,
+      originalMaterialName: originalMaterial.name,
+      timestamp: new Date().toISOString()
+    });
+
+    // 将每个切片转换为MaterialItem并添加到素材管理
+    clips.forEach((clip, index) => {
+      const clipMaterial = {
+        id: `${originalMaterial.id}_clip_${clip.id}`,
+        name: `${originalMaterial.name} - ${clip.name}`,
+        type: 'video' as const,
+        format: originalMaterial.format,
+        size: Math.floor(originalMaterial.size * (clip.duration / (originalMaterial.duration || 1))), // 估算大小
+        duration: clip.duration,
+        width: originalMaterial.width,
+        height: originalMaterial.height,
+        thumbnailUrl: originalMaterial.thumbnailUrl,
+        url: originalMaterial.url, // 使用原始视频URL
+        serverUrl: originalMaterial.serverUrl,
+        createdAt: new Date(),
+        description: `从"${originalMaterial.name}"剪切的片段，时间范围：${formatTime(clip.startTime)} - ${formatTime(clip.endTime)}`,
+        metadata: {
+          ...originalMaterial.metadata,
+          isClip: true,
+          originalMaterialId: originalMaterial.id,
+          clipStartTime: clip.startTime,
+          clipEndTime: clip.endTime,
+          clipDuration: clip.duration,
+          clipIndex: index + 1,
+          totalClips: clips.length
+        }
+      };
+
+      // 添加到素材管理
+      if (materialManagement.addOrReplaceMaterial) {
+        materialManagement.addOrReplaceMaterial(clipMaterial);
+      }
+    });
+
+    showSuccess(`已导出 ${clips.length} 个视频切片到素材管理面板`);
+  }, [taskId, materialManagement.addOrReplaceMaterial, showSuccess]);
+
+  // 格式化时间显示（用于切片描述）
+  const formatTime = useCallback((seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   // 处理视频AI解析
   const handleVideoAnalysis = useCallback(async (material: MaterialItem) => {
@@ -1271,6 +1364,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
               onRetryDownload={videoSearch.retryVideoDownload}
               onAddToTimeline={handleAddMaterialToTimeline}
+              onCutMaterial={handleCutMaterial}
               taskId={taskId}
               comfyuiHealthStatus={comfyuiHealth}
               className="video-editing-materials-panel bg-white border-r border-gray-200"
@@ -1385,6 +1479,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={isAIMixing}
         progress={aiMixingProgress}
         allowCancel={false}
+      />
+
+      {/* 视频剪切弹窗 */}
+      <VideoCutModal
+        isOpen={videoCutModal.isOpen}
+        material={videoCutModal.material}
+        onClose={handleCloseCutModal}
+        onExportClips={handleExportClips}
+        taskId={taskId}
       />
 
       {/* Mobile Warning Dialog - Backup Safety Check */}
