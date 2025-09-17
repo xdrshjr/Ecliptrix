@@ -643,16 +643,33 @@ class VideoCompositionService:
         clipped_video_durations = []
         
         for i, video_item in enumerate(request.video_items):
-            clip_start = video_item.clip_start if hasattr(video_item, 'clip_start') else 0.0
-            clip_end = video_item.clip_end if hasattr(video_item, 'clip_end') else video_item.duration
+            # Safely get clipping parameters with proper defaults
+            clip_start = getattr(video_item, 'clip_start', None) or 0.0
+            clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
+            
+            # Validate clipping parameters
+            if clip_start < 0:
+                logger.warning(f"Video {i+1}: Invalid clip_start {clip_start}, setting to 0.0")
+                clip_start = 0.0
+                
+            if clip_end <= clip_start:
+                logger.warning(f"Video {i+1}: Invalid clip_end {clip_end} <= clip_start {clip_start}, using full duration")
+                clip_end = video_item.duration
+            
             clipped_duration = clip_end - clip_start
+            
+            # Validate calculated duration
+            if clipped_duration <= 0:
+                logger.error(f"Video {i+1}: Invalid clipped duration {clipped_duration}s, this will cause composition failure")
+                raise ValueError(f"Video item {video_item.id} has invalid clipping parameters: start={clip_start}s, end={clip_end}s")
             
             clipped_video_durations.append(clipped_duration)
             actual_total_duration += clipped_duration
             
             logger.info(f"Video {i+1} duration calculation: "
                        f"clip_start={clip_start}s, clip_end={clip_end}s, "
-                       f"clipped_duration={clipped_duration}s")
+                       f"clipped_duration={clipped_duration}s, "
+                       f"original_duration={getattr(video_item, 'original_duration', 'N/A')}s")
         
         logger.info(f"Duration calculation summary: "
                    f"frontend_total={request.total_duration}s, "
@@ -704,9 +721,9 @@ class VideoCompositionService:
         
         # Log individual video and audio items for debugging
         for i, video_item in enumerate(request.video_items):
-            # 增强日志：包含裁剪信息
-            clip_start = video_item.clip_start if hasattr(video_item, 'clip_start') else 0.0
-            clip_end = video_item.clip_end if hasattr(video_item, 'clip_end') else video_item.duration
+            # 增强日志：包含裁剪信息 - 使用安全的属性访问
+            clip_start = getattr(video_item, 'clip_start', None) or 0.0
+            clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
             is_trimmed = clip_start > 0.0 or clip_end != video_item.duration
             
             logger.info(f"Video item {i+1} (裁剪详情): "
@@ -720,9 +737,9 @@ class VideoCompositionService:
                        f"url={video_item.url}")
                        
         for i, audio_item in enumerate(request.audio_items):
-            # 增强日志：包含音频裁剪信息  
-            clip_start = audio_item.clip_start if hasattr(audio_item, 'clip_start') else 0.0
-            clip_end = audio_item.clip_end if hasattr(audio_item, 'clip_end') else audio_item.duration
+            # 增强日志：包含音频裁剪信息 - 使用安全的属性访问
+            clip_start = getattr(audio_item, 'clip_start', None) or 0.0
+            clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
             is_trimmed = clip_start > 0.0 or clip_end != audio_item.duration
             
             logger.info(f"Audio item {i+1} (裁剪详情): "
@@ -745,13 +762,13 @@ class VideoCompositionService:
                        f"opacity={image_item.opacity}, "
                        f"url={image_item.url}")
                        
-        # 统计裁剪信息
+        # 统计裁剪信息 - 使用安全的属性访问
         trimmed_video_count = sum(1 for item in request.video_items 
-                                if (hasattr(item, 'clip_start') and item.clip_start > 0.0) or
-                                   (hasattr(item, 'clip_end') and item.clip_end != item.duration))
+                                if (getattr(item, 'clip_start', None) and getattr(item, 'clip_start', 0.0) > 0.0) or
+                                   (getattr(item, 'clip_end', None) and getattr(item, 'clip_end', item.duration) != item.duration))
         trimmed_audio_count = sum(1 for item in request.audio_items 
-                                if (hasattr(item, 'clip_start') and item.clip_start > 0.0) or
-                                   (hasattr(item, 'clip_end') and item.clip_end != item.duration))
+                                if (getattr(item, 'clip_start', None) and getattr(item, 'clip_start', 0.0) > 0.0) or
+                                   (getattr(item, 'clip_end', None) and getattr(item, 'clip_end', item.duration) != item.duration))
                                    
         logger.info(f"裁剪统计: {trimmed_video_count}/{len(request.video_items)} 视频片段被裁剪, "
                    f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪, "
@@ -881,9 +898,9 @@ class VideoCompositionService:
                     'temp_dir': temp_dir,
                     'target_fps': target_fps,
                     'ffmpeg_path': ffmpeg_path,
-                    # 新增：剪辑参数
-                    'clip_start': video_item.clip_start if video_item else 0.0,
-                    'clip_end': video_item.clip_end if video_item else None,
+                    # 新增：剪辑参数 - 使用安全的属性访问
+                    'clip_start': getattr(video_item, 'clip_start', None) or 0.0 if video_item else 0.0,
+                    'clip_end': getattr(video_item, 'clip_end', None) if video_item else None,
                     # 新增：目标宽高比
                     'target_aspect_ratio': target_aspect_ratio
                 }
@@ -891,7 +908,9 @@ class VideoCompositionService:
                 
                 # 记录剪辑信息
                 if video_item:
-                    logger.info(f"Video {i+1} clipping: {video_item.clip_start:.2f}s - {video_item.clip_end:.2f}s")
+                    clip_start = getattr(video_item, 'clip_start', None) or 0.0
+                    clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
+                    logger.info(f"Video {i+1} clipping: {clip_start:.2f}s - {clip_end:.2f}s")
             
             normalized_videos = []
             failed_normalizations = []
@@ -1329,7 +1348,10 @@ class VideoCompositionService:
                 
                 logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
                 logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
-                logger.info(f"Audio clipping: start={audio_item.clip_start}s, end={audio_item.clip_end}s")
+                # 安全获取音频裁剪参数
+                audio_clip_start = getattr(audio_item, 'clip_start', None) or 0.0
+                audio_clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
+                logger.info(f"Audio clipping: start={audio_clip_start}s, end={audio_clip_end}s")
                 logger.info(f"Actual video duration: {actual_total_duration}s (was {request.total_duration}s from frontend)")
                 
                 # Calculate the actual duration we need
@@ -1345,15 +1367,15 @@ class VideoCompositionService:
                     ]
                     
                     # 添加音频剪辑参数
-                    if audio_item.clip_start > 0:
-                        audio_segment_cmd.extend(['-ss', str(audio_item.clip_start)])
+                    if audio_clip_start > 0:
+                        audio_segment_cmd.extend(['-ss', str(audio_clip_start)])
                     
                     audio_segment_cmd.extend([
                         '-i', local_audio_path
                     ])
                     
                     # 计算实际的音频时长（考虑剪辑）
-                    clip_duration = audio_item.clip_end - audio_item.clip_start
+                    clip_duration = audio_clip_end - audio_clip_start
                     actual_duration = min(audio_item.duration, clip_duration)
                     
                     audio_segment_cmd.extend([
@@ -1391,15 +1413,15 @@ class VideoCompositionService:
                     ]
                     
                     # 添加音频剪辑参数
-                    if audio_item.clip_start > 0:
-                        final_cmd.extend(['-ss', str(audio_item.clip_start)])
+                    if audio_clip_start > 0:
+                        final_cmd.extend(['-ss', str(audio_clip_start)])
                     
                     final_cmd.extend([
                         '-i', local_audio_path
                     ])
                     
                     # 计算实际的音频时长（考虑剪辑）
-                    clip_duration = audio_item.clip_end - audio_item.clip_start
+                    clip_duration = audio_clip_end - audio_clip_start
                     actual_duration = min(actual_total_duration, clip_duration)
                     
                     final_cmd.extend([
@@ -1447,16 +1469,20 @@ class VideoCompositionService:
                         local_audio_path = self._convert_url_to_local_path(audio_item.url)
                         processed_path = os.path.join(temp_dir, f"processed_audio_{i}.wav")
                         
+                        # 安全获取音频裁剪参数
+                        audio_clip_start = getattr(audio_item, 'clip_start', None) or 0.0
+                        audio_clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
+                        
                         logger.info(f"Pre-processing audio {i+1}/{len(request.audio_items)}: {audio_item.name}", {
                             'volume': audio_item.volume,
                             'start_time': audio_item.start_time,
-                            'clip_start': audio_item.clip_start,
-                            'clip_end': audio_item.clip_end,
+                            'clip_start': audio_clip_start,
+                            'clip_end': audio_clip_end,
                             'track_id': audio_item.track_id
                         })
                         
                         # Calculate clipped duration for this audio item
-                        clip_duration = audio_item.clip_end - audio_item.clip_start
+                        clip_duration = audio_clip_end - audio_clip_start
                         
                         # Pre-process this audio item with volume and clipping
                         process_cmd = [
@@ -1465,8 +1491,8 @@ class VideoCompositionService:
                         ]
                         
                         # Add clipping parameters for the audio input
-                        if audio_item.clip_start > 0:
-                            process_cmd.extend(['-ss', str(audio_item.clip_start)])
+                        if audio_clip_start > 0:
+                            process_cmd.extend(['-ss', str(audio_clip_start)])
                         
                         process_cmd.extend([
                             '-i', local_audio_path,

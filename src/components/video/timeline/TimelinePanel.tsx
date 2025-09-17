@@ -378,10 +378,14 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         thumbnailUrl: material.thumbnailUrl,
         waveformData: material.type === 'audio' ? Array.from({ length: 50 }, () => Math.random() * 0.8 + 0.2) : undefined,
         
-        // 初始化剪辑属性：默认使用完整的原始素材
-        clipStart: 0,
-        clipEnd: duration,
-        originalDuration: duration,
+        // 初始化剪辑属性：根据素材类型处理
+        // 对于切片素材，已经是被裁剪过的，应该使用完整的切片
+        // 对于原始素材，使用完整的原始素材
+        clipStart: material.metadata?.isClip ? 0 : 0,
+        clipEnd: material.metadata?.isClip ? duration : duration,
+        originalDuration: material.metadata?.isClip 
+          ? (material.metadata.originalMaterialDuration || duration) 
+          : duration,
         
         // 新增：标记素材的原始类型，用于区分图片和视频
         originalMaterialType: material.type,

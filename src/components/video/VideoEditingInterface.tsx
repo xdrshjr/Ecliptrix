@@ -475,6 +475,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             ...originalMaterial.metadata,
             isClip: true,
             originalMaterialId: originalMaterial.id,
+            originalMaterialDuration: originalMaterial.duration, // 保存原始素材的时长
             clipStartTime: clip.startTime,
             clipEndTime: clip.endTime,
             clipDuration: clip.duration,

@@ -180,6 +180,7 @@ async def get_composition_status(composition_id: str):
     logger.debug(f"Composition status requested for ID: {composition_id}")
     
     try:
+        logger.debug(f"Attempting to get composition status for ID: {composition_id}")
         composition_info = video_composition_service.get_composition_status(composition_id)
         
         if not composition_info:
@@ -189,22 +190,39 @@ async def get_composition_status(composition_id: str):
                 detail=f"Composition {composition_id} not found"
             )
         
-        # Return safe subset of composition info
-        safe_info = {
-            "composition_id": composition_info["id"],
-            "task_id": composition_info["task_id"],
-            "status": composition_info["status"],
-            "progress": composition_info["progress"],
-            "start_time": composition_info["start_time"]
-        }
+        logger.debug(f"Composition info retrieved: status={composition_info.get('status', 'unknown')}")
         
-        # Add completion info if available
-        if "processing_time" in composition_info:
-            safe_info["processing_time"] = composition_info["processing_time"]
-        if "output_file_size" in composition_info:
-            safe_info["output_file_size"] = composition_info["output_file_size"]
-        if "error_details" in composition_info:
-            safe_info["error_details"] = composition_info["error_details"]
+        # Return safe subset of composition info with enhanced error handling
+        try:
+            safe_info = {
+                "composition_id": composition_info.get("id", composition_id),
+                "task_id": composition_info.get("task_id", "unknown"),
+                "status": composition_info.get("status", "unknown"),
+                "progress": composition_info.get("progress", 0.0),
+                "start_time": composition_info.get("start_time", 0)
+            }
+            
+            # Add completion info if available
+            if "processing_time" in composition_info:
+                safe_info["processing_time"] = composition_info["processing_time"]
+            if "output_file_size" in composition_info:
+                safe_info["output_file_size"] = composition_info["output_file_size"]
+            if "error_details" in composition_info:
+                safe_info["error_details"] = composition_info["error_details"]
+            if "error" in composition_info:
+                safe_info["error"] = composition_info["error"]
+                
+        except Exception as info_error:
+            logger.error(f"Error building safe composition info: {str(info_error)}", exc_info=True)
+            # Return minimal safe info
+            safe_info = {
+                "composition_id": composition_id,
+                "task_id": "unknown", 
+                "status": "error",
+                "progress": 0.0,
+                "start_time": 0,
+                "error": "Error retrieving composition details"
+            }
         
         logger.info(f"Composition status retrieved - ID: {composition_id}, Status: {safe_info['status']}")
         return safe_info
