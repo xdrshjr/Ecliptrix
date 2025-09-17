@@ -19,10 +19,13 @@ from app.models import (
     VideoAnalysisStatusResponse,
     ImageToVideoRequest,
     ImageToVideoResponse,
-    ImageToVideoErrorResponse
+    ImageToVideoErrorResponse,
+    VideoCutRequest,
+    VideoCutResponse
 )
 from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
 from app.services.video_analysis_storage_service import video_analysis_storage
+from app.services.video_cut_service import VideoCutService
 from app.logger import get_logger
 from typing import Union
 
@@ -683,4 +686,76 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
             message=f"Internal server error: {str(e)}",
             error_code="INTERNAL_ERROR",
             details=str(e)
+        )
+
+
+@router.post("/cut", response_model=VideoCutResponse)
+async def cut_video_clips(request: VideoCutRequest) -> VideoCutResponse:
+    """
+    Cut video clips from source video and upload to Supabase.
+    
+    This endpoint takes a video URL and a list of clip specifications,
+    cuts the clips from the source video, and uploads them to Supabase
+    with optional thumbnail generation.
+    
+    Args:
+        request (VideoCutRequest): Video cutting parameters with clips info
+    
+    Returns:
+        VideoCutResponse: Results with uploaded clips information
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for cutting errors
+    """
+    logger.info(f"Video cutting request received for task {request.task_id}")
+    logger.info(f"Source video: {request.video_url}")
+    logger.info(f"Number of clips to cut: {len(request.clips)}")
+    
+    try:
+        # Validate request
+        if not request.clips:
+            logger.warning("No clips provided for cutting")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one clip must be specified"
+            )
+        
+        # Validate clip parameters
+        for clip in request.clips:
+            if clip.start_time >= clip.end_time:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid clip {clip.id}: start_time must be less than end_time"
+                )
+            if clip.start_time < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid clip {clip.id}: start_time cannot be negative"
+                )
+        
+        # Initialize video cut service
+        video_cut_service = VideoCutService()
+        
+        # Process video cutting
+        result = await video_cut_service.cut_and_upload_video_clips(request)
+        
+        if result.success:
+            logger.info(f"Video cutting completed successfully for task {request.task_id}")
+            logger.info(f"Processed {result.total_clips} clips in {result.processing_time:.2f}s")
+        else:
+            logger.error(f"Video cutting failed for task {request.task_id}: {result.message}")
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Video cutting error for task {request.task_id}: {str(e)}")
+        return VideoCutResponse(
+            success=False,
+            message=f"Internal server error: {str(e)}",
+            clips=[],
+            total_clips=0,
+            processing_time=0.0
         ) 

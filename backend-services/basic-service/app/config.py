@@ -143,6 +143,9 @@ class Settings(BaseModel):
     port: int = Field(default=8000, description="Server port")
     debug: bool = Field(default=False, description="Debug mode")
     
+    # File Storage Configuration
+    temp_dir: str = Field(default="temp", description="Temporary files directory")
+    
     # Application Configuration
     app_name: str = Field(default="Basic Service API", description="Application name")
     app_version: str = Field(default="1.0.0", description="Application version")
@@ -238,7 +241,8 @@ def get_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
-        debug=os.getenv("DEBUG", "false").lower() == "true"
+        debug=os.getenv("DEBUG", "false").lower() == "true",
+        temp_dir=os.getenv("TEMP_DIR", "temp")
     )
 
 

@@ -278,10 +278,17 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
     if (onExportClips) {
       onExportClips(clips, material);
       showSuccess(`已导出 ${clips.length} 个切片到素材管理面板`);
+      
+      // 自动关闭弹窗
+      logger.userAction('自动关闭剪切素材弹窗', 'autoCloseModal', {
+        reason: 'clips_exported_successfully',
+        clipsCount: clips.length
+      });
+      onClose();
     } else {
       showError('导出功能不可用');
     }
-  }, [clips, material, logger, showSuccess, showError, onExportClips]);
+  }, [clips, material, logger, showSuccess, showError, onExportClips, onClose]);
 
   // 格式化时间显示
   const formatTime = useCallback((seconds: number) => {

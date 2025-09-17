@@ -442,7 +442,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [taskId]);
 
   // 处理导出切片到素材管理面板
-  const handleExportClips = useCallback((clips: VideoClip[], originalMaterial: MaterialItem) => {
+  const handleExportClips = useCallback(async (clips: VideoClip[], originalMaterial: MaterialItem) => {
     console.log(`[VideoEditingInterface] 导出视频切片到素材管理面板`, {
       taskId,
       clipsCount: clips.length,
@@ -451,42 +451,134 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       timestamp: new Date().toISOString()
     });
 
-    // 将每个切片转换为MaterialItem并添加到素材管理
-    clips.forEach((clip, index) => {
-      const clipMaterial = {
-        id: `${originalMaterial.id}_clip_${clip.id}`,
-        name: `${originalMaterial.name} - ${clip.name}`,
-        type: 'video' as const,
-        format: originalMaterial.format,
-        size: Math.floor(originalMaterial.size * (clip.duration / (originalMaterial.duration || 1))), // 估算大小
-        duration: clip.duration,
-        width: originalMaterial.width,
-        height: originalMaterial.height,
-        thumbnailUrl: originalMaterial.thumbnailUrl,
-        url: originalMaterial.url, // 使用原始视频URL
-        serverUrl: originalMaterial.serverUrl,
-        createdAt: new Date(),
-        description: `从"${originalMaterial.name}"剪切的片段，时间范围：${formatTime(clip.startTime)} - ${formatTime(clip.endTime)}`,
-        metadata: {
-          ...originalMaterial.metadata,
-          isClip: true,
-          originalMaterialId: originalMaterial.id,
-          clipStartTime: clip.startTime,
-          clipEndTime: clip.endTime,
-          clipDuration: clip.duration,
-          clipIndex: index + 1,
-          totalClips: clips.length
+    try {
+      // 首先创建带有加载状态的临时素材项
+      const tempClipMaterials: MaterialItem[] = [];
+      clips.forEach((clip, index) => {
+        const tempClipMaterial: MaterialItem = {
+          id: `${originalMaterial.id}_clip_${clip.id}`,
+          name: `${originalMaterial.name} - ${clip.name}`,
+          type: 'video' as const,
+          format: originalMaterial.format || 'mp4',
+          size: 0, // 临时设置为0，后续更新
+          duration: clip.duration,
+          width: originalMaterial.width,
+          height: originalMaterial.height,
+          thumbnailUrl: originalMaterial.thumbnailUrl,
+          url: '', // 临时为空，后续更新
+          serverUrl: '',
+          createdAt: new Date(),
+          description: `从"${originalMaterial.name}"剪切的片段，时间范围：${formatTime(clip.startTime)} - ${formatTime(clip.endTime)}`,
+          uploadStatus: 'uploading', // 设置为上传中状态
+          uploadProgress: 0,
+          metadata: {
+            ...originalMaterial.metadata,
+            isClip: true,
+            originalMaterialId: originalMaterial.id,
+            clipStartTime: clip.startTime,
+            clipEndTime: clip.endTime,
+            clipDuration: clip.duration,
+            clipIndex: index + 1,
+            totalClips: clips.length
+          }
+        };
+        tempClipMaterials.push(tempClipMaterial);
+      });
+
+      // 立即添加临时素材到素材管理（显示加载状态）
+      tempClipMaterials.forEach(tempMaterial => {
+        if (materialManagement.addOrReplaceMaterial) {
+          materialManagement.addOrReplaceMaterial(tempMaterial);
         }
+      });
+
+      showSuccess(`正在处理 ${clips.length} 个视频切片，请稍候...`);
+
+      // 动态导入视频切分API
+      const { videoCutAPI } = await import('@/lib/api/videoCut');
+
+      // 准备视频切分请求
+      const cutRequest = {
+        task_id: taskId,
+        video_url: originalMaterial.serverUrl || originalMaterial.url,
+        clips: clips.map(clip => ({
+          id: clip.id,
+          name: clip.name,
+          start_time: clip.startTime,
+          end_time: clip.endTime,
+          duration: clip.duration
+        })),
+        generate_thumbnails: true
       };
 
-      // 添加到素材管理
-      if (materialManagement.addOrReplaceMaterial) {
-        materialManagement.addOrReplaceMaterial(clipMaterial);
-      }
-    });
+      console.log(`[VideoEditingInterface] 开始视频切分处理`, {
+        taskId,
+        videoUrl: cutRequest.video_url?.slice(0, 100) + '...',
+        clipsCount: cutRequest.clips.length
+      });
 
-    showSuccess(`已导出 ${clips.length} 个视频切片到素材管理面板`);
-  }, [taskId, materialManagement.addOrReplaceMaterial, showSuccess]);
+      // 调用视频切分API
+      const cutResponse = await videoCutAPI.cutVideoClips(cutRequest);
+
+      if (cutResponse.success && cutResponse.clips.length > 0) {
+        // 成功切分，更新素材项
+        cutResponse.clips.forEach((cutClip, index) => {
+          const updatedMaterial: MaterialItem = {
+            ...tempClipMaterials[index],
+            url: cutClip.video_url,
+            serverUrl: cutClip.video_url,
+            thumbnailUrl: cutClip.thumbnail_url || tempClipMaterials[index].thumbnailUrl,
+            size: cutClip.file_size,
+            width: cutClip.width,
+            height: cutClip.height,
+            format: cutClip.format,
+            uploadStatus: 'completed',
+            uploadProgress: 100,
+            metadata: {
+              ...tempClipMaterials[index].metadata,
+              cutClipResult: cutClip
+            }
+          };
+
+          // 替换临时素材
+          if (materialManagement.addOrReplaceMaterial) {
+            materialManagement.addOrReplaceMaterial(updatedMaterial);
+          }
+        });
+
+        console.log(`[VideoEditingInterface] 视频切分完成`, {
+          taskId,
+          successfulClips: cutResponse.clips.length,
+          processingTime: cutResponse.processing_time
+        });
+
+        showSuccess(`已成功处理 ${cutResponse.clips.length} 个视频切片并上传到素材库`);
+      } else {
+                 // 切分失败，移除临时素材并显示错误
+         const tempMaterialIds = tempClipMaterials.map(m => m.id);
+         materialManagement.handleMaterialDelete(tempMaterialIds);
+
+        console.error(`[VideoEditingInterface] 视频切分失败`, {
+          taskId,
+          error: cutResponse.message
+        });
+
+        showError(`视频切分失败: ${cutResponse.message}`);
+      }
+
+    } catch (error) {
+      console.error(`[VideoEditingInterface] 视频切分处理错误`, {
+        taskId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+             // 移除临时素材
+       const tempIds = clips.map(clip => `${originalMaterial.id}_clip_${clip.id}`);
+       materialManagement.handleMaterialDelete(tempIds);
+
+      showError(`视频切分处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }, [taskId, materialManagement.addOrReplaceMaterial, materialManagement.handleMaterialDelete, showSuccess, showError]);
 
   // 格式化时间显示（用于切片描述）
   const formatTime = useCallback((seconds: number) => {

@@ -30,7 +30,11 @@ from .video_models import (
     ImageToVideoEffect,
     ImageToVideoRequest,
     ImageToVideoResponse,
-    ImageToVideoErrorResponse
+    ImageToVideoErrorResponse,
+    VideoCutClipRequest,
+    VideoCutRequest,
+    VideoCutClipResult,
+    VideoCutResponse
 )
 
 from .tts_models import (
@@ -158,6 +162,10 @@ __all__ = [
     "VideoProcessingStage",
     "VideoProcessingError", 
     "CompositionErrorDetails",
+    "VideoCutClipRequest",
+    "VideoCutRequest",
+    "VideoCutClipResult",
+    "VideoCutResponse",
     "TTSRequest",
     "TTSResponse",
     "VoiceType",

@@ -264,3 +264,39 @@ export interface TimelineAction {
   // 新增：保存操作后的时间轴状态快照，用于重做操作
   nextState?: TimelineState;
 } 
+
+// Video Cut related types
+export interface VideoCutClipRequest {
+  id: string;
+  name: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+}
+
+export interface VideoCutRequest {
+  task_id: string;
+  video_url: string;
+  clips: VideoCutClipRequest[];
+  generate_thumbnails?: boolean;
+}
+
+export interface VideoCutClipResult {
+  id: string;
+  name: string;
+  video_url: string;
+  thumbnail_url?: string;
+  file_size: number;
+  duration: number;
+  width: number;
+  height: number;
+  format: string;
+}
+
+export interface VideoCutResponse {
+  success: boolean;
+  message: string;
+  clips: VideoCutClipResult[];
+  total_clips: number;
+  processing_time: number;
+} 

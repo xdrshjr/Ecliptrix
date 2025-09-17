@@ -390,3 +390,86 @@ class ImageToVideoErrorResponse(BaseModel):
     message: str = Field(..., description="Error message")
     error_code: str = Field(..., description="Error code")
     details: Optional[str] = Field(None, description="Additional error details") 
+
+class VideoCutClipRequest(BaseModel):
+    """Individual video clip cut request."""
+    
+    id: str = Field(description="Unique identifier for the clip")
+    name: str = Field(description="Display name of the clip")
+    start_time: float = Field(description="Start time in seconds within the original video")
+    end_time: float = Field(description="End time in seconds within the original video")
+    duration: float = Field(description="Duration of the clip in seconds")
+
+
+class VideoCutRequest(BaseModel):
+    """Video cutting request model."""
+    
+    task_id: str = Field(description="Task ID for tracking and logging")
+    video_url: str = Field(description="URL of the original video to cut")
+    clips: List[VideoCutClipRequest] = Field(description="List of clips to cut from the video")
+    generate_thumbnails: bool = Field(default=True, description="Whether to generate thumbnails for cut clips")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "task_id": "cut_task_123",
+                "video_url": "https://example.com/video.mp4",
+                "clips": [
+                    {
+                        "id": "clip_1",
+                        "name": "First Clip",
+                        "start_time": 10.0,
+                        "end_time": 30.0,
+                        "duration": 20.0
+                    }
+                ],
+                "generate_thumbnails": True
+            }
+        }
+    )
+
+
+class VideoCutClipResult(BaseModel):
+    """Individual video clip cut result."""
+    
+    id: str = Field(description="Unique identifier for the clip")
+    name: str = Field(description="Display name of the clip")
+    video_url: str = Field(description="URL of the cut video clip")
+    thumbnail_url: Optional[str] = Field(default=None, description="URL of the video thumbnail")
+    file_size: int = Field(description="File size in bytes")
+    duration: float = Field(description="Duration of the clip in seconds")
+    width: int = Field(description="Video width in pixels")
+    height: int = Field(description="Video height in pixels")
+    format: str = Field(description="Video format (e.g., mp4)")
+
+
+class VideoCutResponse(BaseResponse):
+    """Video cutting response model."""
+    
+    clips: List[VideoCutClipResult] = Field(default_factory=list, description="List of cut video clips")
+    total_clips: int = Field(0, description="Total number of clips processed")
+    processing_time: float = Field(0.0, description="Total processing time in seconds")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "message": "Video clips cut and uploaded successfully",
+                "clips": [
+                    {
+                        "id": "clip_1",
+                        "name": "First Clip",
+                        "video_url": "https://supabase.example.com/storage/v1/object/public/videos/clip_1.mp4",
+                        "thumbnail_url": "https://supabase.example.com/storage/v1/object/public/thumbnails/clip_1.jpg",
+                        "file_size": 1024000,
+                        "duration": 20.0,
+                        "width": 1920,
+                        "height": 1080,
+                        "format": "mp4"
+                    }
+                ],
+                "total_clips": 1,
+                "processing_time": 15.5
+            }
+        }
+    ) 
