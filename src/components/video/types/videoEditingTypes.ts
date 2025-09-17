@@ -143,6 +143,7 @@ export interface UseMaterialManagementReturn {
   handleMaterialBatchSelect: (materialIds: string[], isSelected: boolean) => void;
   handleMaterialDelete: (materialIds: string[]) => void;
   handleMaterialUpload: () => void;
+  handleDragUpload: (files: FileList) => Promise<void>; // 新增：拖拽文件上传
   addMaterials: (materials: MaterialItem[]) => boolean;
   addOrReplaceMaterial: (material: MaterialItem) => boolean; // 新增：添加或替换单个素材
   // 新增的删除功能

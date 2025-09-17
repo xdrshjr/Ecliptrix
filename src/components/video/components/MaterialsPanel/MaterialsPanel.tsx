@@ -40,6 +40,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   uploadProgress,
   handleMaterialTypeFilter,
   handleMaterialUpload,
+  handleDragUpload, // 新增：拖拽上传处理函数
   addOrReplaceMaterial,
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
@@ -84,6 +85,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     isOpen: false,
     material: null
   });
+
+  // 拖拽状态管理
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
 
   const [draggedMaterial, setDraggedMaterial] = useState<MaterialItem | null>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
@@ -881,6 +886,110 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   };
 
+  // 拖拽事件处理函数
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setDragCounter(prev => prev + 1);
+    
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      // 检查是否包含文件
+      const hasFiles = Array.from(e.dataTransfer.items).some(item => item.kind === 'file');
+      if (hasFiles) {
+        setIsDragOver(true);
+        logger.info('拖拽进入素材面板', {
+          itemCount: e.dataTransfer.items.length,
+          hasFiles
+        });
+      }
+    }
+  }, [logger]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setDragCounter(prev => {
+      const newCounter = prev - 1;
+      if (newCounter === 0) {
+        setIsDragOver(false);
+        logger.info('拖拽离开素材面板');
+      }
+      return newCounter;
+    });
+  }, [logger]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 设置拖拽效果
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIsDragOver(false);
+    setDragCounter(0);
+    
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) {
+      logger.warn('拖拽放置：没有文件');
+      return;
+    }
+
+    // 过滤支持的文件类型
+    const supportedFiles = Array.from(files).filter(file => {
+      const isSupported = file.type.startsWith('video/') || 
+                         file.type.startsWith('audio/') || 
+                         file.type.startsWith('image/');
+      if (!isSupported) {
+        logger.warn('拖拽放置：不支持的文件类型', {
+          fileName: file.name,
+          fileType: file.type
+        });
+      }
+      return isSupported;
+    });
+
+    if (supportedFiles.length === 0) {
+      showError('不支持的文件类型，请上传视频、音频或图片文件');
+      logger.warn('拖拽放置：所有文件都不支持');
+      return;
+    }
+
+    if (supportedFiles.length < files.length) {
+      showError(`已过滤 ${files.length - supportedFiles.length} 个不支持的文件`);
+    }
+
+    logger.info('拖拽放置文件', {
+      totalFiles: files.length,
+      supportedFiles: supportedFiles.length,
+      fileNames: supportedFiles.map(f => f.name),
+      fileTypes: supportedFiles.map(f => f.type)
+    });
+
+    // 创建 FileList 对象
+    const fileList = supportedFiles.reduce((dt, file) => {
+      dt.items.add(file);
+      return dt;
+    }, new DataTransfer()).files;
+
+    try {
+      await handleDragUpload(fileList);
+      showSuccess(`成功开始上传 ${supportedFiles.length} 个文件`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '拖拽上传失败';
+      showError(errorMessage);
+      logger.error('拖拽上传失败', error as Error);
+    }
+  }, [handleDragUpload, showSuccess, showError, logger]);
+
   return (
     <div className={`h-full ${className}`}>
       <div className="materials-panel-header">
@@ -994,10 +1103,29 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
         {/* 素材网格 */}
         <div 
-          className="materials-grid-container"
+          className={`materials-grid-container relative ${
+            isDragOver ? 'drag-over' : ''
+          }`}
           ref={materialsGridRef}
           onScroll={handleGridScroll}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
         >
+          {/* 拖拽覆盖层 */}
+          {isDragOver && (
+            <div className="absolute inset-0 bg-blue-50 bg-opacity-90 border-2 border-dashed border-blue-300 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+              <div className="text-center">
+                <svg className="w-12 h-12 text-blue-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <p className="text-blue-600 font-medium text-lg">拖放文件到此处上传</p>
+                <p className="text-blue-500 text-sm mt-1">支持视频、音频和图片文件</p>
+              </div>
+            </div>
+          )}
+
           {materials.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -1008,6 +1136,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               <h3 className="text-lg font-medium text-gray-900 mb-2">{t.materialsPanel.noMaterials}</h3>
               <p className="text-sm text-gray-500 text-center max-w-sm">
                 {t.materialsPanel.emptyDescription}
+              </p>
+              <p className="text-sm text-gray-400 text-center max-w-sm mt-2">
+                或者直接拖拽文件到此处上传
               </p>
             </div>
           ) : (
