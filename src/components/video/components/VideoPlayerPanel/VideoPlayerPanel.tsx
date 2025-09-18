@@ -481,8 +481,17 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     };
   }, []);
 
-  // 处理视频比例切换
+  // 处理视频比例切换 - 优化稳定性和日志记录
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
+    // 防止重复设置相同的宽高比
+    if (selectedAspectRatio.id === aspectRatio.id) {
+      logger.info('宽高比未发生变化，跳过设置', {
+        currentRatio: selectedAspectRatio.id,
+        requestedRatio: aspectRatio.id
+      });
+      return;
+    }
+    
     console.log(`[VideoPlayerPanel] 比例切换调试`, {
       fromRatio: selectedAspectRatio.id,
       toRatio: aspectRatio.id,
@@ -491,14 +500,17 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       timestamp: new Date().toISOString()
     });
     
-    logger.info('切换视频比例', {
+    logger.info('开始切换视频比例', {
       fromRatio: selectedAspectRatio.id,
       toRatio: aspectRatio.id,
       ratioDescription: aspectRatio.description,
       playbackMode,
+      isCompositionPlaying,
+      currentSequenceIndex: compositionPlayback?.currentSequenceIndex || -1,
       uiLocation: '信息面板第二行的比例选择器'
     });
     
+    // 设置新的宽高比
     setSelectedAspectRatio(aspectRatio);
     
     // 记录比例切换的详细信息
@@ -506,11 +518,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       newRatio: aspectRatio.id,
       newRatioValue: aspectRatio.ratio,
       newCssClass: aspectRatio.cssClass,
+      containerStability: '容器尺寸已固定，防止切换时闪烁',
       layoutStructure: '视频预览容器占用大部分高度，比例选择器在信息面板第二行',
       uiDesign: '两行布局：第一行显示视频信息，第二行显示比例选择器',
       timestamp: new Date().toISOString()
     });
-  }, [selectedAspectRatio, playbackMode, logger]);
+  }, [selectedAspectRatio, playbackMode, logger, isCompositionPlaying, compositionPlayback?.currentSequenceIndex]);
 
   // 处理视频导出（带比例信息记录）
   const handleVideoExport = useCallback(async () => {
@@ -714,13 +727,24 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
           const currentVideo = getCurrentVideoElement();
           if (currentVideo) {
+            // 记录容器状态，确保切换时尺寸稳定
+            logger.info('视频切换前容器状态', {
+              containerDimensions,
+              selectedAspectRatio: selectedAspectRatio.id,
+              videoElementDimensions: {
+                width: currentVideo.videoWidth,
+                height: currentVideo.videoHeight
+              }
+            });
+
             if (cachedVideo) {
               // 缓存命中：使用预加载的视频，减少切换延迟
               logger.info('缓存命中，快速切换视频', {
                 nextIndex,
                 materialId: nextSequence.materialId,
                 sequenceName: nextSequence.name,
-                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%'
+                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%',
+                containerStability: '容器尺寸已固定，防止切换闪烁'
               });
               
               currentVideo.src = cachedVideo.src;
@@ -730,7 +754,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 nextIndex,
                 materialId: nextSequence.materialId,
                 sequenceName: nextSequence.name,
-                cacheState: nextSequence.materialId ? videoCache.getCacheState(nextSequence.materialId) : 'no-material-id'
+                cacheState: nextSequence.materialId ? videoCache.getCacheState(nextSequence.materialId) : 'no-material-id',
+                containerStability: '容器尺寸已固定，防止切换闪烁'
               });
               
               currentVideo.src = nextSequence.url;
@@ -1326,20 +1351,27 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               ref={videoContainerRef}
               className="video-preview-container">
               {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
-                // 组合播放模式
+                // 组合播放模式 - 稳定的宽高比容器
                 <div 
                   className={`${selectedAspectRatio.cssClass} bg-black rounded-xl overflow-hidden shadow-lg relative`} 
-                  style={{ maxHeight: '100%', maxWidth: '100%' }}
+                  style={{ 
+                    maxHeight: '100%', 
+                    maxWidth: '100%',
+                    // 确保容器尺寸稳定，防止视频切换时闪烁
+                    minHeight: '200px',
+                    position: 'relative'
+                  }}
                   onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
                 >
-                  {/* 视频元素 - 固定尺寸防止闪烁 */}
+                  {/* 视频元素 - 完全填充容器，保持宽高比稳定 */}
                   <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
                     style={{ 
                       width: '100%', 
                       height: '100%',
-                      minHeight: '200px' // 确保最小高度，防止容器收缩
+                      display: 'block', // 确保video元素正确显示
+                      backgroundColor: 'transparent' // 避免背景色影响
                     }}
                     preload="metadata"
                     onEnded={handleVideoEnded}
@@ -1418,13 +1450,26 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   })()}
                 </div>
               ) : (
-                // 预览模式占位符 - 充满整个容器
+                // 预览模式占位符 - 充满整个容器，保持宽高比稳定
                 <div 
                   className="video-placeholder-container relative"
                   onClick={() => setSelectedImageOverlay(null)}
+                  style={{
+                    minHeight: '200px', // 确保最小高度，与视频容器保持一致
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
                 >
-                  {/* 比例预览框 */}
-                  <div className={`${selectedAspectRatio.cssClass} video-placeholder-frame`}>
+                  {/* 比例预览框 - 保持与视频容器相同的宽高比稳定性 */}
+                  <div 
+                    className={`${selectedAspectRatio.cssClass} video-placeholder-frame`}
+                    style={{
+                      minHeight: '200px',
+                      maxHeight: '100%',
+                      maxWidth: '100%'
+                    }}
+                  >
                     <div className="placeholder-content">
                       <p className="placeholder-text">
                         {playbackMode === 'composition' 

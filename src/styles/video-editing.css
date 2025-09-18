@@ -572,7 +572,7 @@
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease-in-out;
+  /* 移除过渡效果，防止视频切换时容器闪烁 */
 }
 
 /* 动态视频比例类 - 确保所有比例都正确显示，但限制在容器内 */
@@ -580,30 +580,45 @@
   aspect-ratio: 16/9;
   max-height: 100%;
   max-width: 100%;
+  /* 确保宽高比稳定，防止视频切换时尺寸跳动 */
+  min-height: 200px;
+  flex-shrink: 0;
 }
 
 .video-preview-container .aspect-\[9\/16\] {
   aspect-ratio: 9/16;
   max-height: 100%;
   max-width: 100%;
+  /* 确保宽高比稳定，防止视频切换时尺寸跳动 */
+  min-height: 200px;
+  flex-shrink: 0;
 }
 
 .video-preview-container .aspect-\[4\/3\] {
   aspect-ratio: 4/3;
   max-height: 100%;
   max-width: 100%;
+  /* 确保宽高比稳定，防止视频切换时尺寸跳动 */
+  min-height: 200px;
+  flex-shrink: 0;
 }
 
 .video-preview-container .aspect-square {
   aspect-ratio: 1/1;
   max-height: 100%;
   max-width: 100%;
+  /* 确保宽高比稳定，防止视频切换时尺寸跳动 */
+  min-height: 200px;
+  flex-shrink: 0;
 }
 
 .video-preview-container .aspect-\[21\/9\] {
   aspect-ratio: 21/9;
   max-height: 100%;
   max-width: 100%;
+  /* 确保宽高比稳定，防止视频切换时尺寸跳动 */
+  min-height: 200px;
+  flex-shrink: 0;
 }
 
 /* 播放状态覆盖层 */
@@ -2070,7 +2085,7 @@
   pointer-events: none;
 }
 
-/* 比例预览框 */
+/* 比例预览框 - 优化稳定性，防止宽高比切换时闪烁 */
 .video-placeholder-frame {
   background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
   border: 2px dashed #cbd5e1;
@@ -2079,11 +2094,14 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease-in-out;
+  /* 移除过渡效果，防止宽高比切换时闪烁 */
   position: relative;
   overflow: hidden;
   max-width: 90%;
   max-height: 90%;
+  /* 确保占位符尺寸稳定 */
+  min-height: 200px;
+  flex-shrink: 0;
 }
 
 /* 悬停效果 */
