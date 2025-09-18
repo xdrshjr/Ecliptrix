@@ -790,86 +790,147 @@ class VideoCompositionService:
             if composition_id in self.compositions:
                 self.compositions[composition_id]["progress"] = 0.1
             
-            # Download videos with retry mechanism
-            logger.info("Starting video downloads with retry mechanism...")
-            video_urls = [item.url for item in request.video_items]
-            downloaded_videos = []
-            failed_downloads = []
+            # Download videos with retry mechanism and URL deduplication
+            logger.info("Starting video downloads with retry mechanism and URL deduplication...")
             
+            # Analyze video URLs to find duplicates
+            url_to_indices = {}  # URL -> list of indices that use this URL
+            unique_urls = []     # List of unique URLs to download
+            
+            for i, item in enumerate(request.video_items):
+                url = item.url
+                if url not in url_to_indices:
+                    url_to_indices[url] = []
+                    unique_urls.append(url)
+                url_to_indices[url].append(i)
+            
+            # Log URL analysis results
+            total_videos = len(request.video_items)
+            unique_count = len(unique_urls)
+            duplicate_count = total_videos - unique_count
+            
+            logger.info(f"URL deduplication analysis: {total_videos} total videos, {unique_count} unique URLs, {duplicate_count} duplicates")
+            for url, indices in url_to_indices.items():
+                if len(indices) > 1:
+                    logger.info(f"URL '{url}' used by video indices: {indices}")
+            
+            downloaded_videos = [None] * len(request.video_items)  # Pre-allocate with correct size
+            failed_downloads = []
+            url_to_downloaded_path = {}  # URL -> downloaded file path mapping
+            
+            # Download unique URLs only
             with ThreadPoolExecutor(max_workers=5) as executor:
+                # Create futures for unique URLs only
                 futures = {
-                    executor.submit(self._download_video_with_retry, url, temp_dir, i, request.video_items[i]): i 
-                    for i, url in enumerate(video_urls)
+                    executor.submit(self._download_video_with_retry, url, temp_dir, unique_urls.index(url), request.video_items[url_to_indices[url][0]]): url 
+                    for url in unique_urls
                 }
                 
-                # 收集结果并保持原始顺序
-                results = {}
+                # Collect download results
                 for future in as_completed(futures):
-                    original_index = futures[future]
+                    url = futures[future]
                     result = future.result()
+                    url_index = unique_urls.index(url)
+                    
                     if result['success']:
-                        results[original_index] = result['output_path']
-                        logger.info(f"Downloaded video {len(results)}/{len(video_urls)} (index: {original_index})")
+                        downloaded_path = result['output_path']
+                        url_to_downloaded_path[url] = downloaded_path
+                        logger.info(f"Downloaded unique URL {len(url_to_downloaded_path)}/{unique_count}: {url}")
                     else:
-                        # Record detailed failure information
-                        video_item = request.video_items[original_index]
-                        failed_download = VideoProcessingError(
-                            video_index=original_index,
-                            video_id=video_item.id,
-                            video_name=video_item.name,
-                            video_url=video_item.url,
-                            stage=VideoProcessingStage.DOWNLOAD,
-                            attempts=result.get('attempts', 1),
-                            max_retries=3,
-                            error_message=result.get('error', 'Unknown download error'),
-                            last_error=result.get('last_error', 'Unknown error'),
-                            timeline_position=video_item.start_time,
-                            duration=video_item.duration
-                        )
-                        failed_downloads.append(failed_download)
-                        logger.error(f"Video download failed permanently at index {original_index}: {result['error']}")
+                        # Record failure for all video items using this URL
+                        for video_index in url_to_indices[url]:
+                            video_item = request.video_items[video_index]
+                            failed_download = VideoProcessingError(
+                                video_index=video_index,
+                                video_id=video_item.id,
+                                video_name=video_item.name,
+                                video_url=video_item.url,
+                                stage=VideoProcessingStage.DOWNLOAD,
+                                attempts=result.get('attempts', 1),
+                                max_retries=3,
+                                error_message=result.get('error', 'Unknown download error'),
+                                last_error=result.get('last_error', 'Unknown error'),
+                                timeline_position=video_item.start_time,
+                                duration=video_item.duration
+                            )
+                            failed_downloads.append(failed_download)
+                        logger.error(f"URL download failed permanently: {url}, affecting {len(url_to_indices[url])} videos")
+            
+            # Check if any downloads failed
+            if failed_downloads:
+                error_details = CompositionErrorDetails(
+                    failed_videos=failed_downloads,
+                    total_videos=len(request.video_items),
+                    successful_videos=total_videos - len(failed_downloads),
+                    composition_stage="video_download",
+                    error_summary=f"{len(failed_downloads)} out of {len(request.video_items)} videos failed to download after 3 retry attempts",
+                    recovery_suggestions=[
+                        "Check if the video URLs are accessible",
+                        "Verify your internet connection",
+                        "Try using different video sources",
+                        "Contact support if the issue persists"
+                    ]
+                )
                 
-                # Check if any downloads failed
-                if failed_downloads:
-                    error_details = CompositionErrorDetails(
-                        failed_videos=failed_downloads,
-                        total_videos=len(request.video_items),
-                        successful_videos=len(results),
-                        composition_stage="video_download",
-                        error_summary=f"{len(failed_downloads)} out of {len(request.video_items)} videos failed to download after 3 retry attempts",
-                        recovery_suggestions=[
-                            "Check if the video URLs are accessible",
-                            "Verify your internet connection",
-                            "Try using different video sources",
-                            "Contact support if the issue persists"
-                        ]
-                    )
-                    
-                    # Return detailed error response
-                    logger.error(f"Video composition failed: {len(failed_downloads)} videos failed to download")
-                    self.compositions[composition_id] = {
-                        "status": "failed", 
-                        "progress": 0.3,
-                        "error": error_details.error_summary,
-                        "error_details": error_details
-                    }
-                    
-                    return VideoCompositionResponse(
-                        success=False,
-                        message=error_details.error_summary,
-                        composition_id=composition_id,
-                        status="failed",
-                        progress=0.3,
-                        error_details=error_details
-                    )
+                # Return detailed error response
+                logger.error(f"Video composition failed: {len(failed_downloads)} videos failed to download")
+                self.compositions[composition_id] = {
+                    "status": "failed", 
+                    "progress": 0.3,
+                    "error": error_details.error_summary,
+                    "error_details": error_details
+                }
                 
-                # 按原始顺序添加到列表
-                for i in range(len(video_urls)):
-                    downloaded_videos.append(results[i])
+                return VideoCompositionResponse(
+                    success=False,
+                    message=error_details.error_summary,
+                    composition_id=composition_id,
+                    status="failed",
+                    progress=0.3,
+                    error_details=error_details
+                )
+            
+            # Create file copies for videos with duplicate URLs
+            logger.info("Creating file copies for duplicate URLs...")
+            for url, indices in url_to_indices.items():
+                if url in url_to_downloaded_path:
+                    original_path = url_to_downloaded_path[url]
                     
-            logger.info(f"Video download completed in correct order", extra={
+                    for video_index in indices:
+                        if video_index == indices[0]:
+                            # First video uses the original downloaded file
+                            downloaded_videos[video_index] = original_path
+                        else:
+                            # Create copy for duplicate URLs
+                            copy_name = f"video_{video_index}.mp4"
+                            copy_path = os.path.join(temp_dir, copy_name)
+                            try:
+                                shutil.copy2(original_path, copy_path)
+                                downloaded_videos[video_index] = copy_path
+                                logger.info(f"Created copy for video index {video_index} from URL: {url}")
+                            except Exception as e:
+                                logger.error(f"Failed to create copy for video index {video_index}: {str(e)}")
+                                # Use original file as fallback
+                                downloaded_videos[video_index] = original_path
+            
+            # Verify all videos are assigned
+            missing_videos = [i for i, path in enumerate(downloaded_videos) if path is None]
+            if missing_videos:
+                logger.error(f"Missing downloaded videos for indices: {missing_videos}")
+                return VideoCompositionResponse(
+                    success=False,
+                    message=f"Internal error: missing downloaded videos for indices {missing_videos}",
+                    composition_id=composition_id,
+                    status="failed",
+                    progress=0.3
+                )
+                    
+            logger.info(f"Video download completed with URL deduplication", extra={
+                "total_videos": total_videos,
+                "unique_downloads": unique_count,
+                "duplicates_handled": duplicate_count,
                 "downloaded_order": [
-                    {"index": i, "path": path.split('/')[-1]} 
+                    {"index": i, "path": path.split('/')[-1] if path else None} 
                     for i, path in enumerate(downloaded_videos)
                 ]
             })

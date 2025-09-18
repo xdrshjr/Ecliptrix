@@ -8,6 +8,24 @@ The Video Composition API provides functionality to compose videos from timeline
 POST /api/video/compose
 ```
 
+## Performance Optimizations
+
+### URL Deduplication (New Feature)
+The video composition service now includes intelligent URL deduplication to optimize download performance:
+
+- **Duplicate Detection**: Automatically detects when multiple video items use the same URL
+- **Single Download**: Downloads each unique URL only once, regardless of how many video items reference it
+- **File Replication**: Creates file copies for video items that share the same URL after the initial download
+- **Performance Impact**: Significantly reduces composition time when the same video material is used multiple times
+- **Logging**: Detailed logs show URL analysis results and duplicate handling
+
+**Example Scenario**: If a composition uses the same video URL in 5 different timeline positions, the system will:
+1. Download the video file only once
+2. Create 4 additional file copies for the remaining references
+3. Log the deduplication statistics for monitoring
+
+This optimization is particularly beneficial for compositions that reuse video materials across different timeline segments.
+
 ## Request Model
 
 ### VideoCompositionRequest
