@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { TimelineState, TimelineToolType, Track, TimelineItem, TimelineAction, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -2357,6 +2357,23 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }, 10);
   }, []);
 
+  // 优化：使用 useMemo 缓存字幕数组，避免不必要的重新渲染导致样式重置
+  const memoizedSubtitles = useMemo(() => {
+    if (!editingTrackId) return [];
+    
+    const track = timelineState.tracks.find(track => track.id === editingTrackId);
+    const subtitles = track?.items.filter(item => item.type === 'subtitle') || [];
+    
+    console.log(`[TimelinePanel] 字幕数组更新`, {
+      editingTrackId,
+      subtitleCount: subtitles.length,
+      subtitleIds: subtitles.map(s => s.id),
+      timestamp: new Date().toISOString()
+    });
+    
+    return subtitles;
+  }, [editingTrackId, timelineState.tracks]);
+
   return (
     <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
       {/* 工具栏 */}
@@ -2428,7 +2445,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           isOpen={isSubtitleEditModalOpen}
           onClose={handleCloseSubtitleEditModal}
           onSave={handleSaveSubtitleChanges}
-          subtitles={timelineState.tracks.find(track => track.id === editingTrackId)?.items.filter(item => item.type === 'subtitle') || []}
+          subtitles={memoizedSubtitles}
           taskId="timeline_subtitle_edit"
           locale={locale}
         />

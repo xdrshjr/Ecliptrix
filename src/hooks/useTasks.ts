@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Task, Tab, TaskType, AppState } from '@/types';
 
 export const useTasks = () => {
-  // 创建默认任务和标签页
+  // 创建默认任务和标签页（使用固定时间戳避免水合不匹配）
   const createDefaultTasks = () => {
-    const now = new Date();
+    // 使用固定的时间戳避免服务端和客户端不一致
+    const fixedDate = new Date('2024-01-01T00:00:00.000Z');
     
     // 创建默认的 AI Chat 任务
     const chatTask: Task = {
@@ -14,8 +15,8 @@ export const useTasks = () => {
       title: 'AI Chat',
       type: 'chat',
       status: 'draft',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: fixedDate,
+      updatedAt: fixedDate,
       content: null,
     };
 
@@ -25,8 +26,8 @@ export const useTasks = () => {
       title: 'Video Editing',
       type: 'video',
       status: 'draft',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: fixedDate,
+      updatedAt: fixedDate,
       content: null,
     };
 
@@ -36,8 +37,8 @@ export const useTasks = () => {
       title: 'Content Creation',
       type: 'content',
       status: 'draft',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: fixedDate,
+      updatedAt: fixedDate,
       content: null,
     };
 
@@ -47,8 +48,8 @@ export const useTasks = () => {
       title: 'Brainstorming',
       type: 'brainstorm',
       status: 'draft',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: fixedDate,
+      updatedAt: fixedDate,
       content: null,
     };
 
@@ -94,21 +95,26 @@ export const useTasks = () => {
 
   const [appState, setAppState] = useState<AppState>(() => {
     const defaultState = createDefaultTasks();
-    console.log('[useTasks] Initialized with default tasks (showing main interface):', {
-      tasksCount: defaultState.tasks.length,
-      tabsCount: defaultState.tabs.length,
-      activeTabId: defaultState.activeTabId,
-      tasks: defaultState.tasks.map(t => ({ id: t.id, title: t.title, type: t.type })),
-      showingMainInterface: defaultState.activeTabId === null,
-      timestamp: new Date().toISOString()
-    });
     return defaultState;
   });
 
+  // 在客户端初始化后记录日志，避免水合不匹配
+  useEffect(() => {
+    console.log('[useTasks] Initialized with default tasks (showing main interface):', {
+      tasksCount: appState.tasks.length,
+      tabsCount: appState.tabs.length,
+      activeTabId: appState.activeTabId,
+      tasks: appState.tasks.map(t => ({ id: t.id, title: t.title, type: t.type })),
+      showingMainInterface: appState.activeTabId === null,
+      timestamp: new Date().toISOString()
+    });
+  }, []);
+
   const createTask = useCallback((type: TaskType) => {
     const now = new Date();
-    const taskId = `task-${Date.now()}`;
-    const tabId = `tab-${Date.now()}`;
+    const timestamp = now.getTime();
+    const taskId = `task-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+    const tabId = `tab-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
     
     const taskTypeNames = {
       content: 'Content Creation',

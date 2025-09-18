@@ -22,7 +22,7 @@ export const useBrainstormingChat = (
   });
 
   // 生成消息ID
-  const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const generateMessageId = () => `msg_${new Date().getTime()}_${Math.random().toString(36).substr(2, 9)}`;
 
   // 添加消息
   const addMessage = useCallback((message: Omit<ChatMessage, 'id' | 'timestamp'>) => {

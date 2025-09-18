@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { TimelineItem, SubtitleStyle, SubtitleStylePreset, SubtitleFontFamily, SubtitlePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils';
 import { SupportedLocale } from '@/lib/i18n';
@@ -22,7 +22,7 @@ const SUBTITLE_STYLE_PRESETS: SubtitleStylePreset[] = [
     name: '默认样式',
     style: {
       fontFamily: 'default',
-      fontSize: 24,
+      fontSize: 60,
       fontColor: '#FFFFFF',
       position: 'bottom'
       // 注意：没有backgroundColor，表示无背景
@@ -33,7 +33,7 @@ const SUBTITLE_STYLE_PRESETS: SubtitleStylePreset[] = [
     name: '经典样式',
     style: {
       fontFamily: 'default',
-      fontSize: 24,
+      fontSize: 60,
       fontColor: '#FFFFFF',
       backgroundColor: '#000000',
       position: 'bottom'
@@ -44,7 +44,7 @@ const SUBTITLE_STYLE_PRESETS: SubtitleStylePreset[] = [
     name: '现代样式',
     style: {
       fontFamily: 'sans-serif',
-      fontSize: 28,
+      fontSize: 60,
       fontColor: '#FFFFFF',
       position: 'bottom'
     }
@@ -54,10 +54,10 @@ const SUBTITLE_STYLE_PRESETS: SubtitleStylePreset[] = [
     name: '优雅样式',
     style: {
       fontFamily: 'serif',
-      fontSize: 26,
+      fontSize: 60,
       fontColor: '#F0F0F0',
       backgroundColor: '#1A1A1A',
-      position: 'center'
+      position: 'bottom'
     }
   },
   {
@@ -65,10 +65,10 @@ const SUBTITLE_STYLE_PRESETS: SubtitleStylePreset[] = [
     name: '科技样式',
     style: {
       fontFamily: 'monospace',
-      fontSize: 22,
+      fontSize: 60,
       fontColor: '#00FF00',
       backgroundColor: '#000000',
-      position: 'top'
+      position: 'bottom'
     }
   }
 ];
@@ -102,6 +102,11 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [selectedSubtitleId, setSelectedSubtitleId] = useState<string | null>(null);
   const [currentStyle, setCurrentStyle] = useState<SubtitleStyle>(SUBTITLE_STYLE_PRESETS[0].style);
+  
+  // 使用 ref 跟踪模态框初始化状态和上次的字幕ID列表
+  const isInitializedRef = useRef(false);
+  const lastSubtitleIdsRef = useRef<string[]>([]);
+  const preservedStyleRef = useRef<SubtitleStyle | null>(null);
 
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
@@ -110,12 +115,14 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
   const { t } = useLocale();
 
-  // Initialize edited subtitles when modal opens or subtitles change
+  // 处理模态框打开和关闭
   useEffect(() => {
-    if (isOpen) {
-      logger.info('字幕编辑模态框打开', {
+    if (isOpen && !isInitializedRef.current) {
+      // 模态框首次打开时的初始化
+      logger.info('字幕编辑模态框首次打开', {
         subtitleCount: subtitles.length,
         subtitleIds: subtitles.map(s => s.id),
+        defaultStyle: SUBTITLE_STYLE_PRESETS[0].style,
         timestamp: new Date().toISOString()
       });
       
@@ -133,8 +140,68 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
         setSelectedSubtitleId(initializedSubtitles[0].id);
         setCurrentStyle(initializedSubtitles[0].subtitleStyle || SUBTITLE_STYLE_PRESETS[0].style);
       }
+      
+      // 记录字幕ID列表和初始化状态
+      lastSubtitleIdsRef.current = subtitles.map(s => s.id);
+      isInitializedRef.current = true;
+      
+    } else if (!isOpen && isInitializedRef.current) {
+      // 模态框关闭时重置状态
+      logger.info('字幕编辑模态框关闭，重置状态', {
+        timestamp: new Date().toISOString()
+      });
+      
+      isInitializedRef.current = false;
+      lastSubtitleIdsRef.current = [];
+      preservedStyleRef.current = null;
     }
-  }, [isOpen, subtitles]); // 移除 logger 依赖
+  }, [isOpen]);
+
+  // 处理字幕内容变化（仅在模态框已初始化时）
+  useEffect(() => {
+    if (!isOpen || !isInitializedRef.current) return;
+    
+    const currentSubtitleIds = subtitles.map(s => s.id);
+    const lastSubtitleIds = lastSubtitleIdsRef.current;
+    
+    // 检查字幕ID是否发生了实质性变化
+    const idsChanged = currentSubtitleIds.length !== lastSubtitleIds.length || 
+                       currentSubtitleIds.some((id, index) => id !== lastSubtitleIds[index]);
+    
+    if (idsChanged) {
+      logger.info('字幕内容发生变化，更新编辑状态', {
+        oldIds: lastSubtitleIds,
+        newIds: currentSubtitleIds,
+        preservedStyle: preservedStyleRef.current,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 保存当前样式以便在更新后恢复
+      preservedStyleRef.current = currentStyle;
+      
+      // 更新字幕内容，保持已有的样式设置
+      const updatedSubtitles = subtitles.map(subtitle => ({
+        ...subtitle,
+        subtitleStyle: subtitle.subtitleStyle || preservedStyleRef.current || SUBTITLE_STYLE_PRESETS[0].style
+      }));
+      
+      setEditedSubtitles(updatedSubtitles);
+      
+      // 尝试保持当前选中的字幕，如果不存在则选择第一个
+      if (selectedSubtitleId && currentSubtitleIds.includes(selectedSubtitleId)) {
+        const selectedSubtitle = updatedSubtitles.find(s => s.id === selectedSubtitleId);
+        if (selectedSubtitle?.subtitleStyle) {
+          setCurrentStyle(selectedSubtitle.subtitleStyle);
+        }
+      } else if (updatedSubtitles.length > 0) {
+        setSelectedSubtitleId(updatedSubtitles[0].id);
+        setCurrentStyle(updatedSubtitles[0].subtitleStyle || preservedStyleRef.current || SUBTITLE_STYLE_PRESETS[0].style);
+      }
+      
+      // 更新记录的ID列表
+      lastSubtitleIdsRef.current = currentSubtitleIds;
+    }
+  }, [subtitles, isOpen, selectedSubtitleId, currentStyle]);
 
   // Handle subtitle text change
   const handleSubtitleChange = useCallback((subtitleId: string, newText: string) => {
@@ -156,7 +223,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
       )
     );
     setHasChanges(true);
-  }, []); // 移除 logger 依赖
+  }, [logger]);
 
   // Handle save
   const handleSave = useCallback(() => {
@@ -170,7 +237,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
       onSave(editedSubtitles);
     }
     onClose();
-  }, [editedSubtitles, hasChanges, onSave, onClose]); // 移除 logger 依赖
+  }, [editedSubtitles, hasChanges, onSave, onClose, logger]);
 
   // Handle cancel
   const handleCancel = useCallback(() => {
@@ -180,7 +247,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
     });
 
     onClose();
-  }, [hasChanges, onClose]); // 移除 logger 依赖
+  }, [hasChanges, onClose, logger]);
 
   // Handle subtitle selection
   const handleSubtitleSelect = useCallback((subtitleId: string) => {
@@ -197,9 +264,13 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
       presetId: preset.id,
       presetName: preset.name,
       selectedSubtitleId,
+      previousStyle: currentStyle,
+      newStyle: preset.style,
       timestamp: new Date().toISOString()
     });
 
+    // 保存样式到 ref 以便在更新时保持
+    preservedStyleRef.current = preset.style;
     setCurrentStyle(preset.style);
     
     if (selectedSubtitleId) {
@@ -218,18 +289,24 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
       );
     }
     setHasChanges(true);
-  }, [selectedSubtitleId]);
+  }, [selectedSubtitleId, logger]);
 
   // Handle individual style property changes
   const handleStyleChange = useCallback((property: keyof SubtitleStyle, value: any) => {
+    const newStyle = { ...currentStyle, [property]: value };
+    
     logger.info('字幕样式属性修改', {
       property,
-      value,
+      oldValue: currentStyle[property],
+      newValue: value,
       selectedSubtitleId,
+      previousStyle: currentStyle,
+      newStyle: newStyle,
       timestamp: new Date().toISOString()
     });
 
-    const newStyle = { ...currentStyle, [property]: value };
+    // 保存样式到 ref 以便在更新时保持
+    preservedStyleRef.current = newStyle;
     setCurrentStyle(newStyle);
     
     if (selectedSubtitleId) {
@@ -248,13 +325,14 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
       );
     }
     setHasChanges(true);
-  }, [currentStyle, selectedSubtitleId]);
+  }, [currentStyle, selectedSubtitleId, logger]);
 
   // Apply current style to all subtitles
   const handleApplyToAll = useCallback(() => {
     logger.info('应用样式到所有字幕', {
       styleApplied: currentStyle,
       subtitleCount: editedSubtitles.length,
+      buttonLocation: 'fixed-bottom-panel',
       timestamp: new Date().toISOString()
     });
 
@@ -262,7 +340,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
       prev.map(subtitle => ({ ...subtitle, subtitleStyle: currentStyle }))
     );
     setHasChanges(true);
-  }, [currentStyle, editedSubtitles.length]);
+  }, [currentStyle, editedSubtitles.length, logger]);
 
   // Format time display
   const formatTime = useCallback((seconds: number): string => {
@@ -320,6 +398,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                   </p>
                 </div>
                 
+                {/* Scrollable content area */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-6">
                   {/* Style Presets */}
                   <div>
@@ -371,15 +450,15 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                     </label>
                     <input
                       type="range"
-                      min="8"
-                      max="72"
+                      min="10"
+                      max="120"
                       value={currentStyle.fontSize}
                       onChange={(e) => handleStyleChange('fontSize', parseInt(e.target.value))}
                       className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                     />
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>8px</span>
-                      <span>72px</span>
+                      <span>10px</span>
+                      <span>120px</span>
                     </div>
                   </div>
 
@@ -459,7 +538,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                           color: currentStyle.fontColor,
                           backgroundColor: currentStyle.backgroundColor || 'transparent',
                           fontFamily: currentStyle.fontFamily === 'default' ? 'inherit' : currentStyle.fontFamily,
-                          fontSize: `${Math.max(12, currentStyle.fontSize * 0.6)}px`,
+                          fontSize: `${Math.max(12, Math.min(36, currentStyle.fontSize * 0.4))}px`,
                           padding: currentStyle.backgroundColor ? '4px 8px' : '0',
                           borderRadius: currentStyle.backgroundColor ? '4px' : '0'
                         }}
@@ -468,16 +547,16 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Apply to All Button */}
-                  <div className="pt-4 border-t border-gray-200">
-                    <button
-                      onClick={handleApplyToAll}
-                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                    >
-                      应用到所有字幕
-                    </button>
-                  </div>
+                {/* Fixed Apply to All Button at bottom */}
+                <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                  <button
+                    onClick={handleApplyToAll}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    应用到所有字幕
+                  </button>
                 </div>
               </div>
 
@@ -553,7 +632,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                                       color: subtitle.subtitleStyle.fontColor,
                                       backgroundColor: subtitle.subtitleStyle.backgroundColor || 'transparent',
                                       fontFamily: subtitle.subtitleStyle.fontFamily === 'default' ? 'inherit' : subtitle.subtitleStyle.fontFamily,
-                                      fontSize: `${Math.max(10, subtitle.subtitleStyle.fontSize * 0.4)}px`,
+                                      fontSize: `${Math.max(10, Math.min(24, subtitle.subtitleStyle.fontSize * 0.3))}px`,
                                       padding: subtitle.subtitleStyle.backgroundColor ? '2px 4px' : '0',
                                       borderRadius: subtitle.subtitleStyle.backgroundColor ? '2px' : '0'
                                     }}
