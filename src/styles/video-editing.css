@@ -2222,4 +2222,193 @@
 
 .timeline-scroll-sync.scrolling::after {
   opacity: 0.6;
+}
+
+/* VideoCutModal Apple-style Enhancements */
+.video-cut-modal-backdrop {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.video-cut-modal-container {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-cut-modal-title-gradient {
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 50%, #f1f5f9 100%);
+}
+
+/* Enhanced video container with Apple-style padding and shadows */
+.video-cut-preview-container {
+  background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.video-cut-preview-frame {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.video-cut-preview-frame:hover {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transform: scale(1.01);
+}
+
+/* Apple-style range slider for video progress */
+.video-cut-range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.video-cut-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  border: 2px solid #3b82f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.video-cut-range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.video-cut-range-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  border: 2px solid #3b82f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+/* Enhanced timeline visualization */
+.video-cut-timeline-track {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.video-cut-timeline-track:hover {
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+}
+
+/* Apple-style button enhancements */
+.video-cut-button {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.video-cut-button:hover {
+  transform: translateY(-1px);
+}
+
+.video-cut-button:active {
+  transform: translateY(0);
+}
+
+.video-cut-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+  transition: left 0.5s ease;
+  pointer-events: none;
+}
+
+.video-cut-button:hover::before {
+  left: 100%;
+}
+
+/* Enhanced clip cards with Apple-style design */
+.video-cut-clip-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.video-cut-clip-card:hover {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.video-cut-clip-card.selected {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+/* Smooth scrollbar for clip list */
+.video-cut-clip-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.video-cut-clip-list::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.video-cut-clip-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.video-cut-clip-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+}
+
+/* Apple-style backdrop blur effect */
+@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+  .video-cut-backdrop-blur {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+/* Enhanced focus states for accessibility */
+.video-cut-focusable:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Responsive improvements for mobile */
+@media (max-width: 768px) {
+  .video-cut-modal-container {
+    width: 95vw;
+    height: 90vh;
+    margin: 2.5vw;
+  }
+  
+  .video-cut-preview-container {
+    padding: 16px;
+  }
+  
+  .video-cut-timeline-track {
+    height: 40px;
+  }
+  
+  .video-cut-clip-card {
+    padding: 12px;
+  }
 } 
