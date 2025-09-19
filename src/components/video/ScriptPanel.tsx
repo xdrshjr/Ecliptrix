@@ -33,6 +33,7 @@ import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
 import { VideoAnalysisResponse } from './services/videoAnalysisService';
 import { useLocale } from '@/contexts/LocaleContext';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -93,6 +94,15 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   // 句子级TTS相关状态
   const [sentenceTimingInfo, setSentenceTimingInfo] = useState<Record<string, SentenceTTSResult[]>>({});
   const [segmentConcatenatedAudio, setSegmentConcatenatedAudio] = useState<Record<string, string>>({});
+
+  // 确认对话框状态
+  const [confirmationDialog, setConfirmationDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'danger' as const
+  });
   
   // 批量转换相关状态
   const [isBatchConverting, setIsBatchConverting] = useState<boolean>(false);
@@ -1528,6 +1538,51 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
   };
 
+  // 关闭确认对话框
+  const handleCloseConfirmationDialog = useCallback(() => {
+    setConfirmationDialog(prev => ({
+      ...prev,
+      isOpen: false
+    }));
+  }, []);
+
+  // 处理删除段落
+  const handleDeleteSegment = useCallback((segmentId: string, segmentTitle: string) => {
+    // 显示确认对话框
+    setConfirmationDialog({
+      isOpen: true,
+      title: '删除段落',
+      message: `确定要删除段落"${segmentTitle}"吗？此操作不可撤销。`,
+      type: 'danger',
+      onConfirm: () => {
+        logger.userAction('删除脚本段落', 'segmentEditor', {
+          segmentId,
+          segmentTitle,
+          changeType: 'delete_segment'
+        });
+
+        // 过滤掉要删除的段落
+        const updatedSegments = segments.filter(segment => segment.id !== segmentId);
+        
+        // 调用更新回调
+        if (onUpdateSegments) {
+          onUpdateSegments(updatedSegments);
+        }
+        
+        logger.info('脚本段落删除完成', {
+          deletedSegmentId: segmentId,
+          deletedSegmentTitle: segmentTitle,
+          remainingSegments: updatedSegments.length
+        });
+
+        showSuccess(`段落"${segmentTitle}"已删除`);
+        
+        // 关闭对话框
+        handleCloseConfirmationDialog();
+      }
+    });
+  }, [segments, onUpdateSegments, logger, showSuccess, handleCloseConfirmationDialog]);
+
   // 如果没有片段，显示空状态
   if (!segments || segments.length === 0) {
     return (
@@ -1762,12 +1817,17 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   )}
                 </button>
 
-                {/* 时长显示 */}
-                {segment.duration && (
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {segment.duration.toFixed(2)}s
-                  </span>
-                )}
+                {/* 删除段落按钮 */}
+                <button
+                  onClick={() => handleDeleteSegment(segment.id, segment.title)}
+                  className="p-1.5 text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 hover:border-red-300 transition-colors duration-200"
+                  title="删除段落"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+
               </div>
             </div>
 
@@ -2178,6 +2238,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         taskId={taskId || 'unknown'}
         onGenerateScript={videoUnderstandingScript.generateScript}
         isGenerating={videoUnderstandingScript.isGenerating}
+      />
+
+      {/* 确认删除对话框 */}
+      <ConfirmationDialog
+        isOpen={confirmationDialog.isOpen}
+        title={confirmationDialog.title}
+        message={confirmationDialog.message}
+        type={confirmationDialog.type}
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={confirmationDialog.onConfirm}
+        onCancel={handleCloseConfirmationDialog}
       />
     </div>
   );
