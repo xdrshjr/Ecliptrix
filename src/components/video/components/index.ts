@@ -7,6 +7,7 @@ export { AudioSearchModal } from './AudioSearchModal';
 export { default as ImageSearchModal } from './ImageSearchModal';
 export { ContentPolishModal } from './ContentPolishModal';
 export { ScriptGenerationModal } from './ScriptGenerationModal';
+export { ScriptGenerationProgressModal } from './ScriptGenerationProgressModal';
 export { SubtitleEditModal } from './SubtitleEditModal';
 export { CreativeBrainstormingModal } from './CreativeBrainstormingModal';
 export { VideoAnalysisModal } from './VideoAnalysisModal';

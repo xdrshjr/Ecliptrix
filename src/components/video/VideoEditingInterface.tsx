@@ -37,6 +37,7 @@ import {
   ImageSearchModal,
   ContentPolishModal,
   ScriptGenerationModal,
+  ScriptGenerationProgressModal,
   CreativeBrainstormingModal,
   VideoAnalysisModal,
   AIImageGenerationModal,
@@ -81,9 +82,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 智能润色弹窗状态
   const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(false);
   
-  // 脚本生成弹窗状态
+    // 脚本生成弹窗状态
   const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(false);
-  
+
+  // 脚本生成开始时间状态
+  const [scriptGenerationStartTime, setScriptGenerationStartTime] = useState<number | null>(null);
+
   // 创意构思弹窗状态
   const [isCreativeBrainstormingModalOpen, setIsCreativeBrainstormingModalOpen] = useState<boolean>(false);
   
@@ -252,6 +256,21 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
   const materialManagement = useMaterialManagement(taskId);
+
+  // 监听脚本生成状态变化，自动记录开始时间和清除时间
+  useEffect(() => {
+    if (scriptGeneration.isGeneratingScript && !scriptGenerationStartTime) {
+      // 脚本生成开始，记录开始时间
+      setScriptGenerationStartTime(Date.now());
+    } else if (!scriptGeneration.isGeneratingScript && scriptGenerationStartTime) {
+      // 脚本生成完成，延迟一段时间后清除开始时间，让弹窗有时间显示完成状态
+      const timer = setTimeout(() => {
+        setScriptGenerationStartTime(null);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [scriptGeneration.isGeneratingScript, scriptGenerationStartTime]);
   const videoSearch = useVideoSearch(taskId, materialManagement.addMaterials);
   const audioSearch = useAudioSearch(taskId, materialManagement.addMaterials);
   const imageSearch = useImageSearch(taskId, materialManagement.addMaterials);
@@ -1532,6 +1551,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={handleScriptGenerationClose}
         onGenerate={handleScriptGenerate}
         taskId={taskId}
+      />
+
+      <ScriptGenerationProgressModal
+        isOpen={scriptGeneration.isGeneratingScript}
+        progress={scriptGeneration.generationProgress}
+        startTime={scriptGenerationStartTime}
       />
 
       <CreativeBrainstormingModal
