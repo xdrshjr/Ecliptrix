@@ -27,6 +27,7 @@ import {
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { analyzeVideosInParallel, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
 import {
   DocumentPanel,
   AIAssistantPanel,
@@ -1252,51 +1253,62 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     console.log(`[VideoEditingInterface] 显示AI混剪进度弹窗`, { taskId });
 
     try {
-      // 第一步：如果有视频素材，先进行视频分析
+            // 第一步：如果有视频素材，先进行并行视频分析
       const videoMaterials = materialManagement.materials.filter(m => m.type === 'video');
       
       if (videoMaterials.length > 0) {
-        console.log(`[VideoEditingInterface] 开始视频分析阶段`, {
+        console.log(`[VideoEditingInterface] 开始并行视频分析阶段`, {
+          taskId,
           videoCount: videoMaterials.length,
           mode: mode.type,
-          frameInterval: mode.frameInterval
+          frameInterval: mode.frameInterval,
+          threadCount: VIDEO_ANALYSIS_CONFIG.DEFAULT_THREAD_COUNT,
+          maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
+          timestamp: new Date().toISOString()
         });
 
-        // 为每个视频进行AI分析
-        for (const videoMaterial of videoMaterials) {
-          console.log(`[VideoEditingInterface] 分析视频: ${videoMaterial.name}`, {
-            videoId: videoMaterial.id,
-            videoUrl: videoMaterial.url
+        try {
+          // 使用并行分析工具进行视频分析
+          const analysisResults = await analyzeVideosInParallel(
+            videoMaterials,
+            {
+              threadCount: VIDEO_ANALYSIS_CONFIG.DEFAULT_THREAD_COUNT,
+              maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
+              retryDelayMs: VIDEO_ANALYSIS_CONFIG.RETRY_DELAY_MS,
+              mode
+            },
+            taskId
+          );
+
+          const successfulAnalyses = analysisResults.filter(r => r.success);
+          const failedAnalyses = analysisResults.filter(r => !r.success);
+
+          console.log(`[VideoEditingInterface] 并行视频分析阶段完成`, {
+            taskId,
+            totalVideos: videoMaterials.length,
+            successCount: successfulAnalyses.length,
+            failedCount: failedAnalyses.length,
+            successRate: `${Math.round((successfulAnalyses.length / videoMaterials.length) * 100)}%`,
+            timestamp: new Date().toISOString()
           });
 
-          try {
-            const analysisResponse = await fetch('/api/video/analyze', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-                             body: JSON.stringify({
-                 video_url: videoMaterial.url,
-                 frame_interval: mode.type === 'quick' ? 9999 : (mode.frameInterval || 5), // 快速模式用大间隔只取1帧，专业模式按用户设置间隔
-                 custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。"
-               }),
+          if (failedAnalyses.length > 0) {
+            console.warn(`[VideoEditingInterface] 部分视频分析失败，但将继续进行AI混剪`, {
+              taskId,
+              failedCount: failedAnalyses.length,
+              failedVideos: failedAnalyses.map(r => r.material.name),
+              timestamp: new Date().toISOString()
             });
-
-            if (!analysisResponse.ok) {
-              console.warn(`[VideoEditingInterface] 视频分析失败: ${videoMaterial.name}`, {
-                status: analysisResponse.status
-              });
-              continue; // 继续处理其他视频
-            }
-
-            const analysisResult = await analysisResponse.json();
-            console.log(`[VideoEditingInterface] 视频分析完成: ${videoMaterial.name}`, {
-              framesAnalyzed: analysisResult.total_frames_extracted || 0,
-              success: analysisResult.success
-            });
-          } catch (error) {
-            console.error(`[VideoEditingInterface] 视频分析异常: ${videoMaterial.name}`, error);
           }
+
+        } catch (error) {
+          console.error(`[VideoEditingInterface] 并行视频分析阶段异常`, {
+            taskId,
+            error: error instanceof Error ? error.message : String(error),
+            videoCount: videoMaterials.length,
+            timestamp: new Date().toISOString()
+          });
+          // 继续执行AI混剪，即使视频分析失败
         }
       }
 

@@ -1,0 +1,296 @@
+import { MaterialItem } from '@/types';
+
+// Configuration constants
+export const VIDEO_ANALYSIS_CONFIG = {
+  DEFAULT_THREAD_COUNT: 5,
+  MAX_RETRY_ATTEMPTS: 1,
+  RETRY_DELAY_MS: 1000,
+  REQUEST_TIMEOUT_MS: 60000, // 60 seconds
+} as const;
+
+// Types
+export interface VideoAnalysisRequest {
+  video_url: string;
+  frame_interval: number;
+  custom_prompt: string;
+}
+
+export interface VideoAnalysisResult {
+  success: boolean;
+  video_url: string;
+  material: MaterialItem;
+  error?: string;
+  attempts: number;
+}
+
+export interface ParallelAnalysisOptions {
+  threadCount?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  mode: { type: 'quick' | 'professional'; frameInterval?: number };
+}
+
+// Utility class for managing concurrent requests with thread limiting
+class ThreadPool {
+  private running = 0;
+  private queue: Array<() => Promise<void>> = [];
+
+  constructor(private maxConcurrent: number) {}
+
+  async execute<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const wrappedTask = async () => {
+        try {
+          this.running++;
+          const result = await task();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        } finally {
+          this.running--;
+          this.processQueue();
+        }
+      };
+
+      if (this.running < this.maxConcurrent) {
+        wrappedTask();
+      } else {
+        this.queue.push(wrappedTask);
+      }
+    });
+  }
+
+  private processQueue() {
+    if (this.queue.length > 0 && this.running < this.maxConcurrent) {
+      const nextTask = this.queue.shift();
+      if (nextTask) {
+        nextTask();
+      }
+    }
+  }
+}
+
+// Sleep utility for retry delays
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Analyze a single video with retry logic
+ */
+async function analyzeSingleVideoWithRetry(
+  material: MaterialItem,
+  options: ParallelAnalysisOptions,
+  taskId: string
+): Promise<VideoAnalysisResult> {
+  const { maxRetries = VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS, retryDelayMs = VIDEO_ANALYSIS_CONFIG.RETRY_DELAY_MS, mode } = options;
+  
+  let lastError: Error | null = null;
+  let attempts = 0;
+
+  console.log(`[ParallelVideoAnalysis] 开始分析视频: ${material.name}`, {
+    taskId,
+    videoId: material.id,
+    videoUrl: material.url,
+    mode: mode.type,
+    frameInterval: mode.type === 'quick' ? 9999 : (mode.frameInterval || 5),
+    maxRetries,
+    timestamp: new Date().toISOString()
+  });
+
+  for (attempts = 0; attempts <= maxRetries; attempts++) {
+    try {
+      if (attempts > 0) {
+        console.log(`[ParallelVideoAnalysis] 重试分析视频: ${material.name} (第${attempts}次重试)`, {
+          taskId,
+          videoId: material.id,
+          previousError: lastError?.message,
+          retryDelay: retryDelayMs,
+          timestamp: new Date().toISOString()
+        });
+        await sleep(retryDelayMs);
+      }
+
+      const startTime = performance.now();
+      
+      // Prepare request body
+      const requestBody: VideoAnalysisRequest = {
+        video_url: material.url,
+        frame_interval: mode.type === 'quick' ? 9999 : (mode.frameInterval || 5), // Quick mode uses large interval for single frame
+        custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。"
+      };
+
+      console.log(`[ParallelVideoAnalysis] 发送API请求: ${material.name}`, {
+        taskId,
+        videoId: material.id,
+        attempt: attempts + 1,
+        requestBody: {
+          video_url: requestBody.video_url,
+          frame_interval: requestBody.frame_interval,
+          custom_prompt: requestBody.custom_prompt.substring(0, 50) + '...'
+        },
+        timestamp: new Date().toISOString()
+      });
+
+      // Create request with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS);
+
+      const response = await fetch('/api/video/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      const responseTime = performance.now() - startTime;
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || errorData.detail || `HTTP error! status: ${response.status}`;
+        
+        console.warn(`[ParallelVideoAnalysis] API请求失败: ${material.name}`, {
+          taskId,
+          videoId: material.id,
+          attempt: attempts + 1,
+          status: response.status,
+          statusText: response.statusText,
+          errorMessage,
+          responseTime,
+          timestamp: new Date().toISOString()
+        });
+
+        throw new Error(errorMessage);
+      }
+
+      const analysisResult = await response.json();
+      
+      console.log(`[ParallelVideoAnalysis] API请求成功: ${material.name}`, {
+        taskId,
+        videoId: material.id,
+        attempt: attempts + 1,
+        success: analysisResult.success,
+        framesAnalyzed: analysisResult.total_frames_extracted || 0,
+        processingTime: analysisResult.processing_time,
+        responseTime,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        success: true,
+        video_url: material.url,
+        material,
+        attempts: attempts + 1
+      };
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      console.warn(`[ParallelVideoAnalysis] 分析失败: ${material.name} (尝试 ${attempts + 1}/${maxRetries + 1})`, {
+        taskId,
+        videoId: material.id,
+        error: lastError.message,
+        isAbortError: lastError.name === 'AbortError',
+        isNetworkError: lastError.message.includes('fetch'),
+        willRetry: attempts < maxRetries,
+        timestamp: new Date().toISOString()
+      });
+
+      // If this is the last attempt, break out of the loop
+      if (attempts >= maxRetries) {
+        break;
+      }
+    }
+  }
+
+  // All attempts failed
+  console.error(`[ParallelVideoAnalysis] 视频分析彻底失败: ${material.name}`, {
+    taskId,
+    videoId: material.id,
+    totalAttempts: attempts,
+    finalError: lastError?.message,
+    timestamp: new Date().toISOString()
+  });
+
+  return {
+    success: false,
+    video_url: material.url,
+    material,
+    error: lastError?.message || 'Unknown error',
+    attempts
+  };
+}
+
+/**
+ * Analyze multiple videos in parallel with thread limiting and retry logic
+ */
+export async function analyzeVideosInParallel(
+  videoMaterials: MaterialItem[],
+  options: ParallelAnalysisOptions,
+  taskId: string
+): Promise<VideoAnalysisResult[]> {
+  const { threadCount = VIDEO_ANALYSIS_CONFIG.DEFAULT_THREAD_COUNT } = options;
+  
+  if (videoMaterials.length === 0) {
+    console.log(`[ParallelVideoAnalysis] 无视频素材需要分析`, { taskId });
+    return [];
+  }
+
+  console.log(`[ParallelVideoAnalysis] 开始并行视频分析`, {
+    taskId,
+    totalVideos: videoMaterials.length,
+    threadCount,
+    maxRetries: options.maxRetries || VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
+    mode: options.mode.type,
+    frameInterval: options.mode.frameInterval,
+    timestamp: new Date().toISOString()
+  });
+
+  const startTime = performance.now();
+  const threadPool = new ThreadPool(threadCount);
+  
+  // Create analysis tasks
+  const analysisPromises = videoMaterials.map(material =>
+    threadPool.execute(() => analyzeSingleVideoWithRetry(material, options, taskId))
+  );
+
+  // Wait for all analyses to complete
+  const results = await Promise.all(analysisPromises);
+  const totalTime = performance.now() - startTime;
+
+  // Analyze results
+  const successfulResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
+  const totalAttempts = results.reduce((sum, r) => sum + r.attempts, 0);
+
+  console.log(`[ParallelVideoAnalysis] 并行视频分析完成`, {
+    taskId,
+    totalVideos: videoMaterials.length,
+    successCount: successfulResults.length,
+    failedCount: failedResults.length,
+    successRate: `${Math.round((successfulResults.length / videoMaterials.length) * 100)}%`,
+    totalAttempts,
+    averageAttempts: Math.round(totalAttempts / videoMaterials.length * 100) / 100,
+    totalProcessingTime: Math.round(totalTime),
+    threadCount,
+    timestamp: new Date().toISOString()
+  });
+
+  // Log failed analyses
+  if (failedResults.length > 0) {
+    console.warn(`[ParallelVideoAnalysis] 失败的视频分析详情`, {
+      taskId,
+      failedVideos: failedResults.map(r => ({
+        name: r.material.name,
+        id: r.material.id,
+        error: r.error,
+        attempts: r.attempts
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return results;
+} 
