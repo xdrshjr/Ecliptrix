@@ -817,28 +817,97 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       const videoCurrentTime = currentVideo.currentTime;
       const currentVideoSrc = currentVideo.src;
       
-      // 根据当前播放的视频URL找到正确的序列索引，避免状态更新延迟问题
+      // 改进的序列查找逻辑：基于当前组合时间和URL匹配找到正确的素材片段
+      // 避免相同视频素材多次使用时总是跳转到第一个素材的问题
       let actualSequenceIndex = 0;
       let foundSequence = false;
       let currentSequence = null;
       
-      for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
-        const sequence = compositionPlayback.videoSequences[i];
-        if (currentVideoSrc.includes(sequence.url) || sequence.url.includes(currentVideoSrc.split('/').pop() || '')) {
-          actualSequenceIndex = i;
-          currentSequence = sequence;
-          foundSequence = true;
-          break;
+      // 首先尝试基于当前状态的序列索引进行验证
+      const stateSequenceIndex = compositionPlayback.currentSequenceIndex;
+      const stateSequence = compositionPlayback.videoSequences[stateSequenceIndex];
+      
+      // 检查状态中的序列是否与当前播放的视频URL匹配
+      if (stateSequence && 
+          (currentVideoSrc.includes(stateSequence.url) || 
+           stateSequence.url.includes(currentVideoSrc.split('/').pop() || ''))) {
+        // 状态序列匹配当前视频URL，直接使用
+        actualSequenceIndex = stateSequenceIndex;
+        currentSequence = stateSequence;
+        foundSequence = true;
+        
+        logger.info('使用状态中的序列索引（验证匹配）', {
+          sequenceIndex: stateSequenceIndex,
+          sequenceName: stateSequence.name,
+          sequenceId: stateSequence.id,
+          currentVideoUrl: currentVideoSrc.substring(0, 50) + '...',
+          reason: '状态序列与当前视频URL匹配'
+        });
+      } else {
+        // 状态序列不匹配，需要基于组合播放时间重新定位正确的序列
+        let accumulatedTime = 0;
+        
+        for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+          const sequence = compositionPlayback.videoSequences[i];
+          const sequenceStartTime = accumulatedTime;
+          const sequenceEndTime = accumulatedTime + sequence.duration;
+          
+          // 检查URL匹配且当前组合时间落在这个序列的时间范围内
+          if ((currentVideoSrc.includes(sequence.url) || 
+               sequence.url.includes(currentVideoSrc.split('/').pop() || '')) &&
+              compositionCurrentTime >= sequenceStartTime && 
+              compositionCurrentTime < sequenceEndTime) {
+            actualSequenceIndex = i;
+            currentSequence = sequence;
+            foundSequence = true;
+            
+            logger.info('重新定位到正确的序列（基于时间范围和URL匹配）', {
+              sequenceIndex: i,
+              sequenceName: sequence.name,
+              sequenceId: sequence.id,
+              compositionTime: compositionCurrentTime.toFixed(2),
+              sequenceStartTime: sequenceStartTime.toFixed(2),
+              sequenceEndTime: sequenceEndTime.toFixed(2),
+              currentVideoUrl: currentVideoSrc.substring(0, 50) + '...',
+              reason: '基于时间范围重新定位避免相同素材跳转问题'
+            });
+            break;
+          }
+          accumulatedTime += sequence.duration;
+        }
+        
+        // 如果仍然没有找到，回退到第一个URL匹配的序列（但记录警告）
+        if (!foundSequence) {
+          for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+            const sequence = compositionPlayback.videoSequences[i];
+            if (currentVideoSrc.includes(sequence.url) || sequence.url.includes(currentVideoSrc.split('/').pop() || '')) {
+              actualSequenceIndex = i;
+              currentSequence = sequence;
+              foundSequence = true;
+              
+              logger.warn('使用URL匹配回退方案（可能导致相同素材跳转问题）', {
+                sequenceIndex: i,
+                sequenceName: sequence.name,
+                sequenceId: sequence.id,
+                compositionTime: compositionCurrentTime.toFixed(2),
+                currentVideoUrl: currentVideoSrc.substring(0, 50) + '...',
+                reason: '无法基于时间范围找到正确序列，使用第一个URL匹配'
+              });
+              break;
+            }
+          }
         }
       }
       
-      // 如果没有找到匹配的序列，使用状态中的索引作为后备
+      // 如果完全没有找到匹配的序列，使用状态中的索引作为最后后备
       if (!foundSequence) {
         actualSequenceIndex = compositionPlayback.currentSequenceIndex;
         currentSequence = compositionPlayback.videoSequences[actualSequenceIndex];
-        logger.warn('未找到匹配的视频序列，使用状态中的索引', {
-          currentVideoSrc,
-          fallbackIndex: actualSequenceIndex
+        logger.error('未找到任何匹配的视频序列，使用状态索引作为最后后备', {
+          currentVideoSrc: currentVideoSrc.substring(0, 50) + '...',
+          fallbackIndex: actualSequenceIndex,
+          stateSequenceName: currentSequence?.name,
+          compositionTime: compositionCurrentTime.toFixed(2)
         });
       }
       
@@ -908,9 +977,14 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         actualSequenceIndex: actualSequenceIndex,
         accumulatedTime: accumulatedTime.toFixed(2),
         totalSequences: compositionPlayback.videoSequences.length,
-        foundSequence,
+        currentSequenceName: currentSequence?.name || 'N/A',
+        currentSequenceId: currentSequence?.id || 'N/A',
         clipStart: currentSequence?.clipStart?.toFixed(2) || '0.00',
-        clipEnd: currentSequence?.clipEnd?.toFixed(2) || 'N/A'
+        clipEnd: currentSequence?.clipEnd?.toFixed(2) || 'N/A',
+        // 新增：帮助调试相同素材问题的额外信息
+        sequenceMatched: foundSequence ? 'true' : 'false',
+        currentVideoUrl: currentVideoSrc.substring(0, 50) + '...',
+        sequenceUrlMatch: currentSequence && (currentVideoSrc.includes(currentSequence.url) || currentSequence.url.includes(currentVideoSrc.split('/').pop() || ''))
       });
       
       // 通知父组件时间更新

@@ -140,6 +140,15 @@ from .ai_mixed_editing_models import (
     AIMixedEditingErrorResponse
 )
 
+from .queue_models import (
+    TaskStatus as QueueTaskStatus,
+    QueueTask,
+    QueueInfo,
+    QueueStatusResponse,
+    TaskStatusResponse,
+    QueueErrorResponse
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -252,5 +261,13 @@ __all__ = [
     "MaterialItemModel",
     "AIMixedEditingRequest",
     "AIMixedEditingResponse",
-    "AIMixedEditingErrorResponse"
+    "AIMixedEditingErrorResponse",
+    
+    # Queue Management Models
+    "QueueTaskStatus",
+    "QueueTask",
+    "QueueInfo",
+    "QueueStatusResponse",
+    "TaskStatusResponse",
+    "QueueErrorResponse"
 ] 

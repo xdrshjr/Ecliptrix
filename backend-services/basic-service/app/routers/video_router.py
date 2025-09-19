@@ -23,9 +23,16 @@ from app.models import (
     VideoCutRequest,
     VideoCutResponse
 )
+from app.models.queue_models import (
+    QueueStatusResponse,
+    TaskStatusResponse,
+    QueueErrorResponse
+)
 from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
 from app.services.video_analysis_storage_service import video_analysis_storage
 from app.services.video_cut_service import VideoCutService
+from app.services.queue_manager import queue_manager
+from app.services.simple_queue_decorator import with_simple_queue
 from app.logger import get_logger
 from typing import Union
 
@@ -627,27 +634,20 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
         ) 
 
 
-@router.post("/image-to-video", response_model=Union[ImageToVideoResponse, ImageToVideoErrorResponse])
-async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToVideoResponse, ImageToVideoErrorResponse]:
+# Core image-to-video processing function (with queuing)
+@with_simple_queue(
+    queue_name="image_to_video",
+    max_concurrent=2,
+    task_id_field="task_id",
+    metadata_fields=["effect", "duration", "image_url"]
+)
+async def _process_image_to_video(request: ImageToVideoRequest) -> Union[ImageToVideoResponse, ImageToVideoErrorResponse]:
     """
-    Convert image to video with various effects.
+    Core image-to-video processing function with queue management.
     
-    This endpoint converts a static image to a video with specified effects:
-    - Static: Simple image-to-video conversion
-    - Ken Burns: Zoom in/out effect
-    - Pan: Left-to-right or right-to-left panning
-    
-    Args:
-        request (ImageToVideoRequest): Image conversion parameters
-    
-    Returns:
-        ImageToVideoResponse: Conversion result with video URL and metadata
-        ImageToVideoErrorResponse: Error response if conversion fails
-    
-    Raises:
-        HTTPException: 400 for invalid request parameters, 500 for conversion errors
+    This function handles the actual image-to-video conversion and is managed by the queue system.
     """
-    logger.info(f"Image-to-video conversion request received", {
+    logger.info(f"Processing image-to-video conversion", {
         "image_url": request.image_url,
         "effect": request.effect,
         "duration": request.duration,
@@ -658,23 +658,6 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
     })
     
     try:
-        # Validate request parameters
-        if not request.image_url and not request.image_data:
-            logger.error("Either image URL or image data is required")
-            return ImageToVideoErrorResponse(
-                success=False,
-                message="Either image URL or image data is required",
-                error_code="MISSING_IMAGE_SOURCE"
-            )
-        
-        if request.duration <= 0 or request.duration > 30:
-            logger.error(f"Invalid duration: {request.duration}")
-            return ImageToVideoErrorResponse(
-                success=False,
-                message="Duration must be between 1 and 30 seconds",
-                error_code="INVALID_DURATION"
-            )
-        
         # Initialize image-to-video service
         from app.services.image_to_video_service import ImageToVideoService
         image_to_video_service = ImageToVideoService()
@@ -703,6 +686,72 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
             success=False,
             message=f"Internal server error: {str(e)}",
             error_code="INTERNAL_ERROR",
+            details=str(e)
+        )
+
+
+@router.post("/image-to-video", response_model=Union[ImageToVideoResponse, ImageToVideoErrorResponse])
+async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToVideoResponse, ImageToVideoErrorResponse]:
+    """
+    Convert image to video with various effects (with queue management).
+    
+    This endpoint converts a static image to a video with specified effects:
+    - Static: Simple image-to-video conversion
+    - Ken Burns: Zoom in/out effect
+    - Pan: Left-to-right or right-to-left panning
+    
+    Features:
+    - Queue management: Maximum 2 concurrent conversions
+    - Automatic queuing for additional requests
+    - Task status tracking and estimated wait times
+    - Detailed logging and error handling
+    
+    Args:
+        request (ImageToVideoRequest): Image conversion parameters
+    
+    Returns:
+        ImageToVideoResponse: Conversion result with video URL and metadata
+        ImageToVideoErrorResponse: Error response if conversion fails
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for conversion errors
+    """
+    logger.info(f"Image-to-video conversion request received", {
+        "image_url": request.image_url,
+        "effect": request.effect,
+        "duration": request.duration,
+        "task_id": request.task_id,
+        "ken_burns_direction": request.ken_burns_direction,
+        "pan_direction": request.pan_direction,
+        "custom_filename": request.custom_filename
+    })
+    
+    # Validate request parameters before queuing
+    if not request.image_url and not request.image_data:
+        logger.error("Either image URL or image data is required")
+        return ImageToVideoErrorResponse(
+            success=False,
+            message="Either image URL or image data is required",
+            error_code="MISSING_IMAGE_SOURCE"
+        )
+    
+    if request.duration <= 0 or request.duration > 30:
+        logger.error(f"Invalid duration: {request.duration}")
+        return ImageToVideoErrorResponse(
+            success=False,
+            message="Duration must be between 1 and 30 seconds",
+            error_code="INVALID_DURATION"
+        )
+    
+    # Process through queue management system
+    try:
+        return await _process_image_to_video(request)
+    except Exception as e:
+        logger.error(f"Queue management error: {str(e)}")
+        return ImageToVideoErrorResponse(
+            success=False,
+            message=f"Queue management error: {str(e)}",
+            error_code="QUEUE_ERROR",
             details=str(e)
         )
 
@@ -776,4 +825,161 @@ async def cut_video_clips(request: VideoCutRequest) -> VideoCutResponse:
             clips=[],
             total_clips=0,
             processing_time=0.0
+        )
+
+
+# Queue Management Endpoints
+
+@router.get("/queue/image-to-video/status", response_model=Union[QueueStatusResponse, QueueErrorResponse])
+async def get_image_to_video_queue_status(include_tasks: bool = False) -> Union[QueueStatusResponse, QueueErrorResponse]:
+    """
+    Get the status of the image-to-video conversion queue.
+    
+    This endpoint provides information about the current queue state including:
+    - Number of tasks currently processing
+    - Number of tasks waiting in queue
+    - Queue statistics and performance metrics
+    
+    Args:
+        include_tasks (bool): Whether to include recent task details
+    
+    Returns:
+        QueueStatusResponse: Queue status information
+        QueueErrorResponse: Error response if queue not found
+    """
+    try:
+        queue_status = await queue_manager.get_queue_status("image_to_video", include_tasks=include_tasks)
+        
+        if queue_status is None:
+            logger.warning("Image-to-video queue not found or not initialized")
+            return QueueErrorResponse(
+                success=False,
+                message="Queue not found or not initialized",
+                error_code="QUEUE_NOT_FOUND"
+            )
+        
+        logger.info(f"Retrieved queue status for image_to_video queue", {
+            "current_processing": queue_status.queue_info.current_processing,
+            "queued_count": queue_status.queue_info.queued_count,
+            "total_processed": queue_status.queue_info.total_processed
+        })
+        
+        return queue_status
+        
+    except Exception as e:
+        logger.error(f"Error retrieving queue status: {str(e)}")
+        return QueueErrorResponse(
+            success=False,
+            message=f"Internal server error: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            details=str(e)
+        )
+
+
+@router.get("/queue/task/{task_id}/status", response_model=Union[TaskStatusResponse, QueueErrorResponse])
+async def get_task_status(task_id: str) -> Union[TaskStatusResponse, QueueErrorResponse]:
+    """
+    Get the status of a specific task by task ID.
+    
+    This endpoint provides detailed information about a specific task including:
+    - Current status (queued, processing, completed, failed)
+    - Position in queue (for queued tasks)
+    - Estimated wait time
+    - Processing time (for completed tasks)
+    
+    Args:
+        task_id (str): The task ID to query
+    
+    Returns:
+        TaskStatusResponse: Task status information
+        QueueErrorResponse: Error response if task not found
+    """
+    try:
+        task = await queue_manager.get_task_status(task_id)
+        
+        if task is None:
+            logger.warning(f"Task not found: {task_id}")
+            return QueueErrorResponse(
+                success=False,
+                message=f"Task not found: {task_id}",
+                error_code="TASK_NOT_FOUND"
+            )
+        
+        logger.info(f"Retrieved task status for task {task_id}", {
+            "status": task.status,
+            "queue_name": task.queue_name,
+            "position_in_queue": task.position_in_queue,
+            "estimated_wait_time": task.estimated_wait_time
+        })
+        
+        return TaskStatusResponse(
+            success=True,
+            task=task
+        )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving task status for {task_id}: {str(e)}")
+        return QueueErrorResponse(
+            success=False,
+            message=f"Internal server error: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            details=str(e)
+        )
+
+
+@router.delete("/queue/task/{task_id}", response_model=Union[TaskStatusResponse, QueueErrorResponse])
+async def cancel_task(task_id: str) -> Union[TaskStatusResponse, QueueErrorResponse]:
+    """
+    Cancel a queued task (only works for tasks not yet processing).
+    
+    This endpoint allows cancellation of tasks that are still waiting in the queue.
+    Tasks that are already being processed cannot be cancelled.
+    
+    Args:
+        task_id (str): The task ID to cancel
+    
+    Returns:
+        TaskStatusResponse: Updated task status after cancellation
+        QueueErrorResponse: Error response if task cannot be cancelled
+    """
+    try:
+        # Get current task status first
+        task = await queue_manager.get_task_status(task_id)
+        
+        if task is None:
+            logger.warning(f"Task not found: {task_id}")
+            return QueueErrorResponse(
+                success=False,
+                message=f"Task not found: {task_id}",
+                error_code="TASK_NOT_FOUND"
+            )
+        
+        # Try to cancel the task
+        cancelled = await queue_manager.cancel_task(task_id)
+        
+        if not cancelled:
+            logger.warning(f"Task {task_id} cannot be cancelled (status: {task.status})")
+            return QueueErrorResponse(
+                success=False,
+                message=f"Task cannot be cancelled. Current status: {task.status}",
+                error_code="CANNOT_CANCEL_TASK"
+            )
+        
+        # Get updated task status
+        updated_task = await queue_manager.get_task_status(task_id)
+        
+        logger.info(f"Task {task_id} cancelled successfully")
+        
+        return TaskStatusResponse(
+            success=True,
+            task=updated_task
+        )
+        
+    except Exception as e:
+        logger.error(f"Error cancelling task {task_id}: {str(e)}")
+        return QueueErrorResponse(
+            success=False,
+            message=f"Internal server error: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            details=str(e)
         ) 

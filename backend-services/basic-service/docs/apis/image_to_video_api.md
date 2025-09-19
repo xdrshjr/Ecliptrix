@@ -10,6 +10,9 @@ The Image to Video Conversion API transforms static images into videos with vari
 - **Thumbnail Generation**: Automatic thumbnail creation for generated videos
 - **Flexible Duration**: Configurable video duration (1-30 seconds)
 - **High Quality**: Uses FFmpeg for professional video generation with optimized scaling
+- **Queue Management**: Built-in request queuing system with maximum 2 concurrent conversions
+- **Task Tracking**: Real-time task status tracking with estimated wait times
+- **Automatic Scaling**: Handles multiple requests efficiently with queue management
 
 ## Base URL
 ```
@@ -45,6 +48,27 @@ No authentication required for this endpoint.
 | `custom_filename` | string | No | null | Custom filename for the output video |
 | `ken_burns_direction` | string | No | "zoom_in" | Ken Burns direction: `zoom_in` or `zoom_out` |
 | `pan_direction` | string | No | "left_to_right" | Pan direction: `left_to_right` or `right_to_left` |
+
+### Queue Management
+
+The Image to Video API implements a sophisticated queue management system to handle high-volume requests efficiently:
+
+#### Concurrency Limits
+- **Maximum Concurrent Conversions**: 2 simultaneous video generations
+- **Automatic Queuing**: Additional requests are automatically queued when the limit is reached
+- **Fair Processing**: Tasks are processed in first-in-first-out (FIFO) order
+
+#### Task Tracking
+- **Unique Task IDs**: Each request receives a unique task identifier for tracking
+- **Real-time Status**: Monitor task progress through dedicated status endpoints
+- **Estimated Wait Times**: Receive accurate wait time estimates for queued tasks
+- **Processing Metrics**: Track conversion times and queue performance
+
+#### Queue Features
+- **Position Tracking**: Know your exact position in the queue
+- **Task Cancellation**: Cancel queued tasks before processing begins
+- **Automatic Cleanup**: Completed tasks are automatically cleaned up to maintain performance
+- **Detailed Logging**: Comprehensive logging for debugging and monitoring
 
 ### Effect Types
 
