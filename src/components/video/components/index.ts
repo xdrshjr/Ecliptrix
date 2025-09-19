@@ -16,4 +16,5 @@ export { default as AIVideoGenerationModal } from './AIVideoGenerationModal';
 export { default as DigitalHumanGenerationModal } from './DigitalHumanGenerationModal';
 export { AICreationModal } from './AICreationModal';
 export { FileUploadComponent } from './FileUpload';
-export { AIMixingProgressModal } from './AIMixingProgressModal'; 
+export { AIMixingProgressModal } from './AIMixingProgressModal';
+export { default as AIMixingModeSelectionModal } from './AIMixingModeSelectionModal'; 

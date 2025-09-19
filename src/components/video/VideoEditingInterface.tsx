@@ -44,7 +44,8 @@ import {
   AIVideoGenerationModal,
   DigitalHumanGenerationModal,
   AICreationModal,
-  AIMixingProgressModal
+  AIMixingProgressModal,
+  AIMixingModeSelectionModal
 } from './components';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
@@ -94,6 +95,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // AI混剪进度状态
   const [isAIMixing, setIsAIMixing] = useState<boolean>(false);
   const [aiMixingProgress, setAIMixingProgress] = useState<number>(0);
+  
+  // AI混剪模式选择弹窗状态
+  const [isAIMixingModeModalOpen, setIsAIMixingModeModalOpen] = useState<boolean>(false);
   
   // 新增：程序化添加素材到时间轴的状态
   const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
@@ -1203,9 +1207,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [taskId, materialManagement.materials]);
 
-  // 新增：AI混剪功能
-  const handleAIMixedEditing = useCallback(async () => {
-    console.log(`[VideoEditingInterface] 开始AI混剪`, {
+  // 新增：AI混剪功能 - 显示模式选择弹窗
+  const handleAIMixedEditing = useCallback(() => {
+    console.log(`[VideoEditingInterface] 点击AI混剪按钮`, {
       taskId,
       totalMaterialsCount: materialManagement.materials.length,
       timestamp: new Date().toISOString()
@@ -1217,6 +1221,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       showError('无素材可用于AI混剪，请先添加视频、音频或图片素材', 5000);
       return;
     }
+
+    // 显示模式选择弹窗
+    setIsAIMixingModeModalOpen(true);
+  }, [taskId, materialManagement.materials.length, showError]);
+
+  // 新增：执行AI混剪的实际逻辑
+  const executeAIMixedEditing = useCallback(async (mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
+    console.log(`[VideoEditingInterface] 开始执行AI混剪`, {
+      taskId,
+      mode,
+      totalMaterialsCount: materialManagement.materials.length,
+      timestamp: new Date().toISOString()
+    });
 
     // 开始AI混剪并显示进度弹窗
     setIsAIMixing(true);
@@ -1235,7 +1252,56 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     console.log(`[VideoEditingInterface] 显示AI混剪进度弹窗`, { taskId });
 
     try {
-      console.log(`[VideoEditingInterface] 收集素材信息`, {
+      // 第一步：如果有视频素材，先进行视频分析
+      const videoMaterials = materialManagement.materials.filter(m => m.type === 'video');
+      
+      if (videoMaterials.length > 0) {
+        console.log(`[VideoEditingInterface] 开始视频分析阶段`, {
+          videoCount: videoMaterials.length,
+          mode: mode.type,
+          frameInterval: mode.frameInterval
+        });
+
+        // 为每个视频进行AI分析
+        for (const videoMaterial of videoMaterials) {
+          console.log(`[VideoEditingInterface] 分析视频: ${videoMaterial.name}`, {
+            videoId: videoMaterial.id,
+            videoUrl: videoMaterial.url
+          });
+
+          try {
+            const analysisResponse = await fetch('/api/video/analyze', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+                             body: JSON.stringify({
+                 video_url: videoMaterial.url,
+                 frame_interval: mode.type === 'quick' ? 9999 : (mode.frameInterval || 5), // 快速模式用大间隔只取1帧，专业模式按用户设置间隔
+                 custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。"
+               }),
+            });
+
+            if (!analysisResponse.ok) {
+              console.warn(`[VideoEditingInterface] 视频分析失败: ${videoMaterial.name}`, {
+                status: analysisResponse.status
+              });
+              continue; // 继续处理其他视频
+            }
+
+            const analysisResult = await analysisResponse.json();
+            console.log(`[VideoEditingInterface] 视频分析完成: ${videoMaterial.name}`, {
+              framesAnalyzed: analysisResult.total_frames_extracted || 0,
+              success: analysisResult.success
+            });
+          } catch (error) {
+            console.error(`[VideoEditingInterface] 视频分析异常: ${videoMaterial.name}`, error);
+          }
+        }
+      }
+
+      // 第二步：执行AI混剪
+      console.log(`[VideoEditingInterface] 开始AI混剪阶段`, {
         materials: materialManagement.materials.map(m => ({
           id: m.id,
           name: m.name,
@@ -1268,6 +1334,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timelineDataKeys: result.timelineData ? Object.keys(result.timelineData) : [],
         timestamp: new Date().toISOString()
       });
+
+      // 完成进度条到100%
+      clearInterval(progressInterval);
+      setAIMixingProgress(100);
 
       // 使用时间轴导入功能填充时间轴
       if (result.timelineData) {
@@ -1340,10 +1410,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             timestamp: new Date().toISOString()
           });
 
-          // 完成进度条到100%
-          clearInterval(progressInterval);
-          setAIMixingProgress(100);
-          
           // 调用导入完成处理函数，这会更新timeline状态（AI混剪模式不添加新素材）
           handleImportComplete(importedData.materials, importedData.timelineState, true);
 
@@ -1397,6 +1463,27 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       showError(`AI混剪失败: ${error instanceof Error ? error.message : String(error)}`, 8000);
     }
   }, [taskId, materialManagement.materials, showSuccess, showError]);
+
+  // 处理AI混剪模式选择弹窗的确认
+  const handleAIMixingModeConfirm = useCallback((mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
+    console.log(`[VideoEditingInterface] 用户选择AI混剪模式`, {
+      taskId,
+      selectedMode: mode,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 关闭弹窗
+    setIsAIMixingModeModalOpen(false);
+    
+    // 执行AI混剪
+    executeAIMixedEditing(mode);
+  }, [taskId, executeAIMixedEditing]);
+
+  // 处理AI混剪模式选择弹窗的关闭
+  const handleAIMixingModeClose = useCallback(() => {
+    console.log(`[VideoEditingInterface] 用户取消AI混剪模式选择`, { taskId });
+    setIsAIMixingModeModalOpen(false);
+  }, [taskId]);
 
   // 清除添加素材请求状态，避免重复处理
   React.useEffect(() => {
@@ -1590,6 +1677,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       <AICreationModal
         {...aiCreation}
         addMaterial={materialManagement.addOrReplaceMaterial}
+      />
+
+      {/* AI混剪模式选择弹窗 */}
+      <AIMixingModeSelectionModal
+        isOpen={isAIMixingModeModalOpen}
+        onClose={handleAIMixingModeClose}
+        onConfirm={handleAIMixingModeConfirm}
       />
 
       {/* AI混剪进度弹窗 */}
