@@ -5,6 +5,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 interface UseVideoExportReturn {
   isExporting: boolean;
   exportProgress: number;
+  exportStartTime: number | null;
   handleExport: () => Promise<void>;
 }
 
@@ -103,6 +104,7 @@ export const useVideoExport = ({
 }: UseVideoExportProps): UseVideoExportReturn => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [exportStartTime, setExportStartTime] = useState<number | null>(null);
   const { showError } = useNotification();
 
   const handleExport = useCallback(async () => {
@@ -114,6 +116,17 @@ export const useVideoExport = ({
       aspectRatioLength: aspectRatio?.length,
       taskId,
       timestamp: new Date().toISOString()
+    });
+
+    // 记录导出开始时间
+    const startTime = Date.now();
+    setExportStartTime(startTime);
+    setIsExporting(true);
+    
+    console.log(`[useVideoExport] 导出开始时间记录`, {
+      startTime: new Date(startTime).toISOString(),
+      timestamp: startTime,
+      taskId
     });
 
     // 导出前验证
@@ -653,6 +666,12 @@ export const useVideoExport = ({
       setTimeout(() => {
         setIsExporting(false);
         setExportProgress(0);
+        setExportStartTime(null);
+        
+        console.log(`[useVideoExport] 导出状态重置完成`, {
+          taskId,
+          timestamp: new Date().toISOString()
+        });
       }, 2000); // 2秒后重置状态
     }
   }, [timelineState, materials, taskId, aspectRatio, showError]);
@@ -660,6 +679,7 @@ export const useVideoExport = ({
   return {
     isExporting,
     exportProgress,
+    exportStartTime,
     handleExport
   };
 }; 

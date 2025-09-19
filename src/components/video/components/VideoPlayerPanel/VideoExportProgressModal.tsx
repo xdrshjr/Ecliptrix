@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 interface VideoExportProgressModalProps {
   isOpen: boolean;
   progress: number;
+  startTime?: number | null;
   onCancel?: () => void;
   allowCancel?: boolean;
 }
@@ -12,11 +13,34 @@ interface VideoExportProgressModalProps {
 const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
   isOpen,
   progress,
+  startTime,
   onCancel,
   allowCancel = false
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  // 实时更新经过时间
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (isOpen && startTime) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTime) / 1000); // 转换为秒
+        setElapsedTime(elapsed);
+      }, 1000);
+    } else {
+      setElapsedTime(0);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isOpen, startTime]);
 
   useEffect(() => {
     if (isOpen) {
@@ -50,6 +74,13 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
     if (progress < 95) return '生成文件...';
     if (progress >= 100) return '导出完成';
     return '即将完成...';
+  };
+
+  // 格式化经过时间
+  const formatElapsedTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (!isVisible) return null;
@@ -101,18 +132,28 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                 />
               </svg>
               
-              {/* 中心图标 */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                {progress >= 100 ? (
-                  <svg className="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
-                  </svg>
-                )}
-              </div>
+                             {/* 中心图标 - 添加动画 */}
+               <div className="absolute inset-0 flex items-center justify-center">
+                 {progress >= 100 ? (
+                   <svg 
+                     className="w-6 h-6 text-green-500 animate-bounce" 
+                     fill="currentColor" 
+                     viewBox="0 0 24 24"
+                   >
+                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                   </svg>
+                 ) : (
+                   <svg 
+                     className="w-6 h-6 text-blue-500 animate-spin" 
+                     fill="none" 
+                     stroke="currentColor" 
+                     strokeWidth="2"
+                     viewBox="0 0 24 24"
+                   >
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                   </svg>
+                 )}
+               </div>
             </div>
           </div>
           
@@ -130,9 +171,20 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
             {getProgressStage()}
           </p>
           
-          <p className="text-2xl font-bold text-blue-600 mb-4">
+          <p className="text-2xl font-bold text-blue-600 mb-2">
             {Math.round(progress)}%
           </p>
+          
+          {/* 显示经过时间 */}
+          {startTime && (
+            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12,6 12,12 16,14"/>
+              </svg>
+              <span>已用时: {formatElapsedTime(elapsedTime)}</span>
+            </div>
+          )}
         </div>
 
         {/* Progress Bar */}
@@ -171,9 +223,9 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
             )}
           </div>
         </div>
-      </div>
-    </div>
+             </div>
+     </div>
   );
 };
 
-export default VideoExportProgressModal; 
+export default VideoExportProgressModal;

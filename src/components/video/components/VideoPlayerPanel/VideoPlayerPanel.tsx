@@ -1703,6 +1703,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       <VideoExportProgressModal
         isOpen={videoExport.isExporting}
         progress={videoExport.exportProgress}
+        startTime={videoExport.exportStartTime}
         allowCancel={false}
       />
     </div>
