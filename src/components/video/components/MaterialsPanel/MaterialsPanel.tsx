@@ -105,6 +105,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Effect selection state
+  const [selectedEffect, setSelectedEffect] = useState('');
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const imagePreviewRef = useRef<HTMLImageElement | null>(null);
+
   useEffect(() => {
     logger.info('组件初始化 - 素材网格滚动优化版本，按钮样式已优化为图标形式', {
       materialsCount: materials.length,
@@ -770,13 +775,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         imageSize: `${selectedImageForConversion.width}x${selectedImageForConversion.height}`
       });
 
-      let requestBody: any = {
+      const requestBody: any = {
         effect,
         duration,
         task_id: taskId,
         custom_filename: `${selectedImageForConversion.name}_${effect}`,
         ken_burns_direction: options.kenBurnsDirection || 'zoom_in',
-        pan_direction: options.panDirection || 'left_to_right'
+        pan_direction: options.panDirection || 'left_to_right',
+        focus_x: options.focusX || 0.5,
+        focus_y: options.focusY || 0.5
       };
 
       // 检查是否是blob URL
@@ -989,6 +996,98 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       logger.error('拖拽上传失败', error as Error);
     }
   }, [handleDragUpload, showSuccess, showError, logger]);
+
+  const getEffectDescription = (effect: string) => {
+    switch (effect) {
+      case 'static':
+        return '直接将图片转换为静态视频';
+      case 'ken_burns_zoom_in':
+        return '逐渐放大到设置的聚焦位置（稳定渐变效果）';
+      case 'ken_burns_zoom_out':
+        return '从放大状态缩小到正常大小（稳定渐变效果）';
+      case 'pan_left_to_right':
+        return '水平从左向右平移';
+      case 'pan_right_to_left':
+        return '水平从右向左平移';
+      default:
+        return '未知效果';
+    }
+  };
+
+  const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!imagePreviewRef.current) return;
+    
+    const rect = imagePreviewRef.current.getBoundingClientRect();
+    const relativeX = (e.clientX - rect.left) / rect.width;
+    const relativeY = (e.clientY - rect.top) / rect.height;
+    
+    // 确保坐标在 0-1 范围内
+    const x = Math.max(0, Math.min(1, relativeX));
+    const y = Math.max(0, Math.min(1, relativeY));
+    
+    setFocusPoint({ x, y });
+    
+    logger.info('设置聚焦点', {
+      imageUrl: selectedImageForConversion?.url,
+      focusX: x,
+      focusY: y,
+      rawCoords: { clientX: e.clientX, clientY: e.clientY },
+      rectInfo: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+    });
+  };
+
+  const handleImageLoad = () => {
+    logger.info('图片加载成功', {
+      imageUrl: selectedImageForConversion!.url,
+      imageName: selectedImageForConversion!.name
+    });
+  };
+
+  const handleConvertWithFocus = () => {
+    if (!selectedEffect || !focusPoint) {
+      logger.error('缺少必要参数', {
+        selectedEffect,
+        focusPoint,
+        imageUrl: selectedImageForConversion?.url
+      });
+      return;
+    }
+
+    let effect = '';
+    const options: any = {
+      focusX: focusPoint.x,
+      focusY: focusPoint.y
+    };
+
+    // 根据选择的效果设置参数
+    if (selectedEffect === 'static') {
+      effect = 'static';
+    } else if (selectedEffect === 'ken_burns_zoom_in') {
+      effect = 'ken_burns';
+      options.kenBurnsDirection = 'zoom_in';
+    } else if (selectedEffect === 'ken_burns_zoom_out') {
+      effect = 'ken_burns';
+      options.kenBurnsDirection = 'zoom_out';
+    } else if (selectedEffect === 'pan_left_to_right') {
+      effect = 'pan';
+      options.panDirection = 'left_to_right';
+    } else if (selectedEffect === 'pan_right_to_left') {
+      effect = 'pan';
+      options.panDirection = 'right_to_left';
+    }
+
+    logger.info('开始转换图片到视频（带聚焦点）', {
+      effect,
+      options,
+      selectedEffect,
+      imageUrl: selectedImageForConversion?.url
+    });
+
+    convertImageToVideo(effect, 5.0, options);
+  };
 
   return (
     <div className={`h-full ${className}`}>
@@ -1707,69 +1806,163 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
       {/* 图片转视频效果选择弹窗 */}
       {showImageToVideoModal && selectedImageForConversion && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">选择视频效果</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              将图片 "{selectedImageForConversion.name}" 转换为视频
-            </p>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4">
+          <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col">
+            {/* 弹窗头部 */}
+            <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+              <h3 className="text-lg font-semibold">选择视频效果和设置聚焦区域</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                将图片 "{selectedImageForConversion.name}" 转换为视频
+              </p>
+            </div>
             
-            <div className="space-y-3 mb-6">
-              {/* 静态效果 */}
-              <button
-                onClick={() => convertImageToVideo('static')}
-                className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
-              >
-                <div className="font-medium">静态视频</div>
-                <div className="text-sm text-gray-500">直接将图片转换为静态视频</div>
-              </button>
+            {/* 弹窗主体内容 */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* 左侧：效果选择面板 */}
+              <div className="w-1/2 p-6 border-r border-gray-200 flex flex-col">
+                <h4 className="text-md font-medium text-gray-800 mb-4">选择视频效果</h4>
+                <div className="flex-1 space-y-3 overflow-y-auto pr-2">
+                  {/* 静态效果 */}
+                  <button
+                    onClick={() => setSelectedEffect('static')}
+                    className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                      selectedEffect === 'static' 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                    }`}
+                  >
+                    <div className="font-medium">静态视频</div>
+                    <div className="text-sm text-gray-500">直接将图片转换为静态视频</div>
+                  </button>
 
-              {/* Ken Burns效果 */}
-              <div className="space-y-2">
-                <button
-                  onClick={() => convertImageToVideo('ken_burns', 5.0, { kenBurnsDirection: 'zoom_in' })}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                >
-                  <div className="font-medium">Ken Burns - 放大</div>
-                  <div className="text-sm text-gray-500">从正常大小缓慢细微放大（稳定渐变效果）</div>
-                </button>
-                <button
-                  onClick={() => convertImageToVideo('ken_burns', 5.0, { kenBurnsDirection: 'zoom_out' })}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                >
-                  <div className="font-medium">Ken Burns - 缩小</div>
-                  <div className="text-sm text-gray-500">从细微放大状态缓慢缩小至正常大小（稳定渐变效果）</div>
-                </button>
+                  {/* Ken Burns效果 */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setSelectedEffect('ken_burns_zoom_in')}
+                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                        selectedEffect === 'ken_burns_zoom_in'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="font-medium">Ken Burns - 放大</div>
+                      <div className="text-sm text-gray-500">逐渐放大到设置的聚焦位置（稳定渐变效果）</div>
+                    </button>
+                    <button
+                      onClick={() => setSelectedEffect('ken_burns_zoom_out')}
+                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                        selectedEffect === 'ken_burns_zoom_out'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="font-medium">Ken Burns - 缩小</div>
+                      <div className="text-sm text-gray-500">从放大状态缩小到正常大小（稳定渐变效果）</div>
+                    </button>
+                  </div>
+
+                  {/* 平移效果 */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setSelectedEffect('pan_left_to_right')}
+                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                        selectedEffect === 'pan_left_to_right'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="font-medium">平移 - 从左到右</div>
+                      <div className="text-sm text-gray-500">水平从左向右平移</div>
+                    </button>
+                    <button
+                      onClick={() => setSelectedEffect('pan_right_to_left')}
+                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                        selectedEffect === 'pan_right_to_left'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="font-medium">平移 - 从右到左</div>
+                      <div className="text-sm text-gray-500">水平从右向左平移</div>
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* 平移效果 */}
-              <div className="space-y-2">
-                <button
-                  onClick={() => convertImageToVideo('pan', 5.0, { panDirection: 'left_to_right' })}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                >
-                  <div className="font-medium">平移 - 从左到右</div>
-                  <div className="text-sm text-gray-500">水平从左向右平移</div>
-                </button>
-                <button
-                  onClick={() => convertImageToVideo('pan', 5.0, { panDirection: 'right_to_left' })}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                >
-                  <div className="font-medium">平移 - 从右到左</div>
-                  <div className="text-sm text-gray-500">水平从右向左平移</div>
-                </button>
+              {/* 右侧：图片预览和聚焦点设置面板 */}
+              <div className="w-1/2 p-6 flex flex-col">
+                <h4 className="text-md font-medium text-gray-800 mb-4">设置聚焦区域</h4>
+                <div className="flex-1 flex flex-col">
+                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 flex-1 flex flex-col">
+                    <div className="relative flex-1 flex items-center justify-center">
+                      <img
+                        ref={imagePreviewRef}
+                        src={selectedImageForConversion.url}
+                        alt={selectedImageForConversion.name}
+                        className="max-w-full max-h-full object-contain rounded cursor-crosshair"
+                        onClick={handleImageClick}
+                        onLoad={handleImageLoad}
+                      />
+                      {/* 聚焦点标记 */}
+                      {focusPoint && imagePreviewRef.current && (
+                        <div
+                          className="absolute w-4 h-4 bg-red-500 border-2 border-white rounded-full transform -translate-x-2 -translate-y-2 shadow-lg"
+                          style={{
+                            left: `${focusPoint.x * 100}%`,
+                            top: `${focusPoint.y * 100}%`,
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div className="mt-3 text-sm text-gray-600 flex-shrink-0">
+                      <p>点击图片设置聚焦位置</p>
+                      {focusPoint && (
+                        <p className="mt-1">
+                          聚焦点：({(focusPoint.x * 100).toFixed(1)}%, {(focusPoint.y * 100).toFixed(1)}%)
+                        </p>
+                      )}
+                      {!focusPoint && (
+                        <p className="mt-1 text-orange-600">请点击图片设置聚焦点</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* 效果说明 */}
+                  {selectedEffect && (
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex-shrink-0">
+                      <h5 className="text-sm font-medium text-blue-800 mb-2">效果说明</h5>
+                      <p className="text-sm text-blue-700">
+                        {getEffectDescription(selectedEffect)}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3">
+            {/* 弹窗底部按钮 */}
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3 flex-shrink-0">
               <button
                 onClick={() => {
                   setShowImageToVideoModal(false);
                   setSelectedImageForConversion(null);
+                  setSelectedEffect('');
+                  setFocusPoint(null);
                 }}
                 className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 取消
+              </button>
+              <button
+                onClick={handleConvertWithFocus}
+                disabled={!selectedEffect || !focusPoint}
+                className={`px-6 py-2 rounded-md font-medium ${
+                  selectedEffect && focusPoint
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                转换视频
               </button>
             </div>
           </div>

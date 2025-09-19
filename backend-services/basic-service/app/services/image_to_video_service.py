@@ -222,7 +222,9 @@ class ImageToVideoService:
         duration: float,
         width: int,
         height: int,
-        direction: str = "zoom_in"
+        direction: str = "zoom_in",
+        focus_x: float = 0.5,
+        focus_y: float = 0.5
     ) -> list:
         """Build FFmpeg command for Ken Burns effect."""
         # Ensure minimum dimensions for video encoding
@@ -256,22 +258,30 @@ class ImageToVideoService:
         # Using 'on' variable which represents current frame number in zoompan
         zoom_formula = f"{zoom_start}+({zoom_end}-{zoom_start})*on/{total_frames}"
         
-        # Ken Burns effect with smooth zoom transition and absolutely stable center position
-        # Use a different approach: scale to exact output size and use zoompan with fixed center
-        # This eliminates any potential for coordinate drift or jitter
+        # Calculate focus point coordinates for Ken Burns effect
+        # Convert relative coordinates (0.0-1.0) to pixel coordinates
+        focus_x_pixels = focus_x * even_width
+        focus_y_pixels = focus_y * even_height
+        
+        # Ken Burns effect with smooth zoom transition focused on user-specified point
+        # x and y expressions define the center of the zoom area
+        # For focus-based Ken Burns, we want to keep the focus point at the center of the output
+        x_expression = f"({focus_x_pixels}-ow/2*{zoom_formula})"
+        y_expression = f"({focus_y_pixels}-oh/2*{zoom_formula})"
         
         filter_complex = (
             f"scale={even_width}:{even_height}:force_original_aspect_ratio=increase,"
             f"crop={even_width}:{even_height},"
             f"zoompan=z='{zoom_formula}'"
             f":d={total_frames}"
-            f":x='(iw-ow)/2'"
-            f":y='(ih-oh)/2'"
+            f":x='{x_expression}'"
+            f":y='{y_expression}'"
             f":s={even_width}x{even_height}"
             f":fps={fps}"
         )
         
-        logger.info(f"Ken Burns effect configured with stable center positioning using (iw-ow)/2, (ih-oh)/2")
+        logger.info(f"Ken Burns effect configured with focus point at ({focus_x:.3f}, {focus_y:.3f})")
+        logger.info(f"Focus point pixels: ({focus_x_pixels:.1f}, {focus_y_pixels:.1f})")
         logger.info(f"Ken Burns filter complex: {filter_complex}")
         
         return [
@@ -294,7 +304,9 @@ class ImageToVideoService:
         duration: float,
         width: int,
         height: int,
-        direction: str = "left_to_right"
+        direction: str = "left_to_right",
+        focus_x: float = 0.5,
+        focus_y: float = 0.5
     ) -> list:
         """Build FFmpeg command for pan effect."""
         # Ensure minimum dimensions for video encoding
@@ -308,14 +320,28 @@ class ImageToVideoService:
         scale_width_raw = int(even_width * 1.5)
         scale_width, _ = self._ensure_even_dimensions(scale_width_raw, even_height)
         
+        # Calculate focus-based panning positions
+        # The focus point should be visible throughout the pan animation
+        focus_x_scaled = focus_x * scale_width
+        
+        # Ensure the focus point is always within the visible area during panning
+        max_x_offset = scale_width - even_width
+        focus_centered_x = focus_x_scaled - even_width / 2
+        
+        # Clamp the centered focus position to valid range
+        focus_centered_x = max(0, min(max_x_offset, focus_centered_x))
+        
         if direction == "right_to_left":
-            # Start from right, pan to left
-            x_start = f"{scale_width - even_width}"
-            x_end = "0"
+            # Start from right side of focus area, pan to left side
+            x_start = f"{min(max_x_offset, focus_centered_x + even_width/4)}"
+            x_end = f"{max(0, focus_centered_x - even_width/4)}"
         else:
-            # Start from left, pan to right
-            x_start = "0"
-            x_end = f"{scale_width - even_width}"
+            # Start from left side of focus area, pan to right side  
+            x_start = f"{max(0, focus_centered_x - even_width/4)}"
+            x_end = f"{min(max_x_offset, focus_centered_x + even_width/4)}"
+            
+        logger.info(f"Pan effect configured with focus point at ({focus_x:.3f}, {focus_y:.3f})")
+        logger.info(f"Focus centered X: {focus_centered_x:.1f}, Pan range: {x_start} -> {x_end}")
         
         filter_complex = (
             f"scale={scale_width}:{even_height}:force_original_aspect_ratio=increase,"
@@ -379,7 +405,9 @@ class ImageToVideoService:
                 "task_id": request.task_id,
                 "ken_burns_direction": request.ken_burns_direction,
                 "pan_direction": request.pan_direction,
-                "custom_filename": request.custom_filename
+                "custom_filename": request.custom_filename,
+                "focus_x": request.focus_x,
+                "focus_y": request.focus_y
             })
             
             # Get image (either download from URL or save from base64 data)
@@ -413,12 +441,14 @@ class ImageToVideoService:
             elif request.effect == ImageToVideoEffect.KEN_BURNS:
                 ffmpeg_cmd = self._build_ken_burns_ffmpeg_command(
                     temp_image_path, output_video_path, request.duration, 
-                    img_width, img_height, request.ken_burns_direction
+                    img_width, img_height, request.ken_burns_direction,
+                    request.focus_x, request.focus_y
                 )
             elif request.effect == ImageToVideoEffect.PAN:
                 ffmpeg_cmd = self._build_pan_ffmpeg_command(
                     temp_image_path, output_video_path, request.duration,
-                    img_width, img_height, request.pan_direction
+                    img_width, img_height, request.pan_direction,
+                    request.focus_x, request.focus_y
                 )
             else:
                 raise ValueError(f"Unsupported effect: {request.effect}")

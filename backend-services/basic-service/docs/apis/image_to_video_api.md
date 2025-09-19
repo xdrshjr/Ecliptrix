@@ -5,7 +5,9 @@ The Image to Video Conversion API transforms static images into videos with vari
 
 ### Key Features
 - **Multiple Effects**: Static, Ken Burns (zoom in/out), Pan (left-to-right/right-to-left)
-- **Smooth Ken Burns Effect**: Enhanced with linear interpolation for gradual and fluid zoom transitions
+- **Focus Point Control**: User-defined focus points for enhanced Ken Burns and Pan effects
+- **Smooth Ken Burns Effect**: Enhanced with linear interpolation for gradual and fluid zoom transitions focused on specified points
+- **Focus-Based Panning**: Pan effects that maintain focus on user-specified areas of interest
 - **Automatic Upload**: Generated videos are automatically uploaded to Supabase storage
 - **Thumbnail Generation**: Automatic thumbnail creation for generated videos
 - **Flexible Duration**: Configurable video duration (1-30 seconds)
@@ -33,7 +35,9 @@ No authentication required for this endpoint.
   "task_id": "string (optional)",
   "custom_filename": "string (optional)",
   "ken_burns_direction": "zoom_in|zoom_out (optional)",
-  "pan_direction": "left_to_right|right_to_left (optional)"
+  "pan_direction": "left_to_right|right_to_left (optional)",
+  "focus_x": "float (optional, 0.0-1.0, default: 0.5)",
+  "focus_y": "float (optional, 0.0-1.0, default: 0.5)"
 }
 ```
 
@@ -46,8 +50,34 @@ No authentication required for this endpoint.
 | `duration` | float | No | 5.0 | Video duration in seconds (1.0-30.0) |
 | `task_id` | string | No | null | Task ID for organization and logging |
 | `custom_filename` | string | No | null | Custom filename for the output video |
+| `focus_x` | float | No | 0.5 | Focus point X coordinate (0.0-1.0, where 0.0=left, 1.0=right, 0.5=center) |
+| `focus_y` | float | No | 0.5 | Focus point Y coordinate (0.0-1.0, where 0.0=top, 1.0=bottom, 0.5=center) |
 | `ken_burns_direction` | string | No | "zoom_in" | Ken Burns direction: `zoom_in` or `zoom_out` |
 | `pan_direction` | string | No | "left_to_right" | Pan direction: `left_to_right` or `right_to_left` |
+
+### Focus Point Usage
+
+The focus point parameters (`focus_x` and `focus_y`) allow precise control over where visual effects are centered:
+
+#### For Ken Burns Effect
+- **Zoom In**: The animation starts with the full image and gradually zooms into the specified focus point
+- **Zoom Out**: The animation starts zoomed into the focus point and gradually zooms out to show the full image
+- The focus point remains at the center of the frame throughout the animation
+
+#### For Pan Effect
+- The pan animation is calculated to keep the focus point visible throughout the movement
+- **Left to Right**: Pans from the left side of the focus area to the right side
+- **Right to Left**: Pans from the right side of the focus area to the left side
+- The focus point influences the pan path to ensure important content remains in view
+
+#### For Static Effect
+- Focus points are currently not used for static effects but are accepted for future enhancements
+- The entire image is converted to video without animation
+
+#### Coordinate System
+- `focus_x`: 0.0 = leftmost edge, 0.5 = horizontal center, 1.0 = rightmost edge
+- `focus_y`: 0.0 = top edge, 0.5 = vertical center, 1.0 = bottom edge
+- Coordinates are relative to the original image dimensions
 
 ### Queue Management
 

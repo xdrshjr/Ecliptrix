@@ -357,6 +357,10 @@ class ImageToVideoRequest(BaseModel):
     task_id: Optional[str] = Field(None, description="Task ID for organization")
     custom_filename: Optional[str] = Field(None, description="Custom filename for the output video")
     
+    # Focus point parameters (0.0 to 1.0 range representing relative position on image)
+    focus_x: Optional[float] = Field(default=0.5, ge=0.0, le=1.0, description="Focus point X coordinate (0.0-1.0, 0.5 is center)")
+    focus_y: Optional[float] = Field(default=0.5, ge=0.0, le=1.0, description="Focus point Y coordinate (0.0-1.0, 0.5 is center)")
+    
     # Ken Burns effect parameters
     ken_burns_direction: Optional[str] = Field(default="zoom_in", description="Ken Burns direction: zoom_in or zoom_out")
     

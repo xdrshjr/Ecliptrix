@@ -639,7 +639,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     });
 
     setMaterials(prev => {
-      let updatedMaterials = [...prev];
+      const updatedMaterials = [...prev];
       let addedCount = 0;
       let updatedCount = 0;
 

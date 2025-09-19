@@ -67,7 +67,7 @@ export const useAIAssistant = (
       
       // 在原内容末尾添加AI回复的分隔符
       const aiResponsePrefix = originalContent ? `\n\n## AI Assistant Response\n\n` : `## AI Assistant Response\n\n`;
-      let updatedContent = originalContent + aiResponsePrefix;
+      const updatedContent = originalContent + aiResponsePrefix;
       
       // 立即更新MD编辑器显示前缀
       onContentUpdate(updatedContent);

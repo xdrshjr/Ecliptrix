@@ -654,7 +654,9 @@ async def _process_image_to_video(request: ImageToVideoRequest) -> Union[ImageTo
         "task_id": request.task_id,
         "ken_burns_direction": request.ken_burns_direction,
         "pan_direction": request.pan_direction,
-        "custom_filename": request.custom_filename
+        "custom_filename": request.custom_filename,
+        "focus_x": request.focus_x,
+        "focus_y": request.focus_y
     })
     
     try:

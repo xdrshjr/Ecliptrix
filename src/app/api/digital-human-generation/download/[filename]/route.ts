@@ -46,7 +46,7 @@ export async function GET(
     console.log(`[Digital Human Download API] ComfyUI response status: ${comfyuiResponse.status}`);
 
     if (!comfyuiResponse.ok) {
-      let errorMessage = `File not found or ComfyUI service error: ${comfyuiResponse.status}`;
+      const errorMessage = `File not found or ComfyUI service error: ${comfyuiResponse.status}`;
       
       console.error(`[Digital Human Download API] ComfyUI error: ${errorMessage}`);
       logResponse(false, filename, errorMessage);

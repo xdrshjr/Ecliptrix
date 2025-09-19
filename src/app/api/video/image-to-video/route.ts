@@ -32,7 +32,9 @@ export async function POST(request: NextRequest) {
       task_id,
       custom_filename,
       ken_burns_direction = 'zoom_in',
-      pan_direction = 'left_to_right'
+      pan_direction = 'left_to_right',
+      focus_x = 0.5,
+      focus_y = 0.5
     } = body;
 
     // Validate request parameters
@@ -81,7 +83,9 @@ export async function POST(request: NextRequest) {
       task_id,
       custom_filename,
       ken_burns_direction,
-      pan_direction
+      pan_direction,
+      focus_x,
+      focus_y
     };
     logRequest(requestData);
 
