@@ -788,6 +788,16 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
         setIsCompositionPlaying(false);
         
+        // 新增：停止当前正在播放的视频元素
+        const currentVideo = getCurrentVideoElement();
+        if (currentVideo && !currentVideo.paused) {
+          currentVideo.pause();
+          logger.info('最后一个视频播放完毕，暂停视频元素', {
+            currentTime: currentVideo.currentTime.toFixed(2),
+            clipEnd: currentSequence?.clipEnd?.toFixed(2) || 'N/A'
+          });
+        }
+        
         // 新增：停止所有音频
         syncAudioPlayback(compositionPlayback.totalCompositionDuration, false).catch(error => {
           logger.error('组合播放完毕时停止音频失败', error as Error);
@@ -832,16 +842,40 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
       
-      // 检查是否超出裁剪范围，如果是则自动切换到下一个视频
+      // 检查是否超出裁剪范围，如果是则自动切换到下一个视频或停止播放
       if (currentSequence) {
         const clipEnd = currentSequence.clipEnd || currentSequence.originalDuration || currentSequence.duration;
         if (videoCurrentTime >= clipEnd) {
-          logger.info('当前视频播放超出裁剪范围，触发切换', {
+          logger.info('当前视频播放超出裁剪范围，触发处理', {
             videoCurrentTime: videoCurrentTime.toFixed(2),
             clipEnd: clipEnd.toFixed(2),
-            sequenceName: currentSequence.name
+            sequenceName: currentSequence.name,
+            playbackMode,
+            isLastSequence: playbackMode === 'composition' ? 
+              (compositionPlayback ? compositionPlayback.currentSequenceIndex >= compositionPlayback.videoSequences.length - 1 : true) : 
+              true
           });
-          handleVideoEnded();
+          
+          // 对于组合播放模式，调用handleVideoEnded处理切换逻辑
+          if (playbackMode === 'composition') {
+            handleVideoEnded();
+          } else {
+            // 对于预览模式或单视频播放，直接停止当前视频
+            const currentVideo = getCurrentVideoElement();
+            if (currentVideo && !currentVideo.paused) {
+              currentVideo.pause();
+              logger.info('预览模式视频播放完毕，暂停视频元素', {
+                currentTime: currentVideo.currentTime.toFixed(2),
+                clipEnd: clipEnd.toFixed(2),
+                sequenceName: currentSequence.name
+              });
+              
+              // 通知外部组件播放状态变化
+              if (handlePlayPause) {
+                handlePlayPause();
+              }
+            }
+          }
           return;
         }
       }
