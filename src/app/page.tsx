@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Header from '@/components/Header';
 import VerticalTaskbar from '@/components/VerticalTaskbar';
 import Container from '@/components/Container';
 import Footer from '@/components/Footer';
+import LoginModal from '@/components/LoginModal';
 import { useTasks } from '@/hooks/useTasks';
 
 export default function HomePage() {
@@ -17,6 +18,9 @@ export default function HomePage() {
     closeTab,
     updateTask,
   } = useTasks();
+
+  // 登录弹窗状态
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // 检查当前是否为视频编辑任务
   const isVideoEditingTask = activeTask?.type === 'video';
@@ -31,7 +35,7 @@ export default function HomePage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header - 固定在顶部 */}
-      <Header />
+      <Header onLoginClick={() => setIsLoginModalOpen(true)} />
       
       {/* Main Layout - Header 下方的内容区域 */}
       <div className="flex-1 flex overflow-hidden">
@@ -50,6 +54,12 @@ export default function HomePage() {
           {!isVideoEditingTask && <Footer />}
         </div>
       </div>
+
+      {/* Login Modal - 全屏显示 */}
+      <LoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)} 
+      />
     </div>
   );
 } 

@@ -16,6 +16,26 @@ export interface Translations {
     english: string;
     chinese: string;
   };
+  auth: {
+    login: string;
+    register: string;
+    loginRegister: string;
+    logout: string;
+    personalInfo: string;
+    accountSettings: string;
+    username: string;
+    password: string;
+    loginButton: string;
+    registerButton: string;
+    welcomeBack: string;
+    welcomeTitle: string;
+    welcomeSubtitle: string;
+    loginSuccess: string;
+    loginFailed: string;
+    invalidCredentials: string;
+    requiredFields: string;
+    loggingIn: string;
+  };
   tasks: {
     contentCreation: string;
     videoEditing: string;
@@ -366,6 +386,26 @@ export const translations: Record<string, Translations> = {
       languageSelector: 'Language',
       english: 'English',
       chinese: 'Chinese',
+    },
+    auth: {
+      login: 'Login',
+      register: 'Register',
+      loginRegister: 'Login / Register',
+      logout: 'Logout',
+      personalInfo: 'Personal Info',
+      accountSettings: 'Account Settings',
+      username: 'Username',
+      password: 'Password',
+      loginButton: 'Login',
+      registerButton: 'Register',
+      welcomeBack: 'Welcome Back',
+      welcomeTitle: 'Welcome to Ecliptrix',
+      welcomeSubtitle: 'Where light and shadow collide to create extraordinary content',
+      loginSuccess: 'Login successful',
+      loginFailed: 'Login failed',
+      invalidCredentials: 'Invalid username or password',
+      requiredFields: 'Username and password are required',
+      loggingIn: 'Logging in...',
     },
     tasks: {
       contentCreation: 'Content Creation',
@@ -730,6 +770,26 @@ export const translations: Record<string, Translations> = {
       languageSelector: '语言',
       english: '英文',
       chinese: '中文',
+    },
+    auth: {
+      login: '登录',
+      register: '注册',
+      loginRegister: '登录/注册',
+      logout: '退出登录',
+      personalInfo: '个人信息',
+      accountSettings: '账号设置',
+      username: '用户名',
+      password: '密码',
+      loginButton: '登录',
+      registerButton: '注册',
+      welcomeBack: '欢迎回来',
+      welcomeTitle: '欢迎使用 Ecliptrix',
+      welcomeSubtitle: '光影交汇之处，创造非凡内容',
+      loginSuccess: '登录成功',
+      loginFailed: '登录失败',
+      invalidCredentials: '用户名或密码错误',
+      requiredFields: '用户名和密码为必填项',
+      loggingIn: '登录中...',
     },
     tasks: {
       contentCreation: '内容创作',
