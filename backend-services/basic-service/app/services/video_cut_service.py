@@ -50,10 +50,13 @@ class VideoCutService:
             
             # Cut and upload each clip
             clip_results = []
-            for clip in request.clips:
-                logger.info(f"Processing clip {clip.id}: {clip.name} ({clip.start_time}s - {clip.end_time}s)")
+            failed_clips = []
+            for i, clip in enumerate(request.clips):
+                logger.info(f"Processing clip {i+1}/{len(request.clips)}: {clip.id} - {clip.name}")
+                logger.info(f"Clip parameters: start={clip.start_time}s, end={clip.end_time}s, duration={clip.duration}s")
                 
                 try:
+                    clip_start_time = time.time()
                     clip_result = await self._cut_and_upload_clip(
                         source_video_path, 
                         clip, 
@@ -61,12 +64,25 @@ class VideoCutService:
                         request.task_id,
                         request.generate_thumbnails
                     )
+                    clip_processing_time = time.time() - clip_start_time
+                    
                     clip_results.append(clip_result)
-                    logger.info(f"Successfully processed clip {clip.id}")
+                    logger.info(f"Successfully processed clip {clip.id} in {clip_processing_time:.2f}s")
                 except Exception as e:
-                    logger.error(f"Failed to process clip {clip.id}: {str(e)}")
+                    clip_processing_time = time.time() - clip_start_time
+                    logger.error(f"Failed to process clip {clip.id} after {clip_processing_time:.2f}s: {str(e)}")
+                    logger.debug(f"Clip processing error details for {clip.id}: {str(e)}", exc_info=True)
+                    failed_clips.append({"id": clip.id, "name": clip.name, "error": str(e)})
                     # Continue with other clips even if one fails
                     continue
+            
+            # Log summary of failed clips
+            if failed_clips:
+                logger.warning(f"Failed to process {len(failed_clips)} clips out of {len(request.clips)}")
+                for failed_clip in failed_clips:
+                    logger.warning(f"Failed clip: {failed_clip['id']} ({failed_clip['name']}) - {failed_clip['error']}")
+            else:
+                logger.info(f"All {len(request.clips)} clips processed successfully")
             
             processing_time = time.time() - start_time
             
@@ -164,24 +180,48 @@ class VideoCutService:
         clip_filename = f"{task_id}_{clip.id}.mp4"
         clip_temp_path = self.temp_dir / clip_filename
         
-        # Cut video clip using ffmpeg
-        logger.info(f"Cutting clip from {clip.start_time}s to {clip.end_time}s")
+        # Cut video clip using ffmpeg with precise frame positioning
+        logger.info(f"Cutting clip {clip.id}: {clip.name}")
+        logger.info(f"Time range: {clip.start_time}s to {clip.end_time}s (duration: {clip.duration}s)")
+        logger.info(f"Output path: {clip_temp_path}")
         
+        # Use precise seeking and re-encoding to avoid keyframe issues
+        # -ss before -i for faster seeking, -ss after -i for precise cutting
         result = subprocess.run([
-            'ffmpeg', '-i', source_video_path,
-            '-ss', str(clip.start_time),
+            'ffmpeg',
+            '-ss', str(clip.start_time),  # Fast seek to approximate position
+            '-i', source_video_path,
+            '-ss', '0',  # Precise seek from the fast-seek position  
             '-t', str(clip.duration),
-            '-c', 'copy',
+            '-c:v', 'libx264',  # Re-encode video to ensure keyframes
+            '-c:a', 'aac',      # Re-encode audio for consistency
+            '-preset', 'medium', # Balance between speed and quality
+            '-crf', '23',       # Good quality setting
             '-avoid_negative_ts', 'make_zero',
+            '-movflags', '+faststart',  # Optimize for web playback
             '-y',  # Overwrite output file
             str(clip_temp_path)
         ], capture_output=True, text=True)
         
-        if result.returncode != 0:
-            raise Exception(f"Failed to cut video clip: {result.stderr}")
+        logger.info(f"FFmpeg command executed for clip {clip.id}")
+        if result.stderr:
+            logger.debug(f"FFmpeg stderr for clip {clip.id}: {result.stderr[:500]}...")
         
-        # Get clip file size
+        if result.returncode != 0:
+            logger.error(f"FFmpeg failed for clip {clip.id}")
+            logger.error(f"FFmpeg stderr: {result.stderr}")
+            logger.error(f"FFmpeg stdout: {result.stdout}")
+            raise Exception(f"Failed to cut video clip {clip.id}: {result.stderr}")
+        
+        # Verify the output file was created and has reasonable size
+        if not os.path.exists(clip_temp_path):
+            raise Exception(f"Output file not created for clip {clip.id}")
+            
         clip_file_size = os.path.getsize(clip_temp_path)
+        if clip_file_size == 0:
+            raise Exception(f"Output file is empty for clip {clip.id}")
+            
+        logger.info(f"Successfully cut clip {clip.id}, file size: {clip_file_size / 1024 / 1024:.2f} MB")
         
         # Generate bucket path for video clip
         from datetime import datetime
@@ -193,14 +233,17 @@ class VideoCutService:
         thumbnail_url = None
         if generate_thumbnails:
             try:
-                # Generate thumbnail using ffmpeg
+                logger.info(f"Generating thumbnail for clip {clip.id}")
                 thumbnail_filename = f"{task_id}_{clip.id}_thumb.jpg"
                 thumbnail_temp_path = self.temp_dir / thumbnail_filename
                 
-                # Extract thumbnail at 1 second into the clip
+                # Extract thumbnail at a safer position (0.5 seconds or 1/4 of duration, whichever is smaller)
+                thumbnail_time = min(0.5, clip.duration / 4)
+                logger.debug(f"Extracting thumbnail at {thumbnail_time}s for clip {clip.id}")
+                
                 thumbnail_result = subprocess.run([
                     'ffmpeg', '-i', str(clip_temp_path),
-                    '-ss', '1',
+                    '-ss', str(thumbnail_time),
                     '-vframes', '1',
                     '-q:v', '2',
                     '-y',  # Overwrite output file
@@ -208,8 +251,11 @@ class VideoCutService:
                 ], capture_output=True, text=True)
                 
                 if thumbnail_result.returncode == 0:
+                    logger.info(f"Thumbnail generated successfully for clip {clip.id}")
                     # Upload thumbnail to Supabase
                     thumbnail_bucket_path = f"video/thumbnails/{date_path}/task-{task_id}/{thumbnail_filename}"
+                    logger.debug(f"Uploading thumbnail to: {thumbnail_bucket_path}")
+                    
                     thumbnail_upload_result = self.supabase_service.upload_file(
                         local_file_path=str(thumbnail_temp_path),
                         bucket_path=thumbnail_bucket_path,
@@ -218,18 +264,27 @@ class VideoCutService:
                     
                     if thumbnail_upload_result.get('success'):
                         thumbnail_url = thumbnail_upload_result.get('file_url')
+                        logger.info(f"Thumbnail uploaded successfully for clip {clip.id}: {thumbnail_url}")
+                    else:
+                        logger.warning(f"Failed to upload thumbnail for clip {clip.id}: {thumbnail_upload_result.get('message')}")
                     
                     # Clean up thumbnail temp file
                     try:
                         os.remove(thumbnail_temp_path)
+                        logger.debug(f"Cleaned up thumbnail temp file: {thumbnail_temp_path}")
                     except Exception as e:
                         logger.warning(f"Failed to remove thumbnail temp file {thumbnail_temp_path}: {e}")
+                else:
+                    logger.warning(f"Failed to generate thumbnail for clip {clip.id}: {thumbnail_result.stderr}")
                         
             except Exception as e:
                 logger.warning(f"Failed to generate thumbnail for clip {clip.id}: {e}")
+                logger.debug(f"Thumbnail generation error details: {str(e)}", exc_info=True)
         
         # Upload video clip to Supabase
         logger.info(f"Uploading clip {clip.id} to Supabase")
+        logger.info(f"Upload path: {bucket_path}")
+        logger.info(f"File size: {clip_file_size / 1024 / 1024:.2f} MB")
         
         upload_result = self.supabase_service.upload_file(
             local_file_path=str(clip_temp_path),
@@ -238,11 +293,16 @@ class VideoCutService:
         )
         
         if not upload_result.get('success'):
-            raise Exception(f"Failed to upload clip to Supabase: {upload_result.get('message')}")
+            logger.error(f"Failed to upload clip {clip.id} to Supabase")
+            logger.error(f"Upload error: {upload_result.get('message')}")
+            raise Exception(f"Failed to upload clip {clip.id} to Supabase: {upload_result.get('message')}")
+        
+        logger.info(f"Successfully uploaded clip {clip.id} to: {upload_result.get('file_url')}")
         
         # Clean up temporary file
         try:
             os.remove(clip_temp_path)
+            logger.debug(f"Cleaned up temp file: {clip_temp_path}")
         except Exception as e:
             logger.warning(f"Failed to remove temp file {clip_temp_path}: {e}")
 
