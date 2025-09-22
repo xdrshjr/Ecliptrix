@@ -128,6 +128,18 @@ from .timeline_import_models import (
     ImportFileUploadRequest
 )
 
+from .auth_models import (
+    UserLogin,
+    UserInfo,
+    UserLoginResponse,
+    UserLoginErrorResponse,
+    UserRegistration,
+    UserRegistrationResponse,
+    PasswordChangeRequest,
+    UserUpdateRequest,
+    UserUpdateResponse
+)
+
 from .chat_models import (
     VideoChatRequest,
     VideoChatErrorResponse
@@ -269,5 +281,16 @@ __all__ = [
     "QueueInfo",
     "QueueStatusResponse",
     "TaskStatusResponse",
-    "QueueErrorResponse"
+    "QueueErrorResponse",
+    
+    # Authentication Models
+    "UserLogin",
+    "UserInfo",
+    "UserLoginResponse",
+    "UserLoginErrorResponse",
+    "UserRegistration",
+    "UserRegistrationResponse",
+    "PasswordChangeRequest",
+    "UserUpdateRequest",
+    "UserUpdateResponse"
 ] 

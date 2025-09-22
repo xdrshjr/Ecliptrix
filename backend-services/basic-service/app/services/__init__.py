@@ -18,6 +18,7 @@ from .timeline_export_service import TimelineExportService
 from .timeline_import_service import TimelineImportService
 from .chat_service import ChatService
 from .ai_mixed_editing_service import AIMixedEditingService
+from .auth_service import AuthService, auth_service
 
 # Initialize video analysis service instance
 video_analysis_service = VideoAnalysisService()
@@ -39,5 +40,7 @@ __all__ = [
     'TimelineExportService',
     'TimelineImportService',
     'ChatService',
-    'AIMixedEditingService'
+    'AIMixedEditingService',
+    'AuthService',
+    'auth_service'
 ] 
