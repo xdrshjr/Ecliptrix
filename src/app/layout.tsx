@@ -3,6 +3,7 @@ import '@/styles/globals.css'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { LocaleProvider } from '@/contexts/LocaleContext'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { GlobalMobileDetection } from '@/components/GlobalMobileDetection'
 
 export const metadata: Metadata = {
   title: 'Ecliptrix - Where light and shadow collide',
@@ -25,6 +26,7 @@ export default function RootLayout({
           <AuthProvider>
             <NotificationProvider>
               {children}
+              <GlobalMobileDetection />
             </NotificationProvider>
           </AuthProvider>
         </LocaleProvider>

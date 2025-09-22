@@ -1714,12 +1714,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         taskId={taskId}
       />
 
-      {/* Mobile Warning Dialog - Backup Safety Check */}
-      <MobileWarningDialog
-        isOpen={showMobileWarning}
-        onClose={handleCloseMobileWarning}
-        deviceType={currentDeviceType}
-      />
+      {/* Mobile Warning Dialog - Backup Safety Check (Legacy) */}
+      {/* Note: Global mobile detection is now handled at app level, this is kept as fallback */}
     </div>
   );
 };

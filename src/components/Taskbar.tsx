@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { shouldRestrictVideoEditing, getDeviceType } from '@/lib/utils/deviceDetection';
-import { MobileWarningDialog } from '@/components/ui';
 
 interface TaskbarProps {
   tabs: Tab[];
@@ -22,8 +21,6 @@ const Taskbar: React.FC<TaskbarProps> = ({
 }) => {
   const { t } = useLocale();
   const [showTaskMenu, setShowTaskMenu] = useState(false);
-  const [showMobileWarning, setShowMobileWarning] = useState(false);
-  const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
   const getTaskIcon = (type: TaskType) => {
     switch (type) {
@@ -56,20 +53,20 @@ const Taskbar: React.FC<TaskbarProps> = ({
 
   const handleCreateTask = (type: TaskType) => {
     // Check for mobile device restriction on video editing tasks
+    // Note: Global mobile detection now handles this at app level
     if (type === 'video' && shouldRestrictVideoEditing()) {
       const deviceType = getDeviceType();
-      setCurrentDeviceType(deviceType);
-      setShowMobileWarning(true);
-      setShowTaskMenu(false);
       
-      console.log('[Taskbar] Video editing task creation blocked on mobile device:', {
+      console.log('[Taskbar] Video editing task creation blocked on mobile device (handled globally):', {
         taskType: type,
         deviceType,
         timestamp: new Date().toISOString(),
         userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server-side',
-        restriction: 'Video editing not supported on mobile/tablet devices'
+        restriction: 'Video editing not supported on mobile/tablet devices',
+        note: 'Global mobile warning dialog is already displayed'
       });
       
+      setShowTaskMenu(false);
       return;
     }
 
@@ -85,13 +82,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
     setShowTaskMenu(false);
   };
 
-  const handleCloseMobileWarning = () => {
-    setShowMobileWarning(false);
-    console.log('[Taskbar] Mobile warning dialog closed:', {
-      deviceType: currentDeviceType,
-      timestamp: new Date().toISOString()
-    });
-  };
+
 
   return (
     <div className="h-12 bg-gray-50 border-b border-gray-200 flex items-center px-4 space-x-2">
@@ -179,12 +170,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
         />
       )}
 
-      {/* Mobile Warning Dialog */}
-      <MobileWarningDialog
-        isOpen={showMobileWarning}
-        onClose={handleCloseMobileWarning}
-        deviceType={currentDeviceType}
-      />
+      {/* Mobile Warning Dialog - Now handled globally at app level */}
     </div>
   );
 };

@@ -4,13 +4,11 @@ import React, { useEffect, useState } from 'react';
 
 export interface MobileWarningDialogProps {
   isOpen: boolean;
-  onClose: () => void;
   deviceType?: 'mobile' | 'tablet' | 'desktop';
 }
 
 const MobileWarningDialog: React.FC<MobileWarningDialogProps> = ({
   isOpen,
-  onClose,
   deviceType = 'mobile'
 }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -19,10 +17,11 @@ const MobileWarningDialog: React.FC<MobileWarningDialogProps> = ({
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
-      setTimeout(() => setIsAnimating(true), 10);
+      // Smooth animation entrance
+      const timer = setTimeout(() => setIsAnimating(true), 50);
       
-      // Log mobile access attempt
-      console.log('[MobileWarningDialog] Mobile video editing access attempt blocked:', {
+      // Log mobile access attempt with detailed information
+      console.log('[MobileWarningDialog] Mobile access blocked - showing persistent warning:', {
         deviceType,
         timestamp: new Date().toISOString(),
         userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server-side',
@@ -33,40 +32,21 @@ const MobileWarningDialog: React.FC<MobileWarningDialogProps> = ({
         viewportDimensions: typeof window !== 'undefined' ? {
           width: window.innerWidth,
           height: window.innerHeight
-        } : null
+        } : null,
+        isPersistent: true,
+        location: 'Global App Level'
       });
-    } else {
-      setIsAnimating(false);
-      setTimeout(() => setIsVisible(false), 200);
+
+      return () => clearTimeout(timer);
     }
   }, [isOpen, deviceType]);
-
-  const handleClose = () => {
-    console.log('[MobileWarningDialog] User acknowledged mobile restriction warning:', {
-      deviceType,
-      timestamp: new Date().toISOString()
-    });
-    onClose();
-  };
-
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      handleClose();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape' || e.key === 'Enter') {
-      handleClose();
-    }
-  };
 
   const getDeviceDisplayName = () => {
     switch (deviceType) {
       case 'tablet':
         return '平板设备';
       case 'mobile':
-        return '移动设备';
+        return '手机设备';
       default:
         return '移动设备';
     }
@@ -75,15 +55,15 @@ const MobileWarningDialog: React.FC<MobileWarningDialogProps> = ({
   const getDeviceIcon = () => {
     if (deviceType === 'tablet') {
       return (
-        <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a1 1 0 001-1V4a1 1 0 00-1-1H8a1 1 0 00-1 1v16a1 1 0 001 1z" />
+        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5h3m-6.75-2.25h10.5a2.25 2.25 0 002.25-2.25v-15a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 4.5v15a2.25 2.25 0 002.25 2.25z" />
         </svg>
       );
     }
     
     return (
-      <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
       </svg>
     );
   };
@@ -92,71 +72,56 @@ const MobileWarningDialog: React.FC<MobileWarningDialogProps> = ({
 
   return (
     <div 
-      className={`fixed inset-0 z-[200] flex items-center justify-center p-4 transition-all duration-200 ${
-        isAnimating ? 'bg-black bg-opacity-50' : 'bg-black bg-opacity-0'
+      className={`fixed inset-0 z-[9999] flex items-center justify-center transition-all duration-300 ${
+        isAnimating ? 'bg-white bg-opacity-95 backdrop-blur-sm' : 'bg-white bg-opacity-0'
       }`}
-      onClick={handleBackdropClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={-1}
+      style={{ 
+        backdropFilter: isAnimating ? 'blur(20px)' : 'none',
+        WebkitBackdropFilter: isAnimating ? 'blur(20px)' : 'none'
+      }}
     >
       <div 
-        className={`bg-white rounded-xl shadow-2xl border border-gray-200 max-w-md w-full transform transition-all duration-200 ${
-          isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+        className={`bg-white rounded-3xl shadow-xl max-w-sm w-full mx-4 transform transition-all duration-500 ease-out ${
+          isAnimating ? 'scale-100 opacity-100 translate-y-0' : 'scale-110 opacity-0 translate-y-4'
         }`}
+        style={{
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05)'
+        }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="mobile-warning-title"
         aria-describedby="mobile-warning-description"
       >
-        {/* Header */}
-        <div className="flex items-start p-6 pb-4">
-          <div className="flex-shrink-0 mr-4">
+        {/* Content */}
+        <div className="px-8 py-12 text-center">
+          {/* Icon */}
+          <div className="flex justify-center mb-6">
             {getDeviceIcon()}
           </div>
-          <div className="flex-1">
-            <h3 
-              id="mobile-warning-title" 
-              className="text-lg font-semibold text-gray-900 mb-2"
-            >
-              {getDeviceDisplayName()}不支持视频编辑
-            </h3>
-            <p 
-              id="mobile-warning-description" 
-              className="text-sm text-gray-600 leading-relaxed"
-            >
-              视频编辑功能需要较大的屏幕空间和更强的处理能力，目前仅支持PC端使用。
-              <br /><br />
-              请在电脑上打开本应用以使用完整的视频编辑功能。
-            </p>
-          </div>
-        </div>
 
-        {/* Additional Info */}
-        <div className="px-6 py-3 bg-amber-50 border-t border-amber-100">
-          <div className="flex items-start space-x-3">
-            <svg className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div className="text-sm text-amber-800">
-              <p className="font-medium mb-1">推荐使用环境：</p>
-              <ul className="space-y-1 text-xs">
-                <li>• 桌面电脑或笔记本电脑</li>
-                <li>• 屏幕分辨率 1280x720 或更高</li>
-                <li>• Chrome、Firefox、Safari 或 Edge 浏览器</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end px-6 py-4 bg-gray-50 rounded-b-xl">
-          <button
-            onClick={handleClose}
-            className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-            autoFocus
+          {/* Title */}
+          <h2 
+            id="mobile-warning-title" 
+            className="text-2xl font-semibold text-gray-900 mb-4 tracking-tight"
           >
-            我知道了
-          </button>
+            暂不支持{getDeviceDisplayName()}
+          </h2>
+
+          {/* Description */}
+          <p 
+            id="mobile-warning-description" 
+            className="text-gray-600 text-base leading-relaxed mb-8 font-normal"
+          >
+            为了提供更好的使用体验，请在电脑上访问本应用。
+          </p>
+
+          {/* Computer Icon with Label */}
+          <div className="inline-flex items-center justify-center px-6 py-3 bg-gray-50 rounded-2xl">
+            <svg className="w-6 h-6 text-gray-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">建议使用电脑访问</span>
+          </div>
         </div>
       </div>
     </div>
