@@ -9,6 +9,7 @@ export interface Translations {
     support: string;
     systemStatus: string;
     operational: string;
+    close: string;
   };
   header: {
     brandSubtitle: string;
@@ -35,6 +36,49 @@ export interface Translations {
     invalidCredentials: string;
     requiredFields: string;
     loggingIn: string;
+  };
+  profile: {
+    title: string;
+    subtitle: string;
+    userInfo: string;
+    otherSettings: string;
+    userInfoDescription: string;
+    otherSettingsDescription: string;
+    avatar: string;
+    avatarUrlPlaceholder: string;
+    avatarUrlHelper: string;
+    username: string;
+    email: string;
+    fullName: string;
+    usernamePlaceholder: string;
+    emailPlaceholder: string;
+    fullNamePlaceholder: string;
+    save: string;
+    saving: string;
+    cancel: string;
+    saveSuccess: string;
+    saveError: string;
+    notifications: string;
+    emailNotifications: string;
+    emailNotificationsDesc: string;
+    pushNotifications: string;
+    pushNotificationsDesc: string;
+    marketingEmails: string;
+    marketingEmailsDesc: string;
+    privacy: string;
+    profileVisible: string;
+    profileVisibleDesc: string;
+    activityVisible: string;
+    activityVisibleDesc: string;
+    preferences: string;
+    language: string;
+    theme: string;
+    lightTheme: string;
+    darkTheme: string;
+    autoTheme: string;
+    saveSettings: string;
+    settingsSaveSuccess: string;
+    settingsSaveError: string;
   };
   tasks: {
     contentCreation: string;
@@ -380,6 +424,7 @@ export const translations: Record<string, Translations> = {
       support: 'Support',
       systemStatus: 'System Status',
       operational: 'Operational',
+      close: 'Close',
     },
     header: {
       brandSubtitle: 'Where light and shadow collide',
@@ -406,6 +451,49 @@ export const translations: Record<string, Translations> = {
       invalidCredentials: 'Invalid username or password',
       requiredFields: 'Username and password are required',
       loggingIn: 'Logging in...',
+    },
+    profile: {
+      title: 'User Profile',
+      subtitle: 'Manage your account information and preferences',
+      userInfo: 'User Information',
+      otherSettings: 'Other Settings',
+      userInfoDescription: 'Update your personal information and profile details',
+      otherSettingsDescription: 'Configure notifications, privacy, and preferences',
+      avatar: 'Avatar',
+      avatarUrlPlaceholder: 'Enter avatar image URL',
+      avatarUrlHelper: 'Provide a URL to your profile image',
+      username: 'Username',
+      email: 'Email',
+      fullName: 'Full Name',
+      usernamePlaceholder: 'Enter your username',
+      emailPlaceholder: 'Enter your email address',
+      fullNamePlaceholder: 'Enter your full name',
+      save: 'Save Changes',
+      saving: 'Saving...',
+      cancel: 'Cancel',
+      saveSuccess: 'Profile updated successfully',
+      saveError: 'Failed to update profile',
+      notifications: 'Notifications',
+      emailNotifications: 'Email Notifications',
+      emailNotificationsDesc: 'Receive email updates about your account',
+      pushNotifications: 'Push Notifications',
+      pushNotificationsDesc: 'Receive browser push notifications',
+      marketingEmails: 'Marketing Emails',
+      marketingEmailsDesc: 'Receive promotional emails and updates',
+      privacy: 'Privacy',
+      profileVisible: 'Public Profile',
+      profileVisibleDesc: 'Allow others to view your profile',
+      activityVisible: 'Activity Visibility',
+      activityVisibleDesc: 'Show your activity to other users',
+      preferences: 'Preferences',
+      language: 'Language',
+      theme: 'Theme',
+      lightTheme: 'Light',
+      darkTheme: 'Dark',
+      autoTheme: 'Auto',
+      saveSettings: 'Save Settings',
+      settingsSaveSuccess: 'Settings saved successfully',
+      settingsSaveError: 'Failed to save settings',
     },
     tasks: {
       contentCreation: 'Content Creation',
@@ -764,6 +852,7 @@ export const translations: Record<string, Translations> = {
       support: '支持',
       systemStatus: '系统状态',
       operational: '正常运行',
+      close: '关闭',
     },
     header: {
       brandSubtitle: '光影交汇之处',
@@ -790,6 +879,49 @@ export const translations: Record<string, Translations> = {
       invalidCredentials: '用户名或密码错误',
       requiredFields: '用户名和密码为必填项',
       loggingIn: '登录中...',
+    },
+    profile: {
+      title: '用户资料',
+      subtitle: '管理您的账户信息和偏好设置',
+      userInfo: '用户信息',
+      otherSettings: '其他设置',
+      userInfoDescription: '更新您的个人信息和资料详情',
+      otherSettingsDescription: '配置通知、隐私和偏好设置',
+      avatar: '头像',
+      avatarUrlPlaceholder: '输入头像图片链接',
+      avatarUrlHelper: '提供您的个人资料图片链接',
+      username: '用户名',
+      email: '邮箱',
+      fullName: '姓名',
+      usernamePlaceholder: '输入您的用户名',
+      emailPlaceholder: '输入您的邮箱地址',
+      fullNamePlaceholder: '输入您的姓名',
+      save: '保存更改',
+      saving: '保存中...',
+      cancel: '取消',
+      saveSuccess: '资料更新成功',
+      saveError: '资料更新失败',
+      notifications: '通知设置',
+      emailNotifications: '邮件通知',
+      emailNotificationsDesc: '接收关于您账户的邮件更新',
+      pushNotifications: '推送通知',
+      pushNotificationsDesc: '接收浏览器推送通知',
+      marketingEmails: '营销邮件',
+      marketingEmailsDesc: '接收促销邮件和更新',
+      privacy: '隐私设置',
+      profileVisible: '公开资料',
+      profileVisibleDesc: '允许其他人查看您的资料',
+      activityVisible: '活动可见性',
+      activityVisibleDesc: '向其他用户显示您的活动',
+      preferences: '偏好设置',
+      language: '语言',
+      theme: '主题',
+      lightTheme: '浅色',
+      darkTheme: '深色',
+      autoTheme: '自动',
+      saveSettings: '保存设置',
+      settingsSaveSuccess: '设置保存成功',
+      settingsSaveError: '设置保存失败',
     },
     tasks: {
       contentCreation: '内容创作',

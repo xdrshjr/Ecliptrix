@@ -98,10 +98,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     });
   };
 
+  const updateUserProfile = async (updatedUser: User) => {
+    console.log('[AuthContext] Updating user profile:', updatedUser.username);
+    
+    // Update localStorage
+    localStorage.setItem('ecliptrix-user', JSON.stringify(updatedUser));
+    
+    // Update auth state
+    setAuthState(prev => ({
+      ...prev,
+      user: updatedUser,
+    }));
+  };
+
   const value: AuthContextType = {
     ...authState,
     login,
     logout,
+    updateUserProfile,
   };
 
   return (

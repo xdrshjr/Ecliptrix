@@ -3,6 +3,8 @@ export interface User {
   username: string;
   email?: string;
   avatar?: string;
+  fullName?: string;
+  avatarUrl?: string;
 }
 
 export interface AuthState {
@@ -19,4 +21,5 @@ export interface LoginCredentials {
 export interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  updateUserProfile: (user: User) => Promise<void>;
 } 

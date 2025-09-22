@@ -7,9 +7,10 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface HeaderProps {
   onLoginClick: () => void;
+  onProfileClick: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
+const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick }) => {
   const { locale, setLocale, t } = useLocale();
   const { user, isAuthenticated, logout } = useAuth();
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
@@ -166,7 +167,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
                     <button
                       onClick={() => {
                         setIsUserDropdownOpen(false);
-                        // TODO: Implement personal info modal
+                        onProfileClick();
                       }}
                       className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2"
                     >
@@ -178,7 +179,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
                     <button
                       onClick={() => {
                         setIsUserDropdownOpen(false);
-                        // TODO: Implement account settings modal
+                        onProfileClick();
                       }}
                       className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2"
                     >

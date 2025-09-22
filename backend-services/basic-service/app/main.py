@@ -306,6 +306,10 @@ app.include_router(ai_mixed_editing_router.router, prefix="/api")
 from app.routers import auth_router
 app.include_router(auth_router.router, prefix="/api")
 
+# Import and include User Profile router
+from app.routers import user_router
+app.include_router(user_router.router, prefix="/api")
+
 # Import and include Video Understanding Script router
 from app.routers import video_understanding_script_router
 app.include_router(video_understanding_script_router.router, prefix="/api")

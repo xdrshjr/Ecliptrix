@@ -6,6 +6,7 @@ import VerticalTaskbar from '@/components/VerticalTaskbar';
 import Container from '@/components/Container';
 import Footer from '@/components/Footer';
 import LoginModal from '@/components/LoginModal';
+import UserProfilePage from '@/components/UserProfile/UserProfilePage';
 import { useTasks } from '@/hooks/useTasks';
 
 export default function HomePage() {
@@ -21,6 +22,8 @@ export default function HomePage() {
 
   // 登录弹窗状态
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  // 用户资料页面状态
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // 检查当前是否为视频编辑任务
   const isVideoEditingTask = activeTask?.type === 'video';
@@ -35,11 +38,14 @@ export default function HomePage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header - 固定在顶部 */}
-      <Header onLoginClick={() => setIsLoginModalOpen(true)} />
+      <Header 
+        onLoginClick={() => setIsLoginModalOpen(true)}
+        onProfileClick={() => setIsProfileOpen(true)}
+      />
       
       {/* Main Layout - Header 下方的内容区域 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Vertical Taskbar - 左侧边栏，在Header之下 */}
+        {/* Vertical Taskbar - 左侧边栏，始终显示 */}
         <VerticalTaskbar
           tabs={tabs}
           activeTabId={activeTabId}
@@ -49,9 +55,16 @@ export default function HomePage() {
         
         {/* Main Content Area - 右侧内容区域 */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <Container activeTask={activeTask} onUpdateTask={updateTask} />
-          {/* 条件渲染Footer：视频编辑任务时隐藏，其他任务时显示 */}
-          {!isVideoEditingTask && <Footer />}
+          {isProfileOpen ? (
+            /* User Profile Page - 占据右侧内容区域 */
+            <UserProfilePage onClose={() => setIsProfileOpen(false)} />
+          ) : (
+            <>
+              <Container activeTask={activeTask} onUpdateTask={updateTask} />
+              {/* 条件渲染Footer：视频编辑任务时隐藏，其他任务时显示 */}
+              {!isVideoEditingTask && <Footer />}
+            </>
+          )}
         </div>
       </div>
 
