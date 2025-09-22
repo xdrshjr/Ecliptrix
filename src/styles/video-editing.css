@@ -526,7 +526,7 @@
 .composition-panel-content {
   padding: 16px;
   height: calc(100% - 60px);
-  overflow: hidden;
+  overflow-y: auto; /* 支持垂直滚动，适应不同缩放比例 */
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -541,11 +541,11 @@
   flex-shrink: 0;
 }
 
-/* 视频播放器包装器 - 固定占用65%高度 */
+/* 视频播放器包装器 - 固定占用70%高度 */
 .video-player-wrapper {
   display: flex;
   flex-direction: column;
-  flex: 0 0 65%; /* 调整为65%，给控制区域更多空间 */
+  flex: 0 0 70%; /* 调整为70%，为控制区域预留足够空间 */
   min-height: 0;
 }
 
@@ -683,14 +683,15 @@
   100% { transform: rotate(360deg); }
 }
 
-/* 视频控制栏和信息面板容器 - 占用剩余35%高度 */
+/* 视频控制栏和信息面板容器 - 占用剩余30%高度 */
 .video-controls-info-container {
   flex: 1; /* 占用video-player-wrapper之外的剩余空间 */
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
-  min-height: 120px; /* 设置最小高度确保所有内容可见 */
+  min-height: 160px; /* 增加最小高度确保宽高比选择器始终可见 */
+  overflow-y: auto; /* 支持垂直滚动，防止缩放时内容被遮挡 */
 }
 
 /* 视频控制栏 */
@@ -909,18 +910,17 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* 视频信息面板 - 重新设计为优雅简洁的样式，适配35%高度约束 */
+/* 视频信息面板 - 重新设计为优雅简洁的样式，适配内容高度 */
 .video-info-panel {
-  padding: 12px 16px;
+  padding: 8px 12px; /* 减少padding以紧贴内容 */
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  flex: 1; /* 占用controls容器中的剩余空间 */
-  min-height: 80px; /* 设置最小高度确保内容可见 */
+  flex: none; /* 不拉伸，只占用内容需要的高度 */
   transition: all 0.2s ease-in-out;
   position: relative;
-  overflow: visible; /* 改为visible，允许内容显示 */
+  overflow: visible; /* 确保内容始终可见，不被裁剪 */
 }
 
 /* 面板悬停效果 */
@@ -953,12 +953,11 @@
   margin-bottom: 10px;
 }
 
-/* 比例选择器行 - 第二行 */
+/* 比例选择器行 - 紧贴容器显示 */
 .aspect-ratio-row {
   display: flex;
   align-items: center;
-  padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
+  /* 移除padding-top和border-top，因为现在是唯一内容 */
 }
 
 /* 视频信息组 - 左侧信息 */

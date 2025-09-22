@@ -1366,6 +1366,20 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   const currentVideoInfo = getCurrentVideoInfo();
 
+  // 记录UI显示模式
+  useEffect(() => {
+    logger.info('视频预览界面UI模式', {
+      显示模式: '简化模式 - 仅显示宽高比选择器',
+      隐藏内容: ['视频标题', '分辨率信息', '帧率信息', '格式信息', '全屏按钮', '播放速度选择器'],
+      保留内容: ['宽高比选择器', '播放控制', '音量控制'],
+      布局调整: ['宽高比选择器容器垂直居中显示', '确保内容始终在可视范围内'],
+      高度分配: '视频预览区域70% + 控制栏30%',
+      容器优化: ['面板高度适配内容', '减少padding', '移除不必要的border和间距', '容器紧贴按钮高度'],
+      滚动支持: ['控制栏容器支持y轴滚动', '整个面板支持垂直滚动', '防止缩放时内容被遮挡'],
+      修改原因: '根据产品需求简化预览界面显示内容并优化布局，支持不同缩放比例下的内容访问'
+    });
+  }, []);
+
   return (
     <div 
       className={`video-editing-composition-panel ${className}`}
@@ -1682,61 +1696,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       className="volume-slider"
                     />
                   </div>
-
-                  <select
-                    value={playbackRate}
-                    onChange={(e) => handlePlaybackRateChange(parseFloat(e.target.value))}
-                    className="speed-select"
-                    title={t.videoPlayerPanel.controls.playbackSpeed}
-                  >
-                    <option value={0.5}>0.5x</option>
-                    <option value={0.75}>0.75x</option>
-                    <option value={1}>1x</option>
-                    <option value={1.25}>1.25x</option>
-                    <option value={1.5}>1.5x</option>
-                    <option value={2}>2x</option>
-                  </select>
-
-                  <button
-                    onClick={handleFullscreenToggle}
-                    className="control-btn fullscreen-btn"
-                    title={t.videoPlayerPanel.controls.fullscreen}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="video-info-panel">
-            {/* 第一行：视频基本信息 */}
-            <div className="video-info-row">
-              <div className="video-info-group">
-                <div className="info-item-inline">
-                  <span className="info-label">{t.videoPlayerPanel.info.title}</span>
-                  <span className="info-value info-title">{currentVideoInfo.title}</span>
-                </div>
-                <div className="info-separator"></div>
-                <div className="info-item-inline">
-                  <span className="info-label">{t.videoPlayerPanel.info.resolution}</span>
-                  <span className="info-value">{currentVideoInfo.resolution.width}×{currentVideoInfo.resolution.height}</span>
-                </div>
-                <div className="info-separator"></div>
-                <div className="info-item-inline">
-                  <span className="info-label">{t.videoPlayerPanel.info.frameRate}</span>
-                  <span className="info-value">{currentVideoInfo.frameRate}fps</span>
-                </div>
-                <div className="info-separator"></div>
-                <div className="info-item-inline">
-                  <span className="info-label">{t.videoPlayerPanel.info.format}</span>
-                  <span className="info-value">{currentVideoInfo.format}</span>
-                </div>
-              </div>
-            </div>
-            
-            {/* 第二行：视频比例选择器 */}
+            <div className="video-info-panel flex items-center justify-center">
+            {/* 宽高比选择器 */}
             <div className="aspect-ratio-row">
               <div className="aspect-ratio-group">
                 <span className="info-label">{t.videoPlayerPanel.info.aspectRatio}</span>
