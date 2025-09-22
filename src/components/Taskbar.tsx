@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { shouldRestrictVideoEditing, getDeviceType } from '@/lib/utils/deviceDetection';
 
 interface TaskbarProps {
@@ -20,6 +22,8 @@ const Taskbar: React.FC<TaskbarProps> = ({
   onCloseTab,
 }) => {
   const { t } = useLocale();
+  const { isAuthenticated, user } = useAuth();
+  const { showWarning } = useNotification();
   const [showTaskMenu, setShowTaskMenu] = useState(false);
 
   const getTaskIcon = (type: TaskType) => {
@@ -52,6 +56,26 @@ const Taskbar: React.FC<TaskbarProps> = ({
   };
 
   const handleCreateTask = (type: TaskType) => {
+    console.log('[Taskbar] Task creation attempted:', {
+      taskType: type,
+      isAuthenticated,
+      username: user?.username || 'not logged in',
+      timestamp: new Date().toISOString()
+    });
+
+    // 检查用户是否已登录
+    if (!isAuthenticated) {
+      console.warn('[Taskbar] Unauthorized task creation attempt:', {
+        taskType: type,
+        action: 'blocked - user not authenticated',
+        timestamp: new Date().toISOString()
+      });
+
+      showWarning('请先登录后再创建新任务', 4000);
+      setShowTaskMenu(false);
+      return;
+    }
+
     // Check for mobile device restriction on video editing tasks
     // Note: Global mobile detection now handles this at app level
     if (type === 'video' && shouldRestrictVideoEditing()) {
@@ -60,6 +84,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
       console.log('[Taskbar] Video editing task creation blocked on mobile device (handled globally):', {
         taskType: type,
         deviceType,
+        username: user?.username,
         timestamp: new Date().toISOString(),
         userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server-side',
         restriction: 'Video editing not supported on mobile/tablet devices',
@@ -70,9 +95,10 @@ const Taskbar: React.FC<TaskbarProps> = ({
       return;
     }
 
-    // Proceed with task creation for non-restricted cases
-    console.log('[Taskbar] Creating task:', {
+    // Proceed with task creation for authorized and non-restricted cases
+    console.log('[Taskbar] Task creation authorized, proceeding:', {
       taskType: type,
+      username: user?.username,
       deviceType: getDeviceType(),
       timestamp: new Date().toISOString(),
       restriction: 'none'
@@ -82,6 +108,42 @@ const Taskbar: React.FC<TaskbarProps> = ({
     setShowTaskMenu(false);
   };
 
+  const handleTabSelect = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    
+    console.log('[Taskbar] Tab selection attempted:', {
+      tabId,
+      tabTitle: tab?.title,
+      tabType: tab?.type,
+      isAuthenticated,
+      username: user?.username || 'not logged in',
+      timestamp: new Date().toISOString()
+    });
+
+    // 检查用户是否已登录
+    if (!isAuthenticated) {
+      console.warn('[Taskbar] Unauthorized tab selection attempt:', {
+        tabId,
+        tabTitle: tab?.title,
+        tabType: tab?.type,
+        action: 'blocked - user not authenticated',
+        timestamp: new Date().toISOString()
+      });
+
+      showWarning('请先登录后再使用任务功能', 4000);
+      return;
+    }
+
+    console.log('[Taskbar] Tab selection authorized, proceeding:', {
+      tabId,
+      tabTitle: tab?.title,
+      tabType: tab?.type,
+      username: user?.username,
+      timestamp: new Date().toISOString()
+    });
+
+    onSelectTab(tabId);
+  };
 
 
   return (
@@ -143,7 +205,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
                 ? 'bg-white border border-gray-200 text-gray-900'
                 : 'bg-transparent hover:bg-gray-100 text-gray-600'
             }`}
-            onClick={() => onSelectTab(tab.id)}
+            onClick={() => handleTabSelect(tab.id)}
           >
             {getTaskIcon(tab.type)}
             <span className="text-sm font-medium truncate max-w-32">{tab.title}</span>

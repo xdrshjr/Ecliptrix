@@ -158,7 +158,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
               <div className="mt-6 text-center">
                 <p className="text-xs text-gray-500">
-                  Demo credentials: admin / admin
+                  Test credentials: admin / 7#rA3310
                 </p>
               </div>
             </div>

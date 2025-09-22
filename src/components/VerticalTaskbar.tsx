@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface VerticalTaskbarProps {
   tabs: Tab[];
@@ -17,6 +19,8 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   onCloseTab,
 }) => {
   const { t } = useLocale();
+  const { isAuthenticated, user } = useAuth();
+  const { showWarning } = useNotification();
   const [isExpanded, setIsExpanded] = useState(false);
   const taskbarRef = useRef<HTMLDivElement>(null);
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -130,6 +134,49 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     });
   };
 
+  const handleTabClick = (e: React.MouseEvent, tab: Tab) => {
+    e.stopPropagation();
+    
+    console.log('[VerticalTaskbar] Tab click attempted:', {
+      tabId: tab.id,
+      tabTitle: tab.title,
+      tabType: tab.type,
+      isAuthenticated,
+      username: user?.username || 'not logged in',
+      timestamp: new Date().toISOString()
+    });
+
+    // 检查用户是否已登录
+    if (!isAuthenticated) {
+      console.warn('[VerticalTaskbar] Unauthorized task access attempt:', {
+        tabId: tab.id,
+        tabTitle: tab.title,
+        tabType: tab.type,
+        action: 'blocked - user not authenticated',
+        timestamp: new Date().toISOString()
+      });
+
+      showWarning('请先登录后再使用任务功能', 4000);
+      return;
+    }
+
+    console.log('[VerticalTaskbar] Task access authorized:', {
+      tabId: tab.id,
+      tabTitle: tab.title,
+      tabType: tab.type,
+      username: user?.username,
+      action: 'proceeding with task selection',
+      timestamp: new Date().toISOString()
+    });
+
+    // 如果任务栏未展开，先展开任务栏
+    if (!isExpanded) {
+      setIsExpanded(true);
+      console.log('[VerticalTaskbar] Tab clicked, expanding taskbar first');
+    }
+    onSelectTab(tab.id);
+  };
+
   return (
     <>
       <div 
@@ -147,15 +194,7 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
               <div
                 key={tab.id}
                 className={`taskbar-tab ${tab.isActive ? 'active' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // 如果任务栏未展开，先展开任务栏
-                  if (!isExpanded) {
-                    setIsExpanded(true);
-                    console.log('[VerticalTaskbar] Tab clicked, expanding taskbar first');
-                  }
-                  onSelectTab(tab.id);
-                }}
+                onClick={(e) => handleTabClick(e, tab)}
                 title={!isExpanded ? tab.title : undefined}
               >
                 <div className="tab-icon">
