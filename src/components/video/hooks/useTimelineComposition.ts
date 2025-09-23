@@ -337,37 +337,62 @@ export const useTimelineComposition = (
       triggeredVideoSeekCallback: !!onVideoSeekRequired
     });
 
-    // 立即更新组合播放状态
-    setCompositionPlayback(prev => ({
-      ...prev,
-      compositionCurrentTime: clampedTime,
-      currentSequenceIndex
-    }));
-
-    // 新增：如果提供了视频播放器跳转回调，立即触发视频播放器更新
+    // 修改：先执行视频播放器跳转，再更新组合播放状态
+    // 这样避免状态更新触发handleTimeUpdate时产生的中间错误状态
     if (onVideoSeekRequired && targetSequence) {
       try {
-        logger.info('触发视频播放器实时跳转', {
+        logger.info('触发视频播放器实时跳转（优先执行）', {
           compositionTime: clampedTime.toFixed(2),
           targetSequenceIndex: currentSequenceIndex,
           targetSequenceName: targetSequence.name,
           targetVideoTime: targetVideoTime?.toFixed(2),
-          sequenceUrl: targetSequence.url
+          sequenceUrl: targetSequence.url,
+          reason: '先执行视频跳转避免中间状态干扰'
         });
 
+        // 先执行视频播放器跳转
         await onVideoSeekRequired(clampedTime, targetSequence, targetVideoTime);
         
-        logger.info('视频播放器实时跳转完成', {
+        logger.info('视频播放器实时跳转完成，更新组合状态', {
           compositionTime: clampedTime.toFixed(2),
-          sequenceName: targetSequence.name
+          sequenceName: targetSequence.name,
+          newSequenceIndex: currentSequenceIndex
         });
+
+        // 视频跳转成功后，再更新组合播放状态
+        setCompositionPlayback(prev => ({
+          ...prev,
+          compositionCurrentTime: clampedTime,
+          currentSequenceIndex
+        }));
+        
       } catch (error) {
-        logger.error('视频播放器实时跳转失败', error as Error, {
+        logger.error('视频播放器实时跳转失败，仅更新组合状态', error as Error, {
           compositionTime: clampedTime.toFixed(2),
           targetSequenceIndex: currentSequenceIndex,
           targetSequenceName: targetSequence.name
         });
+        
+        // 即使视频跳转失败，也要更新组合播放状态保持一致性
+        setCompositionPlayback(prev => ({
+          ...prev,
+          compositionCurrentTime: clampedTime,
+          currentSequenceIndex
+        }));
       }
+    } else {
+      // 如果没有视频播放器跳转回调，直接更新组合播放状态
+      logger.warn('无视频播放器跳转回调，直接更新组合状态', {
+        compositionTime: clampedTime.toFixed(2),
+        targetSequenceIndex: currentSequenceIndex,
+        hasTargetSequence: !!targetSequence
+      });
+      
+      setCompositionPlayback(prev => ({
+        ...prev,
+        compositionCurrentTime: clampedTime,
+        currentSequenceIndex
+      }));
     }
   }, [compositionPlayback, logger, onVideoSeekRequired]);
 

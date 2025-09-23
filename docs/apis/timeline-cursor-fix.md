@@ -2,146 +2,143 @@
 
 ## 问题描述
 
-在Video Editing功能中，当timeline中添加同一个视频素材多次时，用户点击后面的相同视频素材时，游标会错误地自动跳转到第一个素材片段的位置。
+在Video Editing功能中，当timeline中的游标点击到不同视频素材的位置时，出现以下问题：
+1. 游标会先短暂跳到当前视频素材的开始位置，然后才跳转到目标位置
+2. 在不同素材片段间切换时会出现这个问题，同一素材片段内移动则正常
 
 ## 问题根源
 
-问题位于 `src/components/video/components/VideoPlayerPanel/VideoPlayerPanel.tsx` 文件的 `handleTimeUpdate` 函数中：
+问题出现在时间跳转的调用链和状态同步机制中：
 
-```typescript
-// 原始有问题的逻辑
-for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
-  const sequence = compositionPlayback.videoSequences[i];
-  if (currentVideoSrc.includes(sequence.url) || sequence.url.includes(currentVideoSrc.split('/').pop() || '')) {
-    actualSequenceIndex = i;
-    currentSequence = sequence;
-    foundSequence = true;
-    break; // 问题关键：总是返回第一个匹配URL的序列
-  }
-}
+### 调用链分析
+```
+Timeline点击 → TimelinePanel.handleTimeChange 
+           → VideoEditingInterface.handleTimelineTimeChange 
+           → useTimelineComposition.handleCompositionSeek 
+           → VideoPlayerPanel.handleCompositionSeek
 ```
 
-**问题分析**：
-- 当多个相同素材存在时，所有素材的URL都相同
-- `find()` 和循环中的 `break` 总是返回第一个匹配的元素
-- 导致系统错误地认为当前应该播放第一个素材
-- 游标因此跳转到第一个素材片段的位置
+### 核心问题
+1. **状态更新时机不当**：在`useTimelineComposition.ts`中，先更新组合播放状态，后执行视频播放器跳转
+2. **handleTimeUpdate干扰**：状态更新触发`VideoPlayerPanel.handleTimeUpdate`，在视频尚未切换完成时可能错误重新定位序列
+3. **中间状态污染**：跳转过程中的中间状态导致游标先跳到素材开头
 
 ## 解决方案
 
 ### 主要修改
 
-1. **改进序列查找逻辑**：不仅基于URL匹配，还要考虑当前的时间位置
-2. **优先验证状态序列**：首先检查当前状态中的序列是否正确
-3. **基于时间范围重新定位**：如果状态序列不匹配，根据组合播放时间重新查找
+#### 1. 优化跳转时机 (`useTimelineComposition.ts`)
 
-### 修复后的逻辑
-
+**原始有问题的逻辑**：
 ```typescript
-// 改进的序列查找逻辑：基于当前组合时间和URL匹配找到正确的素材片段
-// 避免相同视频素材多次使用时总是跳转到第一个素材的问题
+// 立即更新组合播放状态
+setCompositionPlayback(prev => ({
+  ...prev,
+  compositionCurrentTime: clampedTime,
+  currentSequenceIndex
+}));
 
-// 首先尝试基于当前状态的序列索引进行验证
-const stateSequenceIndex = compositionPlayback.currentSequenceIndex;
-const stateSequence = compositionPlayback.videoSequences[stateSequenceIndex];
-
-// 检查状态中的序列是否与当前播放的视频URL匹配
-if (stateSequence && 
-    (currentVideoSrc.includes(stateSequence.url) || 
-     stateSequence.url.includes(currentVideoSrc.split('/').pop() || ''))) {
-  // 状态序列匹配当前视频URL，直接使用
-  actualSequenceIndex = stateSequenceIndex;
-  currentSequence = stateSequence;
-  foundSequence = true;
-} else {
-  // 状态序列不匹配，需要基于组合播放时间重新定位正确的序列
-  let accumulatedTime = 0;
-  
-  for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
-    const sequence = compositionPlayback.videoSequences[i];
-    const sequenceStartTime = accumulatedTime;
-    const sequenceEndTime = accumulatedTime + sequence.duration;
-    
-    // 检查URL匹配且当前组合时间落在这个序列的时间范围内
-    if ((currentVideoSrc.includes(sequence.url) || 
-         sequence.url.includes(currentVideoSrc.split('/').pop() || '')) &&
-        compositionCurrentTime >= sequenceStartTime && 
-        compositionCurrentTime < sequenceEndTime) {
-      actualSequenceIndex = i;
-      currentSequence = sequence;
-      foundSequence = true;
-      break;
-    }
-    accumulatedTime += sequence.duration;
-  }
+// 然后触发视频播放器更新
+if (onVideoSeekRequired && targetSequence) {
+  await onVideoSeekRequired(clampedTime, targetSequence, targetVideoTime);
 }
 ```
 
+**修复后的逻辑**：
+```typescript
+// 先执行视频播放器跳转，再更新组合播放状态
+// 避免状态更新触发handleTimeUpdate时产生的中间错误状态
+if (onVideoSeekRequired && targetSequence) {
+  // 先执行视频播放器跳转
+  await onVideoSeekRequired(clampedTime, targetSequence, targetVideoTime);
+  
+  // 视频跳转成功后，再更新组合播放状态
+  setCompositionPlayback(prev => ({
+    ...prev,
+    compositionCurrentTime: clampedTime,
+    currentSequenceIndex
+  }));
+}
+```
+
+#### 2. 防止跳转过程中的状态干扰 (`VideoPlayerPanel.tsx`)
+
+**新增跳转状态标记**：
+```typescript
+// 跳转状态标记，防止handleTimeUpdate在跳转过程中的干扰
+const isSeekingRef = useRef(false);
+```
+
+**优化handleTimeUpdate**：
+```typescript
+const handleTimeUpdate = useCallback(() => {
+  // 如果正在执行跳转操作，跳过时间更新处理，避免干扰跳转过程
+  if (isSeekingRef.current) {
+    return;
+  }
+  
+  // ... 原有的时间更新逻辑
+}, [...]);
+```
+
+**优化handleCompositionSeek**：
+```typescript
+const handleCompositionSeek = useCallback(async (...) => {
+  // 设置跳转状态标记，防止handleTimeUpdate干扰
+  isSeekingRef.current = true;
+  
+  try {
+    // ... 跳转逻辑
+  } catch (error) {
+    // 即使发生错误也要清除跳转状态标记
+    isSeekingRef.current = false;
+  }
+  
+  // 清除跳转状态标记，允许handleTimeUpdate正常工作
+  setTimeout(() => {
+    isSeekingRef.current = false;
+  }, 100); // 短暂延迟确保跳转操作完全完成
+}, [...]);
+```
+
+## 修复效果
+
+修复后的行为：
+1. **直接跳转**：点击timeline游标时直接跳转到目标位置，不会先跳到素材开头
+2. **流畅切换**：在不同素材片段间切换时游标移动流畅，无中间跳转
+3. **状态一致**：跳转过程中的状态管理更加稳定和一致
+
 ## 技术细节
 
-### 修改文件
-- `src/components/video/components/VideoPlayerPanel/VideoPlayerPanel.tsx`
+### 关键改进点
 
-### 核心改进
-1. **双重验证机制**：
-   - 首先验证状态中的序列是否正确
-   - 如果不正确，基于时间范围重新查找
+1. **执行顺序优化**：先完成视频播放器跳转，后更新组合状态，避免中间状态干扰
+2. **原子性保证**：通过跳转状态标记确保跳转操作的原子性
+3. **错误处理完善**：确保在任何情况下都能正确清除跳转状态标记
+4. **详细日志记录**：增加跳转过程的日志记录，便于问题追踪
 
-2. **时间范围匹配**：
-   - 计算每个序列的时间范围
-   - 确保当前组合时间落在正确的序列范围内
-   - 同时验证URL匹配
+### 受影响的文件
 
-3. **增强的日志记录**：
-   - 详细记录序列匹配过程
-   - 帮助调试相同素材的问题
-   - 包含序列ID、名称、时间范围等信息
+- `src/components/video/hooks/useTimelineComposition.ts` - 优化跳转执行时机
+- `src/components/video/components/VideoPlayerPanel/VideoPlayerPanel.tsx` - 防止跳转过程中的状态干扰
 
-## 日志输出
+## 测试建议
 
-### 正常匹配时
-```
-使用状态中的序列索引（验证匹配）
-- sequenceIndex: 1
-- sequenceName: "视频素材A_第2次"
-- sequenceId: "item_abc123"
-- reason: "状态序列与当前视频URL匹配"
-```
+1. **基本功能测试**：
+   - 在timeline中点击不同位置，验证游标是否直接跳转
+   - 测试同一素材内和不同素材间的跳转
+   
+2. **边界情况测试**：
+   - 测试相同视频素材多次使用的情况
+   - 测试快速连续点击的场景
+   - 测试播放过程中的跳转
 
-### 重新定位时
-```
-重新定位到正确的序列（基于时间范围和URL匹配）
-- sequenceIndex: 2
-- sequenceName: "视频素材A_第3次"
-- compositionTime: 15.30
-- sequenceStartTime: 10.00
-- sequenceEndTime: 20.00
-- reason: "基于时间范围重新定位避免相同素材跳转问题"
-```
+3. **性能验证**：
+   - 确认跳转响应速度
+   - 验证不会出现卡顿或延迟
 
-## 测试场景
+## 维护说明
 
-### 测试用例1：相同素材多次添加
-1. 添加同一个视频素材3次到timeline
-2. 点击第2个素材片段
-3. **修复前**：游标跳转到第1个素材
-4. **修复后**：游标正确定位在第2个素材
-
-### 测试用例2：时间范围验证
-1. 播放包含相同素材的组合
-2. 在第2个相同素材播放期间
-3. **修复前**：系统错误识别为第1个素材
-4. **修复后**：正确识别当前播放的素材
-
-## 兼容性
-
-- ✅ 向后兼容：不影响现有功能
-- ✅ 性能优化：优先验证当前状态，减少不必要的循环
-- ✅ 错误处理：包含多层回退机制
-
-## 相关功能
-
-- Timeline面板素材选择
-- 视频组合播放
-- 游标时间同步
-- 素材片段定位 
+1. **跳转状态管理**：`isSeekingRef.current`标记是防止跳转干扰的关键，修改相关代码时需要确保正确管理
+2. **日志监控**：关注跳转相关的日志，及时发现潜在问题
+3. **状态一致性**：确保组合播放状态和视频播放器状态始终保持同步 

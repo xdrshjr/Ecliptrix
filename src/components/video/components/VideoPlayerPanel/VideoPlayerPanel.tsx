@@ -127,6 +127,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // Video ref
   const videoRef = useRef<HTMLVideoElement>(null);
+  // 新增：跳转状态标记，防止handleTimeUpdate在跳转过程中的干扰
+  const isSeekingRef = useRef(false);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
   
@@ -812,6 +814,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 更新组合播放时间
   const handleTimeUpdate = useCallback(() => {
+    // 如果正在执行跳转操作，跳过时间更新处理，避免干扰跳转过程
+    if (isSeekingRef.current) {
+      return;
+    }
+    
     const currentVideo = getCurrentVideoElement();
     if (playbackMode === 'composition' && compositionPlayback && currentVideo) {
       const videoCurrentTime = currentVideo.currentTime;
@@ -1174,6 +1181,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   ) => {
     if (!compositionPlayback) return;
 
+    // 设置跳转状态标记，防止handleTimeUpdate干扰
+    isSeekingRef.current = true;
+
     logger.userAction('组合播放视频跳转', source === 'timeline' ? 'timelineCompositionSeek' : 'playerCompositionSeek', {
       compositionTime: compositionTime.toFixed(2),
       targetSequenceName: targetSequence.name,
@@ -1181,7 +1191,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       videoTime: videoTime.toFixed(2),
       source,
       previousCompositionTime: compositionCurrentTime.toFixed(2),
-      wasPlayingBefore: isCompositionPlaying
+      wasPlayingBefore: isCompositionPlaying,
+      isSeekingLocked: true
     });
 
     // 立即更新视频播放器
@@ -1276,6 +1287,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           targetSequenceName: targetSequence.name,
           source
         });
+        // 即使发生错误也要清除跳转状态标记
+        isSeekingRef.current = false;
       }
     }
 
@@ -1283,6 +1296,16 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     if (onCompositionSeek && source === 'player') {
       onCompositionSeek(compositionTime);
     }
+
+    // 清除跳转状态标记，允许handleTimeUpdate正常工作
+    setTimeout(() => {
+      isSeekingRef.current = false;
+      logger.info('组合播放跳转状态标记已清除', {
+        compositionTime: compositionTime.toFixed(2),
+        source,
+        reason: '跳转操作完成，恢复正常时间更新'
+      });
+    }, 100); // 短暂延迟确保跳转操作完全完成
   }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, syncAudioPlayback, onCompositionSeek, logger]);
 
   // 新增：通过ref暴露handleCompositionSeek方法给父组件
