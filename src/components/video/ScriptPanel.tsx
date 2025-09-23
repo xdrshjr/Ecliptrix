@@ -25,6 +25,7 @@ import {
 import VoiceSelector from './components/VoiceSelector';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
+import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
 import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
@@ -2210,6 +2211,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         taskId={taskId || 'unknown'}
         onGenerateScript={videoUnderstandingScript.generateScript}
         isGenerating={videoUnderstandingScript.isGenerating}
+      />
+
+      {/* 视频理解生成脚本进度弹窗 */}
+      <VideoUnderstandingScriptProgressModal
+        isOpen={videoUnderstandingScript.isGenerating}
+        progress={videoUnderstandingScript.progress}
+        onCancel={videoUnderstandingScript.closeModal}
       />
 
       {/* 确认删除对话框 */}

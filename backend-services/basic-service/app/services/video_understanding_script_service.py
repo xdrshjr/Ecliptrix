@@ -54,6 +54,7 @@ class VideoUnderstandingScriptService:
         try:
             logger.info(f"Starting video understanding script generation for task: {request.taskId}")
             logger.info(f"Processing {len(request.selectedVideos)} videos with {request.parameters.analysisDepth} analysis depth")
+            logger.info(f"Reference text length: {len(request.referenceText)}, content preview: '{request.referenceText[:100]}...'" if request.referenceText else "No reference text provided")
             
             # Step 1: Analyze videos to get understanding results
             video_analysis_results = await self._analyze_videos(
@@ -115,9 +116,19 @@ class VideoUnderstandingScriptService:
             try:
                 logger.info(f"Analyzing video {video.id} ({video.name}) for task: {task_id}")
                 
-                # First, try to use analysis data from frontend
+                # First, try to use analysis data from frontend (in metadata.video_analysis)
+                if (hasattr(video, 'metadata') and video.metadata and 
+                    'video_analysis' in video.metadata and video.metadata['video_analysis']):
+                    logger.info(f"Using video analysis data from frontend metadata for video {video.id}")
+                    analysis_result = self._convert_frontend_analysis_to_result(
+                        video, video.metadata['video_analysis'], parameters
+                    )
+                    analysis_results.append(analysis_result)
+                    continue
+                
+                # Fallback: try to use analysis data from frontend (legacy analysisData field)
                 if hasattr(video, 'analysisData') and video.analysisData:
-                    logger.info(f"Using analysis data from frontend for video {video.id}")
+                    logger.info(f"Using legacy analysis data from frontend for video {video.id}")
                     analysis_result = self._convert_frontend_analysis_to_result(
                         video, video.analysisData, parameters
                     )
@@ -167,12 +178,17 @@ class VideoUnderstandingScriptService:
         frame_descriptions = []
         frame_analyses = frontend_analysis_data.get('frame_analyses', [])
         
+        logger.info(f"Processing frontend analysis data for video {video.id}: found {len(frame_analyses)} frame analyses")
+        
         for frame in frame_analyses[:10]:  # Limit to first 10 frames
             analysis_text = frame.get('analysis', '')
             if analysis_text:
                 # Truncate frame analysis to 200 characters as mentioned in requirements
                 truncated_analysis = analysis_text[:200] + "..." if len(analysis_text) > 200 else analysis_text
                 frame_descriptions.append(truncated_analysis)
+                logger.debug(f"Frame {frame.get('frame_number', 'unknown')}: {truncated_analysis[:50]}...")
+        
+        logger.info(f"Extracted {len(frame_descriptions)} frame descriptions for video {video.id}")
         
         # Generate content description from frame analyses
         content_description = self._generate_content_description_from_frames(frame_descriptions)
@@ -473,6 +489,7 @@ class VideoUnderstandingScriptService:
         # Build video analysis summary
         video_analysis_summary = ""
         for i, result in enumerate(analysis_results, 1):
+            logger.info(f"Building prompt for video {result.videoId}: {len(result.frames)} frames available")
             video_analysis_summary += f"""
 <video id="{result.videoId}">
   <name>{result.videoName}</name>
@@ -486,17 +503,25 @@ class VideoUnderstandingScriptService:
             if result.frames:
                 video_analysis_summary += f"\n  <frame_analysis count='{len(result.frames)}'>"
                 for frame in result.frames[:3]:  # Show first 3 frames
-                    video_analysis_summary += f"\n    <frame sequence='{frame['frame_number']}'>{frame['analysis'][:150]}...</frame>"
+                    frame_analysis = frame['analysis'][:150]
+                    video_analysis_summary += f"\n    <frame sequence='{frame['frame_number']}'>{frame_analysis}...</frame>"
+                    logger.debug(f"Including frame {frame['frame_number']} analysis in prompt: {frame_analysis[:30]}...")
                 video_analysis_summary += "\n  </frame_analysis>"
+                logger.info(f"Added {len(result.frames[:3])} frame analyses to prompt for video {result.videoId}")
+            else:
+                logger.warning(f"No frame analysis data available for video {result.videoId}")
             video_analysis_summary += "\n</video>\n"
         
         # Build reference context
         reference_context = ""
         if reference_text.strip():
+            logger.info(f"Using reference text for prompt generation: '{reference_text[:100]}...' (length: {len(reference_text)})")
             reference_context = f"""
 <user_requirements>
 {reference_text}
 </user_requirements>"""
+        else:
+            logger.warning("No reference text provided or reference text is empty")
         
         # Language instruction
         language_instruction = {
@@ -585,6 +610,12 @@ class VideoUnderstandingScriptService:
 7. **根据每个视频的时长（duration_for_script_length）调整对应段落的文案长度**
 8. 确保文案详细程度与视频内容丰富度相匹配
 </instruction>"""
+        
+        # Debug logging: print full prompt if DEBUG=true
+        if settings.debug:
+            logger.debug(f"Generated LLM prompt for script generation (length: {len(prompt)}):")
+            logger.debug(f"Reference context included: {'<user_requirements>' in prompt}")
+            logger.debug(f"Full prompt content:\n{prompt}")
         
         return prompt
     
@@ -1128,14 +1159,20 @@ class VideoUnderstandingScriptService:
     def _generate_content_description_from_frames(self, frame_descriptions: List[str]) -> str:
         """Generate content description from frame descriptions."""
         if not frame_descriptions:
+            logger.warning("No frame descriptions provided, using fallback content description")
             return "视频内容丰富，包含多种视觉元素。"
+        
+        logger.info(f"Generating content description from {len(frame_descriptions)} frame descriptions")
         
         # Combine first few frame descriptions
         combined = " ".join(frame_descriptions[:3])
         if len(combined) > 200:
             combined = combined[:200] + "..."
         
-        return f"视频内容包含: {combined}"
+        content_description = f"视频内容包含: {combined}"
+        logger.debug(f"Generated content description: {content_description[:100]}...")
+        
+        return content_description
     
     def _extract_visual_elements_from_analysis(self, frame_descriptions: List[str]) -> List[str]:
         """Extract visual elements from frame descriptions."""

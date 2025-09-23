@@ -587,6 +587,49 @@ export interface AIVideoGenerationRequest {
   aspect_ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
 }
 
+// 新增：视频理解脚本生成模式类型
+export interface VideoUnderstandingScriptMode {
+  type: 'quick' | 'professional';
+  frameInterval?: number; // 仅专业模式需要
+}
+
+// 新增：脚本生成参数类型
+export interface ScriptGenerationParameters {
+  language: 'chinese' | 'english' | 'mixed';
+  segmentCount: number;
+  analysisDepth: 'basic' | 'detailed' | 'comprehensive';
+  includeVisualElements: boolean;
+  includeAudioAnalysis: boolean;
+}
+
+// 新增：视频理解脚本生成进度状态
+export interface VideoUnderstandingScriptProgress {
+  isAnalyzing: boolean;
+  analysisProgress: number;
+  currentStep: 'mode-selection' | 'video-analysis' | 'script-generation';
+  totalVideos: number;
+  analyzedVideos: number;
+  failedVideos: number;
+  currentVideoName?: string;
+  errorMessage?: string;
+}
+
+// 新增：视频理解脚本生成Hook返回类型
+export interface UseVideoUnderstandingScriptReturn {
+  isModalOpen: boolean;
+  isGenerating: boolean;
+  generationError: string | null;
+  progress: VideoUnderstandingScriptProgress;
+  openModal: () => void;
+  closeModal: () => void;
+  generateScript: (
+    selectedVideos: MaterialItem[],
+    referenceText: string,
+    parameters: ScriptGenerationParameters,
+    mode: VideoUnderstandingScriptMode
+  ) => Promise<void>;
+}
+
 export interface AIVideoGenerationResponse {
   prompt_id: string;
   status: string;

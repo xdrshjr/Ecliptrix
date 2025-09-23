@@ -17,7 +17,8 @@ class VideoItem(BaseModel):
     format: Optional[str] = Field(None, description="Video format (mp4, webm, etc.)")
     width: Optional[int] = Field(None, description="Video width in pixels")
     height: Optional[int] = Field(None, description="Video height in pixels")
-    analysisData: Optional[Dict[str, Any]] = Field(None, description="Video analysis data from frontend")
+    analysisData: Optional[Dict[str, Any]] = Field(None, description="Video analysis data from frontend (legacy)")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Video metadata including video_analysis data")
 
 
 class ScriptGenerationParameters(BaseModel):

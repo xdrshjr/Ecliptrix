@@ -47,6 +47,7 @@ async def video_understanding_script(request: VideoUnderstandingScriptRequest):
             print("=" * 50)
         
         logger.info(f"Processing video understanding script request for task: {request.taskId} with {len(request.selectedVideos)} videos")
+        logger.info(f"Reference text received: length={len(request.referenceText)}, content='{request.referenceText[:200]}...'" if request.referenceText else "No reference text in request")
         
         # Validate request parameters
         if not request.selectedVideos:
