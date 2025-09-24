@@ -477,3 +477,120 @@ class VideoCutResponse(BaseResponse):
             }
         }
     ) 
+
+
+# Watermark Removal Models
+
+class WatermarkArea(BaseModel):
+    """Watermark area coordinates."""
+    x1: int = Field(..., description="Left x coordinate of watermark area", ge=0)
+    y1: int = Field(..., description="Top y coordinate of watermark area", ge=0)
+    x2: int = Field(..., description="Right x coordinate of watermark area", gt=0)
+    y2: int = Field(..., description="Bottom y coordinate of watermark area", gt=0)
+    
+    @validator('x2')
+    def x2_must_be_greater_than_x1(cls, v, values):
+        if 'x1' in values and v <= values['x1']:
+            raise ValueError('x2 must be greater than x1')
+        return v
+    
+    @validator('y2')
+    def y2_must_be_greater_than_y1(cls, v, values):
+        if 'y1' in values and v <= values['y1']:
+            raise ValueError('y2 must be greater than y1')
+        return v
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "x1": 10,
+                "y1": 10,
+                "x2": 300,
+                "y2": 250
+            }
+        }
+    )
+
+
+class WatermarkRemovalRequest(BaseModel):
+    """Watermark removal request model."""
+    
+    task_id: str = Field(..., description="Unique task identifier", min_length=1)
+    video_url: str = Field(..., description="URL of the video to process", min_length=1)
+    watermark_area: WatermarkArea = Field(..., description="Coordinates of the watermark area to remove")
+    custom_filename: Optional[str] = Field(None, description="Custom filename for the output video")
+    inpaint_radius: int = Field(default=5, description="Inpainting radius for watermark removal", ge=1, le=20)
+    inpaint_method: str = Field(default="telea", description="Inpainting method (telea or ns)", pattern="^(telea|ns)$")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "task_id": "task_123456",
+                "video_url": "https://example.com/video.mp4",
+                "watermark_area": {
+                    "x1": 10,
+                    "y1": 10,
+                    "x2": 300,
+                    "y2": 250
+                },
+                "custom_filename": "video_no_watermark.mp4",
+                "inpaint_radius": 5,
+                "inpaint_method": "telea"
+            }
+        }
+    )
+
+
+class WatermarkRemovalResponse(BaseResponse):
+    """Watermark removal response model."""
+    
+    task_id: str = Field(..., description="Task identifier")
+    original_video_url: str = Field(..., description="Original video URL")
+    processed_video_url: Optional[str] = Field(None, description="URL of the processed video without watermark")
+    watermark_area: Optional[WatermarkArea] = Field(None, description="Coordinates of the removed watermark area")
+    processing_time: float = Field(0.0, description="Processing time in seconds", ge=0)
+    video_duration: Optional[float] = Field(None, description="Video duration in seconds", ge=0)
+    total_frames: Optional[int] = Field(None, description="Total number of frames processed", ge=0)
+    inpaint_method: Optional[str] = Field(None, description="Inpainting method used")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "message": "Watermark removal completed successfully",
+                "task_id": "task_123456",
+                "original_video_url": "https://example.com/video.mp4",
+                "processed_video_url": "https://example.com/processed_video_no_watermark.mp4",
+                "watermark_area": {
+                    "x1": 10,
+                    "y1": 10,
+                    "x2": 300,
+                    "y2": 250
+                },
+                "processing_time": 45.2,
+                "video_duration": 30.0,
+                "total_frames": 900,
+                "inpaint_method": "telea"
+            }
+        }
+    )
+
+
+class WatermarkRemovalErrorResponse(BaseResponse):
+    """Watermark removal error response model."""
+    
+    task_id: Optional[str] = Field(None, description="Task identifier")
+    error_code: str = Field(..., description="Error code for categorization")
+    details: Optional[str] = Field(None, description="Detailed error information")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": False,
+                "message": "Watermark removal failed",
+                "task_id": "task_123456",
+                "error_code": "PROCESSING_ERROR",
+                "details": "Failed to process video frames"
+            }
+        }
+    ) 

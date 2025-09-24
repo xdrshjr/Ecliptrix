@@ -9,6 +9,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useLocale } from '@/contexts/LocaleContext';
 import { UseComfyUIHealthReturn } from '../../hooks/useComfyUIHealth';
 import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
+import WatermarkRemovalModal from '../WatermarkRemovalModal/WatermarkRemovalModal';
 import { useNotification } from '@/contexts/NotificationContext';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
@@ -28,6 +29,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onRetryDownload?: (material: MaterialItem) => void; // 新增：重试下载回调
   onAddToTimeline?: (material: MaterialItem) => void; // 新增：添加到时间轴回调
   onCutMaterial?: (material: MaterialItem) => void; // 新增：剪切素材回调
+  onWatermarkRemoval?: (material: MaterialItem) => void; // 新增：水印去除回调
   comfyuiHealthStatus?: UseComfyUIHealthReturn; // 新增：ComfyUI健康状态
   taskId: string;
   className?: string;
@@ -58,6 +60,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onRetryDownload, // 新增：重试下载回调
   onAddToTimeline, // 新增：添加到时间轴回调
   onCutMaterial, // 新增：剪切素材回调
+  onWatermarkRemoval, // 新增：水印去除回调
   comfyuiHealthStatus, // 新增：ComfyUI健康状态
   taskId,
   className = '',
@@ -100,6 +103,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [downloadingMaterials, setDownloadingMaterials] = useState<Set<string>>(new Set());
   const [showImageToVideoModal, setShowImageToVideoModal] = useState(false);
   const [selectedImageForConversion, setSelectedImageForConversion] = useState<MaterialItem | null>(null);
+  
+  // 水印去除弹窗状态
+  const [watermarkRemovalModal, setWatermarkRemovalModal] = useState<{
+    isOpen: boolean;
+    material: MaterialItem | null;
+  }>({
+    isOpen: false,
+    material: null
+  });
   
   // Material Library Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -736,6 +748,60 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
     setSelectedImageForConversion(material);
     setShowImageToVideoModal(true);
+  };
+
+  // 处理水印去除
+  const handleWatermarkRemoval = (material: MaterialItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    logger.info('打开水印去除弹窗', {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type
+    });
+
+    setWatermarkRemovalModal({
+      isOpen: true,
+      material: material
+    });
+
+    // 调用父组件回调
+    if (onWatermarkRemoval) {
+      onWatermarkRemoval(material);
+    }
+  };
+
+  // 关闭水印去除弹窗
+  const handleCloseWatermarkRemovalModal = () => {
+    logger.info('关闭水印去除弹窗');
+    setWatermarkRemovalModal({
+      isOpen: false,
+      material: null
+    });
+  };
+
+  // 水印去除完成回调
+  const handleWatermarkRemoved = (processedVideoUrl: string, originalMaterial: MaterialItem) => {
+    logger.info('水印去除完成', {
+      originalMaterialId: originalMaterial.id,
+      processedVideoUrl: processedVideoUrl.substring(0, 100)
+    });
+
+    // 创建新的素材项
+    const newMaterial: MaterialItem = {
+      ...originalMaterial,
+      id: `${originalMaterial.id}_no_watermark_${Date.now()}`,
+      name: `${originalMaterial.name.replace(/\.[^/.]+$/, '')}_无水印.mp4`,
+      url: processedVideoUrl
+    };
+
+    // 添加到素材列表
+    addOrReplaceMaterial(newMaterial);
+    
+    showSuccess('水印去除成功！新视频已添加到素材库');
   };
 
   // 将blob URL转换为base64数据
@@ -1588,6 +1654,18 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6.4-6.4a4 4 0 015.656 0L16 5.344a4 4 0 010 5.656l-1.8 1.8a4 4 0 01-5.656 0L7 11.344a4 4 0 010-5.656l1.8-1.8z" />
                           </svg>
                         </button>
+                        
+                        {/* 去除水印按钮 */}
+                        <div className="w-px h-3 bg-gray-200"></div>
+                        <button
+                          onClick={(e) => handleWatermarkRemoval(material, e)}
+                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-all duration-200 group"
+                          title="去除水印"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </>
                     )}
                     
@@ -1974,6 +2052,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         isOpen={previewModal.isOpen}
         material={previewModal.material}
         onClose={handleClosePreview}
+        taskId={taskId}
+      />
+
+      {/* 水印去除弹窗 */}
+      <WatermarkRemovalModal
+        isOpen={watermarkRemovalModal.isOpen}
+        material={watermarkRemovalModal.material}
+        onClose={handleCloseWatermarkRemovalModal}
+        onWatermarkRemoved={handleWatermarkRemoved}
         taskId={taskId}
       />
     </div>

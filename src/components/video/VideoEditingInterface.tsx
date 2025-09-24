@@ -503,6 +503,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [taskId]);
 
+  // 处理水印去除
+  const handleWatermarkRemoval = useCallback((material: MaterialItem) => {
+    console.log(`[VideoEditingInterface] 水印去除操作`, {
+      taskId,
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      timestamp: new Date().toISOString()
+    });
+  }, [taskId]);
+
   // 关闭视频剪切弹窗
   const handleCloseCutModal = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭视频剪切弹窗`, {
@@ -1627,6 +1638,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onRetryDownload={videoSearch.retryVideoDownload}
               onAddToTimeline={handleAddMaterialToTimeline}
               onCutMaterial={handleCutMaterial}
+              onWatermarkRemoval={handleWatermarkRemoval}
               taskId={taskId}
               comfyuiHealthStatus={comfyuiHealth}
               className="video-editing-materials-panel bg-white border-r border-gray-200"

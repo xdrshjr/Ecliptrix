@@ -23,6 +23,11 @@ from app.models import (
     VideoCutRequest,
     VideoCutResponse
 )
+from app.models.video_models import (
+    WatermarkRemovalRequest,
+    WatermarkRemovalResponse,
+    WatermarkRemovalErrorResponse
+)
 from app.models.queue_models import (
     QueueStatusResponse,
     TaskStatusResponse,
@@ -31,6 +36,7 @@ from app.models.queue_models import (
 from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
 from app.services.video_analysis_storage_service import video_analysis_storage
 from app.services.video_cut_service import VideoCutService
+from app.services.watermark_removal_service import WatermarkRemovalService
 from app.services.queue_manager import queue_manager
 from app.services.simple_queue_decorator import with_simple_queue
 from app.logger import get_logger
@@ -982,6 +988,116 @@ async def cancel_task(task_id: str) -> Union[TaskStatusResponse, QueueErrorRespo
         return QueueErrorResponse(
             success=False,
             message=f"Internal server error: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            details=str(e)
+        ) 
+
+
+@router.post("/watermark-removal", response_model=Union[WatermarkRemovalResponse, WatermarkRemovalErrorResponse])
+async def remove_watermark(request: WatermarkRemovalRequest) -> Union[WatermarkRemovalResponse, WatermarkRemovalErrorResponse]:
+    """
+    Remove watermark from video using OpenCV inpainting.
+    
+    This endpoint removes watermarks from videos by applying OpenCV inpainting techniques
+    to the specified watermark area. The process includes:
+    - Downloading the source video if it's a remote URL
+    - Processing each frame to remove the watermark using inpainting
+    - Preserving the original audio track
+    - Uploading the processed video to Supabase
+    
+    Features:
+    - Supports both TELEA and Navier-Stokes inpainting methods
+    - Configurable inpainting radius (1-20 pixels)
+    - Automatic audio preservation from original video
+    - Detailed progress logging and error handling
+    - Custom filename support for output video
+    
+    Args:
+        request (WatermarkRemovalRequest): Watermark removal parameters including
+                                         video URL, watermark coordinates, and processing options
+    
+    Returns:
+        WatermarkRemovalResponse: Success response with processed video URL and metadata
+        WatermarkRemovalErrorResponse: Error response if removal fails
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for processing errors
+    """
+    logger.info(f"Watermark removal request received for task {request.task_id}")
+    logger.info(f"Video URL: {request.video_url}")
+    logger.info(f"Watermark area: ({request.watermark_area.x1},{request.watermark_area.y1}) to ({request.watermark_area.x2},{request.watermark_area.y2})")
+    logger.info(f"Inpaint method: {request.inpaint_method}, radius: {request.inpaint_radius}")
+    
+    try:
+        # Validate request parameters
+        if not request.video_url.strip():
+            logger.warning("Empty video URL provided")
+            return WatermarkRemovalErrorResponse(
+                success=False,
+                message="Video URL cannot be empty",
+                task_id=request.task_id,
+                error_code="INVALID_VIDEO_URL"
+            )
+        
+        # Validate watermark area coordinates
+        if (request.watermark_area.x1 >= request.watermark_area.x2 or 
+            request.watermark_area.y1 >= request.watermark_area.y2):
+            logger.warning(f"Invalid watermark area coordinates: ({request.watermark_area.x1},{request.watermark_area.y1}) to ({request.watermark_area.x2},{request.watermark_area.y2})")
+            return WatermarkRemovalErrorResponse(
+                success=False,
+                message="Invalid watermark area coordinates",
+                task_id=request.task_id,
+                error_code="INVALID_COORDINATES"
+            )
+        
+        # Initialize watermark removal service
+        watermark_removal_service = WatermarkRemovalService()
+        
+        # Process watermark removal
+        logger.debug(f"Starting watermark removal processing", extra={
+            "task_id": request.task_id,
+            "video_url": request.video_url,
+            "watermark_area": {
+                "x1": request.watermark_area.x1,
+                "y1": request.watermark_area.y1,
+                "x2": request.watermark_area.x2,
+                "y2": request.watermark_area.y2
+            },
+            "inpaint_method": request.inpaint_method,
+            "inpaint_radius": request.inpaint_radius,
+            "custom_filename": request.custom_filename
+        })
+        
+        result = await watermark_removal_service.remove_watermark(request)
+        
+        # Log processing results
+        if result.success:
+            logger.info(f"Watermark removal completed successfully for task {request.task_id}", extra={
+                "processing_time": result.processing_time,
+                "video_duration": result.video_duration,
+                "total_frames": result.total_frames,
+                "processed_video_url": result.processed_video_url,
+                "inpaint_method": result.inpaint_method
+            })
+        else:
+            logger.error(f"Watermark removal failed for task {request.task_id}", extra={
+                "error_code": getattr(result, 'error_code', 'UNKNOWN'),
+                "error_message": result.message,
+                "error_details": getattr(result, 'details', None)
+            })
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+        
+    except Exception as e:
+        logger.error(f"Unexpected error during watermark removal for task {request.task_id}: {str(e)}", exc_info=True)
+        return WatermarkRemovalErrorResponse(
+            success=False,
+            message=f"Internal server error: {str(e)}",
+            task_id=request.task_id,
             error_code="INTERNAL_ERROR",
             details=str(e)
         ) 
