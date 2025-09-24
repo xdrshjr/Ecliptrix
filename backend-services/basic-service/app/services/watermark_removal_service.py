@@ -9,6 +9,7 @@ import subprocess
 import cv2
 import numpy as np
 import requests
+import re
 from typing import Optional, Union
 from pathlib import Path
 
@@ -32,6 +33,33 @@ class WatermarkRemovalService:
         self.supabase_service = SupabaseService()
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        Sanitize filename to ensure compatibility with Supabase storage.
+        
+        Args:
+            filename: Original filename
+            
+        Returns:
+            Sanitized filename safe for cloud storage
+        """
+        # Remove or replace problematic characters
+        # Keep only ASCII letters, numbers, dots, hyphens, and underscores
+        sanitized = re.sub(r'[^\w\-_.]', '_', filename)
+        
+        # Replace multiple underscores with single underscore
+        sanitized = re.sub(r'_+', '_', sanitized)
+        
+        # Remove leading/trailing underscores
+        sanitized = sanitized.strip('_')
+        
+        # Ensure filename is not empty
+        if not sanitized or sanitized == '.mp4':
+            sanitized = 'watermark_removed.mp4'
+        
+        logger.info(f"Sanitized filename: '{filename}' -> '{sanitized}'")
+        return sanitized
         
     async def remove_watermark(self, request: WatermarkRemovalRequest) -> Union[WatermarkRemovalResponse, WatermarkRemovalErrorResponse]:
         """
@@ -429,7 +457,8 @@ class WatermarkRemovalService:
         try:
             # Determine filename
             if custom_filename:
-                filename = custom_filename
+                # Sanitize the custom filename to ensure cloud storage compatibility
+                filename = self._sanitize_filename(custom_filename)
                 if not filename.endswith('.mp4'):
                     filename += '.mp4'
             else:

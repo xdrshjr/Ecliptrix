@@ -324,14 +324,14 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[200] p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isProcessing) {
           onClose();
         }
       }}
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col overflow-hidden">
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div className="flex items-center space-x-3">
@@ -400,45 +400,55 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
               )}
             </div>
 
-            {/* 视频控制栏 */}
-            {!isProcessing && (
-              <div className="bg-gray-900 p-4 text-white">
-                <div className="flex items-center space-x-4">
-                  {/* 播放/暂停按钮 */}
-                  <button
-                    onClick={handlePlayPause}
-                    className="w-10 h-10 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-full flex items-center justify-center transition-colors"
-                  >
-                    {isPlaying ? (
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"/>
-                      </svg>
-                    )}
-                  </button>
+            {/* 视频控制栏 - 始终显示，但在处理时禁用交互 */}
+            <div className="bg-gray-900 p-4 text-white">
+              <div className="flex items-center space-x-4">
+                {/* 播放/暂停按钮 */}
+                <button
+                  onClick={handlePlayPause}
+                  disabled={isProcessing}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                    isProcessing 
+                      ? 'bg-white bg-opacity-10 cursor-not-allowed opacity-50' 
+                      : 'bg-white bg-opacity-20 hover:bg-opacity-30'
+                  }`}
+                >
+                  {isPlaying ? (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  )}
+                </button>
 
-                  {/* 进度条 */}
-                  <div className="flex-1">
-                    <input
-                      type="range"
-                      min="0"
-                      max={duration}
-                      value={currentTime}
-                      onChange={(e) => seekTo(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
+                {/* 进度条 */}
+                <div className="flex-1">
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration}
+                    value={currentTime}
+                    onChange={(e) => seekTo(parseFloat(e.target.value))}
+                    disabled={isProcessing}
+                    className={`w-full h-2 rounded-lg appearance-none transition-opacity ${
+                      isProcessing 
+                        ? 'bg-gray-700 cursor-not-allowed opacity-50' 
+                        : 'bg-gray-600 cursor-pointer'
+                    }`}
+                  />
+                </div>
 
-                  {/* 时间显示 */}
-                  <div className="text-sm font-mono">
-                    {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} / {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}
-                  </div>
+                {/* 时间显示 */}
+                <div className={`text-sm font-mono transition-opacity ${
+                  isProcessing ? 'opacity-50' : 'opacity-100'
+                }`}>
+                  {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} / {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* 右侧：控制面板 */}
