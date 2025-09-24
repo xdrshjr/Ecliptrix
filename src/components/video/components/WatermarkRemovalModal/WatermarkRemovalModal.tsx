@@ -154,34 +154,110 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     }
   }, [duration, isProcessing]);
 
+  // 计算视频在容器中的实际显示区域
+  const getVideoDisplayArea = useCallback(() => {
+    if (!containerRef.current || !videoRef.current) return null;
+    
+    const container = containerRef.current.getBoundingClientRect();
+    const video = videoRef.current;
+    
+    // 视频原始尺寸
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    
+    if (videoWidth === 0 || videoHeight === 0) return null;
+    
+    // 容器尺寸
+    const containerWidth = container.width;
+    const containerHeight = container.height;
+    
+    // 计算视频在容器中的显示尺寸（保持宽高比）
+    const videoAspectRatio = videoWidth / videoHeight;
+    const containerAspectRatio = containerWidth / containerHeight;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (videoAspectRatio > containerAspectRatio) {
+      // 视频更宽，会有上下黑边
+      displayWidth = containerWidth;
+      displayHeight = containerWidth / videoAspectRatio;
+      offsetX = 0;
+      offsetY = (containerHeight - displayHeight) / 2;
+    } else {
+      // 视频更高，会有左右黑边
+      displayWidth = containerHeight * videoAspectRatio;
+      displayHeight = containerHeight;
+      offsetX = (containerWidth - displayWidth) / 2;
+      offsetY = 0;
+    }
+    
+    return {
+      displayWidth,
+      displayHeight,
+      offsetX,
+      offsetY,
+      containerLeft: container.left,
+      containerTop: container.top,
+      videoWidth,
+      videoHeight
+    };
+  }, []);
+
   // 处理鼠标按下事件（开始选择水印区域）
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (isProcessing || !containerRef.current || !videoRef.current) return;
     
-    const rect = containerRef.current.getBoundingClientRect();
-    const videoElement = videoRef.current;
+    const displayArea = getVideoDisplayArea();
+    if (!displayArea) return;
     
-    // 计算相对于视频的坐标
-    const x = ((e.clientX - rect.left) / rect.width) * videoElement.videoWidth;
-    const y = ((e.clientY - rect.top) / rect.height) * videoElement.videoHeight;
+    // 计算鼠标相对于视频显示区域的坐标
+    const mouseX = e.clientX - displayArea.containerLeft - displayArea.offsetX;
+    const mouseY = e.clientY - displayArea.containerTop - displayArea.offsetY;
+    
+    // 检查是否在视频显示区域内
+    if (mouseX < 0 || mouseX > displayArea.displayWidth || 
+        mouseY < 0 || mouseY > displayArea.displayHeight) {
+      return; // 点击在黑边区域，忽略
+    }
+    
+    // 将显示坐标转换为视频原始坐标
+    const x = (mouseX / displayArea.displayWidth) * displayArea.videoWidth;
+    const y = (mouseY / displayArea.displayHeight) * displayArea.videoHeight;
     
     setSelectionStart({ x, y });
     setIsSelecting(true);
     setWatermarkArea(null);
     
-    logger.info('开始选择水印区域', { x, y });
-  }, [isProcessing, logger]);
+    logger.info('开始选择水印区域', { 
+      x, 
+      y,
+      displayArea: {
+        displayWidth: displayArea.displayWidth,
+        displayHeight: displayArea.displayHeight,
+        offsetX: displayArea.offsetX,
+        offsetY: displayArea.offsetY
+      }
+    });
+  }, [isProcessing, logger, getVideoDisplayArea]);
 
   // 处理鼠标移动事件（更新选择区域）
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!isSelecting || !selectionStart || !containerRef.current || !videoRef.current) return;
     
-    const rect = containerRef.current.getBoundingClientRect();
-    const videoElement = videoRef.current;
+    const displayArea = getVideoDisplayArea();
+    if (!displayArea) return;
     
-    // 计算相对于视频的坐标
-    const x = ((e.clientX - rect.left) / rect.width) * videoElement.videoWidth;
-    const y = ((e.clientY - rect.top) / rect.height) * videoElement.videoHeight;
+    // 计算鼠标相对于视频显示区域的坐标
+    const mouseX = e.clientX - displayArea.containerLeft - displayArea.offsetX;
+    const mouseY = e.clientY - displayArea.containerTop - displayArea.offsetY;
+    
+    // 限制坐标在视频显示区域内
+    const clampedMouseX = Math.max(0, Math.min(mouseX, displayArea.displayWidth));
+    const clampedMouseY = Math.max(0, Math.min(mouseY, displayArea.displayHeight));
+    
+    // 将显示坐标转换为视频原始坐标
+    const x = (clampedMouseX / displayArea.displayWidth) * displayArea.videoWidth;
+    const y = (clampedMouseY / displayArea.displayHeight) * displayArea.videoHeight;
     
     // 确保选择区域的坐标正确（左上角到右下角）
     const x1 = Math.min(selectionStart.x, x);
@@ -190,7 +266,7 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     const y2 = Math.max(selectionStart.y, y);
     
     setWatermarkArea({ x1, y1, x2, y2 });
-  }, [isSelecting, selectionStart]);
+  }, [isSelecting, selectionStart, getVideoDisplayArea]);
 
   // 处理鼠标松开事件（完成选择）
   const handleMouseUp = useCallback(() => {
@@ -220,11 +296,19 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     setIsProcessing(true);
     setProcessingProgress('正在准备处理...');
     
+    // 获取视频显示信息用于日志记录
+    const displayArea = getVideoDisplayArea();
+    
     logger.info('开始水印去除处理', {
       materialId: material.id,
       watermarkArea,
       inpaintMethod,
-      inpaintRadius
+      inpaintRadius,
+      videoDisplayInfo: displayArea ? {
+        videoOriginalSize: `${displayArea.videoWidth}x${displayArea.videoHeight}`,
+        displaySize: `${Math.round(displayArea.displayWidth)}x${Math.round(displayArea.displayHeight)}`,
+        offset: `${Math.round(displayArea.offsetX)},${Math.round(displayArea.offsetY)}`
+      } : null
     });
     
     try {
@@ -288,17 +372,14 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
   const renderSelectionOverlay = () => {
     if (!watermarkArea || !containerRef.current || !videoRef.current) return null;
     
-    const container = containerRef.current;
-    const video = videoRef.current;
+    const displayArea = getVideoDisplayArea();
+    if (!displayArea) return null;
     
-    // 计算显示坐标（相对于容器）
-    const scaleX = container.offsetWidth / video.videoWidth;
-    const scaleY = container.offsetHeight / video.videoHeight;
-    
-    const displayX1 = watermarkArea.x1 * scaleX;
-    const displayY1 = watermarkArea.y1 * scaleY;
-    const displayX2 = watermarkArea.x2 * scaleX;
-    const displayY2 = watermarkArea.y2 * scaleY;
+    // 将视频坐标转换为显示坐标
+    const displayX1 = (watermarkArea.x1 / displayArea.videoWidth) * displayArea.displayWidth + displayArea.offsetX;
+    const displayY1 = (watermarkArea.y1 / displayArea.videoHeight) * displayArea.displayHeight + displayArea.offsetY;
+    const displayX2 = (watermarkArea.x2 / displayArea.videoWidth) * displayArea.displayWidth + displayArea.offsetX;
+    const displayY2 = (watermarkArea.y2 / displayArea.videoHeight) * displayArea.displayHeight + displayArea.offsetY;
     
     const width = displayX2 - displayX1;
     const height = displayY2 - displayY1;

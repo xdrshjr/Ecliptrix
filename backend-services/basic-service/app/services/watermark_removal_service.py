@@ -271,10 +271,22 @@ class WatermarkRemovalService:
             fps = cap.get(cv2.CAP_PROP_FPS)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
+            # Log detailed coordinate information
+            logger.info(f"Video dimensions: {frame_width}x{frame_height}")
+            logger.info(f"Watermark area coordinates: x1={watermark_area.x1}, y1={watermark_area.y1}, x2={watermark_area.x2}, y2={watermark_area.y2}")
+            logger.info(f"Watermark area size: {watermark_area.x2 - watermark_area.x1}x{watermark_area.y2 - watermark_area.y1}")
+            
             # Validate watermark area coordinates
             if (watermark_area.x1 >= frame_width or watermark_area.y1 >= frame_height or
                 watermark_area.x2 > frame_width or watermark_area.y2 > frame_height):
-                raise ValueError(f"Watermark area coordinates exceed video dimensions ({frame_width}x{frame_height})")
+                error_msg = f"Watermark area coordinates exceed video dimensions ({frame_width}x{frame_height}). Coordinates: ({watermark_area.x1},{watermark_area.y1}) to ({watermark_area.x2},{watermark_area.y2})"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            if watermark_area.x1 < 0 or watermark_area.y1 < 0:
+                error_msg = f"Watermark area coordinates cannot be negative. Coordinates: ({watermark_area.x1},{watermark_area.y1}) to ({watermark_area.x2},{watermark_area.y2})"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
             
             # Set up video writer with web-compatible codec
             # Use a temporary AVI file first for better compatibility with OpenCV processing
@@ -285,6 +297,10 @@ class WatermarkRemovalService:
             # Create watermark mask
             mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
             mask[watermark_area.y1:watermark_area.y2, watermark_area.x1:watermark_area.x2] = 255
+            
+            # Log mask information
+            mask_area = np.sum(mask > 0)
+            logger.info(f"Created watermark mask with {mask_area} pixels marked for inpainting")
             
             # Set inpaint method
             if inpaint_method == "telea":
