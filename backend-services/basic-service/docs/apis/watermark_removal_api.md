@@ -3,6 +3,11 @@
 ## Overview
 The Watermark Removal API provides functionality to remove watermarks from videos using OpenCV inpainting techniques. This API processes videos frame by frame to intelligently remove watermarks while preserving the original video quality and audio track.
 
+## Recent Updates
+- **Coordinate System Fix**: Fixed coordinate offset issue where watermark removal position was offset to the lower-right of user selection
+- **Enhanced Logging**: Added detailed coordinate conversion logging for debugging purposes
+- **Improved Accuracy**: Now uses actual video element positioning instead of manual calculations
+
 ## Endpoint
 
 ### POST /api/video/watermark-removal
@@ -47,6 +52,16 @@ Remove watermark from a video using OpenCV inpainting.
 | `custom_filename` | string | No | Custom filename for the output video |
 | `inpaint_radius` | integer | No | Inpainting radius in pixels (1-20, default: 5) |
 | `inpaint_method` | string | No | Inpainting method: "telea" or "ns" (default: "telea") |
+
+### Coordinate System
+
+The coordinate system uses the video's natural dimensions:
+- Origin (0,0) is at the top-left corner of the video
+- X coordinates increase from left to right
+- Y coordinates increase from top to bottom
+- All coordinates are in pixels relative to the video's original resolution
+
+**Important**: The frontend automatically converts display coordinates to video coordinates, accounting for video scaling and positioning within the player.
 
 ### Inpainting Methods
 

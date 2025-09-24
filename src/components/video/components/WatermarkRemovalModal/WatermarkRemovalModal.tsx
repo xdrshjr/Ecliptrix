@@ -158,7 +158,6 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
   const getVideoDisplayArea = useCallback(() => {
     if (!containerRef.current || !videoRef.current) return null;
     
-    const container = containerRef.current.getBoundingClientRect();
     const video = videoRef.current;
     
     // 视频原始尺寸
@@ -167,41 +166,45 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     
     if (videoWidth === 0 || videoHeight === 0) return null;
     
-    // 容器尺寸
-    const containerWidth = container.width;
-    const containerHeight = container.height;
+    // 获取视频元素的实际渲染位置和尺寸
+    // 这会自动处理 object-contain 的缩放和定位
+    const videoRect = video.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
     
-    // 计算视频在容器中的显示尺寸（保持宽高比）
-    const videoAspectRatio = videoWidth / videoHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
+    // 计算视频元素相对于容器的位置
+    const offsetX = videoRect.left - containerRect.left;
+    const offsetY = videoRect.top - containerRect.top;
     
-    let displayWidth, displayHeight, offsetX, offsetY;
-    
-    if (videoAspectRatio > containerAspectRatio) {
-      // 视频更宽，会有上下黑边
-      displayWidth = containerWidth;
-      displayHeight = containerWidth / videoAspectRatio;
-      offsetX = 0;
-      offsetY = (containerHeight - displayHeight) / 2;
-    } else {
-      // 视频更高，会有左右黑边
-      displayWidth = containerHeight * videoAspectRatio;
-      displayHeight = containerHeight;
-      offsetX = (containerWidth - displayWidth) / 2;
-      offsetY = 0;
-    }
+    logger.info('视频显示区域计算', {
+      videoNaturalSize: `${videoWidth}x${videoHeight}`,
+      videoDisplaySize: `${videoRect.width}x${videoRect.height}`,
+      containerSize: `${containerRect.width}x${containerRect.height}`,
+      videoOffset: `${offsetX},${offsetY}`,
+      videoRect: {
+        left: videoRect.left,
+        top: videoRect.top,
+        width: videoRect.width,
+        height: videoRect.height
+      },
+      containerRect: {
+        left: containerRect.left,
+        top: containerRect.top,
+        width: containerRect.width,
+        height: containerRect.height
+      }
+    });
     
     return {
-      displayWidth,
-      displayHeight,
-      offsetX,
-      offsetY,
-      containerLeft: container.left,
-      containerTop: container.top,
+      displayWidth: videoRect.width,
+      displayHeight: videoRect.height,
+      offsetX: offsetX,
+      offsetY: offsetY,
+      containerLeft: containerRect.left,
+      containerTop: containerRect.top,
       videoWidth,
       videoHeight
     };
-  }, []);
+  }, [logger]);
 
   // 处理鼠标按下事件（开始选择水印区域）
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -217,6 +220,12 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     // 检查是否在视频显示区域内
     if (mouseX < 0 || mouseX > displayArea.displayWidth || 
         mouseY < 0 || mouseY > displayArea.displayHeight) {
+      logger.info('点击在视频显示区域外，忽略', {
+        mouseX,
+        mouseY,
+        displayWidth: displayArea.displayWidth,
+        displayHeight: displayArea.displayHeight
+      });
       return; // 点击在黑边区域，忽略
     }
     
@@ -229,13 +238,20 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     setWatermarkArea(null);
     
     logger.info('开始选择水印区域', { 
-      x, 
-      y,
+      clientCoordinates: { x: e.clientX, y: e.clientY },
+      displayCoordinates: { mouseX, mouseY },
+      videoCoordinates: { x, y },
       displayArea: {
         displayWidth: displayArea.displayWidth,
         displayHeight: displayArea.displayHeight,
         offsetX: displayArea.offsetX,
-        offsetY: displayArea.offsetY
+        offsetY: displayArea.offsetY,
+        containerLeft: displayArea.containerLeft,
+        containerTop: displayArea.containerTop
+      },
+      videoNaturalSize: { 
+        width: displayArea.videoWidth, 
+        height: displayArea.videoHeight 
       }
     });
   }, [isProcessing, logger, getVideoDisplayArea]);
@@ -266,7 +282,20 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     const y2 = Math.max(selectionStart.y, y);
     
     setWatermarkArea({ x1, y1, x2, y2 });
-  }, [isSelecting, selectionStart, getVideoDisplayArea]);
+    
+    // 每隔一定时间记录一次移动日志，避免日志过多
+    if (Math.random() < 0.1) { // 10%的概率记录日志
+      logger.info('更新水印选择区域', {
+        displayCoordinates: { mouseX, mouseY, clampedMouseX, clampedMouseY },
+        videoCoordinates: { x, y },
+        selectionArea: { x1, y1, x2, y2 },
+        selectionSize: { 
+          width: Math.round(x2 - x1), 
+          height: Math.round(y2 - y1) 
+        }
+      });
+    }
+  }, [isSelecting, selectionStart, getVideoDisplayArea, logger]);
 
   // 处理鼠标松开事件（完成选择）
   const handleMouseUp = useCallback(() => {
@@ -275,7 +304,19 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
       setSelectionStart(null);
       
       if (watermarkArea) {
-        logger.info('水印区域选择完成', watermarkArea);
+        logger.info('水印区域选择完成', {
+          finalArea: watermarkArea,
+          areaSize: {
+            width: Math.round(watermarkArea.x2 - watermarkArea.x1),
+            height: Math.round(watermarkArea.y2 - watermarkArea.y1)
+          },
+          coordinates: {
+            topLeft: { x: Math.round(watermarkArea.x1), y: Math.round(watermarkArea.y1) },
+            bottomRight: { x: Math.round(watermarkArea.x2), y: Math.round(watermarkArea.y2) }
+          }
+        });
+      } else {
+        logger.info('水印区域选择取消（区域为空）');
       }
     }
   }, [isSelecting, watermarkArea, logger]);
@@ -308,7 +349,17 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
         videoOriginalSize: `${displayArea.videoWidth}x${displayArea.videoHeight}`,
         displaySize: `${Math.round(displayArea.displayWidth)}x${Math.round(displayArea.displayHeight)}`,
         offset: `${Math.round(displayArea.offsetX)},${Math.round(displayArea.offsetY)}`
-      } : null
+      } : null,
+      processingCoordinates: {
+        x1: Math.round(watermarkArea.x1),
+        y1: Math.round(watermarkArea.y1),
+        x2: Math.round(watermarkArea.x2),
+        y2: Math.round(watermarkArea.y2)
+      },
+      areaSize: {
+        width: Math.round(watermarkArea.x2 - watermarkArea.x1),
+        height: Math.round(watermarkArea.y2 - watermarkArea.y1)
+      }
     });
     
     try {
@@ -384,6 +435,26 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
     const width = displayX2 - displayX1;
     const height = displayY2 - displayY1;
     
+    // 记录选择覆盖层的渲染信息
+    logger.info('渲染水印选择覆盖层', {
+      watermarkVideoCoordinates: watermarkArea,
+      displayCoordinates: {
+        x1: displayX1, y1: displayY1,
+        x2: displayX2, y2: displayY2
+      },
+      overlayStyle: {
+        left: displayX1,
+        top: displayY1,
+        width: width,
+        height: height
+      },
+      displayArea: {
+        videoSize: `${displayArea.videoWidth}x${displayArea.videoHeight}`,
+        displaySize: `${displayArea.displayWidth}x${displayArea.displayHeight}`,
+        offset: `${displayArea.offsetX},${displayArea.offsetY}`
+      }
+    });
+    
     return (
       <div
         className="absolute border-2 border-red-500 bg-red-500 bg-opacity-20 pointer-events-none"
@@ -395,7 +466,7 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
         }}
       >
         <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 rounded">
-          水印区域
+          水印区域 ({Math.round(watermarkArea.x2 - watermarkArea.x1)}×{Math.round(watermarkArea.y2 - watermarkArea.y1)})
         </div>
       </div>
     );

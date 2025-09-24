@@ -288,6 +288,8 @@ class WatermarkRemovalService:
             logger.info(f"Video dimensions: {frame_width}x{frame_height}")
             logger.info(f"Watermark area coordinates: x1={watermark_area.x1}, y1={watermark_area.y1}, x2={watermark_area.x2}, y2={watermark_area.y2}")
             logger.info(f"Watermark area size: {watermark_area.x2 - watermark_area.x1}x{watermark_area.y2 - watermark_area.y1}")
+            logger.info(f"Watermark area position: top-left=({watermark_area.x1},{watermark_area.y1}), bottom-right=({watermark_area.x2},{watermark_area.y2})")
+            logger.info(f"Watermark area as percentage of video: x=({watermark_area.x1/frame_width*100:.1f}%-{watermark_area.x2/frame_width*100:.1f}%), y=({watermark_area.y1/frame_height*100:.1f}%-{watermark_area.y2/frame_height*100:.1f}%)")
             
             # Validate watermark area coordinates
             if (watermark_area.x1 >= frame_width or watermark_area.y1 >= frame_height or
@@ -313,7 +315,12 @@ class WatermarkRemovalService:
             
             # Log mask information
             mask_area = np.sum(mask > 0)
+            mask_rows, mask_cols = np.where(mask > 0)
             logger.info(f"Created watermark mask with {mask_area} pixels marked for inpainting")
+            logger.info(f"Mask coordinate range: rows {mask_rows.min()}-{mask_rows.max()}, cols {mask_cols.min()}-{mask_cols.max()}")
+            logger.info(f"Mask dimensions: {mask.shape} (height x width)")
+            logger.info(f"Mask area bounds: y={watermark_area.y1}:{watermark_area.y2}, x={watermark_area.x1}:{watermark_area.x2}")
+            logger.info(f"Expected mask pixels: {(watermark_area.x2 - watermark_area.x1) * (watermark_area.y2 - watermark_area.y1)}, actual: {mask_area}")
             
             # Set inpaint method
             if inpaint_method == "telea":
