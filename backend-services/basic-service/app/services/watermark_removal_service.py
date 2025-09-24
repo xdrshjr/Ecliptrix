@@ -44,9 +44,13 @@ class WatermarkRemovalService:
         Returns:
             Sanitized filename safe for cloud storage
         """
-        # Remove or replace problematic characters
-        # Keep only ASCII letters, numbers, dots, hyphens, and underscores
-        sanitized = re.sub(r'[^\w\-_.]', '_', filename)
+        # Remove file extension if present to handle it separately
+        name_without_ext = os.path.splitext(filename)[0]
+        ext = os.path.splitext(filename)[1]
+        
+        # Keep only ASCII alphanumeric characters, hyphens, and underscores
+        # Replace everything else (including Chinese characters) with underscores
+        sanitized = re.sub(r'[^a-zA-Z0-9\-_]', '_', name_without_ext)
         
         # Replace multiple underscores with single underscore
         sanitized = re.sub(r'_+', '_', sanitized)
@@ -55,8 +59,17 @@ class WatermarkRemovalService:
         sanitized = sanitized.strip('_')
         
         # Ensure filename is not empty
-        if not sanitized or sanitized == '.mp4':
-            sanitized = 'watermark_removed.mp4'
+        if not sanitized:
+            sanitized = 'watermark_removed'
+        
+        # Limit length to avoid issues
+        if len(sanitized) > 50:
+            sanitized = sanitized[:50]
+        
+        # Add back the extension (default to .mp4 if no extension)
+        if not ext:
+            ext = '.mp4'
+        sanitized += ext
         
         logger.info(f"Sanitized filename: '{filename}' -> '{sanitized}'")
         return sanitized

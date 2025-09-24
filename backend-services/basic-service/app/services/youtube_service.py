@@ -112,6 +112,47 @@ class YouTubeService:
         elif d['status'] == 'finished':
             logger.info(f"下载完成: {d['filename']}")
 
+    def _get_robust_ydl_options(self, base_opts: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        获取增强的yt-dlp配置选项，专门处理YouTube的nsig提取问题
+        
+        Args:
+            base_opts: 基础配置选项
+            
+        Returns:
+            Dict[str, Any]: 增强的配置选项
+        """
+        robust_opts = {
+            'extract_flat': False,
+            'no_warnings': False,
+            'ignoreerrors': False,
+            'retries': 5,
+            'fragment_retries': 5,
+            'socket_timeout': 30,
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['hls', 'dash'],  # 跳过可能有nsig问题的格式
+                    'player_client': ['android', 'web', 'ios'],  # 尝试多个客户端
+                    'max_comments': [0],  # 不提取评论
+                    'comment_sort': ['top'],  # 如果需要评论，只要热门的
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip,deflate',
+                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                'Keep-Alive': '300',
+                'Connection': 'keep-alive',
+            }
+        }
+        
+        if base_opts:
+            robust_opts.update(base_opts)
+            
+        return robust_opts
+
     def sanitize_filename(self, title: str, max_length: int = 200) -> str:
         """
         文件名规范化函数，移除特殊字符、emoji和不安全字符
@@ -343,7 +384,9 @@ class YouTubeService:
         logger.info(f"获取YouTube视频信息 - URL: {request.url}")
         
         try:
-            ydl_opts = {'quiet': True}
+            base_opts = {'quiet': True}
+            ydl_opts = self._get_robust_ydl_options(base_opts)
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(request.url, download=False)
                 
@@ -425,28 +468,51 @@ class YouTubeService:
             # 构建输出文件名模板
             outtmpl = str(self.output_dir / unique_filename)
 
-            # 构建格式选择器
+            # 构建更灵活的格式选择器，支持多种回退选项
+            format_options = []
+            
             if request.video_quality == "best":
-                format_selector = f"best[ext={request.format_type}]/best"
+                format_options = [
+                    f"best[ext={request.format_type}]",
+                    f"best[ext={request.format_type}][protocol^=http]",
+                    "best[ext=mp4]",
+                    "best[ext=webm]", 
+                    "best",
+                    "worst"  # 最后的回退选项
+                ]
             elif request.video_quality == "worst":
-                format_selector = f"worst[ext={request.format_type}]/worst"
+                format_options = [
+                    f"worst[ext={request.format_type}]",
+                    f"worst[ext={request.format_type}][protocol^=http]",
+                    "worst[ext=mp4]",
+                    "worst[ext=webm]",
+                    "worst"
+                ]
             else:
                 # 具体质量要求，如 720p, 1080p
                 height = request.video_quality.replace('p', '')
-                format_selector = f"best[height<={height}][ext={request.format_type}]/best[height<={height}]/best"
+                format_options = [
+                    f"best[height<={height}][ext={request.format_type}]",
+                    f"best[height<={height}][ext={request.format_type}][protocol^=http]",
+                    f"best[height<={height}][ext=mp4]",
+                    f"best[height<={height}][ext=webm]",
+                    f"best[height<={height}]",
+                    f"best[ext={request.format_type}]",
+                    "best[ext=mp4]",
+                    "best"
+                ]
+            
+            format_selector = "/".join(format_options)
 
-            # yt-dlp 配置
-            ydl_opts = {
+            # 使用增强的yt-dlp配置
+            base_opts = {
                 'format': format_selector,
                 'outtmpl': outtmpl,
-                'retries': 3,
-                'fragment_retries': 3,
                 'writesubtitles': request.subtitle,
                 'writeautomaticsub': request.subtitle,
                 'progress_hooks': [self.progress_hook],
-                'no_warnings': False,
-                'ignoreerrors': False,
             }
+            ydl_opts = self._get_robust_ydl_options(base_opts)
 
             # 时间范围处理（需要ffmpeg）
             postprocessor_args = []
@@ -464,10 +530,43 @@ class YouTubeService:
                     'postprocessor_args': postprocessor_args
                 }]
 
-            # 执行下载
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([request.url])
+            # 执行下载，支持格式回退重试
+            download_successful = False
+            last_error = None
+            
+            # 首先尝试完整的格式选择器
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([request.url])
+                    download_successful = True
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"主要格式下载失败，尝试回退格式: {last_error}")
                 
+                # 如果主要格式失败，尝试更简单的格式选择器
+                fallback_formats = [
+                    "best[ext=mp4]/best[ext=webm]/best",  # 只要mp4或webm
+                    "best[protocol^=http]",  # 只要http协议
+                    "best/worst"  # 任何可用格式
+                ]
+                
+                for fallback_format in fallback_formats:
+                    try:
+                        logger.info(f"尝试回退格式: {fallback_format}")
+                        fallback_opts = ydl_opts.copy()
+                        fallback_opts['format'] = fallback_format
+                        
+                        with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                            ydl.download([request.url])
+                            download_successful = True
+                            logger.info(f"回退格式下载成功: {fallback_format}")
+                            break
+                    except Exception as fallback_error:
+                        last_error = str(fallback_error)
+                        logger.warning(f"回退格式 {fallback_format} 也失败: {last_error}")
+                        continue
+            
+            if download_successful:
                 # 查找下载的文件
                 downloaded_files = list(self.output_dir.glob(f"{sanitized_title}_{timestamp}.*"))
                 if downloaded_files:
@@ -488,6 +587,12 @@ class YouTubeService:
                         message="下载完成但找不到文件",
                         error="文件未找到"
                     )
+            else:
+                return YoutubeVideoDownloadResponse(
+                    success=False,
+                    message="所有格式下载都失败",
+                    error=f"最后错误: {last_error}"
+                )
 
         except Exception as e:
             error_msg = f"视频下载失败: {str(e)}"
