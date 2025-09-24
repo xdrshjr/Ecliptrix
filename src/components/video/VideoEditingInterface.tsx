@@ -138,6 +138,57 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [taskId]);
 
+  // 新增：全局键盘事件处理 - 空格键播放/暂停功能
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // 空格键播放/暂停：无论焦点在哪个面板，都从timeline游标位置播放/暂停
+      if (event.code === 'Space') {
+        // 检查是否在输入框中，如果是则不处理空格键
+        const target = event.target as HTMLElement;
+        const isInInputField = target.tagName === 'INPUT' || 
+                              target.tagName === 'TEXTAREA' || 
+                              target.contentEditable === 'true' ||
+                              target.closest('input') ||
+                              target.closest('textarea') ||
+                              target.closest('[contenteditable="true"]');
+        
+        if (!isInInputField && videoPlayerRef.current) {
+          event.preventDefault();
+          
+          console.log(`[VideoEditingInterface] 全局空格键触发播放/暂停`, {
+            taskId,
+            timelineCurrentTime: timelineCurrentTime.toFixed(2),
+            focusedElement: target.tagName,
+            focusedElementClass: target.className,
+            action: 'spacebar_global_playpause',
+            timestamp: new Date().toISOString()
+          });
+
+          // 调用VideoPlayerPanel的从timeline游标位置播放/暂停方法
+          videoPlayerRef.current.handlePlayPauseFromTimeline(timelineCurrentTime);
+        }
+      }
+    };
+
+    // 添加全局键盘事件监听器
+    document.addEventListener('keydown', handleKeyDown);
+    
+    console.log(`[VideoEditingInterface] 全局键盘事件监听器已注册`, {
+      taskId,
+      supportedKeys: ['Space'],
+      description: '空格键从timeline游标位置播放/暂停，不受面板焦点影响',
+      timestamp: new Date().toISOString()
+    });
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      console.log(`[VideoEditingInterface] 全局键盘事件监听器已移除`, {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+    };
+  }, [taskId, timelineCurrentTime]);
+
   // Mobile warning dialog close handler
   const handleCloseMobileWarning = useCallback(() => {
     setShowMobileWarning(false);

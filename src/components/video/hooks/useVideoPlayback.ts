@@ -213,47 +213,7 @@ export const useVideoPlayback = (
     };
   }, [isPlaying, playbackRate, logger]);
 
-  // 键盘快捷键支持
-  useEffect(() => {
-    const handleKeyPress = (event: KeyboardEvent) => {
-      // 只在视频播放面板获得焦点时响应快捷键
-      const target = event.target as HTMLElement;
-      if (target.closest('.video-editing-composition-panel')) {
-        switch (event.code) {
-          case 'Space':
-            event.preventDefault();
-            handlePlayPause();
-            logger.userAction('键盘快捷键', 'spacebar', {
-              action: isPlaying ? 'pause' : 'play'
-            });
-            break;
-          case 'ArrowLeft':
-            event.preventDefault();
-            handleTimeSeek(Math.max(0, currentTime - 10));
-            logger.userAction('键盘快捷键', 'leftArrow', {
-              action: 'rewind10s',
-              previousTime: currentTime,
-              newTime: Math.max(0, currentTime - 10)
-            });
-            break;
-          case 'ArrowRight':
-            event.preventDefault();
-            handleTimeSeek(Math.min(mockVideoPreview.duration, currentTime + 10));
-            logger.userAction('键盘快捷键', 'rightArrow', {
-              action: 'forward10s',
-              previousTime: currentTime,
-              newTime: Math.min(mockVideoPreview.duration, currentTime + 10)
-            });
-            break;
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyPress);
-    return () => {
-      document.removeEventListener('keydown', handleKeyPress);
-    };
-  }, [isPlaying, currentTime, handlePlayPause, handleTimeSeek, logger]);
+  // 注意：键盘快捷键支持已移至VideoEditingInterface级别，以支持全局空格键播放/暂停功能
 
   return {
     isPlaying,

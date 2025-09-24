@@ -48,6 +48,7 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
 // 新增：VideoPlayerPanel ref接口，用于外部调用内部方法
 export interface VideoPlayerPanelRef {
   handleCompositionSeek: (compositionTime: number, targetSequence: VideoSequenceItem, videoTime: number, source: 'timeline' | 'player') => Promise<void>;
+  handlePlayPauseFromTimeline: (timelineTime: number) => Promise<void>;
 }
 
 const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelProps>(({
@@ -1308,11 +1309,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     }, 100); // 短暂延迟确保跳转操作完全完成
   }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, syncAudioPlayback, onCompositionSeek, logger]);
 
-  // 新增：通过ref暴露handleCompositionSeek方法给父组件
-  useImperativeHandle(ref, () => ({
-    handleCompositionSeek
-  }), [handleCompositionSeek]);
-
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
     if (playbackMode === 'composition' && compositionPlayback) {
@@ -1388,6 +1384,71 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   };
 
   const currentVideoInfo = getCurrentVideoInfo();
+
+  // 新增：从timeline游标位置开始播放/暂停
+  const handlePlayPauseFromTimeline = useCallback(async (timelineTime: number) => {
+    logger.info('从Timeline游标位置播放/暂停', {
+      timelineTime: timelineTime.toFixed(2),
+      currentVideoTime: getCurrentTime().toFixed(2),
+      currentlyPlaying: getCurrentlyPlaying(),
+      playbackMode,
+      action: 'spacebar_from_timeline',
+      timestamp: new Date().toISOString()
+    });
+
+    // 如果timeline时间与当前视频时间不同，先跳转到timeline时间
+    const currentVideoTime = getCurrentTime();
+    const timeDifference = Math.abs(timelineTime - currentVideoTime);
+    
+    if (timeDifference > 0.1) { // 允许0.1秒的误差
+      logger.info('Timeline时间与视频时间不同步，先跳转', {
+        timelineTime: timelineTime.toFixed(2),
+        currentVideoTime: currentVideoTime.toFixed(2),
+        timeDifference: timeDifference.toFixed(2),
+        threshold: 0.1
+      });
+
+      if (playbackMode === 'composition' && compositionPlayback) {
+        // 组合模式：计算应该跳转到哪个视频序列
+        let targetSequenceIndex = 0;
+        let accumulatedTime = 0;
+        let targetVideoTime = timelineTime;
+
+        for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+          const sequence = compositionPlayback.videoSequences[i];
+          if (accumulatedTime + sequence.duration > timelineTime) {
+            targetSequenceIndex = i;
+            targetVideoTime = timelineTime - accumulatedTime;
+            break;
+          }
+          accumulatedTime += sequence.duration;
+        }
+
+        const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
+        if (targetSequence) {
+          await handleCompositionSeek(timelineTime, targetSequence, targetVideoTime, 'timeline');
+        }
+      } else {
+        // 预览模式：直接跳转
+        handleTimeSeek(timelineTime);
+      }
+    }
+
+    // 执行播放/暂停
+    await handlePlayPauseClick();
+    
+    logger.info('从Timeline游标位置播放/暂停完成', {
+      timelineTime: timelineTime.toFixed(2),
+      newState: getCurrentlyPlaying() ? '播放中' : '已暂停',
+      finalVideoTime: getCurrentTime().toFixed(2)
+    });
+  }, [getCurrentTime, getCurrentlyPlaying, playbackMode, compositionPlayback, handleCompositionSeek, handleTimeSeek, handlePlayPauseClick, logger]);
+
+  // 新增：通过ref暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    handleCompositionSeek,
+    handlePlayPauseFromTimeline
+  }), [handleCompositionSeek, handlePlayPauseFromTimeline]);
 
   // 记录UI显示模式
   useEffect(() => {
