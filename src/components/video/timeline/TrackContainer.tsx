@@ -1,6 +1,6 @@
 'use client';
 
-import React, { RefObject, useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect, RefObject, useRef } from 'react';
 import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
 import { SupportedLocale } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -16,6 +16,14 @@ interface DragPreviewState {
   requiredSize: number; // 需要的空隙大小
   willPushMaterials: boolean; // 是否会推动后面的素材
   affectedItems: string[]; // 会被推动的素材ID列表
+}
+
+// 新增：拖拽滚动状态接口
+interface DragScrollState {
+  isDragging: boolean;
+  startX: number;
+  startScrollLeft: number;
+  currentCursor: 'default' | 'grab' | 'grabbing';
 }
 
 interface TrackContainerProps {
@@ -76,6 +84,14 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   // 新增：用于测量容器高度的ref和状态
   const containerRef = useRef<HTMLDivElement>(null);
   const [trackHeight, setTrackHeight] = useState(32); // 默认轨道高度32px
+
+  // 新增：拖拽滚动状态管理
+  const [dragScrollState, setDragScrollState] = useState<DragScrollState>({
+    isDragging: false,
+    startX: 0,
+    startScrollLeft: 0,
+    currentCursor: 'default'
+  });
 
   // 新增：动态计算轨道高度
   useEffect(() => {
@@ -157,6 +173,151 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     onAddTrack(type);
   };
 
+  // 新增：检测鼠标位置是否在素材上方
+  const isMouseOverTimelineItem = (e: React.MouseEvent): boolean => {
+    const target = e.target as HTMLElement;
+    
+    // 检查是否点击在TimelineItem或其子元素上
+    const isTimelineItem = target.closest('.timeline-item') !== null;
+    
+    console.log(`[TrackContainer] 检测鼠标位置`, {
+      targetClassName: target.className,
+      isTimelineItem,
+      targetTagName: target.tagName,
+      timestamp: new Date().toISOString()
+    });
+    
+    return isTimelineItem;
+  };
+
+  // 新增：更新鼠标样式
+  const updateCursorStyle = (e: React.MouseEvent) => {
+    const isOverItem = isMouseOverTimelineItem(e);
+    const newCursor = isOverItem ? 'default' : 'grab';
+    
+    if (dragScrollState.currentCursor !== newCursor) {
+      setDragScrollState(prev => ({
+        ...prev,
+        currentCursor: newCursor
+      }));
+      
+      console.log(`[TrackContainer] 更新鼠标样式`, {
+        isOverItem,
+        newCursor,
+        previousCursor: dragScrollState.currentCursor,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  // 新增：处理鼠标按下事件
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // 只在空白区域启用拖拽滚动
+    if (isMouseOverTimelineItem(e)) {
+      return;
+    }
+
+    // 只处理左键点击
+    if (e.button !== 0) {
+      return;
+    }
+
+    e.preventDefault();
+    
+    const startScrollLeft = scrollRef?.current?.scrollLeft || 0;
+    
+    setDragScrollState({
+      isDragging: true,
+      startX: e.clientX,
+      startScrollLeft,
+      currentCursor: 'grabbing'
+    });
+
+    console.log(`[TrackContainer] 开始拖拽滚动`, {
+      startX: e.clientX,
+      startScrollLeft,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  // 新增：处理鼠标移动事件
+  const handleMouseMove = (e: React.MouseEvent) => {
+    // 更新鼠标样式
+    if (!dragScrollState.isDragging) {
+      updateCursorStyle(e);
+      return;
+    }
+
+    // 执行拖拽滚动
+    if (scrollRef?.current && onScroll) {
+      const deltaX = e.clientX - dragScrollState.startX;
+      const newScrollLeft = Math.max(0, dragScrollState.startScrollLeft - deltaX);
+      
+      scrollRef.current.scrollLeft = newScrollLeft;
+      onScroll(newScrollLeft);
+
+      console.log(`[TrackContainer] 拖拽滚动中`, {
+        deltaX,
+        newScrollLeft,
+        startScrollLeft: dragScrollState.startScrollLeft,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  // 新增：处理鼠标释放事件
+  const handleMouseUp = () => {
+    if (dragScrollState.isDragging) {
+      setDragScrollState(prev => ({
+        ...prev,
+        isDragging: false,
+        currentCursor: 'grab'
+      }));
+
+      console.log(`[TrackContainer] 完成拖拽滚动`, {
+        finalScrollLeft: scrollRef?.current?.scrollLeft || 0,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
+
+  // 新增：全局鼠标事件监听
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (dragScrollState.isDragging && scrollRef?.current && onScroll) {
+        const deltaX = e.clientX - dragScrollState.startX;
+        const newScrollLeft = Math.max(0, dragScrollState.startScrollLeft - deltaX);
+        
+        scrollRef.current.scrollLeft = newScrollLeft;
+        onScroll(newScrollLeft);
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (dragScrollState.isDragging) {
+        setDragScrollState(prev => ({
+          ...prev,
+          isDragging: false,
+          currentCursor: 'grab'
+        }));
+
+        console.log(`[TrackContainer] 全局鼠标释放，完成拖拽滚动`, {
+          timestamp: new Date().toISOString()
+        });
+      }
+    };
+
+    if (dragScrollState.isDragging) {
+      document.addEventListener('mousemove', handleGlobalMouseMove);
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [dragScrollState.isDragging, dragScrollState.startX, dragScrollState.startScrollLeft, scrollRef, onScroll]);
+
   return (
     <div 
       ref={containerRef}
@@ -166,7 +327,13 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
       <div 
         ref={scrollRef}
         className="flex-1 overflow-y-auto overflow-x-auto"
+        style={{ 
+          cursor: dragScrollState.currentCursor 
+        }}
         onClick={handleContainerClick}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
         onScroll={(e) => {
           if (onScroll) {
             onScroll(e.currentTarget.scrollLeft);
