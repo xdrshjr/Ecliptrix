@@ -10,8 +10,11 @@ import cv2
 import numpy as np
 import requests
 import re
-from typing import Optional, Union
+from typing import Optional, Union, List, Tuple
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from queue import Queue
 
 from app.logger import get_logger
 from app.config import settings
@@ -33,6 +36,8 @@ class WatermarkRemovalService:
         self.supabase_service = SupabaseService()
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        self.config = settings.watermark_removal
+        self._thread_local = threading.local()
     
     def _sanitize_filename(self, filename: str) -> str:
         """
@@ -328,27 +333,13 @@ class WatermarkRemovalService:
             else:  # "ns"
                 cv_inpaint_method = cv2.INPAINT_NS
             
-            logger.info(f"Processing {total_frames} frames with {inpaint_method} method")
+            logger.info(f"Processing {total_frames} frames with {inpaint_method} method using {self.config.concurrent_threads} threads")
+            logger.info(f"Batch size: {self.config.batch_size} frames per batch")
             
-            # Process frames
-            frame_count = 0
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                frame_count += 1
-                
-                # Apply inpainting to remove watermark
-                processed_frame = cv2.inpaint(frame, mask, inpaint_radius, cv_inpaint_method)
-                
-                # Write processed frame
-                out.write(processed_frame)
-                
-                # Log progress every 100 frames
-                if frame_count % 100 == 0:
-                    progress = (frame_count / total_frames) * 100
-                    logger.info(f"Processing progress: {frame_count}/{total_frames} ({progress:.1f}%)")
+            # Process frames using multi-threading
+            frame_count = await self._process_frames_multithreaded(
+                cap, out, mask, inpaint_radius, cv_inpaint_method, total_frames, task_id
+            )
             
             # Release resources
             cap.release()
@@ -530,4 +521,138 @@ class WatermarkRemovalService:
         finally:
             # Clean up temporary file
             if os.path.exists(processed_video_path):
-                os.unlink(processed_video_path) 
+                os.unlink(processed_video_path)
+    
+    async def _process_frames_multithreaded(
+        self, 
+        cap: cv2.VideoCapture,
+        out: cv2.VideoWriter,
+        mask: np.ndarray,
+        inpaint_radius: int,
+        cv_inpaint_method: int,
+        total_frames: int,
+        task_id: str
+    ) -> int:
+        """Process video frames using multi-threading for faster watermark removal."""
+        logger.info(f"Starting multi-threaded frame processing for task {task_id}")
+        
+        # Read all frames first
+        logger.info("Reading all frames into memory...")
+        frames = []
+        frame_count = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append((frame_count, frame.copy()))
+            frame_count += 1
+            
+            # Log reading progress
+            if frame_count % self.config.logging.log_progress_interval == 0:
+                progress = (frame_count / total_frames) * 100
+                logger.info(f"Reading progress: {frame_count}/{total_frames} ({progress:.1f}%)")
+        
+        logger.info(f"Finished reading {frame_count} frames into memory")
+        
+        # Create batches
+        batches = self._create_frame_batches(frames)
+        logger.info(f"Created {len(batches)} batches for processing")
+        
+        # Process batches using ThreadPoolExecutor
+        processed_frames = {}
+        completed_frames = 0
+        
+        with ThreadPoolExecutor(max_workers=self.config.concurrent_threads) as executor:
+            # Submit all batch processing tasks
+            future_to_batch = {}
+            for batch_idx, batch in enumerate(batches):
+                future = executor.submit(
+                    self._process_frame_batch, 
+                    batch, mask, inpaint_radius, cv_inpaint_method, batch_idx, task_id
+                )
+                future_to_batch[future] = batch_idx
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_batch):
+                batch_idx = future_to_batch[future]
+                try:
+                    batch_results = future.result(timeout=self.config.batch_timeout)
+                    
+                    # Store processed frames
+                    for frame_idx, processed_frame in batch_results:
+                        processed_frames[frame_idx] = processed_frame
+                    
+                    completed_frames += len(batch_results)
+                    
+                    # Log progress
+                    if self.config.logging.enable_detailed_logs:
+                        progress = (completed_frames / frame_count) * 100
+                        logger.info(f"Batch {batch_idx} completed. Overall progress: {completed_frames}/{frame_count} ({progress:.1f}%)")
+                        
+                except Exception as e:
+                    logger.error(f"Batch {batch_idx} processing failed: {str(e)}")
+                    raise e
+        
+        # Write processed frames in order
+        logger.info("Writing processed frames to output video...")
+        frames_written = 0
+        for frame_idx in range(frame_count):
+            if frame_idx in processed_frames:
+                out.write(processed_frames[frame_idx])
+                frames_written += 1
+                
+                # Log writing progress
+                if frames_written % self.config.logging.log_progress_interval == 0:
+                    progress = (frames_written / frame_count) * 100
+                    logger.info(f"Writing progress: {frames_written}/{frame_count} ({progress:.1f}%)")
+            else:
+                logger.error(f"Missing processed frame at index {frame_idx}")
+                raise Exception(f"Missing processed frame at index {frame_idx}")
+        
+        logger.info(f"Multi-threaded frame processing completed. Total frames: {frames_written}")
+        return frames_written
+    
+    def _create_frame_batches(self, frames: List[Tuple[int, np.ndarray]]) -> List[List[Tuple[int, np.ndarray]]]:
+        """Create batches of frames for parallel processing."""
+        batches = []
+        batch_size = self.config.batch_size
+        
+        for i in range(0, len(frames), batch_size):
+            batch = frames[i:i + batch_size]
+            batches.append(batch)
+        
+        logger.info(f"Created {len(batches)} batches with batch size {batch_size}")
+        return batches
+    
+    def _process_frame_batch(
+        self, 
+        batch: List[Tuple[int, np.ndarray]], 
+        mask: np.ndarray, 
+        inpaint_radius: int, 
+        cv_inpaint_method: int,
+        batch_idx: int,
+        task_id: str
+    ) -> List[Tuple[int, np.ndarray]]:
+        """Process a batch of frames in a single thread."""
+        thread_id = threading.get_ident()
+        
+        if self.config.logging.enable_thread_logging:
+            logger.info(f"Thread {thread_id}: Processing batch {batch_idx} with {len(batch)} frames for task {task_id}")
+        
+        processed_batch = []
+        
+        for frame_idx, frame in batch:
+            try:
+                # Apply inpainting to remove watermark
+                processed_frame = cv2.inpaint(frame, mask, inpaint_radius, cv_inpaint_method)
+                processed_batch.append((frame_idx, processed_frame))
+                
+            except Exception as e:
+                logger.error(f"Thread {thread_id}: Error processing frame {frame_idx} in batch {batch_idx}: {str(e)}")
+                raise e
+        
+        if self.config.logging.enable_thread_logging:
+            logger.info(f"Thread {thread_id}: Completed batch {batch_idx} with {len(processed_batch)} frames")
+        
+        return processed_batch 

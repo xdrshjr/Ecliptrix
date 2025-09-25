@@ -89,6 +89,23 @@ class YoutubeConfig(BaseModel):
     logging: YoutubeLoggingConfig = YoutubeLoggingConfig()
 
 
+class WatermarkRemovalLoggingConfig(BaseModel):
+    """Watermark removal logging configuration."""
+    enable_detailed_logs: bool = True
+    log_progress_interval: int = 100
+    log_level: str = "INFO"
+    enable_thread_logging: bool = True
+
+
+class WatermarkRemovalConfig(BaseModel):
+    """Watermark removal configuration."""
+    concurrent_threads: int = 5
+    max_concurrent_threads: int = 10
+    batch_size: int = 50
+    batch_timeout: int = 60
+    logging: WatermarkRemovalLoggingConfig = WatermarkRemovalLoggingConfig()
+
+
 class SupabaseConfig(BaseModel):
     """Supabase configuration."""
     url: str = Field(..., description="Supabase URL")
@@ -135,6 +152,9 @@ class Settings(BaseModel):
     # YouTube Configuration
     youtube: YoutubeConfig = YoutubeConfig()
     
+    # Watermark Removal Configuration
+    watermark_removal: WatermarkRemovalConfig = WatermarkRemovalConfig()
+    
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
     
@@ -177,9 +197,11 @@ def get_settings() -> Settings:
     config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
     batch_tts_config_path = os.path.join(config_dir, 'batch_tts_config.yaml')
     youtube_config_path = os.path.join(config_dir, 'youtube.yaml')
+    watermark_removal_config_path = os.path.join(config_dir, 'watermark_removal_config.yaml')
     
     batch_tts_yaml_config = load_yaml_config(batch_tts_config_path)
     youtube_yaml_config = load_yaml_config(youtube_config_path)
+    watermark_removal_yaml_config = load_yaml_config(watermark_removal_config_path)
     
     # Create batch TTS config from YAML
     batch_tts_config = BatchTTSConfig()
@@ -212,6 +234,18 @@ def get_settings() -> Settings:
             logging=YoutubeLoggingConfig(**logging_data)
         )
     
+    # Create Watermark Removal config from YAML
+    watermark_removal_config = WatermarkRemovalConfig()
+    if watermark_removal_yaml_config and 'watermark_removal' in watermark_removal_yaml_config:
+        watermark_data = watermark_removal_yaml_config['watermark_removal']
+        watermark_removal_config = WatermarkRemovalConfig(
+            concurrent_threads=watermark_data.get('concurrent_threads', 5),
+            max_concurrent_threads=watermark_data.get('max_concurrent_threads', 10),
+            batch_size=watermark_data.get('batch_size', 50),
+            batch_timeout=watermark_data.get('batch_timeout', 60),
+            logging=WatermarkRemovalLoggingConfig(**watermark_data.get('logging', {}))
+        )
+    
     # Create Supabase configuration
     supabase_config = SupabaseConfig(
         url=os.getenv("SUPABASE_URL", ""),
@@ -238,6 +272,7 @@ def get_settings() -> Settings:
         supabase=supabase_config,
         batch_tts=batch_tts_config,
         youtube=youtube_config,
+        watermark_removal=watermark_removal_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),

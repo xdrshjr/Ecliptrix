@@ -1,0 +1,38 @@
+# Watermark Removal Configuration
+# 水印去除配置
+
+watermark_removal:
+  # 并发线程数配置
+  # Number of concurrent threads for frame processing
+  concurrent_threads: 5
+  
+  # 最大并发线程数限制
+  # Maximum concurrent threads limit
+  max_concurrent_threads: 10
+  
+  # 每批处理的帧数
+  # Number of frames to process in each batch
+  batch_size: 50
+  
+  # 单个批次处理超时时间（秒）
+  # Timeout for individual batch processing (seconds)
+  batch_timeout: 60
+  
+  # 日志配置
+  # Logging configuration
+  logging:
+    # 启用详细日志
+    # Enable detailed logging
+    enable_detailed_logs: true
+    
+    # 日志进度间隔（每处理多少帧记录一次）
+    # Log progress interval (log every N frames)
+    log_progress_interval: 100
+    
+    # 日志级别
+    # Log level
+    log_level: "INFO"
+    
+    # 启用线程级别日志
+    # Enable thread-level logging
+    enable_thread_logging: true 
