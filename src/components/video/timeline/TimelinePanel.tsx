@@ -318,6 +318,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       materialId: material.id,
       materialName: material.name,
       materialType: material.type,
+      materialUrl: material.url.substring(0, 100),
+      serverUrl: material.serverUrl?.substring(0, 100),
+      isWatermarkRemoved: material.metadata?.isWatermarkRemoved || false,
+      watermarkRemovedAt: material.metadata?.watermarkRemovedAt || 'never',
+      originalVideoUrl: material.metadata?.originalVideoUrl?.substring(0, 100) || 'none',
       targetTrackId,
       timestamp: new Date().toISOString()
     });
@@ -372,7 +377,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         duration,
         trackId: targetTrack.id,
         color: getMaterialColor(material.type),
-        materialId: material.id,
+        materialId: material.id, // 这里存储的是素材的ID，用于后续查找
         volume: 1.0,
         opacity: 1.0,
         thumbnailUrl: material.thumbnailUrl,
@@ -405,13 +410,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
       console.log(`[TimelinePanel] 创建新时间轴项目`, {
         itemId: newTimelineItem.id,
+        itemName: newTimelineItem.name,
         trackId: targetTrack.id,
         trackName: targetTrack.name,
         startTime: startTime.toFixed(2),
         duration: duration.toFixed(2),
         materialType: material.type,
         originalMaterialType: material.type,
+        // 重要：记录存储的materialId，这是用于后续查找素材的关键
+        storedMaterialId: newTimelineItem.materialId,
+        materialIdMatches: newTimelineItem.materialId === material.id,
         isImageInImageTrack: material.type === 'image' && targetTrack.id === 'image-track-1',
+        isWatermarkRemovedMaterial: material.metadata?.isWatermarkRemoved || false,
         timestamp: new Date().toISOString()
       });
 

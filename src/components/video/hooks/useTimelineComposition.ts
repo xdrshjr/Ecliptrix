@@ -44,28 +44,66 @@ export const useTimelineComposition = (
 
   // 从时间轴状态提取视频序列
   const getVideoSequencesFromTimeline = useCallback((timelineState: TimelineState): VideoSequenceItem[] => {
+    console.log(`[TimelineComposition] 从时间轴提取视频序列`, {
+      tracksCount: timelineState.tracks.length,
+      materialsCount: materials.length,
+      timestamp: new Date().toISOString()
+    });
 
     // 收集所有视频轨道的视频项目
     const allVideoItems: VideoSequenceItem[] = [];
     
     timelineState.tracks.forEach(track => {
       if (track.type === 'video' && track.isVisible && !track.isLocked) {
+        console.log(`[TimelineComposition] 处理视频轨道: ${track.id}`, {
+          trackName: track.name,
+          itemsCount: track.items.length
+        });
+        
         track.items.forEach(item => {
           if (item.type === 'video' && item.materialId) {
+            console.log(`[TimelineComposition] 查找素材 - 时间轴项目`, {
+              itemId: item.id,
+              itemName: item.name,
+              materialId: item.materialId,
+              itemType: item.type
+            });
+            
             // 找到对应的素材
             const material = materials.find(m => m.id === item.materialId);
+            
             if (material && material.type === 'video') {
+              console.log(`[TimelineComposition] 找到匹配素材`, {
+                materialId: material.id,
+                materialName: material.name,
+                materialUrl: material.url.substring(0, 100),
+                serverUrl: material.serverUrl?.substring(0, 100),
+                isWatermarkRemoved: material.metadata?.isWatermarkRemoved || false,
+                materialSource: material.metadata?.source || 'unknown',
+                watermarkRemovedAt: material.metadata?.watermarkRemovedAt || 'never'
+              });
+              
               // 提取裁剪信息
               const clipStart = item.clipStart ?? 0;
               const clipEnd = item.clipEnd ?? item.originalDuration ?? item.duration;
               const originalDuration = item.originalDuration ?? item.duration;
+              
+              // 决定使用哪个URL
+              const finalUrl = material.serverUrl || material.url;
+              
+              console.log(`[TimelineComposition] 素材URL选择`, {
+                materialId: material.id,
+                hasServerUrl: !!material.serverUrl,
+                finalUrl: finalUrl.substring(0, 100),
+                urlSource: material.serverUrl ? 'serverUrl' : 'url'
+              });
               
               const videoSequence: VideoSequenceItem = {
                 id: item.id,
                 name: item.name,
                 // 优先使用serverUrl（Supabase URL），如果没有则使用本地url
                 // 这样确保视频合成时能够正确下载文件
-                url: material.serverUrl || material.url,
+                url: finalUrl,
                 startTime: item.startTime,
                 duration: item.duration,
                 thumbnailUrl: item.thumbnailUrl || material.thumbnailUrl,
@@ -80,63 +118,54 @@ export const useTimelineComposition = (
               };
               allVideoItems.push(videoSequence);
               
+              console.log(`[TimelineComposition] 视频序列已创建`, {
+                sequenceId: videoSequence.id,
+                sequenceName: videoSequence.name,
+                sequenceUrl: videoSequence.url.substring(0, 100),
+                startTime: videoSequence.startTime.toFixed(2),
+                duration: videoSequence.duration.toFixed(2)
+              });
+              
               // 记录裁剪信息（仅在调试时启用）
-              if (process.env.NODE_ENV === 'development') {
-                logger.info('添加视频序列项目（包含裁剪信息和音量）', {
+              if (clipStart > 0 || clipEnd < originalDuration) {
+                console.log(`[TimelineComposition] 视频裁剪信息`, {
                   itemId: item.id,
-                  itemName: item.name,
-                  timelineStartTime: item.startTime,
-                  timelineDuration: item.duration,
                   clipStart: clipStart.toFixed(2),
                   clipEnd: clipEnd.toFixed(2),
                   originalDuration: originalDuration.toFixed(2),
-                  isTrimmed: clipStart > 0 || clipEnd < originalDuration,
-                  trimmedDuration: (clipEnd - clipStart).toFixed(2),
-                  materialUrl: material.url,
-                  trackId: item.trackId,
-                  // 新增：音量信息
-                  itemVolume: item.volume ?? 1,
-                  trackVolume: track.volume,
-                  finalVolume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 1))
+                  actualDuration: item.duration.toFixed(2)
                 });
               }
+            } else {
+              console.warn(`[TimelineComposition] 未找到匹配的视频素材`, {
+                itemId: item.id,
+                itemName: item.name,
+                materialId: item.materialId,
+                availableMaterials: materials.map(m => ({
+                  id: m.id,
+                  name: m.name,
+                  type: m.type,
+                  isWatermarkRemoved: m.metadata?.isWatermarkRemoved || false
+                }))
+              });
             }
           }
         });
       }
     });
 
-    // 按开始时间排序
-    const sortedVideoItems = allVideoItems.sort((a, b) => a.startTime - b.startTime);
-    
-    // 统计裁剪信息
-    const trimmedCount = sortedVideoItems.filter(seq => 
-      (seq.clipStart && seq.clipStart > 0) || 
-      (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
-    ).length;
-    
-    // 仅在调试模式或有实际变化时记录日志
-    if (process.env.NODE_ENV === 'development' && sortedVideoItems.length > 0) {
-      logger.info('视频序列提取完成（包含裁剪统计）', {
-        totalVideoSequences: sortedVideoItems.length,
-        trimmedSequences: trimmedCount,
-        untrimmedSequences: sortedVideoItems.length - trimmedCount,
-        sequences: sortedVideoItems.map(seq => ({
-          id: seq.id,
-          name: seq.name,
-          timelineStartTime: seq.startTime,
-          timelineDuration: seq.duration,
-          clipStart: seq.clipStart?.toFixed(2) || '0.00',
-          clipEnd: seq.clipEnd?.toFixed(2) || 'N/A',
-          originalDuration: seq.originalDuration?.toFixed(2) || 'N/A',
-          isTrimmed: (seq.clipStart && seq.clipStart > 0) || 
-                    (seq.clipEnd && seq.originalDuration && seq.clipEnd < seq.originalDuration)
-        }))
-      });
-    }
+    console.log(`[TimelineComposition] 视频序列提取完成`, {
+      totalSequences: allVideoItems.length,
+      sequences: allVideoItems.map(s => ({
+        id: s.id,
+        name: s.name,
+        url: s.url.substring(0, 50),
+        materialId: s.materialId
+      }))
+    });
 
-    return sortedVideoItems;
-  }, [materials, logger]);
+    return allVideoItems;
+  }, [materials]);
 
   // 新增：从时间轴状态提取音频序列
   const getAudioSequencesFromTimeline = useCallback((timelineState: TimelineState): AudioSequenceItem[] => {

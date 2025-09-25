@@ -345,25 +345,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     setActiveAudioSequences(activeIds);
   }, [compositionPlayback?.audioSequences, getActiveAudioSequencesAtTime, getOrCreateAudioElement, logger]);
 
-  // 新增：获取当前时间的图片叠加项
+  // 新增：获取当前时间的图片叠加层
   const getCurrentImageOverlays = useCallback(() => {
-    if (!timelineState) {
-      console.log('[VideoPlayerPanel] No timeline state available for image overlays');
+    if (!timelineState || !materials) {
       return [];
     }
 
-    // 使用多个时间源，优先使用有效的时间
-    const currentPlaybackTime = compositionCurrentTime || currentTime || timelineState.currentTime || 0;
-    
-    console.log('[VideoPlayerPanel] Getting image overlays', {
-      currentPlaybackTime: currentPlaybackTime.toFixed(2),
-      compositionCurrentTime: compositionCurrentTime.toFixed(2),
-      currentTime: currentTime.toFixed(2),
-      timelineCurrentTime: timelineState.currentTime.toFixed(2),
-      tracksCount: timelineState.tracks.length,
-      materialsCount: materials?.length || 0
-    });
-
+    const currentPlaybackTime = compositionCurrentTime ?? currentTime;
     const imageOverlays: Array<{
       id: string;
       url: string;
@@ -371,18 +359,29 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       materialId?: string;
     }> = [];
 
-    // 遍历所有轨道，找到图片轨道中的图片素材
+    console.log(`[VideoPlayerPanel] 获取图片叠加层`, {
+      currentPlaybackTime: currentPlaybackTime.toFixed(2),
+      timelineTracksCount: timelineState.tracks.length,
+      materialsCount: materials.length
+    });
+
     timelineState.tracks.forEach(track => {
-      console.log(`[VideoPlayerPanel] Checking track: ${track.id} (type: ${track.type}, items: ${track.items.length})`);
+      console.log(`[VideoPlayerPanel] 检查轨道: ${track.id}`, {
+        trackType: track.type,
+        itemsCount: track.items.length,
+        isVisible: track.isVisible
+      });
       
-      if (track.id === 'image-track-1' || track.type === 'video') {
+      if (track.isVisible) {
         track.items.forEach(item => {
-          console.log(`[VideoPlayerPanel] Checking item: ${item.id}`, {
+          console.log(`[VideoPlayerPanel] 检查时间轴项目`, {
+            itemId: item.id,
+            itemName: item.name,
+            itemType: item.type,
             originalMaterialType: item.originalMaterialType,
-            startTime: item.startTime,
-            duration: item.duration,
-            endTime: item.startTime + item.duration,
-            currentTime: currentPlaybackTime,
+            startTime: item.startTime.toFixed(2),
+            endTime: (item.startTime + item.duration).toFixed(2),
+            currentTime: currentPlaybackTime.toFixed(2),
             isInTimeRange: currentPlaybackTime >= item.startTime && currentPlaybackTime < item.startTime + item.duration,
             materialId: item.materialId
           });
@@ -392,9 +391,21 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               currentPlaybackTime >= item.startTime && 
               currentPlaybackTime < item.startTime + item.duration) {
             
+            console.log(`[VideoPlayerPanel] 图片项目在时间范围内，查找素材`, {
+              itemId: item.id,
+              materialId: item.materialId
+            });
+            
             // 查找对应的素材
             const material = materials?.find(m => m.id === item.materialId);
-            console.log(`[VideoPlayerPanel] Found material for item ${item.id}:`, material);
+            console.log(`[VideoPlayerPanel] 素材查找结果`, {
+              found: !!material,
+              materialId: item.materialId,
+              materialName: material?.name,
+              materialUrl: material?.url?.substring(0, 100),
+              materialType: material?.type,
+              isWatermarkRemoved: material?.metadata?.isWatermarkRemoved || false
+            });
             
             if (material && material.url) {
               // 为图片设置默认位置（如果没有设置的话）
@@ -413,17 +424,40 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 materialId: item.materialId
               };
 
-              console.log(`[VideoPlayerPanel] Adding image overlay:`, overlay);
+              console.log(`[VideoPlayerPanel] 添加图片叠加层`, {
+                overlayId: overlay.id,
+                overlayUrl: overlay.url.substring(0, 100),
+                position: overlay.position,
+                materialId: overlay.materialId
+              });
               imageOverlays.push(overlay);
             } else {
-              console.warn(`[VideoPlayerPanel] No material found for item ${item.id} with materialId ${item.materialId}`);
+              console.warn(`[VideoPlayerPanel] 图片素材未找到或无URL`, {
+                itemId: item.id,
+                materialId: item.materialId,
+                materialFound: !!material,
+                materialHasUrl: material ? !!material.url : false,
+                availableMaterials: materials?.map(m => ({
+                  id: m.id,
+                  name: m.name,
+                  type: m.type,
+                  hasUrl: !!m.url
+                })) || []
+              });
             }
           }
         });
       }
     });
 
-    console.log(`[VideoPlayerPanel] Total image overlays found: ${imageOverlays.length}`, imageOverlays);
+    console.log(`[VideoPlayerPanel] 图片叠加层获取完成`, {
+      totalOverlays: imageOverlays.length,
+      overlays: imageOverlays.map(o => ({
+        id: o.id,
+        url: o.url.substring(0, 50),
+        materialId: o.materialId
+      }))
+    });
     return imageOverlays;
   }, [timelineState, compositionCurrentTime, currentTime, materials]);
 

@@ -787,21 +787,44 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const handleWatermarkRemoved = (processedVideoUrl: string, originalMaterial: MaterialItem) => {
     logger.info('水印去除完成', {
       originalMaterialId: originalMaterial.id,
+      originalMaterialName: originalMaterial.name,
+      originalMaterialUrl: originalMaterial.url.substring(0, 100),
       processedVideoUrl: processedVideoUrl.substring(0, 100)
     });
 
-    // 创建新的素材项
+    // 创建新的素材项，保持原有ID但更新URL和名称
     const newMaterial: MaterialItem = {
       ...originalMaterial,
-      id: `${originalMaterial.id}_no_watermark_${Date.now()}`,
-      name: `${originalMaterial.name.replace(/\.[^/.]+$/, '')}_无水印.mp4`,
-      url: processedVideoUrl
+      // 保持原有ID，这样时间轴中已经添加的素材会自动使用新的URL
+      id: originalMaterial.id,
+      name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_无水印$/, '')}_无水印.mp4`,
+      url: processedVideoUrl,
+      // 保留serverUrl以备用
+      serverUrl: processedVideoUrl,
+      // 更新创建时间以标记为最新版本
+      createdAt: new Date(),
+      // 添加元数据标记这是水印去除后的版本
+      metadata: {
+        ...originalMaterial.metadata,
+        isWatermarkRemoved: true,
+        originalVideoUrl: originalMaterial.url,
+        watermarkRemovedAt: new Date().toISOString(),
+        source: 'watermark-removed'
+      }
     };
 
-    // 添加到素材列表
+    logger.info('替换原始素材为去水印版本', {
+      materialId: newMaterial.id,
+      newMaterialName: newMaterial.name,
+      newMaterialUrl: newMaterial.url.substring(0, 100),
+      replacementStrategy: 'same-id-replacement',
+      reason: '保持ID不变确保时间轴中的素材引用正确指向去水印版本'
+    });
+
+    // 替换素材而不是添加新素材，这样时间轴中的引用会自动更新
     addOrReplaceMaterial(newMaterial);
     
-    showSuccess('水印去除成功！新视频已添加到素材库');
+    showSuccess('水印去除成功！素材已更新为无水印版本');
   };
 
   // 将blob URL转换为base64数据
