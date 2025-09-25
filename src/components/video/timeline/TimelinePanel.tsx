@@ -2374,8 +2374,52 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     return subtitles;
   }, [editingTrackId, timelineState.tracks]);
 
+  // 新增：键盘删除功能
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 检查是否按下了Delete键或Backspace键
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // 检查是否有选中的素材
+        if (timelineState.selectedItems.length > 0) {
+          // 防止在输入框中删除时触发
+          const activeElement = document.activeElement;
+          const isInputElement = activeElement && (
+            activeElement.tagName === 'INPUT' || 
+            activeElement.tagName === 'TEXTAREA' || 
+            (activeElement as HTMLElement).contentEditable === 'true'
+          );
+          
+          if (!isInputElement) {
+            e.preventDefault();
+            
+            console.log(`[TimelinePanel] 键盘删除操作触发`, {
+              key: e.key,
+              selectedItemsCount: timelineState.selectedItems.length,
+              selectedItems: timelineState.selectedItems,
+              activeElement: activeElement?.tagName || 'none',
+              timestamp: new Date().toISOString()
+            });
+            
+            handleDelete();
+          }
+        }
+      }
+    };
+
+    // 添加键盘事件监听器
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // 清理函数
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [timelineState.selectedItems, handleDelete]);
+
   return (
-    <div className={`timeline-panel flex flex-col h-full bg-white ${className}`}>
+    <div 
+      className={`timeline-panel flex flex-col h-full bg-white ${className}`}
+      tabIndex={0} // 使div可以接收焦点，以便捕获键盘事件
+    >
       {/* 工具栏 */}
       <TimelineToolbar
         activeTool={activeTool}

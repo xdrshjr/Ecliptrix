@@ -498,13 +498,29 @@ const Track: React.FC<TrackProps> = ({
       >
         {/* 背景网格线 */}
         <div className="absolute inset-0 pointer-events-none">
-          {[...Array(Math.ceil(totalDuration))].map((_, i) => (
-            <div
-              key={i}
-              className="absolute top-0 bottom-0 border-l border-gray-100"
-              style={{ left: `${i * pixelsPerSecond}px` }}
-            />
-          ))}
+          {(() => {
+            // 计算容器实际宽度对应的时间长度
+            const containerWidth = Math.max(totalDuration * pixelsPerSecond, 800);
+            const maxTimeForGrid = Math.ceil(containerWidth / pixelsPerSecond);
+            
+            console.log(`[Track] 生成背景网格线`, {
+              trackId: track.id,
+              totalDuration: totalDuration.toFixed(2),
+              containerWidth: containerWidth.toFixed(2),
+              pixelsPerSecond: pixelsPerSecond.toFixed(2),
+              maxTimeForGrid,
+              gridLinesCount: maxTimeForGrid,
+              timestamp: new Date().toISOString()
+            });
+            
+            return [...Array(maxTimeForGrid)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute top-0 bottom-0 border-l border-gray-100"
+                style={{ left: `${i * pixelsPerSecond}px` }}
+              />
+            ));
+          })()}
         </div>
 
         {/* 渲染轨道上的所有项目 */}
