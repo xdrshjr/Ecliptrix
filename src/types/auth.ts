@@ -1,3 +1,5 @@
+export type UserRole = 'admin' | 'regular' | 'premium';
+
 export interface User {
   id: string;
   username: string;
@@ -5,6 +7,7 @@ export interface User {
   avatar?: string;
   fullName?: string;
   avatarUrl?: string;
+  userRole?: UserRole;
 }
 
 export interface AuthState {

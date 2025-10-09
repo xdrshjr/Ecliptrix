@@ -62,6 +62,7 @@ async def login_user(login_data: UserLogin, request: Request) -> UserLoginRespon
                 "username": login_data.username,
                 "user_id": auth_result["user"].id,
                 "is_admin": auth_result["user"].is_admin,
+                "user_role": auth_result["user"].user_role,
                 "has_session": auth_result.get("session_token") is not None
             })
             

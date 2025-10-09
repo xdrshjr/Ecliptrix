@@ -136,7 +136,8 @@ class AuthService:
             logger.info("用户查询成功", {
                 "username": login_data.username,
                 "user_id": user_data['id'],
-                "is_admin": user_data.get('is_admin', False)
+                "is_admin": user_data.get('is_admin', False),
+                "user_role": user_data.get('user_role', 'regular')
             })
             
             # Verify password
@@ -195,6 +196,7 @@ class AuthService:
                 avatar_url=user_data.get('avatar_url'),
                 is_active=user_data['is_active'],
                 is_admin=user_data.get('is_admin', False),
+                user_role=user_data.get('user_role', 'regular'),
                 created_at=datetime.fromisoformat(user_data['created_at'].replace('Z', '+00:00')),
                 updated_at=datetime.fromisoformat(user_data['updated_at'].replace('Z', '+00:00')),
                 last_login_at=datetime.now()
@@ -204,6 +206,7 @@ class AuthService:
                 "username": login_data.username,
                 "user_id": user_data['id'],
                 "is_admin": user_info.is_admin,
+                "user_role": user_info.user_role,
                 "has_session_token": session_token is not None,
                 "login_time": datetime.now().isoformat()
             })
@@ -285,7 +288,8 @@ class AuthService:
                 "password_hash": password_hash,
                 "full_name": registration_data.full_name,
                 "is_active": True,
-                "is_admin": False
+                "is_admin": False,
+                "user_role": "regular"
             }
             
             response = self.client.table('users').insert(new_user_data).execute()
@@ -312,6 +316,7 @@ class AuthService:
                 avatar_url=created_user.get('avatar_url'),
                 is_active=created_user['is_active'],
                 is_admin=created_user.get('is_admin', False),
+                user_role=created_user.get('user_role', 'regular'),
                 created_at=datetime.fromisoformat(created_user['created_at'].replace('Z', '+00:00')),
                 updated_at=datetime.fromisoformat(created_user['updated_at'].replace('Z', '+00:00')),
                 last_login_at=None
@@ -320,7 +325,8 @@ class AuthService:
             logger.info("用户注册成功", {
                 "username": registration_data.username,
                 "user_id": created_user['id'],
-                "email": registration_data.email
+                "email": registration_data.email,
+                "user_role": user_info.user_role
             })
             
             return {
@@ -372,6 +378,7 @@ class AuthService:
                 avatar_url=user_data.get('avatar_url'),
                 is_active=user_data['is_active'],
                 is_admin=user_data.get('is_admin', False),
+                user_role=user_data.get('user_role', 'regular'),
                 created_at=datetime.fromisoformat(user_data['created_at'].replace('Z', '+00:00')),
                 updated_at=datetime.fromisoformat(user_data['updated_at'].replace('Z', '+00:00')),
                 last_login_at=datetime.fromisoformat(user_data['last_login_at'].replace('Z', '+00:00')) if user_data.get('last_login_at') else None

@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
         username: result.user.username,
         userId: result.user.id,
         isAdmin: result.user.is_admin,
+        userRole: result.user.user_role,
         hasSessionToken: !!result.session_token,
         timestamp: new Date().toISOString()
       });
@@ -87,7 +88,8 @@ export async function POST(request: NextRequest) {
         id: result.user.id,
         username: result.user.username,
         email: result.user.email,
-        avatar: result.user.avatar_url
+        avatar: result.user.avatar_url,
+        userRole: result.user.user_role
       };
 
       return NextResponse.json({

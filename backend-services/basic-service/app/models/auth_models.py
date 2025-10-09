@@ -2,10 +2,13 @@
 Authentication models for the Basic Service application.
 """
 
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from .base_models import BaseResponse
+
+# User role type definition
+UserRole = Literal["admin", "regular", "premium"]
 
 
 class UserLogin(BaseModel):
@@ -23,6 +26,7 @@ class UserInfo(BaseModel):
     avatar_url: Optional[str] = Field(None, description="Avatar URL")
     is_active: bool = Field(True, description="Whether user is active")
     is_admin: bool = Field(False, description="Whether user is admin")
+    user_role: UserRole = Field("regular", description="User role: admin, regular, or premium")
     created_at: datetime = Field(..., description="Creation time")
     updated_at: datetime = Field(..., description="Last update time")
     last_login_at: Optional[datetime] = Field(None, description="Last login time")

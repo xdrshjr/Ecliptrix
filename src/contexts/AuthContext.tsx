@@ -152,7 +152,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (data.success && data.user) {
         console.log('[AuthContext] Login successful:', data.user.username, {
-          hasSessionToken: !!data.session_token
+          hasSessionToken: !!data.session_token,
+          userRole: data.user.userRole
         });
         
         // Store user and session token in localStorage
@@ -169,8 +170,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           sessionToken: data.session_token || null,
         });
 
-        // Show success notification
-        notification.showSuccess(`欢迎回来，${data.user.username}！`, 3000);
+        // Show success notification with role information
+        const roleLabel = data.user.userRole === 'admin' ? '管理员' : 
+                         data.user.userRole === 'premium' ? '高级用户' : '普通用户';
+        notification.showSuccess(`欢迎回来，${data.user.username}！(${roleLabel})`, 3000);
 
         return { success: true };
       } else {
