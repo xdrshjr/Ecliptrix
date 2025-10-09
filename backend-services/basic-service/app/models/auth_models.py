@@ -34,6 +34,7 @@ class UserLoginResponse(BaseResponse):
     """User login response model."""
     user: Optional[UserInfo] = Field(None, description="User information")
     token: Optional[str] = Field(None, description="Authentication token (if applicable)")
+    session_token: Optional[str] = Field(None, description="Session token for single device login")
 
 
 class UserLoginErrorResponse(BaseResponse):
@@ -70,4 +71,16 @@ class UserUpdateRequest(BaseModel):
 
 class UserUpdateResponse(BaseResponse):
     """User update response model."""
-    user: Optional[UserInfo] = Field(None, description="Updated user information") 
+    user: Optional[UserInfo] = Field(None, description="Updated user information")
+
+
+class SessionValidationRequest(BaseModel):
+    """Session validation request model."""
+    user_id: str = Field(..., description="User ID")
+    session_token: str = Field(..., description="Session token to validate")
+
+
+class SessionValidationResponse(BaseResponse):
+    """Session validation response model."""
+    valid: bool = Field(..., description="Whether session is valid")
+    reason: Optional[str] = Field(None, description="Reason if session is invalid") 

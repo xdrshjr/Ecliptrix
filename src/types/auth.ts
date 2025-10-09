@@ -11,6 +11,7 @@ export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  sessionToken?: string | null;
 }
 
 export interface LoginCredentials {
@@ -18,8 +19,21 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface SessionValidationRequest {
+  user_id: string;
+  session_token: string;
+}
+
+export interface SessionValidationResponse {
+  success: boolean;
+  valid: boolean;
+  message?: string;
+  reason?: string;
+}
+
 export interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   updateUserProfile: (user: User) => Promise<void>;
+  validateSession: () => Promise<boolean>;
 } 

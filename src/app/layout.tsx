@@ -23,12 +23,12 @@ export default function RootLayout({
         suppressHydrationWarning={true}
       >
         <LocaleProvider>
-          <AuthProvider>
-            <NotificationProvider>
+          <NotificationProvider>
+            <AuthProvider>
               {children}
               <GlobalMobileDetection />
-            </NotificationProvider>
-          </AuthProvider>
+            </AuthProvider>
+          </NotificationProvider>
         </LocaleProvider>
       </body>
     </html>

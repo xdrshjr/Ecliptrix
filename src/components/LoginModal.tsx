@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface LoginModalProps {
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const { t } = useLocale();
   const { login } = useAuth();
+  const notification = useNotification();
   
   const [formData, setFormData] = useState({
     username: '',
@@ -92,7 +94,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           error: result.error,
           timestamp: new Date().toISOString()
         });
-        setError(result.error || t.auth.loginFailed);
+        const errorMessage = result.error || t.auth.loginFailed;
+        setError(errorMessage);
+        notification.showError(errorMessage, 4000);
       }
     } catch (err) {
       console.error('[LoginModal] Login error occurred:', {
@@ -101,6 +105,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         timestamp: new Date().toISOString()
       });
       setError(t.auth.loginFailed);
+      notification.showError(t.auth.loginFailed, 4000);
     } finally {
       setIsLoading(false);
       console.log('[LoginModal] Login loading state deactivated:', {

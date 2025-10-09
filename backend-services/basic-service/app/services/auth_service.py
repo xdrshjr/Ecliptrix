@@ -15,6 +15,7 @@ except ImportError:
 from app.config import settings
 from app.logger import get_logger
 from app.models.auth_models import UserLogin, UserInfo, UserRegistration
+from app.services.session_service import session_service
 
 logger = get_logger(__name__)
 
@@ -85,12 +86,19 @@ class AuthService:
             logger.error(f"密码验证失败: {str(e)}")
             return False
     
-    async def authenticate_user(self, login_data: UserLogin) -> Dict[str, Any]:
+    async def authenticate_user(
+        self, 
+        login_data: UserLogin,
+        device_info: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Authenticate user with username and password.
         
         Args:
             login_data: User login credentials
+            device_info: Device information (User-Agent)
+            ip_address: IP address of the client
             
         Returns:
             Dict containing authentication result
@@ -105,6 +113,8 @@ class AuthService:
         try:
             logger.info("用户登录认证开始", {
                 "username": login_data.username,
+                "device_info": device_info[:100] if device_info else None,
+                "ip_address": ip_address,
                 "timestamp": datetime.now().isoformat()
             })
             
@@ -141,6 +151,28 @@ class AuthService:
                     "error_code": "INVALID_CREDENTIALS"
                 }
             
+            # Create new session (this will invalidate any existing session)
+            session_result = await session_service.create_session(
+                user_id=user_data['id'],
+                device_info=device_info,
+                ip_address=ip_address
+            )
+            
+            if not session_result.get("success"):
+                logger.error("会话创建失败", {
+                    "user_id": user_data['id'],
+                    "username": login_data.username,
+                    "error": session_result.get("message")
+                })
+                # Continue with login even if session creation fails
+                session_token = None
+            else:
+                session_token = session_result.get("session_token")
+                logger.info("用户会话创建成功", {
+                    "user_id": user_data['id'],
+                    "username": login_data.username
+                })
+            
             # Update last login time
             try:
                 self.client.table('users').update({
@@ -172,13 +204,15 @@ class AuthService:
                 "username": login_data.username,
                 "user_id": user_data['id'],
                 "is_admin": user_info.is_admin,
+                "has_session_token": session_token is not None,
                 "login_time": datetime.now().isoformat()
             })
             
             return {
                 "success": True,
                 "message": "登录成功",
-                "user": user_info
+                "user": user_info,
+                "session_token": session_token
             }
             
         except Exception as e:

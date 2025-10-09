@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
         username: result.user.username,
         userId: result.user.id,
         isAdmin: result.user.is_admin,
+        hasSessionToken: !!result.session_token,
         timestamp: new Date().toISOString()
       });
 
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         user: transformedUser,
+        session_token: result.session_token,
         message: result.message || 'Login successful'
       });
     } else {
