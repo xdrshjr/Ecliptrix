@@ -99,6 +99,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     onUpdateContent(updatedContent);
   }, [chatContent, onUpdateContent]);
 
+  const handleClearMessages = useCallback(() => {
+    if (!chatContent.activeConversationId) {
+      console.warn('[Chat] No active conversation to clear');
+      return;
+    }
+
+    console.log(`[Chat] Clearing messages for conversation: ${chatContent.activeConversationId}`);
+    
+    const updatedConversations = chatContent.conversations.map(conv => {
+      if (conv.id === chatContent.activeConversationId) {
+        console.log(`[Chat] Cleared ${conv.messages.length} messages from conversation: ${conv.id}`);
+        return {
+          ...conv,
+          messages: [],
+          updatedAt: new Date(),
+        };
+      }
+      return conv;
+    });
+
+    const updatedContent: ChatTaskContent = {
+      ...chatContent,
+      conversations: updatedConversations,
+    };
+
+    onUpdateContent(updatedContent);
+    console.log('[Chat] Chat history cleared successfully, context cache reset');
+  }, [chatContent, onUpdateContent]);
+
   const handleSendMessage = useCallback(async (message: string) => {
     if (!chatContent.activeConversationId || isLoading) return;
 
@@ -271,6 +300,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <ChatWindow
           conversation={activeConversation}
           onSendMessage={handleSendMessage}
+          onClearMessages={handleClearMessages}
           isLoading={isLoading}
         />
       </div>

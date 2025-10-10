@@ -7,12 +7,14 @@ import MessageBubble from './MessageBubble';
 interface ChatWindowProps {
   conversation: Conversation | undefined;
   onSendMessage: (message: string) => void;
+  onClearMessages: () => void;
   isLoading: boolean;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
   conversation,
   onSendMessage,
+  onClearMessages,
   isLoading,
 }) => {
   const [inputMessage, setInputMessage] = useState('');
@@ -59,6 +61,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // 检查是否有正在流式传输的消息
   const hasStreamingMessage = conversation?.messages.some(msg => msg.isStreaming) || false;
 
+  // Initialize textarea height on mount
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      console.log('[ChatWindow] Textarea initialized with default height');
+    }
+  }, []);
+
   useEffect(() => {
     // 新消息时自动滚动到底部
     const timer = setTimeout(() => {
@@ -85,15 +96,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputMessage.trim() && !isLoading) {
+      console.log('[ChatWindow] Sending message, resetting textarea to default state');
       onSendMessage(inputMessage.trim());
       setInputMessage('');
-      // Reset textarea height
+      // Reset textarea to initial single-row height and hide overflow
       if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = '46px';
+        textareaRef.current.style.overflow = 'hidden';
       }
       // 发送消息后强制滚动到底部
       setShouldAutoScroll(true);
       setTimeout(() => scrollToBottom(true), 100);
+      console.log('[ChatWindow] Textarea reset to default height (46px)');
     }
   };
 
@@ -105,12 +119,98 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputMessage(e.target.value);
+    const newValue = e.target.value;
+    setInputMessage(newValue);
     
-    // Auto-resize textarea
+    // Auto-resize textarea based on content
     const textarea = e.target;
+    // Reset height to auto to get accurate scrollHeight
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    // Calculate new height (min: 46px for 1 line, max: 120px for ~5 lines)
+    const minHeight = 46;
+    const maxHeight = 120;
+    const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+    textarea.style.height = newHeight + 'px';
+    
+    // Enable scrolling when content exceeds max height
+    if (textarea.scrollHeight > maxHeight) {
+      textarea.style.overflow = 'auto';
+      console.log(`[ChatWindow] Textarea reached max height (${maxHeight}px), scrolling enabled. Buttons aligned to bottom.`);
+    } else {
+      textarea.style.overflow = 'hidden';
+    }
+    
+    // Log height changes for multi-line content
+    if (newHeight > minHeight) {
+      console.log(`[ChatWindow] Textarea auto-resized to ${newHeight}px (approx ${Math.ceil((newHeight - 22) / 24)} lines). Buttons stay aligned to bottom.`);
+    }
+  };
+
+  const handleFocus = () => {
+    // When input gains focus, expand height based on content
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    
+    // Temporarily set to auto to get accurate scrollHeight
+    textarea.style.height = 'auto';
+    
+    // Calculate appropriate height based on content
+    const minHeight = 46;
+    const maxHeight = 120;
+    const contentHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+    
+    textarea.style.height = contentHeight + 'px';
+    
+    // Handle overflow for long content
+    if (textarea.scrollHeight > maxHeight) {
+      textarea.style.overflow = 'auto';
+    } else {
+      textarea.style.overflow = 'hidden';
+    }
+    
+    if (contentHeight > minHeight) {
+      console.log(`[ChatWindow] Input gained focus with multi-line content, expanding to ${contentHeight}px`);
+    } else {
+      console.log('[ChatWindow] Input gained focus with single-line content, keeping default height');
+    }
+  };
+
+  const handleBlur = () => {
+    // Reset textarea height when it loses focus (user clicks elsewhere)
+    if (!textareaRef.current) return;
+    
+    const currentHeight = textareaRef.current.style.height;
+    
+    if (!inputMessage.trim()) {
+      // No content: always reset to default height
+      console.log('[ChatWindow] Input lost focus with no content, resetting height to default');
+      textareaRef.current.style.height = '46px';
+      textareaRef.current.style.overflow = 'hidden';
+    } else if (currentHeight !== '46px') {
+      // Has content and height was expanded: reset height
+      console.log('[ChatWindow] Input lost focus, resetting expanded height to default while preserving content');
+      textareaRef.current.style.height = '46px';
+      textareaRef.current.style.overflow = 'hidden';
+    }
+  };
+
+  const handleClearChat = () => {
+    if (!conversation || conversation.messages.length === 0) {
+      console.log('[ChatWindow] No messages to clear');
+      return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = window.confirm('Are you sure you want to clear all chat history? This action cannot be undone.');
+    
+    if (confirmed) {
+      console.log(`[ChatWindow] User confirmed clearing ${conversation.messages.length} messages`);
+      onClearMessages();
+      console.log('[ChatWindow] Chat cleared, context cache reset');
+    } else {
+      console.log('[ChatWindow] User cancelled chat clearing');
+    }
   };
 
   if (!conversation) {
@@ -211,16 +311,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               value={inputMessage}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               placeholder="Type your message..."
-              className="w-full px-4 py-3 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-32 bg-gray-50"
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-32 bg-gray-50 min-h-[46px]"
               rows={1}
               disabled={isLoading}
+              style={{ height: '46px', overflow: 'hidden' }}
             />
           </div>
+          {/* Clear Chat Button */}
+          <button
+            type="button"
+            onClick={handleClearChat}
+            disabled={!conversation || conversation.messages.length === 0 || isLoading}
+            className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white rounded-2xl px-3 py-3 transition-colors flex items-center justify-center shrink-0"
+            title="Clear chat history"
+            style={{ height: '46px', width: '46px' }}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+          {/* Send Button */}
           <button
             type="submit"
             disabled={!inputMessage.trim() || isLoading}
-            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-2xl p-3 transition-colors flex items-center justify-center min-w-[48px]"
+            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-2xl px-3 py-3 transition-colors flex items-center justify-center shrink-0"
+            title="Send message"
+            style={{ height: '46px', width: '46px' }}
           >
             {isLoading ? (
               <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
