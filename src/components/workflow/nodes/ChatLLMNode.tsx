@@ -14,6 +14,7 @@ interface ChatLLMNodeProps {
   };
   selected?: boolean;
   onDelete?: () => void;
+  onPortMouseDown?: (nodeId: string, portType: 'input' | 'output', portId: string, event: React.MouseEvent) => void;
 }
 
 /**
@@ -25,7 +26,8 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
   id, 
   data, 
   selected = false,
-  onDelete 
+  onDelete,
+  onPortMouseDown 
 }) => {
   console.log('[ChatLLMNode] Rendering node:', { 
     id, 
@@ -34,10 +36,26 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
     config: data.config 
   });
 
+  const handleInputPortMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    console.log('[ChatLLMNode] Input port mouse down:', { nodeId: id });
+    if (onPortMouseDown) {
+      onPortMouseDown(id, 'input', 'input-1', e);
+    }
+  };
+
+  const handleOutputPortMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    console.log('[ChatLLMNode] Output port mouse down:', { nodeId: id });
+    if (onPortMouseDown) {
+      onPortMouseDown(id, 'output', 'output-1', e);
+    }
+  };
+
   return (
     <div 
       className={`
-        bg-white rounded-lg border-2 shadow-lg min-w-[200px]
+        bg-white rounded-lg border-2 shadow-lg min-w-[200px] select-none
         ${selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'}
         hover:shadow-xl transition-all duration-200
       `}
@@ -71,8 +89,15 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
       <div className="p-4 space-y-3">
         {/* Input Port */}
         <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-md" title="Input" />
-          <span className="text-xs text-gray-600">Input</span>
+          <div 
+            className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow-md cursor-pointer hover:bg-green-600 transition-colors" 
+            title="Input Port" 
+            onMouseDown={handleInputPortMouseDown}
+            data-port-type="input"
+            data-port-id="input-1"
+            data-node-id={id}
+          />
+          <span className="text-xs text-gray-600 select-none">Input</span>
         </div>
 
         {/* Node Configuration Display */}
@@ -84,8 +109,15 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
 
         {/* Output Port */}
         <div className="flex items-center justify-end space-x-2">
-          <span className="text-xs text-gray-600">Output</span>
-          <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-md" title="Output" />
+          <span className="text-xs text-gray-600 select-none">Output</span>
+          <div 
+            className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-md cursor-pointer hover:bg-blue-600 transition-colors" 
+            title="Output Port" 
+            onMouseDown={handleOutputPortMouseDown}
+            data-port-type="output"
+            data-port-id="output-1"
+            data-node-id={id}
+          />
         </div>
       </div>
     </div>

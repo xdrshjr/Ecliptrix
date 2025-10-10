@@ -3,6 +3,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { WorkflowNode, WorkflowConnection, WorkflowNodePosition } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
+import StartNode from './nodes/StartNode';
+import EndNode from './nodes/EndNode';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -34,6 +36,19 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const [canvasOffset, setCanvasOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
   
+  // Connection drawing state
+  const [connectingPort, setConnectingPort] = useState<{
+    nodeId: string;
+    portType: 'input' | 'output';
+    portId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [tempConnectionEnd, setTempConnectionEnd] = useState<{ x: number; y: number } | null>(null);
+  
+  // Force re-render connections when nodes move
+  const [connectionRenderKey, setConnectionRenderKey] = useState(0);
+  
   // 用于优化拖动性能的临时位置存储
   const dragPositionRef = useRef<{ [key: string]: { x: number; y: number } }>({});
   const rafRef = useRef<number | null>(null);
@@ -46,8 +61,93 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     connectionsCount: connections.length,
     selectedNodeId,
     scale,
+    connectingPort: connectingPort ? 'active' : 'none',
     timestamp: new Date().toISOString()
   });
+
+  // Helper function to get port position based on node position
+  const getPortPosition = useCallback((nodeId: string, portId: string, portType: 'input' | 'output') => {
+    // Try to get port position from DOM first (most accurate)
+    const portElement = document.querySelector(
+      `[data-node-id="${nodeId}"][data-port-id="${portId}"]`
+    ) as HTMLElement;
+    
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    
+    if (portElement && canvasRect) {
+      const portRect = portElement.getBoundingClientRect();
+      const portCenterX = portRect.left + portRect.width / 2 - canvasRect.left;
+      const portCenterY = portRect.top + portRect.height / 2 - canvasRect.top;
+      
+      // Log port position for debugging
+      // console.log('[WorkflowCanvas] Port position from DOM:', { 
+      //   nodeId, 
+      //   portId, 
+      //   x: portCenterX, 
+      //   y: portCenterY 
+      // });
+      
+      return {
+        x: portCenterX,
+        y: portCenterY,
+      };
+    }
+    
+    // Fallback: calculate based on node position (for rendering before DOM is ready)
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) {
+      console.warn('[WorkflowCanvas] Node not found for port position:', { nodeId });
+      return null;
+    }
+    
+    // Get node's current position (including any drag position)
+    const position = draggingNode?.id === nodeId && dragPositionRef.current[nodeId]
+      ? dragPositionRef.current[nodeId]
+      : node.position;
+    
+    // Calculate node position on canvas
+    const nodeX = (position.x + canvasOffset.x) * scale;
+    const nodeY = (position.y + canvasOffset.y) * scale;
+    
+    // Estimate port offset based on node type and port type
+    let portOffsetX = 0;
+    let portOffsetY = 0;
+    
+    if (node.type === 'start') {
+      // Start node: output on the right
+      portOffsetX = 172 * scale; // node width minus padding
+      portOffsetY = 58 * scale;  // approximate vertical center
+    } else if (node.type === 'end') {
+      // End node: input on the left
+      portOffsetX = 8 * scale;   // left padding
+      portOffsetY = 38 * scale;  // approximate vertical center
+    } else if (node.type === 'chat-llm') {
+      // Chat LLM node: input on left, output on right
+      if (portType === 'input') {
+        portOffsetX = 8 * scale;   // left padding
+        portOffsetY = 54 * scale;  // top of body section
+      } else {
+        portOffsetX = 192 * scale; // node width minus padding
+        portOffsetY = 114 * scale; // near bottom
+      }
+    }
+    
+    return {
+      x: nodeX + portOffsetX,
+      y: nodeY + portOffsetY,
+    };
+  }, [nodes, draggingNode, canvasOffset, scale]);
+
+  // Helper function to create SVG path for connection
+  const createConnectionPath = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    
+    // Use bezier curve for smooth connections
+    const controlPointOffset = Math.abs(dx) * 0.5;
+    
+    return `M ${x1},${y1} C ${x1 + controlPointOffset},${y1} ${x2 - controlPointOffset},${y2} ${x2},${y2}`;
+  }, []);
 
   // Handle right-click context menu
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -61,6 +161,54 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       setContextMenu({ visible: true, x, y });
     }
   }, []);
+
+  // Add Start node
+  const handleAddStartNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'start',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Start',
+        type: 'start',
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Start node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
+  // Add End node
+  const handleAddEndNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'end',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'End',
+        type: 'end',
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new End node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
   // Add Chat LLM node
   const handleAddChatLLMNode = useCallback(() => {
@@ -109,6 +257,123 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     console.log('[WorkflowCanvas] Node selected:', { nodeId });
     setSelectedNodeId(nodeId);
   }, []);
+
+  // Handle port mouse down (start connection)
+  const handlePortMouseDown = useCallback((
+    nodeId: string, 
+    portType: 'input' | 'output', 
+    portId: string, 
+    event: React.MouseEvent
+  ) => {
+    event.stopPropagation();
+    
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    // Get port element position
+    const portElement = event.currentTarget as HTMLElement;
+    const portRect = portElement.getBoundingClientRect();
+    const portCenterX = portRect.left + portRect.width / 2 - rect.left;
+    const portCenterY = portRect.top + portRect.height / 2 - rect.top;
+    
+    console.log('[WorkflowCanvas] Starting connection from port:', { 
+      nodeId, 
+      portType, 
+      portId,
+      x: portCenterX,
+      y: portCenterY
+    });
+    
+    setConnectingPort({
+      nodeId,
+      portType,
+      portId,
+      x: portCenterX,
+      y: portCenterY,
+    });
+    setTempConnectionEnd({ x: portCenterX, y: portCenterY });
+  }, []);
+
+  // Handle connection mouse move
+  const handleConnectionMouseMove = useCallback((e: React.MouseEvent) => {
+    if (connectingPort && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setTempConnectionEnd({ x, y });
+    }
+  }, [connectingPort]);
+
+  // Handle connection mouse up (complete connection)
+  const handleConnectionMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!connectingPort) return;
+    
+    console.log('[WorkflowCanvas] Connection mouse up, checking target');
+    
+    // Find the target port element
+    const targetElement = document.elementFromPoint(e.clientX, e.clientY);
+    const portElement = targetElement?.closest('[data-port-type]') as HTMLElement;
+    
+    if (portElement) {
+      const targetNodeId = portElement.getAttribute('data-node-id');
+      const targetPortType = portElement.getAttribute('data-port-type') as 'input' | 'output';
+      const targetPortId = portElement.getAttribute('data-port-id');
+      
+      console.log('[WorkflowCanvas] Found target port:', { 
+        targetNodeId, 
+        targetPortType, 
+        targetPortId 
+      });
+      
+      // Validate connection: output -> input only
+      if (
+        targetNodeId && 
+        targetPortType && 
+        targetPortId &&
+        targetNodeId !== connectingPort.nodeId &&
+        connectingPort.portType === 'output' && 
+        targetPortType === 'input'
+      ) {
+        // Check if connection already exists
+        const existingConnection = connections.find(
+          conn => 
+            conn.source === connectingPort.nodeId && 
+            conn.target === targetNodeId &&
+            conn.sourceHandle === connectingPort.portId &&
+            conn.targetHandle === targetPortId
+        );
+        
+        if (!existingConnection) {
+          const newConnection: WorkflowConnection = {
+            id: `conn-${Date.now()}`,
+            source: connectingPort.nodeId,
+            target: targetNodeId,
+            sourceHandle: connectingPort.portId,
+            targetHandle: targetPortId,
+          };
+          
+          console.log('[WorkflowCanvas] Creating new connection:', newConnection);
+          onConnectionsChange([...connections, newConnection]);
+        } else {
+          console.log('[WorkflowCanvas] Connection already exists, skipping');
+        }
+      } else {
+        console.log('[WorkflowCanvas] Invalid connection attempt:', {
+          reason: connectingPort.portType === 'input' 
+            ? 'Cannot connect from input port' 
+            : targetPortType === 'output' 
+              ? 'Cannot connect to output port'
+              : 'Same node or invalid target'
+        });
+      }
+    } else {
+      console.log('[WorkflowCanvas] No valid target port found');
+    }
+    
+    // Reset connection state
+    setConnectingPort(null);
+    setTempConnectionEnd(null);
+  }, [connectingPort, connections, onConnectionsChange]);
 
   // Handle node deletion
   const handleDeleteNode = useCallback((nodeId: string) => {
@@ -162,6 +427,12 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
   // Handle node dragging (优化版本 - 使用 requestAnimationFrame)
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    // Handle connection drawing
+    if (connectingPort) {
+      handleConnectionMouseMove(e);
+      return;
+    }
+    
     if (draggingNode && isDraggingRef.current) {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
@@ -188,14 +459,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               // 更新临时位置
               dragPositionRef.current[draggingNode.id] = { x, y };
               
-              // 直接更新DOM，使用 transform 代替 left/top 以获得更好的性能（硬件加速）
-              const nodeElement = document.querySelector(`[data-node-id="${draggingNode.id}"]`) as HTMLElement;
-              if (nodeElement) {
-                // 使用 transform 进行硬件加速的移动
-                const translateX = (x + canvasOffset.x) * scale;
-                const translateY = (y + canvasOffset.y) * scale;
-                nodeElement.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
-              }
+              // Force re-render to update node position and connections
+              // 直接更新状态触发重新渲染，而不是操作DOM
+              setConnectionRenderKey(prev => prev + 1);
               
               // 重置 RAF 引用，允许下一次更新
               rafRef.current = null;
@@ -204,10 +470,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         }
       }
     }
-  }, [draggingNode, scale, canvasOffset]);
+  }, [draggingNode, scale, canvasOffset, connectingPort, handleConnectionMouseMove]);
 
   // Handle node drag end
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    // Handle connection completion
+    if (connectingPort) {
+      handleConnectionMouseUp(e);
+      return;
+    }
+    
     if (draggingNode && isDraggingRef.current) {
       const hasMoved = hasMovedRef.current;
       console.log('[WorkflowCanvas] Node drag ended:', { 
@@ -225,6 +497,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       if (hasMoved) {
         const finalPosition = dragPositionRef.current[draggingNode.id];
         if (finalPosition) {
+          console.log('[WorkflowCanvas] Node drag completed, updating position:', {
+            nodeId: draggingNode.id,
+            finalPosition
+          });
+          
           const updatedNodes = nodes.map(node => 
             node.id === draggingNode.id
               ? { ...node, position: finalPosition }
@@ -233,14 +510,12 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           
           onNodesChange(updatedNodes);
           
-          // 清理节点的内联 transform 样式，让 React 接管渲染
-          const nodeElement = document.querySelector(`[data-node-id="${draggingNode.id}"]`) as HTMLElement;
-          if (nodeElement) {
-            nodeElement.style.transform = '';
-          }
-          
-          // 清理临时位置
+          // 清理临时位置 - 让 React 使用更新后的 node.position 重新渲染
           delete dragPositionRef.current[draggingNode.id];
+          
+          // Force re-render connections after node position update
+          console.log('[WorkflowCanvas] Forcing connection re-render after node move');
+          setConnectionRenderKey(prev => prev + 1);
         }
       } else {
         // 如果没有移动（单击），不做任何位置更新，只清理临时数据
@@ -254,7 +529,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       hasMovedRef.current = false;
       setDraggingNode(null);
     }
-  }, [draggingNode, nodes, onNodesChange]);
+  }, [draggingNode, nodes, onNodesChange, connectingPort, handleConnectionMouseUp]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -281,11 +556,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, []);
 
   return (
-    <div className="h-full w-full bg-gray-50 relative overflow-hidden">
+    <div className="h-full w-full bg-gray-50 relative overflow-hidden select-none">
       {/* Canvas */}
       <div
         ref={canvasRef}
-        className="h-full w-full relative cursor-default"
+        className="h-full w-full relative cursor-default select-none"
         onContextMenu={handleContextMenu}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -293,10 +568,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           console.log('[WorkflowCanvas] Canvas clicked, deselecting node');
           setSelectedNodeId(null);
         }}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
       >
         {/* Grid Background */}
         <div 
-          className="absolute inset-0 opacity-20"
+          className="absolute inset-0 opacity-20 pointer-events-none"
           style={{
             backgroundImage: `
               linear-gradient(to right, #e5e7eb 1px, transparent 1px),
@@ -306,6 +582,64 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             backgroundPosition: `${canvasOffset.x * scale}px ${canvasOffset.y * scale}px`
           }}
         />
+
+        {/* Connections SVG Layer */}
+        <svg 
+          className="absolute inset-0 pointer-events-none" 
+          style={{ width: '100%', height: '100%', zIndex: 1 }}
+          key={`connections-${connectionRenderKey}`}
+        >
+          {/* Render existing connections */}
+          {connections.map((connection) => {
+            const sourcePos = getPortPosition(connection.source, connection.sourceHandle || 'output-1', 'output');
+            const targetPos = getPortPosition(connection.target, connection.targetHandle || 'input-1', 'input');
+            
+            if (sourcePos && targetPos) {
+              const path = createConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+              return (
+                <g key={connection.id}>
+                  <path
+                    d={path}
+                    stroke="#6366f1"
+                    strokeWidth="2"
+                    fill="none"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d={path}
+                    stroke="transparent"
+                    strokeWidth="10"
+                    fill="none"
+                    className="pointer-events-auto cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log('[WorkflowCanvas] Connection clicked:', connection.id);
+                      // TODO: Add connection selection/deletion
+                    }}
+                  />
+                </g>
+              );
+            }
+            return null;
+          })}
+          
+          {/* Render temporary connection while dragging */}
+          {connectingPort && tempConnectionEnd && (
+            <path
+              d={createConnectionPath(
+                connectingPort.x,
+                connectingPort.y,
+                tempConnectionEnd.x,
+                tempConnectionEnd.y
+              )}
+              stroke="#94a3b8"
+              strokeWidth="2"
+              fill="none"
+              strokeDasharray="5,5"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
 
         {/* Nodes */}
         {nodes.map(node => {
@@ -327,6 +661,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 // 使用 transform 代替 left/top 以启用硬件加速
                 left: 0,
                 top: 0,
+                zIndex: 10,
                 // 始终设置 transform，拖动时会被 handleMouseMove 覆盖
                 transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
                 transformOrigin: 'top left',
@@ -343,12 +678,31 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 handleNodeClick(node.id);
               }}
             >
+              {node.type === 'start' && (
+                <StartNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                />
+              )}
+              {node.type === 'end' && (
+                <EndNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                />
+              )}
               {node.type === 'chat-llm' && (
                 <ChatLLMNode
                   id={node.id}
                   data={node.data}
                   selected={selectedNodeId === node.id}
                   onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
                 />
               )}
             </div>
@@ -365,6 +719,30 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              onClick={handleAddStartNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Start Node</span>
+            </button>
+            
+            <button
+              onClick={handleAddEndNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add End Node</span>
+            </button>
+            
+            <div className="h-px bg-gray-200 my-1" />
+            
             <button
               onClick={handleAddChatLLMNode}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
