@@ -38,6 +38,14 @@ export default function HomePage() {
     timestamp: new Date().toISOString()
   });
 
+  // 包装selectTab函数，在选择任务时关闭设置和个人资料页面
+  const handleSelectTab = (tabId: string) => {
+    console.log('[HomePage] Tab selected, closing settings/profile pages:', { tabId });
+    setIsSettingsOpen(false);
+    setIsProfileOpen(false);
+    selectTab(tabId);
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header - 固定在顶部 */}
@@ -53,7 +61,7 @@ export default function HomePage() {
         <VerticalTaskbar
           tabs={tabs}
           activeTabId={activeTabId}
-          onSelectTab={selectTab}
+          onSelectTab={handleSelectTab}
           onCloseTab={closeTab}
         />
         
