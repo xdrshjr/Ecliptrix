@@ -108,7 +108,7 @@ export interface Translations {
     searchPlaceholder: string;
   };
   tasks: {
-    contentCreation: string;
+    workflow: string;
     videoEditing: string;
     brainstorming: string;
     aiChat: string;
@@ -117,7 +117,7 @@ export interface Translations {
     title: string;
     subtitle: string;
     description: string;
-    contentCreationDesc: string;
+    workflowDesc: string;
     videoEditingDesc: string;
     brainstormingDesc: string;
     aiChatDesc: string;
@@ -590,7 +590,7 @@ export const translations: Record<string, Translations> = {
       deleteError: 'Failed to delete user',
     },
     tasks: {
-      contentCreation: 'Content Creation',
+      workflow: 'WorkFlow',
       videoEditing: 'Video Editing',
       brainstorming: 'Brainstorming',
       aiChat: 'AI Chat',
@@ -599,7 +599,7 @@ export const translations: Record<string, Translations> = {
       title: 'Welcome to Ecliptrix',
       subtitle: 'Where light and shadow collide',
       description: 'Where light and shadow collide to create extraordinary content. Start by creating a new task to begin your creative journey.',
-      contentCreationDesc: 'Generate engaging social media content',
+      workflowDesc: 'Build AI-powered workflow agents',
       videoEditingDesc: 'Automatic video mixing and editing',
       brainstormingDesc: 'Creative ideation and inspiration',
       aiChatDesc: 'Intelligent conversation and assistance',
@@ -1085,7 +1085,7 @@ export const translations: Record<string, Translations> = {
       deleteError: '用户删除失败',
     },
     tasks: {
-      contentCreation: '内容创作',
+      workflow: '工作流',
       videoEditing: '视频编辑',
       brainstorming: '头脑风暴',
       aiChat: 'AI对话',
@@ -1094,7 +1094,7 @@ export const translations: Record<string, Translations> = {
       title: '欢迎使用 Ecliptrix',
       subtitle: '光影交汇之处',
       description: '光影交汇之处，创造非凡内容。创建新任务开始您的创意之旅。',
-      contentCreationDesc: '生成引人入胜的社交媒体内容',
+      workflowDesc: '构建AI驱动的工作流代理',
       videoEditingDesc: '自动视频混剪和编辑',
       brainstormingDesc: '创意构思和灵感',
       aiChatDesc: '智能对话和协助',

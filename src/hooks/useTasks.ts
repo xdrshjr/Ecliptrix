@@ -31,11 +31,11 @@ export const useTasks = () => {
       content: null,
     };
 
-    // 创建默认的 Content Creation 任务
-    const contentTask: Task = {
-      id: 'default-content-task',
-      title: 'Content Creation',
-      type: 'content',
+    // 创建默认的 WorkFlow 任务
+    const workflowTask: Task = {
+      id: 'default-workflow-task',
+      title: 'WorkFlow',
+      type: 'workflow',
       status: 'draft',
       createdAt: fixedDate,
       updatedAt: fixedDate,
@@ -70,12 +70,12 @@ export const useTasks = () => {
       type: 'video',
     };
 
-    const contentTab: Tab = {
-      id: 'default-content-tab',
-      taskId: 'default-content-task',
-      title: 'Content Creation',
+    const workflowTab: Tab = {
+      id: 'default-workflow-tab',
+      taskId: 'default-workflow-task',
+      title: 'WorkFlow',
       isActive: false, // 不激活任何任务
-      type: 'content',
+      type: 'workflow',
     };
 
     const brainstormTab: Tab = {
@@ -87,8 +87,8 @@ export const useTasks = () => {
     };
 
     return {
-      tasks: [chatTask, videoTask, contentTask, brainstormTask],
-      tabs: [chatTab, videoTab, contentTab, brainstormTab],
+      tasks: [chatTask, videoTask, workflowTask, brainstormTask],
+      tabs: [chatTab, videoTab, workflowTab, brainstormTab],
       activeTabId: null, // 不激活任何标签页，显示主界面
     };
   };

@@ -1,9 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Task, ChatTaskContent, VideoEditingTaskContent } from '@/types';
+import { Task, ChatTaskContent, VideoEditingTaskContent, WorkflowTaskContent } from '@/types';
 import ChatInterface from './chat/ChatInterface';
 import VideoEditingInterface from './video/VideoEditingInterface';
+import WorkflowInterface from './workflow/WorkflowInterface';
 import { useLocale } from '@/contexts/LocaleContext';
 
 interface ContainerProps {
@@ -34,6 +35,16 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
     }
   };
 
+  const handleUpdateWorkflowContent = (content: WorkflowTaskContent) => {
+    if (activeTask && onUpdateTask) {
+      onUpdateTask(activeTask.id, { 
+        content,
+        updatedAt: new Date(),
+        status: 'active' as const,
+      });
+    }
+  };
+
   if (!activeTask) {    
     return (
       <div className="flex-1 bg-white flex items-center justify-center">
@@ -51,17 +62,17 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
           </p>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="bg-gray-50 rounded-xl p-4">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
-                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
-                </svg>
-              </div>
-              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.contentCreation}</h3>
-              <p className="text-gray-600">{t.welcome.contentCreationDesc}</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4">
               <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
                 <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+                </svg>
+              </div>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.workflow}</h3>
+              <p className="text-gray-600">{t.welcome.workflowDesc}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 002 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
@@ -113,6 +124,19 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
           taskId={activeTask.id}
           content={activeTask.content as VideoEditingTaskContent | null}
           onUpdateContent={handleUpdateVideoEditingContent}
+        />
+      </div>
+    );
+  }
+
+  // Handle workflow task type
+  if (activeTask.type === 'workflow') {    
+    return (
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <WorkflowInterface
+          taskId={activeTask.id}
+          content={activeTask.content as WorkflowTaskContent | null}
+          onUpdateContent={handleUpdateWorkflowContent}
         />
       </div>
     );

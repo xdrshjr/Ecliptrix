@@ -28,10 +28,10 @@ const Taskbar: React.FC<TaskbarProps> = ({
 
   const getTaskIcon = (type: TaskType) => {
     switch (type) {
-      case 'content':
+      case 'workflow':
         return (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
           </svg>
         );
       case 'video':
@@ -178,11 +178,11 @@ const Taskbar: React.FC<TaskbarProps> = ({
               <span className="text-sm">{t.tasks.videoEditing}</span>
             </button>
             <button
-              onClick={() => handleCreateTask('content')}
+              onClick={() => handleCreateTask('workflow')}
               className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
             >
-              {getTaskIcon('content')}
-              <span className="text-sm">{t.tasks.contentCreation}</span>
+              {getTaskIcon('workflow')}
+              <span className="text-sm">{t.tasks.workflow}</span>
             </button>
             <button
               onClick={() => handleCreateTask('brainstorm')}

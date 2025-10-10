@@ -1,7 +1,7 @@
 export interface Task {
   id: string;
   title: string;
-  type: 'content' | 'video' | 'brainstorm' | 'chat';
+  type: 'workflow' | 'video' | 'brainstorm' | 'chat';
   status: 'active' | 'completed' | 'draft';
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +45,51 @@ export interface Conversation {
 export interface ChatTaskContent {
   conversations: Conversation[];
   activeConversationId: string | null;
+}
+
+// Workflow related types
+export interface WorkflowNodePosition {
+  x: number;
+  y: number;
+}
+
+export interface WorkflowNodeData {
+  label: string;
+  type: string;
+  inputs?: Record<string, any>;
+  outputs?: Record<string, any>;
+  config?: Record<string, any>;
+}
+
+export interface WorkflowNode {
+  id: string;
+  type: string;
+  position: WorkflowNodePosition;
+  data: WorkflowNodeData;
+}
+
+export interface WorkflowConnection {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+export interface WorkflowData {
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+  name: string;
+  description?: string;
+}
+
+export interface WorkflowTaskContent {
+  activeWorkflowId: string | null;
+  workflows: {
+    id: string;
+    name: string;
+    data: WorkflowData;
+  }[];
 }
 
 // Video Editing related types
