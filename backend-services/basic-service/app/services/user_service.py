@@ -267,4 +267,76 @@ class UserService:
                 "success": False,
                 "message": "用户资料更新失败",
                 "error_code": "UPDATE_ERROR"
+            }
+    
+    async def get_all_users(self) -> Dict[str, Any]:
+        """
+        Get all users from the database.
+        
+        Returns:
+            Dict containing list of all users
+        """
+        if not self._validate_client():
+            logger.error("用户服务不可用，无法获取用户列表")
+            return {
+                "success": False,
+                "message": "用户服务不可用",
+                "error_code": "SERVICE_UNAVAILABLE"
+            }
+        
+        try:
+            logger.info("获取所有用户列表", {
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Query all users from database
+            response = self.client.table('users').select('*').order('created_at', desc=True).execute()
+            
+            if not response.data:
+                logger.info("数据库中暂无用户")
+                return {
+                    "success": True,
+                    "message": "用户列表获取成功",
+                    "total_count": 0,
+                    "users": []
+                }
+            
+            users_list = []
+            for user_data in response.data:
+                user_profile = {
+                    "id": user_data['id'],
+                    "username": user_data['username'],
+                    "email": user_data.get('email'),
+                    "full_name": user_data.get('full_name'),
+                    "avatar_url": user_data.get('avatar_url'),
+                    "is_active": user_data.get('is_active', True),
+                    "is_admin": user_data.get('is_admin', False),
+                    "created_at": user_data.get('created_at'),
+                    "updated_at": user_data.get('updated_at'),
+                    "last_login_at": user_data.get('last_login_at')
+                }
+                users_list.append(user_profile)
+            
+            logger.info("用户列表获取成功", {
+                "total_count": len(users_list),
+                "active_users": sum(1 for u in users_list if u['is_active']),
+                "admin_users": sum(1 for u in users_list if u['is_admin'])
+            })
+            
+            return {
+                "success": True,
+                "message": "用户列表获取成功",
+                "total_count": len(users_list),
+                "users": users_list
+            }
+            
+        except Exception as e:
+            logger.error("获取用户列表异常", {
+                "error": str(e),
+                "error_type": type(e).__name__
+            })
+            return {
+                "success": False,
+                "message": "用户列表获取失败",
+                "error_code": "QUERY_ERROR"
             } 

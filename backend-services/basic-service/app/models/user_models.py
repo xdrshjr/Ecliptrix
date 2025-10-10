@@ -121,4 +121,37 @@ class UserSettingsUpdate(BaseModel):
                     "language": "zh-CN"
                 }
             }
+        }
+
+
+class UserListResponse(BaseModel):
+    """用户列表响应模型"""
+    success: bool = Field(..., description="操作是否成功")
+    message: str = Field(..., description="响应消息")
+    timestamp: datetime = Field(..., description="响应时间戳")
+    total_count: int = Field(..., description="用户总数")
+    users: list[UserProfile] = Field(..., description="用户列表")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "用户列表获取成功",
+                "timestamp": "2023-12-01T12:00:00.000Z",
+                "total_count": 2,
+                "users": [
+                    {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "username": "admin",
+                        "email": "admin@ecliptrix.com",
+                        "full_name": "System Administrator",
+                        "avatar_url": None,
+                        "is_active": True,
+                        "is_admin": True,
+                        "created_at": "2023-12-01T10:00:00.000Z",
+                        "updated_at": "2023-12-01T12:00:00.000Z",
+                        "last_login_at": "2023-12-01T12:00:00.000Z"
+                    }
+                ]
+            }
         } 

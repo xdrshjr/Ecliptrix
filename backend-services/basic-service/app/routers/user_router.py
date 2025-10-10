@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from datetime import datetime
 
-from app.models.user_models import UserProfileUpdate, UserProfileResponse
+from app.models.user_models import UserProfileUpdate, UserProfileResponse, UserListResponse
 from app.services.user_service import UserService
 from app.logger import get_logger
 
@@ -162,4 +162,56 @@ async def health_check() -> Dict[str, Any]:
         "service": "UserService",
         "status": "healthy" if service_status else "unhealthy",
         "database_connected": service_status
-    } 
+    }
+
+
+@router.get("/list", response_model=UserListResponse)
+async def list_all_users() -> UserListResponse:
+    """
+    获取所有用户列表（管理员专用）
+    
+    Returns:
+        UserListResponse: 用户列表响应
+        
+    Raises:
+        HTTPException: 当服务不可用或查询失败时
+    """
+    logger.info("获取所有用户列表", {
+        "endpoint": "/user/list",
+        "method": "GET",
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    try:
+        result = await user_service.get_all_users()
+        
+        if not result["success"]:
+            logger.warning("获取用户列表失败", {
+                "error": result.get("message", "Unknown error"),
+                "error_code": result.get("error_code")
+            })
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("message", "获取用户列表失败")
+            )
+        
+        logger.info("用户列表获取成功", {
+            "total_count": result["total_count"]
+        })
+        
+        return UserListResponse(
+            success=True,
+            message="用户列表获取成功",
+            timestamp=datetime.now(),
+            total_count=result["total_count"],
+            users=result["users"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("用户列表获取异常", {
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
+        raise HTTPException(status_code=500, detail="服务器内部错误") 

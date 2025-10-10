@@ -80,6 +80,33 @@ export interface Translations {
     settingsSaveSuccess: string;
     settingsSaveError: string;
   };
+  adminSettings: {
+    title: string;
+    subtitle: string;
+    userManagement: string;
+    systemSettings: string;
+    userManagementDesc: string;
+    systemSettingsDesc: string;
+    registeredUsers: string;
+    totalUsers: string;
+    adminUsers: string;
+    regularUsers: string;
+    premiumUsers: string;
+    userId: string;
+    role: string;
+    status: string;
+    createdAt: string;
+    lastLogin: string;
+    active: string;
+    inactive: string;
+    actions: string;
+    edit: string;
+    delete: string;
+    loading: string;
+    noUsers: string;
+    fetchError: string;
+    searchPlaceholder: string;
+  };
   tasks: {
     contentCreation: string;
     videoEditing: string;
@@ -494,6 +521,33 @@ export const translations: Record<string, Translations> = {
       saveSettings: 'Save Settings',
       settingsSaveSuccess: 'Settings saved successfully',
       settingsSaveError: 'Failed to save settings',
+    },
+    adminSettings: {
+      title: 'Admin Settings',
+      subtitle: 'Manage system settings and users',
+      userManagement: 'User Management',
+      systemSettings: 'System Settings',
+      userManagementDesc: 'View and manage registered users',
+      systemSettingsDesc: 'Configure system-wide settings',
+      registeredUsers: 'Registered Users',
+      totalUsers: 'Total Users',
+      adminUsers: 'Admin Users',
+      regularUsers: 'Regular Users',
+      premiumUsers: 'Premium Users',
+      userId: 'User ID',
+      role: 'Role',
+      status: 'Status',
+      createdAt: 'Created',
+      lastLogin: 'Last Login',
+      active: 'Active',
+      inactive: 'Inactive',
+      actions: 'Actions',
+      edit: 'Edit',
+      delete: 'Delete',
+      loading: 'Loading...',
+      noUsers: 'No users found',
+      fetchError: 'Failed to fetch users',
+      searchPlaceholder: 'Search users...',
     },
     tasks: {
       contentCreation: 'Content Creation',
@@ -922,6 +976,33 @@ export const translations: Record<string, Translations> = {
       saveSettings: '保存设置',
       settingsSaveSuccess: '设置保存成功',
       settingsSaveError: '设置保存失败',
+    },
+    adminSettings: {
+      title: '管理员设置',
+      subtitle: '管理系统设置和用户',
+      userManagement: '用户管理',
+      systemSettings: '系统设置',
+      userManagementDesc: '查看和管理注册用户',
+      systemSettingsDesc: '配置系统级设置',
+      registeredUsers: '注册用户信息',
+      totalUsers: '总用户数',
+      adminUsers: '管理员用户',
+      regularUsers: '普通用户',
+      premiumUsers: '高级用户',
+      userId: '用户ID',
+      role: '角色',
+      status: '状态',
+      createdAt: '创建时间',
+      lastLogin: '最后登录',
+      active: '激活',
+      inactive: '未激活',
+      actions: '操作',
+      edit: '编辑',
+      delete: '删除',
+      loading: '加载中...',
+      noUsers: '暂无用户',
+      fetchError: '获取用户列表失败',
+      searchPlaceholder: '搜索用户...',
     },
     tasks: {
       contentCreation: '内容创作',

@@ -7,6 +7,7 @@ import Container from '@/components/Container';
 import Footer from '@/components/Footer';
 import LoginModal from '@/components/LoginModal';
 import UserProfilePage from '@/components/UserProfile/UserProfilePage';
+import AdminSettingsPage from '@/components/AdminSettings/AdminSettingsPage';
 import { useTasks } from '@/hooks/useTasks';
 
 export default function HomePage() {
@@ -24,6 +25,8 @@ export default function HomePage() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   // 用户资料页面状态
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  // 管理员设置页面状态
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // 检查当前是否为视频编辑任务
   const isVideoEditingTask = activeTask?.type === 'video';
@@ -41,6 +44,7 @@ export default function HomePage() {
       <Header 
         onLoginClick={() => setIsLoginModalOpen(true)}
         onProfileClick={() => setIsProfileOpen(true)}
+        onSettingsClick={() => setIsSettingsOpen(true)}
       />
       
       {/* Main Layout - Header 下方的内容区域 */}
@@ -55,7 +59,10 @@ export default function HomePage() {
         
         {/* Main Content Area - 右侧内容区域 */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {isProfileOpen ? (
+          {isSettingsOpen ? (
+            /* Admin Settings Page - 占据右侧内容区域 */
+            <AdminSettingsPage onClose={() => setIsSettingsOpen(false)} />
+          ) : isProfileOpen ? (
             /* User Profile Page - 占据右侧内容区域 */
             <UserProfilePage onClose={() => setIsProfileOpen(false)} />
           ) : (
