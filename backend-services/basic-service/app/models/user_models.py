@@ -154,4 +154,80 @@ class UserListResponse(BaseModel):
                     }
                 ]
             }
+        }
+
+
+class UserCreateRequest(BaseModel):
+    """管理员创建用户请求模型"""
+    username: str = Field(..., min_length=3, max_length=50, description="用户名，3-50字符")
+    email: EmailStr = Field(..., description="邮箱地址")
+    password: str = Field(..., min_length=6, description="密码，至少6个字符")
+    full_name: Optional[str] = Field(None, max_length=255, description="全名，最多255字符")
+    avatar_url: Optional[str] = Field(None, max_length=500, description="头像URL，最多500字符")
+    is_active: bool = Field(True, description="是否激活")
+    is_admin: bool = Field(False, description="是否为管理员")
+    user_role: Optional[str] = Field("regular", description="用户角色：admin, regular, premium")
+
+    @validator('username')
+    def validate_username(cls, v):
+        """验证用户名格式"""
+        if not v.replace('_', '').replace('-', '').isalnum():
+            raise ValueError('用户名只能包含字母、数字、下划线和连字符')
+        return v
+
+    @validator('avatar_url')
+    def validate_avatar_url(cls, v):
+        """验证头像URL格式"""
+        if v and not (v.startswith('http://') or v.startswith('https://')):
+            raise ValueError('头像URL必须以http://或https://开头')
+        return v
+    
+    @validator('user_role')
+    def validate_user_role(cls, v):
+        """验证用户角色"""
+        if v not in ['admin', 'regular', 'premium']:
+            raise ValueError('用户角色必须是admin, regular或premium之一')
+        return v
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "username": "newuser",
+                "email": "newuser@ecliptrix.com",
+                "password": "password123",
+                "full_name": "New User",
+                "avatar_url": None,
+                "is_active": True,
+                "is_admin": False,
+                "user_role": "regular"
+            }
+        }
+
+
+class UserCreateResponse(BaseModel):
+    """创建用户响应模型"""
+    success: bool = Field(..., description="操作是否成功")
+    message: str = Field(..., description="响应消息")
+    timestamp: datetime = Field(..., description="响应时间戳")
+    user: UserProfile = Field(..., description="创建的用户信息")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "用户创建成功",
+                "timestamp": "2023-12-01T12:00:00.000Z",
+                "user": {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "username": "newuser",
+                    "email": "newuser@ecliptrix.com",
+                    "full_name": "New User",
+                    "avatar_url": None,
+                    "is_active": True,
+                    "is_admin": False,
+                    "created_at": "2023-12-01T12:00:00.000Z",
+                    "updated_at": "2023-12-01T12:00:00.000Z",
+                    "last_login_at": None
+                }
+            }
         } 

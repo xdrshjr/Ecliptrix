@@ -17,12 +17,39 @@ interface UserData {
   last_login_at?: string;
 }
 
+interface CreateUserFormData {
+  username: string;
+  email: string;
+  password: string;
+  full_name: string;
+  avatar_url: string;
+  is_active: boolean;
+  is_admin: boolean;
+  user_role: 'admin' | 'regular' | 'premium';
+}
+
 const UserManagement: React.FC = () => {
   const { t } = useLocale();
   const notification = useNotification();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState<CreateUserFormData>({
+    username: '',
+    email: '',
+    password: '',
+    full_name: '',
+    avatar_url: '',
+    is_active: true,
+    is_admin: false,
+    user_role: 'regular',
+  });
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof CreateUserFormData, string>>>({});
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserData | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -48,6 +75,150 @@ const UserManagement: React.FC = () => {
       notification.showError(t.adminSettings.fetchError);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    console.log('[UserManagement] Opening create user modal');
+    setIsCreateModalOpen(true);
+    setFormData({
+      username: '',
+      email: '',
+      password: '',
+      full_name: '',
+      avatar_url: '',
+      is_active: true,
+      is_admin: false,
+      user_role: 'regular',
+    });
+    setFormErrors({});
+  };
+
+  const closeCreateModal = () => {
+    console.log('[UserManagement] Closing create user modal');
+    setIsCreateModalOpen(false);
+    setFormData({
+      username: '',
+      email: '',
+      password: '',
+      full_name: '',
+      avatar_url: '',
+      is_active: true,
+      is_admin: false,
+      user_role: 'regular',
+    });
+    setFormErrors({});
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Partial<Record<keyof CreateUserFormData, string>> = {};
+
+    if (!formData.username.trim()) {
+      errors.username = t.adminSettings.usernameRequired;
+    } else if (formData.username.trim().length < 3) {
+      errors.username = t.adminSettings.usernameMinLength;
+    }
+
+    if (!formData.email.trim()) {
+      errors.email = t.profile.email + ' ' + t.adminSettings.usernameRequired;
+    }
+
+    if (!formData.password.trim()) {
+      errors.password = ***REMOVED***;
+    } else if (formData.password.length < 6) {
+      errors.password = ***REMOVED***;
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleCreateUser = async () => {
+    console.log('[UserManagement] Creating user:', { username: formData.username, email: formData.email });
+
+    if (!validateForm()) {
+      console.log('[UserManagement] Form validation failed');
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+
+      const response = await fetch('/api/admin/users/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('[UserManagement] User created successfully:', data.user?.id);
+        notification.showSuccess(t.adminSettings.createSuccess);
+        closeCreateModal();
+        await fetchUsers(); // Refresh the user list
+      } else {
+        console.error('[UserManagement] Failed to create user:', data.message);
+        
+        // Handle specific error messages
+        if (data.message?.includes('用户名') || data.message?.includes('Username')) {
+          notification.showError(t.adminSettings.usernameExists);
+        } else if (data.message?.includes('邮箱') || data.message?.includes('Email')) {
+          notification.showError(t.adminSettings.emailExists);
+        } else {
+          notification.showError(data.message || t.adminSettings.createError);
+        }
+      }
+    } catch (error) {
+      console.error('[UserManagement] Error creating user:', error);
+      notification.showError(t.adminSettings.createError);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const openDeleteModal = (user: UserData) => {
+    console.log('[UserManagement] Opening delete confirmation modal for user:', user.username);
+    setUserToDelete(user);
+    setIsDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    console.log('[UserManagement] Closing delete confirmation modal');
+    setIsDeleteModalOpen(false);
+    setUserToDelete(null);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    console.log('[UserManagement] Deleting user:', { id: userToDelete.id, username: userToDelete.username });
+
+    try {
+      setIsDeleting(true);
+
+      const response = await fetch(`/api/admin/users/delete/${userToDelete.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('[UserManagement] User deleted successfully:', userToDelete.id);
+        notification.showSuccess(t.adminSettings.deleteSuccess);
+        closeDeleteModal();
+        await fetchUsers(); // Refresh the user list
+      } else {
+        console.error('[UserManagement] Failed to delete user:', data.message);
+        notification.showError(data.message || t.adminSettings.deleteError);
+      }
+    } catch (error) {
+      console.error('[UserManagement] Error deleting user:', error);
+      notification.showError(t.adminSettings.deleteError);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -136,18 +307,29 @@ const UserManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t.adminSettings.searchPlaceholder}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <svg className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+        {/* Search Bar with Add User Button */}
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t.adminSettings.searchPlaceholder}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <svg className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <button
+            onClick={openCreateModal}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            {t.adminSettings.addUser}
+          </button>
         </div>
       </div>
 
@@ -182,6 +364,9 @@ const UserManagement: React.FC = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t.adminSettings.lastLogin}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {t.adminSettings.actions}
                   </th>
                 </tr>
               </thead>
@@ -232,6 +417,17 @@ const UserManagement: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(user.last_login_at)}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <button
+                        onClick={() => openDeleteModal(user)}
+                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title={t.adminSettings.deleteUser}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -239,6 +435,256 @@ const UserManagement: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Create User Modal */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">{t.adminSettings.createUserTitle}</h3>
+                <p className="text-sm text-gray-500 mt-1">{t.adminSettings.createUserDesc}</p>
+              </div>
+              <button
+                onClick={closeCreateModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={isCreating}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-4 space-y-4">
+              {/* Username */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.adminSettings.username} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  placeholder={t.adminSettings.usernamePlaceholder}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    formErrors.username ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  disabled={isCreating}
+                />
+                {formErrors.username && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.username}</p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.profile.email} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder={t.profile.emailPlaceholder}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    formErrors.email ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  disabled={isCreating}
+                />
+                {formErrors.email && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
+                )}
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.adminSettings.password} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder={t.adminSettings.passwordPlaceholder}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    formErrors.password ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  disabled={isCreating}
+                />
+                {formErrors.password && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.password}</p>
+                )}
+              </div>
+
+              {/* Full Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.adminSettings.fullName}
+                </label>
+                <input
+                  type="text"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  placeholder={t.adminSettings.fullNamePlaceholder}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isCreating}
+                />
+              </div>
+
+              {/* Avatar URL */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.adminSettings.avatarUrl}
+                </label>
+                <input
+                  type="text"
+                  value={formData.avatar_url}
+                  onChange={(e) => setFormData({ ...formData, avatar_url: e.target.value })}
+                  placeholder={t.adminSettings.avatarUrlPlaceholder}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isCreating}
+                />
+              </div>
+
+              {/* User Role */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.adminSettings.userRole}
+                </label>
+                <select
+                  value={formData.user_role}
+                  onChange={(e) => setFormData({ ...formData, user_role: e.target.value as 'admin' | 'regular' | 'premium' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isCreating}
+                >
+                  <option value="regular">{t.adminSettings.userRoleRegular}</option>
+                  <option value="premium">{t.adminSettings.userRolePremium}</option>
+                </select>
+              </div>
+
+              {/* Checkboxes */}
+              <div className="space-y-3">
+                {/* Is Admin */}
+                <div className="flex items-start">
+                  <input
+                    type="checkbox"
+                    id="is_admin"
+                    checked={formData.is_admin}
+                    onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
+                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    disabled={isCreating}
+                  />
+                  <label htmlFor="is_admin" className="ml-2">
+                    <div className="text-sm font-medium text-gray-700">{t.adminSettings.isAdmin}</div>
+                    <div className="text-xs text-gray-500">{t.adminSettings.isAdminDesc}</div>
+                  </label>
+                </div>
+
+                {/* Is Active */}
+                <div className="flex items-start">
+                  <input
+                    type="checkbox"
+                    id="is_active"
+                    checked={formData.is_active}
+                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    disabled={isCreating}
+                  />
+                  <label htmlFor="is_active" className="ml-2">
+                    <div className="text-sm font-medium text-gray-700">{t.adminSettings.isActive}</div>
+                    <div className="text-xs text-gray-500">{t.adminSettings.isActiveDesc}</div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={closeCreateModal}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isCreating}
+              >
+                {t.adminSettings.cancel}
+              </button>
+              <button
+                onClick={handleCreateUser}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isCreating}
+              >
+                {isCreating ? t.adminSettings.creating : t.adminSettings.createUser}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal - Apple Light Style */}
+      {isDeleteModalOpen && userToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 pt-6 pb-4 text-center">
+              <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-red-100 mb-4">
+                <svg className="h-7 w-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                {t.adminSettings.deleteConfirmTitle}
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                {t.adminSettings.deleteConfirmMessage}
+              </p>
+            </div>
+
+            {/* User Info */}
+            <div className="px-6 pb-4">
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-500">
+                    {t.adminSettings.deleteConfirmUsername}:
+                  </span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {userToDelete.username}
+                  </span>
+                </div>
+                {userToDelete.email && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-500">
+                      {t.adminSettings.deleteConfirmEmail}:
+                    </span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {userToDelete.email}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="px-6 pb-6 flex gap-3">
+              <button
+                onClick={closeDeleteModal}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                disabled={isDeleting}
+              >
+                {t.adminSettings.cancelDelete}
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isDeleting}
+              >
+                {isDeleting ? t.adminSettings.deleting : t.adminSettings.confirmDelete}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
