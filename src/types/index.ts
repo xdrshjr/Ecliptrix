@@ -53,12 +53,38 @@ export interface WorkflowNodePosition {
   y: number;
 }
 
+// LLM Model related types
+export interface LLMModel {
+  id: string;
+  name: string;
+  api_url: string;
+  api_key: string;
+  display_name: string;
+  description?: string;
+}
+
+export interface LLMModelsResponse {
+  success: boolean;
+  message: string;
+  models: LLMModel[];
+  total_count: number;
+}
+
+// Chat LLM Node Configuration
+export interface ChatLLMNodeConfig {
+  systemPrompt?: string;
+  model?: string;
+  modelId?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: Record<string, any>;
+  config?: ChatLLMNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {

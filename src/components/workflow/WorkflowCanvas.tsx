@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
+import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -35,6 +36,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const [draggingNode, setDraggingNode] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [canvasOffset, setCanvasOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
+  
+  // Config panel state
+  const [configPanelNodeId, setConfigPanelNodeId] = useState<string | null>(null);
   
   // Connection drawing state
   const [connectingPort, setConnectingPort] = useState<{
@@ -256,6 +260,42 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const handleNodeClick = useCallback((nodeId: string) => {
     console.log('[WorkflowCanvas] Node selected:', { nodeId });
     setSelectedNodeId(nodeId);
+    
+    // Check if the clicked node is a Chat LLM node
+    const node = nodes.find(n => n.id === nodeId);
+    if (node && node.type === 'chat-llm') {
+      console.log('[WorkflowCanvas] Opening config panel for Chat LLM node:', { nodeId });
+      setConfigPanelNodeId(nodeId);
+    }
+  }, [nodes]);
+
+  // Handle config save
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig) => {
+    if (!configPanelNodeId) return;
+    
+    console.log('[WorkflowCanvas] Saving config for node:', { nodeId: configPanelNodeId, config });
+    
+    const updatedNodes = nodes.map(node => {
+      if (node.id === configPanelNodeId) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            config,
+          },
+        };
+      }
+      return node;
+    });
+    
+    onNodesChange(updatedNodes);
+    console.log('[WorkflowCanvas] Config saved successfully');
+  }, [configPanelNodeId, nodes, onNodesChange]);
+
+  // Handle config panel close
+  const handleConfigPanelClose = useCallback(() => {
+    console.log('[WorkflowCanvas] Closing config panel');
+    setConfigPanelNodeId(null);
   }, []);
 
   // Handle port mouse down (start connection)
@@ -840,6 +880,22 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           )}
         </div>
       </div>
+
+      {/* Chat LLM Config Panel */}
+      {configPanelNodeId && (() => {
+        const node = nodes.find(n => n.id === configPanelNodeId);
+        if (node && node.type === 'chat-llm') {
+          return (
+            <ChatLLMConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as ChatLLMNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        return null;
+      })()}
     </div>
   );
 };

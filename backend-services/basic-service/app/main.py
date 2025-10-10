@@ -314,6 +314,10 @@ app.include_router(user_router.router, prefix="/api")
 from app.routers import video_understanding_script_router
 app.include_router(video_understanding_script_router.router, prefix="/api")
 
+# Import and include LLM router
+from app.routers import llm_router
+app.include_router(llm_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)
