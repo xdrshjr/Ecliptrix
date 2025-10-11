@@ -6,6 +6,9 @@ import WorkflowSidebar from './WorkflowSidebar';
 import WorkflowCanvas from './WorkflowCanvas';
 import WorkflowLogPanel from './WorkflowLogPanel';
 import { WorkflowExecutor } from './WorkflowExecutor';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
+import { saveAgentWorkflow, loadAgentWorkflows } from '@/lib/api/workflow';
 
 interface WorkflowInterfaceProps {
   taskId: string;
@@ -31,6 +34,10 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     timestamp: new Date().toISOString()
   });
 
+  // Get auth and notification contexts
+  const { user, isAuthenticated } = useAuth();
+  const notification = useNotification();
+
   // Workflow execution state
   const [executionState, setExecutionState] = useState<WorkflowExecutionState>({
     isRunning: false,
@@ -39,31 +46,87 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     logs: [],
   });
   const [workflowExecutor, setWorkflowExecutor] = useState<WorkflowExecutor | null>(null);
+  
+  // Save state
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Initialize default content if none exists
+  // Auto-load workflows from database on mount
   useEffect(() => {
-    if (!content) {
-      console.log('[WorkflowInterface] Initializing default workflow content');
-      
-      const defaultContent: WorkflowTaskContent = {
-        activeWorkflowId: 'search-chat-agent',
-        workflows: [
-          {
-            id: 'search-chat-agent',
-            name: 'Search Chat Agent',
+    const loadWorkflows = async () => {
+      if (!isAuthenticated || !user) {
+        console.log('[WorkflowInterface] User not authenticated, skipping workflow load');
+        return;
+      }
+
+      try {
+        console.log('[WorkflowInterface] Loading workflows for user:', user.id);
+        
+        const response = await loadAgentWorkflows(user.id);
+        
+        if (response.success && response.data.length > 0) {
+          console.log('[WorkflowInterface] Loaded workflows:', response.data.length);
+          
+          // Convert loaded workflows to WorkflowTaskContent format
+          const workflows = response.data.map(record => ({
+            id: record.workflow_id,
+            name: record.workflow_name,
             data: {
-              name: 'Search Chat Agent',
-              description: 'AI agent for searching and chatting',
-              nodes: [],
-              connections: [],
+              name: record.workflow_name,
+              description: record.workflow_description || '',
+              nodes: record.nodes,
+              connections: record.connections,
             },
-          },
-        ],
-      };
-      
-      onUpdateContent(defaultContent);
+          }));
+          
+          const loadedContent: WorkflowTaskContent = {
+            activeWorkflowId: workflows[0].id,
+            workflows,
+          };
+          
+          console.log('[WorkflowInterface] Setting loaded workflows as content');
+          onUpdateContent(loadedContent);
+          
+          notification.showSuccess(`Loaded ${workflows.length} workflow(s)`, 2000);
+        } else {
+          console.log('[WorkflowInterface] No workflows found, initializing default');
+          initializeDefaultContent();
+        }
+      } catch (error) {
+        console.error('[WorkflowInterface] Error loading workflows:', error);
+        notification.showError('Failed to load workflows', 3000);
+        initializeDefaultContent();
+      }
+    };
+
+    const initializeDefaultContent = () => {
+      if (!content) {
+        console.log('[WorkflowInterface] Initializing default workflow content');
+        
+        const defaultContent: WorkflowTaskContent = {
+          activeWorkflowId: 'search-chat-agent',
+          workflows: [
+            {
+              id: 'search-chat-agent',
+              name: 'Search Chat Agent',
+              data: {
+                name: 'Search Chat Agent',
+                description: 'AI agent for searching and chatting',
+                nodes: [],
+                connections: [],
+              },
+            },
+          ],
+        };
+        
+        onUpdateContent(defaultContent);
+      }
+    };
+
+    // Load workflows only on initial mount
+    if (!content) {
+      loadWorkflows();
     }
-  }, [content, onUpdateContent]);
+  }, [isAuthenticated, user]); // Only run when auth state changes
 
   // Get active workflow
   const activeWorkflow = content?.workflows.find(
@@ -186,6 +249,61 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     }
   }, [workflowExecutor]);
 
+  // Handle workflow save
+  const handleSaveWorkflow = useCallback(async () => {
+    if (!isAuthenticated || !user) {
+      notification.showWarning('Please login to save workflows', 3000);
+      return;
+    }
+
+    if (!activeWorkflow) {
+      notification.showError('No active workflow to save', 3000);
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      console.log('[WorkflowInterface] Saving workflow:', {
+        workflow_id: activeWorkflow.id,
+        workflow_name: activeWorkflow.name,
+        nodes_count: activeWorkflow.data.nodes.length,
+        connections_count: activeWorkflow.data.connections.length,
+      });
+
+      const response = await saveAgentWorkflow({
+        user_id: user.id,
+        workflow_id: activeWorkflow.id,
+        workflow_name: activeWorkflow.name,
+        workflow_description: activeWorkflow.data.description,
+        nodes: activeWorkflow.data.nodes,
+        connections: activeWorkflow.data.connections,
+      });
+
+      if (response.success) {
+        console.log('[WorkflowInterface] Workflow saved successfully:', {
+          workflow_id: response.data.workflow_id,
+          version: response.data.version,
+        });
+        
+        notification.showSuccess(
+          `Workflow "${activeWorkflow.name}" saved successfully (v${response.data.version})`,
+          3000
+        );
+      } else {
+        throw new Error(response.message || 'Failed to save workflow');
+      }
+    } catch (error) {
+      console.error('[WorkflowInterface] Error saving workflow:', error);
+      notification.showError(
+        error instanceof Error ? error.message : 'Failed to save workflow',
+        5000
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isAuthenticated, user, activeWorkflow, notification]);
+
   // Show loading state while initializing
   if (!content) {
     return (
@@ -237,16 +355,26 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                 
                 <div className="flex items-center space-x-2">
                   <button
-                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center space-x-2"
-                    onClick={() => {
-                      console.log('[WorkflowInterface] Save workflow clicked');
-                      // TODO: Implement save functionality
-                    }}
+                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleSaveWorkflow}
+                    disabled={isSaving || !isAuthenticated}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                    </svg>
-                    <span>Save</span>
+                    {isSaving ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                        <span>Save</span>
+                      </>
+                    )}
                   </button>
                   
                   {!executionState.isRunning ? (
