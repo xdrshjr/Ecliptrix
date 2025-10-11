@@ -79,12 +79,17 @@ export interface ChatLLMNodeConfig {
   maxTokens?: number;
 }
 
+// Text Input Node Configuration
+export interface TextInputNodeConfig {
+  content?: string;
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {
@@ -109,6 +114,38 @@ export interface WorkflowData {
   description?: string;
 }
 
+// Workflow execution related types
+export type WorkflowNodeExecutionStatus = 'pending' | 'executing' | 'completed' | 'error';
+
+export interface WorkflowExecutionLog {
+  id: string;
+  timestamp: Date;
+  level: 'info' | 'success' | 'warning' | 'error';
+  nodeId?: string;
+  nodeName?: string;
+  message: string;
+  details?: any;
+}
+
+export interface WorkflowNodeExecutionState {
+  nodeId: string;
+  status: WorkflowNodeExecutionStatus;
+  input?: any;
+  output?: any;
+  error?: string;
+  startTime?: Date;
+  endTime?: Date;
+}
+
+export interface WorkflowExecutionState {
+  isRunning: boolean;
+  currentNodeId: string | null;
+  nodeStates: Record<string, WorkflowNodeExecutionState>;
+  logs: WorkflowExecutionLog[];
+  startTime?: Date;
+  endTime?: Date;
+}
+
 export interface WorkflowTaskContent {
   activeWorkflowId: string | null;
   workflows: {
@@ -116,6 +153,7 @@ export interface WorkflowTaskContent {
     name: string;
     data: WorkflowData;
   }[];
+  executionState?: WorkflowExecutionState;
 }
 
 // Video Editing related types

@@ -13,6 +13,7 @@ interface ChatLLMNodeProps {
   selected?: boolean;
   onDelete?: () => void;
   onPortMouseDown?: (nodeId: string, portType: 'input' | 'output', portId: string, event: React.MouseEvent) => void;
+  executionStatus?: 'pending' | 'executing' | 'completed' | 'error';
 }
 
 /**
@@ -25,13 +26,15 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
   data, 
   selected = false,
   onDelete,
-  onPortMouseDown 
+  onPortMouseDown,
+  executionStatus = 'pending'
 }) => {
   console.log('[ChatLLMNode] Rendering node:', { 
     id, 
     label: data.label, 
     selected,
-    config: data.config 
+    config: data.config,
+    executionStatus
   });
 
   // Check if node is configured
@@ -61,11 +64,39 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
   return (
     <div 
       className={`
-        bg-white rounded-lg border-2 shadow-lg min-w-[200px] select-none
-        ${selected ? 'border-blue-500 ring-2 ring-blue-200' : isConfigured ? 'border-green-400' : 'border-gray-300'}
+        bg-white rounded-lg border-2 shadow-lg min-w-[200px] select-none relative
+        ${selected ? 'border-blue-500 ring-2 ring-blue-200' : 
+          executionStatus === 'executing' ? 'border-yellow-500 ring-2 ring-yellow-200' :
+          executionStatus === 'completed' ? 'border-green-500 ring-2 ring-green-200' :
+          executionStatus === 'error' ? 'border-red-500 ring-2 ring-red-200' :
+          isConfigured ? 'border-green-400' : 'border-gray-300'}
         hover:shadow-xl transition-all duration-200
       `}
     >
+      {/* Execution Status Indicator */}
+      {executionStatus === 'executing' && (
+        <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center animate-pulse shadow-lg z-10">
+          <svg className="w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      )}
+      {executionStatus === 'completed' && (
+        <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg z-10">
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      )}
+      {executionStatus === 'error' && (
+        <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg z-10">
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </div>
+      )}
+      
       {/* Node Header */}
       <div className={`
         text-white px-4 py-2 rounded-t-md flex items-center justify-between
@@ -144,7 +175,7 @@ const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({
         ) : (
           <div className="text-xs text-center py-2">
             <div className="text-gray-400 italic mb-1">Not configured</div>
-            <div className="text-xs text-gray-500">Click to configure</div>
+            <div className="text-xs text-gray-500">Double click to configure</div>
           </div>
         )}
 

@@ -1,17 +1,20 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
+import TextInputNode from './nodes/TextInputNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
+import TextInputConfigPanel from './TextInputConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
   connections: WorkflowConnection[];
   onNodesChange: (nodes: WorkflowNode[]) => void;
   onConnectionsChange: (connections: WorkflowConnection[]) => void;
+  nodeExecutionStates?: Record<string, WorkflowNodeExecutionState>;
 }
 
 interface ContextMenuState {
@@ -29,10 +32,12 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   connections,
   onNodesChange,
   onConnectionsChange,
+  nodeExecutionStates = {},
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [draggingNode, setDraggingNode] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [canvasOffset, setCanvasOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
@@ -64,6 +69,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     nodesCount: nodes.length,
     connectionsCount: connections.length,
     selectedNodeId,
+    selectedConnectionId,
     scale,
     connectingPort: connectingPort ? 'active' : 'none',
     timestamp: new Date().toISOString()
@@ -243,6 +249,33 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setContextMenu({ visible: false, x: 0, y: 0 });
   }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
+  // Add Text Input node
+  const handleAddTextInputNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'text-input',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Text Input',
+        type: 'text-input',
+        config: {
+          content: '',
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Text Input node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
   // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
@@ -260,20 +293,33 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const handleNodeClick = useCallback((nodeId: string) => {
     console.log('[WorkflowCanvas] Node selected:', { nodeId });
     setSelectedNodeId(nodeId);
+  }, []);
+
+  // Handle node double click
+  const handleNodeDoubleClick = useCallback((nodeId: string) => {
+    console.log('[WorkflowCanvas] Node double clicked:', { nodeId });
     
-    // Check if the clicked node is a Chat LLM node
+    // Check if the clicked node is a Chat LLM node or Text Input node
     const node = nodes.find(n => n.id === nodeId);
-    if (node && node.type === 'chat-llm') {
-      console.log('[WorkflowCanvas] Opening config panel for Chat LLM node:', { nodeId });
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input')) {
+      console.log('[WorkflowCanvas] Opening config panel for node:', { 
+        nodeId, 
+        nodeType: node.type 
+      });
       setConfigPanelNodeId(nodeId);
     }
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig) => {
     if (!configPanelNodeId) return;
     
-    console.log('[WorkflowCanvas] Saving config for node:', { nodeId: configPanelNodeId, config });
+    const node = nodes.find(n => n.id === configPanelNodeId);
+    console.log('[WorkflowCanvas] Saving config for node:', { 
+      nodeId: configPanelNodeId,
+      nodeType: node?.type,
+      config 
+    });
     
     const updatedNodes = nodes.map(node => {
       if (node.id === configPanelNodeId) {
@@ -297,6 +343,23 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     console.log('[WorkflowCanvas] Closing config panel');
     setConfigPanelNodeId(null);
   }, []);
+
+  // Handle connection selection
+  const handleConnectionClick = useCallback((connectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    console.log('[WorkflowCanvas] Connection selected:', { connectionId });
+    setSelectedConnectionId(connectionId);
+    setSelectedNodeId(null); // Deselect any selected node
+  }, []);
+
+  // Handle connection deletion
+  const handleDeleteConnection = useCallback((connectionId: string) => {
+    console.log('[WorkflowCanvas] Deleting connection:', { connectionId });
+    const updatedConnections = connections.filter(conn => conn.id !== connectionId);
+    onConnectionsChange(updatedConnections);
+    setSelectedConnectionId(null);
+    console.log('[WorkflowCanvas] Connection deleted successfully');
+  }, [connections, onConnectionsChange]);
 
   // Handle port mouse down (start connection)
   const handlePortMouseDown = useCallback((
@@ -580,11 +643,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         console.log('[WorkflowCanvas] Deleting node via keyboard:', { nodeId: selectedNodeId });
         handleDeleteNode(selectedNodeId);
       }
+      
+      // Delete selected connection with Delete or Backspace key
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedConnectionId) {
+        e.preventDefault();
+        console.log('[WorkflowCanvas] Deleting connection via keyboard:', { connectionId: selectedConnectionId });
+        handleDeleteConnection(selectedConnectionId);
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId, handleDeleteNode]);
+  }, [selectedNodeId, selectedConnectionId, handleDeleteNode, handleDeleteConnection]);
 
   // 清理函数：组件卸载时取消动画帧
   useEffect(() => {
@@ -605,8 +675,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onClick={() => {
-          console.log('[WorkflowCanvas] Canvas clicked, deselecting node');
+          console.log('[WorkflowCanvas] Canvas clicked, deselecting node and connection');
           setSelectedNodeId(null);
+          setSelectedConnectionId(null);
         }}
         style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
       >
@@ -636,27 +707,78 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             
             if (sourcePos && targetPos) {
               const path = createConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+              const isSelected = selectedConnectionId === connection.id;
+              
+              // Calculate midpoint for delete button
+              const midX = (sourcePos.x + targetPos.x) / 2;
+              const midY = (sourcePos.y + targetPos.y) / 2;
+              
               return (
                 <g key={connection.id}>
+                  {/* Visible connection line */}
                   <path
                     d={path}
-                    stroke="#6366f1"
-                    strokeWidth="2"
+                    stroke={isSelected ? "#ef4444" : "#6366f1"}
+                    strokeWidth={isSelected ? "3" : "2"}
                     fill="none"
                     strokeLinecap="round"
                   />
+                  {/* Invisible wider path for easier clicking */}
                   <path
                     d={path}
                     stroke="transparent"
                     strokeWidth="10"
                     fill="none"
                     className="pointer-events-auto cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log('[WorkflowCanvas] Connection clicked:', connection.id);
-                      // TODO: Add connection selection/deletion
-                    }}
+                    onClick={(e) => handleConnectionClick(connection.id, e)}
                   />
+                  
+                  {/* Delete button (shown when selected) */}
+                  {isSelected && (
+                    <g>
+                      {/* Button background circle */}
+                      <circle
+                        cx={midX}
+                        cy={midY}
+                        r="12"
+                        fill="white"
+                        stroke="#ef4444"
+                        strokeWidth="2"
+                        className="pointer-events-auto cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteConnection(connection.id);
+                        }}
+                      />
+                      {/* X icon */}
+                      <g
+                        className="pointer-events-auto cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteConnection(connection.id);
+                        }}
+                      >
+                        <line
+                          x1={midX - 5}
+                          y1={midY - 5}
+                          x2={midX + 5}
+                          y2={midY + 5}
+                          stroke="#ef4444"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                        <line
+                          x1={midX + 5}
+                          y1={midY - 5}
+                          x2={midX - 5}
+                          y2={midY + 5}
+                          stroke="#ef4444"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </g>
+                    </g>
+                  )}
                 </g>
               );
             }
@@ -717,6 +839,10 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 e.stopPropagation();
                 handleNodeClick(node.id);
               }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                handleNodeDoubleClick(node.id);
+              }}
             >
               {node.type === 'start' && (
                 <StartNode
@@ -725,6 +851,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   selected={selectedNodeId === node.id}
                   onDelete={() => handleDeleteNode(node.id)}
                   onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
               {node.type === 'end' && (
@@ -734,6 +861,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   selected={selectedNodeId === node.id}
                   onDelete={() => handleDeleteNode(node.id)}
                   onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
               {node.type === 'chat-llm' && (
@@ -743,6 +871,17 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   selected={selectedNodeId === node.id}
                   onDelete={() => handleDeleteNode(node.id)}
                   onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
+              {node.type === 'text-input' && (
+                <TextInputNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
             </div>
@@ -791,6 +930,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
               <span className="text-sm text-gray-700">Add Chat LLM</span>
+            </button>
+            
+            <button
+              onClick={handleAddTextInputNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Text Input</span>
             </button>
           </div>
         )}
@@ -878,13 +1027,22 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <span className="text-blue-600 font-medium">Node Selected</span>
             </>
           )}
+          {selectedConnectionId && (
+            <>
+              <span>•</span>
+              <span className="text-red-600 font-medium">Connection Selected</span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Chat LLM Config Panel */}
+      {/* Config Panels */}
       {configPanelNodeId && (() => {
         const node = nodes.find(n => n.id === configPanelNodeId);
-        if (node && node.type === 'chat-llm') {
+        if (!node) return null;
+        
+        // Chat LLM Config Panel
+        if (node.type === 'chat-llm') {
           return (
             <ChatLLMConfigPanel
               nodeId={configPanelNodeId}
@@ -894,6 +1052,19 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             />
           );
         }
+        
+        // Text Input Config Panel
+        if (node.type === 'text-input') {
+          return (
+            <TextInputConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as TextInputNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
         return null;
       })()}
     </div>

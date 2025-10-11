@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { WorkflowTaskContent, WorkflowNode, WorkflowConnection } from '@/types';
+import { WorkflowTaskContent, WorkflowNode, WorkflowConnection, WorkflowExecutionState } from '@/types';
 import WorkflowSidebar from './WorkflowSidebar';
 import WorkflowCanvas from './WorkflowCanvas';
+import WorkflowLogPanel from './WorkflowLogPanel';
+import { WorkflowExecutor } from './WorkflowExecutor';
 
 interface WorkflowInterfaceProps {
   taskId: string;
@@ -28,6 +30,15 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     activeWorkflowId: content?.activeWorkflowId,
     timestamp: new Date().toISOString()
   });
+
+  // Workflow execution state
+  const [executionState, setExecutionState] = useState<WorkflowExecutionState>({
+    isRunning: false,
+    currentNodeId: null,
+    nodeStates: {},
+    logs: [],
+  });
+  const [workflowExecutor, setWorkflowExecutor] = useState<WorkflowExecutor | null>(null);
 
   // Initialize default content if none exists
   useEffect(() => {
@@ -131,6 +142,50 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     });
   }, [content, onUpdateContent]);
 
+  // Handle workflow execution
+  const handleRunWorkflow = useCallback(async () => {
+    if (!activeWorkflow || executionState.isRunning) {
+      console.warn('[WorkflowInterface] Cannot run workflow:', {
+        hasActiveWorkflow: !!activeWorkflow,
+        isRunning: executionState.isRunning
+      });
+      return;
+    }
+
+    console.log('[WorkflowInterface] Starting workflow execution');
+
+    // Create a new executor
+    const executor = new WorkflowExecutor(
+      activeWorkflow.data.nodes,
+      activeWorkflow.data.connections,
+      (newState) => {
+        console.log('[WorkflowInterface] Execution state updated:', {
+          isRunning: newState.isRunning,
+          currentNodeId: newState.currentNodeId,
+          logsCount: newState.logs.length
+        });
+        setExecutionState(newState);
+      }
+    );
+
+    setWorkflowExecutor(executor);
+    
+    // Start execution
+    try {
+      await executor.execute();
+    } catch (error) {
+      console.error('[WorkflowInterface] Workflow execution failed:', error);
+    }
+  }, [activeWorkflow, executionState.isRunning]);
+
+  // Handle workflow abort
+  const handleAbortWorkflow = useCallback(() => {
+    if (workflowExecutor) {
+      console.log('[WorkflowInterface] Aborting workflow execution');
+      workflowExecutor.abort();
+    }
+  }, [workflowExecutor]);
+
   // Show loading state while initializing
   if (!content) {
     return (
@@ -194,31 +249,56 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                     <span>Save</span>
                   </button>
                   
-                  <button
-                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg text-sm font-medium flex items-center space-x-2"
-                    onClick={() => {
-                      console.log('[WorkflowInterface] Run workflow clicked');
-                      // TODO: Implement run functionality
-                    }}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Run</span>
-                  </button>
+                  {!executionState.isRunning ? (
+                    <button
+                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleRunWorkflow}
+                      disabled={!activeWorkflow}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Run</span>
+                    </button>
+                  ) : (
+                    <button
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-md hover:shadow-lg text-sm font-medium flex items-center space-x-2"
+                      onClick={handleAbortWorkflow}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                      </svg>
+                      <span>Stop</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Canvas Area */}
-            <div className="flex-1 overflow-hidden">
-              <WorkflowCanvas
-                nodes={activeWorkflow.data.nodes}
-                connections={activeWorkflow.data.connections}
-                onNodesChange={handleNodesChange}
-                onConnectionsChange={handleConnectionsChange}
-              />
+            {/* Canvas and Log Panel Area - Split vertically */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Canvas Area */}
+              <div className="flex-1 overflow-hidden">
+                <WorkflowCanvas
+                  nodes={activeWorkflow.data.nodes}
+                  connections={activeWorkflow.data.connections}
+                  onNodesChange={handleNodesChange}
+                  onConnectionsChange={handleConnectionsChange}
+                  nodeExecutionStates={executionState.nodeStates}
+                />
+              </div>
+              
+              {/* Log Panel Area - Flexible height */}
+              <div className="border-t border-gray-200 flex-shrink-0">
+                <WorkflowLogPanel
+                  logs={executionState.logs}
+                  nodeStates={executionState.nodeStates}
+                  isRunning={executionState.isRunning}
+                  currentNodeId={executionState.currentNodeId}
+                />
+              </div>
             </div>
           </div>
         ) : (
