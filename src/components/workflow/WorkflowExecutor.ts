@@ -14,6 +14,7 @@ import {
   WorkflowExecutionLog,
   ChatLLMNodeConfig,
   TextInputNodeConfig,
+  StartNodeConfig,
 } from '@/types';
 
 export type ExecutionCallback = (state: WorkflowExecutionState) => void;
@@ -24,15 +25,18 @@ export class WorkflowExecutor {
   private executionState: WorkflowExecutionState;
   private onStateChange: ExecutionCallback;
   private abortController: AbortController | null = null;
+  private userInput: string | null = null; // Store user input from chat interface
 
   constructor(
     nodes: WorkflowNode[],
     connections: WorkflowConnection[],
-    onStateChange: ExecutionCallback
+    onStateChange: ExecutionCallback,
+    userInput?: string | null
   ) {
     this.nodes = nodes;
     this.connections = connections;
     this.onStateChange = onStateChange;
+    this.userInput = userInput || null;
     
     // Initialize execution state
     this.executionState = {
@@ -48,6 +52,11 @@ export class WorkflowExecutor {
         nodeId: node.id,
         status: 'pending',
       };
+    });
+    
+    console.log('[WorkflowExecutor] Initialized with user input:', {
+      hasUserInput: !!this.userInput,
+      userInputLength: this.userInput?.length || 0
     });
   }
 
@@ -109,7 +118,21 @@ export class WorkflowExecutor {
       this.executionState.endTime = new Date();
       
       const duration = this.executionState.endTime.getTime() - this.executionState.startTime!.getTime();
-      this.addLog('success', undefined, `Workflow execution completed successfully in ${(duration / 1000).toFixed(2)}s`);
+      
+      console.log('[WorkflowExecutor] Workflow execution completed:', {
+        duration: `${(duration / 1000).toFixed(2)}s`,
+        finalOutput: previousOutput,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Add completion log with final output
+      this.addLog('success', undefined, `Workflow execution completed successfully in ${(duration / 1000).toFixed(2)}s`, {
+        output: previousOutput,
+        duration
+      });
+      
+      // Ensure final state update is sent
+      this.notifyStateChange();
       
     } catch (error: any) {
       console.error('[WorkflowExecutor] Execution error:', error);
@@ -180,9 +203,12 @@ export class WorkflowExecutor {
    * Execute a single node
    */
   private async executeNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log(`[WorkflowExecutor] Executing node: ${node.id} (${node.type})`, {
+    console.log(`[WorkflowExecutor] ========== Executing Node ==========`, {
+      nodeId: node.id,
+      nodeType: node.type,
       nodeLabel: node.data.label,
       hasInput: !!input,
+      inputType: typeof input,
       timestamp: new Date().toISOString()
     });
 
@@ -195,7 +221,10 @@ export class WorkflowExecutor {
       startTime: new Date(),
     };
     
-    this.addLog('info', node.id, `Executing node: ${node.data.label}`, { input });
+    this.addLog('info', node.id, `Executing node: ${node.data.label}`, { 
+      input,
+      nodeType: node.type 
+    });
     this.notifyStateChange();
 
     try {
@@ -223,21 +252,44 @@ export class WorkflowExecutor {
           throw new Error(`Unknown node type: ${node.type}`);
       }
 
+      // Calculate execution duration
+      const endTime = new Date();
+      const duration = endTime.getTime() - this.executionState.nodeStates[node.id].startTime!.getTime();
+
       // Update node state to completed
       this.executionState.nodeStates[node.id] = {
         ...this.executionState.nodeStates[node.id],
         status: 'completed',
         output,
-        endTime: new Date(),
+        endTime,
       };
       
-      this.addLog('success', node.id, `Node completed: ${node.data.label}`, { output });
+      console.log(`[WorkflowExecutor] ========== Node Completed ==========`, {
+        nodeId: node.id,
+        nodeLabel: node.data.label,
+        duration: `${duration}ms`,
+        hasOutput: !!output,
+        outputType: typeof output,
+        timestamp: new Date().toISOString()
+      });
+      
+      this.addLog('success', node.id, `Node completed: ${node.data.label}`, { 
+        output,
+        duration,
+        executionTime: `${(duration / 1000).toFixed(2)}s`
+      });
       this.notifyStateChange();
 
       return output;
       
     } catch (error: any) {
-      console.error(`[WorkflowExecutor] Node execution error:`, error);
+      console.error(`[WorkflowExecutor] ========== Node Failed ==========`, {
+        nodeId: node.id,
+        nodeLabel: node.data.label,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        timestamp: new Date().toISOString()
+      });
       
       // Update node state to error
       this.executionState.nodeStates[node.id] = {
@@ -247,7 +299,11 @@ export class WorkflowExecutor {
         endTime: new Date(),
       };
       
-      this.addLog('error', node.id, `Node failed: ${node.data.label}`, { error: error.message });
+      this.addLog('error', node.id, `Node failed: ${node.data.label}`, { 
+        error: error.message,
+        errorType: error.name,
+        stack: error.stack
+      });
       this.notifyStateChange();
       
       throw error;
@@ -258,10 +314,37 @@ export class WorkflowExecutor {
    * Execute Start node
    */
   private async executeStartNode(node: WorkflowNode): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Start node');
-    // Start node just passes through empty initial data
+    console.log('[WorkflowExecutor] Executing Start node', {
+      hasUserInput: !!this.userInput,
+      hasConfigInput: !!(node.data.config as StartNodeConfig)?.input
+    });
+    
     await this.simulateDelay(500);
-    return { message: 'Workflow started' };
+    
+    // Priority: user input from chat > configured input > empty
+    let inputContent = '';
+    
+    if (this.userInput) {
+      // User input from chat interface takes highest priority
+      inputContent = this.userInput;
+      console.log('[WorkflowExecutor] Using user input from chat interface:', {
+        inputLength: inputContent.length
+      });
+    } else {
+      // Otherwise use configured input
+      const config = node.data.config as StartNodeConfig;
+      inputContent = config?.input || '';
+      console.log('[WorkflowExecutor] Using configured input:', {
+        inputLength: inputContent.length,
+        hasConfigInput: !!config?.input
+      });
+    }
+    
+    return {
+      text: inputContent,
+      message: 'Workflow started',
+      source: this.userInput ? 'chat' : 'config'
+    };
   }
 
   /**
@@ -289,7 +372,11 @@ export class WorkflowExecutor {
    * Execute Chat LLM node
    */
   private async executeChatLLMNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Chat LLM node', { input });
+    console.log('[WorkflowExecutor] Executing Chat LLM node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
     
     const config = node.data.config as ChatLLMNodeConfig;
     
@@ -300,7 +387,8 @@ export class WorkflowExecutor {
     this.addLog('info', node.id, 'Calling LLM API...', { 
       model: config.model,
       temperature: config.temperature,
-      maxTokens: config.maxTokens
+      maxTokens: config.maxTokens,
+      systemPromptLength: config.systemPrompt.length
     });
 
     // Extract user message from input
@@ -380,8 +468,16 @@ export class WorkflowExecutor {
         }
       }
 
+      console.log('[WorkflowExecutor] LLM response received', {
+        nodeId: node.id,
+        responseLength: accumulatedContent.length,
+        contentPreview: accumulatedContent.substring(0, 100) + (accumulatedContent.length > 100 ? '...' : ''),
+        timestamp: new Date().toISOString()
+      });
+
       this.addLog('success', node.id, 'LLM response received', { 
-        responseLength: accumulatedContent.length 
+        responseLength: accumulatedContent.length,
+        model: config.model
       });
 
       return {

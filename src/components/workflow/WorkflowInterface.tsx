@@ -5,16 +5,19 @@ import { WorkflowTaskContent, WorkflowNode, WorkflowConnection, WorkflowExecutio
 import WorkflowSidebar from './WorkflowSidebar';
 import WorkflowCanvas from './WorkflowCanvas';
 import WorkflowLogPanel from './WorkflowLogPanel';
+import WorkflowChatInterface from './WorkflowChatInterface';
 import { WorkflowExecutor } from './WorkflowExecutor';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { saveAgentWorkflow, loadAgentWorkflows } from '@/lib/api/workflow';
+import { saveAgentWorkflow, loadAgentWorkflows, deleteAgentWorkflow } from '@/lib/api/workflow';
 
 interface WorkflowInterfaceProps {
   taskId: string;
   content: WorkflowTaskContent | null;
   onUpdateContent: (content: WorkflowTaskContent) => void;
 }
+
+type RightPanelTab = 'chat' | 'workflow';
 
 /**
  * Workflow Interface Component
@@ -38,6 +41,9 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const { user, isAuthenticated } = useAuth();
   const notification = useNotification();
 
+  // Right panel tab state
+  const [activeRightTab, setActiveRightTab] = useState<RightPanelTab>('chat');
+
   // Workflow execution state
   const [executionState, setExecutionState] = useState<WorkflowExecutionState>({
     isRunning: false,
@@ -46,6 +52,16 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     logs: [],
   });
   const [workflowExecutor, setWorkflowExecutor] = useState<WorkflowExecutor | null>(null);
+  
+  // Chat messages state - 在父组件中管理，避免切换标签页时丢失
+  // 为每个工作流维护独立的聊天记录和上下文
+  const [workflowChatStates, setWorkflowChatStates] = useState<Record<string, {
+    messages: any[];
+    contextCleared: boolean; // 标记上下文是否已清空
+  }>>({});
+  
+  // User input state for workflow execution
+  const [currentUserInput, setCurrentUserInput] = useState<string | null>(null);
   
   // Save state
   const [isSaving, setIsSaving] = useState(false);
@@ -139,6 +155,16 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     nodesCount: activeWorkflow?.data.nodes.length || 0
   });
 
+  // Get or initialize chat state for active workflow
+  const activeWorkflowId = content?.activeWorkflowId || '';
+  const activeChatState = workflowChatStates[activeWorkflowId] || { messages: [], contextCleared: false };
+  
+  console.log('[WorkflowInterface] Active chat state:', {
+    workflowId: activeWorkflowId,
+    messagesCount: activeChatState.messages.length,
+    contextCleared: activeChatState.contextCleared
+  });
+
   // Handle workflow selection
   const handleSelectWorkflow = useCallback((workflowId: string) => {
     if (!content) return;
@@ -150,6 +176,240 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       activeWorkflowId: workflowId,
     });
   }, [content, onUpdateContent]);
+
+  // Handle add new workflow
+  const handleAddWorkflow = useCallback(async () => {
+    if (!content) return;
+    
+    // Check authentication
+    if (!isAuthenticated || !user) {
+      notification.showWarning('Please login to create workflows', 3000);
+      return;
+    }
+    
+    const newWorkflowId = `workflow-${Date.now()}`;
+    const defaultName = 'New Workflow';
+    
+    console.log('[WorkflowInterface] Adding new workflow:', {
+      workflowId: newWorkflowId,
+      workflowName: defaultName,
+      timestamp: new Date().toISOString()
+    });
+    
+    const newWorkflow = {
+      id: newWorkflowId,
+      name: defaultName,
+      data: {
+        name: defaultName,
+        description: '',
+        nodes: [],
+        connections: [],
+      },
+    };
+    
+    const updatedContent = {
+      ...content,
+      workflows: [...content.workflows, newWorkflow],
+      activeWorkflowId: newWorkflowId, // Set the new workflow as active
+    };
+    
+    onUpdateContent(updatedContent);
+    
+    console.log('[WorkflowInterface] New workflow added and selected:', {
+      workflowId: newWorkflowId,
+      totalWorkflows: updatedContent.workflows.length,
+      activeWorkflowId: updatedContent.activeWorkflowId
+    });
+
+    // Auto-save the new workflow to database
+    try {
+      console.log('[WorkflowInterface] Auto-saving new workflow to database:', {
+        workflow_id: newWorkflowId,
+        workflow_name: defaultName
+      });
+
+      const response = await saveAgentWorkflow({
+        user_id: user.id,
+        workflow_id: newWorkflowId,
+        workflow_name: defaultName,
+        workflow_description: '',
+        nodes: [],
+        connections: [],
+      });
+
+      if (response.success) {
+        console.log('[WorkflowInterface] New workflow auto-saved successfully:', {
+          workflow_id: response.data.workflow_id,
+          version: response.data.version,
+        });
+        
+        notification.showSuccess(`Workflow "${defaultName}" created successfully`, 2000);
+      }
+    } catch (error) {
+      console.error('[WorkflowInterface] Error auto-saving new workflow:', error);
+      notification.showError(
+        'Workflow created but failed to save. Please save it manually.',
+        4000
+      );
+    }
+  }, [content, onUpdateContent, isAuthenticated, user, notification]);
+
+  // Handle rename workflow
+  const handleRenameWorkflow = useCallback(async (workflowId: string, newName: string) => {
+    if (!content) return;
+    
+    // Check authentication
+    if (!isAuthenticated || !user) {
+      notification.showWarning('Please login to rename workflows', 3000);
+      return;
+    }
+    
+    console.log('[WorkflowInterface] Renaming workflow:', {
+      workflowId,
+      newName,
+      timestamp: new Date().toISOString()
+    });
+    
+    const workflowToRename = content.workflows.find(w => w.id === workflowId);
+    if (!workflowToRename) {
+      console.error('[WorkflowInterface] Workflow not found for renaming:', workflowId);
+      return;
+    }
+    
+    const updatedWorkflows = content.workflows.map(workflow =>
+      workflow.id === workflowId
+        ? {
+            ...workflow,
+            name: newName,
+            data: {
+              ...workflow.data,
+              name: newName,
+            },
+          }
+        : workflow
+    );
+    
+    onUpdateContent({
+      ...content,
+      workflows: updatedWorkflows,
+    });
+    
+    console.log('[WorkflowInterface] Workflow renamed successfully in local state:', {
+      workflowId,
+      newName
+    });
+
+    // Auto-save the renamed workflow to database
+    try {
+      console.log('[WorkflowInterface] Auto-saving renamed workflow to database:', {
+        workflow_id: workflowId,
+        old_name: workflowToRename.name,
+        new_name: newName
+      });
+
+      const response = await saveAgentWorkflow({
+        user_id: user.id,
+        workflow_id: workflowId,
+        workflow_name: newName,
+        workflow_description: workflowToRename.data.description,
+        nodes: workflowToRename.data.nodes,
+        connections: workflowToRename.data.connections,
+      });
+
+      if (response.success) {
+        console.log('[WorkflowInterface] Renamed workflow auto-saved successfully:', {
+          workflow_id: response.data.workflow_id,
+          version: response.data.version,
+        });
+        
+        notification.showSuccess(`Workflow renamed to "${newName}"`, 2000);
+      }
+    } catch (error) {
+      console.error('[WorkflowInterface] Error auto-saving renamed workflow:', error);
+      notification.showError(
+        'Workflow renamed but failed to save. Please save it manually.',
+        4000
+      );
+    }
+  }, [content, onUpdateContent, isAuthenticated, user, notification]);
+
+  // Handle delete workflow
+  const handleDeleteWorkflow = useCallback(async (workflowId: string) => {
+    if (!content) return;
+    
+    // Check authentication
+    if (!isAuthenticated || !user) {
+      notification.showWarning('Please login to delete workflows', 3000);
+      return;
+    }
+
+    // Prevent deleting the last workflow
+    if (content.workflows.length <= 1) {
+      notification.showWarning('Cannot delete the last workflow', 3000);
+      return;
+    }
+
+    const workflowToDelete = content.workflows.find(w => w.id === workflowId);
+    if (!workflowToDelete) {
+      console.error('[WorkflowInterface] Workflow not found for deletion:', workflowId);
+      return;
+    }
+
+    console.log('[WorkflowInterface] Deleting workflow:', {
+      workflowId,
+      workflowName: workflowToDelete.name,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      // Delete workflow from backend
+      const response = await deleteAgentWorkflow(user.id, workflowId);
+
+      if (response.success) {
+        console.log('[WorkflowInterface] Workflow deleted from backend successfully:', {
+          workflow_id: workflowId
+        });
+
+        // Remove workflow from local state
+        const updatedWorkflows = content.workflows.filter(w => w.id !== workflowId);
+        
+        // Update active workflow if the deleted one was active
+        let newActiveWorkflowId = content.activeWorkflowId;
+        if (content.activeWorkflowId === workflowId) {
+          // Select the first remaining workflow
+          newActiveWorkflowId = updatedWorkflows.length > 0 ? updatedWorkflows[0].id : null;
+          console.log('[WorkflowInterface] Active workflow was deleted, switching to:', {
+            newActiveWorkflowId,
+            newActiveWorkflowName: updatedWorkflows.find(w => w.id === newActiveWorkflowId)?.name
+          });
+        }
+
+        onUpdateContent({
+          ...content,
+          workflows: updatedWorkflows,
+          activeWorkflowId: newActiveWorkflowId,
+        });
+
+        console.log('[WorkflowInterface] Workflow deleted successfully:', {
+          workflowId,
+          workflowName: workflowToDelete.name,
+          remainingWorkflows: updatedWorkflows.length,
+          newActiveWorkflowId
+        });
+
+        notification.showSuccess(
+          `Workflow "${workflowToDelete.name}" deleted successfully`,
+          3000
+        );
+      }
+    } catch (error) {
+      console.error('[WorkflowInterface] Error deleting workflow:', error);
+      notification.showError(
+        error instanceof Error ? error.message : 'Failed to delete workflow',
+        4000
+      );
+    }
+  }, [content, onUpdateContent, isAuthenticated, user, notification]);
 
   // Handle nodes change
   const handleNodesChange = useCallback((nodes: WorkflowNode[]) => {
@@ -205,8 +465,64 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     });
   }, [content, onUpdateContent]);
 
+  // Handle clear chat history for current workflow
+  const handleClearChatHistory = useCallback(() => {
+    if (!activeWorkflowId) return;
+    
+    console.log('[WorkflowInterface] Clearing chat history for workflow:', {
+      workflowId: activeWorkflowId,
+      previousMessagesCount: activeChatState.messages.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    setWorkflowChatStates(prev => ({
+      ...prev,
+      [activeWorkflowId]: {
+        messages: [],
+        contextCleared: prev[activeWorkflowId]?.contextCleared || false
+      }
+    }));
+    
+    console.log('[WorkflowInterface] Chat history cleared successfully');
+  }, [activeWorkflowId, activeChatState.messages.length]);
+
+  // Handle clear context for current workflow
+  const handleClearContext = useCallback(() => {
+    if (!activeWorkflowId) return;
+    
+    console.log('[WorkflowInterface] Clearing context for workflow:', {
+      workflowId: activeWorkflowId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Mark context as cleared for this workflow
+    setWorkflowChatStates(prev => ({
+      ...prev,
+      [activeWorkflowId]: {
+        messages: prev[activeWorkflowId]?.messages || [],
+        contextCleared: true
+      }
+    }));
+    
+    // Reset execution state to clear runtime context
+    setExecutionState({
+      isRunning: false,
+      currentNodeId: null,
+      nodeStates: {},
+      logs: [],
+    });
+    
+    // Clear the executor instance
+    setWorkflowExecutor(null);
+    
+    console.log('[WorkflowInterface] Context cleared successfully:', {
+      workflowId: activeWorkflowId,
+      messagesPreserved: activeChatState.messages.length
+    });
+  }, [activeWorkflowId, activeChatState.messages.length]);
+
   // Handle workflow execution
-  const handleRunWorkflow = useCallback(async () => {
+  const handleRunWorkflow = useCallback(async (userInput?: string | null) => {
     if (!activeWorkflow || executionState.isRunning) {
       console.warn('[WorkflowInterface] Cannot run workflow:', {
         hasActiveWorkflow: !!activeWorkflow,
@@ -215,9 +531,24 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       return;
     }
 
-    console.log('[WorkflowInterface] Starting workflow execution');
+    console.log('[WorkflowInterface] Starting workflow execution', {
+      hasUserInput: !!userInput,
+      userInputLength: userInput?.length || 0,
+      contextCleared: activeChatState.contextCleared
+    });
 
-    // Create a new executor
+    // Reset contextCleared flag when starting new execution
+    if (activeChatState.contextCleared && activeWorkflowId) {
+      setWorkflowChatStates(prev => ({
+        ...prev,
+        [activeWorkflowId]: {
+          ...prev[activeWorkflowId],
+          contextCleared: false
+        }
+      }));
+    }
+
+    // Create a new executor with user input
     const executor = new WorkflowExecutor(
       activeWorkflow.data.nodes,
       activeWorkflow.data.connections,
@@ -225,21 +556,35 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         console.log('[WorkflowInterface] Execution state updated:', {
           isRunning: newState.isRunning,
           currentNodeId: newState.currentNodeId,
-          logsCount: newState.logs.length
+          logsCount: newState.logs.length,
+          lastLog: newState.logs.length > 0 ? newState.logs[newState.logs.length - 1] : null,
+          timestamp: new Date().toISOString()
         });
-        setExecutionState(newState);
-      }
+        
+        // Force state update by creating a new object reference
+        setExecutionState({
+          ...newState,
+          logs: [...newState.logs]
+        });
+      },
+      userInput // Pass user input to executor
     );
 
     setWorkflowExecutor(executor);
     
     // Start execution
     try {
+      console.log('[WorkflowInterface] Calling executor.execute()');
       await executor.execute();
+      console.log('[WorkflowInterface] Executor.execute() completed successfully');
     } catch (error) {
       console.error('[WorkflowInterface] Workflow execution failed:', error);
+    } finally {
+      console.log('[WorkflowInterface] Workflow execution finished (finally block)');
+      // Clear user input after execution
+      setCurrentUserInput(null);
     }
-  }, [activeWorkflow, executionState.isRunning]);
+  }, [activeWorkflow, executionState.isRunning, activeChatState.contextCleared, activeWorkflowId]);
 
   // Handle workflow abort
   const handleAbortWorkflow = useCallback(() => {
@@ -332,26 +677,73 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           }))}
           activeWorkflowId={content.activeWorkflowId}
           onSelectWorkflow={handleSelectWorkflow}
+          onAddWorkflow={handleAddWorkflow}
+          onRenameWorkflow={handleRenameWorkflow}
+          onDeleteWorkflow={handleDeleteWorkflow}
         />
       </div>
 
-      {/* Right Canvas - 80% width */}
+      {/* Right Panel - 80% width with Tabs */}
       <div className="flex-1 h-full">
         {activeWorkflow ? (
           <div className="h-full w-full flex flex-col">
-            {/* Canvas Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {activeWorkflow.name}
-                  </h2>
-                  {activeWorkflow.data.description && (
-                    <p className="text-sm text-gray-500 mt-1">
-                      {activeWorkflow.data.description}
-                    </p>
-                  )}
-                </div>
+            {/* Tab Header */}
+            <div className="bg-white border-b border-gray-200">
+              {/* Tabs Navigation */}
+              <div className="flex items-center px-6 pt-4 space-x-1">
+                <button
+                  onClick={() => {
+                    console.log('[WorkflowInterface] Switching to Chat tab');
+                    setActiveRightTab('chat');
+                  }}
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                    activeRightTab === 'chat'
+                      ? 'bg-white text-blue-600 border-t border-x border-gray-200'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <span>聊天界面</span>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    console.log('[WorkflowInterface] Switching to Workflow tab');
+                    setActiveRightTab('workflow');
+                  }}
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                    activeRightTab === 'workflow'
+                      ? 'bg-white text-blue-600 border-t border-x border-gray-200'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+                    </svg>
+                    <span>工作流界面</span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Workflow Info and Actions (only shown in workflow tab) */}
+              {activeRightTab === 'workflow' && (
+                <div className="px-6 py-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">
+                        {activeWorkflow.name}
+                      </h2>
+                      {activeWorkflow.data.description && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          {activeWorkflow.data.description}
+                        </p>
+                      )}
+                    </div>
                 
                 <div className="flex items-center space-x-2">
                   <button
@@ -402,31 +794,64 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                     </button>
                   )}
                 </div>
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Canvas and Log Panel Area - Split vertically */}
+            {/* Tab Content Area */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Canvas Area */}
-              <div className="flex-1 overflow-hidden">
-                <WorkflowCanvas
-                  nodes={activeWorkflow.data.nodes}
-                  connections={activeWorkflow.data.connections}
-                  onNodesChange={handleNodesChange}
-                  onConnectionsChange={handleConnectionsChange}
-                  nodeExecutionStates={executionState.nodeStates}
+              {/* Chat Interface Tab */}
+              {activeRightTab === 'chat' && (
+                <WorkflowChatInterface
+                  executionState={executionState}
+                  onRunWorkflow={handleRunWorkflow}
+                  onAbortWorkflow={handleAbortWorkflow}
+                  messages={activeChatState.messages}
+                  onMessagesChange={(messages) => {
+                    console.log('[WorkflowInterface] Updating chat messages for workflow:', {
+                      workflowId: activeWorkflowId,
+                      newMessagesCount: messages.length,
+                      timestamp: new Date().toISOString()
+                    });
+                    setWorkflowChatStates(prev => ({
+                      ...prev,
+                      [activeWorkflowId]: {
+                        ...prev[activeWorkflowId],
+                        messages
+                      }
+                    }));
+                  }}
+                  onClearChatHistory={handleClearChatHistory}
+                  onClearContext={handleClearContext}
                 />
-              </div>
-              
-              {/* Log Panel Area - Flexible height */}
-              <div className="border-t border-gray-200 flex-shrink-0">
-                <WorkflowLogPanel
-                  logs={executionState.logs}
-                  nodeStates={executionState.nodeStates}
-                  isRunning={executionState.isRunning}
-                  currentNodeId={executionState.currentNodeId}
-                />
-              </div>
+              )}
+
+              {/* Workflow Canvas Tab */}
+              {activeRightTab === 'workflow' && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Canvas Area */}
+                  <div className="flex-1 overflow-hidden">
+                    <WorkflowCanvas
+                      nodes={activeWorkflow.data.nodes}
+                      connections={activeWorkflow.data.connections}
+                      onNodesChange={handleNodesChange}
+                      onConnectionsChange={handleConnectionsChange}
+                      nodeExecutionStates={executionState.nodeStates}
+                    />
+                  </div>
+                  
+                  {/* Log Panel Area - Flexible height */}
+                  <div className="border-t border-gray-200 flex-shrink-0">
+                    <WorkflowLogPanel
+                      logs={executionState.logs}
+                      nodeStates={executionState.nodeStates}
+                      isRunning={executionState.isRunning}
+                      currentNodeId={executionState.currentNodeId}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (

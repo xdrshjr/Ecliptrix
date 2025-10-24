@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Conversation, ChatMessage, ChatTaskContent } from '@/types';
 import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
+import WorkflowSelectionModal from './WorkflowSelectionModal';
 
 interface ChatInterfaceProps {
   taskId: string;
@@ -17,6 +18,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onUpdateContent,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
 
   // Initialize content if null
   const chatContent: ChatTaskContent = content || {
@@ -24,16 +26,39 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     activeConversationId: null,
   };
 
-  const handleCreateConversation = useCallback(() => {
+  const handleNewChatClick = useCallback(() => {
+    console.log('[ChatInterface] New Chat button clicked, opening workflow selection modal');
+    setIsWorkflowModalOpen(true);
+  }, []);
+
+  const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string) => {
+    console.log('[ChatInterface] Workflow selected for new conversation:', {
+      workflowId,
+      workflowName
+    });
+    handleCreateConversation(workflowId, workflowName);
+    setIsWorkflowModalOpen(false);
+  }, []);
+
+  const handleCreateConversation = useCallback((workflowId?: string, workflowName?: string) => {
     const now = new Date();
     const conversationId = `conv-${Date.now()}`;
     
+    console.log('[ChatInterface] Creating new conversation:', {
+      conversationId,
+      workflowId,
+      workflowName,
+      timestamp: now.toISOString()
+    });
+    
     const newConversation: Conversation = {
       id: conversationId,
-      title: 'New Chat',
+      title: workflowName ? `${workflowName} Chat` : 'New Chat',
       messages: [],
       createdAt: now,
       updatedAt: now,
+      workflowId,
+      workflowName,
     };
 
     const updatedContent: ChatTaskContent = {
@@ -42,7 +67,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     onUpdateContent(updatedContent);
-    console.log(`Created new conversation: ${conversationId}`);
+    console.log(`[ChatInterface] Created new conversation with workflow:`, {
+      conversationId,
+      workflowId,
+      workflowName
+    });
   }, [chatContent, onUpdateContent]);
 
   const handleSelectConversation = useCallback((conversationId: string) => {
@@ -187,15 +216,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const messagesWithAssistant = [...messagesWithUser, assistantMessage];
       updateConversationMessages(chatContent.activeConversationId, messagesWithAssistant);
 
-      // Call API for streaming response
-      const response = await fetch('/api/chat', {
+      // Check if this conversation uses a workflow
+      const useWorkflow = !!activeConversation.workflowId;
+      
+      console.log('[ChatInterface] Sending message:', {
+        useWorkflow,
+        workflowId: activeConversation.workflowId,
+        workflowName: activeConversation.workflowName,
+        messageLength: message.length
+      });
+
+      // Call appropriate API endpoint
+      const apiEndpoint = useWorkflow ? '/api/chat/workflow' : '/api/chat';
+      const requestBody = useWorkflow ? {
+        messages: messagesWithUser,
+        workflowId: activeConversation.workflowId,
+        userInput: message,
+      } : {
+        messages: messagesWithUser,
+      };
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          messages: messagesWithUser,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -208,6 +254,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       let accumulatedContent = '';
+      let workflowExecutionState = useWorkflow ? {
+        isRunning: true,
+        currentNodeId: null,
+        nodeStates: {},
+        logs: [],
+        startTime: new Date()
+      } : undefined;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -225,18 +278,71 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
-                accumulatedContent += parsed.content;
+              
+              if (useWorkflow) {
+                // Handle workflow-specific streaming events
+                if (parsed.type === 'node_update' && workflowExecutionState) {
+                  // Update node execution state
+                  workflowExecutionState.nodeStates[parsed.nodeId] = {
+                    nodeId: parsed.nodeId,
+                    status: parsed.status,
+                    output: parsed.output,
+                    startTime: parsed.startTime ? new Date(parsed.startTime) : new Date(),
+                    endTime: parsed.endTime ? new Date(parsed.endTime) : undefined
+                  };
+                  
+                  workflowExecutionState.currentNodeId = parsed.nodeId;
+                  
+                  // Add log entry
+                  workflowExecutionState.logs.push({
+                    id: `log-${Date.now()}-${Math.random()}`,
+                    timestamp: new Date(),
+                    level: 'info',
+                    nodeId: parsed.nodeId,
+                    nodeName: parsed.nodeName,
+                    message: `${parsed.status === 'executing' ? 'Executing' : 'Completed'} node: ${parsed.nodeName}`
+                  });
+                  
+                } else if (parsed.type === 'final_result') {
+                  accumulatedContent = parsed.content;
+                  if (workflowExecutionState) {
+                    workflowExecutionState.isRunning = false;
+                    workflowExecutionState.endTime = new Date();
+                  }
+                } else if (parsed.type === 'error') {
+                  console.error('[ChatInterface] Workflow execution error:', parsed.error);
+                  accumulatedContent = `Error: ${parsed.error}`;
+                }
                 
-                // Update the assistant message with accumulated content
+                // Update the assistant message with workflow execution state
                 const updatedMessages = [...messagesWithUser, {
                   ...assistantMessage,
                   content: accumulatedContent,
-                  isStreaming: true
+                  isStreaming: true,
+                  workflowExecution: {
+                    workflowId: activeConversation.workflowId!,
+                    workflowName: activeConversation.workflowName!,
+                    executionState: { ...workflowExecutionState }
+                  }
                 }];
                 
-                console.log(`[Chat] Streaming update - accumulated content length: ${accumulatedContent.length}`);
                 updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
+                
+              } else {
+                // Regular chat streaming
+                if (parsed.content) {
+                  accumulatedContent += parsed.content;
+                  
+                  // Update the assistant message with accumulated content
+                  const updatedMessages = [...messagesWithUser, {
+                    ...assistantMessage,
+                    content: accumulatedContent,
+                    isStreaming: true
+                  }];
+                  
+                  console.log(`[Chat] Streaming update - accumulated content length: ${accumulatedContent.length}`);
+                  updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
+                }
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
@@ -249,7 +355,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const finalMessages = [...messagesWithUser, {
         ...assistantMessage,
         content: accumulatedContent,
-        isStreaming: false
+        isStreaming: false,
+        ...(useWorkflow && workflowExecutionState ? {
+          workflowExecution: {
+            workflowId: activeConversation.workflowId!,
+            workflowName: activeConversation.workflowName!,
+            executionState: {
+              ...workflowExecutionState,
+              isRunning: false,
+              endTime: new Date()
+            }
+          }
+        } : {})
       }];
       
       console.log(`[Chat] Streaming complete - final content length: ${accumulatedContent.length}`);
@@ -283,20 +400,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // 聊天界面渲染
 
   return (
-    <div className="flex h-full bg-gray-50 min-h-0">
-      {/* Left Sidebar - Conversation List */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+    <div className="flex h-full bg-gradient-to-br from-gray-50 to-gray-100/30 min-h-0 relative">
+      {/* Left Sidebar - Conversation List (15% width) */}
+      <div style={{ width: '15%', minWidth: '200px' }} className="bg-white/80 backdrop-blur-sm border-r border-gray-200/80 flex flex-col">
         <ConversationList
           conversations={chatContent.conversations}
           activeConversationId={chatContent.activeConversationId}
           onCreateConversation={handleCreateConversation}
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
+          onNewChatClick={handleNewChatClick}
         />
       </div>
 
-      {/* Right Side - Chat Window */}
-      <div className="flex-1 flex flex-col min-h-0">
+      {/* Right Side - Chat Window (85% width) */}
+      <div style={{ width: '85%' }} className="flex flex-col min-h-0">
         <ChatWindow
           conversation={activeConversation}
           onSendMessage={handleSendMessage}
@@ -304,6 +422,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           isLoading={isLoading}
         />
       </div>
+
+      {/* Workflow Selection Modal - Rendered at top level for full-screen centering */}
+      <WorkflowSelectionModal
+        isOpen={isWorkflowModalOpen}
+        onClose={() => setIsWorkflowModalOpen(false)}
+        onSelectWorkflow={handleWorkflowSelect}
+      />
     </div>
   );
 };

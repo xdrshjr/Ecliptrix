@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, WorkflowNodeExecutionState } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
 import TextInputNode from './nodes/TextInputNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 import TextInputConfigPanel from './TextInputConfigPanel';
+import StartNodeConfigPanel from './StartNodeConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -299,9 +300,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     console.log('[WorkflowCanvas] Node double clicked:', { nodeId });
     
-    // Check if the clicked node is a Chat LLM node or Text Input node
+    // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
-    if (node && (node.type === 'chat-llm' || node.type === 'text-input')) {
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start')) {
       console.log('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
@@ -311,7 +312,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig) => {
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
@@ -1059,6 +1060,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             <TextInputConfigPanel
               nodeId={configPanelNodeId}
               config={(node.data.config as TextInputNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // Start Node Config Panel
+        if (node.type === 'start') {
+          return (
+            <StartNodeConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as StartNodeConfig) || {}}
               onSave={handleConfigSave}
               onClose={handleConfigPanelClose}
             />

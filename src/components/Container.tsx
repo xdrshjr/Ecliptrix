@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Task, ChatTaskContent, VideoEditingTaskContent, WorkflowTaskContent } from '@/types';
-import ChatInterface from './chat/ChatInterface';
+import { Task, VideoEditingTaskContent, WorkflowTaskContent, ChatTaskContent } from '@/types';
 import VideoEditingInterface from './video/VideoEditingInterface';
 import WorkflowInterface from './workflow/WorkflowInterface';
+import ChatInterface from './chat/ChatInterface';
 import { useLocale } from '@/contexts/LocaleContext';
 
 interface ContainerProps {
@@ -14,16 +14,6 @@ interface ContainerProps {
 
 const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
   const { t } = useLocale();
-
-  const handleUpdateChatContent = (content: ChatTaskContent) => {
-    if (activeTask && onUpdateTask) {
-      onUpdateTask(activeTask.id, { 
-        content,
-        updatedAt: new Date(),
-        status: 'active' as const,
-      });
-    }
-  };
 
   const handleUpdateVideoEditingContent = (content: VideoEditingTaskContent) => {
     if (activeTask && onUpdateTask) {
@@ -36,6 +26,16 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
   };
 
   const handleUpdateWorkflowContent = (content: WorkflowTaskContent) => {
+    if (activeTask && onUpdateTask) {
+      onUpdateTask(activeTask.id, { 
+        content,
+        updatedAt: new Date(),
+        status: 'active' as const,
+      });
+    }
+  };
+
+  const handleUpdateChatContent = (content: ChatTaskContent) => {
     if (activeTask && onUpdateTask) {
       onUpdateTask(activeTask.id, { 
         content,
@@ -62,13 +62,13 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
           </p>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="bg-gray-50 rounded-xl p-4">
-              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
-                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mb-3">
+                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.workflow}</h3>
-              <p className="text-gray-600">{t.welcome.workflowDesc}</p>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.aiChat}</h3>
+              <p className="text-gray-600">{t.welcome.aiChatDesc}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
@@ -80,6 +80,15 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
               <p className="text-gray-600">{t.welcome.videoEditingDesc}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
+              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
+                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+                </svg>
+              </div>
+              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.workflow}</h3>
+              <p className="text-gray-600">{t.welcome.workflowDesc}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
               <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mb-3">
                 <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -88,30 +97,8 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
               <h3 className="font-medium text-gray-900 mb-1">{t.tasks.brainstorming}</h3>
               <p className="text-gray-600">{t.welcome.brainstormingDesc}</p>
             </div>
-            <div className="bg-gray-50 rounded-xl p-4">
-              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mb-3">
-                <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="font-medium text-gray-900 mb-1">{t.tasks.aiChat}</h3>
-              <p className="text-gray-600">{t.welcome.aiChatDesc}</p>
-            </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  // Handle chat task type
-  if (activeTask.type === 'chat') {    
-    return (
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <ChatInterface
-          taskId={activeTask.id}
-          content={activeTask.content as ChatTaskContent | null}
-          onUpdateContent={handleUpdateChatContent}
-        />
       </div>
     );
   }
@@ -137,6 +124,19 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
           taskId={activeTask.id}
           content={activeTask.content as WorkflowTaskContent | null}
           onUpdateContent={handleUpdateWorkflowContent}
+        />
+      </div>
+    );
+  }
+
+  // Handle chat task type
+  if (activeTask.type === 'chat') {    
+    return (
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <ChatInterface
+          taskId={activeTask.id}
+          content={activeTask.content as ChatTaskContent | null}
+          onUpdateContent={handleUpdateChatContent}
         />
       </div>
     );

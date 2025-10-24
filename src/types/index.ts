@@ -28,10 +28,15 @@ export type TaskStatus = Task['status'];
 // Chat related types
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  workflowExecution?: {
+    workflowId: string;
+    workflowName: string;
+    executionState?: WorkflowExecutionState;
+  };
 }
 
 export interface Conversation {
@@ -40,6 +45,8 @@ export interface Conversation {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
+  workflowId?: string; // Associated workflow ID for workflow-based conversations
+  workflowName?: string; // Associated workflow name for display
 }
 
 export interface ChatTaskContent {
@@ -84,12 +91,17 @@ export interface TextInputNodeConfig {
   content?: string;
 }
 
+// Start Node Configuration
+export interface StartNodeConfig {
+  input?: string;
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {

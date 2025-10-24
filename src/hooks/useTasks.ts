@@ -105,6 +105,7 @@ export const useTasks = () => {
       tabsCount: appState.tabs.length,
       activeTabId: appState.activeTabId,
       tasks: appState.tasks.map(t => ({ id: t.id, title: t.title, type: t.type })),
+      defaultTasks: ['AI Chat', 'Video Editing', 'WorkFlow', 'Brainstorming'],
       showingMainInterface: appState.activeTabId === null,
       timestamp: new Date().toISOString()
     });
@@ -120,6 +121,7 @@ export const useTasks = () => {
       content: 'Content Creation',
       video: 'Video Editing',
       brainstorm: 'Brainstorming',
+      workflow: 'WorkFlow',
       chat: 'AI Chat',
     };
 
@@ -158,7 +160,7 @@ export const useTasks = () => {
       tabId: tabId,
       timestamp: now.toISOString(),
       availableTypes: Object.keys(taskTypeNames),
-      note: 'Voice Synthesis已从可用任务类型中移除'
+      note: 'AI Chat任务已重新添加，提供独立的对话界面'
     });
   }, [appState.tasks]);
 
