@@ -16,9 +16,16 @@ from app.models.workflow_models import (
     LoadAgentWorkflowsResponse
 )
 from app.models import BaseResponse
+from app.models.tavily_models import (
+    TavilySearchRequest,
+    TavilySearchResponse,
+    NodeTestRequest,
+    NodeTestResponse
+)
 from app.services.workflow_service import workflow_service
 from app.services.runninghub_service import GeneralWorkflowService
 from app.services.agent_workflow_service import agent_workflow_service
+from app.services.tavily_search_service import tavily_search_service
 from app.logger import get_logger
 
 # Initialize router and logger
@@ -527,4 +534,168 @@ async def delete_agent_workflow(user_id: str, workflow_id: str) -> BaseResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete workflow: {str(e)}"
+        )
+
+
+@router.post("/tavily-search", response_model=TavilySearchResponse)
+async def tavily_search(request: TavilySearchRequest) -> TavilySearchResponse:
+    """
+    Perform a web search using Tavily AI-powered search API.
+    
+    Args:
+        request: TavilySearchRequest containing search parameters
+        
+    Returns:
+        TavilySearchResponse: Search results
+        
+    Raises:
+        HTTPException: If there's an error performing the search
+    """
+    try:
+        logger.info(f"API request: Tavily search", {
+            "keywords": request.keywords,
+            "count": request.count,
+            "search_depth": request.search_depth
+        })
+        
+        # Perform search using the service
+        result = await tavily_search_service.search(
+            query=request.keywords,
+            max_results=request.count,
+            search_depth=request.search_depth,
+            include_images=request.include_images,
+            include_answer=request.include_answer
+        )
+        
+        if not result.get('success'):
+            logger.error(f"Tavily search failed: {result.get('message')}")
+            # Don't raise HTTPException, return the error in the response
+            return TavilySearchResponse(**result)
+        
+        logger.info(f"Tavily search successful", {
+            "query": request.keywords,
+            "results_count": result.get('total_results', 0)
+        })
+        
+        return TavilySearchResponse(**result)
+        
+    except Exception as e:
+        logger.error(f"Error in Tavily search endpoint: {str(e)}", {
+            "error_type": type(e).__name__,
+            "keywords": request.keywords
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to perform Tavily search: {str(e)}"
+        )
+
+
+@router.post("/test-node", response_model=NodeTestResponse)
+async def test_node(request: NodeTestRequest) -> NodeTestResponse:
+    """
+    Test a single workflow node independently.
+    
+    Args:
+        request: NodeTestRequest containing node details and input
+        
+    Returns:
+        NodeTestResponse: Test results
+        
+    Raises:
+        HTTPException: If there's an error testing the node
+    """
+    try:
+        logger.info(f"API request: Test workflow node", {
+            "node_id": request.node_id,
+            "node_type": request.node_type,
+            "node_label": request.node_label
+        })
+        
+        # Handle different node types
+        if request.node_type == 'tavily-search':
+            # Extract keywords from input or config
+            keywords = request.input.get('keywords') or request.input.get('text') or request.node_config.get('keywords', '')
+            count = request.node_config.get('count', 5)
+            
+            logger.debug(f"Testing Tavily Search node with keywords: '{keywords}', count: {count}")
+            
+            if not keywords or not keywords.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Keywords are required for Tavily Search node"
+                )
+            
+            # Perform search
+            result = await tavily_search_service.search(
+                query=keywords,
+                max_results=count
+            )
+            
+            if not result.get('success'):
+                return NodeTestResponse(
+                    success=False,
+                    message="Tavily search failed",
+                    output={},
+                    error=result.get('message', 'Unknown error')
+                )
+            
+            output = {
+                "results": result.get('results', []),
+                "count": result.get('total_results', 0),
+                "keywords": keywords
+            }
+            
+            logger.info(f"Tavily Search node test successful", {
+                "node_id": request.node_id,
+                "results_count": output['count']
+            })
+            
+            return NodeTestResponse(
+                success=True,
+                message=f"Found {output['count']} search results",
+                output=output
+            )
+        
+        elif request.node_type == 'pexels-video-search':
+            # Handle pexels video search testing
+            keywords = request.input.get('keywords') or request.input.get('text') or request.node_config.get('keywords', '')
+            
+            logger.info(f"Testing Pexels Video Search node (placeholder)")
+            
+            return NodeTestResponse(
+                success=True,
+                message="Pexels Video Search test completed",
+                output={
+                    "message": "Pexels Video Search testing not fully implemented yet",
+                    "keywords": keywords
+                }
+            )
+        
+        else:
+            # Generic node test (placeholder)
+            logger.info(f"Testing generic node type: {request.node_type}")
+            
+            return NodeTestResponse(
+                success=True,
+                message=f"Node test completed for {request.node_type}",
+                output={
+                    "message": f"Generic test for {request.node_type}",
+                    "input": request.input,
+                    "config": request.node_config
+                }
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error testing node: {str(e)}", {
+            "error_type": type(e).__name__,
+            "node_id": request.node_id,
+            "node_type": request.node_type
+        })
+        return NodeTestResponse(
+            success=False,
+            message="Node test failed",
+            output={},
+            error=str(e)
         )

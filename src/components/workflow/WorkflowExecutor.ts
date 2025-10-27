@@ -252,6 +252,10 @@ export class WorkflowExecutor {
           output = await this.executePexelsVideoSearchNode(node, input);
           break;
         
+        case 'tavily-search':
+          output = await this.executeTavilySearchNode(node, input);
+          break;
+        
         case 'end':
           output = await this.executeEndNode(node, input);
           break;
@@ -629,6 +633,97 @@ export class WorkflowExecutor {
         throw new Error('LLM request aborted');
       }
       throw new Error(`LLM request failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute Pexels Video Search node
+   */
+  /**
+   * Execute Tavily Search node
+   */
+  private async executeTavilySearchNode(node: WorkflowNode, input: any): Promise<any> {
+    console.log('[WorkflowExecutor] Executing Tavily Search node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+    
+    const config = node.data.config as any;
+    
+    // Get keywords from config or input
+    let keywords = config?.keywords || '';
+    
+    // If input is provided and has keywords, use it (allows dynamic keywords from previous nodes)
+    if (input) {
+      if (typeof input === 'string') {
+        keywords = input;
+      } else if (input?.keywords) {
+        keywords = input.keywords;
+      } else if (input?.text) {
+        keywords = input.text;
+      } else if (input?.message) {
+        keywords = input.message;
+      }
+    }
+    
+    if (!keywords || keywords.trim().length === 0) {
+      throw new Error('Tavily Search node requires keywords. Please configure keywords or provide them as input.');
+    }
+    
+    const searchCount = config?.count || 5;
+    
+    this.addLog('info', node.id, `Searching with Tavily: "${keywords}"`, { 
+      keywords,
+      searchCount
+    });
+
+    try {
+      // Call the Tavily search API
+      const response = await fetch('/api/workflow/tavily-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          keywords: keywords.trim(),
+          count: searchCount,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(errorData.message || `Tavily search failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Tavily search failed');
+      }
+
+      const results = data.results || [];
+      
+      this.addLog('success', node.id, `Found ${results.length} search results`, {
+        resultsCount: results.length,
+        keywords
+      });
+
+      console.log('[WorkflowExecutor] Tavily search completed', {
+        nodeId: node.id,
+        resultsCount: results.length
+      });
+
+      return {
+        results: results,
+        count: results.length,
+        keywords: keywords.trim(),
+      };
+
+    } catch (error: any) {
+      console.error('[WorkflowExecutor] Tavily search error:', error);
+      this.addLog('error', node.id, `Tavily search failed: ${error.message}`, { error: error.message });
+      throw new Error(`Tavily search failed: ${error.message}`);
     }
   }
 

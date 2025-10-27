@@ -103,12 +103,18 @@ export interface PexelsVideoSearchNodeConfig {
   count?: number;
 }
 
+// Tavily Search Node Configuration
+export interface TavilySearchNodeConfig {
+  keywords?: string;
+  count?: number;
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {

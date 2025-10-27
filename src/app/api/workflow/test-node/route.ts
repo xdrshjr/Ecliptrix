@@ -60,6 +60,10 @@ export async function POST(request: NextRequest) {
         output = await executePexelsVideoSearchNode(node_config, input);
         break;
 
+      case 'tavily-search':
+        output = await executeTavilySearchNode(node_config, input);
+        break;
+
       case 'end':
         output = await executeEndNode(node_config, input);
         break;
@@ -324,6 +328,75 @@ async function executePexelsVideoSearchNode(config: any, input: any): Promise<an
     totalFound: data.total_found,
     keywords,
     count: videoUrls.length,
+  };
+}
+
+/**
+ * Execute Tavily Search node
+ */
+async function executeTavilySearchNode(config: any, input: any): Promise<any> {
+  console.log('[API] Executing Tavily Search node');
+  
+  // Get keywords from config or input
+  let keywords = config?.keywords || '';
+  
+  if (input) {
+    if (typeof input === 'string') {
+      keywords = input;
+    } else if (input?.keywords) {
+      keywords = input.keywords;
+    } else if (input?.text) {
+      keywords = input.text;
+    } else if (input?.message) {
+      keywords = input.message;
+    }
+  }
+  
+  if (!keywords || keywords.trim().length === 0) {
+    throw new Error('Tavily Search node requires keywords');
+  }
+  
+  const searchCount = config?.count || 5;
+  
+  console.log('[API] Searching Tavily:', {
+    keywords,
+    searchCount
+  });
+
+  // Call the Tavily search API (internal API call)
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/workflow/tavily-search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      keywords: keywords.trim(),
+      count: searchCount,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Tavily search failed with status ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!data.success) {
+    throw new Error(data.message || 'Tavily search failed');
+  }
+
+  const results = data.results || [];
+
+  console.log('[API] Tavily search completed:', {
+    totalResults: data.total_results,
+    returned: results.length
+  });
+
+  return {
+    results: results,
+    count: data.total_results,
+    keywords: keywords.trim(),
   };
 }
 

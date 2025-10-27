@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, WorkflowNodeExecutionState } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
 import TextInputNode from './nodes/TextInputNode';
 import PexelsVideoSearchNode from './nodes/PexelsVideoSearchNode';
+import TavilySearchNode from './nodes/TavilySearchNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 import TextInputConfigPanel from './TextInputConfigPanel';
 import StartNodeConfigPanel from './StartNodeConfigPanel';
 import PexelsVideoSearchConfigPanel from './PexelsVideoSearchConfigPanel';
+import TavilySearchConfigPanel from './TavilySearchConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -309,6 +311,34 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setContextMenu({ visible: false, x: 0, y: 0 });
   }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
+  // Add Tavily Search node
+  const handleAddTavilySearchNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'tavily-search',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Tavily Search',
+        type: 'tavily-search',
+        config: {
+          keywords: '',
+          count: 5,
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Tavily Search node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
   // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
@@ -334,7 +364,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
-    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search')) {
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search')) {
       console.log('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
@@ -344,7 +374,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig) => {
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
@@ -942,6 +972,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
+              {node.type === 'tavily-search' && (
+                <TavilySearchNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
             </div>
           );
         })}
@@ -1010,6 +1050,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
               <span className="text-sm text-gray-700">Add Pexels Video Search</span>
+            </button>
+            
+            <button
+              onClick={handleAddTavilySearchNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Tavily Search</span>
             </button>
           </div>
         )}
@@ -1153,6 +1203,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             <PexelsVideoSearchConfigPanel
               nodeId={configPanelNodeId}
               config={(node.data.config as PexelsVideoSearchNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // Tavily Search Config Panel
+        if (node.type === 'tavily-search') {
+          return (
+            <TavilySearchConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as TavilySearchNodeConfig) || {}}
               onSave={handleConfigSave}
               onClose={handleConfigPanelClose}
             />

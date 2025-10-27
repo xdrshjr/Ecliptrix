@@ -38,6 +38,12 @@ const getDefaultInputJson = (nodeType: string): string => {
         "text": "Search keywords from previous node"
       }, null, 2);
     
+    case 'tavily-search':
+      return JSON.stringify({
+        "keywords": "artificial intelligence trends 2024",
+        "text": "Search keywords from previous node"
+      }, null, 2);
+    
     case 'end':
       return JSON.stringify({
         "result": "Final workflow output",
