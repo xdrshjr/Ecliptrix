@@ -74,17 +74,50 @@ const ConversationList: React.FC<ConversationListProps> = ({
                       {conversation.title}
                     </h3>
                     
-                    {/* Workflow Badge */}
-                    {conversation.workflowName && (
-                      <div className="flex items-center space-x-1 mt-1">
-                        <svg className="w-3 h-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        <span className="text-xs text-purple-600 font-medium truncate">
-                          {conversation.workflowName}
-                        </span>
-                      </div>
-                    )}
+                    {/* Chat Type Badge */}
+                    <div className="flex items-center space-x-1 mt-1">
+                      {conversation.chatType === 'chatbot' && (
+                        <>
+                          <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                          </svg>
+                          <span className="text-xs text-blue-600 font-medium">
+                            Chatbot
+                          </span>
+                        </>
+                      )}
+                      {conversation.chatType === 'workflow' && conversation.workflowName && (
+                        <>
+                          <svg className="w-3 h-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
+                          </svg>
+                          <span className="text-xs text-purple-600 font-medium truncate">
+                            {conversation.workflowName}
+                          </span>
+                        </>
+                      )}
+                      {conversation.chatType === 'agent' && (
+                        <>
+                          <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
+                          <span className="text-xs text-green-600 font-medium">
+                            AI Agent
+                          </span>
+                        </>
+                      )}
+                      {/* Fallback for old conversations without chatType */}
+                      {!conversation.chatType && conversation.workflowName && (
+                        <>
+                          <svg className="w-3 h-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          <span className="text-xs text-purple-600 font-medium truncate">
+                            {conversation.workflowName}
+                          </span>
+                        </>
+                      )}
+                    </div>
                     
                     <div className="flex items-center space-x-2 mt-1">
                       <span className={`text-xs ${

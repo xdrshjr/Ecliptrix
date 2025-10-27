@@ -4,7 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Conversation, ChatMessage, ChatTaskContent } from '@/types';
 import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
-import WorkflowSelectionModal from './WorkflowSelectionModal';
+import ChatTypeSelectionModal from './ChatTypeSelectionModal';
 
 interface ChatInterfaceProps {
   taskId: string;
@@ -18,7 +18,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onUpdateContent,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
+  const [isChatTypeModalOpen, setIsChatTypeModalOpen] = useState(false);
 
   // Initialize content if null
   const chatContent: ChatTaskContent = content || {
@@ -27,36 +27,43 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const handleNewChatClick = useCallback(() => {
-    console.log('[ChatInterface] New Chat button clicked, opening workflow selection modal');
-    setIsWorkflowModalOpen(true);
+    console.log('[ChatInterface] New Chat button clicked, opening chat type selection modal');
+    setIsChatTypeModalOpen(true);
   }, []);
 
-  const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string) => {
-    console.log('[ChatInterface] Workflow selected for new conversation:', {
-      workflowId,
-      workflowName
-    });
-    handleCreateConversation(workflowId, workflowName);
-    setIsWorkflowModalOpen(false);
-  }, []);
-
-  const handleCreateConversation = useCallback((workflowId?: string, workflowName?: string) => {
+  const handleCreateConversation = useCallback((
+    chatType: 'chatbot' | 'workflow' | 'agent',
+    workflowId?: string,
+    workflowName?: string
+  ) => {
     const now = new Date();
     const conversationId = `conv-${Date.now()}`;
     
     console.log('[ChatInterface] Creating new conversation:', {
       conversationId,
+      chatType,
       workflowId,
       workflowName,
       timestamp: now.toISOString()
     });
     
+    // Determine conversation title based on chat type
+    let title = 'New Chat';
+    if (chatType === 'workflow' && workflowName) {
+      title = `${workflowName} Chat`;
+    } else if (chatType === 'chatbot') {
+      title = 'Chatbot';
+    } else if (chatType === 'agent') {
+      title = 'AI Agent';
+    }
+    
     const newConversation: Conversation = {
       id: conversationId,
-      title: workflowName ? `${workflowName} Chat` : 'New Chat',
+      title,
       messages: [],
       createdAt: now,
       updatedAt: now,
+      chatType,
       workflowId,
       workflowName,
     };
@@ -67,12 +74,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     onUpdateContent(updatedContent);
-    console.log(`[ChatInterface] Created new conversation with workflow:`, {
+    console.log(`[ChatInterface] Created new conversation:`, {
       conversationId,
+      chatType,
       workflowId,
       workflowName
     });
   }, [chatContent, onUpdateContent]);
+
+  const handleChatbotSelect = useCallback(() => {
+    console.log('[ChatInterface] Chatbot type selected for new conversation');
+    handleCreateConversation('chatbot');
+    setIsChatTypeModalOpen(false);
+  }, [handleCreateConversation]);
+
+  const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string) => {
+    console.log('[ChatInterface] Workflow selected for new conversation:', {
+      workflowId,
+      workflowName
+    });
+    handleCreateConversation('workflow', workflowId, workflowName);
+    setIsChatTypeModalOpen(false);
+  }, [handleCreateConversation]);
+
+  const handleAgentSelect = useCallback(() => {
+    console.log('[ChatInterface] Agent type selected for new conversation (reserved for future)');
+    handleCreateConversation('agent');
+    setIsChatTypeModalOpen(false);
+  }, [handleCreateConversation]);
 
   const handleSelectConversation = useCallback((conversationId: string) => {
     const updatedContent: ChatTaskContent = {
@@ -216,17 +245,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const messagesWithAssistant = [...messagesWithUser, assistantMessage];
       updateConversationMessages(chatContent.activeConversationId, messagesWithAssistant);
 
-      // Check if this conversation uses a workflow
-      const useWorkflow = !!activeConversation.workflowId;
+      // Determine chat type and API endpoint
+      const chatType = activeConversation.chatType || 'chatbot';
+      const useWorkflow = chatType === 'workflow' && !!activeConversation.workflowId;
       
       console.log('[ChatInterface] Sending message:', {
+        chatType,
         useWorkflow,
         workflowId: activeConversation.workflowId,
         workflowName: activeConversation.workflowName,
         messageLength: message.length
       });
 
-      // Call appropriate API endpoint
+      // Call appropriate API endpoint based on chat type
       const apiEndpoint = useWorkflow ? '/api/chat/workflow' : '/api/chat';
       const requestBody = useWorkflow ? {
         messages: messagesWithUser,
@@ -423,11 +454,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         />
       </div>
 
-      {/* Workflow Selection Modal - Rendered at top level for full-screen centering */}
-      <WorkflowSelectionModal
-        isOpen={isWorkflowModalOpen}
-        onClose={() => setIsWorkflowModalOpen(false)}
+      {/* Chat Type Selection Modal - Rendered at top level for full-screen centering */}
+      <ChatTypeSelectionModal
+        isOpen={isChatTypeModalOpen}
+        onClose={() => setIsChatTypeModalOpen(false)}
+        onSelectChatbot={handleChatbotSelect}
         onSelectWorkflow={handleWorkflowSelect}
+        onSelectAgent={handleAgentSelect}
       />
     </div>
   );

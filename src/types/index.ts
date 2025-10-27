@@ -45,6 +45,7 @@ export interface Conversation {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
+  chatType?: 'chatbot' | 'workflow' | 'agent'; // Chat type: chatbot (basic), workflow (workflow-based), or agent (AI agent)
   workflowId?: string; // Associated workflow ID for workflow-based conversations
   workflowName?: string; // Associated workflow name for display
 }
