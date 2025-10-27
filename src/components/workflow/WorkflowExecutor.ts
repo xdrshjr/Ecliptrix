@@ -846,16 +846,21 @@ export class WorkflowExecutor {
 
   /**
    * Execute To Array node
-   * Converts any input data to array format using LLM
+   * Converts any input data to array format using LLM with schema support
    */
   private async executeToArrayNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing To Array node', { 
+    const config = node.data.config as any;
+    const elementType = config?.elementType || 'string';
+    const hasObjectSchema = !!(config?.objectSchema && config.objectSchema.length > 0);
+    
+    console.log('[WorkflowExecutor] Executing To Array node with schema', { 
       nodeId: node.id,
+      elementType,
+      hasObjectSchema,
+      schemaFieldCount: hasObjectSchema ? config.objectSchema.length : 0,
       input,
       timestamp: new Date().toISOString()
     });
-    
-    const config = node.data.config as any;
     
     if (!config?.model || !config?.systemPrompt) {
       throw new Error('To Array node requires model and systemPrompt configuration. Please configure the node.');
@@ -873,9 +878,15 @@ export class WorkflowExecutor {
       userMessage = JSON.stringify(input);
     }
 
-    this.addLog('info', node.id, `Converting data to array format`, { 
+    const schemaInfo = elementType === 'object' && hasObjectSchema
+      ? `with ${config.objectSchema.length} field(s)`
+      : `of type ${elementType}`;
+
+    this.addLog('info', node.id, `Converting data to array format ${schemaInfo}`, { 
       inputLength: userMessage.length,
-      model: config.model
+      model: config.model,
+      elementType,
+      hasObjectSchema
     });
 
     try {
@@ -906,6 +917,7 @@ export class WorkflowExecutor {
         nodeId: node.id,
         success: result.success,
         outputLength: Array.isArray(result.output) ? result.output.length : 0,
+        elementType,
         timestamp: new Date().toISOString()
       });
 
@@ -915,8 +927,10 @@ export class WorkflowExecutor {
 
       const arrayOutput = result.output;
 
-      this.addLog('success', node.id, `Array conversion completed (${Array.isArray(arrayOutput) ? arrayOutput.length : 0} items)`, { 
+      this.addLog('success', node.id, `Array conversion completed: ${Array.isArray(arrayOutput) ? arrayOutput.length : 0} ${elementType} element(s)`, { 
         arrayLength: Array.isArray(arrayOutput) ? arrayOutput.length : 0,
+        elementType,
+        hasObjectSchema,
         model: config.model
       });
 

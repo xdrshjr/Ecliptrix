@@ -21,11 +21,16 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
     config?.maxTokens
   );
   
+  const elementType = config?.elementType || 'string';
+  const hasObjectSchema = !!(config?.objectSchema && config.objectSchema.length > 0);
+  
   console.log('[ToArrayNode] Rendering node:', { 
     id, 
     label: data.label, 
     selected,
     hasConfig: !!config,
+    elementType,
+    hasObjectSchema,
     executionStatus
   });
 
@@ -61,6 +66,24 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
                 <span className="text-gray-900 text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
               </div>
               
+              {/* Element Type Badge */}
+              <div className="pt-1 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 font-medium">Type:</span>
+                  <div className="inline-flex items-center px-2 py-0.5 bg-gray-100 border border-gray-300 rounded">
+                    <span className="text-xs font-semibold text-gray-700 capitalize">{elementType}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Object Schema Info */}
+              {elementType === 'object' && hasObjectSchema && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 font-medium">Fields:</span>
+                  <span className="text-gray-900 text-xs">{config?.objectSchema?.length || 0} field(s)</span>
+                </div>
+              )}
+              
               {/* Output Format Badge */}
               <div className="pt-1 border-t border-gray-200">
                 <div className="flex items-center justify-center">
@@ -68,7 +91,7 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
                     <svg className="w-3 h-3 text-gray-700 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                     </svg>
-                    <span className="text-xs font-semibold text-gray-700">Array Output</span>
+                    <span className="text-xs font-semibold text-gray-700">Array[{elementType}]</span>
                   </div>
                 </div>
               </div>

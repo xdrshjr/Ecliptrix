@@ -594,11 +594,134 @@ async function executeVolcanoTTSNode(config: any, input: any, nodeId: string): P
 }
 
 /**
+ * Generate schema description for To Array node
+ * Creates detailed schema instructions based on element type and object schema
+ */
+function generateSchemaDescription(config: any): string {
+  const elementType = config?.elementType || 'string';
+  
+  console.log('[API] Generating schema description for element type:', elementType);
+  
+  if (elementType === 'string') {
+    return 'Convert the input data into a JSON array where each element is a string value.';
+  } else if (elementType === 'number') {
+    return 'Convert the input data into a JSON array where each element is a numeric value.';
+  } else if (elementType === 'boolean') {
+    return 'Convert the input data into a JSON array where each element is a boolean value (true or false).';
+  } else if (elementType === 'object' && config?.objectSchema) {
+    const schema = config.objectSchema;
+    let schemaDescription = 'Convert the input data into a JSON array where each element is an object with the following structure:\n';
+    
+    // Recursively generate schema description
+    function describeSchema(fields: any[], indent: string = ''): string {
+      let desc = '';
+      for (const field of fields) {
+        const required = field.required ? 'required' : 'optional';
+        const description = field.description ? ` - ${field.description}` : '';
+        
+        if (field.type === 'object' && field.objectSchema && field.objectSchema.length > 0) {
+          desc += `${indent}- ${field.name} (object, ${required})${description}:\n`;
+          desc += describeSchema(field.objectSchema, indent + '  ');
+        } else {
+          desc += `${indent}- ${field.name} (${field.type}, ${required})${description}\n`;
+        }
+      }
+      return desc;
+    }
+    
+    schemaDescription += describeSchema(schema);
+    schemaDescription += '\nEnsure all required fields are present and use the correct data types.';
+    
+    console.log('[API] Generated object schema description:', schemaDescription);
+    
+    return schemaDescription;
+  }
+  
+  // Default fallback
+  return 'Convert the input data into a clean JSON array format.';
+}
+
+/**
+ * Validate array elements against schema
+ * Ensures the LLM output conforms to the defined schema
+ */
+function validateArraySchema(arrayResult: any[], config: any): void {
+  const elementType = config?.elementType || 'string';
+  
+  console.log('[API] Validating array schema:', {
+    elementType,
+    arrayLength: arrayResult.length
+  });
+  
+  // Validate each element
+  for (let i = 0; i < arrayResult.length; i++) {
+    const element = arrayResult[i];
+    
+    if (elementType === 'string' && typeof element !== 'string') {
+      console.warn(`[API] Element ${i} is not a string:`, typeof element);
+    } else if (elementType === 'number' && typeof element !== 'number') {
+      console.warn(`[API] Element ${i} is not a number:`, typeof element);
+    } else if (elementType === 'boolean' && typeof element !== 'boolean') {
+      console.warn(`[API] Element ${i} is not a boolean:`, typeof element);
+    } else if (elementType === 'object') {
+      if (typeof element !== 'object' || element === null || Array.isArray(element)) {
+        console.warn(`[API] Element ${i} is not an object:`, typeof element);
+      } else if (config?.objectSchema) {
+        // Validate object fields
+        validateObjectFields(element, config.objectSchema, `Element ${i}`);
+      }
+    }
+  }
+  
+  console.log('[API] Schema validation completed');
+}
+
+/**
+ * Recursively validate object fields against schema
+ */
+function validateObjectFields(obj: any, schema: any[], path: string): void {
+  for (const field of schema) {
+    const fieldPath = `${path}.${field.name}`;
+    const value = obj[field.name];
+    
+    // Check required fields
+    if (field.required && (value === undefined || value === null)) {
+      console.warn(`[API] Required field missing: ${fieldPath}`);
+      continue;
+    }
+    
+    // Skip validation if field is optional and not present
+    if (!field.required && (value === undefined || value === null)) {
+      continue;
+    }
+    
+    // Validate field type
+    if (field.type === 'string' && typeof value !== 'string') {
+      console.warn(`[API] Field ${fieldPath} should be string but is ${typeof value}`);
+    } else if (field.type === 'number' && typeof value !== 'number') {
+      console.warn(`[API] Field ${fieldPath} should be number but is ${typeof value}`);
+    } else if (field.type === 'boolean' && typeof value !== 'boolean') {
+      console.warn(`[API] Field ${fieldPath} should be boolean but is ${typeof value}`);
+    } else if (field.type === 'object') {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        console.warn(`[API] Field ${fieldPath} should be object but is ${typeof value}`);
+      } else if (field.objectSchema && field.objectSchema.length > 0) {
+        // Recursively validate nested object
+        validateObjectFields(value, field.objectSchema, fieldPath);
+      }
+    }
+  }
+}
+
+/**
  * Execute To Array node
- * Converts any input data to array format using LLM
+ * Converts any input data to array format using LLM with schema support
  */
 async function executeToArrayNode(config: any, input: any): Promise<any> {
-  console.log('[API] Executing To Array node');
+  console.log('[API] Executing To Array node with schema configuration:', {
+    elementType: config?.elementType || 'string',
+    hasObjectSchema: !!(config?.objectSchema && config.objectSchema.length > 0)
+  });
   
   if (!config?.model || !config?.systemPrompt) {
     throw new Error('To Array node requires model and systemPrompt configuration');
@@ -616,10 +739,15 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
     userMessage = JSON.stringify(input);
   }
 
+  // Generate schema-enhanced system prompt
+  const schemaDescription = generateSchemaDescription(config);
+  const enhancedSystemPrompt = `${config.systemPrompt}\n\n${schemaDescription}\n\nRespond ONLY with a valid JSON array, no additional text or explanation.`;
+
   console.log('[API] Calling LLM API for array conversion:', {
     model: config.model,
-    systemPromptLength: config.systemPrompt.length,
-    userMessageLength: userMessage.length
+    systemPromptLength: enhancedSystemPrompt.length,
+    userMessageLength: userMessage.length,
+    elementType: config?.elementType || 'string'
   });
 
   // Call the chat API (internal API call)
@@ -632,7 +760,7 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
       messages: [
         {
           role: 'system',
-          content: config.systemPrompt,
+          content: enhancedSystemPrompt,
         },
         {
           role: 'user',
@@ -727,6 +855,16 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
         .map(line => line.trim());
     }
   }
+
+  // Validate array against schema
+  if (arrayResult && arrayResult.length > 0) {
+    validateArraySchema(arrayResult, config);
+  }
+
+  console.log('[API] To Array node execution completed:', {
+    resultLength: arrayResult.length,
+    elementType: config?.elementType || 'string'
+  });
 
   return arrayResult;
 }

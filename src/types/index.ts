@@ -135,6 +135,19 @@ export interface EndNodeConfig {
   inputFormat?: DataFormat; // End node only has input
 }
 
+// Array element type for To Array node
+export type ArrayElementType = 'string' | 'number' | 'boolean' | 'object';
+
+// Object schema field definition for To Array node
+export interface ObjectSchemaField {
+  name: string;
+  type: ArrayElementType;
+  required?: boolean;
+  description?: string;
+  // For nested objects
+  objectSchema?: ObjectSchemaField[];
+}
+
 // To Array Node Configuration
 export interface ToArrayNodeConfig {
   systemPrompt?: string;
@@ -144,6 +157,9 @@ export interface ToArrayNodeConfig {
   maxTokens?: number;
   inputFormat?: DataFormat;
   outputFormat?: DataFormat; // Always outputs array format
+  // New properties for schema definition
+  elementType?: ArrayElementType;
+  objectSchema?: ObjectSchemaField[];
 }
 
 export interface WorkflowNodeData {
