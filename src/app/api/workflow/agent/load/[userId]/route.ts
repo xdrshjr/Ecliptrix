@@ -9,10 +9,10 @@ const BACKEND_BASE_URL = process.env.BACKEND_SERVICE_URL || 'http://localhost:80
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const userId = params.userId;
+    const { userId } = await params;
     
     console.log('[Workflow Agent Load API] Loading workflows for user:', userId);
     

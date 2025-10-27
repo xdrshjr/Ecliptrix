@@ -465,6 +465,35 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     });
   }, [content, onUpdateContent]);
 
+  // Handle both nodes and connections change (for operations like delete that affect both)
+  const handleNodesAndConnectionsChange = useCallback((nodes: WorkflowNode[], connections: WorkflowConnection[]) => {
+    if (!content || !content.activeWorkflowId) return;
+    
+    console.log('[WorkflowInterface] Updating nodes and connections:', { 
+      workflowId: content.activeWorkflowId,
+      nodesCount: nodes.length,
+      connectionsCount: connections.length 
+    });
+    
+    const updatedWorkflows = content.workflows.map(workflow =>
+      workflow.id === content.activeWorkflowId
+        ? {
+            ...workflow,
+            data: {
+              ...workflow.data,
+              nodes,
+              connections,
+            },
+          }
+        : workflow
+    );
+    
+    onUpdateContent({
+      ...content,
+      workflows: updatedWorkflows,
+    });
+  }, [content, onUpdateContent]);
+
   // Handle clear chat history for current workflow
   const handleClearChatHistory = useCallback(() => {
     if (!activeWorkflowId) return;
@@ -667,8 +696,8 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
 
   return (
     <div className="h-full w-full flex overflow-hidden">
-      {/* Left Sidebar - 20% width */}
-      <div className="w-1/5 min-w-[250px] h-full">
+      {/* Left Sidebar - Fixed width, won't shrink */}
+      <div className="w-1/5 min-w-[250px] max-w-[300px] h-full flex-shrink-0">
         <WorkflowSidebar
           workflows={content.workflows.map(w => ({
             id: w.id,
@@ -683,8 +712,8 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         />
       </div>
 
-      {/* Right Panel - 80% width with Tabs */}
-      <div className="flex-1 h-full">
+      {/* Right Panel - Takes remaining space with overflow handling */}
+      <div className="flex-1 h-full min-w-0 overflow-hidden">
         {activeWorkflow ? (
           <div className="h-full w-full flex flex-col">
             {/* Tab Header */}
@@ -837,6 +866,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                       connections={activeWorkflow.data.connections}
                       onNodesChange={handleNodesChange}
                       onConnectionsChange={handleConnectionsChange}
+                      onNodesAndConnectionsChange={handleNodesAndConnectionsChange}
                       nodeExecutionStates={executionState.nodeStates}
                     />
                   </div>

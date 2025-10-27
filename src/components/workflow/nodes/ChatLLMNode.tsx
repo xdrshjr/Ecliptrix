@@ -1,202 +1,83 @@
 'use client';
 
 import React from 'react';
-
+import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { ChatLLMNodeConfig } from '@/types';
-
-interface ChatLLMNodeProps {
-  id: string;
-  data: {
-    label: string;
-    config?: ChatLLMNodeConfig;
-  };
-  selected?: boolean;
-  onDelete?: () => void;
-  onPortMouseDown?: (nodeId: string, portType: 'input' | 'output', portId: string, event: React.MouseEvent) => void;
-  executionStatus?: 'pending' | 'executing' | 'completed' | 'error';
-}
 
 /**
  * Chat LLM Node Component
  * Represents a Chat LLM node in the workflow canvas
  * Memoized to prevent unnecessary re-renders during drag operations
  */
-const ChatLLMNode: React.FC<ChatLLMNodeProps> = React.memo(({ 
-  id, 
-  data, 
-  selected = false,
-  onDelete,
-  onPortMouseDown,
-  executionStatus = 'pending'
-}) => {
+const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
+  const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  
+  const config = data.config as ChatLLMNodeConfig | undefined;
+  const isConfigured = !!(
+    config?.systemPrompt ||
+    config?.model ||
+    config?.temperature !== undefined ||
+    config?.maxTokens
+  );
+  
   console.log('[ChatLLMNode] Rendering node:', { 
     id, 
     label: data.label, 
     selected,
-    config: data.config,
+    hasConfig: !!config,
     executionStatus
   });
 
-  // Check if node is configured
-  const isConfigured = !!(
-    data.config?.systemPrompt ||
-    data.config?.model ||
-    data.config?.temperature !== undefined ||
-    data.config?.maxTokens
-  );
-
-  const handleInputPortMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    console.log('[ChatLLMNode] Input port mouse down:', { nodeId: id });
-    if (onPortMouseDown) {
-      onPortMouseDown(id, 'input', 'input-1', e);
-    }
-  };
-
-  const handleOutputPortMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    console.log('[ChatLLMNode] Output port mouse down:', { nodeId: id });
-    if (onPortMouseDown) {
-      onPortMouseDown(id, 'output', 'output-1', e);
-    }
-  };
-
   return (
-    <div 
-      className={`
-        bg-white rounded-lg border-2 shadow-lg min-w-[200px] select-none relative
-        ${selected ? 'border-blue-500 ring-2 ring-blue-200' : 
-          executionStatus === 'executing' ? 'border-yellow-500 ring-2 ring-yellow-200' :
-          executionStatus === 'completed' ? 'border-green-500 ring-2 ring-green-200' :
-          executionStatus === 'error' ? 'border-red-500 ring-2 ring-red-200' :
-          isConfigured ? 'border-green-400' : 'border-gray-300'}
-        hover:shadow-xl transition-all duration-200
-      `}
-    >
-      {/* Execution Status Indicator */}
-      {executionStatus === 'executing' && (
-        <div className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center animate-pulse shadow-lg z-10">
-          <svg className="w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-        </div>
-      )}
-      {executionStatus === 'completed' && (
-        <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg z-10">
-          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-      )}
-      {executionStatus === 'error' && (
-        <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg z-10">
-          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </div>
-      )}
-      
-      {/* Node Header */}
-      <div className={`
-        text-white px-4 py-2 rounded-t-md flex items-center justify-between
-        ${isConfigured ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-purple-500 to-indigo-600'}
-      `}>
-        <div className="flex items-center space-x-2">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <BaseWorkflowNode
+      {...props}
+      config={{
+        icon: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
           </svg>
-          <span className="text-sm font-semibold">{data.label}</span>
-          {isConfigured && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
-              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Configured
-            </span>
-          )}
-        </div>
-        {onDelete && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              console.log('[ChatLLMNode] Delete button clicked:', { id });
-              onDelete();
-            }}
-            className="hover:bg-white/20 rounded p-1 transition-colors"
-            title="Delete node"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-      </div>
-
-      {/* Node Body */}
-      <div className="p-4 space-y-3">
-        {/* Input Port */}
-        <div className="flex items-center space-x-2">
-          <div 
-            className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow-md cursor-pointer hover:bg-green-600 transition-colors" 
-            title="Input Port" 
-            onMouseDown={handleInputPortMouseDown}
-            data-port-type="input"
-            data-port-id="input-1"
-            data-node-id={id}
-          />
-          <span className="text-xs text-gray-600 select-none">Input</span>
-        </div>
-
-        {/* Node Configuration Display */}
-        {isConfigured ? (
-          <div className="text-xs space-y-1">
-            <div className="flex items-center space-x-1">
-              <span className="text-gray-600 font-medium">Model:</span>
-              <span className="text-gray-900">{data.config?.model || 'Not set'}</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className="text-gray-600 font-medium">Temp:</span>
-              <span className="text-gray-900">{data.config?.temperature?.toFixed(1) ?? 'N/A'}</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className="text-gray-600 font-medium">Max Tokens:</span>
-              <span className="text-gray-900">{data.config?.maxTokens || 'N/A'}</span>
-            </div>
-            {data.config?.systemPrompt && (
-              <div className="pt-1 border-t border-gray-200">
-                <div className="text-gray-600 font-medium mb-0.5">System Prompt:</div>
-                <div className="text-gray-700 text-xs line-clamp-2 bg-gray-50 p-1.5 rounded">
-                  {data.config.systemPrompt}
-                </div>
+        ),
+        gradientColors: isConfigured 
+          ? 'bg-gradient-to-r from-purple-500 to-indigo-600' 
+          : 'bg-gradient-to-r from-gray-400 to-gray-500',
+        hasInputPort: true,
+        hasOutputPort: true,
+        inputPortLabel: 'Input',
+        outputPortLabel: 'Output',
+        isConfigured,
+        renderContent: () => (
+          isConfigured ? (
+            <div className="text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 font-medium">Model:</span>
+                <span className="text-gray-900 text-xs">{config?.model || 'Not set'}</span>
               </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-xs text-center py-2">
-            <div className="text-gray-400 italic mb-1">Not configured</div>
-            <div className="text-xs text-gray-500">Double click to configure</div>
-          </div>
-        )}
-
-        {/* Output Port */}
-        <div className="flex items-center justify-end space-x-2">
-          <span className="text-xs text-gray-600 select-none">Output</span>
-          <div 
-            className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-md cursor-pointer hover:bg-blue-600 transition-colors" 
-            title="Output Port" 
-            onMouseDown={handleOutputPortMouseDown}
-            data-port-type="output"
-            data-port-id="output-1"
-            data-node-id={id}
-          />
-        </div>
-      </div>
-    </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 font-medium">Temp:</span>
+                <span className="text-gray-900 text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
+              </div>
+              {config?.systemPrompt && (
+                <div className="pt-1 border-t border-gray-200">
+                  <div className="text-gray-600 font-medium mb-0.5">System Prompt:</div>
+                  <div className="text-gray-700 text-xs bg-gray-50 p-1.5 rounded max-h-16 overflow-y-auto line-clamp-3">
+                    {config.systemPrompt.substring(0, 80)}
+                    {config.systemPrompt.length > 80 && '...'}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-center py-1">
+              <div className="text-gray-400 italic">Not configured</div>
+              <div className="text-xs text-gray-500 mt-0.5">Double click to configure</div>
+            </div>
+          )
+        ),
+      }}
+    />
   );
 });
 
 ChatLLMNode.displayName = 'ChatLLMNode';
 
 export default ChatLLMNode;
-

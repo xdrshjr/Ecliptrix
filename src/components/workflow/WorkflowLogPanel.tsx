@@ -80,18 +80,24 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
     try {
       // Handle common patterns
       if (details.input !== undefined) {
+        const inputStr = JSON.stringify(details.input, null, 2);
         return (
           <div className="mt-1 text-xs">
             <span className="font-semibold text-gray-700">Input: </span>
-            <span className="text-gray-600">{JSON.stringify(details.input, null, 2)}</span>
+            <pre className="inline-block text-gray-600 whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
+              {inputStr}
+            </pre>
           </div>
         );
       }
       if (details.output !== undefined) {
+        const outputStr = JSON.stringify(details.output, null, 2);
         return (
           <div className="mt-1 text-xs">
             <span className="font-semibold text-gray-700">Output: </span>
-            <span className="text-gray-600">{JSON.stringify(details.output, null, 2)}</span>
+            <pre className="inline-block text-gray-600 whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
+              {outputStr}
+            </pre>
           </div>
         );
       }
@@ -104,14 +110,16 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
             <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800 font-medium transition-colors select-none">
               View details
             </summary>
-            <pre className="mt-2 text-xs bg-white/80 p-3 rounded-lg border border-gray-200 overflow-x-auto max-h-40 overflow-y-auto font-mono">
+            <pre className="mt-2 text-xs bg-white/80 p-3 rounded-lg border border-gray-200 overflow-x-auto max-h-40 overflow-y-auto font-mono break-words max-w-full">
               {detailsStr}
             </pre>
           </details>
         );
       }
       return (
-        <pre className="mt-1 text-xs text-gray-600 whitespace-pre-wrap font-mono">{detailsStr}</pre>
+        <pre className="mt-1 text-xs text-gray-600 whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
+          {detailsStr}
+        </pre>
       );
     } catch (e) {
       return null;
@@ -187,12 +195,12 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
                   ${log.level === 'info' ? 'bg-white/80 border-gray-200' : ''}
                 `}
               >
-                <div className="flex items-start space-x-2">
+                <div className="flex items-start space-x-2 min-w-0">
                   <div className="flex-shrink-0 mt-0.5">
                     {getLogIcon(log.level)}
                   </div>
                   
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-baseline space-x-2 flex-wrap">
                       <span className="text-gray-500 text-xs font-mono">
                         {formatTime(log.timestamp)}
@@ -204,7 +212,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
                       )}
                     </div>
                     
-                    <div className="mt-1 text-sm text-gray-800 leading-relaxed">
+                    <div className="mt-1 text-sm text-gray-800 leading-relaxed break-words">
                       {log.message}
                     </div>
                     

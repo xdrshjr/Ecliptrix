@@ -127,7 +127,7 @@ export class WorkflowExecutor {
       
       // Add completion log with final output
       this.addLog('success', undefined, `Workflow execution completed successfully in ${(duration / 1000).toFixed(2)}s`, {
-        output: previousOutput,
+        output: this.createSafeLogObject(previousOutput),
         duration
       });
       
@@ -203,12 +203,16 @@ export class WorkflowExecutor {
    * Execute a single node
    */
   private async executeNode(node: WorkflowNode, input: any): Promise<any> {
+    // Create safe input preview for logging
+    const inputPreview = this.createSafeLogObject(input);
+    
     console.log(`[WorkflowExecutor] ========== Executing Node ==========`, {
       nodeId: node.id,
       nodeType: node.type,
       nodeLabel: node.data.label,
       hasInput: !!input,
       inputType: typeof input,
+      inputPreview: inputPreview,
       timestamp: new Date().toISOString()
     });
 
@@ -217,12 +221,12 @@ export class WorkflowExecutor {
     this.executionState.nodeStates[node.id] = {
       nodeId: node.id,
       status: 'executing',
-      input,
+      input: inputPreview, // Store safe version
       startTime: new Date(),
     };
     
     this.addLog('info', node.id, `Executing node: ${node.data.label}`, { 
-      input,
+      input: inputPreview,
       nodeType: node.type 
     });
     this.notifyStateChange();
@@ -242,6 +246,10 @@ export class WorkflowExecutor {
         
         case 'chat-llm':
           output = await this.executeChatLLMNode(node, input);
+          break;
+        
+        case 'pexels-video-search':
+          output = await this.executePexelsVideoSearchNode(node, input);
           break;
         
         case 'end':
@@ -264,17 +272,21 @@ export class WorkflowExecutor {
         endTime,
       };
       
+      // Create safe output for logging
+      const outputPreview = this.createSafeLogObject(output);
+      
       console.log(`[WorkflowExecutor] ========== Node Completed ==========`, {
         nodeId: node.id,
         nodeLabel: node.data.label,
         duration: `${duration}ms`,
         hasOutput: !!output,
         outputType: typeof output,
+        outputPreview: outputPreview,
         timestamp: new Date().toISOString()
       });
       
       this.addLog('success', node.id, `Node completed: ${node.data.label}`, { 
-        output,
+        output: outputPreview,
         duration,
         executionTime: `${(duration / 1000).toFixed(2)}s`
       });
@@ -369,12 +381,125 @@ export class WorkflowExecutor {
   }
 
   /**
+   * Create a safe version of an object for logging, removing circular references and DOM elements
+   */
+  private createSafeLogObject(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+    
+    if (typeof obj !== 'object') {
+      return obj;
+    }
+    
+    // Check if it's a DOM element or React component
+    if (obj instanceof Element || obj instanceof Node) {
+      return '[DOM Element]';
+    }
+    
+    try {
+      const seen = new WeakSet();
+      return JSON.parse(JSON.stringify(obj, (key, value) => {
+        // Skip React internals and DOM references
+        if (typeof key === 'string' && (key.startsWith('_') || key.startsWith('__react') || key.startsWith('__fiber'))) {
+          return undefined;
+        }
+        
+        // Handle circular references
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) {
+            return '[Circular]';
+          }
+          seen.add(value);
+          
+          // Skip DOM elements and React components
+          if (value instanceof Element || value instanceof Node) {
+            return '[DOM Element]';
+          }
+        }
+        
+        return value;
+      }));
+    } catch (error) {
+      console.warn('[WorkflowExecutor] Could not create safe log object:', error);
+      return { error: 'Could not serialize object safely' };
+    }
+  }
+
+  /**
+   * Safely serialize an object to string, avoiding circular references and DOM elements
+   */
+  private safeSerialize(obj: any): string {
+    if (obj === null || obj === undefined) {
+      return '';
+    }
+    
+    if (typeof obj === 'string') {
+      return obj;
+    }
+    
+    if (typeof obj === 'number' || typeof obj === 'boolean') {
+      return String(obj);
+    }
+    
+    // Check if it's a DOM element or React component
+    if (obj instanceof Element || obj instanceof Node) {
+      console.warn('[WorkflowExecutor] Detected DOM element in input, extracting text content');
+      return obj.textContent || '';
+    }
+    
+    // Check for React Fiber or circular references
+    if (obj && typeof obj === 'object') {
+      // Try to extract known text fields first
+      if (obj.text) return String(obj.text);
+      if (obj.message) return String(obj.message);
+      if (obj.content) return String(obj.content);
+      
+      // Attempt safe JSON serialization with circular reference handling
+      try {
+        const seen = new WeakSet();
+        const sanitized = JSON.stringify(obj, (key, value) => {
+          // Skip React internals and DOM references
+          if (key.startsWith('_') || key.startsWith('__react') || key.startsWith('__fiber')) {
+            return undefined;
+          }
+          
+          // Handle circular references
+          if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+              return '[Circular]';
+            }
+            seen.add(value);
+            
+            // Skip DOM elements and React components
+            if (value instanceof Element || value instanceof Node) {
+              return '[DOM Element]';
+            }
+          }
+          
+          return value;
+        });
+        return sanitized;
+      } catch (error) {
+        console.error('[WorkflowExecutor] Failed to serialize object:', error);
+        return String(obj);
+      }
+    }
+    
+    return String(obj);
+  }
+
+  /**
    * Execute Chat LLM node
    */
   private async executeChatLLMNode(node: WorkflowNode, input: any): Promise<any> {
+    // Safely serialize input for logging (avoid circular references)
+    const safeInputLog = this.safeSerialize(input).substring(0, 200);
+    
     console.log('[WorkflowExecutor] Executing Chat LLM node', { 
       nodeId: node.id,
-      input,
+      inputPreview: safeInputLog,
+      inputType: typeof input,
       timestamp: new Date().toISOString()
     });
     
@@ -391,17 +516,30 @@ export class WorkflowExecutor {
       systemPromptLength: config.systemPrompt.length
     });
 
-    // Extract user message from input
+    // Extract user message from input using safe serialization
     let userMessage = '';
     if (typeof input === 'string') {
       userMessage = input;
     } else if (input?.text) {
-      userMessage = input.text;
+      userMessage = String(input.text);
     } else if (input?.message) {
-      userMessage = input.message;
+      userMessage = String(input.message);
+    } else if (input?.content) {
+      userMessage = String(input.content);
     } else {
-      userMessage = JSON.stringify(input);
+      // Use safe serialization to avoid circular reference errors
+      userMessage = this.safeSerialize(input);
     }
+    
+    // Ensure we have a valid message
+    if (!userMessage || userMessage.trim().length === 0) {
+      throw new Error('Chat LLM node requires a valid input message.');
+    }
+    
+    console.log('[WorkflowExecutor] Extracted user message', {
+      messageLength: userMessage.length,
+      messagePreview: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : '')
+    });
 
     try {
       // Call the LLM API
@@ -491,6 +629,115 @@ export class WorkflowExecutor {
         throw new Error('LLM request aborted');
       }
       throw new Error(`LLM request failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute Pexels Video Search node
+   */
+  private async executePexelsVideoSearchNode(node: WorkflowNode, input: any): Promise<any> {
+    console.log('[WorkflowExecutor] Executing Pexels Video Search node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+    
+    const config = node.data.config as any;
+    
+    // Get keywords from config or input
+    let keywords = config?.keywords || '';
+    
+    // If input is provided and has keywords, use it (allows dynamic keywords from previous nodes)
+    if (input) {
+      if (typeof input === 'string') {
+        keywords = input;
+      } else if (input?.keywords) {
+        keywords = input.keywords;
+      } else if (input?.text) {
+        keywords = input.text;
+      } else if (input?.message) {
+        keywords = input.message;
+      }
+    }
+    
+    if (!keywords || keywords.trim().length === 0) {
+      throw new Error('Pexels Video Search node requires keywords. Please configure keywords or provide them as input.');
+    }
+    
+    const videoCount = config?.count || 5;
+    
+    this.addLog('info', node.id, `Searching Pexels for videos: "${keywords}"`, { 
+      keywords,
+      videoCount,
+      orientation: 'mixed'
+    });
+
+    try {
+      // Call the Pexels video search API
+      const response = await fetch('/api/video-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: keywords.trim(),
+          max_videos: videoCount,
+          orientation: 'mixed',
+        }),
+        signal: this.abortController?.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || `API request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      console.log('[WorkflowExecutor] Pexels search response:', {
+        success: data.success,
+        totalFound: data.total_found,
+        videosCount: data.videos?.length || 0
+      });
+
+      if (!data.success) {
+        throw new Error(data.message || 'Video search failed');
+      }
+
+      // Extract video URLs from the response
+      const videos = data.videos || [];
+      const videoUrls = videos.map((video: any) => ({
+        id: video.id,
+        url: video.url,
+        videoUrl: video.video_url,
+        thumbnail: video.image,
+        width: video.width,
+        height: video.height,
+        duration: video.duration,
+        user: video.user,
+      }));
+
+      this.addLog('success', node.id, `Found ${videoUrls.length} videos from Pexels`, { 
+        totalFound: data.total_found,
+        returned: videoUrls.length,
+        keywords
+      });
+
+      return {
+        videos: videoUrls,
+        videoUrls: videoUrls.map((v: any) => v.videoUrl),
+        totalFound: data.total_found,
+        keywords,
+        count: videoUrls.length,
+      };
+      
+    } catch (error: any) {
+      console.error('[WorkflowExecutor] Pexels Video Search failed:', error);
+      this.addLog('error', node.id, 'Failed to search Pexels videos', { 
+        error: error.message,
+        keywords
+      });
+      throw error;
     }
   }
 

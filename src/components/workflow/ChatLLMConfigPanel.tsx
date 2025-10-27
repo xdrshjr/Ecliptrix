@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChatLLMNodeConfig, LLMModel } from '@/types';
 import { fetchLLMModels } from '@/lib/api/llm';
+import NodeTestPanel from './NodeTestPanel';
 
 interface ChatLLMConfigPanelProps {
   nodeId: string;
@@ -116,6 +117,14 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        {/* Test Panel */}
+        <NodeTestPanel
+          nodeId={nodeId}
+          nodeType="chat-llm"
+          nodeLabel="Chat LLM"
+          nodeConfig={config}
+        />
+        
         {/* System Prompt */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-900">

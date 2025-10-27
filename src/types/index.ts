@@ -97,12 +97,18 @@ export interface StartNodeConfig {
   input?: string;
 }
 
+// Pexels Video Search Node Configuration
+export interface PexelsVideoSearchNodeConfig {
+  keywords?: string;
+  count?: number;
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {

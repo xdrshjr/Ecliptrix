@@ -1,20 +1,23 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, WorkflowNodeExecutionState } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
 import TextInputNode from './nodes/TextInputNode';
+import PexelsVideoSearchNode from './nodes/PexelsVideoSearchNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 import TextInputConfigPanel from './TextInputConfigPanel';
 import StartNodeConfigPanel from './StartNodeConfigPanel';
+import PexelsVideoSearchConfigPanel from './PexelsVideoSearchConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
   connections: WorkflowConnection[];
   onNodesChange: (nodes: WorkflowNode[]) => void;
   onConnectionsChange: (connections: WorkflowConnection[]) => void;
+  onNodesAndConnectionsChange?: (nodes: WorkflowNode[], connections: WorkflowConnection[]) => void;
   nodeExecutionStates?: Record<string, WorkflowNodeExecutionState>;
 }
 
@@ -33,6 +36,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   connections,
   onNodesChange,
   onConnectionsChange,
+  onNodesAndConnectionsChange,
   nodeExecutionStates = {},
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -277,6 +281,34 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setContextMenu({ visible: false, x: 0, y: 0 });
   }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
+  // Add Pexels Video Search node
+  const handleAddPexelsVideoSearchNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'pexels-video-search',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Pexels Video Search',
+        type: 'pexels-video-search',
+        config: {
+          keywords: '',
+          count: 5,
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Pexels Video Search node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
   // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
@@ -302,7 +334,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
-    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start')) {
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search')) {
       console.log('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
@@ -312,7 +344,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig) => {
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
@@ -491,13 +523,28 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       conn => conn.source !== nodeId && conn.target !== nodeId
     );
     
-    onNodesChange(updatedNodes);
-    onConnectionsChange(updatedConnections);
+    console.log('[WorkflowCanvas] Node deletion - updated counts:', {
+      nodeId,
+      previousNodesCount: nodes.length,
+      updatedNodesCount: updatedNodes.length,
+      previousConnectionsCount: connections.length,
+      updatedConnectionsCount: updatedConnections.length
+    });
+    
+    // Use combined update to avoid stale closure issues
+    if (onNodesAndConnectionsChange) {
+      console.log('[WorkflowCanvas] Using combined update for nodes and connections');
+      onNodesAndConnectionsChange(updatedNodes, updatedConnections);
+    } else {
+      console.log('[WorkflowCanvas] Using separate updates for nodes and connections (fallback)');
+      onNodesChange(updatedNodes);
+      onConnectionsChange(updatedConnections);
+    }
     
     if (selectedNodeId === nodeId) {
       setSelectedNodeId(null);
     }
-  }, [nodes, connections, selectedNodeId, onNodesChange, onConnectionsChange]);
+  }, [nodes, connections, selectedNodeId, onNodesChange, onConnectionsChange, onNodesAndConnectionsChange]);
 
   // Handle node drag start
   const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
@@ -638,17 +685,17 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete selected node with Delete or Backspace key
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+      // Delete selected node with Delete key only (Backspace disabled to prevent accidental deletion)
+      if (e.key === 'Delete' && selectedNodeId) {
         e.preventDefault();
-        console.log('[WorkflowCanvas] Deleting node via keyboard:', { nodeId: selectedNodeId });
+        console.log('[WorkflowCanvas] Deleting node via keyboard (Delete key):', { nodeId: selectedNodeId });
         handleDeleteNode(selectedNodeId);
       }
       
-      // Delete selected connection with Delete or Backspace key
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedConnectionId) {
+      // Delete selected connection with Delete key only (Backspace disabled to prevent accidental deletion)
+      if (e.key === 'Delete' && selectedConnectionId) {
         e.preventDefault();
-        console.log('[WorkflowCanvas] Deleting connection via keyboard:', { connectionId: selectedConnectionId });
+        console.log('[WorkflowCanvas] Deleting connection via keyboard (Delete key):', { connectionId: selectedConnectionId });
         handleDeleteConnection(selectedConnectionId);
       }
     };
@@ -885,6 +932,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
+              {node.type === 'pexels-video-search' && (
+                <PexelsVideoSearchNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
             </div>
           );
         })}
@@ -941,6 +998,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               <span className="text-sm text-gray-700">Add Text Input</span>
+            </button>
+            
+            <div className="h-px bg-gray-200 my-1" />
+            
+            <button
+              onClick={handleAddPexelsVideoSearchNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Pexels Video Search</span>
             </button>
           </div>
         )}
@@ -1072,6 +1141,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             <StartNodeConfigPanel
               nodeId={configPanelNodeId}
               config={(node.data.config as StartNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // Pexels Video Search Config Panel
+        if (node.type === 'pexels-video-search') {
+          return (
+            <PexelsVideoSearchConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as PexelsVideoSearchNodeConfig) || {}}
               onSave={handleConfigSave}
               onClose={handleConfigPanelClose}
             />

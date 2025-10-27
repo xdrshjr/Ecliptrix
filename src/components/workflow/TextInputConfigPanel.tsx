@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TextInputNodeConfig } from '@/types';
+import NodeTestPanel from './NodeTestPanel';
 
 interface TextInputConfigPanelProps {
   nodeId: string;
@@ -101,6 +102,14 @@ const TextInputConfigPanel: React.FC<TextInputConfigPanelProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        {/* Test Panel */}
+        <NodeTestPanel
+          nodeId={nodeId}
+          nodeType="text-input"
+          nodeLabel="Text Input"
+          nodeConfig={config}
+        />
+        
         {/* Text Input Area */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">

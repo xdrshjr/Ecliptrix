@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { StartNodeConfig } from '@/types';
+import NodeTestPanel from './NodeTestPanel';
 
 interface StartNodeConfigPanelProps {
   nodeId: string;
@@ -102,6 +103,14 @@ const StartNodeConfigPanel: React.FC<StartNodeConfigPanelProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        {/* Test Panel */}
+        <NodeTestPanel
+          nodeId={nodeId}
+          nodeType="start"
+          nodeLabel="Start Node"
+          nodeConfig={config}
+        />
+        
         {/* Input Area */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
