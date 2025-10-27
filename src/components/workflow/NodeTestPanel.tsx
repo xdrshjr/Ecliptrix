@@ -44,6 +44,18 @@ const getDefaultInputJson = (nodeType: string): string => {
         "text": "Search keywords from previous node"
       }, null, 2);
     
+    case 'volcano-tts':
+      return JSON.stringify({
+        "text": "Hello, this is a test of the Volcano text-to-speech system.",
+        "message": "Text to convert to speech"
+      }, null, 2);
+    
+    case 'to-array':
+      return JSON.stringify({
+        "text": "Apple, Banana, Orange, Grape, Watermelon",
+        "message": "List of fruits to convert to array"
+      }, null, 2);
+    
     case 'end':
       return JSON.stringify({
         "result": "Final workflow output",

@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, WorkflowNodeExecutionState } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, VolcanoTTSNodeConfig, ToArrayNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
 import TextInputNode from './nodes/TextInputNode';
 import PexelsVideoSearchNode from './nodes/PexelsVideoSearchNode';
 import TavilySearchNode from './nodes/TavilySearchNode';
+import VolcanoTTSNode from './nodes/VolcanoTTSNode';
+import ToArrayNode from './nodes/ToArrayNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 import TextInputConfigPanel from './TextInputConfigPanel';
 import StartNodeConfigPanel from './StartNodeConfigPanel';
 import PexelsVideoSearchConfigPanel from './PexelsVideoSearchConfigPanel';
 import TavilySearchConfigPanel from './TavilySearchConfigPanel';
+import VolcanoTTSConfigPanel from './VolcanoTTSConfigPanel';
+import ToArrayConfigPanel from './ToArrayConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -339,6 +343,65 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setContextMenu({ visible: false, x: 0, y: 0 });
   }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
+  // Add Volcano TTS node
+  const handleAddVolcanoTTSNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'volcano-tts',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Volcano TTS',
+        type: 'volcano-tts',
+        config: {
+          text: '',
+          voiceType: 'zh_male_shaonianzixin_moon_bigtts',
+          speedRatio: 1.0,
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Volcano TTS node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
+  // Add To Array node
+  const handleAddToArrayNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'to-array',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'To Array',
+        type: 'to-array',
+        config: {
+          systemPrompt: 'You are a data conversion assistant. Convert the input data into a clean JSON array format. Extract relevant items from the input and structure them as an array. Respond ONLY with a valid JSON array, no additional text or explanation.',
+          temperature: 0.3,
+          maxTokens: 2000,
+          outputFormat: 'array',
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new To Array node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
   // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
@@ -364,7 +427,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
-    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search')) {
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search' || node.type === 'volcano-tts' || node.type === 'to-array')) {
       console.log('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
@@ -374,7 +437,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | ToArrayNodeConfig) => {
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
@@ -982,6 +1045,26 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
+              {node.type === 'volcano-tts' && (
+                <VolcanoTTSNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
+              {node.type === 'to-array' && (
+                <ToArrayNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
             </div>
           );
         })}
@@ -1060,6 +1143,30 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <span className="text-sm text-gray-700">Add Tavily Search</span>
+            </button>
+            
+            <div className="h-px bg-gray-200 my-1" />
+            
+            <button
+              onClick={handleAddVolcanoTTSNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Volcano TTS</span>
+            </button>
+            
+            <div className="h-px bg-gray-200 my-1" />
+            
+            <button
+              onClick={handleAddToArrayNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              <span className="text-sm text-gray-700">Add To Array</span>
             </button>
           </div>
         )}
@@ -1215,6 +1322,30 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             <TavilySearchConfigPanel
               nodeId={configPanelNodeId}
               config={(node.data.config as TavilySearchNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // Volcano TTS Config Panel
+        if (node.type === 'volcano-tts') {
+          return (
+            <VolcanoTTSConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as VolcanoTTSNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // To Array Config Panel
+        if (node.type === 'to-array') {
+          return (
+            <ToArrayConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as ToArrayNodeConfig) || {}}
               onSave={handleConfigSave}
               onClose={handleConfigPanelClose}
             />

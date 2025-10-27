@@ -4,6 +4,8 @@
  * Handles the execution of workflow graphs from Start to End nodes.
  * Executes nodes sequentially following connection paths and passes
  * outputs from one node to the next.
+ * 
+ * Supports data format conversion between nodes.
  */
 
 import {
@@ -15,7 +17,9 @@ import {
   ChatLLMNodeConfig,
   TextInputNodeConfig,
   StartNodeConfig,
+  DataFormat,
 } from '@/types';
+import { convertFormat, detectFormat } from '@/lib/utils/formatConverter';
 
 export type ExecutionCallback = (state: WorkflowExecutionState) => void;
 
@@ -200,18 +204,105 @@ export class WorkflowExecutor {
   }
 
   /**
+   * Convert input data to the format expected by the node
+   */
+  private convertInputFormat(node: WorkflowNode, input: any): any {
+    const config = node.data.config as any;
+    const inputFormat = config?.inputFormat as DataFormat | undefined;
+    
+    // If no input format specified, return as-is (backward compatibility)
+    if (!inputFormat) {
+      return input;
+    }
+    
+    // Detect current format
+    const currentFormat = detectFormat(input);
+    
+    console.log('[WorkflowExecutor] Converting input format:', {
+      nodeId: node.id,
+      from: currentFormat,
+      to: inputFormat,
+    });
+    
+    // Convert format
+    const result = convertFormat({
+      from: currentFormat,
+      to: inputFormat,
+      data: input,
+    });
+    
+    if (!result.success) {
+      console.error('[WorkflowExecutor] Input format conversion failed:', result.error);
+      this.addLog('warning', node.id, `Input format conversion failed: ${result.error}`, {
+        from: currentFormat,
+        to: inputFormat,
+      });
+      // Return original input on conversion failure
+      return input;
+    }
+    
+    this.addLog('info', node.id, `Input converted from ${currentFormat} to ${inputFormat}`, result.details);
+    return result.data;
+  }
+  
+  /**
+   * Convert output data to the format specified by the node
+   */
+  private convertOutputFormat(node: WorkflowNode, output: any): any {
+    const config = node.data.config as any;
+    const outputFormat = config?.outputFormat as DataFormat | undefined;
+    
+    // If no output format specified, return as-is (backward compatibility)
+    if (!outputFormat) {
+      return output;
+    }
+    
+    // Detect current format
+    const currentFormat = detectFormat(output);
+    
+    console.log('[WorkflowExecutor] Converting output format:', {
+      nodeId: node.id,
+      from: currentFormat,
+      to: outputFormat,
+    });
+    
+    // Convert format
+    const result = convertFormat({
+      from: currentFormat,
+      to: outputFormat,
+      data: output,
+    });
+    
+    if (!result.success) {
+      console.error('[WorkflowExecutor] Output format conversion failed:', result.error);
+      this.addLog('warning', node.id, `Output format conversion failed: ${result.error}`, {
+        from: currentFormat,
+        to: outputFormat,
+      });
+      // Return original output on conversion failure
+      return output;
+    }
+    
+    this.addLog('info', node.id, `Output converted from ${currentFormat} to ${outputFormat}`, result.details);
+    return result.data;
+  }
+
+  /**
    * Execute a single node
    */
   private async executeNode(node: WorkflowNode, input: any): Promise<any> {
+    // Convert input format if specified
+    const convertedInput = this.convertInputFormat(node, input);
+    
     // Create safe input preview for logging
-    const inputPreview = this.createSafeLogObject(input);
+    const inputPreview = this.createSafeLogObject(convertedInput);
     
     console.log(`[WorkflowExecutor] ========== Executing Node ==========`, {
       nodeId: node.id,
       nodeType: node.type,
       nodeLabel: node.data.label,
-      hasInput: !!input,
-      inputType: typeof input,
+      hasInput: !!convertedInput,
+      inputType: typeof convertedInput,
       inputPreview: inputPreview,
       timestamp: new Date().toISOString()
     });
@@ -234,35 +325,46 @@ export class WorkflowExecutor {
     try {
       let output: any = null;
 
-      // Execute based on node type
+      // Execute based on node type (using converted input)
       switch (node.type) {
         case 'start':
           output = await this.executeStartNode(node);
           break;
         
         case 'text-input':
-          output = await this.executeTextInputNode(node, input);
+          output = await this.executeTextInputNode(node, convertedInput);
           break;
         
         case 'chat-llm':
-          output = await this.executeChatLLMNode(node, input);
+          output = await this.executeChatLLMNode(node, convertedInput);
           break;
         
         case 'pexels-video-search':
-          output = await this.executePexelsVideoSearchNode(node, input);
+          output = await this.executePexelsVideoSearchNode(node, convertedInput);
           break;
         
         case 'tavily-search':
-          output = await this.executeTavilySearchNode(node, input);
+          output = await this.executeTavilySearchNode(node, convertedInput);
+          break;
+        
+        case 'volcano-tts':
+          output = await this.executeVolcanoTTSNode(node, convertedInput);
+          break;
+        
+        case 'to-array':
+          output = await this.executeToArrayNode(node, convertedInput);
           break;
         
         case 'end':
-          output = await this.executeEndNode(node, input);
+          output = await this.executeEndNode(node, convertedInput);
           break;
         
         default:
           throw new Error(`Unknown node type: ${node.type}`);
       }
+      
+      // Convert output format if specified
+      output = this.convertOutputFormat(node, output);
 
       // Calculate execution duration
       const endTime = new Date();
@@ -633,6 +735,198 @@ export class WorkflowExecutor {
         throw new Error('LLM request aborted');
       }
       throw new Error(`LLM request failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute Volcano TTS node
+   */
+  private async executeVolcanoTTSNode(node: WorkflowNode, input: any): Promise<any> {
+    console.log('[WorkflowExecutor] Executing Volcano TTS node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+    
+    const config = node.data.config as any;
+    
+    // Get text from config or input
+    let text = config?.text || '';
+    
+    // If input is provided and has text, use it (allows dynamic text from previous nodes)
+    if (input) {
+      if (typeof input === 'string') {
+        text = input;
+      } else if (input?.text) {
+        text = input.text;
+      } else if (input?.message) {
+        text = input.message;
+      } else if (input?.content) {
+        text = input.content;
+      }
+    }
+    
+    if (!text || text.trim().length === 0) {
+      throw new Error('Volcano TTS node requires text content. Please configure text or provide it as input.');
+    }
+    
+    const voiceType = config?.voiceType || 'zh_male_shaonianzixin_moon_bigtts';
+    const speedRatio = config?.speedRatio || 1.0;
+    
+    this.addLog('info', node.id, `Converting text to speech (${text.length} chars)`, { 
+      textLength: text.length,
+      voiceType,
+      speedRatio
+    });
+
+    try {
+      // Call the TTS API via sentences endpoint
+      const response = await fetch('/api/tts/convert-sentences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          segment_id: node.id,
+          sentences: [
+            {
+              sentence_id: `${node.id}-1`,
+              text: text.trim(),
+              order: 0
+            }
+          ],
+          voice_type: voiceType,
+          speed_ratio: speedRatio,
+          task_id: `workflow-${Date.now()}`,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(errorData.message || `TTS request failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      console.log('[WorkflowExecutor] TTS response received', {
+        nodeId: node.id,
+        success: result.success,
+        audioUrl: result.concatenated_audio_url,
+        duration: result.total_duration,
+        timestamp: new Date().toISOString()
+      });
+
+      if (!result.success) {
+        throw new Error(result.message || 'TTS conversion failed');
+      }
+
+      this.addLog('success', node.id, 'Speech synthesis completed', { 
+        audioUrl: result.concatenated_audio_url,
+        duration: result.total_duration,
+        voiceType
+      });
+
+      return {
+        text: text,
+        audio_url: result.concatenated_audio_url,
+        duration: result.total_duration,
+        voice_type: voiceType,
+        speed_ratio: speedRatio,
+        sentence_results: result.sentence_results,
+        previousInput: input,
+      };
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error('TTS request aborted');
+      }
+      throw new Error(`TTS request failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute To Array node
+   * Converts any input data to array format using LLM
+   */
+  private async executeToArrayNode(node: WorkflowNode, input: any): Promise<any> {
+    console.log('[WorkflowExecutor] Executing To Array node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+    
+    const config = node.data.config as any;
+    
+    if (!config?.model || !config?.systemPrompt) {
+      throw new Error('To Array node requires model and systemPrompt configuration. Please configure the node.');
+    }
+
+    // Extract user message from input
+    let userMessage = '';
+    if (typeof input === 'string') {
+      userMessage = input;
+    } else if (input?.text) {
+      userMessage = input.text;
+    } else if (input?.message) {
+      userMessage = input.message;
+    } else {
+      userMessage = JSON.stringify(input);
+    }
+
+    this.addLog('info', node.id, `Converting data to array format`, { 
+      inputLength: userMessage.length,
+      model: config.model
+    });
+
+    try {
+      // Call the test-node API to execute the to-array conversion
+      const response = await fetch('/api/workflow/test-node', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          node_id: node.id,
+          node_type: 'to-array',
+          node_label: node.data.label,
+          node_config: config,
+          input: input,
+        }),
+        signal: this.abortController?.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || errorData.message || `Array conversion failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      console.log('[WorkflowExecutor] To Array conversion response received', {
+        nodeId: node.id,
+        success: result.success,
+        outputLength: Array.isArray(result.output) ? result.output.length : 0,
+        timestamp: new Date().toISOString()
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || result.message || 'Array conversion failed');
+      }
+
+      const arrayOutput = result.output;
+
+      this.addLog('success', node.id, `Array conversion completed (${Array.isArray(arrayOutput) ? arrayOutput.length : 0} items)`, { 
+        arrayLength: Array.isArray(arrayOutput) ? arrayOutput.length : 0,
+        model: config.model
+      });
+
+      return arrayOutput;
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error('Array conversion aborted');
+      }
+      throw new Error(`Array conversion failed: ${error.message}`);
     }
   }
 

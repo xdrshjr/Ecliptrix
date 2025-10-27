@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TextInputNodeConfig } from '@/types';
+import { TextInputNodeConfig, DataFormat } from '@/types';
 import NodeTestPanel from './NodeTestPanel';
+import FormatSelector from './FormatSelector';
 
 interface TextInputConfigPanelProps {
   nodeId: string;
@@ -30,12 +31,16 @@ const TextInputConfigPanel: React.FC<TextInputConfigPanelProps> = ({
 
   // State management
   const [content, setContent] = useState(config.content || '');
+  const [inputFormat, setInputFormat] = useState<DataFormat>(config.inputFormat || 'application/json');
+  const [outputFormat, setOutputFormat] = useState<DataFormat>(config.outputFormat || 'application/json');
   const [isSaving, setIsSaving] = useState(false);
 
   // Update local state when config changes
   useEffect(() => {
     console.log('[TextInputConfigPanel] Config updated, refreshing content');
     setContent(config.content || '');
+    setInputFormat(config.inputFormat || 'application/json');
+    setOutputFormat(config.outputFormat || 'application/json');
   }, [config]);
 
   const handleSave = () => {
@@ -49,6 +54,8 @@ const TextInputConfigPanel: React.FC<TextInputConfigPanelProps> = ({
 
     const newConfig: TextInputNodeConfig = {
       content: content.trim(),
+      inputFormat: inputFormat,
+      outputFormat: outputFormat,
     };
 
     // Simulate brief save delay for UX feedback
@@ -109,6 +116,32 @@ const TextInputConfigPanel: React.FC<TextInputConfigPanelProps> = ({
           nodeLabel="Text Input"
           nodeConfig={config}
         />
+
+        {/* Format Configuration */}
+        <div className="space-y-4 p-4 bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200/80 rounded-xl">
+          <div className="flex items-center space-x-2">
+            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            <h3 className="text-sm font-semibold text-gray-900">Data Format</h3>
+          </div>
+          
+          <FormatSelector
+            label="Input Format"
+            value={inputFormat}
+            onChange={setInputFormat}
+            type="input"
+            helpText="Format of data received from the previous node."
+          />
+
+          <FormatSelector
+            label="Output Format"
+            value={outputFormat}
+            onChange={setOutputFormat}
+            type="output"
+            helpText="Format of data sent to the next node."
+          />
+        </div>
         
         {/* Text Input Area */}
         <div className="space-y-2">

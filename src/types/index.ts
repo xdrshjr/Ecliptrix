@@ -78,6 +78,9 @@ export interface LLMModelsResponse {
   total_count: number;
 }
 
+// Data format types for workflow nodes
+export type DataFormat = 'text/plain' | 'application/json' | 'array';
+
 // Chat LLM Node Configuration
 export interface ChatLLMNodeConfig {
   systemPrompt?: string;
@@ -85,28 +88,62 @@ export interface ChatLLMNodeConfig {
   modelId?: string;
   temperature?: number;
   maxTokens?: number;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat;
 }
 
 // Text Input Node Configuration
 export interface TextInputNodeConfig {
   content?: string;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat;
 }
 
 // Start Node Configuration
 export interface StartNodeConfig {
   input?: string;
+  outputFormat?: DataFormat; // Start node only has output
 }
 
 // Pexels Video Search Node Configuration
 export interface PexelsVideoSearchNodeConfig {
   keywords?: string;
   count?: number;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat;
 }
 
 // Tavily Search Node Configuration
 export interface TavilySearchNodeConfig {
   keywords?: string;
   count?: number;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat;
+}
+
+// Volcano TTS Node Configuration
+export interface VolcanoTTSNodeConfig {
+  text?: string;
+  voiceType?: string;
+  speedRatio?: number;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat;
+}
+
+// End Node Configuration
+export interface EndNodeConfig {
+  inputFormat?: DataFormat; // End node only has input
+}
+
+// To Array Node Configuration
+export interface ToArrayNodeConfig {
+  systemPrompt?: string;
+  model?: string;
+  modelId?: string;
+  temperature?: number;
+  maxTokens?: number;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat; // Always outputs array format
 }
 
 export interface WorkflowNodeData {
@@ -114,7 +151,7 @@ export interface WorkflowNodeData {
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | EndNodeConfig | ToArrayNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {

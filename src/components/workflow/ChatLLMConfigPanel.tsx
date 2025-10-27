@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChatLLMNodeConfig, LLMModel } from '@/types';
+import { ChatLLMNodeConfig, LLMModel, DataFormat } from '@/types';
 import { fetchLLMModels } from '@/lib/api/llm';
 import NodeTestPanel from './NodeTestPanel';
+import FormatSelector from './FormatSelector';
 
 interface ChatLLMConfigPanelProps {
   nodeId: string;
@@ -29,6 +30,8 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
   const [selectedModelId, setSelectedModelId] = useState(config.modelId || '');
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
   const [maxTokens, setMaxTokens] = useState(config.maxTokens || 2000);
+  const [inputFormat, setInputFormat] = useState<DataFormat>(config.inputFormat || 'application/json');
+  const [outputFormat, setOutputFormat] = useState<DataFormat>(config.outputFormat || 'application/json');
   const [availableModels, setAvailableModels] = useState<LLMModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -77,6 +80,8 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
       model: selectedModel?.name || '',
       temperature,
       maxTokens,
+      inputFormat,
+      outputFormat,
     };
 
     onSave(newConfig);
@@ -124,6 +129,32 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
           nodeLabel="Chat LLM"
           nodeConfig={config}
         />
+
+        {/* Format Configuration */}
+        <div className="space-y-4 p-4 bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200/80 rounded-xl">
+          <div className="flex items-center space-x-2">
+            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            <h3 className="text-sm font-semibold text-gray-900">Data Format</h3>
+          </div>
+          
+          <FormatSelector
+            label="Input Format"
+            value={inputFormat}
+            onChange={setInputFormat}
+            type="input"
+            helpText="Format of data received from the previous node."
+          />
+
+          <FormatSelector
+            label="Output Format"
+            value={outputFormat}
+            onChange={setOutputFormat}
+            type="output"
+            helpText="Format of data sent to the next node."
+          />
+        </div>
         
         {/* System Prompt */}
         <div className="space-y-2">
