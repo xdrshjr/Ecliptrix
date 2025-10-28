@@ -123,11 +123,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const imagePreviewRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
-    logger.info('组件初始化 - 素材网格滚动优化版本，按钮样式已优化为图标形式', {
+    logger.info('组件初始化 - 素材网格3列布局，按钮样式已优化为图标形式', {
       materialsCount: materials.length,
       selectedType: selectedMaterialType,
       isUploading,
       scrollImplementation: 'materials-grid-container',
+      gridLayout: 'grid-cols-3',
       buttonStyleUpdate: 'icon-only-with-tooltip',
       emptyStateUpdate: 'removed-search-button',
       aiMaterialService,
@@ -137,9 +138,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 监听 materials 变化
   useEffect(() => {
-    logger.info('素材列表更新 - 4列紧凑布局，独立滚动容器', {
+    logger.info('素材列表更新 - 3列优化布局，独立滚动容器', {
       materialsCount: materials.length,
-      layoutType: 'grid-cols-4-compact',
+      layoutType: 'grid-cols-3-optimized',
       scrollContainer: 'materials-grid-container',
       scrollBehavior: 'internal-only',
       materials: materials.map(m => ({
@@ -1330,7 +1331,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-3">
               {materials
                 .filter(material => selectedMaterialType === 'all' || material.type === selectedMaterialType)
                 .map((material) => (

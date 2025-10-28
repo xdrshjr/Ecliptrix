@@ -1178,9 +1178,9 @@
 
 /* 响应式设计更新 - 针对新布局优化 */
 @media (max-width: 1024px) {
-  /* 素材网格在中等屏幕调整为单列 */
-  .materials-panel-content .grid-cols-2 {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
+  /* 素材网格在中等屏幕调整为2列 */
+  .materials-panel-content .grid-cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   
   /* 中等屏幕下信息面板调整 */
@@ -1210,6 +1210,11 @@
 }
 
 @media (max-width: 768px) {
+  /* 素材网格在小屏幕调整为单列 */
+  .materials-panel-content .grid-cols-3 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+  
   /* 小屏幕下素材类型筛选标签调整 */
   .material-type-filter {
     margin-bottom: 12px;
