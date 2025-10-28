@@ -9,10 +9,10 @@ const BACKEND_BASE_URL = process.env.BACKEND_SERVICE_URL || 'http://localhost:80
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { userId: string; workflowId: string } }
+  { params }: { params: Promise<{ userId: string; workflowId: string }> }
 ) {
   try {
-    const { userId, workflowId } = params;
+    const { userId, workflowId } = await params;
     
     console.log('[Workflow Agent Delete API] Deleting workflow:', {
       user_id: userId,

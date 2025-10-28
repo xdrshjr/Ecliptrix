@@ -6,7 +6,6 @@ import { Conversation } from '@/types';
 interface ConversationListProps {
   conversations: Conversation[];
   activeConversationId: string | null;
-  onCreateConversation: (workflowId?: string, workflowName?: string) => void;
   onSelectConversation: (conversationId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
   onNewChatClick: () => void;
@@ -15,7 +14,6 @@ interface ConversationListProps {
 const ConversationList: React.FC<ConversationListProps> = ({
   conversations,
   activeConversationId,
-  onCreateConversation,
   onSelectConversation,
   onDeleteConversation,
   onNewChatClick,

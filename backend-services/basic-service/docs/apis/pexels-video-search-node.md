@@ -13,6 +13,9 @@ The **Pexels Video Search Node** is a workflow node that enables users to search
 - 🔍 **Keyword-based Search**: Search for videos using natural language keywords
 - 🔗 **Dynamic Input Support**: Accept keywords from previous nodes in the workflow
 - 📊 **Configurable Results**: Control the number of videos returned (1-50)
+- 🔄 **Array Input Support**: Accept single string or array of strings as input
+- 🎯 **Batch Processing**: Search multiple keywords and merge results automatically
+- 📝 **Configurable Data Formats**: Set input/output formats (text/plain, application/json, array)
 - 🎨 **Apple-style UI**: Clean, minimalist, and user-friendly interface
 - 🐛 **Debug Support**: View input/output JSON in the workflow log panel
 - ⚡ **Real-time Execution**: See node execution status (pending/executing/completed/error)
@@ -48,39 +51,101 @@ Double-click the node to open the configuration panel with the following setting
 - **Type**: Number (with slider)
 - **Range**: 1-50
 - **Default**: 5
-- **Description**: Number of videos to retrieve from search results
+- **Description**: Number of videos to retrieve per keyword search
+
+#### 3. Input Format
+- **Type**: Dropdown selection
+- **Options**: `text/plain`, `application/json`, `array`
+- **Default**: `application/json`
+- **Description**: Format of data received from the previous node
+
+#### 4. Output Format
+- **Type**: Dropdown selection
+- **Options**: `text/plain`, `application/json`, `array`
+- **Default**: `application/json`
+- **Description**: Format of data sent to the next node
 
 ## Workflow Execution
 
 ### Node Input
 
-The node accepts input in multiple formats:
+The node accepts input in multiple formats based on the configured `inputFormat`:
 
-1. **String Input**: Direct keyword string
+#### When inputFormat = 'array':
+1. **String Array**: Array of keyword strings
+   ```json
+   ["nature sunset", "city skyline", "ocean waves"]
+   ```
+   Each keyword will be searched separately, and results are merged.
+
+2. **Single String**: Converted to single-element array
    ```json
    "nature sunset"
    ```
 
-2. **Object with keywords field**:
+#### When inputFormat = 'text/plain':
+1. **Plain Text String**: Direct keyword string
+   ```json
+   "nature sunset"
+   ```
+
+#### When inputFormat = 'application/json' (Auto-detect):
+1. **String Array**: Automatically detected and processed
+   ```json
+   ["business meeting", "office workspace"]
+   ```
+
+2. **String Input**: Direct keyword string
+   ```json
+   "nature sunset"
+   ```
+
+3. **Object with keywords field**:
    ```json
    {
      "keywords": "business meeting"
    }
    ```
+   or array:
+   ```json
+   {
+     "keywords": ["beach", "sunset", "tropical"]
+   }
+   ```
 
-3. **Object with text field**:
+4. **Object with text field**:
    ```json
    {
      "text": "cooking food"
    }
    ```
 
-4. **Configured Keywords**: Uses keywords from node configuration if no input provided
+5. **Configured Keywords**: Uses keywords from node configuration if no input provided
 
 ### Node Output
 
-The node outputs a structured object containing video information:
+The node outputs data based on the configured `outputFormat`:
 
+#### When outputFormat = 'array':
+Returns a simple array of video URLs:
+```json
+[
+  "https://player.vimeo.com/external/video1.mp4",
+  "https://player.vimeo.com/external/video2.mp4",
+  "https://player.vimeo.com/external/video3.mp4"
+]
+```
+
+#### When outputFormat = 'text/plain':
+Returns newline-separated video URLs:
+```
+https://player.vimeo.com/external/video1.mp4
+https://player.vimeo.com/external/video2.mp4
+https://player.vimeo.com/external/video3.mp4
+```
+
+#### When outputFormat = 'application/json':
+Returns a structured object containing complete video information:
 ```json
 {
   "videos": [
@@ -96,19 +161,21 @@ The node outputs a structured object containing video information:
         "id": 789,
         "name": "John Doe",
         "url": "https://www.pexels.com/@johndoe"
-      }
+      },
+      "keyword": "nature sunset"
     }
   ],
   "videoUrls": [
     "https://player.vimeo.com/external/..."
   ],
   "totalFound": 150,
-  "keywords": "nature sunset",
-  "count": 5
+  "keywords": ["nature sunset", "ocean waves"],
+  "keywordCount": 2,
+  "count": 10
 }
 ```
 
-### Output Fields
+### Output Fields (when outputFormat = 'application/json')
 
 - **videos**: Array of video objects with full metadata
   - `id`: Pexels video ID
@@ -119,10 +186,12 @@ The node outputs a structured object containing video information:
   - `height`: Video height in pixels
   - `duration`: Video duration in seconds
   - `user`: Video author information
+  - `keyword`: Search keyword that found this video (for batch searches)
 - **videoUrls**: Array of direct video URLs (for convenience)
-- **totalFound**: Total number of videos found in search
-- **keywords**: Keywords used for the search
-- **count**: Number of videos returned
+- **totalFound**: Total number of videos found across all searches
+- **keywords**: Array of keywords used for the search
+- **keywordCount**: Number of keywords searched
+- **count**: Total number of videos returned
 
 ## Usage Examples
 
@@ -133,8 +202,10 @@ The node outputs a structured object containing video information:
 **Configuration**:
 - Keywords: `nature landscape mountains`
 - Video Count: 10
+- Input Format: `application/json`
+- Output Format: `application/json`
 
-**Output**: 10 nature landscape videos with metadata
+**Output**: 10 nature landscape videos with complete metadata
 
 ### Example 2: Dynamic Keyword Input
 
@@ -146,15 +217,63 @@ The node outputs a structured object containing video information:
 3. Pexels Video Search finds coffee-related videos
 4. End node receives video URLs
 
-### Example 3: Content Generation Pipeline
+### Example 3: Batch Search with Array Input
+
+**Workflow**: `Start` → `To Array` → `Pexels Video Search` → `End`
+
+**Configuration**:
+- Input Format: `array`
+- Output Format: `array`
+- Video Count: 5 (per keyword)
+
+**To Array Output**:
+```json
+["coffee shop", "barista", "espresso machine"]
+```
+
+**Flow**:
+1. To Array node outputs: `["coffee shop", "barista", "espresso machine"]`
+2. Pexels Video Search processes each keyword:
+   - Searches "coffee shop" → finds 5 videos
+   - Searches "barista" → finds 5 videos
+   - Searches "espresso machine" → finds 5 videos
+3. Merges all results into single array: 15 video URLs total
+
+**Output** (array format):
+```json
+[
+  "https://player.vimeo.com/external/video1.mp4",
+  "https://player.vimeo.com/external/video2.mp4",
+  ...
+]
+```
+
+### Example 4: Content Generation Pipeline with Multiple Keywords
 
 **Workflow**: `Start` → `Text Input` → `Chat LLM` → `Pexels Video Search` → `End`
 
+**Configuration**:
+- Chat LLM Output Format: `array`
+- Pexels Input Format: `array`
+- Pexels Output Format: `application/json`
+- Video Count: 3
+
 **Flow**:
 1. Text Input provides: "Create a travel vlog about beaches"
-2. Chat LLM generates keywords: "beach sunset tropical waves"
-3. Pexels Video Search retrieves beach videos
-4. End node outputs video list for video editing
+2. Chat LLM generates keyword array: `["beach sunset", "tropical paradise", "ocean waves", "palm trees"]`
+3. Pexels Video Search retrieves 3 videos per keyword (12 total)
+4. End node outputs complete video list with metadata for video editing
+
+### Example 5: Simple URL Output
+
+**Workflow**: `Start` → `Pexels Video Search` → `Video Compose` → `End`
+
+**Configuration**:
+- Keywords: `city timelapse`
+- Video Count: 5
+- Output Format: `array`
+
+**Output**: Simple array of 5 video URLs ready for video composition
 
 ## API Integration
 
@@ -220,7 +339,7 @@ The backend uses the `VideoSearchService` which integrates with the Pexels API:
 
 The Workflow Log Panel displays detailed execution information:
 
-### Info Logs
+### Info Logs (Single Keyword)
 ```
 Searching Pexels for videos: "nature sunset"
 - keywords: "nature sunset"
@@ -228,12 +347,48 @@ Searching Pexels for videos: "nature sunset"
 - orientation: "mixed"
 ```
 
-### Success Logs
+### Info Logs (Multiple Keywords)
+```
+Searching Pexels for videos with 3 queries
+- keywordsCount: 3
+- keywords: ["beach", "sunset", "ocean"]
+- videoCountPerQuery: 5
+- orientation: "mixed"
+
+Searching: "beach" (1/3)
+Searching: "sunset" (2/3)
+Searching: "ocean" (3/3)
+```
+
+### Success Logs (Single Keyword)
 ```
 Found 5 videos from Pexels
 - totalFound: 150
 - returned: 5
 - keywords: "nature sunset"
+```
+
+### Success Logs (Multiple Keywords)
+```
+Found 5 videos for "beach"
+- keyword: "beach"
+- found: 5
+- progress: "1/3"
+
+Found 5 videos for "sunset"
+- keyword: "sunset"
+- found: 5
+- progress: "2/3"
+
+Found 5 videos for "ocean"
+- keyword: "ocean"
+- found: 5
+- progress: "3/3"
+
+Completed: Found 15 total videos from 3 searches
+- totalVideos: 15
+- totalSearches: 3
+- totalFound: 450
 ```
 
 ### Output Display
@@ -246,14 +401,34 @@ The log panel shows the complete JSON output structure for debugging.
    - ❌ Poor: "video"
 
 2. **Reasonable Video Count**: Balance between variety and performance
-   - Recommended: 5-15 videos
-   - Maximum: 50 videos
+   - Single keyword: 5-20 videos recommended
+   - Multiple keywords: 3-10 videos per keyword
+   - Maximum: 50 videos per keyword
 
-3. **Chain with LLM Nodes**: Use LLM to generate optimized search keywords
+3. **Choose Appropriate Formats**:
+   - Use `array` input format when receiving multiple keywords from "To Array" node
+   - Use `array` output format when feeding directly to video composition
+   - Use `application/json` for debugging and detailed metadata
 
-4. **Handle Empty Results**: Add error handling for workflows that may get no results
+4. **Batch Processing Strategy**:
+   - For diverse content, use array input with different keywords
+   - Each keyword in the array is searched independently
+   - Results are automatically merged into a single output
 
-5. **Cache Results**: Consider storing video URLs for reuse in subsequent executions
+5. **Chain with LLM Nodes**: Use LLM to generate optimized search keywords
+   - LLM can output keyword arrays for batch searching
+   - Combine with "To Array" node for dynamic keyword lists
+
+6. **Handle Empty Results**: Add error handling for workflows that may get no results
+   - Individual keyword failures don't stop the entire search
+   - Check log panel for warnings about failed searches
+
+7. **Cache Results**: Consider storing video URLs for reuse in subsequent executions
+
+8. **Performance Considerations**:
+   - More keywords = longer execution time (sequential searches)
+   - Balance between coverage and speed
+   - Consider using fewer videos per keyword when searching many keywords
 
 ## UI Design
 
@@ -293,6 +468,15 @@ The node follows Apple's Human Interface Guidelines:
 - Error information
 
 ## Version History
+
+### v2.0.0 (Array Support Update)
+- **NEW**: Support for string array input
+- **NEW**: Batch processing - search multiple keywords automatically
+- **NEW**: Configurable input/output data formats (text/plain, application/json, array)
+- **NEW**: Per-keyword video tagging in results
+- **IMPROVED**: Enhanced logging for batch searches with progress tracking
+- **IMPROVED**: Resilient error handling - continues on individual keyword failures
+- Backward compatible with v1.0.0
 
 ### v1.0.0 (Initial Release)
 - Basic Pexels video search functionality

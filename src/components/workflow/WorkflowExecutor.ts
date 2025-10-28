@@ -1181,108 +1181,235 @@ export class WorkflowExecutor {
 
   /**
    * Execute Pexels Video Search node
+   * Supports both single string input and string array input
    */
   private async executePexelsVideoSearchNode(node: WorkflowNode, input: any): Promise<any> {
     console.log('[WorkflowExecutor] Executing Pexels Video Search node', { 
       nodeId: node.id,
       input,
+      inputType: typeof input,
+      isArray: Array.isArray(input),
       timestamp: new Date().toISOString()
     });
     
     const config = node.data.config as any;
+    const inputFormat = config?.inputFormat || 'application/json';
+    const outputFormat = config?.outputFormat || 'application/json';
+    const videoCount = config?.count || 5;
     
-    // Get keywords from config or input
-    let keywords = config?.keywords || '';
+    // Parse input to extract keywords array based on input format
+    let keywordsArray: string[] = [];
     
-    // If input is provided and has keywords, use it (allows dynamic keywords from previous nodes)
+    console.log('[WorkflowExecutor] Parsing input with format:', { inputFormat, outputFormat });
+    
+    // Step 1: Extract keywords from input or config
     if (input) {
-      if (typeof input === 'string') {
-        keywords = input;
-      } else if (input?.keywords) {
-        keywords = input.keywords;
-      } else if (input?.text) {
-        keywords = input.text;
-      } else if (input?.message) {
-        keywords = input.message;
+      if (inputFormat === 'array') {
+        // Expect array input
+        if (Array.isArray(input)) {
+          keywordsArray = input.map(item => 
+            typeof item === 'string' ? item : JSON.stringify(item)
+          ).filter(k => k && k.trim().length > 0);
+          console.log('[WorkflowExecutor] Parsed array input:', { count: keywordsArray.length });
+        } else {
+          // Convert single value to array
+          const keyword = typeof input === 'string' ? input : 
+                         input?.keywords || input?.text || input?.message || JSON.stringify(input);
+          if (keyword && keyword.trim().length > 0) {
+            keywordsArray = [keyword];
+          }
+          console.log('[WorkflowExecutor] Converted single input to array');
+        }
+      } else if (inputFormat === 'text/plain') {
+        // Expect plain text input
+        const keyword = typeof input === 'string' ? input : 
+                       input?.keywords || input?.text || input?.message || JSON.stringify(input);
+        if (keyword && keyword.trim().length > 0) {
+          keywordsArray = [keyword];
+        }
+        console.log('[WorkflowExecutor] Parsed text/plain input:', { keyword });
+      } else {
+        // application/json - auto-detect input type
+        if (Array.isArray(input)) {
+          keywordsArray = input.map(item => 
+            typeof item === 'string' ? item : JSON.stringify(item)
+          ).filter(k => k && k.trim().length > 0);
+          console.log('[WorkflowExecutor] Auto-detected array input:', { count: keywordsArray.length });
+        } else if (typeof input === 'string') {
+          keywordsArray = [input];
+          console.log('[WorkflowExecutor] Auto-detected string input');
+        } else if (input?.keywords) {
+          const kw = input.keywords;
+          keywordsArray = Array.isArray(kw) ? kw : [kw];
+          console.log('[WorkflowExecutor] Extracted from input.keywords');
+        } else if (input?.text) {
+          keywordsArray = [input.text];
+          console.log('[WorkflowExecutor] Extracted from input.text');
+        } else if (input?.message) {
+          keywordsArray = [input.message];
+          console.log('[WorkflowExecutor] Extracted from input.message');
+        } else {
+          keywordsArray = [JSON.stringify(input)];
+          console.log('[WorkflowExecutor] Stringified input object');
+        }
       }
     }
     
-    if (!keywords || keywords.trim().length === 0) {
+    // Fallback to config keywords if no input keywords
+    if (keywordsArray.length === 0 && config?.keywords) {
+      keywordsArray = [config.keywords];
+      console.log('[WorkflowExecutor] Using config keywords as fallback');
+    }
+    
+    // Validate we have keywords
+    if (keywordsArray.length === 0) {
       throw new Error('Pexels Video Search node requires keywords. Please configure keywords or provide them as input.');
     }
     
-    const videoCount = config?.count || 5;
-    
-    this.addLog('info', node.id, `Searching Pexels for videos: "${keywords}"`, { 
-      keywords,
-      videoCount,
-      orientation: 'mixed'
+    console.log('[WorkflowExecutor] Processing keywords:', { 
+      count: keywordsArray.length, 
+      keywords: keywordsArray 
     });
+    
+    // Log the search operation
+    if (keywordsArray.length === 1) {
+      this.addLog('info', node.id, `Searching Pexels for videos: "${keywordsArray[0]}"`, { 
+        keywords: keywordsArray[0],
+        videoCount,
+        orientation: 'mixed'
+      });
+    } else {
+      this.addLog('info', node.id, `Searching Pexels for videos with ${keywordsArray.length} queries`, { 
+        keywordsCount: keywordsArray.length,
+        keywords: keywordsArray,
+        videoCountPerQuery: videoCount,
+        orientation: 'mixed'
+      });
+    }
 
     try {
-      // Call the Pexels video search API
-      const response = await fetch('/api/video-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: keywords.trim(),
-          max_videos: videoCount,
-          orientation: 'mixed',
-        }),
-        signal: this.abortController?.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || `API request failed with status ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Step 2: Execute searches for each keyword
+      const allVideoResults: any[] = [];
+      let totalFoundCount = 0;
       
-      console.log('[WorkflowExecutor] Pexels search response:', {
-        success: data.success,
-        totalFound: data.total_found,
-        videosCount: data.videos?.length || 0
-      });
+      for (let i = 0; i < keywordsArray.length; i++) {
+        const keyword = keywordsArray[i].trim();
+        if (!keyword) continue;
+        
+        console.log(`[WorkflowExecutor] Searching for keyword ${i + 1}/${keywordsArray.length}: "${keyword}"`);
+        
+        this.addLog('info', node.id, `Searching: "${keyword}" (${i + 1}/${keywordsArray.length})`, { 
+          keyword,
+          progress: `${i + 1}/${keywordsArray.length}`
+        });
+        
+        // Call the Pexels video search API
+        const response = await fetch('/api/video-search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: keyword,
+            max_videos: videoCount,
+            orientation: 'mixed',
+          }),
+          signal: this.abortController?.signal,
+        });
 
-      if (!data.success) {
-        throw new Error(data.message || 'Video search failed');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          this.addLog('warning', node.id, `Search failed for "${keyword}": ${errorData.error || errorData.message}`, {
+            keyword,
+            error: errorData.error || errorData.message
+          });
+          console.warn(`[WorkflowExecutor] Search failed for "${keyword}":`, errorData);
+          continue; // Continue with next keyword instead of failing completely
+        }
+
+        const data = await response.json();
+        
+        console.log(`[WorkflowExecutor] Search response for "${keyword}":`, {
+          success: data.success,
+          totalFound: data.total_found,
+          videosCount: data.videos?.length || 0
+        });
+
+        if (!data.success) {
+          this.addLog('warning', node.id, `No results for "${keyword}": ${data.message}`, {
+            keyword
+          });
+          console.warn(`[WorkflowExecutor] No results for "${keyword}":`, data.message);
+          continue;
+        }
+
+        // Extract video URLs from the response
+        const videos = data.videos || [];
+        const videoResults = videos.map((video: any) => ({
+          id: video.id,
+          url: video.url,
+          videoUrl: video.video_url,
+          thumbnail: video.image,
+          width: video.width,
+          height: video.height,
+          duration: video.duration,
+          user: video.user,
+          keyword: keyword, // Tag with search keyword
+        }));
+        
+        allVideoResults.push(...videoResults);
+        totalFoundCount += data.total_found || 0;
+        
+        this.addLog('success', node.id, `Found ${videoResults.length} videos for "${keyword}"`, { 
+          keyword,
+          found: videoResults.length,
+          progress: `${i + 1}/${keywordsArray.length}`
+        });
       }
 
-      // Extract video URLs from the response
-      const videos = data.videos || [];
-      const videoUrls = videos.map((video: any) => ({
-        id: video.id,
-        url: video.url,
-        videoUrl: video.video_url,
-        thumbnail: video.image,
-        width: video.width,
-        height: video.height,
-        duration: video.duration,
-        user: video.user,
-      }));
-
-      this.addLog('success', node.id, `Found ${videoUrls.length} videos from Pexels`, { 
-        totalFound: data.total_found,
-        returned: videoUrls.length,
-        keywords
+      // Log final results
+      this.addLog('success', node.id, `Completed: Found ${allVideoResults.length} total videos from ${keywordsArray.length} searches`, { 
+        totalVideos: allVideoResults.length,
+        totalSearches: keywordsArray.length,
+        totalFound: totalFoundCount
+      });
+      
+      console.log('[WorkflowExecutor] All searches completed:', {
+        totalVideos: allVideoResults.length,
+        searches: keywordsArray.length
       });
 
-      return {
-        videos: videoUrls,
-        videoUrls: videoUrls.map((v: any) => v.videoUrl),
-        totalFound: data.total_found,
-        keywords,
-        count: videoUrls.length,
-      };
+      // Step 3: Format output based on output format
+      let formattedOutput: any;
+      
+      if (outputFormat === 'array') {
+        // Return simple array of video URLs
+        formattedOutput = allVideoResults.map((v: any) => v.videoUrl);
+        console.log('[WorkflowExecutor] Output formatted as array:', { count: formattedOutput.length });
+      } else if (outputFormat === 'text/plain') {
+        // Return newline-separated URLs
+        formattedOutput = allVideoResults.map((v: any) => v.videoUrl).join('\n');
+        console.log('[WorkflowExecutor] Output formatted as text/plain');
+      } else {
+        // application/json - return detailed object
+        formattedOutput = {
+          videos: allVideoResults,
+          videoUrls: allVideoResults.map((v: any) => v.videoUrl),
+          totalFound: totalFoundCount,
+          keywords: keywordsArray,
+          keywordCount: keywordsArray.length,
+          count: allVideoResults.length,
+        };
+        console.log('[WorkflowExecutor] Output formatted as JSON object');
+      }
+
+      return formattedOutput;
       
     } catch (error: any) {
       console.error('[WorkflowExecutor] Pexels Video Search failed:', error);
       this.addLog('error', node.id, 'Failed to search Pexels videos', { 
         error: error.message,
-        keywords
+        keywords: keywordsArray
       });
       throw error;
     }

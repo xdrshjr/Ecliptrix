@@ -371,84 +371,185 @@ async function executeChatLLMNode(config: any, input: any): Promise<any> {
 
 /**
  * Execute Pexels Video Search node
+ * Supports both single string input and string array input
  */
 async function executePexelsVideoSearchNode(config: any, input: any): Promise<any> {
-  console.log('[API] Executing Pexels Video Search node');
+  console.log('[API] Executing Pexels Video Search node', {
+    input,
+    inputType: typeof input,
+    isArray: Array.isArray(input)
+  });
   
-  // Get keywords from config or input
-  let keywords = config?.keywords || '';
+  const inputFormat = config?.inputFormat || 'application/json';
+  const outputFormat = config?.outputFormat || 'application/json';
+  const videoCount = config?.count || 5;
   
+  // Parse input to extract keywords array based on input format
+  let keywordsArray: string[] = [];
+  
+  console.log('[API] Parsing input with format:', { inputFormat, outputFormat });
+  
+  // Step 1: Extract keywords from input or config
   if (input) {
-    if (typeof input === 'string') {
-      keywords = input;
-    } else if (input?.keywords) {
-      keywords = input.keywords;
-    } else if (input?.text) {
-      keywords = input.text;
-    } else if (input?.message) {
-      keywords = input.message;
+    if (inputFormat === 'array') {
+      // Expect array input
+      if (Array.isArray(input)) {
+        keywordsArray = input.map(item => 
+          typeof item === 'string' ? item : JSON.stringify(item)
+        ).filter(k => k && k.trim().length > 0);
+        console.log('[API] Parsed array input:', { count: keywordsArray.length });
+      } else {
+        // Convert single value to array
+        const keyword = typeof input === 'string' ? input : 
+                       input?.keywords || input?.text || input?.message || JSON.stringify(input);
+        if (keyword && keyword.trim().length > 0) {
+          keywordsArray = [keyword];
+        }
+        console.log('[API] Converted single input to array');
+      }
+    } else if (inputFormat === 'text/plain') {
+      // Expect plain text input
+      const keyword = typeof input === 'string' ? input : 
+                     input?.keywords || input?.text || input?.message || JSON.stringify(input);
+      if (keyword && keyword.trim().length > 0) {
+        keywordsArray = [keyword];
+      }
+      console.log('[API] Parsed text/plain input:', { keyword });
+    } else {
+      // application/json - auto-detect input type
+      if (Array.isArray(input)) {
+        keywordsArray = input.map(item => 
+          typeof item === 'string' ? item : JSON.stringify(item)
+        ).filter(k => k && k.trim().length > 0);
+        console.log('[API] Auto-detected array input:', { count: keywordsArray.length });
+      } else if (typeof input === 'string') {
+        keywordsArray = [input];
+        console.log('[API] Auto-detected string input');
+      } else if (input?.keywords) {
+        const kw = input.keywords;
+        keywordsArray = Array.isArray(kw) ? kw : [kw];
+        console.log('[API] Extracted from input.keywords');
+      } else if (input?.text) {
+        keywordsArray = [input.text];
+        console.log('[API] Extracted from input.text');
+      } else if (input?.message) {
+        keywordsArray = [input.message];
+        console.log('[API] Extracted from input.message');
+      } else {
+        keywordsArray = [JSON.stringify(input)];
+        console.log('[API] Stringified input object');
+      }
     }
   }
   
-  if (!keywords || keywords.trim().length === 0) {
-    throw new Error('Pexels Video Search node requires keywords');
+  // Fallback to config keywords if no input keywords
+  if (keywordsArray.length === 0 && config?.keywords) {
+    keywordsArray = [config.keywords];
+    console.log('[API] Using config keywords as fallback');
   }
   
-  const videoCount = config?.count || 5;
+  // Validate we have keywords
+  if (keywordsArray.length === 0) {
+    throw new Error('Pexels Video Search node requires keywords. Please configure keywords or provide them as input.');
+  }
   
-  console.log('[API] Searching Pexels:', {
-    keywords,
-    videoCount
+  console.log('[API] Processing keywords:', { 
+    count: keywordsArray.length, 
+    keywords: keywordsArray 
   });
 
-  // Call the video search API (internal API call)
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/video-search`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      query: keywords.trim(),
-      max_videos: videoCount,
-      orientation: 'mixed',
-    }),
-  });
+  // Step 2: Execute searches for each keyword
+  const allVideoResults: any[] = [];
+  let totalFoundCount = 0;
+  
+  for (let i = 0; i < keywordsArray.length; i++) {
+    const keyword = keywordsArray[i].trim();
+    if (!keyword) continue;
+    
+    console.log(`[API] Searching for keyword ${i + 1}/${keywordsArray.length}: "${keyword}"`);
+    
+    // Call the video search API (internal API call)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/video-search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: keyword,
+        max_videos: videoCount,
+        orientation: 'mixed',
+      }),
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.message || `Video search failed with status ${response.status}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.warn(`[API] Search failed for "${keyword}":`, errorData);
+      continue; // Continue with next keyword instead of failing completely
+    }
+
+    const data = await response.json();
+    
+    console.log(`[API] Search response for "${keyword}":`, {
+      success: data.success,
+      totalFound: data.total_found,
+      videosCount: data.videos?.length || 0
+    });
+
+    if (!data.success) {
+      console.warn(`[API] No results for "${keyword}":`, data.message);
+      continue;
+    }
+
+    // Extract video URLs from the response
+    const videos = data.videos || [];
+    const videoResults = videos.map((video: any) => ({
+      id: video.id,
+      url: video.url,
+      videoUrl: video.video_url,
+      thumbnail: video.image,
+      width: video.width,
+      height: video.height,
+      duration: video.duration,
+      user: video.user,
+      keyword: keyword, // Tag with search keyword
+    }));
+    
+    allVideoResults.push(...videoResults);
+    totalFoundCount += data.total_found || 0;
+    
+    console.log(`[API] Found ${videoResults.length} videos for "${keyword}"`);
   }
 
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error(data.message || 'Video search failed');
-  }
-
-  const videos = data.videos || [];
-  const videoUrls = videos.map((video: any) => ({
-    id: video.id,
-    url: video.url,
-    videoUrl: video.video_url,
-    thumbnail: video.image,
-    width: video.width,
-    height: video.height,
-    duration: video.duration,
-    user: video.user,
-  }));
-
-  console.log('[API] Pexels search completed:', {
-    totalFound: data.total_found,
-    returned: videoUrls.length
+  console.log('[API] All searches completed:', {
+    totalVideos: allVideoResults.length,
+    searches: keywordsArray.length
   });
 
-  return {
-    videos: videoUrls,
-    videoUrls: videoUrls.map((v: any) => v.videoUrl),
-    totalFound: data.total_found,
-    keywords,
-    count: videoUrls.length,
-  };
+  // Step 3: Format output based on output format
+  let formattedOutput: any;
+  
+  if (outputFormat === 'array') {
+    // Return simple array of video URLs
+    formattedOutput = allVideoResults.map((v: any) => v.videoUrl);
+    console.log('[API] Output formatted as array:', { count: formattedOutput.length });
+  } else if (outputFormat === 'text/plain') {
+    // Return newline-separated URLs
+    formattedOutput = allVideoResults.map((v: any) => v.videoUrl).join('\n');
+    console.log('[API] Output formatted as text/plain');
+  } else {
+    // application/json - return detailed object
+    formattedOutput = {
+      videos: allVideoResults,
+      videoUrls: allVideoResults.map((v: any) => v.videoUrl),
+      totalFound: totalFoundCount,
+      keywords: keywordsArray,
+      keywordCount: keywordsArray.length,
+      count: allVideoResults.length,
+    };
+    console.log('[API] Output formatted as JSON object');
+  }
+
+  return formattedOutput;
 }
 
 /**
@@ -622,7 +723,7 @@ function generateSchemaDescription(config: any): string {
     let schemaDescription = 'Convert the input data into a JSON array where each element is an object with the following structure:\n';
     
     // Recursively generate schema description
-    function describeSchema(fields: any[], indent: string = ''): string {
+    const describeSchema = (fields: any[], indent: string = ''): string => {
       let desc = '';
       for (const field of fields) {
         const required = field.required ? 'required' : 'optional';
@@ -636,7 +737,7 @@ function generateSchemaDescription(config: any): string {
         }
       }
       return desc;
-    }
+    };
     
     schemaDescription += describeSchema(schema);
     schemaDescription += '\nEnsure all required fields are present and use the correct data types.';

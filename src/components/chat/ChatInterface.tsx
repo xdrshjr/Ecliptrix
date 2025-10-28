@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Conversation, ChatMessage, ChatTaskContent } from '@/types';
+import { Conversation, ChatMessage, ChatTaskContent, WorkflowExecutionState } from '@/types';
 import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
 import ChatTypeSelectionModal from './ChatTypeSelectionModal';
@@ -303,7 +303,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       let accumulatedContent = '';
-      let workflowExecutionState = useWorkflow ? {
+      let workflowExecutionState: WorkflowExecutionState | undefined = useWorkflow ? {
         isRunning: true,
         currentNodeId: null,
         nodeStates: {},
@@ -368,11 +368,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   ...assistantMessage,
                   content: accumulatedContent,
                   isStreaming: true,
-                  workflowExecution: {
+                  workflowExecution: workflowExecutionState ? {
                     workflowId: activeConversation.workflowId!,
                     workflowName: activeConversation.workflowName!,
-                    executionState: { ...workflowExecutionState }
-                  }
+                    executionState: workflowExecutionState
+                  } : undefined
                 }];
                 
                 updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
@@ -410,8 +410,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             workflowId: activeConversation.workflowId!,
             workflowName: activeConversation.workflowName!,
             executionState: {
-              ...workflowExecutionState,
               isRunning: false,
+              currentNodeId: workflowExecutionState.currentNodeId,
+              nodeStates: workflowExecutionState.nodeStates,
+              logs: workflowExecutionState.logs,
+              startTime: workflowExecutionState.startTime,
               endTime: new Date()
             }
           }
@@ -455,7 +458,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <ConversationList
           conversations={chatContent.conversations}
           activeConversationId={chatContent.activeConversationId}
-          onCreateConversation={handleCreateConversation}
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
           onNewChatClick={handleNewChatClick}

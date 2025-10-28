@@ -7,7 +7,7 @@ export interface NodeTestPanelProps {
   nodeType: string;
   nodeLabel: string;
   nodeConfig: any;
-  onTest?: (input: any) => Promise<{ output: any; error?: string }>;
+  onTest?: (result: { output: any; error?: string }) => Promise<void>;
 }
 
 /**
