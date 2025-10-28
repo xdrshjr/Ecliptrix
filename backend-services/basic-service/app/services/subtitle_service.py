@@ -172,7 +172,11 @@ class SubtitleService:
                 
                 # Apply reasonable limits that respect user font size settings
                 # The previous limits were too conservative and made fonts appear much smaller
-                if font_size >= 72:
+                if font_size >= 100:
+                    # Extra large font - allow fewer characters to prevent overflow
+                    # For 100px font: 100 * 0.8 * 10 chars = 800px < 980px available
+                    max_chars = min(base_max_chars, 10)
+                elif font_size >= 72:
                     # Large font - allow reasonable character count while preventing overflow
                     # For 72px font: 72 * 0.8 * 12 chars = 691px < 980px available
                     max_chars = min(base_max_chars, 12)
