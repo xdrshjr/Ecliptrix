@@ -124,7 +124,6 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
       className={`
         rounded-xl border-2 ${config.borderColor} ${config.bgColor}
         p-4 transition-all duration-300 hover:shadow-md
-        ${state.status === 'executing' ? 'animate-pulse' : ''}
       `}
     >
       {/* Header */}

@@ -5,6 +5,7 @@ import { Conversation, ChatMessage, ChatTaskContent, WorkflowExecutionState } fr
 import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
 import ChatTypeSelectionModal from './ChatTypeSelectionModal';
+import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 
 interface ChatInterfaceProps {
   taskId: string;
@@ -257,7 +258,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const messagesWithAssistant = [...messagesWithUser, assistantMessage];
       updateConversationMessages(chatContent.activeConversationId, messagesWithAssistant);
 
-      // Determine chat type and API endpoint
+      // Determine chat type and execution method
       const chatType = activeConversation.chatType || 'chatbot';
       const useWorkflow = chatType === 'workflow' && !!activeConversation.workflowId;
       
@@ -273,24 +274,126 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         messageLength: message.length
       });
 
-      // Call appropriate API endpoint based on chat type
-      const apiEndpoint = useWorkflow ? '/api/chat/workflow' : '/api/chat';
-      const requestBody = useWorkflow ? {
-        messages: messagesWithUser,
-        workflowId: activeConversation.workflowId,
-        userInput: message,
-        nodes: activeConversation.workflowNodes || [],
-        connections: activeConversation.workflowConnections || [],
-      } : {
-        messages: messagesWithUser,
-      };
+      // Handle workflow execution with client-side executor (like Workflows task)
+      if (useWorkflow && activeConversation.workflowNodes && activeConversation.workflowConnections) {
+        console.log('[ChatInterface] Executing workflow with client-side WorkflowExecutor');
+        
+        let accumulatedContent = '';
+        let workflowExecutionState: WorkflowExecutionState = {
+          isRunning: true,
+          currentNodeId: null,
+          nodeStates: {},
+          logs: [],
+          startTime: new Date()
+        };
 
-      const response = await fetch(apiEndpoint, {
+        // Create workflow executor with real-time callback
+        const executor = new WorkflowExecutor(
+          activeConversation.workflowNodes,
+          activeConversation.workflowConnections,
+          (newState: WorkflowExecutionState) => {
+            console.log('[ChatInterface] Workflow execution state updated:', {
+              isRunning: newState.isRunning,
+              currentNodeId: newState.currentNodeId,
+              logsCount: newState.logs.length,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Update workflow execution state
+            workflowExecutionState = { ...newState };
+            
+            // Extract final result from logs when execution completes
+            if (!newState.isRunning && newState.endTime) {
+              const finalResultLog = newState.logs.find(
+                log => log.level === 'success' && log.message.includes('Workflow execution completed')
+              );
+              
+              const finalOutput = finalResultLog?.details?.output;
+              
+              if (finalOutput) {
+                // Format the output
+                if (typeof finalOutput === 'string') {
+                  accumulatedContent = finalOutput;
+                } else if (finalOutput.finalResult) {
+                  const result = finalOutput.finalResult;
+                  if (typeof result === 'string') {
+                    accumulatedContent = result;
+                  } else if (result?.text) {
+                    accumulatedContent = result.text;
+                  } else if (result?.llmResponse) {
+                    accumulatedContent = result.llmResponse;
+                  } else {
+                    accumulatedContent = JSON.stringify(result, null, 2);
+                  }
+                } else if (finalOutput.text) {
+                  accumulatedContent = finalOutput.text;
+                } else if (finalOutput.llmResponse) {
+                  accumulatedContent = finalOutput.llmResponse;
+                } else {
+                  accumulatedContent = JSON.stringify(finalOutput, null, 2);
+                }
+              }
+            }
+            
+            // Update the assistant message with workflow execution state
+            const updatedMessages = [...messagesWithUser, {
+              ...assistantMessage,
+              content: accumulatedContent,
+              isStreaming: newState.isRunning,
+              workflowExecution: {
+                workflowId: activeConversation.workflowId!,
+                workflowName: activeConversation.workflowName!,
+                executionState: { ...newState }
+              }
+            }];
+            
+            updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
+          },
+          message // Pass user input to executor
+        );
+
+        // Execute the workflow
+        try {
+          console.log('[ChatInterface] Starting workflow execution');
+          await executor.execute();
+          console.log('[ChatInterface] Workflow execution completed successfully');
+        } catch (error) {
+          console.error('[ChatInterface] Workflow execution error:', error);
+          accumulatedContent = `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          
+          // Update with error message
+          const errorMessages = [...messagesWithUser, {
+            ...assistantMessage,
+            content: accumulatedContent,
+            isStreaming: false,
+            workflowExecution: {
+              workflowId: activeConversation.workflowId!,
+              workflowName: activeConversation.workflowName!,
+              executionState: {
+                ...workflowExecutionState,
+                isRunning: false,
+                endTime: new Date()
+              }
+            }
+          }];
+          
+          updateConversationMessages(chatContent.activeConversationId!, errorMessages);
+        }
+        
+        return; // Exit early for workflow execution
+      }
+
+      // Handle regular chatbot conversation with API
+      console.log('[ChatInterface] Using regular chat API for chatbot conversation');
+      
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          messages: messagesWithUser,
+        }),
       });
 
       if (!response.ok) {
@@ -303,13 +406,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       let accumulatedContent = '';
-      let workflowExecutionState: WorkflowExecutionState | undefined = useWorkflow ? {
-        isRunning: true,
-        currentNodeId: null,
-        nodeStates: {},
-        logs: [],
-        startTime: new Date()
-      } : undefined;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -328,70 +424,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             try {
               const parsed = JSON.parse(data);
               
-              if (useWorkflow) {
-                // Handle workflow-specific streaming events
-                if (parsed.type === 'node_update' && workflowExecutionState) {
-                  // Update node execution state
-                  workflowExecutionState.nodeStates[parsed.nodeId] = {
-                    nodeId: parsed.nodeId,
-                    status: parsed.status,
-                    output: parsed.output,
-                    startTime: parsed.startTime ? new Date(parsed.startTime) : new Date(),
-                    endTime: parsed.endTime ? new Date(parsed.endTime) : undefined
-                  };
-                  
-                  workflowExecutionState.currentNodeId = parsed.nodeId;
-                  
-                  // Add log entry
-                  workflowExecutionState.logs.push({
-                    id: `log-${Date.now()}-${Math.random()}`,
-                    timestamp: new Date(),
-                    level: 'info',
-                    nodeId: parsed.nodeId,
-                    nodeName: parsed.nodeName,
-                    message: `${parsed.status === 'executing' ? 'Executing' : 'Completed'} node: ${parsed.nodeName}`
-                  });
-                  
-                } else if (parsed.type === 'final_result') {
-                  accumulatedContent = parsed.content;
-                  if (workflowExecutionState) {
-                    workflowExecutionState.isRunning = false;
-                    workflowExecutionState.endTime = new Date();
-                  }
-                } else if (parsed.type === 'error') {
-                  console.error('[ChatInterface] Workflow execution error:', parsed.error);
-                  accumulatedContent = `Error: ${parsed.error}`;
-                }
+              // Regular chat streaming
+              if (parsed.content) {
+                accumulatedContent += parsed.content;
                 
-                // Update the assistant message with workflow execution state
+                // Update the assistant message with accumulated content
                 const updatedMessages = [...messagesWithUser, {
                   ...assistantMessage,
                   content: accumulatedContent,
-                  isStreaming: true,
-                  workflowExecution: workflowExecutionState ? {
-                    workflowId: activeConversation.workflowId!,
-                    workflowName: activeConversation.workflowName!,
-                    executionState: workflowExecutionState
-                  } : undefined
+                  isStreaming: true
                 }];
                 
+                console.log(`[Chat] Streaming update - accumulated content length: ${accumulatedContent.length}`);
                 updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
-                
-              } else {
-                // Regular chat streaming
-                if (parsed.content) {
-                  accumulatedContent += parsed.content;
-                  
-                  // Update the assistant message with accumulated content
-                  const updatedMessages = [...messagesWithUser, {
-                    ...assistantMessage,
-                    content: accumulatedContent,
-                    isStreaming: true
-                  }];
-                  
-                  console.log(`[Chat] Streaming update - accumulated content length: ${accumulatedContent.length}`);
-                  updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
-                }
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
@@ -400,25 +445,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
       }
 
-      // Mark streaming as complete
+      // Mark streaming as complete for regular chatbot
       const finalMessages = [...messagesWithUser, {
         ...assistantMessage,
         content: accumulatedContent,
-        isStreaming: false,
-        ...(useWorkflow && workflowExecutionState ? {
-          workflowExecution: {
-            workflowId: activeConversation.workflowId!,
-            workflowName: activeConversation.workflowName!,
-            executionState: {
-              isRunning: false,
-              currentNodeId: workflowExecutionState.currentNodeId,
-              nodeStates: workflowExecutionState.nodeStates,
-              logs: workflowExecutionState.logs,
-              startTime: workflowExecutionState.startTime,
-              endTime: new Date()
-            }
-          }
-        } : {})
+        isStreaming: false
       }];
       
       console.log(`[Chat] Streaming complete - final content length: ${accumulatedContent.length}`);

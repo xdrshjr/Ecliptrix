@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WorkflowNodeExecutionState } from '@/types';
 import NodeExecutionCard from './NodeExecutionCard';
 
@@ -14,6 +14,7 @@ interface ExecutionProcessPanelProps {
 /**
  * Execution Process Panel Component
  * Displays all node execution cards with collapsible functionality
+ * Auto-expands during execution, auto-collapses when completed
  * Apple light theme: clean, elegant panel design
  */
 const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
@@ -22,8 +23,21 @@ const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
   nodeNames,
   isCompleted,
 }) => {
-  // 折叠状态：默认折叠，由用户手动展开
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  // 折叠状态：执行时展开，完成后折叠
+  const [isCollapsed, setIsCollapsed] = useState(isCompleted);
+  
+  // 监听执行状态变化，自动展开/折叠
+  useEffect(() => {
+    if (!isCompleted) {
+      // 执行中：自动展开
+      console.log('[ExecutionProcessPanel] Workflow executing, auto-expanding panel');
+      setIsCollapsed(false);
+    } else {
+      // 执行完成：自动折叠
+      console.log('[ExecutionProcessPanel] Workflow completed, auto-collapsing panel');
+      setIsCollapsed(true);
+    }
+  }, [isCompleted]);
 
   console.log('[ExecutionProcessPanel] Rendering:', {
     isCollapsed,
