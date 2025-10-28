@@ -25,16 +25,17 @@ const ConversationList: React.FC<ConversationListProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200/80">
+      {/* Header - Aligned with ChatWindow header */}
+      <div className="px-4 py-4 border-b border-gray-200/80 bg-white/80 backdrop-blur-sm flex items-center justify-between h-[74px]">
+        <h2 className="text-sm font-semibold text-gray-700">Conversations</h2>
         <button
           onClick={onNewChatClick}
-          className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl py-3 px-4 flex items-center justify-center space-x-2 transition-all shadow-md hover:shadow-lg font-medium"
+          className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg flex items-center justify-center transition-all shadow-sm hover:shadow-md group"
+          title="New Chat"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
           </svg>
-          <span>New Chat</span>
         </button>
       </div>
 
