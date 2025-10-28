@@ -1319,22 +1319,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       const videoMaterials = materialManagement.materials.filter(m => m.type === 'video');
       
       if (videoMaterials.length > 0) {
-        console.log(`[VideoEditingInterface] 开始并行视频分析阶段`, {
+        console.log(`[VideoEditingInterface] 开始顺序视频分析阶段（AI混剪模式）`, {
           taskId,
           videoCount: videoMaterials.length,
           mode: mode.type,
           frameInterval: mode.frameInterval,
-          threadCount: VIDEO_ANALYSIS_CONFIG.DEFAULT_THREAD_COUNT,
+          sequential: true,
           maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
           timestamp: new Date().toISOString()
         });
 
         try {
-          // 使用并行分析工具进行视频分析
+          // AI混剪使用顺序分析模式，避免并发调用后台接口导致错误
           const analysisResults = await analyzeVideosInParallel(
             videoMaterials,
             {
-              threadCount: VIDEO_ANALYSIS_CONFIG.DEFAULT_THREAD_COUNT,
+              sequential: true, // 启用顺序模式，一个接一个调用 API
               maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
               retryDelayMs: VIDEO_ANALYSIS_CONFIG.RETRY_DELAY_MS,
               mode
@@ -1345,12 +1345,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           const successfulAnalyses = analysisResults.filter(r => r.success);
           const failedAnalyses = analysisResults.filter(r => !r.success);
 
-          console.log(`[VideoEditingInterface] 并行视频分析阶段完成`, {
+          console.log(`[VideoEditingInterface] 顺序视频分析阶段完成`, {
             taskId,
             totalVideos: videoMaterials.length,
             successCount: successfulAnalyses.length,
             failedCount: failedAnalyses.length,
             successRate: `${Math.round((successfulAnalyses.length / videoMaterials.length) * 100)}%`,
+            sequential: true,
             timestamp: new Date().toISOString()
           });
 
@@ -1364,10 +1365,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           }
 
         } catch (error) {
-          console.error(`[VideoEditingInterface] 并行视频分析阶段异常`, {
+          console.error(`[VideoEditingInterface] 顺序视频分析阶段异常`, {
             taskId,
             error: error instanceof Error ? error.message : String(error),
             videoCount: videoMaterials.length,
+            sequential: true,
             timestamp: new Date().toISOString()
           });
           // 继续执行AI混剪，即使视频分析失败

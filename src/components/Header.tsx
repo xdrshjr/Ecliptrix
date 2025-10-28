@@ -9,9 +9,10 @@ interface HeaderProps {
   onLoginClick: () => void;
   onProfileClick: () => void;
   onSettingsClick?: () => void;
+  onHomeClick?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSettingsClick }) => {
+const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSettingsClick, onHomeClick }) => {
   const { locale, setLocale, t } = useLocale();
   const { user, isAuthenticated, logout } = useAuth();
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
@@ -54,11 +55,31 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
     setIsUserDropdownOpen(false);
   };
 
+  const handleLogoClick = () => {
+    console.log('[Header] Logo clicked, returning to home:', {
+      timestamp: new Date().toISOString()
+    });
+    if (onHomeClick) {
+      onHomeClick();
+    }
+  };
+
   return (
     <header className="h-14 bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
       <div className="h-full px-6 flex items-center justify-between">
-        {/* Logo and Brand */}
-        <div className="flex items-center space-x-3">
+        {/* Logo and Brand - Clickable to return home */}
+        <div 
+          className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={handleLogoClick}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              handleLogoClick();
+            }
+          }}
+          aria-label="Return to homepage"
+        >
           <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
             <Image 
               src="/logo-basic.png" 

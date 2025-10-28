@@ -989,7 +989,7 @@ export const translations: Record<string, Translations> = {
       close: '关闭',
     },
     header: {
-      brandSubtitle: '光影交汇之处',
+      brandSubtitle: '光与影之交汇',
       languageSelector: '语言',
       english: '英文',
       chinese: '中文',
@@ -1007,7 +1007,7 @@ export const translations: Record<string, Translations> = {
       registerButton: '注册',
       welcomeBack: '欢迎回来',
       welcomeTitle: '欢迎使用 Ecliptrix',
-      welcomeSubtitle: '光影交汇之处，创造非凡内容',
+      welcomeSubtitle: '光与影之交汇，创造非凡内容',
       loginSuccess: '登录成功',
       loginFailed: '登录失败',
       invalidCredentials: '用户名或密码错误',
@@ -1132,8 +1132,8 @@ export const translations: Record<string, Translations> = {
     },
     welcome: {
       title: '欢迎使用 Ecliptrix',
-      subtitle: '光影交汇之处',
-      description: '光影交汇之处，创造非凡内容。创建新任务开始您的创意之旅。',
+      subtitle: '光与影之交汇',
+      description: '光与影之交汇，创造非凡内容。创建新任务开始您的创意之旅。',
       workflowDesc: '构建AI驱动的工作流代理',
       videoEditingDesc: '自动视频混剪和编辑',
       brainstormingDesc: '创意构思和灵感',

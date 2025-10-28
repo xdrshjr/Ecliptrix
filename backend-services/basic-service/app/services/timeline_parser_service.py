@@ -479,6 +479,7 @@ class TimelineParserService:
     def validate_simplified_timeline(self, simplified_timeline: SimplifiedTimelineModel) -> bool:
         """
         Validate simplified timeline data for consistency.
+        Automatically clips segments that exceed total duration.
         
         Args:
             simplified_timeline: Simplified timeline data to validate
@@ -487,26 +488,77 @@ class TimelineParserService:
             bool: True if valid, False otherwise
         """
         try:
+            # Tolerance for floating-point precision (0.1 seconds)
+            TOLERANCE = 0.1
+            
             # Check if total duration is positive
             if simplified_timeline.total_duration <= 0:
                 self.logger.error("Invalid total duration: must be positive")
                 return False
             
-            # Check if segments don't exceed total duration
+            # Check and clip video segments that exceed total duration
             for segment in simplified_timeline.video_segments:
-                if segment.start_time + segment.duration > simplified_timeline.total_duration:
-                    self.logger.error(f"Video segment exceeds total duration: {segment.material_id}")
-                    return False
+                segment_end_time = segment.start_time + segment.duration
+                if segment_end_time > simplified_timeline.total_duration:
+                    excess = segment_end_time - simplified_timeline.total_duration
+                    
+                    # Clip the segment to fit within total duration
+                    new_duration = simplified_timeline.total_duration - segment.start_time
+                    
+                    if excess > TOLERANCE:
+                        self.logger.warning(
+                            f"Video segment exceeds total duration by {excess:.3f}s, clipping: "
+                            f"{segment.material_id} (duration: {segment.duration:.3f}s -> {new_duration:.3f}s)"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"Video segment slightly exceeds total duration (within tolerance), clipping: "
+                            f"{segment.material_id}"
+                        )
+                    
+                    segment.duration = max(0.0, new_duration)
                     
             for segment in simplified_timeline.audio_segments:
-                if segment.start_time + segment.duration > simplified_timeline.total_duration:
-                    self.logger.error(f"Audio segment exceeds total duration: {segment.material_id}")
-                    return False
+                segment_end_time = segment.start_time + segment.duration
+                if segment_end_time > simplified_timeline.total_duration:
+                    excess = segment_end_time - simplified_timeline.total_duration
+                    
+                    # Clip the segment to fit within total duration
+                    new_duration = simplified_timeline.total_duration - segment.start_time
+                    
+                    if excess > TOLERANCE:
+                        self.logger.warning(
+                            f"Audio segment exceeds total duration by {excess:.3f}s, clipping: "
+                            f"{segment.material_id} (duration: {segment.duration:.3f}s -> {new_duration:.3f}s)"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"Audio segment slightly exceeds total duration (within tolerance), clipping: "
+                            f"{segment.material_id}"
+                        )
+                    
+                    segment.duration = max(0.0, new_duration)
                     
             for segment in simplified_timeline.image_segments:
-                if segment.start_time + segment.duration > simplified_timeline.total_duration:
-                    self.logger.error(f"Image segment exceeds total duration: {segment.material_id}")
-                    return False
+                segment_end_time = segment.start_time + segment.duration
+                if segment_end_time > simplified_timeline.total_duration:
+                    excess = segment_end_time - simplified_timeline.total_duration
+                    
+                    # Clip the segment to fit within total duration
+                    new_duration = simplified_timeline.total_duration - segment.start_time
+                    
+                    if excess > TOLERANCE:
+                        self.logger.warning(
+                            f"Image segment exceeds total duration by {excess:.3f}s, clipping: "
+                            f"{segment.material_id} (duration: {segment.duration:.3f}s -> {new_duration:.3f}s)"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"Image segment slightly exceeds total duration (within tolerance), clipping: "
+                            f"{segment.material_id}"
+                        )
+                    
+                    segment.duration = max(0.0, new_duration)
             
             self.logger.info("Simplified timeline validation passed")
             return True

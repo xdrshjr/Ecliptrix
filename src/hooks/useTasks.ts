@@ -4,109 +4,30 @@ import { useState, useCallback, useEffect } from 'react';
 import { Task, Tab, TaskType, AppState } from '@/types';
 
 export const useTasks = () => {
-  // 创建默认任务和标签页（使用固定时间戳避免水合不匹配）
-  const createDefaultTasks = () => {
-    // 使用固定的时间戳避免服务端和客户端不一致
-    const fixedDate = new Date('2024-01-01T00:00:00.000Z');
+  // 初始化时不创建任何默认任务，显示着陆页
+  const createInitialState = (): AppState => {
+    console.log('[useTasks] Creating initial empty state for landing page:', {
+      timestamp: new Date().toISOString()
+    });
     
-    // 创建默认的 AI Chat 任务
-    const chatTask: Task = {
-      id: 'default-chat-task',
-      title: 'AI Chat',
-      type: 'chat',
-      status: 'draft',
-      createdAt: fixedDate,
-      updatedAt: fixedDate,
-      content: null,
-    };
-
-    // 创建默认的 Video Editing 任务
-    const videoTask: Task = {
-      id: 'default-video-task',
-      title: 'Video Editing',
-      type: 'video',
-      status: 'draft',
-      createdAt: fixedDate,
-      updatedAt: fixedDate,
-      content: null,
-    };
-
-    // 创建默认的 WorkFlow 任务
-    const workflowTask: Task = {
-      id: 'default-workflow-task',
-      title: 'WorkFlow',
-      type: 'workflow',
-      status: 'draft',
-      createdAt: fixedDate,
-      updatedAt: fixedDate,
-      content: null,
-    };
-
-    // 创建默认的 Brainstorming 任务
-    const brainstormTask: Task = {
-      id: 'default-brainstorm-task',
-      title: 'Brainstorming',
-      type: 'brainstorm',
-      status: 'draft',
-      createdAt: fixedDate,
-      updatedAt: fixedDate,
-      content: null,
-    };
-
-    // 创建对应的标签页，但都不激活
-    const chatTab: Tab = {
-      id: 'default-chat-tab',
-      taskId: 'default-chat-task',
-      title: 'AI Chat',
-      isActive: false, // 不激活任何任务
-      type: 'chat',
-    };
-
-    const videoTab: Tab = {
-      id: 'default-video-tab',
-      taskId: 'default-video-task',
-      title: 'Video Editing',
-      isActive: false, // 不激活任何任务
-      type: 'video',
-    };
-
-    const workflowTab: Tab = {
-      id: 'default-workflow-tab',
-      taskId: 'default-workflow-task',
-      title: 'WorkFlow',
-      isActive: false, // 不激活任何任务
-      type: 'workflow',
-    };
-
-    const brainstormTab: Tab = {
-      id: 'default-brainstorm-tab',
-      taskId: 'default-brainstorm-task',
-      title: 'Brainstorming',
-      isActive: false, // 不激活任何任务
-      type: 'brainstorm',
-    };
-
     return {
-      tasks: [chatTask, videoTask, workflowTask, brainstormTask],
-      tabs: [chatTab, videoTab, workflowTab, brainstormTab],
-      activeTabId: null, // 不激活任何标签页，显示主界面
+      tasks: [],
+      tabs: [],
+      activeTabId: null,
     };
   };
 
   const [appState, setAppState] = useState<AppState>(() => {
-    const defaultState = createDefaultTasks();
-    return defaultState;
+    return createInitialState();
   });
 
-  // 在客户端初始化后记录日志，避免水合不匹配
+  // 在客户端初始化后记录日志
   useEffect(() => {
-    console.log('[useTasks] Initialized with default tasks (showing main interface):', {
+    console.log('[useTasks] Initialized with empty state (showing landing page):', {
       tasksCount: appState.tasks.length,
       tabsCount: appState.tabs.length,
       activeTabId: appState.activeTabId,
-      tasks: appState.tasks.map(t => ({ id: t.id, title: t.title, type: t.type })),
-      defaultTasks: ['AI Chat', 'Video Editing', 'WorkFlow', 'Brainstorming'],
-      showingMainInterface: appState.activeTabId === null,
+      showingLandingPage: appState.tabs.length === 0,
       timestamp: new Date().toISOString()
     });
   }, []);
@@ -114,8 +35,6 @@ export const useTasks = () => {
   const createTask = useCallback((type: TaskType) => {
     const now = new Date();
     const timestamp = now.getTime();
-    const taskId = `task-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
-    const tabId = `tab-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
     
     const taskTypeNames = {
       content: 'Content Creation',
@@ -125,44 +44,109 @@ export const useTasks = () => {
       chat: 'AI Chat',
     };
 
-    // 计算同类型任务的数量，包括默认任务
-    const sameTypeTasksCount = appState.tasks.filter(t => t.type === type).length;
-    const taskNumber = sameTypeTasksCount + 1;
+    // 检查是否是从空状态创建第一个任务（从着陆页）
+    const isFirstTaskFromLanding = appState.tasks.length === 0;
 
-    const newTask: Task = {
-      id: taskId,
-      title: `${taskTypeNames[type]} ${taskNumber}`,
-      type,
-      status: 'draft',
-      createdAt: now,
-      updatedAt: now,
-      content: null,
-    };
+    if (isFirstTaskFromLanding) {
+      console.log('[useTasks] Creating initial tasks from landing page, clicked type:', type);
+      
+      // 创建所有四种类型的任务
+      const allTaskTypes: TaskType[] = ['chat', 'video', 'workflow', 'brainstorm'];
+      const newTasks: Task[] = [];
+      const newTabs: Tab[] = [];
+      let activeTabId = '';
 
-    const newTab: Tab = {
-      id: tabId,
-      taskId,
-      title: newTask.title,
-      isActive: true,
-      type,
-    };
+      allTaskTypes.forEach((taskType) => {
+        const taskId = `task-${timestamp}-${taskType}-${Math.random().toString(36).substr(2, 9)}`;
+        const tabId = `tab-${timestamp}-${taskType}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        const task: Task = {
+          id: taskId,
+          title: taskTypeNames[taskType],
+          type: taskType,
+          status: 'draft',
+          createdAt: now,
+          updatedAt: now,
+          content: null,
+        };
 
-    setAppState(prev => ({
-      tasks: [...prev.tasks, newTask],
-      tabs: prev.tabs.map(tab => ({ ...tab, isActive: false })).concat(newTab),
-      activeTabId: tabId,
-    }));
+        const tab: Tab = {
+          id: tabId,
+          taskId,
+          title: task.title,
+          isActive: taskType === type, // 激活用户点击的类型
+          type: taskType,
+        };
 
-    console.log(`Taskbar 任务创建: 新建${type}任务 - ${newTask.title}`, {
-      taskId: newTask.id,
-      taskType: type,
-      taskTitle: newTask.title,
-      tabId: tabId,
-      timestamp: now.toISOString(),
-      availableTypes: Object.keys(taskTypeNames),
-      note: 'AI Chat任务已重新添加，提供独立的对话界面'
-    });
-  }, [appState.tasks]);
+        newTasks.push(task);
+        newTabs.push(tab);
+
+        if (taskType === type) {
+          activeTabId = tabId;
+        }
+      });
+
+      setAppState({
+        tasks: newTasks,
+        tabs: newTabs,
+        activeTabId,
+      });
+
+      console.log('[useTasks] All initial tasks created:', {
+        tasks: newTasks.map(t => ({ id: t.id, title: t.title, type: t.type })),
+        activeType: type,
+        activeTabId,
+        timestamp: now.toISOString()
+      });
+    } else {
+      // 后续创建任务的逻辑（已有任务时）
+      const taskId = `task-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+      const tabId = `tab-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 计算同类型任务的数量
+      const sameTypeTasksCount = appState.tasks.filter(t => t.type === type).length;
+      const taskNumber = sameTypeTasksCount + 1;
+
+      // 如果是第一个该类型的任务，不显示数字
+      const taskTitle = taskNumber === 1 
+        ? taskTypeNames[type] 
+        : `${taskTypeNames[type]} ${taskNumber}`;
+
+      const newTask: Task = {
+        id: taskId,
+        title: taskTitle,
+        type,
+        status: 'draft',
+        createdAt: now,
+        updatedAt: now,
+        content: null,
+      };
+
+      const newTab: Tab = {
+        id: tabId,
+        taskId,
+        title: newTask.title,
+        isActive: true,
+        type,
+      };
+
+      setAppState(prev => ({
+        tasks: [...prev.tasks, newTask],
+        tabs: prev.tabs.map(tab => ({ ...tab, isActive: false })).concat(newTab),
+        activeTabId: tabId,
+      }));
+
+      console.log('[useTasks] Additional task created:', {
+        taskId: newTask.id,
+        taskType: type,
+        taskTitle: newTask.title,
+        tabId: tabId,
+        timestamp: now.toISOString(),
+        totalTasks: appState.tasks.length + 1,
+        totalTabs: appState.tabs.length + 1
+      });
+    }
+  }, [appState.tasks, appState.tabs.length]);
 
   const selectTab = useCallback((tabId: string) => {
     setAppState(prev => ({
@@ -235,6 +219,19 @@ export const useTasks = () => {
     console.log(`Updated task: ${taskId}`);
   }, []);
 
+  const closeAllTabs = useCallback(() => {
+    console.log('[useTasks] Closing all tabs, returning to landing page:', {
+      closingTabsCount: appState.tabs.length,
+      timestamp: new Date().toISOString()
+    });
+
+    setAppState({
+      tasks: [],
+      tabs: [],
+      activeTabId: null,
+    });
+  }, [appState.tabs.length]);
+
   return {
     tasks: appState.tasks,
     tabs: appState.tabs,
@@ -243,6 +240,7 @@ export const useTasks = () => {
     createTask,
     selectTab,
     closeTab,
+    closeAllTabs,
     updateTask,
   };
 };

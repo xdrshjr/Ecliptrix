@@ -8,6 +8,7 @@ import Footer from '@/components/Footer';
 import LoginModal from '@/components/LoginModal';
 import UserProfilePage from '@/components/UserProfile/UserProfilePage';
 import AdminSettingsPage from '@/components/AdminSettings/AdminSettingsPage';
+import LandingPage from '@/components/HomePage/LandingPage';
 import { useTasks } from '@/hooks/useTasks';
 
 export default function HomePage() {
@@ -18,6 +19,7 @@ export default function HomePage() {
     createTask,
     selectTab,
     closeTab,
+    closeAllTabs,
     updateTask,
   } = useTasks();
 
@@ -28,13 +30,19 @@ export default function HomePage() {
   // 管理员设置页面状态
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // 检查是否显示着陆页（无任务时显示）
+  const showLandingPage = tabs.length === 0 && !isSettingsOpen && !isProfileOpen;
+  
   // 检查当前是否为视频编辑任务
   const isVideoEditingTask = activeTask?.type === 'video';
 
-  console.log('[HomePage] Rendering with vertical taskbar layout:', {
+  console.log('[HomePage] Rendering with layout:', {
+    showLandingPage,
     activeTask: activeTask?.type,
     tabsCount: tabs.length,
     isVideoEditingTask,
+    isSettingsOpen,
+    isProfileOpen,
     timestamp: new Date().toISOString()
   });
 
@@ -46,6 +54,30 @@ export default function HomePage() {
     selectTab(tabId);
   };
 
+  // 处理创建任务
+  const handleCreateTask = (type: any) => {
+    console.log('[HomePage] Creating task from landing page:', {
+      taskType: type,
+      timestamp: new Date().toISOString()
+    });
+    createTask(type);
+  };
+
+  // 处理返回主页（关闭所有任务）
+  const handleReturnHome = () => {
+    console.log('[HomePage] Returning to home, closing all tabs:', {
+      currentTabsCount: tabs.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 关闭所有标签页，返回着陆页
+    closeAllTabs();
+    
+    // 关闭设置和个人资料页面
+    setIsSettingsOpen(false);
+    setIsProfileOpen(false);
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header - 固定在顶部 */}
@@ -53,21 +85,27 @@ export default function HomePage() {
         onLoginClick={() => setIsLoginModalOpen(true)}
         onProfileClick={() => setIsProfileOpen(true)}
         onSettingsClick={() => setIsSettingsOpen(true)}
+        onHomeClick={handleReturnHome}
       />
       
       {/* Main Layout - Header 下方的内容区域 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Vertical Taskbar - 左侧边栏，始终显示 */}
-        <VerticalTaskbar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={handleSelectTab}
-          onCloseTab={closeTab}
-        />
+        {/* Vertical Taskbar - 左侧边栏，仅在有任务时显示 */}
+        {!showLandingPage && (
+          <VerticalTaskbar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={closeTab}
+          />
+        )}
         
         {/* Main Content Area - 右侧内容区域 */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {isSettingsOpen ? (
+          {showLandingPage ? (
+            /* Landing Page - 首次访问时显示 */
+            <LandingPage onCreateTask={handleCreateTask} />
+          ) : isSettingsOpen ? (
             /* Admin Settings Page - 占据右侧内容区域 */
             <AdminSettingsPage onClose={() => setIsSettingsOpen(false)} />
           ) : isProfileOpen ? (

@@ -28,6 +28,7 @@ export interface ParallelAnalysisOptions {
   maxRetries?: number;
   retryDelayMs?: number;
   mode: { type: 'quick' | 'professional'; frameInterval?: number };
+  sequential?: boolean; // 是否顺序执行（一个接一个），默认为 false（并行执行）
 }
 
 // Utility class for managing concurrent requests with thread limiting
@@ -224,6 +225,108 @@ async function analyzeSingleVideoWithRetry(
 }
 
 /**
+ * Analyze multiple videos sequentially (one by one) with retry logic
+ * This mode is used for AI mixed editing to avoid backend errors from concurrent requests
+ */
+async function analyzeVideosSequentially(
+  videoMaterials: MaterialItem[],
+  options: ParallelAnalysisOptions,
+  taskId: string
+): Promise<VideoAnalysisResult[]> {
+  if (videoMaterials.length === 0) {
+    console.log(`[SequentialVideoAnalysis] 无视频素材需要分析`, { taskId });
+    return [];
+  }
+
+  console.log(`[SequentialVideoAnalysis] 开始顺序视频分析（一个接一个）`, {
+    taskId,
+    totalVideos: videoMaterials.length,
+    maxRetries: options.maxRetries || VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
+    mode: options.mode.type,
+    frameInterval: options.mode.frameInterval,
+    timestamp: new Date().toISOString()
+  });
+
+  const startTime = performance.now();
+  const results: VideoAnalysisResult[] = [];
+  let currentVideoIndex = 0;
+
+  // Process videos one by one
+  for (const material of videoMaterials) {
+    currentVideoIndex++;
+    
+    console.log(`[SequentialVideoAnalysis] 处理视频 ${currentVideoIndex}/${videoMaterials.length}`, {
+      taskId,
+      videoId: material.id,
+      videoName: material.name,
+      videoUrl: material.url,
+      progress: `${Math.round((currentVideoIndex / videoMaterials.length) * 100)}%`,
+      timestamp: new Date().toISOString()
+    });
+
+    const result = await analyzeSingleVideoWithRetry(material, options, taskId);
+    results.push(result);
+
+    if (result.success) {
+      console.log(`[SequentialVideoAnalysis] 视频分析成功 (${currentVideoIndex}/${videoMaterials.length})`, {
+        taskId,
+        videoId: material.id,
+        videoName: material.name,
+        attempts: result.attempts,
+        progress: `${Math.round((currentVideoIndex / videoMaterials.length) * 100)}%`,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.warn(`[SequentialVideoAnalysis] 视频分析失败 (${currentVideoIndex}/${videoMaterials.length})`, {
+        taskId,
+        videoId: material.id,
+        videoName: material.name,
+        error: result.error,
+        attempts: result.attempts,
+        progress: `${Math.round((currentVideoIndex / videoMaterials.length) * 100)}%`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  const totalTime = performance.now() - startTime;
+
+  // Analyze results
+  const successfulResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
+  const totalAttempts = results.reduce((sum, r) => sum + r.attempts, 0);
+
+  console.log(`[SequentialVideoAnalysis] 顺序视频分析完成`, {
+    taskId,
+    totalVideos: videoMaterials.length,
+    successCount: successfulResults.length,
+    failedCount: failedResults.length,
+    successRate: `${Math.round((successfulResults.length / videoMaterials.length) * 100)}%`,
+    totalAttempts,
+    averageAttempts: Math.round(totalAttempts / videoMaterials.length * 100) / 100,
+    totalProcessingTime: Math.round(totalTime),
+    averageTimePerVideo: Math.round(totalTime / videoMaterials.length),
+    timestamp: new Date().toISOString()
+  });
+
+  // Log failed analyses
+  if (failedResults.length > 0) {
+    console.warn(`[SequentialVideoAnalysis] 失败的视频分析详情`, {
+      taskId,
+      failedVideos: failedResults.map(r => ({
+        name: r.material.name,
+        id: r.material.id,
+        error: r.error,
+        attempts: r.attempts
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return results;
+}
+
+/**
  * Analyze multiple videos in parallel with thread limiting and retry logic
  */
 export async function analyzeVideosInParallel(
@@ -231,6 +334,17 @@ export async function analyzeVideosInParallel(
   options: ParallelAnalysisOptions,
   taskId: string
 ): Promise<VideoAnalysisResult[]> {
+  // Check if sequential mode is enabled
+  if (options.sequential === true) {
+    console.log(`[VideoAnalysis] 使用顺序模式进行视频分析`, {
+      taskId,
+      totalVideos: videoMaterials.length,
+      timestamp: new Date().toISOString()
+    });
+    return analyzeVideosSequentially(videoMaterials, options, taskId);
+  }
+
+  // Otherwise use parallel mode (default)
   const { threadCount = VIDEO_ANALYSIS_CONFIG.DEFAULT_THREAD_COUNT } = options;
   
   if (videoMaterials.length === 0) {
