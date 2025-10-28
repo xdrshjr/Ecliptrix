@@ -56,6 +56,25 @@ const getDefaultInputJson = (nodeType: string): string => {
         "message": "List of fruits to convert to array"
       }, null, 2);
     
+    case 'results-combine':
+      return JSON.stringify([
+        {
+          "name": "Product A",
+          "price": "$29.99",
+          "category": "Electronics"
+        },
+        {
+          "title": "Product B",
+          "cost": "49.99 USD",
+          "type": "Books"
+        },
+        {
+          "product": "Product C",
+          "value": 19.99,
+          "group": "Home & Garden"
+        }
+      ], null, 2);
+    
     case 'end':
       return JSON.stringify({
         "result": "Final workflow output",

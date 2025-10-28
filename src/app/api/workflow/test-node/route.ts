@@ -165,6 +165,15 @@ export async function POST(request: NextRequest) {
         output = await executeToArrayNode(node_config, convertedInput);
         break;
 
+      case 'results-combine':
+        output = await executeResultsCombineNode(node_config, convertedInput);
+        break;
+
+      case 'results-combine-item':
+        // Special case: transform a single item from Results Combine node
+        output = await executeResultsCombineItemTransformation(node_config, convertedInput);
+        break;
+
       case 'end':
         output = await executeEndNode(node_config, convertedInput);
         break;
@@ -867,6 +876,213 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
   });
 
   return arrayResult;
+}
+
+/**
+ * Execute Results Combine Item Transformation (single item)
+ * Called internally by Results Combine node to transform each item
+ */
+async function executeResultsCombineItemTransformation(config: any, input: any): Promise<any> {
+  console.log('[API] Executing Results Combine item transformation');
+  
+  if (!config?.model || !config?.systemPrompt) {
+    throw new Error('Results Combine transformation requires model and systemPrompt configuration');
+  }
+
+  // Convert input to string for LLM
+  let userMessage = '';
+  if (typeof input === 'string') {
+    userMessage = input;
+  } else if (input?.text) {
+    userMessage = input.text;
+  } else if (input?.message) {
+    userMessage = input.message;
+  } else {
+    userMessage = JSON.stringify(input);
+  }
+
+  // Enhance system prompt with schema if provided
+  let enhancedSystemPrompt = config.systemPrompt;
+  if (config.outputSchema) {
+    try {
+      const schema = typeof config.outputSchema === 'string' 
+        ? JSON.parse(config.outputSchema) 
+        : config.outputSchema;
+      enhancedSystemPrompt += `\n\nOutput Schema:\n${JSON.stringify(schema, null, 2)}\n\nRespond ONLY with a valid JSON object matching this schema, no additional text or explanation.`;
+    } catch (e) {
+      console.warn('[API] Failed to parse output schema:', e);
+    }
+  }
+
+  console.log('[API] Calling LLM API for item transformation:', {
+    model: config.model,
+    systemPromptLength: enhancedSystemPrompt.length,
+    userMessageLength: userMessage.length
+  });
+
+  // Call the chat API (internal API call)
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: [
+        {
+          role: 'system',
+          content: enhancedSystemPrompt,
+        },
+        {
+          role: 'user',
+          content: userMessage,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `LLM API request failed with status ${response.status}`);
+  }
+
+  // Read the streaming response
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body from LLM API');
+  }
+
+  let accumulatedContent = '';
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split('\n');
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.content) {
+            accumulatedContent += parsed.content;
+          } else if (parsed.choices?.[0]?.delta?.content) {
+            accumulatedContent += parsed.choices[0].delta.content;
+          }
+        } catch (e) {
+          // Skip invalid JSON
+        }
+      }
+    }
+  }
+
+  console.log('[API] LLM response received for item transformation:', {
+    responseLength: accumulatedContent.length
+  });
+
+  // Parse the LLM response as JSON object
+  try {
+    const parsed = JSON.parse(accumulatedContent.trim());
+    return parsed;
+  } catch (e) {
+    console.warn('[API] Failed to parse LLM response as JSON, attempting extraction');
+    
+    // Try to find JSON object in the text
+    const jsonMatch = accumulatedContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch (e2) {
+        // If still fails, return as plain object
+        return { result: accumulatedContent.trim(), parseError: true };
+      }
+    }
+    
+    // Fallback: return as plain object
+    return { result: accumulatedContent.trim(), parseError: true };
+  }
+}
+
+/**
+ * Execute Results Combine node
+ * Processes an array of inputs, transforms each via LLM, and combines results
+ */
+async function executeResultsCombineNode(config: any, input: any): Promise<any> {
+  console.log('[API] Executing Results Combine node:', {
+    hasConfig: !!config,
+    inputType: typeof input,
+    isArray: Array.isArray(input)
+  });
+  
+  if (!config?.model || !config?.systemPrompt) {
+    throw new Error('Results Combine node requires model and systemPrompt configuration');
+  }
+
+  // Extract array from input
+  let inputArray: any[] = [];
+  if (Array.isArray(input)) {
+    inputArray = input;
+  } else if (input?.array && Array.isArray(input.array)) {
+    inputArray = input.array;
+  } else if (input?.items && Array.isArray(input.items)) {
+    inputArray = input.items;
+  } else if (input?.results && Array.isArray(input.results)) {
+    inputArray = input.results;
+  } else if (typeof input === 'object' && input !== null) {
+    // If input is a single object, wrap it in an array
+    inputArray = [input];
+  } else {
+    throw new Error('Results Combine node requires an array input or object that can be converted to array');
+  }
+
+  if (inputArray.length === 0) {
+    console.warn('[API] Input array is empty, returning empty array');
+    return [];
+  }
+
+  console.log('[API] Processing array for Results Combine:', {
+    arrayLength: inputArray.length,
+    model: config.model,
+    hasOutputSchema: !!config.outputSchema
+  });
+
+  const transformedResults: any[] = [];
+  let successCount = 0;
+  let errorCount = 0;
+
+  // Process each item
+  for (let i = 0; i < inputArray.length; i++) {
+    const item = inputArray[i];
+    
+    console.log(`[API] Transforming item ${i + 1}/${inputArray.length}`);
+
+    try {
+      const transformed = await executeResultsCombineItemTransformation(config, item);
+      transformedResults.push(transformed);
+      successCount++;
+      
+      console.log(`[API] Item ${i + 1} transformed successfully`);
+    } catch (itemError: any) {
+      errorCount++;
+      console.error(`[API] Failed to transform item ${i + 1}:`, itemError.message);
+      
+      // Continue processing other items instead of failing completely
+      // Optionally include the failed item with error marker
+      // transformedResults.push({ error: itemError.message, originalItem: item });
+    }
+  }
+
+  console.log('[API] Results Combine completed:', {
+    totalItems: inputArray.length,
+    successCount,
+    errorCount
+  });
+
+  return transformedResults;
 }
 
 /**

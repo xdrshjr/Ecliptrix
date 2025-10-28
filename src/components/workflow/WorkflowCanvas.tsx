@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, VolcanoTTSNodeConfig, ToArrayNodeConfig, WorkflowNodeExecutionState } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, VolcanoTTSNodeConfig, ToArrayNodeConfig, ResultsCombineNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
@@ -10,6 +10,7 @@ import PexelsVideoSearchNode from './nodes/PexelsVideoSearchNode';
 import TavilySearchNode from './nodes/TavilySearchNode';
 import VolcanoTTSNode from './nodes/VolcanoTTSNode';
 import ToArrayNode from './nodes/ToArrayNode';
+import ResultsCombineNode from './nodes/ResultsCombineNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 import TextInputConfigPanel from './TextInputConfigPanel';
 import StartNodeConfigPanel from './StartNodeConfigPanel';
@@ -17,6 +18,7 @@ import PexelsVideoSearchConfigPanel from './PexelsVideoSearchConfigPanel';
 import TavilySearchConfigPanel from './TavilySearchConfigPanel';
 import VolcanoTTSConfigPanel from './VolcanoTTSConfigPanel';
 import ToArrayConfigPanel from './ToArrayConfigPanel';
+import ResultsCombineConfigPanel from './ResultsCombineConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -402,6 +404,37 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setContextMenu({ visible: false, x: 0, y: 0 });
   }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
+  // Add Results Combine node
+  const handleAddResultsCombineNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'results-combine',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Results Combine',
+        type: 'results-combine',
+        config: {
+          systemPrompt: 'You are a data standardization assistant. Transform the input data into a standardized format according to the defined schema. Extract and normalize relevant information. Respond ONLY with a valid JSON object matching the schema, no additional text or explanation.',
+          temperature: 0.3,
+          maxTokens: 2000,
+          inputFormat: 'array',
+          outputFormat: 'array',
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Results Combine node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
   // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
@@ -427,7 +460,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
-    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search' || node.type === 'volcano-tts' || node.type === 'to-array')) {
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search' || node.type === 'volcano-tts' || node.type === 'to-array' || node.type === 'results-combine')) {
       console.log('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
@@ -437,7 +470,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | ToArrayNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig) => {
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
@@ -1065,6 +1098,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
+              {node.type === 'results-combine' && (
+                <ResultsCombineNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
             </div>
           );
         })}
@@ -1167,6 +1210,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
               <span className="text-sm text-gray-700">Add To Array</span>
+            </button>
+            
+            <button
+              onClick={handleAddResultsCombineNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Results Combine</span>
             </button>
           </div>
         )}
@@ -1346,6 +1399,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             <ToArrayConfigPanel
               nodeId={configPanelNodeId}
               config={(node.data.config as ToArrayNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // Results Combine Config Panel
+        if (node.type === 'results-combine') {
+          return (
+            <ResultsCombineConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as ResultsCombineNodeConfig) || {}}
               onSave={handleConfigSave}
               onClose={handleConfigPanelClose}
             />

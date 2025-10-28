@@ -355,6 +355,10 @@ export class WorkflowExecutor {
           output = await this.executeToArrayNode(node, convertedInput);
           break;
         
+        case 'results-combine':
+          output = await this.executeResultsCombineNode(node, convertedInput);
+          break;
+        
         case 'end':
           output = await this.executeEndNode(node, convertedInput);
           break;
@@ -941,6 +945,146 @@ export class WorkflowExecutor {
         throw new Error('Array conversion aborted');
       }
       throw new Error(`Array conversion failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute Results Combine node
+   * Takes an array input, transforms each item via LLM, and combines results
+   */
+  private async executeResultsCombineNode(node: WorkflowNode, input: any): Promise<any> {
+    const config = node.data.config as any;
+    
+    console.log('[WorkflowExecutor] Executing Results Combine node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!config?.model || !config?.systemPrompt) {
+      throw new Error('Results Combine node requires model and systemPrompt configuration. Please configure the node.');
+    }
+
+    // Extract array from input
+    let inputArray: any[] = [];
+    if (Array.isArray(input)) {
+      inputArray = input;
+    } else if (input?.array && Array.isArray(input.array)) {
+      inputArray = input.array;
+    } else if (input?.items && Array.isArray(input.items)) {
+      inputArray = input.items;
+    } else if (input?.results && Array.isArray(input.results)) {
+      inputArray = input.results;
+    } else if (typeof input === 'object' && input !== null) {
+      // If input is a single object, wrap it in an array
+      inputArray = [input];
+    } else {
+      throw new Error('Results Combine node requires an array input or object that can be converted to array.');
+    }
+
+    if (inputArray.length === 0) {
+      this.addLog('warning', node.id, 'Input array is empty, returning empty array', {});
+      return [];
+    }
+
+    this.addLog('info', node.id, `Processing ${inputArray.length} items for combination`, { 
+      inputLength: inputArray.length,
+      model: config.model,
+      hasOutputSchema: !!config.outputSchema
+    });
+
+    try {
+      const transformedResults: any[] = [];
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Process each item
+      for (let i = 0; i < inputArray.length; i++) {
+        const item = inputArray[i];
+        
+        console.log(`[WorkflowExecutor] Transforming item ${i + 1}/${inputArray.length}`, {
+          nodeId: node.id,
+          itemIndex: i
+        });
+
+        this.addLog('info', node.id, `Transforming item ${i + 1}/${inputArray.length}`, {
+          itemIndex: i,
+          itemPreview: this.createSafeLogObject(item)
+        });
+
+        try {
+          // Call the test-node API to execute the transformation
+          const response = await fetch('/api/workflow/test-node', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              node_id: `${node.id}-item-${i}`,
+              node_type: 'results-combine-item',
+              node_label: `${node.data.label} - Item ${i + 1}`,
+              node_config: config,
+              input: item,
+            }),
+            signal: this.abortController?.signal,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || errorData.message || `Transformation failed with status ${response.status}`);
+          }
+
+          const result = await response.json();
+          
+          if (!result.success) {
+            throw new Error(result.error || result.message || 'Transformation failed');
+          }
+
+          transformedResults.push(result.output);
+          successCount++;
+
+          this.addLog('success', node.id, `Item ${i + 1} transformed successfully`, {
+            itemIndex: i,
+            output: this.createSafeLogObject(result.output)
+          });
+
+        } catch (itemError: any) {
+          errorCount++;
+          console.error(`[WorkflowExecutor] Failed to transform item ${i + 1}:`, itemError);
+          
+          this.addLog('warning', node.id, `Failed to transform item ${i + 1}: ${itemError.message}`, {
+            itemIndex: i,
+            error: itemError.message
+          });
+          
+          // Continue processing other items instead of failing completely
+          // You could optionally include the failed item with an error marker
+          // transformedResults.push({ error: itemError.message, originalItem: item });
+        }
+      }
+
+      console.log('[WorkflowExecutor] Results Combine completed', {
+        nodeId: node.id,
+        totalItems: inputArray.length,
+        successCount,
+        errorCount,
+        timestamp: new Date().toISOString()
+      });
+
+      this.addLog('success', node.id, `Combined ${successCount} items (${errorCount} failed)`, { 
+        totalItems: inputArray.length,
+        successCount,
+        errorCount,
+        model: config.model
+      });
+
+      return transformedResults;
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error('Results combination aborted');
+      }
+      throw new Error(`Results combination failed: ${error.message}`);
     }
   }
 

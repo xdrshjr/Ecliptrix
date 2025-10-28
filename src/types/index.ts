@@ -164,12 +164,25 @@ export interface ToArrayNodeConfig {
   objectSchema?: ObjectSchemaField[];
 }
 
+// Results Combine Node Configuration
+export interface ResultsCombineNodeConfig {
+  systemPrompt?: string;
+  model?: string;
+  modelId?: string;
+  temperature?: number;
+  maxTokens?: number;
+  inputFormat?: DataFormat;
+  outputFormat?: DataFormat;
+  // Output schema definition (JSON string or object)
+  outputSchema?: string; // JSON schema for the standardized output format
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | EndNodeConfig | ToArrayNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | EndNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {
