@@ -17,6 +17,8 @@ from app.models import (
     VideoAnalysisRequest,
     VideoAnalysisResponse,
     VideoAnalysisStatusResponse,
+    BatchVideoAnalysisRequest,
+    BatchVideoAnalysisResponse,
     ImageToVideoRequest,
     ImageToVideoResponse,
     ImageToVideoErrorResponse,
@@ -477,11 +479,11 @@ async def add_subtitles(request: SubtitleAddRequest) -> SubtitleAddResponse:
             )
         
         # Validate font size range
-        if not (8 <= request.font_size <= 72):
+        if not (8 <= request.font_size <= 200):
             logger.warning(f"Invalid font size: {request.font_size}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Font size must be between 8 and 72 pixels"
+                detail="Font size must be between 8 and 200 pixels"
             )
         
         # Validate position
@@ -637,7 +639,112 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred during video analysis"
-        ) 
+        )
+
+
+@router.post("/batch-analyze", response_model=BatchVideoAnalysisResponse)
+async def batch_analyze_videos(request: BatchVideoAnalysisRequest) -> BatchVideoAnalysisResponse:
+    """
+    Analyze multiple videos using VL LLM with optimized two-phase processing.
+    
+    This endpoint implements a two-phase processing approach for optimal performance:
+    1. Sequential Frame Extraction: Extract frames from videos one by one
+    2. Concurrent VLM Analysis: Analyze all extracted frames in parallel using configurable thread count
+    
+    This approach is significantly more efficient than analyzing videos one by one,
+    especially when dealing with multiple videos, as it maximizes VLM API utilization
+    while avoiding resource contention during frame extraction.
+    
+    Args:
+        request (BatchVideoAnalysisRequest): Batch video analysis parameters including
+                                           list of videos with their frame intervals
+                                           and optional custom prompt
+    
+    Returns:
+        BatchVideoAnalysisResponse: Batch analysis results with individual video results
+                                   and detailed performance metrics
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for analysis errors
+    """
+    logger.info(f"Batch video analysis request received - Videos count: {len(request.videos)}")
+    
+    # Get configuration for logging
+    config = video_analysis_service.config
+    concurrent_threads = config['vlm_processing']['concurrent_threads']
+    
+    logger.info(f"Batch analysis configuration: Concurrent threads: {concurrent_threads}, Custom prompt: {bool(request.custom_prompt)}")
+    
+    try:
+        # Validate request parameters
+        if not request.videos:
+            logger.warning("Empty videos list provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one video must be provided for batch analysis"
+            )
+        
+        if len(request.videos) > 50:  # Reasonable limit to prevent abuse
+            logger.warning(f"Too many videos in batch request: {len(request.videos)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum 50 videos allowed per batch analysis request"
+            )
+        
+        # Validate each video
+        for idx, video_item in enumerate(request.videos):
+            if not video_item.video_url.strip():
+                logger.warning(f"Empty video URL provided at index {idx}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Video URL cannot be empty (index {idx})"
+                )
+        
+        # Perform batch video analysis
+        logger.info(f"Starting batch video analysis", extra={
+            "videos_count": len(request.videos),
+            "video_urls": [v.video_url for v in request.videos],
+            "concurrent_threads": concurrent_threads,
+            "has_custom_prompt": bool(request.custom_prompt)
+        })
+        
+        result = await video_analysis_service.batch_analyze_videos(
+            videos=request.videos,
+            custom_prompt=request.custom_prompt
+        )
+        
+        # Log batch analysis results
+        logger.info(f"Batch video analysis completed", extra={
+            "success": result.success,
+            "total_videos": result.total_videos,
+            "successful_videos": result.successful_videos,
+            "failed_videos": result.failed_videos,
+            "total_frames_extracted": result.total_frames_extracted,
+            "total_processing_time": result.total_processing_time,
+            "frame_extraction_time": result.frame_extraction_time,
+            "vlm_analysis_time": result.vlm_analysis_time,
+            "concurrent_threads": result.concurrent_threads,
+            "speedup_factor": (result.total_frames_extracted * 6) / result.vlm_analysis_time if result.vlm_analysis_time > 0 else 0
+        })
+        
+        if not result.success:
+            logger.warning(f"Batch video analysis partially failed: {result.failed_videos}/{result.total_videos} videos failed")
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+        
+    except Exception as e:
+        logger.error(f"Unexpected error during batch video analysis: {str(e)}", exc_info=True, extra={
+            "videos_count": len(request.videos),
+            "concurrent_threads": concurrent_threads
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred during batch video analysis"
+        )
 
 
 # Core image-to-video processing function (with queuing)

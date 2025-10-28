@@ -87,7 +87,11 @@ from .video_analysis import (
     FrameAnalysis,
     VideoAnalysisRequest,
     VideoAnalysisResponse,
-    VideoAnalysisStatusResponse
+    VideoAnalysisStatusResponse,
+    VideoAnalysisItem,
+    BatchVideoAnalysisRequest,
+    BatchVideoAnalysisResult,
+    BatchVideoAnalysisResponse
 )
 
 from .runninghub_models import (
@@ -229,6 +233,10 @@ __all__ = [
     "VideoAnalysisRequest", 
     "VideoAnalysisResponse",
     "VideoAnalysisStatusResponse",
+    "VideoAnalysisItem",
+    "BatchVideoAnalysisRequest",
+    "BatchVideoAnalysisResult",
+    "BatchVideoAnalysisResponse",
     
     # RunningHub Models
     "TaskStatus",

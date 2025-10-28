@@ -5,7 +5,7 @@ export const VIDEO_ANALYSIS_CONFIG = {
   DEFAULT_THREAD_COUNT: 5,
   MAX_RETRY_ATTEMPTS: 1,
   RETRY_DELAY_MS: 1000,
-  REQUEST_TIMEOUT_MS: 60000, // 60 seconds
+  REQUEST_TIMEOUT_MS: 120000, // 120 seconds for batch analysis
 } as const;
 
 // Types
@@ -13,6 +13,41 @@ export interface VideoAnalysisRequest {
   video_url: string;
   frame_interval: number;
   custom_prompt: string;
+}
+
+export interface BatchVideoAnalysisRequest {
+  videos: Array<{
+    video_url: string;
+    frame_interval: number;
+  }>;
+  custom_prompt?: string;
+}
+
+export interface BatchVideoAnalysisResponse {
+  success: boolean;
+  total_videos: number;
+  successful_videos: number;
+  failed_videos: number;
+  results: Array<{
+    video_url: string;
+    success: boolean;
+    total_frames_extracted: number;
+    video_duration: number;
+    frame_analyses: Array<{
+      frame_number: number;
+      timestamp: number;
+      analysis: string;
+      frame_path: string;
+    }>;
+    error_message?: string;
+  }>;
+  total_frames_extracted: number;
+  total_processing_time: number;
+  frame_extraction_time: number;
+  vlm_analysis_time: number;
+  concurrent_threads: number;
+  timestamp: string;
+  message: string;
 }
 
 export interface VideoAnalysisResult {
@@ -407,4 +442,208 @@ export async function analyzeVideosInParallel(
   }
 
   return results;
+}
+
+/**
+ * Analyze multiple videos using batch analysis API
+ * This is the recommended approach for AI mixed editing as it uses optimized two-phase processing:
+ * 1. Sequential frame extraction from all videos
+ * 2. Concurrent VLM analysis of all extracted frames
+ */
+export async function analyzeVideosInBatch(
+  videoMaterials: MaterialItem[],
+  options: ParallelAnalysisOptions,
+  taskId: string
+): Promise<VideoAnalysisResult[]> {
+  if (videoMaterials.length === 0) {
+    console.log(`[BatchVideoAnalysis] 无视频素材需要分析`, { taskId });
+    return [];
+  }
+
+  console.log(`[BatchVideoAnalysis] 开始批量视频分析`, {
+    taskId,
+    totalVideos: videoMaterials.length,
+    mode: options.mode.type,
+    frameInterval: options.mode.frameInterval,
+    timestamp: new Date().toISOString()
+  });
+
+  const startTime = performance.now();
+
+  try {
+    // Prepare batch request
+    const requestBody: BatchVideoAnalysisRequest = {
+      videos: videoMaterials.map(material => ({
+        video_url: material.url,
+        frame_interval: options.mode.type === 'quick' ? 9999 : (options.mode.frameInterval || 5)
+      })),
+      custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。"
+    };
+
+    console.log(`[BatchVideoAnalysis] 发送批量分析API请求`, {
+      taskId,
+      videosCount: requestBody.videos.length,
+      videoUrls: requestBody.videos.map(v => v.video_url),
+      frameInterval: requestBody.videos[0]?.frame_interval,
+      timestamp: new Date().toISOString()
+    });
+
+    // Create request with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS);
+
+    const response = await fetch('/api/video/batch-analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const responseTime = performance.now() - startTime;
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || errorData.detail || `HTTP error! status: ${response.status}`;
+      
+      console.error(`[BatchVideoAnalysis] 批量分析API请求失败`, {
+        taskId,
+        status: response.status,
+        statusText: response.statusText,
+        errorMessage,
+        responseTime,
+        timestamp: new Date().toISOString()
+      });
+
+      throw new Error(errorMessage);
+    }
+
+    const batchResult: BatchVideoAnalysisResponse = await response.json();
+    
+    console.log(`[BatchVideoAnalysis] 批量分析API请求成功`, {
+      taskId,
+      success: batchResult.success,
+      totalVideos: batchResult.total_videos,
+      successfulVideos: batchResult.successful_videos,
+      failedVideos: batchResult.failed_videos,
+      totalFramesExtracted: batchResult.total_frames_extracted,
+      totalProcessingTime: batchResult.total_processing_time,
+      frameExtractionTime: batchResult.frame_extraction_time,
+      vlmAnalysisTime: batchResult.vlm_analysis_time,
+      concurrentThreads: batchResult.concurrent_threads,
+      responseTime,
+      timestamp: new Date().toISOString()
+    });
+
+    // Convert batch results to VideoAnalysisResult format
+    const results: VideoAnalysisResult[] = videoMaterials.map(material => {
+      const batchVideoResult = batchResult.results.find(r => r.video_url === material.url);
+      
+      if (!batchVideoResult) {
+        console.warn(`[BatchVideoAnalysis] 未找到视频的分析结果: ${material.name}`, {
+          taskId,
+          videoId: material.id,
+          videoUrl: material.url,
+          timestamp: new Date().toISOString()
+        });
+        
+        return {
+          success: false,
+          video_url: material.url,
+          material,
+          error: 'Result not found in batch response',
+          attempts: 1
+        };
+      }
+
+      if (!batchVideoResult.success) {
+        console.warn(`[BatchVideoAnalysis] 视频分析失败: ${material.name}`, {
+          taskId,
+          videoId: material.id,
+          errorMessage: batchVideoResult.error_message,
+          timestamp: new Date().toISOString()
+        });
+
+        return {
+          success: false,
+          video_url: material.url,
+          material,
+          error: batchVideoResult.error_message || 'Unknown error',
+          attempts: 1
+        };
+      }
+
+      console.log(`[BatchVideoAnalysis] 视频分析成功: ${material.name}`, {
+        taskId,
+        videoId: material.id,
+        framesAnalyzed: batchVideoResult.total_frames_extracted,
+        videoDuration: batchVideoResult.video_duration,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        success: true,
+        video_url: material.url,
+        material,
+        attempts: 1
+      };
+    });
+
+    const successfulResults = results.filter(r => r.success);
+    const failedResults = results.filter(r => !r.success);
+
+    console.log(`[BatchVideoAnalysis] 批量视频分析完成`, {
+      taskId,
+      totalVideos: videoMaterials.length,
+      successCount: successfulResults.length,
+      failedCount: failedResults.length,
+      successRate: `${Math.round((successfulResults.length / videoMaterials.length) * 100)}%`,
+      totalProcessingTime: Math.round(responseTime),
+      frameExtractionTime: Math.round(batchResult.frame_extraction_time * 1000),
+      vlmAnalysisTime: Math.round(batchResult.vlm_analysis_time * 1000),
+      concurrentThreads: batchResult.concurrent_threads,
+      speedupInfo: `Extracted ${batchResult.total_frames_extracted} frames and analyzed concurrently`,
+      timestamp: new Date().toISOString()
+    });
+
+    // Log failed analyses
+    if (failedResults.length > 0) {
+      console.warn(`[BatchVideoAnalysis] 失败的视频分析详情`, {
+        taskId,
+        failedVideos: failedResults.map(r => ({
+          name: r.material.name,
+          id: r.material.id,
+          error: r.error
+        })),
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return results;
+
+  } catch (error) {
+    const totalTime = performance.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    console.error(`[BatchVideoAnalysis] 批量分析异常`, {
+      taskId,
+      error: errorMessage,
+      isAbortError: error instanceof Error && error.name === 'AbortError',
+      isNetworkError: errorMessage.includes('fetch'),
+      totalTime: Math.round(totalTime),
+      timestamp: new Date().toISOString()
+    });
+
+    // Return failed results for all videos
+    return videoMaterials.map(material => ({
+      success: false,
+      video_url: material.url,
+      material,
+      error: errorMessage,
+      attempts: 1
+    }));
+  }
 } 

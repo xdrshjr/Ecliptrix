@@ -5,7 +5,7 @@
 vlm_processing:
   # Number of concurrent threads for VLM API calls
   # Higher values increase processing speed but may hit API rate limits
-  concurrent_threads: 1
+  concurrent_threads: 3
   
   # Timeout for individual VLM API calls (seconds)
   api_timeout: 30

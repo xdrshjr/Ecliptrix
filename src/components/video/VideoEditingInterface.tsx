@@ -27,7 +27,7 @@ import {
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { analyzeVideosInParallel, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
+import { analyzeVideosInBatch, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
 import {
   DocumentPanel,
   AIAssistantPanel,
@@ -1319,22 +1319,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       const videoMaterials = materialManagement.materials.filter(m => m.type === 'video');
       
       if (videoMaterials.length > 0) {
-        console.log(`[VideoEditingInterface] 开始顺序视频分析阶段（AI混剪模式）`, {
+        console.log(`[VideoEditingInterface] 开始批量视频分析阶段（AI混剪模式）`, {
           taskId,
           videoCount: videoMaterials.length,
           mode: mode.type,
           frameInterval: mode.frameInterval,
-          sequential: true,
-          maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
+          useBatchAPI: true,
           timestamp: new Date().toISOString()
         });
 
         try {
-          // AI混剪使用顺序分析模式，避免并发调用后台接口导致错误
-          const analysisResults = await analyzeVideosInParallel(
+          // AI混剪使用批量分析API，优化的两阶段处理：
+          // 1. 顺序提取帧（一个接一个处理视频）
+          // 2. 并发VLM分析（对所有提取的帧并发调用）
+          const analysisResults = await analyzeVideosInBatch(
             videoMaterials,
             {
-              sequential: true, // 启用顺序模式，一个接一个调用 API
               maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
               retryDelayMs: VIDEO_ANALYSIS_CONFIG.RETRY_DELAY_MS,
               mode
@@ -1345,13 +1345,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           const successfulAnalyses = analysisResults.filter(r => r.success);
           const failedAnalyses = analysisResults.filter(r => !r.success);
 
-          console.log(`[VideoEditingInterface] 顺序视频分析阶段完成`, {
+          console.log(`[VideoEditingInterface] 批量视频分析阶段完成`, {
             taskId,
             totalVideos: videoMaterials.length,
             successCount: successfulAnalyses.length,
             failedCount: failedAnalyses.length,
             successRate: `${Math.round((successfulAnalyses.length / videoMaterials.length) * 100)}%`,
-            sequential: true,
+            useBatchAPI: true,
             timestamp: new Date().toISOString()
           });
 
@@ -1365,11 +1365,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           }
 
         } catch (error) {
-          console.error(`[VideoEditingInterface] 顺序视频分析阶段异常`, {
+          console.error(`[VideoEditingInterface] 批量视频分析阶段异常`, {
             taskId,
             error: error instanceof Error ? error.message : String(error),
             videoCount: videoMaterials.length,
-            sequential: true,
+            useBatchAPI: true,
             timestamp: new Date().toISOString()
           });
           // 继续执行AI混剪，即使视频分析失败

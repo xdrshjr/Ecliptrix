@@ -22,7 +22,13 @@ from PIL import Image
 
 from app.config import settings
 from app.logger import get_logger
-from app.models.video_analysis import FrameAnalysis, VideoAnalysisResponse
+from app.models.video_analysis import (
+    FrameAnalysis, 
+    VideoAnalysisResponse,
+    VideoAnalysisItem,
+    BatchVideoAnalysisResult,
+    BatchVideoAnalysisResponse
+)
 
 # Set up logger
 logger = get_logger(__name__)
@@ -566,6 +572,275 @@ class VideoAnalysisService:
                         
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup temporary files: {str(cleanup_error)}")
+    
+    async def batch_analyze_videos(
+        self,
+        videos: List[VideoAnalysisItem],
+        custom_prompt: Optional[str] = None
+    ) -> BatchVideoAnalysisResponse:
+        """
+        Analyze multiple videos with sequential frame extraction and concurrent VLM analysis.
+        
+        This method implements a two-phase approach:
+        1. Sequential Frame Extraction: Extract frames from each video one by one
+        2. Concurrent VLM Analysis: Analyze all extracted frames in parallel using configured thread count
+        
+        Args:
+            videos: List of video items to analyze
+            custom_prompt: Custom prompt for LLM analysis (applies to all videos)
+            
+        Returns:
+            BatchVideoAnalysisResponse with results for all videos
+        """
+        start_time = time.time()
+        concurrent_threads = self.config['vlm_processing']['concurrent_threads']
+        
+        logger.info(f"Starting batch video analysis for {len(videos)} videos")
+        logger.info(f"Configuration - Concurrent threads: {concurrent_threads}, Custom prompt: {bool(custom_prompt)}")
+        
+        # Phase 1: Sequential Frame Extraction
+        logger.info("=" * 80)
+        logger.info(f"PHASE 1: Sequential Frame Extraction - Processing {len(videos)} videos one by one")
+        logger.info("=" * 80)
+        
+        extraction_start_time = time.time()
+        
+        # Store all extracted frames info with associated video metadata
+        all_frames_data = []  # List of (video_url, frame_info, video_duration)
+        video_extraction_results = {}  # Store extraction results per video
+        
+        for idx, video_item in enumerate(videos, 1):
+            video_url = video_item.video_url
+            frame_interval = video_item.frame_interval if video_item.frame_interval and video_item.frame_interval > 0 else None
+            
+            if frame_interval is None:
+                frame_interval = self.config['frame_extraction']['default_frame_interval_seconds']
+            
+            logger.info(f"Extracting frames from video {idx}/{len(videos)}: {video_url}")
+            logger.info(f"  Frame interval: {frame_interval}s")
+            
+            video_path = None
+            frames_dir = None
+            
+            try:
+                # Download video if needed
+                video_path = await self.download_video_if_needed(video_url)
+                
+                # Extract frames sequentially
+                frames_info, video_duration = self.extract_frames(video_path, frame_interval)
+                
+                if frames_info:
+                    frames_dir = os.path.dirname(frames_info[0]["frame_path"])
+                
+                logger.info(f"  Successfully extracted {len(frames_info)} frames from video {idx}/{len(videos)}")
+                logger.info(f"  Video duration: {video_duration:.2f}s")
+                
+                # Store frame data for later VLM analysis
+                for frame_info in frames_info:
+                    all_frames_data.append({
+                        "video_url": video_url,
+                        "frame_info": frame_info,
+                        "video_duration": video_duration
+                    })
+                
+                # Store extraction results
+                video_extraction_results[video_url] = {
+                    "success": True,
+                    "frames_info": frames_info,
+                    "video_duration": video_duration,
+                    "frames_dir": frames_dir,
+                    "video_path": video_path
+                }
+                
+            except Exception as e:
+                logger.error(f"  Failed to extract frames from video {idx}/{len(videos)}: {video_url}", exc_info=True)
+                logger.error(f"  Error: {str(e)}")
+                
+                # Store extraction failure
+                video_extraction_results[video_url] = {
+                    "success": False,
+                    "error": str(e),
+                    "frames_info": [],
+                    "video_duration": 0.0,
+                    "frames_dir": frames_dir,
+                    "video_path": video_path
+                }
+        
+        extraction_time = time.time() - extraction_start_time
+        total_frames = len(all_frames_data)
+        
+        logger.info("=" * 80)
+        logger.info(f"PHASE 1 COMPLETED: Sequential Frame Extraction")
+        logger.info(f"  Total frames extracted: {total_frames} from {len(videos)} videos")
+        logger.info(f"  Extraction time: {extraction_time:.2f}s")
+        logger.info(f"  Average time per video: {extraction_time / len(videos):.2f}s")
+        logger.info("=" * 80)
+        
+        # Phase 2: Concurrent VLM Analysis
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info(f"PHASE 2: Concurrent VLM Analysis - Analyzing {total_frames} frames with {concurrent_threads} threads")
+        logger.info("=" * 80)
+        
+        vlm_start_time = time.time()
+        
+        # Create semaphore for controlling concurrent VLM calls
+        semaphore = asyncio.Semaphore(concurrent_threads)
+        
+        # Create tasks for concurrent frame analysis
+        analysis_tasks = []
+        for frame_data in all_frames_data:
+            task = self.analyze_frame_with_llm(
+                frame_data["frame_info"]["frame_path"],
+                custom_prompt,
+                semaphore
+            )
+            analysis_tasks.append((frame_data, task))
+        
+        logger.info(f"Executing {len(analysis_tasks)} VLM analysis tasks concurrently with {concurrent_threads} threads")
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*[task for _, task in analysis_tasks], return_exceptions=True)
+        
+        vlm_time = time.time() - vlm_start_time
+        
+        # Log concurrent processing completion
+        successful_analyses = sum(1 for result in results if not isinstance(result, Exception))
+        failed_analyses = len(results) - successful_analyses
+        
+        logger.info("=" * 80)
+        logger.info(f"PHASE 2 COMPLETED: Concurrent VLM Analysis")
+        logger.info(f"  Total frames analyzed: {total_frames}")
+        logger.info(f"  Successful analyses: {successful_analyses}")
+        logger.info(f"  Failed analyses: {failed_analyses}")
+        logger.info(f"  VLM analysis time: {vlm_time:.2f}s")
+        logger.info(f"  Average time per frame: {vlm_time / total_frames if total_frames > 0 else 0:.2f}s")
+        logger.info(f"  Estimated sequential time: {total_frames * 6:.2f}s (assuming 6s per frame)")
+        logger.info(f"  Speedup factor: {(total_frames * 6) / vlm_time if vlm_time > 0 else 0:.2f}x")
+        logger.info("=" * 80)
+        
+        # Build results per video
+        batch_results = []
+        
+        for video_item in videos:
+            video_url = video_item.video_url
+            extraction_result = video_extraction_results[video_url]
+            
+            if not extraction_result["success"]:
+                # Video extraction failed
+                batch_results.append(BatchVideoAnalysisResult(
+                    video_url=video_url,
+                    success=False,
+                    error_message=extraction_result["error"]
+                ))
+                continue
+            
+            # Build frame analyses for this video
+            frame_analyses = []
+            video_had_analysis_failure = False
+            
+            for frame_data, analysis_result in zip(all_frames_data, results):
+                if frame_data["video_url"] != video_url:
+                    continue
+                
+                frame_info = frame_data["frame_info"]
+                
+                if isinstance(analysis_result, Exception):
+                    logger.error(f"Frame analysis failed for {video_url} frame {frame_info['frame_number']}: {str(analysis_result)}")
+                    analysis = f"分析失败: {str(analysis_result)}"
+                    video_had_analysis_failure = True
+                else:
+                    analysis = analysis_result
+                
+                frame_analysis = FrameAnalysis(
+                    frame_number=frame_info["frame_number"],
+                    timestamp=frame_info["timestamp"],
+                    analysis=analysis,
+                    frame_path=frame_info["frame_path"]
+                )
+                frame_analyses.append(frame_analysis)
+            
+            # Store analysis result
+            try:
+                from app.services.video_analysis_storage_service import video_analysis_storage
+                
+                analysis_response = VideoAnalysisResponse(
+                    success=True,
+                    video_url=video_url,
+                    total_frames_extracted=len(frame_analyses),
+                    video_duration=extraction_result["video_duration"],
+                    frame_analyses=frame_analyses,
+                    processing_time=0.0,  # Not tracking individual video time in batch mode
+                    message=f"Analyzed as part of batch with {concurrent_threads} concurrent threads"
+                )
+                
+                storage_success = video_analysis_storage.store_analysis_result(analysis_response)
+                if storage_success:
+                    logger.info(f"Video analysis result stored for: {video_url}")
+                else:
+                    logger.warning(f"Failed to store video analysis result for: {video_url}")
+            except Exception as e:
+                logger.error(f"Error storing video analysis result for {video_url}: {str(e)}", exc_info=True)
+            
+            batch_results.append(BatchVideoAnalysisResult(
+                video_url=video_url,
+                success=True,
+                total_frames_extracted=len(frame_analyses),
+                video_duration=extraction_result["video_duration"],
+                frame_analyses=frame_analyses,
+                error_message=None
+            ))
+        
+        # Cleanup temporary files
+        try:
+            if self.config['temp_files']['auto_cleanup']:
+                for video_url, extraction_result in video_extraction_results.items():
+                    # Clean up frames directory
+                    frames_dir = extraction_result.get("frames_dir")
+                    if frames_dir and os.path.exists(frames_dir):
+                        import shutil
+                        shutil.rmtree(frames_dir)
+                        logger.info(f"Cleaned up frames directory for {video_url}: {frames_dir}")
+                    
+                    # Clean up downloaded video if it was downloaded
+                    video_path = extraction_result.get("video_path")
+                    if video_path and video_path != video_url and os.path.exists(video_path):
+                        os.remove(video_path)
+                        logger.info(f"Cleaned up downloaded video for {video_url}: {video_path}")
+        except Exception as cleanup_error:
+            logger.warning(f"Failed to cleanup temporary files: {str(cleanup_error)}")
+        
+        # Calculate final statistics
+        total_processing_time = time.time() - start_time
+        successful_videos = sum(1 for r in batch_results if r.success)
+        failed_videos = len(batch_results) - successful_videos
+        
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info(f"BATCH VIDEO ANALYSIS COMPLETED")
+        logger.info(f"  Total videos: {len(videos)}")
+        logger.info(f"  Successful: {successful_videos}")
+        logger.info(f"  Failed: {failed_videos}")
+        logger.info(f"  Total frames extracted: {total_frames}")
+        logger.info(f"  Total processing time: {total_processing_time:.2f}s")
+        logger.info(f"  Frame extraction time: {extraction_time:.2f}s ({extraction_time/total_processing_time*100:.1f}%)")
+        logger.info(f"  VLM analysis time: {vlm_time:.2f}s ({vlm_time/total_processing_time*100:.1f}%)")
+        logger.info(f"  Concurrent threads used: {concurrent_threads}")
+        logger.info("=" * 80)
+        
+        return BatchVideoAnalysisResponse(
+            success=failed_videos == 0,
+            total_videos=len(videos),
+            successful_videos=successful_videos,
+            failed_videos=failed_videos,
+            results=batch_results,
+            total_frames_extracted=total_frames,
+            total_processing_time=total_processing_time,
+            frame_extraction_time=extraction_time,
+            vlm_analysis_time=vlm_time,
+            concurrent_threads=concurrent_threads,
+            message=f"Batch analysis completed: {successful_videos}/{len(videos)} videos successful, {total_frames} frames extracted and analyzed with {concurrent_threads} concurrent threads"
+        )
 
 
 # Global service instance
