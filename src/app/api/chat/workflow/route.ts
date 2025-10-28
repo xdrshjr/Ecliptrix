@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
-import { loadAgentWorkflows } from '@/lib/api/workflow';
+import { ServerWorkflowExecutor } from '@/lib/workflow/ServerWorkflowExecutor';
 
 /**
  * POST /api/chat/workflow
@@ -13,12 +12,14 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { workflowId, userInput, messages } = body;
+    const { workflowId, userInput, messages, nodes, connections } = body;
 
     console.log('[Workflow Chat API] Request received:', {
       workflowId,
       userInputLength: userInput?.length || 0,
       messagesCount: messages?.length || 0,
+      nodesCount: nodes?.length || 0,
+      connectionsCount: connections?.length || 0,
       timestamp: new Date().toISOString()
     });
 
@@ -38,12 +39,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract user ID from messages (assuming it's stored in conversation context)
-    // For now, we'll use a placeholder - in production, this should come from auth session
-    const userId = 'system'; // TODO: Get from authenticated session
+    if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+      console.error('[Workflow Chat API] Missing or invalid nodes in request');
+      return NextResponse.json(
+        { error: 'Workflow nodes are required' },
+        { status: 400 }
+      );
+    }
 
-    // Load the workflow
-    console.log('[Workflow Chat API] Loading workflow:', workflowId);
+    if (!connections || !Array.isArray(connections)) {
+      console.error('[Workflow Chat API] Missing or invalid connections in request');
+      return NextResponse.json(
+        { error: 'Workflow connections are required' },
+        { status: 400 }
+      );
+    }
     
     // Create a streaming response
     const stream = new ReadableStream({
@@ -53,80 +63,124 @@ export async function POST(request: NextRequest) {
           const statusData = JSON.stringify({
             type: 'status',
             status: 'loading',
-            message: 'Loading workflow...'
+            message: 'Initializing workflow execution...'
           });
           controller.enqueue(encoder.encode(`data: ${statusData}\n\n`));
 
-          // Load workflows (in production, cache this or fetch specific workflow)
-          let workflow;
-          try {
-            // Try to load from user's workflows (requires auth context)
-            // For now, we'll create a mock workflow execution
-            console.log('[Workflow Chat API] Executing workflow with user input');
-            
-            // Send execution start status
-            const startData = JSON.stringify({
-              type: 'execution_start',
-              workflowId,
-              timestamp: new Date().toISOString()
-            });
-            controller.enqueue(encoder.encode(`data: ${startData}\n\n`));
+          console.log('[Workflow Chat API] Starting workflow execution:', {
+            workflowId,
+            nodesCount: nodes.length,
+            connectionsCount: connections.length,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Send execution start status
+          const startData = JSON.stringify({
+            type: 'execution_start',
+            workflowId,
+            timestamp: new Date().toISOString()
+          });
+          controller.enqueue(encoder.encode(`data: ${startData}\n\n`));
 
-            // Simulate workflow execution with streaming updates
-            // In production, this would use the actual WorkflowExecutor
-            
-            // Send node execution updates
-            const nodes = [
-              { id: 'start', name: 'Start Node', status: 'executing' },
-              { id: 'process', name: 'Processing', status: 'pending' },
-              { id: 'end', name: 'End Node', status: 'pending' }
-            ];
+          // Create workflow executor with callbacks for streaming updates
+          const executor = new ServerWorkflowExecutor(
+            nodes,
+            connections,
+            {
+              onNodeUpdate: (nodeId, nodeName, status, output, error) => {
+                console.log('[Workflow Chat API] Node update:', {
+                  nodeId,
+                  nodeName,
+                  status,
+                  hasOutput: !!output,
+                  hasError: !!error
+                });
+                
+                const nodeData = JSON.stringify({
+                  type: 'node_update',
+                  nodeId,
+                  nodeName,
+                  status,
+                  output: status === 'completed' ? output : undefined,
+                  error: error,
+                  startTime: status === 'executing' ? new Date().toISOString() : undefined,
+                  endTime: status === 'completed' || status === 'error' ? new Date().toISOString() : undefined
+                });
+                controller.enqueue(encoder.encode(`data: ${nodeData}\n\n`));
+              },
+              onLog: (level, message, nodeId, nodeName, details) => {
+                console.log(`[Workflow Chat API] Log [${level}]:`, message, {
+                  nodeId,
+                  nodeName,
+                  details
+                });
+                
+                const logData = JSON.stringify({
+                  type: 'log',
+                  level,
+                  message,
+                  nodeId,
+                  nodeName,
+                  details,
+                  timestamp: new Date().toISOString()
+                });
+                controller.enqueue(encoder.encode(`data: ${logData}\n\n`));
+              },
+              onComplete: (finalOutput) => {
+                console.log('[Workflow Chat API] Workflow execution completed:', {
+                  hasFinalOutput: !!finalOutput,
+                  timestamp: new Date().toISOString()
+                });
+                
+                // Format final output for display
+                let content = '';
+                if (finalOutput?.finalResult) {
+                  const result = finalOutput.finalResult;
+                  if (typeof result === 'string') {
+                    content = result;
+                  } else if (result?.text) {
+                    content = result.text;
+                  } else if (result?.llmResponse) {
+                    content = result.llmResponse;
+                  } else {
+                    content = JSON.stringify(result, null, 2);
+                  }
+                } else if (typeof finalOutput === 'string') {
+                  content = finalOutput;
+                } else {
+                  content = JSON.stringify(finalOutput, null, 2);
+                }
+                
+                const resultData = JSON.stringify({
+                  type: 'final_result',
+                  content,
+                  timestamp: new Date().toISOString()
+                });
+                controller.enqueue(encoder.encode(`data: ${resultData}\n\n`));
+                
+                // Send completion signal
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
+              },
+              onError: (error) => {
+                console.error('[Workflow Chat API] Workflow execution error:', error);
+                
+                const errorData = JSON.stringify({
+                  type: 'error',
+                  error: error.message
+                });
+                controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
+                
+                // Send completion signal
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                controller.close();
+              }
+            },
+            userInput
+          );
 
-            for (const node of nodes) {
-              // Simulate node execution
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              const nodeData = JSON.stringify({
-                type: 'node_update',
-                nodeId: node.id,
-                nodeName: node.name,
-                status: 'executing'
-              });
-              controller.enqueue(encoder.encode(`data: ${nodeData}\n\n`));
-              
-              // Simulate node completion
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-              const nodeCompleteData = JSON.stringify({
-                type: 'node_update',
-                nodeId: node.id,
-                nodeName: node.name,
-                status: 'completed',
-                output: `Processed: ${userInput}`
-              });
-              controller.enqueue(encoder.encode(`data: ${nodeCompleteData}\n\n`));
-            }
-
-            // Send final result
-            const resultData = JSON.stringify({
-              type: 'final_result',
-              content: `Workflow processed your input: "${userInput}"\n\nThis is a placeholder response. In production, this would contain the actual workflow execution result.`,
-              timestamp: new Date().toISOString()
-            });
-            controller.enqueue(encoder.encode(`data: ${resultData}\n\n`));
-
-          } catch (loadError) {
-            console.error('[Workflow Chat API] Error loading workflow:', loadError);
-            const errorData = JSON.stringify({
-              type: 'error',
-              error: 'Failed to load workflow'
-            });
-            controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
-          }
-
-          // Send completion signal
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          controller.close();
+          // Execute the workflow
+          await executor.execute();
 
         } catch (error) {
           console.error('[Workflow Chat API] Stream error:', error);
@@ -135,6 +189,7 @@ export async function POST(request: NextRequest) {
             error: error instanceof Error ? error.message : 'Unknown error'
           });
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         }
       }

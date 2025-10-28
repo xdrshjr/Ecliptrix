@@ -48,6 +48,8 @@ export interface Conversation {
   chatType?: 'chatbot' | 'workflow' | 'agent'; // Chat type: chatbot (basic), workflow (workflow-based), or agent (AI agent)
   workflowId?: string; // Associated workflow ID for workflow-based conversations
   workflowName?: string; // Associated workflow name for display
+  workflowNodes?: WorkflowNode[]; // Workflow nodes data (for workflow-based conversations)
+  workflowConnections?: WorkflowConnection[]; // Workflow connections data (for workflow-based conversations)
 }
 
 export interface ChatTaskContent {

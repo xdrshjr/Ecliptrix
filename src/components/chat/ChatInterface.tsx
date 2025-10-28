@@ -34,7 +34,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleCreateConversation = useCallback((
     chatType: 'chatbot' | 'workflow' | 'agent',
     workflowId?: string,
-    workflowName?: string
+    workflowName?: string,
+    workflowNodes?: any[],
+    workflowConnections?: any[]
   ) => {
     const now = new Date();
     const conversationId = `conv-${Date.now()}`;
@@ -44,6 +46,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       chatType,
       workflowId,
       workflowName,
+      hasNodes: !!workflowNodes,
+      hasConnections: !!workflowConnections,
+      nodesCount: workflowNodes?.length || 0,
+      connectionsCount: workflowConnections?.length || 0,
       timestamp: now.toISOString()
     });
     
@@ -66,6 +72,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       chatType,
       workflowId,
       workflowName,
+      workflowNodes,
+      workflowConnections,
     };
 
     const updatedContent: ChatTaskContent = {
@@ -78,7 +86,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       conversationId,
       chatType,
       workflowId,
-      workflowName
+      workflowName,
+      nodesCount: workflowNodes?.length || 0,
+      connectionsCount: workflowConnections?.length || 0
     });
   }, [chatContent, onUpdateContent]);
 
@@ -88,12 +98,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setIsChatTypeModalOpen(false);
   }, [handleCreateConversation]);
 
-  const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string) => {
+  const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string, nodes: any[], connections: any[]) => {
     console.log('[ChatInterface] Workflow selected for new conversation:', {
       workflowId,
-      workflowName
+      workflowName,
+      nodesCount: nodes?.length || 0,
+      connectionsCount: connections?.length || 0
     });
-    handleCreateConversation('workflow', workflowId, workflowName);
+    handleCreateConversation('workflow', workflowId, workflowName, nodes, connections);
     setIsChatTypeModalOpen(false);
   }, [handleCreateConversation]);
 
@@ -254,6 +266,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         useWorkflow,
         workflowId: activeConversation.workflowId,
         workflowName: activeConversation.workflowName,
+        hasNodes: !!activeConversation.workflowNodes,
+        hasConnections: !!activeConversation.workflowConnections,
+        nodesCount: activeConversation.workflowNodes?.length || 0,
+        connectionsCount: activeConversation.workflowConnections?.length || 0,
         messageLength: message.length
       });
 
@@ -263,6 +279,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         messages: messagesWithUser,
         workflowId: activeConversation.workflowId,
         userInput: message,
+        nodes: activeConversation.workflowNodes || [],
+        connections: activeConversation.workflowConnections || [],
       } : {
         messages: messagesWithUser,
       };

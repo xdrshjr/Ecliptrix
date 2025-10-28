@@ -8,7 +8,7 @@ interface ChatTypeSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectChatbot: () => void;
-  onSelectWorkflow: (workflowId: string, workflowName: string) => void;
+  onSelectWorkflow: (workflowId: string, workflowName: string, nodes: any[], connections: any[]) => void;
   onSelectAgent: () => void;
 }
 
@@ -86,9 +86,16 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
   const handleSelectWorkflow = (workflow: WorkflowRecord) => {
     console.log('[ChatTypeSelectionModal] Workflow selected:', {
       workflow_id: workflow.workflow_id,
-      workflow_name: workflow.workflow_name
+      workflow_name: workflow.workflow_name,
+      nodesCount: workflow.nodes?.length || 0,
+      connectionsCount: workflow.connections?.length || 0
     });
-    onSelectWorkflow(workflow.workflow_id, workflow.workflow_name);
+    onSelectWorkflow(
+      workflow.workflow_id, 
+      workflow.workflow_name,
+      workflow.nodes || [],
+      workflow.connections || []
+    );
     onClose();
   };
 
