@@ -11,12 +11,14 @@ interface VerticalTaskbarProps {
   activeTabId: string | null;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  isBlurred?: boolean;
 }
 
 const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   tabs,
   onSelectTab,
   onCloseTab,
+  isBlurred = false,
 }) => {
   const { t } = useLocale();
   const { isAuthenticated, user } = useAuth();
@@ -181,7 +183,7 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     <>
       <div 
         ref={taskbarRef}
-        className={`vertical-taskbar ${isExpanded ? 'expanded' : 'collapsed'}`}
+        className={`vertical-taskbar ${isExpanded ? 'expanded' : 'collapsed'} ${isBlurred ? 'blurred' : ''}`}
         onClick={handleTaskbarClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}

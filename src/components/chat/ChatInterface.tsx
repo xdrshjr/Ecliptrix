@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Conversation, ChatMessage, ChatTaskContent, WorkflowExecutionState } from '@/types';
 import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
@@ -11,15 +11,18 @@ interface ChatInterfaceProps {
   taskId: string;
   content: ChatTaskContent | null;
   onUpdateContent: (content: ChatTaskContent) => void;
+  onModalStateChange?: (isOpen: boolean) => void;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   taskId,
   content,
   onUpdateContent,
+  onModalStateChange,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isChatTypeModalOpen, setIsChatTypeModalOpen] = useState(false);
+  const hasAutoInitialized = useRef(false);
 
   // Initialize content if null
   const chatContent: ChatTaskContent = content || {
@@ -30,7 +33,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleNewChatClick = useCallback(() => {
     console.log('[ChatInterface] New Chat button clicked, opening chat type selection modal');
     setIsChatTypeModalOpen(true);
-  }, []);
+    onModalStateChange?.(true);
+  }, [onModalStateChange]);
 
   const handleCreateConversation = useCallback((
     chatType: 'chatbot' | 'workflow' | 'agent',
@@ -93,11 +97,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   }, [chatContent, onUpdateContent]);
 
+  const handleCloseModal = useCallback(() => {
+    console.log('[ChatInterface] Closing chat type selection modal');
+    setIsChatTypeModalOpen(false);
+    onModalStateChange?.(false);
+  }, [onModalStateChange]);
+
   const handleChatbotSelect = useCallback(() => {
     console.log('[ChatInterface] Chatbot type selected for new conversation');
     handleCreateConversation('chatbot');
-    setIsChatTypeModalOpen(false);
-  }, [handleCreateConversation]);
+    handleCloseModal();
+  }, [handleCreateConversation, handleCloseModal]);
 
   const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string, nodes: any[], connections: any[]) => {
     console.log('[ChatInterface] Workflow selected for new conversation:', {
@@ -107,14 +117,52 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       connectionsCount: connections?.length || 0
     });
     handleCreateConversation('workflow', workflowId, workflowName, nodes, connections);
-    setIsChatTypeModalOpen(false);
-  }, [handleCreateConversation]);
+    handleCloseModal();
+  }, [handleCreateConversation, handleCloseModal]);
 
   const handleAgentSelect = useCallback(() => {
     console.log('[ChatInterface] Agent type selected for new conversation (reserved for future)');
     handleCreateConversation('agent');
-    setIsChatTypeModalOpen(false);
-  }, [handleCreateConversation]);
+    handleCloseModal();
+  }, [handleCreateConversation, handleCloseModal]);
+
+  // Auto-initialize: Create a default "Basic Chatbot" conversation when task is first opened
+  useEffect(() => {
+    // Only auto-initialize once and only if there are no existing conversations
+    if (!hasAutoInitialized.current && chatContent.conversations.length === 0) {
+      hasAutoInitialized.current = true;
+      
+      console.log('[ChatInterface] Auto-initializing with default Basic Chatbot conversation:', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+
+      const now = new Date();
+      const conversationId = `conv-${Date.now()}`;
+      
+      const defaultConversation: Conversation = {
+        id: conversationId,
+        title: 'Chatbot',
+        messages: [],
+        createdAt: now,
+        updatedAt: now,
+        chatType: 'chatbot',
+      };
+
+      const initialContent: ChatTaskContent = {
+        conversations: [defaultConversation],
+        activeConversationId: conversationId,
+      };
+
+      onUpdateContent(initialContent);
+      
+      console.log('[ChatInterface] Default Basic Chatbot conversation created successfully:', {
+        conversationId,
+        chatType: 'chatbot',
+        timestamp: now.toISOString()
+      });
+    }
+  }, []); // Empty dependency array - only run once on mount
 
   const handleSelectConversation = useCallback((conversationId: string) => {
     const updatedContent: ChatTaskContent = {
@@ -508,7 +556,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       {/* Chat Type Selection Modal - Rendered at top level for full-screen centering */}
       <ChatTypeSelectionModal
         isOpen={isChatTypeModalOpen}
-        onClose={() => setIsChatTypeModalOpen(false)}
+        onClose={handleCloseModal}
         onSelectChatbot={handleChatbotSelect}
         onSelectWorkflow={handleWorkflowSelect}
         onSelectAgent={handleAgentSelect}

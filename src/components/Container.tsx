@@ -10,9 +10,10 @@ import { useLocale } from '@/contexts/LocaleContext';
 interface ContainerProps {
   activeTask: Task | null;
   onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
+  onChatModalStateChange?: (isOpen: boolean) => void;
 }
 
-const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
+const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange }) => {
   const { t } = useLocale();
 
   const handleUpdateVideoEditingContent = (content: VideoEditingTaskContent) => {
@@ -80,8 +81,8 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
               <p className="text-gray-600">{t.welcome.videoEditingDesc}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
-              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
-                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center mb-3">
+                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                 </svg>
               </div>
@@ -137,6 +138,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask }) => {
           taskId={activeTask.id}
           content={activeTask.content as ChatTaskContent | null}
           onUpdateContent={handleUpdateChatContent}
+          onModalStateChange={onChatModalStateChange}
         />
       </div>
     );

@@ -6,9 +6,17 @@ import { useLocale } from '@/contexts/LocaleContext';
 
 interface LandingPageProps {
   onCreateTask: (type: TaskType) => void;
+  isAuthenticated: boolean;
+  isAuthLoading: boolean;
+  onLoginRequired: () => void;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onCreateTask }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ 
+  onCreateTask, 
+  isAuthenticated, 
+  isAuthLoading, 
+  onLoginRequired 
+}) => {
   const { t } = useLocale();
   const [backgroundImage, setBackgroundImage] = useState<string>('');
 
@@ -31,6 +39,35 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateTask }) => {
   const handleGetStarted = (taskType: TaskType) => {
     console.log('[LandingPage] Get started clicked:', {
       taskType,
+      isAuthenticated,
+      isAuthLoading,
+      timestamp: new Date().toISOString()
+    });
+
+    // 检查认证状态是否正在加载中
+    if (isAuthLoading) {
+      console.log('[LandingPage] Authentication still loading, please wait:', {
+        taskType,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // 检查用户是否已登录
+    if (!isAuthenticated) {
+      console.log('[LandingPage] User not authenticated, showing login modal:', {
+        taskType,
+        isAuthenticated: false,
+        timestamp: new Date().toISOString()
+      });
+      onLoginRequired();
+      return;
+    }
+
+    // 用户已登录，创建任务
+    console.log('[LandingPage] User authenticated, creating task:', {
+      taskType,
+      isAuthenticated: true,
       timestamp: new Date().toISOString()
     });
     onCreateTask(taskType);

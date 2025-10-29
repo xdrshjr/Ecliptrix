@@ -100,7 +100,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                       w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
                       ${activeWorkflowId === workflow.id
                         ? 'bg-blue-500'
-                        : 'bg-gradient-to-br from-purple-500 to-indigo-600'
+                        : 'bg-gradient-to-br from-gray-600 to-gray-800'
                       }
                     `}
                   >

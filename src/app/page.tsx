@@ -10,6 +10,7 @@ import UserProfilePage from '@/components/UserProfile/UserProfilePage';
 import AdminSettingsPage from '@/components/AdminSettings/AdminSettingsPage';
 import LandingPage from '@/components/HomePage/LandingPage';
 import { useTasks } from '@/hooks/useTasks';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function HomePage() {
   const {
@@ -23,12 +24,17 @@ export default function HomePage() {
     updateTask,
   } = useTasks();
 
+  // 获取认证状态
+  const { isAuthenticated, isLoading } = useAuth();
+
   // 登录弹窗状态
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   // 用户资料页面状态
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   // 管理员设置页面状态
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Chat modal状态 - 用于模糊taskbar
+  const [isChatModalOpen, setIsChatModalOpen] = useState(false);
 
   // 检查是否显示着陆页（无任务时显示）
   const showLandingPage = tabs.length === 0 && !isSettingsOpen && !isProfileOpen;
@@ -78,6 +84,15 @@ export default function HomePage() {
     setIsProfileOpen(false);
   };
 
+  // 处理Chat模态框状态变化
+  const handleChatModalStateChange = (isOpen: boolean) => {
+    console.log('[HomePage] Chat modal state changed:', {
+      isOpen,
+      timestamp: new Date().toISOString()
+    });
+    setIsChatModalOpen(isOpen);
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header - 固定在顶部 */}
@@ -97,6 +112,7 @@ export default function HomePage() {
             activeTabId={activeTabId}
             onSelectTab={handleSelectTab}
             onCloseTab={closeTab}
+            isBlurred={isChatModalOpen}
           />
         )}
         
@@ -104,7 +120,12 @@ export default function HomePage() {
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {showLandingPage ? (
             /* Landing Page - 首次访问时显示 */
-            <LandingPage onCreateTask={handleCreateTask} />
+            <LandingPage 
+              onCreateTask={handleCreateTask}
+              isAuthenticated={isAuthenticated}
+              isAuthLoading={isLoading}
+              onLoginRequired={() => setIsLoginModalOpen(true)}
+            />
           ) : isSettingsOpen ? (
             /* Admin Settings Page - 占据右侧内容区域 */
             <AdminSettingsPage onClose={() => setIsSettingsOpen(false)} />
@@ -113,7 +134,11 @@ export default function HomePage() {
             <UserProfilePage onClose={() => setIsProfileOpen(false)} />
           ) : (
             <>
-              <Container activeTask={activeTask} onUpdateTask={updateTask} />
+              <Container 
+                activeTask={activeTask} 
+                onUpdateTask={updateTask}
+                onChatModalStateChange={handleChatModalStateChange}
+              />
               {/* 条件渲染Footer：视频编辑任务时隐藏，其他任务时显示 */}
               {!isVideoEditingTask && <Footer />}
             </>

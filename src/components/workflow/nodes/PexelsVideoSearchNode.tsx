@@ -37,7 +37,7 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
           </svg>
         ),
         gradientColors: isConfigured 
-          ? 'bg-gradient-to-r from-indigo-500 to-purple-600' 
+          ? 'bg-gradient-to-r from-gray-600 to-gray-800' 
           : 'bg-gradient-to-r from-gray-400 to-gray-500',
         hasInputPort: true,
         hasOutputPort: true,
