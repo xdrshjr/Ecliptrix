@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { WorkflowTaskContent, WorkflowNode, WorkflowConnection, WorkflowExecutionState } from '@/types';
 import WorkflowSidebar from './WorkflowSidebar';
 import WorkflowCanvas from './WorkflowCanvas';
@@ -15,6 +15,7 @@ interface WorkflowInterfaceProps {
   taskId: string;
   content: WorkflowTaskContent | null;
   onUpdateContent: (content: WorkflowTaskContent) => void;
+  onNavigateToVideoEditing?: (timelineData: any) => void;
 }
 
 type RightPanelTab = 'chat' | 'workflow';
@@ -28,6 +29,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   taskId,
   content,
   onUpdateContent,
+  onNavigateToVideoEditing,
 }) => {
   console.log('[WorkflowInterface] Rendering interface:', {
     taskId,
@@ -41,40 +43,104 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const { user, isAuthenticated } = useAuth();
   const notification = useNotification();
 
-  // Right panel tab state
-  const [activeRightTab, setActiveRightTab] = useState<RightPanelTab>('chat');
+  // Restore UI state from content or use defaults
+  const [activeRightTab, setActiveRightTab] = useState<RightPanelTab>(
+    content?.uiState?.activeRightTab ?? 'chat'
+  );
 
-  // Workflow execution state
-  const [executionState, setExecutionState] = useState<WorkflowExecutionState>({
-    isRunning: false,
-    currentNodeId: null,
-    nodeStates: {},
-    logs: [],
-  });
+  // Workflow execution state - restore from content if available
+  const [executionState, setExecutionState] = useState<WorkflowExecutionState>(
+    content?.executionState ?? {
+      isRunning: false,
+      currentNodeId: null,
+      nodeStates: {},
+      logs: [],
+    }
+  );
   const [workflowExecutor, setWorkflowExecutor] = useState<WorkflowExecutor | null>(null);
   
-  // Chat messages state - 在父组件中管理，避免切换标签页时丢失
+  // Chat messages state - restore from content if available
   // 为每个工作流维护独立的聊天记录和上下文
   const [workflowChatStates, setWorkflowChatStates] = useState<Record<string, {
     messages: any[];
     contextCleared: boolean; // 标记上下文是否已清空
-  }>>({});
+  }>>(content?.uiState?.workflowChatStates ?? {});
   
   // User input state for workflow execution
   const [currentUserInput, setCurrentUserInput] = useState<string | null>(null);
   
-  // Save state
-  const [isSaving, setIsSaving] = useState(false);
+  // Save state - restore from content if available
+  const [isSaving, setIsSaving] = useState(content?.uiState?.isSaving ?? false);
+  
+  // Track if auto-load has been done
+  const hasAutoLoaded = useRef(content?.uiState?.hasAutoLoaded ?? false);
+
+  console.log('[WorkflowInterface] Restoring UI state:', {
+    activeRightTab,
+    workflowChatStatesCount: Object.keys(workflowChatStates).length,
+    executionStateLogsCount: executionState.logs.length,
+    isSaving,
+    hasAutoLoaded: hasAutoLoaded.current,
+    timestamp: new Date().toISOString()
+  });
+
+  // Persist UI state to content whenever it changes
+  useEffect(() => {
+    if (!content) return;
+
+    const updatedContent: WorkflowTaskContent = {
+      ...content,
+      executionState,
+      uiState: {
+        activeRightTab,
+        workflowChatStates,
+        isSaving,
+        hasAutoLoaded: hasAutoLoaded.current,
+      },
+    };
+
+    // Only update if state actually changed to avoid infinite loops
+    const hasStateChanged = 
+      content.uiState?.activeRightTab !== activeRightTab ||
+      content.uiState?.isSaving !== isSaving ||
+      content.uiState?.hasAutoLoaded !== hasAutoLoaded.current ||
+      JSON.stringify(content.uiState?.workflowChatStates) !== JSON.stringify(workflowChatStates) ||
+      JSON.stringify(content.executionState) !== JSON.stringify(executionState);
+
+    if (hasStateChanged) {
+      console.log('[WorkflowInterface] Persisting UI state:', {
+        taskId,
+        activeRightTab,
+        workflowChatStatesCount: Object.keys(workflowChatStates).length,
+        executionStateLogsCount: executionState.logs.length,
+        isSaving,
+        hasAutoLoaded: hasAutoLoaded.current,
+        timestamp: new Date().toISOString()
+      });
+      onUpdateContent(updatedContent);
+    }
+  }, [activeRightTab, workflowChatStates, executionState, isSaving, taskId, content]);
 
   // Auto-load workflows from database on mount
   useEffect(() => {
     const loadWorkflows = async () => {
+      // Skip if already auto-loaded or if content already exists
+      if (hasAutoLoaded.current || content) {
+        console.log('[WorkflowInterface] Skipping auto-load:', {
+          hasAutoLoaded: hasAutoLoaded.current,
+          hasContent: !!content,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
       if (!isAuthenticated || !user) {
         console.log('[WorkflowInterface] User not authenticated, skipping workflow load');
         return;
       }
 
       try {
+        hasAutoLoaded.current = true; // Mark as auto-loaded to prevent re-loading
         console.log('[WorkflowInterface] Loading workflows for user:', user.id);
         
         const response = await loadAgentWorkflows(user.id);
@@ -97,6 +163,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           const loadedContent: WorkflowTaskContent = {
             activeWorkflowId: workflows[0].id,
             workflows,
+            uiState: {
+              activeRightTab: 'chat',
+              workflowChatStates: {},
+              isSaving: false,
+              hasAutoLoaded: true, // Mark as auto-loaded
+            },
           };
           
           console.log('[WorkflowInterface] Setting loaded workflows as content');
@@ -115,34 +187,36 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     };
 
     const initializeDefaultContent = () => {
-      if (!content) {
-        console.log('[WorkflowInterface] Initializing default workflow content');
-        
-        const defaultContent: WorkflowTaskContent = {
-          activeWorkflowId: 'search-chat-agent',
-          workflows: [
-            {
-              id: 'search-chat-agent',
+      console.log('[WorkflowInterface] Initializing default workflow content');
+      
+      const defaultContent: WorkflowTaskContent = {
+        activeWorkflowId: 'search-chat-agent',
+        workflows: [
+          {
+            id: 'search-chat-agent',
+            name: 'Search Chat Agent',
+            data: {
               name: 'Search Chat Agent',
-              data: {
-                name: 'Search Chat Agent',
-                description: 'AI agent for searching and chatting',
-                nodes: [],
-                connections: [],
-              },
+              description: 'AI agent for searching and chatting',
+              nodes: [],
+              connections: [],
             },
-          ],
-        };
-        
-        onUpdateContent(defaultContent);
-      }
+          },
+        ],
+        uiState: {
+          activeRightTab: 'chat',
+          workflowChatStates: {},
+          isSaving: false,
+          hasAutoLoaded: true, // Mark as auto-loaded
+        },
+      };
+      
+      onUpdateContent(defaultContent);
     };
 
-    // Load workflows only on initial mount
-    if (!content) {
-      loadWorkflows();
-    }
-  }, [isAuthenticated, user]); // Only run when auth state changes
+    // Load workflows only on initial mount when content doesn't exist
+    loadWorkflows();
+  }, []); // Empty dependency array - only run once on mount
 
   // Get active workflow
   const activeWorkflow = content?.workflows.find(
@@ -853,6 +927,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                   }}
                   onClearChatHistory={handleClearChatHistory}
                   onClearContext={handleClearContext}
+                  onNavigateToVideoEditing={onNavigateToVideoEditing}
                 />
               )}
 

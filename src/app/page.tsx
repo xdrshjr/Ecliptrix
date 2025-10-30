@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function HomePage() {
   const {
+    tasks,
     tabs,
     activeTabId,
     activeTask,
@@ -138,6 +139,9 @@ export default function HomePage() {
                 activeTask={activeTask} 
                 onUpdateTask={updateTask}
                 onChatModalStateChange={handleChatModalStateChange}
+                tasks={tasks}
+                tabs={tabs}
+                onSelectTab={selectTab}
               />
               {/* 条件渲染Footer：视频编辑任务时隐藏，其他任务时显示 */}
               {!isVideoEditingTask && <Footer />}

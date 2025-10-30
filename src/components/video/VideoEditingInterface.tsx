@@ -68,39 +68,56 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 获取通知上下文
   const { showSuccess, showError } = useNotification();
   
-  // Mobile device detection and warning state
+  // Mobile device detection and warning state (not persisted - runtime state)
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   
-  // 新增：时间同步状态管理
-  const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(0);
-  // 新增：管理时间轴状态，用于导出功能
-  const [currentTimelineState, setCurrentTimelineState] = useState<TimelineState | null>(null);
-  // 新增：外部时间轴状态更新标识，用于避免循环更新
+  // Restore UI state from content or use defaults
+  const [timelineCurrentTime, setTimelineCurrentTime] = useState<number>(
+    content?.uiState?.timelineCurrentTime ?? 0
+  );
+  const [currentTimelineState, setCurrentTimelineState] = useState<TimelineState | null>(
+    content?.uiState?.currentTimelineState ?? null
+  );
+  // 新增：外部时间轴状态更新标识，用于避免循环更新 (not persisted - transient state)
   const [externalTimelineUpdateId, setExternalTimelineUpdateId] = useState<string | null>(null);
-  // 新增：批量视频解析状态
+  // 新增：批量视频解析状态 (not persisted - runtime state)
   const [isBatchAnalyzing, setIsBatchAnalyzing] = useState<boolean>(false);
   
   // 智能润色弹窗状态
-  const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(false);
+  const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(
+    content?.uiState?.isPolishModalOpen ?? false
+  );
   
-    // 脚本生成弹窗状态
-  const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(false);
+  // 脚本生成弹窗状态
+  const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(
+    content?.uiState?.isScriptGenerationModalOpen ?? false
+  );
 
   // 脚本生成开始时间状态
-  const [scriptGenerationStartTime, setScriptGenerationStartTime] = useState<number | null>(null);
+  const [scriptGenerationStartTime, setScriptGenerationStartTime] = useState<number | null>(
+    content?.uiState?.scriptGenerationStartTime ?? null
+  );
 
   // 创意构思弹窗状态
-  const [isCreativeBrainstormingModalOpen, setIsCreativeBrainstormingModalOpen] = useState<boolean>(false);
+  const [isCreativeBrainstormingModalOpen, setIsCreativeBrainstormingModalOpen] = useState<boolean>(
+    content?.uiState?.isCreativeBrainstormingModalOpen ?? false
+  );
   
   // AI混剪进度状态
-  const [isAIMixing, setIsAIMixing] = useState<boolean>(false);
-  const [aiMixingProgress, setAIMixingProgress] = useState<number>(0);
+  const [isAIMixing, setIsAIMixing] = useState<boolean>(
+    content?.uiState?.isAIMixing ?? false
+  );
+  const [aiMixingProgress, setAIMixingProgress] = useState<number>(
+    content?.uiState?.aiMixingProgress ?? 0
+  );
   
   // AI混剪模式选择弹窗状态
-  const [isAIMixingModeModalOpen, setIsAIMixingModeModalOpen] = useState<boolean>(false);
+  const [isAIMixingModeModalOpen, setIsAIMixingModeModalOpen] = useState<boolean>(
+    content?.uiState?.isAIMixingModeModalOpen ?? false
+  );
   
-  // 新增：程序化添加素材到时间轴的状态
+  // 新增：程序化添加素材到时间轴的状态 (not persisted - transient operation state)
   const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
     materials: MaterialItem[], 
     targetTrackId?: string, 
@@ -111,13 +128,92 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [videoCutModal, setVideoCutModal] = useState<{
     isOpen: boolean;
     material: MaterialItem | null;
-  }>({
+  }>(content?.uiState?.videoCutModal ?? {
     isOpen: false,
     material: null
   });
 
+  console.log('[VideoEditingInterface] Restoring UI state:', {
+    taskId,
+    hasContent: !!content,
+    timelineCurrentTime,
+    hasTimelineState: !!currentTimelineState,
+    isPolishModalOpen,
+    isScriptGenerationModalOpen,
+    isCreativeBrainstormingModalOpen,
+    isAIMixing,
+    aiMixingProgress,
+    isAIMixingModeModalOpen,
+    videoCutModalIsOpen: videoCutModal.isOpen,
+    timestamp: new Date().toISOString()
+  });
+
   // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
   const videoPlayerRef = useRef<VideoPlayerPanelRef>(null);
+
+  // Persist UI state to content whenever it changes
+  useEffect(() => {
+    if (!content) return;
+
+    const updatedContent: VideoEditingTaskContent = {
+      ...content,
+      uiState: {
+        timelineCurrentTime,
+        currentTimelineState,
+        isPolishModalOpen,
+        isScriptGenerationModalOpen,
+        scriptGenerationStartTime,
+        isCreativeBrainstormingModalOpen,
+        isAIMixing,
+        aiMixingProgress,
+        isAIMixingModeModalOpen,
+        videoCutModal,
+      },
+    };
+
+    // Only update if state actually changed to avoid infinite loops
+    const hasStateChanged = 
+      content.uiState?.timelineCurrentTime !== timelineCurrentTime ||
+      content.uiState?.isPolishModalOpen !== isPolishModalOpen ||
+      content.uiState?.isScriptGenerationModalOpen !== isScriptGenerationModalOpen ||
+      content.uiState?.scriptGenerationStartTime !== scriptGenerationStartTime ||
+      content.uiState?.isCreativeBrainstormingModalOpen !== isCreativeBrainstormingModalOpen ||
+      content.uiState?.isAIMixing !== isAIMixing ||
+      content.uiState?.aiMixingProgress !== aiMixingProgress ||
+      content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
+      JSON.stringify(content.uiState?.currentTimelineState) !== JSON.stringify(currentTimelineState) ||
+      JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal);
+
+    if (hasStateChanged) {
+      console.log('[VideoEditingInterface] Persisting UI state:', {
+        taskId,
+        timelineCurrentTime,
+        hasTimelineState: !!currentTimelineState,
+        isPolishModalOpen,
+        isScriptGenerationModalOpen,
+        isCreativeBrainstormingModalOpen,
+        isAIMixing,
+        aiMixingProgress,
+        isAIMixingModeModalOpen,
+        videoCutModalIsOpen: videoCutModal.isOpen,
+        timestamp: new Date().toISOString()
+      });
+      onUpdateContent(updatedContent);
+    }
+  }, [
+    timelineCurrentTime,
+    currentTimelineState,
+    isPolishModalOpen,
+    isScriptGenerationModalOpen,
+    scriptGenerationStartTime,
+    isCreativeBrainstormingModalOpen,
+    isAIMixing,
+    aiMixingProgress,
+    isAIMixingModeModalOpen,
+    videoCutModal,
+    taskId,
+    content
+  ]);
 
   // Mobile device detection effect - backup safety check
   useEffect(() => {
@@ -1097,6 +1193,112 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       timestamp: new Date().toISOString()
     });
   }, [taskId, materialManagement, timelineComposition, currentTimelineState]);
+
+  // 检测并导入来自Workflow的待处理时间轴数据
+  useEffect(() => {
+    if (content?.pendingTimelineData) {
+      console.log('[VideoEditingInterface] Detected pending timeline data from Workflow, importing...', {
+        taskId,
+        hasTimelineData: !!content.pendingTimelineData,
+        tracksCount: content.pendingTimelineData?.tracks?.length || 0,
+        timestamp: new Date().toISOString()
+      });
+
+      // 规范化时间轴数据，确保所有必需字段都存在
+      const normalizedTimelineData: TimelineState = {
+        currentTime: content.pendingTimelineData.currentTime || 0,
+        totalDuration: content.pendingTimelineData.totalDuration || 0,
+        zoomLevel: content.pendingTimelineData.zoomLevel || 1.0,
+        selectedItems: content.pendingTimelineData.selectedItems || [],
+        tracks: content.pendingTimelineData.tracks || [],
+        playbackRate: content.pendingTimelineData.playbackRate || 1.0,
+        isPlaying: content.pendingTimelineData.isPlaying || false,
+        snapToGrid: content.pendingTimelineData.snapToGrid !== undefined ? content.pendingTimelineData.snapToGrid : true,
+        gridSize: content.pendingTimelineData.gridSize || 1.0,
+        scrollLeft: content.pendingTimelineData.scrollLeft || 0
+      };
+
+      console.log('[VideoEditingInterface] Normalized timeline data:', {
+        currentTime: normalizedTimelineData.currentTime,
+        totalDuration: normalizedTimelineData.totalDuration,
+        tracksCount: normalizedTimelineData.tracks.length,
+        selectedItemsCount: normalizedTimelineData.selectedItems.length
+      });
+
+      // 使用handleImportComplete来导入时间轴数据
+      // 传入空的materials数组，因为时间轴数据本身包含了素材引用
+      // isAIMixedEditing设为false，让系统正常处理素材
+      handleImportComplete([], normalizedTimelineData, false);
+
+      // 清除pending标记，避免重复导入
+      const updatedContent: VideoEditingTaskContent = {
+        ...content,
+        pendingTimelineData: undefined
+      };
+      onUpdateContent(updatedContent);
+
+      console.log('[VideoEditingInterface] Pending timeline data imported and cleared', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [content?.pendingTimelineData, taskId, onUpdateContent, handleImportComplete]);
+
+  // 检测并导入来自Workflow Video Export的待处理素材数据
+  useEffect(() => {
+    if (content?.pendingMaterials && content.pendingMaterials.length > 0) {
+      console.log('[VideoEditingInterface] Detected pending materials from Video Export, importing...', {
+        taskId,
+        materialsCount: content.pendingMaterials.length,
+        timestamp: new Date().toISOString()
+      });
+
+      // 获取现有素材
+      const existingMaterials = materialManagement.materials;
+      const existingUrls = new Set(existingMaterials.map(m => m.url));
+
+      // 过滤掉已存在的素材（根据URL去重）
+      const newMaterials = content.pendingMaterials.filter(m => !existingUrls.has(m.url));
+
+      console.log('[VideoEditingInterface] Filtering pending materials:', {
+        totalPending: content.pendingMaterials.length,
+        existingCount: existingMaterials.length,
+        newCount: newMaterials.length,
+        timestamp: new Date().toISOString()
+      });
+
+      // 如果有新素材，添加到素材管理
+      if (newMaterials.length > 0) {
+        newMaterials.forEach(material => {
+          materialManagement.addOrReplaceMaterial(material);
+        });
+
+        console.log('[VideoEditingInterface] Imported new materials from Video Export:', {
+          importedCount: newMaterials.length,
+          totalMaterialsNow: existingMaterials.length + newMaterials.length,
+          timestamp: new Date().toISOString()
+        });
+
+        // 显示成功提示
+        showSuccess(`成功导入 ${newMaterials.length} 个视频素材到素材管理面板`);
+      } else {
+        console.log('[VideoEditingInterface] No new materials to import (all already exist)');
+        showSuccess('素材已存在，无需重复导入');
+      }
+
+      // 清除pending标记，避免重复导入
+      const updatedContent: VideoEditingTaskContent = {
+        ...content,
+        pendingMaterials: undefined
+      };
+      onUpdateContent(updatedContent);
+
+      console.log('[VideoEditingInterface] Pending materials imported and cleared', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }, [content?.pendingMaterials, taskId, onUpdateContent, materialManagement, showSuccess]);
 
   // 新增：处理图片叠加位置变化
   const handleImagePositionChange = useCallback((itemId: string, position: ImagePosition) => {

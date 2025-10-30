@@ -119,7 +119,8 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
               <button
                 onClick={handlePolishClick}
                 className="flex items-center justify-center w-8 h-8 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 hover:border-purple-300 transition-all duration-200 group"
-                title="智能润色当前文档内容"
+                title={t.documentPanel.polishContent}
+                aria-label={t.documentPanel.polishContentAriaLabel}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -133,7 +134,8 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
                 onClick={handleGenerateScriptClick}
                 disabled={isGeneratingScript}
                 className="flex items-center justify-center w-8 h-8 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 group"
-                title={isGeneratingScript ? "脚本生成中..." : "根据当前文档内容生成视频脚本"}
+                title={isGeneratingScript ? t.documentPanel.generatingScript : t.documentPanel.generateScript}
+                aria-label={t.documentPanel.generateScriptAriaLabel}
               >
                 {isGeneratingScript ? (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">

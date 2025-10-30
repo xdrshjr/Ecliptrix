@@ -8,9 +8,10 @@ import { copyToClipboard, showCopyFeedback } from '@/lib/clipboard';
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  onNavigateToVideoEditing?: (materials: any[]) => void;
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVideoEditing }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [showCopySuccess, setShowCopySuccess] = useState(false);
@@ -53,6 +54,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
         executionState={message.workflowExecution.executionState}
         finalResult={message.content}
         isComplete={!message.isStreaming}
+        onNavigateToVideoEditing={onNavigateToVideoEditing}
       />
     );
   }

@@ -55,6 +55,12 @@ export interface Conversation {
 export interface ChatTaskContent {
   conversations: Conversation[];
   activeConversationId: string | null;
+  // UI state preservation
+  uiState?: {
+    isLoading?: boolean;
+    isChatTypeModalOpen?: boolean;
+    hasAutoInitialized?: boolean; // Track if auto-initialization has occurred
+  };
 }
 
 // Workflow related types
@@ -177,12 +183,59 @@ export interface ResultsCombineNodeConfig {
   outputSchema?: string; // JSON schema for the standardized output format
 }
 
+// AI Video Generate Node Configuration
+export interface AIVideoGenerateNodeConfig {
+  // Input data from different sources (all optional)
+  textInput?: string;      // Text/script input
+  videoInput?: string;     // Video input (URL or JSON)
+  audioInput?: string;     // Audio input (URL or JSON)
+  imageInput?: string;     // Image input (URL or JSON)
+  
+  // Input formats for each type
+  textInputFormat?: DataFormat;
+  videoInputFormat?: DataFormat;
+  audioInputFormat?: DataFormat;
+  imageInputFormat?: DataFormat;
+  
+  // LLM configuration (uses VIDEO_CUT_LLM_* from backend)
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  
+  // Output configuration
+  outputFormat?: DataFormat; // Always outputs timeline JSON format
+  
+  // Execution result
+  lastExecutionResult?: any; // Stores the last execution result for debugging
+  lastExecutionTime?: string; // Timestamp of last execution
+  lastExecutionSuccess?: boolean; // Whether last execution was successful
+  lastExecutionError?: string; // Error message if execution failed
+}
+
+// Video Export Node Configuration
+export interface VideoExportNodeConfig {
+  // Input: video URLs (can be string or array)
+  videoUrls?: string | string[];
+  
+  // Input format
+  inputFormat?: DataFormat;
+  
+  // Output format - always outputs materials data for Video Editing
+  outputFormat?: DataFormat;
+  
+  // Execution result
+  lastExecutionResult?: any; // Stores the materials data after conversion
+  lastExecutionTime?: string; // Timestamp of last execution
+  lastExecutionSuccess?: boolean; // Whether last execution was successful
+  lastExecutionError?: string; // Error message if execution failed
+}
+
 export interface WorkflowNodeData {
   label: string;
   type: string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | EndNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig | Record<string, any>;
+  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | EndNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig | AIVideoGenerateNodeConfig | VideoExportNodeConfig | Record<string, any>;
 }
 
 export interface WorkflowNode {
@@ -247,6 +300,16 @@ export interface WorkflowTaskContent {
     data: WorkflowData;
   }[];
   executionState?: WorkflowExecutionState;
+  // UI state preservation
+  uiState?: {
+    activeRightTab?: 'chat' | 'workflow'; // Current active tab (chat or workflow)
+    workflowChatStates?: Record<string, {
+      messages: any[];
+      contextCleared: boolean;
+    }>; // Chat state for each workflow
+    isSaving?: boolean;
+    hasAutoLoaded?: boolean; // Track if auto-load from database has occurred
+  };
 }
 
 // Video Editing related types
@@ -272,6 +335,24 @@ export interface VideoEditingTaskContent {
   lastModified: Date;
   scriptSegments?: ScriptSegment[]; // 文本脚本片段数据
   materials?: MaterialItem[]; // 素材数据
+  pendingTimelineData?: any; // 待导入的时间轴数据（从Workflow AI Video Generate节点）
+  pendingMaterials?: MaterialItem[]; // 待导入的素材数据（从Workflow Video Export节点）
+  // UI state preservation
+  uiState?: {
+    timelineCurrentTime?: number;
+    currentTimelineState?: any; // TimelineState
+    isPolishModalOpen?: boolean;
+    isScriptGenerationModalOpen?: boolean;
+    scriptGenerationStartTime?: number | null;
+    isCreativeBrainstormingModalOpen?: boolean;
+    isAIMixing?: boolean;
+    aiMixingProgress?: number;
+    isAIMixingModeModalOpen?: boolean;
+    videoCutModal?: {
+      isOpen: boolean;
+      material: any | null; // MaterialItem
+    };
+  };
 }
 
 // Script Generation Configuration

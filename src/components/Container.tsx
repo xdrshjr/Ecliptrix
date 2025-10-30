@@ -11,9 +11,12 @@ interface ContainerProps {
   activeTask: Task | null;
   onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
   onChatModalStateChange?: (isOpen: boolean) => void;
+  tasks?: Task[];
+  tabs?: any[];
+  onSelectTab?: (tabId: string) => void;
 }
 
-const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange }) => {
+const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, tasks, tabs, onSelectTab }) => {
   const { t } = useLocale();
 
   const handleUpdateVideoEditingContent = (content: VideoEditingTaskContent) => {
@@ -43,6 +46,128 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
         updatedAt: new Date(),
         status: 'active' as const,
       });
+    }
+  };
+
+  // 处理从Workflow导航到Video Editing (timeline data)
+  const handleNavigateToVideoEditing = (timelineData: any) => {
+    console.log('[Container] Navigating to Video Editing with timeline data:', {
+      hasTimelineData: !!timelineData,
+      tracksCount: timelineData?.tracks?.length || 0,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!tasks || !tabs || !onSelectTab || !onUpdateTask) {
+      console.warn('[Container] Missing required props for navigation:', {
+        hasTasks: !!tasks,
+        hasTabs: !!tabs,
+        hasOnSelectTab: !!onSelectTab,
+        hasOnUpdateTask: !!onUpdateTask
+      });
+      return;
+    }
+
+    // 1. 查找Video Editing任务
+    const videoTask = tasks.find(t => t.type === 'video');
+    
+    if (!videoTask) {
+      console.error('[Container] No Video Editing task found');
+      return;
+    }
+
+    console.log('[Container] Found Video Editing task:', {
+      taskId: videoTask.id,
+      taskTitle: videoTask.title
+    });
+
+    // 2. 更新Video Editing任务的content，添加待导入的时间轴数据
+    const currentContent = videoTask.content as VideoEditingTaskContent | null;
+    const updatedContent: VideoEditingTaskContent = {
+      markdownContent: currentContent?.markdownContent || '',
+      lastModified: new Date(),
+      scriptSegments: currentContent?.scriptSegments || [],
+      materials: currentContent?.materials || [],
+      pendingTimelineData: timelineData
+    };
+
+    onUpdateTask(videoTask.id, {
+      content: updatedContent
+    });
+
+    console.log('[Container] Updated Video Editing task with pending timeline data');
+
+    // 3. 切换到Video Editing标签页
+    const videoTab = tabs.find(t => t.taskId === videoTask.id);
+    if (videoTab) {
+      onSelectTab(videoTab.id);
+      console.log('[Container] Switched to Video Editing tab:', {
+        tabId: videoTab.id,
+        tabTitle: videoTab.title
+      });
+    } else {
+      console.error('[Container] No tab found for Video Editing task');
+    }
+  };
+
+  // 处理从Chat/Workflow导航到Video Editing (materials from Video Export node)
+  const handleNavigateToVideoEditingWithMaterials = (materials: any[]) => {
+    console.log('[Container] Navigating to Video Editing with materials from Video Export:', {
+      materialsCount: materials.length,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!tasks || !tabs || !onSelectTab || !onUpdateTask) {
+      console.warn('[Container] Missing required props for navigation:', {
+        hasTasks: !!tasks,
+        hasTabs: !!tabs,
+        hasOnSelectTab: !!onSelectTab,
+        hasOnUpdateTask: !!onUpdateTask
+      });
+      return;
+    }
+
+    // 1. 查找Video Editing任务
+    const videoTask = tasks.find(t => t.type === 'video');
+    
+    if (!videoTask) {
+      console.error('[Container] No Video Editing task found');
+      return;
+    }
+
+    console.log('[Container] Found Video Editing task:', {
+      taskId: videoTask.id,
+      taskTitle: videoTask.title
+    });
+
+    // 2. 设置待导入的素材（不直接合并，等任务加载完成后再导入）
+    const currentContent = videoTask.content as VideoEditingTaskContent | null;
+    const updatedContent: VideoEditingTaskContent = {
+      markdownContent: currentContent?.markdownContent || '',
+      lastModified: new Date(),
+      scriptSegments: currentContent?.scriptSegments || [],
+      materials: currentContent?.materials || [],
+      pendingTimelineData: currentContent?.pendingTimelineData,
+      pendingMaterials: materials  // 设置待导入的素材
+    };
+
+    onUpdateTask(videoTask.id, {
+      content: updatedContent
+    });
+
+    console.log('[Container] Set pending materials for Video Editing task:', {
+      pendingMaterialsCount: materials.length
+    });
+
+    // 3. 切换到Video Editing标签页（任务加载完成后会自动导入素材）
+    const videoTab = tabs.find(t => t.taskId === videoTask.id);
+    if (videoTab) {
+      onSelectTab(videoTab.id);
+      console.log('[Container] Switched to Video Editing tab:', {
+        tabId: videoTab.id,
+        tabTitle: videoTab.title
+      });
+    } else {
+      console.error('[Container] No tab found for Video Editing task');
     }
   };
 
@@ -125,6 +250,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
           taskId={activeTask.id}
           content={activeTask.content as WorkflowTaskContent | null}
           onUpdateContent={handleUpdateWorkflowContent}
+          onNavigateToVideoEditing={handleNavigateToVideoEditing}
         />
       </div>
     );
@@ -139,6 +265,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
           content={activeTask.content as ChatTaskContent | null}
           onUpdateContent={handleUpdateChatContent}
           onModalStateChange={onChatModalStateChange}
+          onNavigateToVideoEditing={handleNavigateToVideoEditingWithMaterials}
         />
       </div>
     );

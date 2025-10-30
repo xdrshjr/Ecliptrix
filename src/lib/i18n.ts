@@ -458,6 +458,11 @@ export interface Translations {
     title: string;
     creativeBrainstorming: string;
     creativeBrainstormingAriaLabel: string;
+    polishContent: string;
+    polishContentAriaLabel: string;
+    generateScript: string;
+    generatingScript: string;
+    generateScriptAriaLabel: string;
     placeholder: string;
   };
   defaultContent: {
@@ -936,12 +941,17 @@ export const translations: Record<string, Translations> = {
          },
        },
      },
-     documentPanel: {
-       title: 'Documentation',
-       creativeBrainstorming: 'Brainstorming',
-       creativeBrainstormingAriaLabel: 'Start creative brainstorming',
-       placeholder: 'Start writing your video project documentation...',
-     },
+    documentPanel: {
+      title: 'Documentation',
+      creativeBrainstorming: 'Brainstorming',
+      creativeBrainstormingAriaLabel: 'Start creative brainstorming',
+      polishContent: 'Polish current document content with AI',
+      polishContentAriaLabel: 'Polish document content',
+      generateScript: 'Generate video script from current document',
+      generatingScript: 'Generating script...',
+      generateScriptAriaLabel: 'Generate script',
+      placeholder: 'Start writing your video project documentation...',
+    },
      defaultContent: {
        documentDefault: '# Video Editing Project\n\nStart editing your video project documentation here...\n\n## Notes\n- Add your project notes\n- Document your editing workflow\n- Track your progress\n\n## Resources\n- List your video assets\n- Note important timestamps\n- Reference materials',
        scriptSegments: {
@@ -1431,12 +1441,17 @@ export const translations: Record<string, Translations> = {
          },
        },
      },
-     documentPanel: {
-       title: '文档编辑',
-       creativeBrainstorming: '创意构思',
-       creativeBrainstormingAriaLabel: '开启创意构思',
-       placeholder: '开始编写您的视频项目文档...',
-     },
+    documentPanel: {
+      title: '文档编辑',
+      creativeBrainstorming: '创意构思',
+      creativeBrainstormingAriaLabel: '开启创意构思',
+      polishContent: '智能润色当前文档内容',
+      polishContentAriaLabel: '润色文档内容',
+      generateScript: '根据当前文档内容生成视频脚本',
+      generatingScript: '脚本生成中...',
+      generateScriptAriaLabel: '生成脚本',
+      placeholder: '开始编写您的视频项目文档...',
+    },
      defaultContent: {
        documentDefault: '# 视频编辑项目\n\n开始编辑您的视频项目文档...\n\n## 笔记\n- 添加您的项目笔记\n- 记录您的编辑工作流程\n- 跟踪您的进度\n\n## 资源\n- 列出您的视频素材\n- 记录重要时间戳\n- 参考资料',
        scriptSegments: {

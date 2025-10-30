@@ -302,6 +302,14 @@ app.include_router(chat_router.router, prefix="/api")
 from app.routers import ai_mixed_editing_router
 app.include_router(ai_mixed_editing_router.router, prefix="/api")
 
+# Import and include AI Video Generate router
+from app.routers import ai_video_generate_router
+app.include_router(ai_video_generate_router.router)
+
+# Import and include Video Export router
+from app.routers import video_export_router
+app.include_router(video_export_router.router)
+
 # Import and include Authentication router
 from app.routers import auth_router
 app.include_router(auth_router.router, prefix="/api")

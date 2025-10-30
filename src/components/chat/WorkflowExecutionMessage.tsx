@@ -9,6 +9,7 @@ interface WorkflowExecutionMessageProps {
   executionState?: WorkflowExecutionState;
   finalResult?: string;
   isComplete: boolean;
+  onNavigateToVideoEditing?: (materials: any[]) => void;
 }
 
 /**
@@ -23,6 +24,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
   executionState,
   finalResult,
   isComplete,
+  onNavigateToVideoEditing,
 }) => {
   console.log('[WorkflowExecutionMessage] Rendering:', {
     workflowName,
@@ -61,6 +63,44 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
     return order;
   }, [executionState]);
 
+  // Check if Video Export node was executed and extract materials
+  const videoExportMaterials = useMemo(() => {
+    if (!executionState || !isComplete) return null;
+
+    // Find Video Export node execution
+    const videoExportLog = executionState.logs.find(
+      log => log.level === 'success' && 
+             log.message.includes('Successfully exported') && 
+             log.message.includes('video(s) to materials')
+    );
+
+    if (!videoExportLog || !videoExportLog.nodeId) return null;
+
+    // Get the node state which contains the materials data
+    const nodeState = executionState.nodeStates[videoExportLog.nodeId];
+    if (!nodeState?.output?.materials || !Array.isArray(nodeState.output.materials)) {
+      return null;
+    }
+
+    console.log('[WorkflowExecutionMessage] Video Export detected:', {
+      nodeId: videoExportLog.nodeId,
+      materialsCount: nodeState.output.materials.length,
+      materials: nodeState.output.materials
+    });
+
+    return nodeState.output.materials;
+  }, [executionState, isComplete]);
+
+  // Handle navigation to Video Editing
+  const handleNavigateToVideoEditing = () => {
+    if (videoExportMaterials && onNavigateToVideoEditing) {
+      console.log('[WorkflowExecutionMessage] Navigating to Video Editing with materials:', {
+        materialsCount: videoExportMaterials.length
+      });
+      onNavigateToVideoEditing(videoExportMaterials);
+    }
+  };
+
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] w-full space-y-3">
@@ -95,6 +135,24 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
               <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
                 {finalResult}
               </div>
+              
+              {/* Export Clip Button - Show when Video Export node was executed */}
+              {videoExportMaterials && videoExportMaterials.length > 0 && onNavigateToVideoEditing && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={handleNavigateToVideoEditing}
+                    className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 transform hover:scale-[1.02] flex items-center justify-center space-x-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span>导出剪辑 ({videoExportMaterials.length} 个视频素材)</span>
+                  </button>
+                  <p className="text-xs text-gray-500 text-center mt-2">
+                    点击将视频素材导入到 Video Editing 任务的素材管理面板
+                  </p>
+                </div>
+              )}
             </div>
             
             {/* Timestamp */}

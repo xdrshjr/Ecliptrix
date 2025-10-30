@@ -359,6 +359,14 @@ export class WorkflowExecutor {
           output = await this.executeResultsCombineNode(node, convertedInput);
           break;
         
+        case 'ai-video-generate':
+          output = await this.executeAIVideoGenerateNode(node, convertedInput);
+          break;
+        
+        case 'video-export':
+          output = await this.executeVideoExportNode(node, convertedInput);
+          break;
+        
         case 'end':
           output = await this.executeEndNode(node, convertedInput);
           break;
@@ -1410,6 +1418,208 @@ export class WorkflowExecutor {
       this.addLog('error', node.id, 'Failed to search Pexels videos', { 
         error: error.message,
         keywords: keywordsArray
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Execute AI Video Generate node
+   */
+  private async executeAIVideoGenerateNode(node: WorkflowNode, input: any): Promise<any> {
+    console.log('[WorkflowExecutor] Executing AI Video Generate node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const config = node.data.config as any;
+      
+      // Prepare inputs from node configuration
+      const inputs = {
+        textInput: config?.textInput || '',
+        videoInput: config?.videoInput || '',
+        audioInput: config?.audioInput || '',
+        imageInput: config?.imageInput || '',
+        textInputFormat: config?.textInputFormat || 'text/plain',
+        videoInputFormat: config?.videoInputFormat || 'text/plain',
+        audioInputFormat: config?.audioInputFormat || 'text/plain',
+        imageInputFormat: config?.imageInputFormat || 'text/plain',
+      };
+
+      // If there's input from previous node, merge it into textInput
+      if (input) {
+        if (typeof input === 'string') {
+          inputs.textInput = input;
+        } else if (typeof input === 'object') {
+          inputs.textInput = JSON.stringify(input, null, 2);
+          inputs.textInputFormat = 'application/json';
+        }
+      }
+
+      // Validate that at least one input is provided
+      if (!inputs.textInput && !inputs.videoInput && !inputs.audioInput && !inputs.imageInput) {
+        throw new Error('At least one input is required for AI Video Generate node');
+      }
+
+      this.addLog('info', node.id, 'Calling AI Video Generate API', {
+        hasText: !!inputs.textInput,
+        hasVideo: !!inputs.videoInput,
+        hasAudio: !!inputs.audioInput,
+        hasImage: !!inputs.imageInput,
+      });
+
+      // Call AI Video Generate API
+      const response = await fetch('/api/workflow/ai-video-generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nodeId: node.id,
+          taskId: 'workflow-execution',
+          inputs,
+          config: {
+            systemPrompt: config?.systemPrompt,
+            temperature: config?.temperature,
+            maxTokens: config?.maxTokens,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API call failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'AI Video Generate failed');
+      }
+
+      console.log('[WorkflowExecutor] AI Video Generate completed successfully', {
+        nodeId: node.id,
+        hasTimelineData: !!result.timelineData,
+      });
+
+      this.addLog('success', node.id, 'AI Video Generate completed successfully', {
+        tracksCount: result.timelineData?.tracks?.length || 0,
+      });
+
+      // Return the timeline data
+      return {
+        success: true,
+        timelineData: result.timelineData,
+        message: 'Video timeline generated successfully',
+      };
+
+    } catch (error: any) {
+      console.error('[WorkflowExecutor] AI Video Generate failed:', error);
+      this.addLog('error', node.id, 'Failed to generate video timeline', { 
+        error: error.message 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Execute Video Export node
+   */
+  private async executeVideoExportNode(node: WorkflowNode, input: any): Promise<any> {
+    console.log('[WorkflowExecutor] Executing Video Export node', { 
+      nodeId: node.id,
+      input,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const config = node.data.config as any;
+      
+      // Get video URLs from either input or config
+      let videoUrls: string | string[] = input || config?.videoUrls || '';
+
+      // If input is provided, prioritize it
+      if (input) {
+        if (typeof input === 'string') {
+          videoUrls = input;
+        } else if (Array.isArray(input)) {
+          videoUrls = input;
+        } else if (typeof input === 'object' && input.videoUrls) {
+          videoUrls = input.videoUrls;
+        } else {
+          // Try to extract URLs from object
+          videoUrls = JSON.stringify(input);
+        }
+      }
+
+      // Validate that we have video URLs
+      if (!videoUrls || (Array.isArray(videoUrls) && videoUrls.length === 0) || 
+          (typeof videoUrls === 'string' && !videoUrls.trim())) {
+        throw new Error('Video URLs are required for Video Export node');
+      }
+
+      // Convert to array for logging
+      const urlsArray = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
+      
+      this.addLog('info', node.id, `Exporting ${urlsArray.length} video(s) to materials`, {
+        videoCount: urlsArray.length,
+        videoUrls: urlsArray,
+      });
+
+      // Call Video Export API
+      const response = await fetch('/api/workflow/video-export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nodeId: node.id,
+          taskId: 'workflow-execution',
+          inputs: {
+            videoUrls,
+            inputFormat: config?.inputFormat || 'array',
+          },
+          config: {
+            videoUrls,
+            inputFormat: config?.inputFormat || 'array',
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API call failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Video Export failed');
+      }
+
+      console.log('[WorkflowExecutor] Video Export completed successfully', {
+        nodeId: node.id,
+        materialsCount: result.materials?.length || 0,
+      });
+
+      this.addLog('success', node.id, `Successfully exported ${result.materials?.length || 0} video(s) to materials`, {
+        materialsCount: result.materials?.length || 0,
+        materials: result.materials,
+      });
+
+      // Return the materials data
+      return {
+        success: true,
+        materials: result.materials,
+        message: `Exported ${result.materials?.length || 0} video(s) to materials`,
+      };
+
+    } catch (error: any) {
+      console.error('[WorkflowExecutor] Video Export failed:', error);
+      this.addLog('error', node.id, 'Failed to export videos to materials', { 
+        error: error.message 
       });
       throw error;
     }

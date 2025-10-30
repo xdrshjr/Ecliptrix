@@ -12,6 +12,7 @@ interface ChatInterfaceProps {
   content: ChatTaskContent | null;
   onUpdateContent: (content: ChatTaskContent) => void;
   onModalStateChange?: (isOpen: boolean) => void;
+  onNavigateToVideoEditing?: (materials: any[]) => void;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -19,16 +20,59 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   content,
   onUpdateContent,
   onModalStateChange,
+  onNavigateToVideoEditing,
 }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isChatTypeModalOpen, setIsChatTypeModalOpen] = useState(false);
-  const hasAutoInitialized = useRef(false);
-
   // Initialize content if null
   const chatContent: ChatTaskContent = content || {
     conversations: [],
     activeConversationId: null,
+    uiState: {},
   };
+
+  // Restore UI state from content or use defaults
+  const [isLoading, setIsLoading] = useState(chatContent.uiState?.isLoading ?? false);
+  const [isChatTypeModalOpen, setIsChatTypeModalOpen] = useState(chatContent.uiState?.isChatTypeModalOpen ?? false);
+  const hasAutoInitialized = useRef(chatContent.uiState?.hasAutoInitialized ?? false);
+
+  console.log('[ChatInterface] Initializing/Restoring state:', {
+    taskId,
+    hasContent: !!content,
+    conversationsCount: chatContent.conversations.length,
+    activeConversationId: chatContent.activeConversationId,
+    hasAutoInitialized: hasAutoInitialized.current,
+    isLoading,
+    isChatTypeModalOpen,
+    timestamp: new Date().toISOString()
+  });
+
+  // Persist UI state to content whenever it changes
+  useEffect(() => {
+    const updatedContent: ChatTaskContent = {
+      ...chatContent,
+      uiState: {
+        isLoading,
+        isChatTypeModalOpen,
+        hasAutoInitialized: hasAutoInitialized.current,
+      },
+    };
+    
+    // Only update if state actually changed to avoid infinite loops
+    const hasStateChanged = 
+      chatContent.uiState?.isLoading !== isLoading ||
+      chatContent.uiState?.isChatTypeModalOpen !== isChatTypeModalOpen ||
+      chatContent.uiState?.hasAutoInitialized !== hasAutoInitialized.current;
+
+    if (hasStateChanged) {
+      console.log('[ChatInterface] Persisting UI state:', {
+        taskId,
+        isLoading,
+        isChatTypeModalOpen,
+        hasAutoInitialized: hasAutoInitialized.current,
+        timestamp: new Date().toISOString()
+      });
+      onUpdateContent(updatedContent);
+    }
+  }, [isLoading, isChatTypeModalOpen, taskId]);
 
   const handleNewChatClick = useCallback(() => {
     console.log('[ChatInterface] New Chat button clicked, opening chat type selection modal');
@@ -152,6 +196,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const initialContent: ChatTaskContent = {
         conversations: [defaultConversation],
         activeConversationId: conversationId,
+        uiState: {
+          isLoading: false,
+          isChatTypeModalOpen: false,
+          hasAutoInitialized: true, // Mark as initialized
+        },
       };
 
       onUpdateContent(initialContent);
@@ -550,6 +599,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onSendMessage={handleSendMessage}
           onClearMessages={handleClearMessages}
           isLoading={isLoading}
+          onNavigateToVideoEditing={onNavigateToVideoEditing}
         />
       </div>
 

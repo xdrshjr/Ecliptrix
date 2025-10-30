@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, VolcanoTTSNodeConfig, ToArrayNodeConfig, ResultsCombineNodeConfig, WorkflowNodeExecutionState } from '@/types';
+import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, VolcanoTTSNodeConfig, ToArrayNodeConfig, ResultsCombineNodeConfig, AIVideoGenerateNodeConfig, VideoExportNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
@@ -11,6 +11,8 @@ import TavilySearchNode from './nodes/TavilySearchNode';
 import VolcanoTTSNode from './nodes/VolcanoTTSNode';
 import ToArrayNode from './nodes/ToArrayNode';
 import ResultsCombineNode from './nodes/ResultsCombineNode';
+import AIVideoGenerateNode from './nodes/AIVideoGenerateNode';
+import VideoExportNode from './nodes/VideoExportNode';
 import ChatLLMConfigPanel from './ChatLLMConfigPanel';
 import TextInputConfigPanel from './TextInputConfigPanel';
 import StartNodeConfigPanel from './StartNodeConfigPanel';
@@ -19,6 +21,8 @@ import TavilySearchConfigPanel from './TavilySearchConfigPanel';
 import VolcanoTTSConfigPanel from './VolcanoTTSConfigPanel';
 import ToArrayConfigPanel from './ToArrayConfigPanel';
 import ResultsCombineConfigPanel from './ResultsCombineConfigPanel';
+import AIVideoGenerateConfigPanel from './AIVideoGenerateConfigPanel';
+import VideoExportConfigPanel from './VideoExportConfigPanel';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -435,6 +439,72 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setContextMenu({ visible: false, x: 0, y: 0 });
   }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
 
+  // Add AI Video Generate node
+  const handleAddAIVideoGenerateNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'ai-video-generate',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'AI Video Generate',
+        type: 'ai-video-generate',
+        config: {
+          textInput: '',
+          videoInput: '',
+          audioInput: '',
+          imageInput: '',
+          textInputFormat: 'text/plain',
+          videoInputFormat: 'text/plain',
+          audioInputFormat: 'text/plain',
+          imageInputFormat: 'text/plain',
+          temperature: 0.7,
+          maxTokens: 2000,
+          outputFormat: 'application/json',
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new AI Video Generate node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
+  // Add Video Export node
+  const handleAddVideoExportNode = useCallback(() => {
+    const newNode: WorkflowNode = {
+      id: `node-${Date.now()}`,
+      type: 'video-export',
+      position: {
+        x: contextMenu.x / scale - canvasOffset.x,
+        y: contextMenu.y / scale - canvasOffset.y,
+      },
+      data: {
+        label: 'Video Export',
+        type: 'video-export',
+        config: {
+          videoUrls: '',
+          inputFormat: 'array',
+          outputFormat: 'application/json',
+        },
+      },
+    };
+
+    console.log('[WorkflowCanvas] Adding new Video Export node:', {
+      nodeId: newNode.id,
+      position: newNode.position
+    });
+
+    onNodesChange([...nodes, newNode]);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  }, [contextMenu, nodes, onNodesChange, scale, canvasOffset]);
+
   // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
@@ -460,7 +530,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
-    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search' || node.type === 'volcano-tts' || node.type === 'to-array' || node.type === 'results-combine')) {
+    if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search' || node.type === 'volcano-tts' || node.type === 'to-array' || node.type === 'results-combine' || node.type === 'ai-video-generate' || node.type === 'video-export')) {
       console.log('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
@@ -470,7 +540,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [nodes]);
 
   // Handle config save
-  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig) => {
+  const handleConfigSave = useCallback((config: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig | AIVideoGenerateNodeConfig | VideoExportNodeConfig) => {
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
@@ -1108,6 +1178,26 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   executionStatus={nodeExecutionStates[node.id]?.status}
                 />
               )}
+              {node.type === 'ai-video-generate' && (
+                <AIVideoGenerateNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
+              {node.type === 'video-export' && (
+                <VideoExportNode
+                  id={node.id}
+                  data={node.data}
+                  selected={selectedNodeId === node.id}
+                  onDelete={() => handleDeleteNode(node.id)}
+                  onPortMouseDown={handlePortMouseDown}
+                  executionStatus={nodeExecutionStates[node.id]?.status}
+                />
+              )}
             </div>
           );
         })}
@@ -1220,6 +1310,29 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
               <span className="text-sm text-gray-700">Add Results Combine</span>
+            </button>
+            
+            <div className="h-px bg-gray-200 my-1" />
+            
+            <button
+              onClick={handleAddAIVideoGenerateNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="text-sm text-gray-700">Add AI Video Generate</span>
+            </button>
+            
+            <button
+              onClick={handleAddVideoExportNode}
+              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+            >
+              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <span className="text-sm text-gray-700">Add Video Export</span>
             </button>
           </div>
         )}
@@ -1412,6 +1525,30 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               nodeId={configPanelNodeId}
               config={(node.data.config as ResultsCombineNodeConfig) || {}}
               onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // AI Video Generate Config Panel
+        if (node.type === 'ai-video-generate') {
+          return (
+            <AIVideoGenerateConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as AIVideoGenerateNodeConfig) || {}}
+              onSave={handleConfigSave}
+              onClose={handleConfigPanelClose}
+            />
+          );
+        }
+        
+        // Video Export Config Panel
+        if (node.type === 'video-export') {
+          return (
+            <VideoExportConfigPanel
+              nodeId={configPanelNodeId}
+              config={(node.data.config as VideoExportNodeConfig) || {}}
+              onConfigChange={handleConfigSave}
               onClose={handleConfigPanelClose}
             />
           );

@@ -15,6 +15,7 @@ from . import timeline_export_router
 from . import timeline_import_router
 from . import chat_router
 from . import ai_mixed_editing_router
+from . import ai_video_generate_router
 from . import auth_router
 from . import user_router
 
@@ -32,6 +33,7 @@ __all__ = [
     "timeline_import_router",
     "chat_router",
     "ai_mixed_editing_router",
+    "ai_video_generate_router",
     "auth_router",
     "user_router"
 ] 

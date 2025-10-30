@@ -9,6 +9,7 @@ interface ChatWindowProps {
   onSendMessage: (message: string) => void;
   onClearMessages: () => void;
   isLoading: boolean;
+  onNavigateToVideoEditing?: (materials: any[]) => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -16,6 +17,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onSendMessage,
   onClearMessages,
   isLoading,
+  onNavigateToVideoEditing,
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -309,7 +311,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         ) : (
           conversation.messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+            <MessageBubble 
+              key={message.id} 
+              message={message}
+              onNavigateToVideoEditing={onNavigateToVideoEditing}
+            />
           ))
         )}
         <div ref={messagesEndRef} />
