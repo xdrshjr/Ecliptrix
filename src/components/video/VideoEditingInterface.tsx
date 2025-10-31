@@ -48,6 +48,8 @@ import {
   AIMixingProgressModal,
   AIMixingModeSelectionModal
 } from './components';
+import { VideoChatWindow } from './components/VideoChatWindow';
+import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
 
@@ -133,6 +135,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     material: null
   });
 
+  // 聊天状态管理
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(
+    content?.uiState?.isChatLoading ?? false
+  );
+  const hasAutoChatInitialized = useRef(content?.uiState?.hasAutoChatInitialized ?? false);
+
   console.log('[VideoEditingInterface] Restoring UI state:', {
     taskId,
     hasContent: !!content,
@@ -168,6 +176,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         aiMixingProgress,
         isAIMixingModeModalOpen,
         videoCutModal,
+        isChatLoading,
+        hasAutoChatInitialized: hasAutoChatInitialized.current,
       },
     };
 
@@ -181,6 +191,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.isAIMixing !== isAIMixing ||
       content.uiState?.aiMixingProgress !== aiMixingProgress ||
       content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
+      content.uiState?.isChatLoading !== isChatLoading ||
+      content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
       JSON.stringify(content.uiState?.currentTimelineState) !== JSON.stringify(currentTimelineState) ||
       JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal);
 
@@ -196,6 +208,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         aiMixingProgress,
         isAIMixingModeModalOpen,
         videoCutModalIsOpen: videoCutModal.isOpen,
+        isChatLoading,
+        hasAutoChatInitialized: hasAutoChatInitialized.current,
         timestamp: new Date().toISOString()
       });
       onUpdateContent(updatedContent);
@@ -211,6 +225,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     aiMixingProgress,
     isAIMixingModeModalOpen,
     videoCutModal,
+    isChatLoading,
     taskId,
     content
   ]);
@@ -1778,100 +1793,324 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [materialsToAddToTimeline]);
 
-  return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* 视频编辑工作区 - 上下布局 */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* 上方面板区域 - 左右分割布局 */}
-        <div className="video-editing-upper-section flex min-h-0 overflow-hidden">
-          {/* 左侧区域 - 包含 Project Documentation 和 Text Script */}
-          <div className="video-editing-left-section flex border-r border-gray-200">
-            {/* Project Documentation 面板 */}
-            <div className="video-editing-documentation-panel flex flex-col bg-white border-r border-gray-200">
-              <DocumentPanel
-                markdownValue={documentState.markdownValue}
-                handleMarkdownChange={documentState.handleMarkdownChange}
-                taskId={taskId}
-                onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
-                onPolishClick={handlePolishClick}
-                onGenerateScriptClick={handleScriptGenerationClick}
-                isGeneratingScript={scriptGeneration.isGeneratingScript}
-              />
-              
-              <AIAssistantPanel
-                {...aiAssistant}
-                taskId={taskId}
-                onClearContent={documentState.clearContent}
-              />
-            </div>
+  // 聊天对话自动初始化
+  useEffect(() => {
+    if (!hasAutoChatInitialized.current && (!content?.conversations || content.conversations.length === 0)) {
+      hasAutoChatInitialized.current = true;
+      
+      console.log('[VideoEditingInterface] 自动初始化视频编辑聊天对话', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
 
-            {/* Text Script 面板 */}
-            <div className="video-editing-script-panel bg-gray-50">
-              <ScriptPanel 
-                segments={content?.scriptSegments || getMockScriptSegments(locale)} 
-                className="h-full"
-                onGenerateScript={scriptGeneration.handleGenerateScript}
-                isGenerating={scriptGeneration.isGeneratingScript}
-                onUpdateSegments={scriptGeneration.handleUpdateSegments}
-                onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
-                taskId={taskId}
-                materials={materialManagement.materials}
-                getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
-              />
-            </div>
+      const now = new Date();
+      const conversationId = `video-chat-${Date.now()}`;
+      
+      const defaultConversation: Conversation = {
+        id: conversationId,
+        title: '视频编辑 AI 助手',
+        messages: [],
+        createdAt: now,
+        updatedAt: now,
+        chatType: 'chatbot',
+      };
+
+      const updatedContent: VideoEditingTaskContent = {
+        ...content!,
+        conversations: [defaultConversation],
+        activeConversationId: conversationId,
+      };
+
+      onUpdateContent(updatedContent);
+      
+      console.log('[VideoEditingInterface] 视频编辑聊天对话初始化完成', {
+        conversationId,
+        timestamp: now.toISOString()
+      });
+    }
+  }, []); // 只在组件挂载时运行一次
+
+  // 聊天消息处理
+  const updateConversationMessages = useCallback((conversationId: string, messages: ChatMessage[]) => {
+    console.log(`[VideoEditingInterface] 更新聊天消息`, {
+      conversationId,
+      messageCount: messages.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    const conversations = content?.conversations || [];
+    const updatedConversations = conversations.map(conv => {
+      if (conv.id === conversationId) {
+        return {
+          ...conv,
+          messages,
+          updatedAt: new Date(),
+        };
+      }
+      return conv;
+    });
+
+    const updatedContent: VideoEditingTaskContent = {
+      ...content!,
+      conversations: updatedConversations,
+    };
+
+    onUpdateContent(updatedContent);
+  }, [content, onUpdateContent]);
+
+  const handleClearChatMessages = useCallback(() => {
+    const activeConversationId = content?.activeConversationId;
+    if (!activeConversationId) {
+      console.warn('[VideoEditingInterface] 没有活动的聊天对话');
+      return;
+    }
+
+    console.log(`[VideoEditingInterface] 清空聊天记录`, {
+      conversationId: activeConversationId,
+      timestamp: new Date().toISOString()
+    });
+    
+    const conversations = content?.conversations || [];
+    const updatedConversations = conversations.map(conv => {
+      if (conv.id === activeConversationId) {
+        console.log(`[VideoEditingInterface] 清空 ${conv.messages.length} 条消息`, {
+          conversationId: conv.id
+        });
+        return {
+          ...conv,
+          messages: [],
+          updatedAt: new Date(),
+        };
+      }
+      return conv;
+    });
+
+    const updatedContent: VideoEditingTaskContent = {
+      ...content!,
+      conversations: updatedConversations,
+    };
+
+    onUpdateContent(updatedContent);
+    console.log('[VideoEditingInterface] 聊天记录已清空');
+  }, [content, onUpdateContent]);
+
+  const handleSendChatMessage = useCallback(async (message: string) => {
+    const activeConversationId = content?.activeConversationId;
+    if (!activeConversationId || isChatLoading) return;
+
+    const conversations = content?.conversations || [];
+    const activeConversation = conversations.find(
+      conv => conv.id === activeConversationId
+    );
+    
+    if (!activeConversation) return;
+
+    setIsChatLoading(true);
+    
+    try {
+      const userMessage: ChatMessage = {
+        id: `msg-${Date.now()}-user`,
+        role: 'user',
+        content: message,
+        timestamp: new Date(),
+      };
+
+      // 添加用户消息
+      const messagesWithUser = [...activeConversation.messages, userMessage];
+      updateConversationMessages(activeConversationId, messagesWithUser);
+
+      // 创建助手消息占位符
+      const assistantMessageId = `msg-${Date.now()}-assistant`;
+      const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isStreaming: true,
+      };
+
+      // 添加助手消息占位符
+      const messagesWithAssistant = [...messagesWithUser, assistantMessage];
+      updateConversationMessages(activeConversationId, messagesWithAssistant);
+
+      console.log('[VideoEditingInterface] 发送聊天消息到 API', {
+        messageLength: message.length,
+        timestamp: new Date().toISOString()
+      });
+      
+      const response = await fetch('/api/video-editing-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: taskId,
+          messages: messagesWithUser,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      let accumulatedContent = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              break;
+            }
+            
+            try {
+              const parsed = JSON.parse(data);
+              
+              if (parsed.content) {
+                accumulatedContent += parsed.content;
+                
+                // 更新助手消息
+                const updatedMessages = [...messagesWithUser, {
+                  ...assistantMessage,
+                  content: accumulatedContent,
+                  isStreaming: true
+                }];
+                
+                updateConversationMessages(activeConversationId, updatedMessages);
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e);
+            }
+          }
+        }
+      }
+
+      // 标记流式传输完成
+      const finalMessages = [...messagesWithUser, {
+        ...assistantMessage,
+        content: accumulatedContent,
+        isStreaming: false
+      }];
+      
+      console.log(`[VideoEditingInterface] 聊天消息接收完成`, {
+        finalContentLength: accumulatedContent.length
+      });
+      updateConversationMessages(activeConversationId, finalMessages);
+      
+    } catch (error) {
+      console.error('[VideoEditingInterface] 聊天消息发送失败:', error);
+      showError(`聊天失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      
+      // 移除助手消息占位符
+      const messagesWithoutAssistant = activeConversation.messages.concat([{
+        id: `msg-${Date.now()}-user`,
+        role: 'user' as const,
+        content: message,
+        timestamp: new Date(),
+      }]);
+      
+      updateConversationMessages(activeConversationId, messagesWithoutAssistant);
+      
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError]);
+
+  // 获取当前活动的聊天对话
+  const activeConversation = content?.conversations?.find(
+    conv => conv.id === content?.activeConversationId
+  );
+
+  return (
+    <div className="flex-1 flex min-h-0 overflow-hidden">
+      {/* 左侧区域 - AI Chat 面板贯穿上下，占20%宽度 */}
+      <div className="video-editing-left-sidebar flex flex-col border-r border-gray-200 bg-white">
+        <VideoChatWindow
+          conversation={activeConversation}
+          onSendMessage={handleSendChatMessage}
+          onClearMessages={handleClearChatMessages}
+          isLoading={isChatLoading}
+        />
+      </div>
+
+      {/* 右侧区域 - 占80%宽度，包含上方面板和下方Timeline */}
+      <div className="video-editing-right-area flex flex-col min-h-0 overflow-hidden">
+        {/* 上方面板区域 */}
+        <div className="video-editing-upper-panels flex min-h-0 overflow-hidden">
+          {/* Text Script 面板 */}
+          <div className="video-editing-script-panel bg-gray-50 border-r border-gray-200">
+            <ScriptPanel 
+              segments={content?.scriptSegments || getMockScriptSegments(locale)} 
+              className="h-full"
+              onGenerateScript={scriptGeneration.handleGenerateScript}
+              isGenerating={scriptGeneration.isGeneratingScript}
+              onUpdateSegments={scriptGeneration.handleUpdateSegments}
+              onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
+              taskId={taskId}
+              materials={materialManagement.materials}
+              getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
+            />
           </div>
 
-          {/* 右侧区域 - 包含 Materials Management 和 Play Preview */}
-          <div className="video-editing-right-section flex">
-            {/* Materials Management 面板 - 占满右侧区域的左侧 */}
-            <MaterialsPanel
-              {...materialManagement}
-              onSearchVideos={videoSearch.openSearchModal}
-              onSearchAudios={audioSearch.openSearchModal}
-              onSearchImages={imageSearch.openSearchModal}
-              onAICreation={aiCreation.openModal}
-              onAIMixedEditing={handleAIMixedEditing}
-              onAIImageGeneration={aiImageGeneration.openModal}
-              onAIVideoGeneration={aiVideoGeneration.openModal}
-              onDigitalHumanGeneration={digitalHumanGeneration.openModal}
-              onAutoMixAudio={handleAutoMixAudio}
-              onVideoAnalysis={handleVideoAnalysis}
-              onBatchVideoAnalysis={handleBatchVideoAnalysis}
-              isBatchAnalyzing={isBatchAnalyzing}
-              getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
-              onRetryDownload={videoSearch.retryVideoDownload}
-              onAddToTimeline={handleAddMaterialToTimeline}
-              onCutMaterial={handleCutMaterial}
-              onWatermarkRemoval={handleWatermarkRemoval}
-              taskId={taskId}
-              comfyuiHealthStatus={comfyuiHealth}
-              className="video-editing-materials-panel bg-white border-r border-gray-200"
-            />
+          {/* Materials Management 面板 */}
+          <MaterialsPanel
+            {...materialManagement}
+            onSearchVideos={videoSearch.openSearchModal}
+            onSearchAudios={audioSearch.openSearchModal}
+            onSearchImages={imageSearch.openSearchModal}
+            onAICreation={aiCreation.openModal}
+            onAIMixedEditing={handleAIMixedEditing}
+            onAIImageGeneration={aiImageGeneration.openModal}
+            onAIVideoGeneration={aiVideoGeneration.openModal}
+            onDigitalHumanGeneration={digitalHumanGeneration.openModal}
+            onAutoMixAudio={handleAutoMixAudio}
+            onVideoAnalysis={handleVideoAnalysis}
+            onBatchVideoAnalysis={handleBatchVideoAnalysis}
+            isBatchAnalyzing={isBatchAnalyzing}
+            getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
+            onRetryDownload={videoSearch.retryVideoDownload}
+            onAddToTimeline={handleAddMaterialToTimeline}
+            onCutMaterial={handleCutMaterial}
+            onWatermarkRemoval={handleWatermarkRemoval}
+            taskId={taskId}
+            comfyuiHealthStatus={comfyuiHealth}
+            className="video-editing-materials-panel bg-white border-r border-gray-200"
+          />
 
-            {/* Play Preview 面板 - 占满右侧区域的右侧 */}
-            <div className="video-editing-player-panel bg-white">
-              <VideoPlayerPanel
-                ref={videoPlayerRef}
-                {...videoPlayback}
-                videoPreview={mockVideoPreview}
-                taskId={taskId}
-                compositionPlayback={timelineComposition.compositionPlayback}
-                onCompositionPlayPause={timelineComposition.handleCompositionPlay}
-                onCompositionSeek={timelineComposition.handleCompositionSeek}
-                onNextSequence={timelineComposition.handleNextSequence}
-                onCompositionTimeUpdate={timelineComposition.handleCompositionTimeUpdate}
-                onTimelineTimeUpdate={handleVideoTimeUpdate}
-                currentTimelineTime={timelineCurrentTime}
-                onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
-                timelineState={currentTimelineState || undefined}
-                materials={materialManagement.materials}
-                onImagePositionChange={handleImagePositionChange}
-              />
-            </div>
+          {/* Play Preview 面板 */}
+          <div className="video-editing-player-panel bg-white">
+            <VideoPlayerPanel
+              ref={videoPlayerRef}
+              {...videoPlayback}
+              videoPreview={mockVideoPreview}
+              taskId={taskId}
+              compositionPlayback={timelineComposition.compositionPlayback}
+              onCompositionPlayPause={timelineComposition.handleCompositionPlay}
+              onCompositionSeek={timelineComposition.handleCompositionSeek}
+              onNextSequence={timelineComposition.handleNextSequence}
+              onCompositionTimeUpdate={timelineComposition.handleCompositionTimeUpdate}
+              onTimelineTimeUpdate={handleVideoTimeUpdate}
+              currentTimelineTime={timelineCurrentTime}
+              onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
+              timelineState={currentTimelineState || undefined}
+              materials={materialManagement.materials}
+              onImagePositionChange={handleImagePositionChange}
+            />
           </div>
         </div>
 
-        {/* 下方时间轴面板 - 全宽度 */}
+        {/* 下方时间轴面板 - 在右侧区域的下方，全宽度 */}
         <div className="video-editing-timeline-section border-t border-gray-200 bg-gray-50">
           <TimelinePanel 
             className="h-full" 

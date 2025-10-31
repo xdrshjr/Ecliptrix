@@ -337,6 +337,9 @@ export interface VideoEditingTaskContent {
   materials?: MaterialItem[]; // 素材数据
   pendingTimelineData?: any; // 待导入的时间轴数据（从Workflow AI Video Generate节点）
   pendingMaterials?: MaterialItem[]; // 待导入的素材数据（从Workflow Video Export节点）
+  // Chat conversations for AI assistant
+  conversations?: Conversation[];
+  activeConversationId?: string | null;
   // UI state preservation
   uiState?: {
     timelineCurrentTime?: number;
@@ -352,6 +355,9 @@ export interface VideoEditingTaskContent {
       isOpen: boolean;
       material: any | null; // MaterialItem
     };
+    // Chat UI state
+    isChatLoading?: boolean;
+    hasAutoChatInitialized?: boolean;
   };
 }
 

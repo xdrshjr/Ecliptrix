@@ -1,128 +1,176 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ChatMessage } from '@/types';
 
-// 获取后端服务配置
-const getBackendConfig = () => {
-  const backendUrl = process.env.BACKEND_SERVICE_URL || 'http://localhost:8000';
-  return { backendUrl };
+// 获取环境变量配置
+const getConfig = () => {
+  const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
+  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+  const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+
+  if (!apiKey) {
+    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
+  }
+
+  return { apiUrl, apiKey, model };
+};
+
+// 转换消息格式，添加视频编辑系统提示
+const formatMessages = (messages: ChatMessage[]) => {
+  // 添加系统提示，指导 AI 作为视频编辑助手
+  const systemMessage = {
+    role: 'system',
+    content: `你是一个专业的视频编辑 AI 助手。你的任务是帮助用户进行视频编辑相关的工作，包括：
+
+1. 脚本编写与优化：帮助用户创作和改进视频脚本
+2. 创意建议：提供视频创意、拍摄角度、剪辑手法等建议
+3. 技术指导：解答视频剪辑、特效、转场等技术问题
+4. 素材推荐：根据脚本内容推荐合适的视频素材、音乐、图片等
+5. 时间轴规划：帮助用户规划视频时间轴和节奏
+6. 文案润色：优化视频文案、字幕、标题等文本内容
+
+请保持专业、友好、简洁的沟通风格，提供实用的建议和具体的操作步骤。`
+  };
+
+  // 将系统消息和用户消息组合
+  return [
+    systemMessage,
+    ...messages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    }))
+  ];
 };
 
 // 日志记录函数
-const logRequest = (message: string, currentContent: string, taskId: string) => {
-  console.log(`[Video Editing Chat API] ${new Date().toISOString()} - Incoming chat request`);
+const logRequest = (taskId: string, messages: ChatMessage[], config: any) => {
+  console.log(`[Video Editing Chat API] ${new Date().toISOString()} - 收到视频编辑聊天请求`);
   console.log(`[Video Editing Chat API] Task ID: ${taskId}`);
-  console.log(`[Video Editing Chat API] Message length: ${message.length} characters`);
-  console.log(`[Video Editing Chat API] Message preview: ${message.slice(0, 100)}...`);
-  console.log(`[Video Editing Chat API] Current content length: ${currentContent.length} characters`);
-  console.log(`[Video Editing Chat API] Current content preview: ${currentContent.slice(0, 100)}...`);
+  console.log(`[Video Editing Chat API] Model: ${config.model}`);
+  console.log(`[Video Editing Chat API] Messages count: ${messages.length}`);
+  if (messages.length > 0) {
+    const lastMessage = messages[messages.length - 1];
+    console.log(`[Video Editing Chat API] Last message role: ${lastMessage.role}`);
+    console.log(`[Video Editing Chat API] Last message preview: ${lastMessage.content.slice(0, 100)}${lastMessage.content.length > 100 ? '...' : ''}`);
+  }
 };
 
-const logResponse = (success: boolean, taskId: string, error?: string) => {
+const logResponse = (taskId: string, success: boolean, error?: string) => {
   if (success) {
-    console.log(`[Video Editing Chat API] ${new Date().toISOString()} - Response completed successfully for task: ${taskId}`);
+    console.log(`[Video Editing Chat API] ${new Date().toISOString()} - Task ${taskId} 响应成功完成`);
   } else {
-    console.error(`[Video Editing Chat API] ${new Date().toISOString()} - Response failed for task: ${taskId} - ${error}`);
+    console.error(`[Video Editing Chat API] ${new Date().toISOString()} - Task ${taskId} 响应失败: ${error}`);
   }
 };
 
 export async function POST(request: NextRequest) {
+  let taskId = 'unknown';
+  
   try {
     const body = await request.json();
-    const { message, currentContent, taskId } = body as { 
-      message: string; 
-      currentContent: string; 
-      taskId: string; 
-    };
+    const { taskId: reqTaskId, messages } = body as { taskId: string; messages: ChatMessage[] };
+    taskId = reqTaskId || 'unknown';
 
     // 验证请求参数
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      console.error('[Video Editing Chat API] Invalid request: message string is required');
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      console.error(`[Video Editing Chat API] Task ${taskId} - 无效请求：需要 messages 数组`);
       return NextResponse.json(
-        { error: 'Message string is required' },
+        { error: 'Messages array is required' },
         { status: 400 }
       );
     }
 
-    if (!taskId || typeof taskId !== 'string') {
-      console.error('[Video Editing Chat API] Invalid request: taskId is required');
-      return NextResponse.json(
-        { error: 'Task ID is required' },
-        { status: 400 }
-      );
-    }
+    const config = getConfig();
+    logRequest(taskId, messages, config);
 
-    const config = getBackendConfig();
-    logRequest(message, currentContent || '', taskId);
-
-    // 准备发送给Python后端的请求数据
+    // 准备请求数据
     const requestData = {
-      message: message.trim(),
-      currentContent: currentContent || '',
-      taskId: taskId
+      model: config.model,
+      messages: formatMessages(messages),
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 2000,
     };
 
-    console.log(`[Video Editing Chat API] Calling Python backend: ${config.backendUrl}/api/video-editing-chat for task: ${taskId}`);
+    console.log(`[Video Editing Chat API] Task ${taskId} - 调用 LLM API: ${config.apiUrl}/chat/completions`);
 
-    // 调用Python后端API
-    const response = await fetch(`${config.backendUrl}/api/video-editing-chat`, {
+    // 调用LLM API
+    const response = await fetch(`${config.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify(requestData),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Video Editing Chat API] Backend error: ${response.status} - ${errorText} for task: ${taskId}`);
-      logResponse(false, taskId, `Backend error: ${response.status}`);
+      console.error(`[Video Editing Chat API] Task ${taskId} - LLM API 错误: ${response.status} - ${errorText}`);
+      logResponse(taskId, false, `LLM API error: ${response.status}`);
       
       return NextResponse.json(
-        { error: `Backend service error: ${response.status}` },
+        { error: `LLM API error: ${response.status}`, details: errorText },
         { status: response.status }
       );
     }
 
-    // 检查响应是否为流式响应
-    if (!response.body) {
-      const errorMsg = 'No response body from backend';
-      console.error(`[Video Editing Chat API] ${errorMsg} for task: ${taskId}`);
-      logResponse(false, taskId, errorMsg);
-      
-      return NextResponse.json(
-        { error: 'Backend service error' },
-        { status: 500 }
-      );
-    }
-
-    // 创建流式响应，直接转发Python后端的流
+    // 创建流式响应
+    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
           const reader = response.body?.getReader();
           if (!reader) {
-            throw new Error('No response body reader available');
+            throw new Error('No reader available from LLM API');
           }
 
-          const decoder = new TextDecoder();
-
+          let buffer = '';
+          let totalChunks = 0;
+          
           while (true) {
             const { done, value } = await reader.read();
-            
             if (done) {
-              logResponse(true, taskId);
-              controller.close();
+              console.log(`[Video Editing Chat API] Task ${taskId} - 流式传输完成，总计 ${totalChunks} 个数据块`);
               break;
             }
 
-            // 直接转发从Python后端接收到的数据
-            const chunk = decoder.decode(value, { stream: true });
-            controller.enqueue(new TextEncoder().encode(chunk));
+            buffer += new TextDecoder().decode(value);
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+
+              const data = trimmedLine.slice(6);
+              if (data === '[DONE]') {
+                controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                continue;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content;
+                
+                if (content) {
+                  totalChunks++;
+                  const responseData = { content };
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify(responseData)}\n\n`)
+                  );
+                }
+              } catch (e) {
+                console.error(`[Video Editing Chat API] Task ${taskId} - SSE 数据解析错误:`, e);
+              }
+            }
           }
 
-        } catch (streamError) {
-          console.error(`[Video Editing Chat API] Stream processing error for task ${taskId}:`, streamError);
-          logResponse(false, taskId, String(streamError));
-          controller.error(streamError);
+          logResponse(taskId, true);
+          controller.close();
+        } catch (error) {
+          console.error(`[Video Editing Chat API] Task ${taskId} - 流式传输错误:`, error);
+          logResponse(taskId, false, String(error));
+          controller.error(error);
         }
       },
     });
@@ -132,17 +180,21 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no'  // Disable nginx buffering
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST',
+        'Access-Control-Allow-Headers': 'Content-Type',
       },
     });
 
   } catch (error) {
-    console.error('[Video Editing Chat API] Request processing error:', error);
-    const taskId = 'unknown';
-    logResponse(false, taskId, String(error));
+    console.error(`[Video Editing Chat API] Task ${taskId} - 意外错误:`, error);
+    logResponse(taskId, false, String(error));
     
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }

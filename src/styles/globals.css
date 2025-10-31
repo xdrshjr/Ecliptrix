@@ -213,7 +213,7 @@ html, body {
 /* Vertical Taskbar Styles - Apple Light Design */
 .vertical-taskbar {
   position: relative;
-  width: 64px;
+  width: 48px;
   height: 100%;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
@@ -249,11 +249,11 @@ html, body {
 .taskbar-section {
   display: flex;
   flex-direction: column;
-  padding: 16px 12px 0 12px;
+  padding: 12px 8px 0 8px;
 }
 
 .taskbar-section:first-child {
-  padding-top: 16px;
+  padding-top: 12px;
 }
 
 .section-divider {
@@ -342,7 +342,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 8px;
+  padding: 8px 6px;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

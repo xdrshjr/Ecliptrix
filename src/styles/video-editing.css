@@ -1,62 +1,54 @@
 /* Video Editing Workspace Styles */
 
-/* 新布局：上方面板区域 - 左右分割布局 */
-.video-editing-upper-section {
-  height: 70%; /* 上方区域占70%高度 */
-  flex-shrink: 0;
-}
-
-/* 新布局：下方时间轴区域 - 全宽度 */
-.video-editing-timeline-section {
-  height: 30%; /* 下方区域占30%高度 */
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-/* 左侧区域 - 包含 Project Documentation 和 Text Script */
-.video-editing-left-section {
-  width: 45%; /* 占上方区域的50%宽度 */
+/* 新布局：左侧AI Chat面板 - 贯穿上下，占20%宽度 */
+.video-editing-left-sidebar {
+  width: 20%;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
 }
 
-/* 右侧区域 - 包含 Materials Management 和 Play Preview */
-.video-editing-right-section {
-  width: 50%; /* 占上方区域的50%宽度 */
+/* 新布局：右侧区域 - 占80%宽度，包含上方面板和下方Timeline */
+.video-editing-right-area {
+  width: 80%;
   height: 100%;
   flex: 1;
   overflow: hidden;
 }
 
-/* Project Documentation 面板 - 占左侧区域的60%宽度 */
-.video-editing-documentation-panel {
-  width: 50%;
-  height: 100%;
+/* 新布局：上方面板区域 - 在右侧区域的上方 */
+.video-editing-upper-panels {
+  height: 70%; /* 上方面板占右侧区域的70%高度 */
+  flex-shrink: 0;
+}
+
+/* 新布局：下方时间轴区域 - 在右侧区域的下方，全宽度 */
+.video-editing-timeline-section {
+  height: 30%; /* 下方区域占右侧区域的30%高度 */
   flex-shrink: 0;
   overflow: hidden;
 }
 
-/* Text Script 面板 - 占左侧区域的40%宽度 */
+/* Text Script 面板 - 占上方面板区域的33.33%宽度 */
 .video-editing-script-panel {
-  width: 50%;
+  width: 33.33%;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
 }
 
-/* Materials Management 面板 - 占右侧区域的50%宽度 */
+/* Materials Management 面板 - 占上方面板区域的33.33%宽度 */
 .video-editing-materials-panel {
-  width: 50%;
+  width: 33.33%;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
   background-color: #ffffff;
 }
 
-/* Play Preview 面板 - 占右侧区域的50%宽度 */
+/* Play Preview 面板 - 占上方面板区域的33.33%宽度 */
 .video-editing-player-panel {
-  width: 50%;
+  width: 33.33%;
   height: 100%;
   flex: 1;
   overflow: hidden;
@@ -248,68 +240,57 @@
   overflow: hidden !important;
 }
 
-/* 响应式设计 - 新嵌套布局适配 */
+/* 响应式设计 - 新布局适配 */
 @media (max-width: 1024px) {
-  /* 中等屏幕：调整嵌套面板宽度 */
-  .video-editing-left-section {
-    width: 45%;
+  /* 中等屏幕：保持左右布局，调整比例 */
+  .video-editing-left-sidebar {
+    width: 25%;
   }
   
-  .video-editing-right-section {
-    width: 55%;
+  .video-editing-right-area {
+    width: 75%;
   }
   
-  .video-editing-documentation-panel {
-    width: 55%;
-  }
-  
-  .video-editing-script-panel {
-    width: 45%;
-  }
-  
-  .video-editing-materials-panel {
-    width: 45%;
-  }
-  
+  .video-editing-script-panel,
+  .video-editing-materials-panel,
   .video-editing-player-panel {
-    width: 55%;
+    width: 33.33%;
   }
 }
 
 @media (max-width: 768px) {
-  /* 小屏幕：改为完全垂直布局 */
-  .video-editing-upper-section {
-    height: 60%;
-    flex-direction: column;
-  }
-  
-  .video-editing-timeline-section {
-    height: 40%;
-  }
-  
-  .video-editing-left-section,
-  .video-editing-right-section {
+  /* 小屏幕：改为垂直布局 */
+  .video-editing-left-sidebar {
     width: 100%;
-    height: 50%;
+    height: 30%;
     border-right: none;
     border-bottom: 1px solid #e5e7eb;
   }
   
-  .video-editing-right-section {
-    border-bottom: none;
+  .video-editing-right-area {
+    width: 100%;
+    height: 70%;
   }
   
-  .video-editing-documentation-panel,
-  .video-editing-script-panel {
-    width: 50%;
-    height: 100%;
-    border-bottom: none;
+  .video-editing-upper-panels {
+    height: 70%;
+    flex-direction: column;
   }
   
+  .video-editing-timeline-section {
+    height: 30%;
+  }
+  
+  .video-editing-script-panel,
   .video-editing-materials-panel,
   .video-editing-player-panel {
-    width: 50%;
-    height: 100%;
+    width: 100%;
+    height: 33.33%;
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .video-editing-player-panel {
     border-bottom: none;
   }
 }
