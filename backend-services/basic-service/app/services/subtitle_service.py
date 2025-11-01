@@ -369,31 +369,42 @@ class SubtitleService:
         system = platform.system().lower()
         has_chinese = self._contains_chinese(text_content) if text_content else False
         
-        logger.info(f"Getting font path for system: {system}, family: {font_family}, has_chinese: {has_chinese}")
+        logger.info(f"Getting font path for system: {system}, family: {font_family}, has_chinese: {has_chinese}, text_preview: '{text_content[:50] if text_content else ''}'")
         
         # Font paths by system and font family
         font_paths_map = {}
         
         if system == "windows":
+            # 为Windows系统定义中文字体和英文字体列表
+            chinese_fonts = [
+                "C:/Windows/Fonts/msyh.ttc",        # Microsoft YaHei (微软雅黑) - best for Chinese
+                "C:/Windows/Fonts/simhei.ttf",      # SimHei (黑体)
+                "C:/Windows/Fonts/simsun.ttc",      # SimSun (宋体)
+            ]
+            
+            latin_fonts = [
+                "C:/Windows/Fonts/arial.ttf",       # Arial - best for English
+                "C:/Windows/Fonts/arialbd.ttf",     # Arial Bold
+                "C:/Windows/Fonts/calibri.ttf",     # Calibri
+            ]
+            
+            # 根据是否包含中文决定字体优先级
+            if has_chinese:
+                default_fonts = chinese_fonts + latin_fonts
+                logger.info("Chinese characters detected in Windows subtitle, prioritizing Chinese fonts (微软雅黑, 黑体, 宋体)")
+            else:
+                default_fonts = latin_fonts + chinese_fonts
+                logger.info("No Chinese characters detected in Windows subtitle, prioritizing Latin fonts (Arial, Calibri)")
+            
             font_paths_map = {
-                "default": [
-                    "C:/Windows/Fonts/msyh.ttc",        # Microsoft YaHei (微软雅黑) - best for Chinese
-                    "C:/Windows/Fonts/simhei.ttf",      # SimHei (黑体)
-                    "C:/Windows/Fonts/simsun.ttc",      # SimSun (宋体)
-                    "C:/Windows/Fonts/arial.ttf",       # Arial (fallback)
-                ],
+                "default": default_fonts,
                 "serif": [
                     "C:/Windows/Fonts/simsun.ttc",      # SimSun (宋体) - serif Chinese
                     "C:/Windows/Fonts/times.ttf",       # Times New Roman
                     "C:/Windows/Fonts/timesbd.ttf",     # Times New Roman Bold
                     "C:/Windows/Fonts/georgia.ttf",     # Georgia
                 ],
-                "sans-serif": [
-                    "C:/Windows/Fonts/msyh.ttc",        # Microsoft YaHei (微软雅黑)
-                    "C:/Windows/Fonts/simhei.ttf",      # SimHei (黑体)
-                    "C:/Windows/Fonts/arial.ttf",       # Arial
-                    "C:/Windows/Fonts/calibri.ttf",     # Calibri
-                ],
+                "sans-serif": default_fonts,  # 与default相同，根据语言自动选择
                 "monospace": [
                     "C:/Windows/Fonts/consola.ttf",     # Consolas
                     "C:/Windows/Fonts/cour.ttf",        # Courier New
@@ -401,24 +412,39 @@ class SubtitleService:
                 ]
             }
         elif system == "darwin":  # macOS
+            # 为macOS系统定义中文字体和英文字体列表
+            chinese_fonts = [
+                "/System/Library/Fonts/PingFang.ttc",       # PingFang - best for Chinese
+                "/Library/Fonts/Songti.ttc",                # Songti (宋体)
+                "/System/Library/Fonts/STHeiti Medium.ttc", # STHeiti (华文黑体)
+            ]
+            
+            latin_fonts = [
+                "/System/Library/Fonts/Helvetica.ttc",  # Helvetica - best for English
+                "/System/Library/Fonts/Arial.ttf",      # Arial
+                "/System/Library/Fonts/SFNSDisplay.ttf",# SF Display
+            ]
+            
+            # 根据是否包含中文决定字体优先级
+            if has_chinese:
+                default_fonts = chinese_fonts + latin_fonts
+                logger.info("Chinese characters detected in macOS subtitle, prioritizing Chinese fonts (PingFang, Songti)")
+            else:
+                default_fonts = latin_fonts + chinese_fonts
+                logger.info("No Chinese characters detected in macOS subtitle, prioritizing Latin fonts (Helvetica, Arial)")
+            
             font_paths_map = {
-                "default": [
-                    "/System/Library/Fonts/PingFang.ttc",
-                    "/System/Library/Fonts/Helvetica.ttc",
-                    "/System/Library/Fonts/Arial.ttf",
-                ],
+                "default": default_fonts,
                 "serif": [
-                    "/System/Library/Fonts/Times.ttc",
-                    "/System/Library/Fonts/Georgia.ttf",
+                    "/Library/Fonts/Songti.ttc",            # Songti (宋体) - serif Chinese
+                    "/System/Library/Fonts/Times.ttc",      # Times New Roman
+                    "/System/Library/Fonts/Georgia.ttf",    # Georgia
                 ],
-                "sans-serif": [
-                    "/System/Library/Fonts/Helvetica.ttc",
-                    "/System/Library/Fonts/Arial.ttf",
-                    "/System/Library/Fonts/PingFang.ttc",
-                ],
+                "sans-serif": default_fonts,  # 与default相同，根据语言自动选择
                 "monospace": [
-                    "/System/Library/Fonts/Monaco.ttf",
-                    "/System/Library/Fonts/Courier New.ttf",
+                    "/System/Library/Fonts/Monaco.ttf",     # Monaco
+                    "/System/Library/Fonts/Courier New.ttf",# Courier New
+                    "/System/Library/Fonts/Menlo.ttc",      # Menlo
                 ]
             }
         else:  # Linux (Ubuntu) - 修复中文字幕乱码问题
@@ -486,20 +512,25 @@ class SubtitleService:
         
         # Check which fonts exist and log the search process
         logger.info(f"Searching for {font_family} fonts, checking {len(font_paths)} font paths")
+        logger.info(f"Font search priority: {', '.join([os.path.basename(p) for p in font_paths[:3]])}")
+        
         for i, font_path in enumerate(font_paths):
             if os.path.exists(font_path):
-                logger.info(f"Found suitable font (#{i+1}): {font_path}")
+                logger.info(f"✓ Found suitable font (#{i+1}/{len(font_paths)}): {font_path}")
+                logger.info(f"Font selection result: Using '{os.path.basename(font_path)}' for {'Chinese' if has_chinese else 'English'} subtitle rendering")
                 return font_path
             else:
-                logger.debug(f"Font not found (#{i+1}): {font_path}")
+                logger.debug(f"✗ Font not found (#{i+1}/{len(font_paths)}): {font_path}")
         
         # If no specific font found, try default fonts
         if font_family != "default":
             logger.warning(f"No {font_family} font found, trying default fonts")
             return self._get_font_path("default", text_content)
         
-        logger.error("No suitable font found on the system! This will cause subtitle rendering issues.")
-        logger.error("Please install Chinese fonts for proper subtitle support:")
+        logger.error("❌ No suitable font found on the system! This will cause subtitle rendering issues.")
+        logger.error("Please install appropriate fonts for proper subtitle support:")
+        logger.error("  Windows: Ensure Arial/Calibri (English) and 微软雅黑/黑体 (Chinese) are installed")
+        logger.error("  macOS: Ensure Helvetica/Arial (English) and PingFang/Songti (Chinese) are installed")
         logger.error("  Ubuntu: sudo apt-get install fonts-noto-cjk fonts-wqy-microhei")
         return None
     
