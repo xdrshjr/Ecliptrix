@@ -1,4 +1,4 @@
-import { ScriptSegment, ScriptGenerationConfig } from '@/types';
+import { ScriptSegment, ScriptGenerationConfig, ChatMessage } from '@/types';
 import { VideoEditingLogger } from '../utils';
 
 /**
@@ -15,6 +15,7 @@ export interface ScriptService {
     markdownContent: string;
     taskId: string;
     config: ScriptGenerationConfig;
+    chatMessages?: ChatMessage[];
   }): Promise<ScriptGenerationResult>;
   
   validateScriptSegments(segments: ScriptSegment[]): ValidationResult;
@@ -211,22 +212,29 @@ export class ScriptServiceImpl implements ScriptService {
 
   /**
    * 生成脚本（带配置）
-   * @param params - 生成参数（包含配置）
+   * @param params - 生成参数（包含配置和可选的聊天消息）
    * @returns Promise<ScriptGenerationResult> - 生成结果
    */
   async generateScriptWithConfig(params: {
     markdownContent: string;
     taskId: string;
     config: ScriptGenerationConfig;
+    chatMessages?: ChatMessage[];
   }): Promise<ScriptGenerationResult> {
-    const { markdownContent, taskId, config } = params;
+    const { markdownContent, taskId, config, chatMessages } = params;
 
-    // 参数验证
-    if (!markdownContent.trim()) {
-      const error = 'Markdown content cannot be empty';
+    // 参数验证 - 优先使用聊天消息，如果没有则使用markdown内容
+    const hasChatMessages = chatMessages && chatMessages.length > 0;
+    const hasMarkdownContent = markdownContent.trim().length > 0;
+    
+    if (!hasChatMessages && !hasMarkdownContent) {
+      const error = 'Either chat messages or markdown content is required';
       this.logger.error('脚本生成参数验证失败（带配置）', new Error(error), { 
-        reason: 'empty_markdown',
-        contentLength: markdownContent.length,
+        reason: 'no_content_available',
+        hasChatMessages,
+        hasMarkdownContent,
+        markdownLength: markdownContent.length,
+        chatMessageCount: chatMessages?.length || 0,
         config
       });
       return {
@@ -242,7 +250,10 @@ export class ScriptServiceImpl implements ScriptService {
       markdownLength: markdownContent.length,
       wordCount,
       taskId,
-      config
+      config,
+      chatMessageCount: chatMessages?.length || 0,
+      usesChatMessages: hasChatMessages,
+      usesMarkdownContent: !hasChatMessages && hasMarkdownContent
     });
 
     try {
@@ -255,6 +266,7 @@ export class ScriptServiceImpl implements ScriptService {
           markdownContent: markdownContent,
           taskId: taskId,
           scriptConfig: config,
+          chatMessages: chatMessages, // 新增：传递聊天消息
         }),
       });
 

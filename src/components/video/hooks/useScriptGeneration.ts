@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { ScriptSegment, VideoEditingTaskContent, ScriptGenerationConfig } from '@/types';
+import { ScriptSegment, VideoEditingTaskContent, ScriptGenerationConfig, ChatMessage } from '@/types';
 import { UseScriptGenerationReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createScriptService, ScriptService } from '../services';
@@ -99,12 +99,14 @@ const generateKeywordsForSegments = async (
  * @param taskId - 任务ID，用于日志记录
  * @param markdownContent - Markdown内容
  * @param onUpdateContent - 内容更新回调
+ * @param currentContent - 当前完整的内容对象，用于保留原有数据
  * @returns 脚本生成相关的状态和方法
  */
 export const useScriptGeneration = (
   taskId: string,
   markdownContent: string,
-  onUpdateContent: (content: VideoEditingTaskContent) => void
+  onUpdateContent: (content: VideoEditingTaskContent) => void,
+  currentContent: VideoEditingTaskContent | null
 ): UseScriptGenerationReturn => {
   // 初始化日志器和脚本服务
   const logger = useMemo(() => new VideoEditingLogger({
@@ -120,11 +122,26 @@ export const useScriptGeneration = (
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   // 处理脚本生成（带配置）
-  const handleGenerateScriptWithConfig = useCallback(async (config: ScriptGenerationConfig) => {
-    if (!markdownContent.trim() || isGeneratingScript) {
+  const handleGenerateScriptWithConfig = useCallback(async (config: ScriptGenerationConfig, chatMessages?: ChatMessage[]) => {
+    // 优先使用聊天消息，如果没有聊天消息则使用markdown内容
+    const hasChatMessages = chatMessages && chatMessages.length > 0;
+    const hasMarkdownContent = markdownContent.trim().length > 0;
+    
+    if (!hasChatMessages && !hasMarkdownContent) {
       logger.warn('脚本生成被跳过', {
-        reason: !markdownContent.trim() ? 'empty_markdown' : 'already_generating',
+        reason: 'no_content_available',
+        hasChatMessages,
+        hasMarkdownContent,
         markdownLength: markdownContent.length,
+        config
+      });
+      alert('无法生成脚本：请先在聊天面板中输入内容，或在文档中添加内容');
+      return;
+    }
+    
+    if (isGeneratingScript) {
+      logger.warn('脚本生成被跳过', {
+        reason: 'already_generating',
         isGenerating: isGeneratingScript,
         config
       });
@@ -140,6 +157,9 @@ export const useScriptGeneration = (
       logger.info('开始生成脚本（带配置）', {
         config,
         markdownLength: markdownContent.length,
+        chatMessageCount: chatMessages?.length || 0,
+        usesChatMessages: hasChatMessages,
+        usesMarkdownContent: !hasChatMessages && hasMarkdownContent,
         timestamp: new Date().toISOString()
       });
 
@@ -151,11 +171,12 @@ export const useScriptGeneration = (
         });
       }, 500);
 
-      // 使用脚本服务生成脚本（带配置）
+      // 使用脚本服务生成脚本（带配置和聊天消息）
       const result = await scriptService.generateScriptWithConfig({
         markdownContent: markdownContent,
         taskId: taskId,
-        config: config
+        config: config,
+        chatMessages: chatMessages
       });
 
       clearInterval(progressInterval);
@@ -169,8 +190,9 @@ export const useScriptGeneration = (
         // 为每个段落生成关键词
         const segmentsWithKeywords = await generateKeywordsForSegments(result.segments, taskId, logger);
 
-        // 更新content，添加生成的脚本片段（包含关键词）
+        // 更新content，添加生成的脚本片段（包含关键词），同时保留原有数据
         const updatedContent: VideoEditingTaskContent = {
+          ...currentContent, // 保留所有原有数据（包括conversations等）
           markdownContent: markdownContent,
           lastModified: new Date(),
           scriptSegments: segmentsWithKeywords,
@@ -217,10 +239,10 @@ export const useScriptGeneration = (
         config
       });
     }
-  }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger, scriptService]);
+  }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger, scriptService, currentContent]);
 
   // 处理脚本生成（无配置，保持向后兼容）
-  const handleGenerateScript = useCallback(async () => {
+  const handleGenerateScript = useCallback(async (chatMessages?: ChatMessage[]) => {
     // 使用默认配置
     const defaultConfig: ScriptGenerationConfig = {
       language: 'chinese',
@@ -229,7 +251,7 @@ export const useScriptGeneration = (
       customRequirements: ''
     };
     
-    await handleGenerateScriptWithConfig(defaultConfig);
+    await handleGenerateScriptWithConfig(defaultConfig, chatMessages);
   }, [handleGenerateScriptWithConfig]);
 
   // 处理脚本片段更新
@@ -241,7 +263,9 @@ export const useScriptGeneration = (
       changeType: 'manual_update'
     });
 
+    // 更新脚本片段，同时保留原有数据（包括conversations等）
     const updatedContent: VideoEditingTaskContent = {
+      ...currentContent, // 保留所有原有数据
       markdownContent: markdownContent,
       lastModified: new Date(),
       scriptSegments: updatedSegments,
@@ -254,7 +278,7 @@ export const useScriptGeneration = (
       totalSentences: updatedSegments.reduce((sum, segment) => sum + segment.sentences.length, 0),
       lastModified: updatedContent.lastModified.toISOString()
     });
-  }, [markdownContent, taskId, onUpdateContent, logger]);
+  }, [markdownContent, taskId, onUpdateContent, logger, currentContent]);
 
   return {
     isGeneratingScript,

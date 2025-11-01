@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ScriptSegment, ScriptGenerationConfig } from '@/types';
+import { ScriptSegment, ScriptGenerationConfig, ChatMessage } from '@/types';
 
 // 获取环境变量配置
 const getConfig = () => {
@@ -15,7 +15,7 @@ const getConfig = () => {
 };
 
 // 构建脚本生成的提示词
-const buildScriptPrompt = (markdownContent: string, scriptConfig?: ScriptGenerationConfig) => {
+const buildScriptPrompt = (markdownContent: string, chatMessages?: ChatMessage[], scriptConfig?: ScriptGenerationConfig) => {
   // 设置默认配置
   const config = scriptConfig || {
     language: 'chinese',
@@ -55,12 +55,31 @@ const buildScriptPrompt = (markdownContent: string, scriptConfig?: ScriptGenerat
   // 自定义要求
   const customInstructions = config.customRequirements ? `\nAdditional requirements: ${config.customRequirements}` : '';
 
-  return `You are an expert video script writer. Based on the following markdown content, generate a professional video script.
+  // 构建内容源部分
+  let contentSection = '';
+  
+  // 优先使用聊天消息
+  if (chatMessages && chatMessages.length > 0) {
+    const chatContent = chatMessages
+      .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n\n');
+    
+    contentSection = `Chat Conversation:
+${chatContent}
 
-Markdown Content:
+Please analyze the chat conversation above, extract the key points and important information discussed, and generate a professional video script based on these discussion points.`;
+  } else if (markdownContent && markdownContent.trim()) {
+    contentSection = `Markdown Content:
 ${markdownContent}
 
-Please analyze the content and create a video script with the following requirements:
+Please analyze the markdown content above and generate a professional video script.`;
+  }
+
+  return `You are an expert video script writer. Based on the following content, generate a professional video script.
+
+${contentSection}
+
+Please create a video script with the following requirements:
 
 1. Divide the content into exactly ${config.segmentCount} logical segments
 2. Each segment should represent a coherent part of the video (like introduction, main points, conclusion)
@@ -103,12 +122,23 @@ Important:
 };
 
 // 日志记录函数
-const logRequest = (markdownContent: string, taskId: string, config: any, scriptConfig?: ScriptGenerationConfig) => {
+const logRequest = (markdownContent: string, taskId: string, config: any, chatMessages?: ChatMessage[], scriptConfig?: ScriptGenerationConfig) => {
   console.log(`[Video Script Generation API] ${new Date().toISOString()} - Incoming script generation request`);
   console.log(`[Video Script Generation API] Task ID: ${taskId}`);
   console.log(`[Video Script Generation API] Model: ${config.model}`);
-  console.log(`[Video Script Generation API] Markdown content length: ${markdownContent.length} characters`);
-  console.log(`[Video Script Generation API] Markdown preview: ${markdownContent.slice(0, 200)}...`);
+  
+  // 记录内容源
+  if (chatMessages && chatMessages.length > 0) {
+    console.log(`[Video Script Generation API] Content Source: Chat Messages`);
+    console.log(`[Video Script Generation API] Chat messages count: ${chatMessages.length}`);
+    console.log(`[Video Script Generation API] Chat messages preview:`, 
+      chatMessages.slice(0, 2).map(msg => `${msg.role}: ${msg.content.slice(0, 100)}...`).join(' | ')
+    );
+  } else {
+    console.log(`[Video Script Generation API] Content Source: Markdown Content`);
+    console.log(`[Video Script Generation API] Markdown content length: ${markdownContent.length} characters`);
+    console.log(`[Video Script Generation API] Markdown preview: ${markdownContent.slice(0, 200)}...`);
+  }
   
   if (scriptConfig) {
     console.log(`[Video Script Generation API] Script Configuration:`);
@@ -131,17 +161,21 @@ const logResponse = (success: boolean, taskId: string, segmentCount?: number, er
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { markdownContent, taskId, scriptConfig } = body as { 
+    const { markdownContent, taskId, scriptConfig, chatMessages } = body as { 
       markdownContent: string; 
       taskId: string; 
       scriptConfig?: ScriptGenerationConfig;
+      chatMessages?: ChatMessage[];
     };
 
-    // 验证请求参数
-    if (!markdownContent || typeof markdownContent !== 'string' || markdownContent.trim().length === 0) {
-      console.error('[Video Script Generation API] Invalid request: markdownContent string is required');
+    // 验证请求参数 - 至少需要聊天消息或markdown内容之一
+    const hasChatMessages = chatMessages && Array.isArray(chatMessages) && chatMessages.length > 0;
+    const hasMarkdownContent = markdownContent && typeof markdownContent === 'string' && markdownContent.trim().length > 0;
+    
+    if (!hasChatMessages && !hasMarkdownContent) {
+      console.error('[Video Script Generation API] Invalid request: either chatMessages or markdownContent is required');
       return NextResponse.json(
-        { error: 'Markdown content string is required' },
+        { error: 'Either chat messages or markdown content is required' },
         { status: 400 }
       );
     }
@@ -155,7 +189,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = getConfig();
-    logRequest(markdownContent, taskId, config, scriptConfig);
+    logRequest(markdownContent, taskId, config, chatMessages, scriptConfig);
 
     // 准备请求数据
     const requestData = {
@@ -167,7 +201,7 @@ export async function POST(request: NextRequest) {
         },
         {
           role: 'user',
-          content: buildScriptPrompt(markdownContent, scriptConfig)
+          content: buildScriptPrompt(markdownContent, chatMessages, scriptConfig)
         }
       ],
       temperature: 0.7,

@@ -421,7 +421,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const documentState = useDocumentState(content, onUpdateContent, taskId);
   const videoPlayback = useVideoPlayback(taskId, handleVideoTimeUpdate, timelineCurrentTime, currentEffectiveVolume);
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
-  const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent);
+  const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content);
   const materialManagement = useMaterialManagement(taskId);
 
   // 监听脚本生成状态变化，自动记录开始时间和清除时间
@@ -509,19 +509,28 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [taskId]);
 
   const handleScriptGenerate = useCallback((config: ScriptGenerationConfig) => {
+    // 获取当前活动对话的消息
+    const activeConversation = content?.conversations?.find(
+      conv => conv.id === content?.activeConversationId
+    );
+    
+    const chatMessages = activeConversation?.messages || [];
+    
     console.log(`[VideoEditingInterface] 开始生成脚本`, {
       taskId,
       config,
       contentLength: documentState.markdownValue.length,
+      chatMessageCount: chatMessages.length,
+      hasChatMessages: chatMessages.length > 0,
       timestamp: new Date().toISOString()
     });
     
     // 关闭弹窗
     setIsScriptGenerationModalOpen(false);
     
-    // 调用脚本生成服务，传入配置
-    scriptGeneration.handleGenerateScriptWithConfig(config);
-  }, [taskId, documentState.markdownValue.length, scriptGeneration]);
+    // 调用脚本生成服务，传入配置和聊天消息
+    scriptGeneration.handleGenerateScriptWithConfig(config, chatMessages);
+  }, [taskId, documentState.markdownValue.length, scriptGeneration, content]);
 
   // 处理添加素材到时间轴
   const handleAddMaterialToTimeline = useCallback((material: MaterialItem) => {

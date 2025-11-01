@@ -1,4 +1,4 @@
-import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem, ScriptGenerationConfig } from '@/types';
+import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem, ScriptGenerationConfig, ChatMessage } from '@/types';
 
 // Video playback types
 export type PreviewQuality = 'low' | 'medium' | 'high' | 'original';
@@ -125,8 +125,8 @@ export interface UseAIAssistantReturn {
 
 export interface UseScriptGenerationReturn {
   isGeneratingScript: boolean;
-  handleGenerateScript: () => Promise<void>;
-  handleGenerateScriptWithConfig: (config: ScriptGenerationConfig) => Promise<void>;
+  handleGenerateScript: (chatMessages?: ChatMessage[]) => Promise<void>;
+  handleGenerateScriptWithConfig: (config: ScriptGenerationConfig, chatMessages?: ChatMessage[]) => Promise<void>;
   handleUpdateSegments: (segments: ScriptSegment[]) => void;
   generationProgress: number;
   generationError: string | null;
