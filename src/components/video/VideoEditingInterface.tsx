@@ -2041,6 +2041,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onSendMessage={handleSendChatMessage}
           onClearMessages={handleClearChatMessages}
           isLoading={isChatLoading}
+          onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
+          onPolishClick={handlePolishClick}
+          onGenerateScriptClick={handleScriptGenerationClick}
+          isGeneratingScript={scriptGeneration.isGeneratingScript}
         />
       </div>
 
