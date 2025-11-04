@@ -6,6 +6,7 @@ import { CreativeBrainstormingConfig, ChatMessage, BrainstormingPhase } from './
 import ConfigurationPanel from './components/ConfigurationPanel';
 import ChatInterface from './components/ChatInterface';
 import { useBrainstormingChat } from './hooks/useBrainstormingChat';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface CreativeBrainstormingModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
   taskId,
   currentContent = ''
 }) => {
+  const { t } = useLocale();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'CreativeBrainstormingModal'
@@ -48,7 +50,7 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
     continueDiscussion,
     startSummary,
     sendUserMessage
-  } = useBrainstormingChat(taskId, config, currentContent);
+  } = useBrainstormingChat(taskId, config, currentContent, t.creativeBrainstormingModal);
 
   // 验证配置是否完整
   const isConfigValid = config.creationType.length > 0 && config.creativeExperts.length > 0;
@@ -141,14 +143,14 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
                 </svg>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">创意构思助手</h2>
-                <p className="text-sm text-gray-600 mt-1">多专家协作，激发创意灵感</p>
+                <h2 className="text-xl font-semibold text-gray-900">{t.creativeBrainstormingModal.title}</h2>
+                <p className="text-sm text-gray-600 mt-1">{t.creativeBrainstormingModal.subtitle}</p>
               </div>
             </div>
             <button
               onClick={handleClose}
               className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
-              aria-label="关闭"
+              aria-label={t.creativeBrainstormingModal.closeAriaLabel}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -166,6 +168,7 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
             onStartBrainstorming={handleStartBrainstorming}
             isConfigValid={isConfigValid}
             isDiscussing={isDiscussing}
+            translations={t.creativeBrainstormingModal}
           />
 
           {/* 右侧聊天界面 */}
@@ -179,6 +182,7 @@ const CreativeBrainstormingModal: React.FC<CreativeBrainstormingModalProps> = ({
             onStartSummary={handleStartSummary}
             onExportContent={handleExportContent}
             currentRound={currentRound}
+            translations={t.creativeBrainstormingModal}
           />
         </div>
       </div>

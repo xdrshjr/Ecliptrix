@@ -3,6 +3,7 @@
 import React from 'react';
 import { CreativeBrainstormingConfig, ConfigCategory } from '../types';
 import { configCategories } from '../data/expertProfiles';
+import { Translations } from '@/lib/i18n';
 
 interface ConfigurationPanelProps {
   config: CreativeBrainstormingConfig;
@@ -10,6 +11,7 @@ interface ConfigurationPanelProps {
   onStartBrainstorming: () => void;
   isConfigValid: boolean;
   isDiscussing: boolean;
+  translations: Translations['creativeBrainstormingModal'];
 }
 
 const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
@@ -17,7 +19,8 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
   onConfigChange,
   onStartBrainstorming,
   isConfigValid,
-  isDiscussing
+  isDiscussing,
+  translations
 }) => {
   const handleOptionToggle = (categoryId: keyof CreativeBrainstormingConfig, optionId: string) => {
     // 跳过字符串类型的字段
@@ -46,53 +49,73 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
     });
   };
 
-  const renderConfigCategory = (category: ConfigCategory) => (
-    <div key={category.id} className="space-y-3">
-      <div>
-        <h4 className="text-sm font-semibold text-gray-900 mb-1">{category.title}</h4>
-        <p className="text-xs text-gray-500">{category.description}</p>
-      </div>
-      
-      <div className="space-y-2">
-        {category.options.map(option => {
-          const isSelected = config[category.id].includes(option.id);
-          return (
-            <div
-              key={option.id}
-              onClick={() => handleOptionToggle(category.id, option.id)}
-              className={`
-                p-3 rounded-lg border cursor-pointer transition-all duration-200
-                ${isSelected 
-                  ? 'bg-blue-50 border-blue-200 shadow-sm' 
-                  : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }
-              `}
-            >
-              <div className="flex items-start space-x-3">
-                <div className={`
-                  w-4 h-4 rounded border-2 flex items-center justify-center mt-0.5 transition-colors
+  const getCategoryTranslation = (categoryId: string) => {
+    const categoryKey = categoryId as keyof typeof translations.categories;
+    return translations.categories[categoryKey];
+  };
+
+  const getOptionTranslation = (categoryId: string, optionId: string) => {
+    const categoryKey = categoryId as keyof typeof translations.categories;
+    const category = translations.categories[categoryKey];
+    
+    // Convert option ID to camelCase for translation key
+    const optionKey = optionId.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+    return (category.options as any)[optionKey];
+  };
+
+  const renderConfigCategory = (category: ConfigCategory) => {
+    const categoryTranslation = getCategoryTranslation(category.id);
+    
+    return (
+      <div key={category.id} className="space-y-3">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900 mb-1">{categoryTranslation.title}</h4>
+          <p className="text-xs text-gray-500">{categoryTranslation.description}</p>
+        </div>
+        
+        <div className="space-y-2">
+          {category.options.map(option => {
+            const isSelected = config[category.id].includes(option.id);
+            const optionTranslation = getOptionTranslation(category.id, option.id);
+            
+            return (
+              <div
+                key={option.id}
+                onClick={() => handleOptionToggle(category.id, option.id)}
+                className={`
+                  p-3 rounded-lg border cursor-pointer transition-all duration-200
                   ${isSelected 
-                    ? 'bg-blue-500 border-blue-500' 
-                    : 'border-gray-300 bg-white'
+                    ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                    : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }
-                `}>
-                  {isSelected && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 mb-1">{option.label}</div>
-                  <div className="text-xs text-gray-500 leading-relaxed">{option.description}</div>
+                `}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className={`
+                    w-4 h-4 rounded border-2 flex items-center justify-center mt-0.5 transition-colors
+                    ${isSelected 
+                      ? 'bg-blue-500 border-blue-500' 
+                      : 'border-gray-300 bg-white'
+                    }
+                  `}>
+                    {isSelected && (
+                      <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 mb-1">{optionTranslation.label}</div>
+                    <div className="text-xs text-gray-500 leading-relaxed">{optionTranslation.description}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col">
@@ -103,15 +126,15 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
         {/* 自定义创意输入框 */}
         <div className="space-y-3">
           <div>
-            <h4 className="text-sm font-semibold text-gray-900 mb-1">自定义创意</h4>
-            <p className="text-xs text-gray-500">输入您的创意想法，作为专家讨论的依据</p>
+            <h4 className="text-sm font-semibold text-gray-900 mb-1">{translations.configPanel.customCreativeTitle}</h4>
+            <p className="text-xs text-gray-500">{translations.configPanel.customCreativeDescription}</p>
           </div>
           
           <div className="space-y-2">
             <textarea
               value={config.customCreativeInput}
               onChange={(e) => handleCustomCreativeInputChange(e.target.value)}
-              placeholder="请输入您的创意想法、特殊要求或期望方向..."
+              placeholder={translations.configPanel.customCreativePlaceholder}
               className="w-full p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               rows={4}
               disabled={isDiscussing}
@@ -133,12 +156,12 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
             }
           `}
         >
-          {isDiscussing ? '讨论进行中...' : '开始构思'}
+          {isDiscussing ? translations.configPanel.startButtonDiscussing : translations.configPanel.startButton}
         </button>
         
         {!isConfigValid && (
           <p className="text-xs text-red-500 mt-2 text-center">
-            请至少选择一个创作类型和一位创意专家
+            {translations.configPanel.validationError}
           </p>
         )}
       </div>

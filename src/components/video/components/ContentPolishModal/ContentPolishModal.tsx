@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { VideoEditingLogger } from '../../utils';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ContentPolishModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
   originalContent,
   taskId
 }) => {
+  const { t } = useLocale();
   const [selectedStyle, setSelectedStyle] = useState<string>('');
   const [polishResults, setPolishResults] = useState<PolishResult[]>([]);
   const [selectedResult, setSelectedResult] = useState<string>('');
@@ -164,19 +166,30 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
       logger.info('开始多目标内容润色', {
         originalContentLength: originalContent.length,
         selectedStylesCount: selectedStyles.size,
-        selectedGoals: selectedGoals.map(g => ({ id: g.id, name: g.name })),
+        selectedGoals: selectedGoals.map(g => ({ 
+          id: g.id, 
+          name: t.contentPolishModal.polishGoals[g.id as keyof typeof t.contentPolishModal.polishGoals]?.name || g.name 
+        })),
         contentPreview: originalContent.substring(0, 100) + '...'
       });
 
       // 生成5种不同强度的候选答案，每种都同时满足所有选中的润色目标
-      const intensityLabels = ['轻度润色', '中度润色', '强度润色', '深度润色', '极度润色'];
+      const intensityLabels = [
+        t.contentPolishModal.intensityLabels.light,
+        t.contentPolishModal.intensityLabels.medium,
+        t.contentPolishModal.intensityLabels.strong,
+        t.contentPolishModal.intensityLabels.deep,
+        t.contentPolishModal.intensityLabels.extreme
+      ];
       const polishPromises = [1, 2, 3, 4, 5].map(async (intensity) => {
         try {
           logger.info(`开始强度${intensity}的多目标润色`, { 
             intensity,
             intensityLabel: intensityLabels[intensity - 1],
             selectedGoalsCount: selectedGoals.length,
-            selectedGoals: selectedGoals.map(g => g.name)
+            selectedGoals: selectedGoals.map(g => 
+              t.contentPolishModal.polishGoals[g.id as keyof typeof t.contentPolishModal.polishGoals]?.name || g.name
+            )
           });
 
           const response = await fetch('/api/content-polish-multiple', {
@@ -237,7 +250,11 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
           return {
             content: accumulatedContent.trim(),
             style: intensityLabels[intensity - 1],
-            description: `同时满足${selectedGoals.length}个润色目标：${selectedGoals.map(g => g.name).join('、')}`
+            description: t.contentPolishModal.multiGoalDescription
+              .replace('{count}', selectedGoals.length.toString())
+              .replace('{goals}', selectedGoals.map(g => 
+                t.contentPolishModal.polishGoals[g.id as keyof typeof t.contentPolishModal.polishGoals]?.name || g.name
+              ).join('、'))
           };
         } catch (error) {
           logger.error(`强度${intensity}润色调用失败`, 
@@ -245,9 +262,9 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
             { intensity, intensityLabel: intensityLabels[intensity - 1] }
           );
           return {
-            content: `润色失败: ${error instanceof Error ? error.message : String(error)}`,
+            content: t.contentPolishModal.errors.polishFailed.replace('{error}', error instanceof Error ? error.message : String(error)),
             style: intensityLabels[intensity - 1],
-            description: `强度${intensity}润色生成失败`
+            description: t.contentPolishModal.errors.intensityPolishFailed.replace('{intensity}', intensity.toString())
           };
         }
       });
@@ -257,12 +274,12 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
       // 过滤掉失败的结果
       const successfulResults = results.filter(result => 
         result.content && 
-        !result.content.startsWith('润色失败:') && 
+        !result.content.includes(t.contentPolishModal.errors.polishFailed.split(':')[0]) && 
         result.content.trim().length > 0
       );
 
       if (successfulResults.length === 0) {
-        throw new Error('所有润色尝试都失败了，请重试');
+        throw new Error(t.contentPolishModal.errors.allPolishFailed);
       }
 
       setPolishResults(successfulResults);
@@ -275,7 +292,9 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
       logger.info('多目标润色完成', {
         totalResults: successfulResults.length,
         selectedStylesCount: selectedStyles.size,
-        selectedGoals: selectedGoals.map(g => g.name),
+        selectedGoals: selectedGoals.map(g => 
+          t.contentPolishModal.polishGoals[g.id as keyof typeof t.contentPolishModal.polishGoals]?.name || g.name
+        ),
         resultsPreview: successfulResults.map(r => ({
           style: r.style,
           length: r.content.length,
@@ -334,28 +353,31 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
     return acc;
   }, {} as Record<string, PolishGoal[]>);
 
-  // 分类名称映射
-  const categoryNames: Record<string, string> = {
-    platform: '平台适配',
-    engagement: '互动引导',
-    emotional: '情感共鸣',
-    conversion: '转化驱动',
-    narrative: '叙事表达',
-    targeting: '精准定位',
-    viral: '传播优化',
-    controversial: '争议话题',
-    uniqueness: '差异化',
-    structure: '结构优化',
-    emphasis: '重点突出',
-    memorable: '记忆深刻',
-    credibility: '可信度',
-    immersive: '沉浸体验',
-    innovative: '创新思维',
-    psychological: '心理驱动',
-    motivation: '动机激发',
-    practical: '实用价值',
-    other: '其他'
-  };
+  // 分类名称映射 - 使用useCallback以确保依赖更新
+  const getCategoryName = useCallback((category: string): string => {
+    const mapping: Record<string, string> = {
+      platform: t.contentPolishModal.categoryNames.platform,
+      engagement: t.contentPolishModal.categoryNames.engagement,
+      emotional: t.contentPolishModal.categoryNames.emotional,
+      conversion: t.contentPolishModal.categoryNames.conversion,
+      narrative: t.contentPolishModal.categoryNames.narrative,
+      targeting: t.contentPolishModal.categoryNames.targeting,
+      viral: t.contentPolishModal.categoryNames.viral,
+      controversial: t.contentPolishModal.categoryNames.controversial,
+      uniqueness: t.contentPolishModal.categoryNames.uniqueness,
+      structure: t.contentPolishModal.categoryNames.structure,
+      emphasis: t.contentPolishModal.categoryNames.emphasis,
+      memorable: t.contentPolishModal.categoryNames.memorable,
+      credibility: t.contentPolishModal.categoryNames.credibility,
+      immersive: t.contentPolishModal.categoryNames.immersive,
+      innovative: t.contentPolishModal.categoryNames.innovative,
+      psychological: t.contentPolishModal.categoryNames.psychological,
+      motivation: t.contentPolishModal.categoryNames.motivation,
+      practical: t.contentPolishModal.categoryNames.practical,
+      other: t.contentPolishModal.categoryNames.other
+    };
+    return mapping[category] || category;
+  }, [t]);
 
   if (!isOpen) return null;
 
@@ -366,12 +388,13 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">智能润色</h2>
-              <p className="text-sm text-gray-600 mt-1">让AI帮您优化内容，提升表达效果</p>
+              <h2 className="text-xl font-semibold text-gray-900">{t.contentPolishModal.title}</h2>
+              <p className="text-sm text-gray-600 mt-1">{t.contentPolishModal.subtitle}</p>
             </div>
             <button
               onClick={handleClose}
               className="text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label={t.contentPolishModal.close}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -387,10 +410,10 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
             {/* 原始内容预览区域（固定高度） */}
             <div className="p-6 border-b border-gray-200">
               <div className="mb-0">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">原始内容</h3>
+                <h3 className="text-sm font-medium text-gray-900 mb-3">{t.contentPolishModal.originalContent}</h3>
                 <div className="bg-white rounded-lg border border-gray-200 p-4 max-h-24 overflow-y-auto">
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                    {originalContent || '无内容'}
+                    {originalContent || t.contentPolishModal.noContent}
                   </p>
                 </div>
               </div>
@@ -401,11 +424,11 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
               {/* 选择润色目标标题和统计 */}
               <div className="flex-shrink-0 mb-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-gray-900">选择润色目标</h3>
+                  <h3 className="text-sm font-medium text-gray-900">{t.contentPolishModal.selectPolishGoals}</h3>
                   {selectedStyles.size > 0 && (
                     <div className="flex items-center space-x-2">
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                        已选择 {selectedStyles.size} 个
+                        {t.contentPolishModal.selectedCount.replace('{count}', selectedStyles.size.toString())}
                       </span>
                       <button
                         onClick={() => {
@@ -417,7 +440,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                         }}
                         className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
                       >
-                        清空
+                        {t.contentPolishModal.clear}
                       </button>
                     </div>
                   )}
@@ -432,18 +455,18 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span className="ml-2 text-sm text-gray-600">加载配置中...</span>
+                    <span className="ml-2 text-sm text-gray-600">{t.contentPolishModal.loadingConfig}</span>
                   </div>
                 ) : configError ? (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-sm text-red-700">配置加载失败：{configError}</p>
+                    <p className="text-sm text-red-700">{t.contentPolishModal.configLoadError.replace('{error}', configError)}</p>
                   </div>
                 ) : (
                   <div className="space-y-4 pb-2">
                     {Object.entries(groupedGoals).map(([category, goals]) => (
                       <div key={category}>
                         <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 sticky top-0 bg-gray-50 py-1">
-                          {categoryNames[category] || category}
+                          {getCategoryName(category)}
                         </h4>
                         {/* 使用网格布局，一行两个 */}
                         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -476,12 +499,12 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                                   <h5 className={`font-medium text-sm mb-1 transition-colors ${
                                     isSelected ? 'text-blue-900' : 'text-gray-900'
                                   }`}>
-                                    {goal.name}
+                                    {t.contentPolishModal.polishGoals[goal.id as keyof typeof t.contentPolishModal.polishGoals]?.name || goal.name}
                                   </h5>
                                   <p className={`text-xs leading-relaxed transition-colors ${
                                     isSelected ? 'text-blue-700' : 'text-gray-600'
                                   }`}>
-                                    {goal.description}
+                                    {t.contentPolishModal.polishGoals[goal.id as keyof typeof t.contentPolishModal.polishGoals]?.description || goal.description}
                                   </p>
                                 </div>
                               </div>
@@ -508,17 +531,17 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>润色中...</span>
+                    <span>{t.contentPolishModal.polishing}</span>
                   </div>
                 ) : (
-                  `开始润色 (${selectedStyles.size > 0 ? `${selectedStyles.size}种目标` : '请选择目标'})`
+                  t.contentPolishModal.startPolish.replace('{count}', selectedStyles.size > 0 ? selectedStyles.size.toString() : t.contentPolishModal.selectGoals)
                 )}
               </button>
               
               {/* 添加详细的操作日志记录 */}
               {selectedStyles.size > 0 && (
                 <div className="mt-2 text-xs text-gray-500 text-center">
-                  已选择 {selectedStyles.size} 个润色目标，点击开始润色
+                  {t.contentPolishModal.operationHint.replace('{count}', selectedStyles.size.toString())}
                 </div>
               )}
             </div>
@@ -527,7 +550,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
           {/* 右侧结果展示区域 */}
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 p-6 overflow-y-auto">
-              <h3 className="text-sm font-medium text-gray-900 mb-4">润色结果</h3>
+              <h3 className="text-sm font-medium text-gray-900 mb-4">{t.contentPolishModal.polishResults}</h3>
               
               {polishResults.length > 0 ? (
                 <div className="space-y-4">
@@ -548,7 +571,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                           </span>
                         </div>
                         {selectedResult === result.content && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">已选择</span>
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">{t.contentPolishModal.selected}</span>
                         )}
                       </div>
                       <p className="text-xs text-gray-600 mb-3">{result.description}</p>
@@ -567,8 +590,8 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </div>
-                  <p className="text-gray-500 text-sm">选择润色目标后，点击"开始润色"生成优化建议</p>
-                  <p className="text-gray-400 text-xs mt-2">支持多选，为每个目标生成专门的润色方案</p>
+                  <p className="text-gray-500 text-sm">{t.contentPolishModal.emptyStateTitle}</p>
+                  <p className="text-gray-400 text-xs mt-2">{t.contentPolishModal.emptyStateSubtitle}</p>
                 </div>
               )}
             </div>
@@ -579,14 +602,14 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                 onClick={handleClose}
                 className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                取消
+                {t.contentPolishModal.cancel}
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={!selectedResult}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
               >
-                确认应用
+                {t.contentPolishModal.confirmApply}
               </button>
             </div>
           </div>

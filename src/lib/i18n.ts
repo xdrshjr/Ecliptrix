@@ -465,6 +465,328 @@ export interface Translations {
     generateScriptAriaLabel: string;
     placeholder: string;
   };
+  contentPolishModal: {
+    title: string;
+    subtitle: string;
+    close: string;
+    originalContent: string;
+    noContent: string;
+    selectPolishGoals: string;
+    selectedCount: string;
+    clear: string;
+    loadingConfig: string;
+    configLoadError: string;
+    startPolish: string;
+    polishing: string;
+    selectGoals: string;
+    polishResults: string;
+    emptyStateTitle: string;
+    emptyStateSubtitle: string;
+    cancel: string;
+    confirmApply: string;
+    selected: string;
+    errors: {
+      polishFailed: string;
+      allPolishFailed: string;
+      intensityPolishFailed: string;
+    };
+    categoryNames: {
+      platform: string;
+      engagement: string;
+      emotional: string;
+      conversion: string;
+      narrative: string;
+      targeting: string;
+      viral: string;
+      controversial: string;
+      uniqueness: string;
+      structure: string;
+      emphasis: string;
+      memorable: string;
+      credibility: string;
+      immersive: string;
+      innovative: string;
+      psychological: string;
+      motivation: string;
+      practical: string;
+      other: string;
+    };
+    intensityLabels: {
+      light: string;
+      medium: string;
+      strong: string;
+      deep: string;
+      extreme: string;
+    };
+    polishGoals: {
+      short_video: {
+        name: string;
+        description: string;
+      };
+      three_second_hook: {
+        name: string;
+        description: string;
+      };
+      engage_comments: {
+        name: string;
+        description: string;
+      };
+      reader_resonance: {
+        name: string;
+        description: string;
+      };
+      empathy: {
+        name: string;
+        description: string;
+      };
+      call_to_action: {
+        name: string;
+        description: string;
+      };
+      storytelling: {
+        name: string;
+        description: string;
+      };
+      pain_point: {
+        name: string;
+        description: string;
+      };
+      viral_potential: {
+        name: string;
+        description: string;
+      };
+      curiosity_gap: {
+        name: string;
+        description: string;
+      };
+      fan_sb: {
+        name: string;
+        description: string;
+      };
+      provoke_debate: {
+        name: string;
+        description: string;
+      };
+      differentiation: {
+        name: string;
+        description: string;
+      };
+      echo_ending: {
+        name: string;
+        description: string;
+      };
+      contrast_strong: {
+        name: string;
+        description: string;
+      };
+      golden_sentence: {
+        name: string;
+        description: string;
+      };
+      data_support: {
+        name: string;
+        description: string;
+      };
+      authority_quote: {
+        name: string;
+        description: string;
+      };
+      scenario_immersion: {
+        name: string;
+        description: string;
+      };
+      reverse_thinking: {
+        name: string;
+        description: string;
+      };
+      anxiety_marketing: {
+        name: string;
+        description: string;
+      };
+      benefit_driven: {
+        name: string;
+        description: string;
+      };
+      scarcity_urgency: {
+        name: string;
+        description: string;
+      };
+      social_proof: {
+        name: string;
+        description: string;
+      };
+      emotional_trigger: {
+        name: string;
+        description: string;
+      };
+      practical_tips: {
+        name: string;
+        description: string;
+      };
+    };
+    multiGoalDescription: string;
+    operationHint: string;
+  };
+  scriptGenerationModal: {
+    title: string;
+    close: string;
+    languageLabel: string;
+    languageOptions: {
+      chinese: {
+        label: string;
+        description: string;
+      };
+      english: {
+        label: string;
+        description: string;
+      };
+      mixed: {
+        label: string;
+        description: string;
+      };
+    };
+    consistencyLabel: string;
+    consistencyOptions: {
+      high: {
+        label: string;
+        description: string;
+      };
+      moderate: {
+        label: string;
+        description: string;
+      };
+      low: {
+        label: string;
+        description: string;
+      };
+    };
+    segmentCountLabel: string;
+    segmentCountHint: string;
+    customRequirementsLabel: string;
+    customRequirementsOptional: string;
+    customRequirementsPlaceholder: string;
+    charCount: string;
+    cancelButton: string;
+    generateButton: string;
+  };
+  creativeBrainstormingModal: {
+    title: string;
+    subtitle: string;
+    close: string;
+    closeAriaLabel: string;
+    configPanel: {
+      customCreativeTitle: string;
+      customCreativeDescription: string;
+      customCreativePlaceholder: string;
+      startButton: string;
+      startButtonDiscussing: string;
+      validationError: string;
+    };
+    categories: {
+      creationType: {
+        title: string;
+        description: string;
+        options: {
+          brandMarketing: { label: string; description: string };
+          educationalTraining: { label: string; description: string };
+          entertainmentContent: { label: string; description: string };
+          productShowcase: { label: string; description: string };
+          storytelling: { label: string; description: string };
+        };
+      };
+      creationDomain: {
+        title: string;
+        description: string;
+        options: {
+          technologyDigital: { label: string; description: string };
+          lifestyle: { label: string; description: string };
+          businessFinance: { label: string; description: string };
+          healthMedical: { label: string; description: string };
+          artsCulture: { label: string; description: string };
+          travelFood: { label: string; description: string };
+        };
+      };
+      creationGoal: {
+        title: string;
+        description: string;
+        options: {
+          brandAwareness: { label: string; description: string };
+          userEngagement: { label: string; description: string };
+          knowledgeEducation: { label: string; description: string };
+          salesPromotion: { label: string; description: string };
+          audienceEntertainment: { label: string; description: string };
+        };
+      };
+      contentStrategy: {
+        title: string;
+        description: string;
+        options: {
+          emotionalResonance: { label: string; description: string };
+          dataDriven: { label: string; description: string };
+          storyDriven: { label: string; description: string };
+          interactiveEngagement: { label: string; description: string };
+          professionalAuthority: { label: string; description: string };
+        };
+      };
+      creativeExperts: {
+        title: string;
+        description: string;
+        options: {
+          creativeDirector: { label: string; description: string };
+          marketingStrategist: { label: string; description: string };
+          contentWriter: { label: string; description: string };
+          visualDesigner: { label: string; description: string };
+          uxExpert: { label: string; description: string };
+        };
+      };
+    };
+    experts: {
+      creativeDirector: {
+        name: string;
+        title: string;
+        expertise: string[];
+        personality: string;
+      };
+      marketingStrategist: {
+        name: string;
+        title: string;
+        expertise: string[];
+        personality: string;
+      };
+      contentWriter: {
+        name: string;
+        title: string;
+        expertise: string[];
+        personality: string;
+      };
+      visualDesigner: {
+        name: string;
+        title: string;
+        expertise: string[];
+        personality: string;
+      };
+      uxExpert: {
+        name: string;
+        title: string;
+        expertise: string[];
+        personality: string;
+      };
+    };
+    chatInterface: {
+      title: string;
+      roundLabel: string;
+      discussingStatus: string;
+      summarizingStatus: string;
+      exportButton: string;
+      emptyStateTitle: string;
+      emptyStateSubtitle: string;
+      continueButton: string;
+      summaryButton: string;
+      userInputPlaceholder: string;
+      userInputPlaceholderDiscussing: string;
+      userInputPlaceholderSummarizing: string;
+    };
+  };
   defaultContent: {
     documentDefault: string;
     scriptSegments: {
@@ -481,6 +803,24 @@ export interface Translations {
         sentences: string[];
       };
     };
+  };
+  videoChatWindow: {
+    inputPlaceholder: string;
+    creativeBrainstormingTooltip: string;
+    polishContentTooltip: string;
+    generateScriptTooltip: string;
+    generateScriptTooltipGenerating: string;
+    clearChatTooltip: string;
+    sendMessageTooltip: string;
+    clearChatConfirm: string;
+    emptyStateTitle: string;
+    emptyStateSubtitle: string;
+    scriptOptimizationTitle: string;
+    scriptOptimizationDesc: string;
+    editingSuggestionsTitle: string;
+    editingSuggestionsDesc: string;
+    startChatTitle: string;
+    startChatDesc: string;
   };
 }
 
@@ -941,16 +1281,338 @@ export const translations: Record<string, Translations> = {
          },
        },
      },
-    documentPanel: {
-      title: 'Documentation',
-      creativeBrainstorming: 'Brainstorming',
-      creativeBrainstormingAriaLabel: 'Start creative brainstorming',
-      polishContent: 'Polish current document content with AI',
-      polishContentAriaLabel: 'Polish document content',
-      generateScript: 'Generate video script from current document',
-      generatingScript: 'Generating script...',
-      generateScriptAriaLabel: 'Generate script',
-      placeholder: 'Start writing your video project documentation...',
+   documentPanel: {
+     title: 'Documentation',
+     creativeBrainstorming: 'Brainstorming',
+     creativeBrainstormingAriaLabel: 'Start creative brainstorming',
+     polishContent: 'Polish current document content with AI',
+     polishContentAriaLabel: 'Polish document content',
+     generateScript: 'Generate video script from current document',
+     generatingScript: 'Generating script...',
+     generateScriptAriaLabel: 'Generate script',
+     placeholder: 'Start writing your video project documentation...',
+   },
+   contentPolishModal: {
+     title: 'Smart Polish',
+     subtitle: 'Let AI optimize your content and enhance expression effectiveness',
+     close: 'Close',
+     originalContent: 'Original Content',
+     noContent: 'No content',
+     selectPolishGoals: 'Select Polish Goals',
+     selectedCount: 'Selected {count}',
+     clear: 'Clear',
+     loadingConfig: 'Loading configuration...',
+     configLoadError: 'Configuration loading failed: {error}',
+     startPolish: 'Start Polish ({count} goals)',
+     polishing: 'Polishing...',
+     selectGoals: 'Please select goals',
+     polishResults: 'Polish Results',
+     emptyStateTitle: 'Select polish goals, then click "Start Polish" to generate optimization suggestions',
+     emptyStateSubtitle: 'Multiple selections supported, generating specialized polish plans for each goal',
+     cancel: 'Cancel',
+     confirmApply: 'Confirm Apply',
+     selected: 'Selected',
+     errors: {
+       polishFailed: 'Polish failed: {error}',
+       allPolishFailed: 'All polish attempts failed, please try again',
+       intensityPolishFailed: 'Intensity {intensity} polish generation failed'
+     },
+     categoryNames: {
+       platform: 'Platform Adaptation',
+       engagement: 'Engagement',
+       emotional: 'Emotional Resonance',
+       conversion: 'Conversion Drive',
+       narrative: 'Narrative Expression',
+       targeting: 'Precise Targeting',
+       viral: 'Viral Optimization',
+       controversial: 'Controversial Topics',
+       uniqueness: 'Differentiation',
+       structure: 'Structure Optimization',
+       emphasis: 'Key Emphasis',
+       memorable: 'Memorable',
+       credibility: 'Credibility',
+       immersive: 'Immersive Experience',
+       innovative: 'Innovative Thinking',
+       psychological: 'Psychological Drive',
+       motivation: 'Motivation Activation',
+       practical: 'Practical Value',
+       other: 'Other'
+     },
+     intensityLabels: {
+       light: 'Light Polish',
+       medium: 'Medium Polish',
+       strong: 'Strong Polish',
+       deep: 'Deep Polish',
+       extreme: 'Extreme Polish'
+     },
+     polishGoals: {
+       short_video: {
+         name: 'Short Video Copy',
+         description: 'Copy style suitable for short video platforms like TikTok and Kwai'
+       },
+       three_second_hook: {
+         name: '3-Second Hook',
+         description: 'Grab audience attention within 3 seconds at the beginning'
+       },
+       engage_comments: {
+         name: 'Engage Comments',
+         description: 'Guide user interaction and discussion'
+       },
+       reader_resonance: {
+         name: 'Reader Resonance',
+         description: 'Create strong emotional resonance with readers'
+       },
+       empathy: {
+         name: 'Evoke Empathy',
+         description: 'Touch readers\' emotions and create empathy'
+       },
+       call_to_action: {
+         name: 'Call to Action',
+         description: 'Guide readers to take specific actions'
+       },
+       storytelling: {
+         name: 'Storytelling',
+         description: 'Tell content in a narrative way'
+       },
+       pain_point: {
+         name: 'Pain Point Entry',
+         description: 'Directly address user pain points to attract attention'
+       },
+       viral_potential: {
+         name: 'Viral Potential',
+         description: 'Content that is easy to share and spread'
+       },
+       curiosity_gap: {
+         name: 'Curiosity Gap',
+         description: 'Create suspense and arouse curiosity'
+       },
+       fan_sb: {
+         name: 'Deliberate Errors',
+         description: 'Intentionally make minor errors to trigger user correction and comments'
+       },
+       provoke_debate: {
+         name: 'Provoke Debate',
+         description: 'Use professional techniques to create controversial viewpoints and stimulate discussion'
+       },
+       differentiation: {
+         name: 'Differentiation',
+         description: 'Adopt unique perspectives and innovative expressions to stand out'
+       },
+       echo_ending: {
+         name: 'Echo Ending',
+         description: 'Create coherence between ending and beginning to enhance integrity'
+       },
+       contrast_strong: {
+         name: 'Strong Contrast',
+         description: 'Highlight key points through striking contrasts'
+       },
+       golden_sentence: {
+         name: 'Golden Sentences',
+         description: 'Include classic sentences that are easy to quote'
+       },
+       data_support: {
+         name: 'Data Support',
+         description: 'Enhance persuasiveness with specific data'
+       },
+       authority_quote: {
+         name: 'Authority Quote',
+         description: 'Quote expert or celebrity opinions to increase credibility'
+       },
+       scenario_immersion: {
+         name: 'Scenario Immersion',
+         description: 'Let readers feel immersed and enhance experience'
+       },
+       reverse_thinking: {
+         name: 'Reverse Thinking',
+         description: 'Contrary to conventional thinking, create surprises'
+       },
+       anxiety_marketing: {
+         name: 'Anxiety Marketing',
+         description: 'Reasonably utilize anxiety psychology to drive action'
+       },
+       benefit_driven: {
+         name: 'Benefit Driven',
+         description: 'Clearly state the benefits readers can gain'
+       },
+       scarcity_urgency: {
+         name: 'Scarcity & Urgency',
+         description: 'Create sense of scarcity and urgency'
+       },
+       social_proof: {
+         name: 'Social Proof',
+         description: 'Use herd mentality to enhance persuasiveness'
+       },
+       emotional_trigger: {
+         name: 'Emotional Trigger',
+         description: 'Trigger strong emotional responses'
+       },
+       practical_tips: {
+         name: 'Practical Tips',
+         description: 'Provide specific and actionable methods and techniques'
+       }
+     },
+     multiGoalDescription: 'Simultaneously meets {count} polish goals: {goals}',
+     operationHint: '{count} polish goals selected, click to start polishing'
+   },
+   scriptGenerationModal: {
+      title: 'Script Generation Configuration',
+      close: 'Close',
+      languageLabel: 'Script Language',
+      languageOptions: {
+        chinese: {
+          label: 'Chinese',
+          description: 'Generate Chinese video script'
+        },
+        english: {
+          label: 'English',
+          description: 'Generate English video script'
+        },
+        mixed: {
+          label: 'Mixed',
+          description: 'Intelligently select language based on content'
+        }
+      },
+      consistencyLabel: 'Original Content Consistency',
+      consistencyOptions: {
+        high: {
+          label: 'High Consistency',
+          description: 'Preserve original expression as much as possible'
+        },
+        moderate: {
+          label: 'Moderate Modification',
+          description: 'Moderate adjustment to suit video presentation'
+        },
+        low: {
+          label: 'Significant Modification',
+          description: 'Significantly optimize to enhance video effectiveness'
+        }
+      },
+      segmentCountLabel: 'Number of Segments',
+      segmentCountHint: 'Recommend choosing an appropriate number based on content length',
+      customRequirementsLabel: 'Custom Requirements',
+      customRequirementsOptional: '(Optional)',
+      customRequirementsPlaceholder: 'Describe your special requirements for the script, such as: style, tone, emphasis...',
+      charCount: '{current}/{max}',
+      cancelButton: 'Cancel',
+      generateButton: 'Generate'
+    },
+    creativeBrainstormingModal: {
+      title: 'Creative Brainstorming Assistant',
+      subtitle: 'Multi-expert collaboration, inspire creative ideas',
+      close: 'Close',
+      closeAriaLabel: 'Close modal',
+      configPanel: {
+        customCreativeTitle: 'Custom Ideas',
+        customCreativeDescription: 'Enter your creative ideas as the basis for expert discussion',
+        customCreativePlaceholder: 'Please enter your creative ideas, special requirements or desired direction...',
+        startButton: 'Start Brainstorming',
+        startButtonDiscussing: 'Discussion in Progress...',
+        validationError: 'Please select at least one creation type and one creative expert'
+      },
+      categories: {
+        creationType: {
+          title: 'Creation Type',
+          description: 'Select your video content type',
+          options: {
+            brandMarketing: { label: 'Brand Marketing', description: 'Enhance brand awareness and influence' },
+            educationalTraining: { label: 'Educational Training', description: 'Knowledge transfer and skill training' },
+            entertainmentContent: { label: 'Entertainment Content', description: 'Entertain audience, provide relaxing experience' },
+            productShowcase: { label: 'Product Showcase', description: 'Display product features and advantages' },
+            storytelling: { label: 'Storytelling', description: 'Convey values through stories' }
+          }
+        },
+        creationDomain: {
+          title: 'Creation Domain',
+          description: 'Select your professional domain',
+          options: {
+            technologyDigital: { label: 'Technology & Digital', description: 'Cutting-edge technology and digital products' },
+            lifestyle: { label: 'Lifestyle', description: 'Daily life and personal growth' },
+            businessFinance: { label: 'Business & Finance', description: 'Business strategy and financial knowledge' },
+            healthMedical: { label: 'Health & Medical', description: 'Health wellness and medical science' },
+            artsCulture: { label: 'Arts & Culture', description: 'Artistic creation and cultural heritage' },
+            travelFood: { label: 'Travel & Food', description: 'Travel experiences and food sharing' }
+          }
+        },
+        creationGoal: {
+          title: 'Creation Goal',
+          description: 'Define your core objective',
+          options: {
+            brandAwareness: { label: 'Increase Brand Awareness', description: 'Increase brand exposure and recognition' },
+            userEngagement: { label: 'Increase User Engagement', description: 'Improve interaction and user stickiness' },
+            knowledgeEducation: { label: 'Educate and Spread Knowledge', description: 'Disseminate knowledge and skills' },
+            salesPromotion: { label: 'Promote Product Sales', description: 'Drive conversion and sales growth' },
+            audienceEntertainment: { label: 'Entertain Audience', description: 'Provide entertainment value and pleasant experience' }
+          }
+        },
+        contentStrategy: {
+          title: 'Content Strategy',
+          description: 'Select your content strategy direction',
+          options: {
+            emotionalResonance: { label: 'Emotional Resonance', description: 'Touch audience through emotional connection' },
+            dataDriven: { label: 'Data-Driven', description: 'Formulate strategies based on data analysis' },
+            storyDriven: { label: 'Story-Driven', description: 'Convey core messages through stories' },
+            interactiveEngagement: { label: 'Interactive Engagement', description: 'Encourage audience participation and interaction' },
+            professionalAuthority: { label: 'Professional Authority', description: 'Establish professional image and authority' }
+          }
+        },
+        creativeExperts: {
+          title: 'Creative Experts',
+          description: 'Select experts to participate in discussion',
+          options: {
+            creativeDirector: { label: 'Creative Director', description: 'Responsible for overall creative direction and execution' },
+            marketingStrategist: { label: 'Marketing Strategist', description: 'Develop market promotion and communication strategy' },
+            contentWriter: { label: 'Content Writer', description: 'Create copy content and story scripts' },
+            visualDesigner: { label: 'Visual Designer', description: 'Design visual elements and interface interaction' },
+            uxExpert: { label: 'UX Expert', description: 'Optimize user experience and interaction flow' }
+          }
+        }
+      },
+      experts: {
+        creativeDirector: {
+          name: 'Creative Lee',
+          title: 'Creative Director',
+          expertise: ['Creative Strategy', 'Brand Positioning', 'Visual Concept', 'Creative Execution'],
+          personality: 'Full of imagination, good at thinking from different angles, focuses on creativity uniqueness and execution feasibility'
+        },
+        marketingStrategist: {
+          name: 'Strategy Wang',
+          title: 'Marketing Strategist',
+          expertise: ['Market Analysis', 'User Insights', 'Communication Strategy', 'Effect Evaluation'],
+          personality: 'Data-driven, good at analyzing market trends and user behavior, focuses on business value of strategy'
+        },
+        contentWriter: {
+          name: 'Writer Zhang',
+          title: 'Content Writer',
+          expertise: ['Story Structure', 'Copywriting', 'Emotional Expression', 'Narrative Techniques'],
+          personality: 'Literary talent, skilled at touching hearts with words, focuses on emotional resonance and communication power'
+        },
+        visualDesigner: {
+          name: 'Visual Chen',
+          title: 'Visual Designer',
+          expertise: ['Visual Design', 'Color Matching', 'Interface Interaction', 'User Experience'],
+          personality: 'Pursues balance of aesthetics and function, good at conveying information with visual language, focuses on design practicality'
+        },
+        uxExpert: {
+          name: 'UX Liu',
+          title: 'UX Expert',
+          expertise: ['User Research', 'Interaction Design', 'Usability Testing', 'Experience Optimization'],
+          personality: 'User-centered, good at discovering and solving user pain points, focuses on product usability and satisfaction'
+        }
+      },
+      chatInterface: {
+        title: 'Creative Discussion',
+        roundLabel: 'Round {round}',
+        discussingStatus: ' - Experts discussing...',
+        summarizingStatus: ' - Summarizing...',
+        exportButton: 'Export Content',
+        emptyStateTitle: 'Waiting to Start Discussion',
+        emptyStateSubtitle: 'After configuration is complete, experts will begin creative brainstorming',
+        continueButton: 'Continue Discussion',
+        summaryButton: 'Start Summary',
+        userInputPlaceholder: 'Enter your thoughts or questions...',
+        userInputPlaceholderDiscussing: 'Experts discussing, please wait...',
+        userInputPlaceholderSummarizing: 'Summarizing, please wait...'
+      }
     },
      defaultContent: {
        documentDefault: '# Video Editing Project\n\nStart editing your video project documentation here...\n\n## Notes\n- Add your project notes\n- Document your editing workflow\n- Track your progress\n\n## Resources\n- List your video assets\n- Note important timestamps\n- Reference materials',
@@ -983,6 +1645,24 @@ export const translations: Record<string, Translations> = {
            ]
          }
        }
+     },
+     videoChatWindow: {
+       inputPlaceholder: 'Enter message... (Shift+Enter for new line)',
+       creativeBrainstormingTooltip: 'Creative Brainstorming',
+       polishContentTooltip: 'Polish current document content with AI',
+       generateScriptTooltip: 'Generate video script from current document',
+       generateScriptTooltipGenerating: 'Generating script...',
+       clearChatTooltip: 'Clear chat history',
+       sendMessageTooltip: 'Send message',
+       clearChatConfirm: 'Are you sure you want to clear all chat history? This action cannot be undone.',
+       emptyStateTitle: 'Video Editing AI Assistant',
+       emptyStateSubtitle: 'Start chatting with AI to get video editing suggestions, script optimization, and creative inspiration.',
+       scriptOptimizationTitle: 'Script Optimization',
+       scriptOptimizationDesc: 'Let AI help you improve your video script and creative direction',
+       editingSuggestionsTitle: 'Editing Suggestions',
+       editingSuggestionsDesc: 'Get professional video editing and material usage suggestions',
+       startChatTitle: 'Start chatting with AI',
+       startChatDesc: 'Enter your question or requirement, AI will help you',
      },
   },
   'zh-CN': {
@@ -1441,16 +2121,338 @@ export const translations: Record<string, Translations> = {
          },
        },
      },
-    documentPanel: {
-      title: '文档编辑',
-      creativeBrainstorming: '创意构思',
-      creativeBrainstormingAriaLabel: '开启创意构思',
-      polishContent: '智能润色当前文档内容',
-      polishContentAriaLabel: '润色文档内容',
-      generateScript: '根据当前文档内容生成视频脚本',
-      generatingScript: '脚本生成中...',
-      generateScriptAriaLabel: '生成脚本',
-      placeholder: '开始编写您的视频项目文档...',
+   documentPanel: {
+     title: '文档编辑',
+     creativeBrainstorming: '创意构思',
+     creativeBrainstormingAriaLabel: '开启创意构思',
+     polishContent: '智能润色当前文档内容',
+     polishContentAriaLabel: '润色文档内容',
+     generateScript: '根据当前文档内容生成视频脚本',
+     generatingScript: '脚本生成中...',
+     generateScriptAriaLabel: '生成脚本',
+     placeholder: '开始编写您的视频项目文档...',
+   },
+   contentPolishModal: {
+     title: '智能润色',
+     subtitle: '让AI帮您优化内容，提升表达效果',
+     close: '关闭',
+     originalContent: '原始内容',
+     noContent: '无内容',
+     selectPolishGoals: '选择润色目标',
+     selectedCount: '已选择 {count} 个',
+     clear: '清空',
+     loadingConfig: '加载配置中...',
+     configLoadError: '配置加载失败：{error}',
+     startPolish: '开始润色 ({count}种目标)',
+     polishing: '润色中...',
+     selectGoals: '请选择目标',
+     polishResults: '润色结果',
+     emptyStateTitle: '选择润色目标后，点击"开始润色"生成优化建议',
+     emptyStateSubtitle: '支持多选，为每个目标生成专门的润色方案',
+     cancel: '取消',
+     confirmApply: '确认应用',
+     selected: '已选择',
+     errors: {
+       polishFailed: '润色失败: {error}',
+       allPolishFailed: '所有润色尝试都失败了，请重试',
+       intensityPolishFailed: '强度{intensity}润色生成失败'
+     },
+     categoryNames: {
+       platform: '平台适配',
+       engagement: '互动引导',
+       emotional: '情感共鸣',
+       conversion: '转化驱动',
+       narrative: '叙事表达',
+       targeting: '精准定位',
+       viral: '传播优化',
+       controversial: '争议话题',
+       uniqueness: '差异化',
+       structure: '结构优化',
+       emphasis: '重点突出',
+       memorable: '记忆深刻',
+       credibility: '可信度',
+       immersive: '沉浸体验',
+       innovative: '创新思维',
+       psychological: '心理驱动',
+       motivation: '动机激发',
+       practical: '实用价值',
+       other: '其他'
+     },
+     intensityLabels: {
+       light: '轻度润色',
+       medium: '中度润色',
+       strong: '强度润色',
+       deep: '深度润色',
+       extreme: '极度润色'
+     },
+     polishGoals: {
+       short_video: {
+         name: '短视频文案',
+         description: '适合抖音、快手等短视频平台的文案风格'
+       },
+       three_second_hook: {
+         name: '三秒钩子',
+         description: '开头3秒内抓住观众注意力'
+       },
+       engage_comments: {
+         name: '激发用户评论',
+         description: '引导用户互动和留言讨论'
+       },
+       reader_resonance: {
+         name: '激发读者共鸣',
+         description: '让读者产生强烈的情感共鸣'
+       },
+       empathy: {
+         name: '激发共情',
+         description: '触动读者的情感，产生同理心'
+       },
+       call_to_action: {
+         name: '行动号召',
+         description: '引导读者采取具体行动'
+       },
+       storytelling: {
+         name: '故事化表达',
+         description: '用故事的方式讲述内容'
+       },
+       pain_point: {
+         name: '痛点切入',
+         description: '直击用户痛点，引起关注'
+       },
+       viral_potential: {
+         name: '传播性强',
+         description: '容易被分享和传播的内容'
+       },
+       curiosity_gap: {
+         name: '好奇心缺口',
+         description: '制造悬念，激发好奇心'
+       },
+       fan_sb: {
+         name: '犯SB',
+         description: '故意犯一些小错误，引发用户纠正和评论'
+       },
+       provoke_debate: {
+         name: '故意引战',
+         description: '使用专业引战技巧，制造争议性观点激发讨论和辩论'
+       },
+       differentiation: {
+         name: '差异化',
+         description: '采用独特视角和创新表达，让内容脱颖而出'
+       },
+       echo_ending: {
+         name: '收尾呼应',
+         description: '结尾与开头形成呼应，增强整体性'
+       },
+       contrast_strong: {
+         name: '强烈对比',
+         description: '通过鲜明对比突出重点'
+       },
+       golden_sentence: {
+         name: '金句输出',
+         description: '包含容易被引用的经典语句'
+       },
+       data_support: {
+         name: '数据支撑',
+         description: '用具体数据增强说服力'
+       },
+       authority_quote: {
+         name: '权威引用',
+         description: '引用专家或名人观点增加可信度'
+       },
+       scenario_immersion: {
+         name: '场景代入',
+         description: '让读者身临其境，增强体验感'
+       },
+       reverse_thinking: {
+         name: '反向思维',
+         description: '与常规思路相反，制造惊喜'
+       },
+       anxiety_marketing: {
+         name: '焦虑营销',
+         description: '合理利用焦虑心理驱动行动'
+       },
+       benefit_driven: {
+         name: '利益驱动',
+         description: '明确指出读者能获得的好处'
+       },
+       scarcity_urgency: {
+         name: '稀缺紧迫',
+         description: '营造稀缺感和紧迫感'
+       },
+       social_proof: {
+         name: '社会认同',
+         description: '利用从众心理增强说服力'
+       },
+       emotional_trigger: {
+         name: '情绪触发',
+         description: '激发强烈的情绪反应'
+       },
+       practical_tips: {
+         name: '实用干货',
+         description: '提供具体可执行的方法技巧'
+       }
+     },
+     multiGoalDescription: '同时满足{count}个润色目标：{goals}',
+     operationHint: '已选择 {count} 个润色目标，点击开始润色'
+   },
+   scriptGenerationModal: {
+      title: '生成脚本配置',
+      close: '关闭',
+      languageLabel: '脚本语言',
+      languageOptions: {
+        chinese: {
+          label: '中文',
+          description: '生成中文视频脚本'
+        },
+        english: {
+          label: '英语',
+          description: '生成英文视频脚本'
+        },
+        mixed: {
+          label: '中英混杂',
+          description: '根据内容智能选择语言'
+        }
+      },
+      consistencyLabel: '原文保持程度',
+      consistencyOptions: {
+        high: {
+          label: '高度一致',
+          description: '尽可能保持原文表达方式'
+        },
+        moderate: {
+          label: '略微修改',
+          description: '适度调整以适合视频表达'
+        },
+        low: {
+          label: '大幅修改',
+          description: '大幅优化以提升视频效果'
+        }
+      },
+      segmentCountLabel: '生成段落数',
+      segmentCountHint: '建议根据内容长度选择适当的段落数量',
+      customRequirementsLabel: '自定义要求',
+      customRequirementsOptional: '(可选)',
+      customRequirementsPlaceholder: '请描述您对脚本的特殊要求，例如：风格、语调、重点等...',
+      charCount: '{current}/{max}',
+      cancelButton: '取消',
+      generateButton: '开始生成'
+    },
+    creativeBrainstormingModal: {
+      title: '创意构思助手',
+      subtitle: '多专家协作，激发创意灵感',
+      close: '关闭',
+      closeAriaLabel: '关闭弹窗',
+      configPanel: {
+        customCreativeTitle: '自定义创意',
+        customCreativeDescription: '输入您的创意想法，作为专家讨论的依据',
+        customCreativePlaceholder: '请输入您的创意想法、特殊要求或期望方向...',
+        startButton: '开始构思',
+        startButtonDiscussing: '讨论进行中...',
+        validationError: '请至少选择一个创作类型和一位创意专家'
+      },
+      categories: {
+        creationType: {
+          title: '创作类型',
+          description: '选择您的视频内容类型',
+          options: {
+            brandMarketing: { label: '品牌营销', description: '提升品牌知名度和影响力' },
+            educationalTraining: { label: '教育培训', description: '知识传授和技能培训' },
+            entertainmentContent: { label: '娱乐内容', description: '娱乐观众，提供轻松体验' },
+            productShowcase: { label: '产品展示', description: '展示产品特性和优势' },
+            storytelling: { label: '故事叙述', description: '通过故事传达价值观念' }
+          }
+        },
+        creationDomain: {
+          title: '创作领域',
+          description: '选择您的专业领域',
+          options: {
+            technologyDigital: { label: '科技数码', description: '前沿科技和数码产品' },
+            lifestyle: { label: '生活方式', description: '日常生活和个人成长' },
+            businessFinance: { label: '商业金融', description: '商业策略和金融知识' },
+            healthMedical: { label: '健康医疗', description: '健康养生和医疗科普' },
+            artsCulture: { label: '艺术文化', description: '艺术创作和文化传承' },
+            travelFood: { label: '旅游美食', description: '旅行体验和美食分享' }
+          }
+        },
+        creationGoal: {
+          title: '创作目标',
+          description: '明确您的核心目标',
+          options: {
+            brandAwareness: { label: '提升品牌知名度', description: '增加品牌曝光和认知度' },
+            userEngagement: { label: '增加用户参与度', description: '提高互动和用户黏性' },
+            knowledgeEducation: { label: '教育普及知识', description: '传播知识和技能' },
+            salesPromotion: { label: '促进产品销售', description: '推动转化和销售增长' },
+            audienceEntertainment: { label: '娱乐观众', description: '提供娱乐价值和愉悦体验' }
+          }
+        },
+        contentStrategy: {
+          title: '内容策略',
+          description: '选择您的内容策略方向',
+          options: {
+            emotionalResonance: { label: '情感共鸣', description: '通过情感连接打动观众' },
+            dataDriven: { label: '数据驱动', description: '基于数据分析制定策略' },
+            storyDriven: { label: '故事导向', description: '用故事传达核心信息' },
+            interactiveEngagement: { label: '互动参与', description: '鼓励观众参与和互动' },
+            professionalAuthority: { label: '专业权威', description: '建立专业形象和权威性' }
+          }
+        },
+        creativeExperts: {
+          title: '创意专家',
+          description: '选择参与讨论的专家',
+          options: {
+            creativeDirector: { label: '创意总监', description: '负责整体创意方向和执行' },
+            marketingStrategist: { label: '营销策略师', description: '制定市场推广和传播策略' },
+            contentWriter: { label: '内容编剧', description: '创作文案内容和故事脚本' },
+            visualDesigner: { label: '视觉设计师', description: '设计视觉元素和界面交互' },
+            uxExpert: { label: '用户体验专家', description: '优化用户体验和交互流程' }
+          }
+        }
+      },
+      experts: {
+        creativeDirector: {
+          name: '李创意',
+          title: '创意总监',
+          expertise: ['创意策略', '品牌定位', '视觉概念', '创意执行'],
+          personality: '充满想象力，善于从不同角度思考问题，注重创意的独特性和执行可行性'
+        },
+        marketingStrategist: {
+          name: '王策略',
+          title: '营销策略师',
+          expertise: ['市场分析', '用户洞察', '传播策略', '效果评估'],
+          personality: '数据驱动，善于分析市场趋势和用户行为，注重策略的商业价值'
+        },
+        contentWriter: {
+          name: '张文案',
+          title: '内容编剧',
+          expertise: ['故事结构', '文案创作', '情感表达', '叙事技巧'],
+          personality: '富有文采，擅长用文字打动人心，注重内容的情感共鸣和传播力'
+        },
+        visualDesigner: {
+          name: '陈视觉',
+          title: '视觉设计师',
+          expertise: ['视觉设计', '色彩搭配', '界面交互', '用户体验'],
+          personality: '追求美感和功能的平衡，善于用视觉语言传达信息，注重设计的实用性'
+        },
+        uxExpert: {
+          name: '刘体验',
+          title: '用户体验专家',
+          expertise: ['用户研究', '交互设计', '可用性测试', '体验优化'],
+          personality: '以用户为中心，善于发现和解决用户痛点，注重产品的易用性和满意度'
+        }
+      },
+      chatInterface: {
+        title: '创意讨论',
+        roundLabel: '第 {round} 轮讨论',
+        discussingStatus: ' - 专家讨论中...',
+        summarizingStatus: ' - 正在总结...',
+        exportButton: '导出文案',
+        emptyStateTitle: '等待开始讨论',
+        emptyStateSubtitle: '配置完成后，专家们将开始创意构思',
+        continueButton: '继续讨论',
+        summaryButton: '开始总结',
+        userInputPlaceholder: '输入您的想法或问题...',
+        userInputPlaceholderDiscussing: '专家讨论中，请稍后...',
+        userInputPlaceholderSummarizing: '正在总结中，请稍后...'
+      }
     },
      defaultContent: {
        documentDefault: '# 视频编辑项目\n\n开始编辑您的视频项目文档...\n\n## 笔记\n- 添加您的项目笔记\n- 记录您的编辑工作流程\n- 跟踪您的进度\n\n## 资源\n- 列出您的视频素材\n- 记录重要时间戳\n- 参考资料',
@@ -1483,6 +2485,24 @@ export const translations: Record<string, Translations> = {
            ]
          }
        }
+     },
+     videoChatWindow: {
+       inputPlaceholder: '输入消息... (Shift+Enter 换行)',
+       creativeBrainstormingTooltip: '创意构思',
+       polishContentTooltip: '智能润色当前文档内容',
+       generateScriptTooltip: '根据当前文档内容生成视频脚本',
+       generateScriptTooltipGenerating: '正在生成脚本...',
+       clearChatTooltip: '清空聊天记录',
+       sendMessageTooltip: '发送消息',
+       clearChatConfirm: '确定要清空所有聊天记录吗？此操作无法撤销。',
+       emptyStateTitle: '视频编辑 AI 助手',
+       emptyStateSubtitle: '开始与 AI 对话，获取视频编辑建议、脚本优化和创意灵感。',
+       scriptOptimizationTitle: '脚本优化',
+       scriptOptimizationDesc: '让 AI 帮你改进视频脚本和创意方向',
+       editingSuggestionsTitle: '剪辑建议',
+       editingSuggestionsDesc: '获取专业的视频剪辑和素材使用建议',
+       startChatTitle: '开始与 AI 对话',
+       startChatDesc: '输入你的问题或需求，AI 将为你提供帮助',
      },
   },
 };

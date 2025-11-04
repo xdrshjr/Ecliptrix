@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Conversation } from '@/types';
 import MessageBubble from '@/components/chat/MessageBubble';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoChatWindowProps {
   conversation: Conversation | undefined;
@@ -25,6 +26,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onGenerateScriptClick,
   isGeneratingScript = false,
 }) => {
+  const { t } = useLocale();
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -185,7 +187,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       return;
     }
 
-    const confirmed = window.confirm('确定要清空所有聊天记录吗？此操作无法撤销。');
+    const confirmed = window.confirm(t.videoChatWindow.clearChatConfirm);
     
     if (confirmed) {
       console.log(`[VideoChatWindow] 清空 ${conversation.messages.length} 条消息`, {
@@ -233,10 +235,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             </svg>
           </div>
           <h2 className="text-2xl font-semibold text-gray-900 mb-3">
-            视频编辑 AI 助手
+            {t.videoChatWindow.emptyStateTitle}
           </h2>
           <p className="text-gray-600 mb-6 leading-relaxed">
-            开始与 AI 对话，获取视频编辑建议、脚本优化和创意灵感。
+            {t.videoChatWindow.emptyStateSubtitle}
           </p>
           <div className="grid grid-cols-1 gap-3 text-sm">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-4 text-left border border-blue-200/50 shadow-sm">
@@ -246,9 +248,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-blue-900">脚本优化</h3>
+                <h3 className="font-semibold text-blue-900">{t.videoChatWindow.scriptOptimizationTitle}</h3>
               </div>
-              <p className="text-blue-700 leading-relaxed">让 AI 帮你改进视频脚本和创意方向</p>
+              <p className="text-blue-700 leading-relaxed">{t.videoChatWindow.scriptOptimizationDesc}</p>
             </div>
             <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-4 text-left border border-purple-200/50 shadow-sm">
               <div className="flex items-center space-x-3 mb-2">
@@ -258,9 +260,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-purple-900">剪辑建议</h3>
+                <h3 className="font-semibold text-purple-900">{t.videoChatWindow.editingSuggestionsTitle}</h3>
               </div>
-              <p className="text-purple-700 leading-relaxed">获取专业的视频剪辑和素材使用建议</p>
+              <p className="text-purple-700 leading-relaxed">{t.videoChatWindow.editingSuggestionsDesc}</p>
             </div>
           </div>
         </div>
@@ -284,9 +286,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">开始与 AI 对话</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{t.videoChatWindow.startChatTitle}</h3>
               <p className="text-sm text-gray-600 leading-relaxed">
-                输入你的问题或需求，AI 将为你提供帮助
+                {t.videoChatWindow.startChatDesc}
               </p>
             </div>
           </div>
@@ -310,8 +312,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onClick={handleCreativeBrainstormingClick}
               disabled={isLoading}
               className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 border border-gray-200 hover:border-purple-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-              title="创意构思"
-              aria-label="开启创意构思"
+              title={t.videoChatWindow.creativeBrainstormingTooltip}
+              aria-label={t.videoChatWindow.creativeBrainstormingTooltip}
             >
               <svg className="w-4 h-4 text-purple-600 group-hover:text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -325,8 +327,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onClick={handlePolishClick}
               disabled={isLoading}
               className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 border border-gray-200 hover:border-indigo-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-              title="智能润色当前文档内容"
-              aria-label="智能润色文档"
+              title={t.videoChatWindow.polishContentTooltip}
+              aria-label={t.videoChatWindow.polishContentTooltip}
             >
               <svg className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -340,8 +342,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onClick={handleGenerateScriptClick}
               disabled={isLoading || isGeneratingScript}
               className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-blue-50 hover:to-cyan-50 border border-gray-200 hover:border-blue-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-              title={isGeneratingScript ? '正在生成脚本...' : '根据当前文档内容生成视频脚本'}
-              aria-label="生成视频脚本"
+              title={isGeneratingScript ? t.videoChatWindow.generateScriptTooltipGenerating : t.videoChatWindow.generateScriptTooltip}
+              aria-label={t.videoChatWindow.generateScriptTooltip}
             >
               {isGeneratingScript ? (
                 <svg className="w-4 h-4 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -369,7 +371,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onKeyDown={handleKeyDown}
               onFocus={handleFocus}
               onBlur={handleBlur}
-              placeholder="输入消息... (Shift+Enter 换行)"
+              placeholder={t.videoChatWindow.inputPlaceholder}
               className="w-full px-3 py-2 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-24 bg-gray-50 min-h-[32px] transition-all shadow-sm text-sm"
               rows={1}
               disabled={isLoading}
@@ -382,7 +384,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             onClick={handleClearChat}
             disabled={!conversation || conversation.messages.length === 0 || isLoading}
             className="bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 rounded-lg transition-all flex items-center justify-center shrink-0 shadow-sm hover:shadow-md"
-            title="清空聊天记录"
+            title={t.videoChatWindow.clearChatTooltip}
             style={{ width: '32px', height: '32px' }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -394,7 +396,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             type="submit"
             disabled={!inputMessage.trim() || isLoading}
             className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center justify-center shrink-0 shadow-md hover:shadow-lg"
-            title="发送消息"
+            title={t.videoChatWindow.sendMessageTooltip}
             style={{ width: '32px', height: '32px' }}
           >
             {isLoading ? (

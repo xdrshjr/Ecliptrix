@@ -4,11 +4,13 @@ import { useState, useCallback } from 'react';
 import { ChatMessage, CreativeBrainstormingConfig } from '../types';
 import { getExpertsByIds } from '../data/expertProfiles';
 import { VideoEditingLogger } from '../../../utils/logger';
+import { Translations } from '@/lib/i18n';
 
 export const useBrainstormingChat = (
   taskId: string, 
   config: CreativeBrainstormingConfig,
-  currentContent: string
+  currentContent: string,
+  translations: Translations['creativeBrainstormingModal']
 ) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isDiscussing, setIsDiscussing] = useState(false);
@@ -153,7 +155,7 @@ export const useBrainstormingChat = (
     });
 
     try {
-      const experts = getExpertsByIds(config.creativeExperts);
+      const experts = getExpertsByIds(config.creativeExperts, translations);
       
       // 让每个专家依次发言
       for (const expert of experts) {
@@ -191,7 +193,7 @@ export const useBrainstormingChat = (
     });
 
     try {
-      const experts = getExpertsByIds(config.creativeExperts);
+      const experts = getExpertsByIds(config.creativeExperts, translations);
       
       for (const expert of experts) {
         const response = await callBrainstormingAPI('discussion');

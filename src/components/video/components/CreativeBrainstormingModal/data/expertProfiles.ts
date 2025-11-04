@@ -1,52 +1,70 @@
 import { ExpertProfile, ConfigCategory } from '../types';
+import { Translations } from '@/lib/i18n';
 
-export const expertProfiles: ExpertProfile[] = [
-  {
-    id: 'creative-director',
-    name: '李创意',
-    title: '创意总监',
-    expertise: ['创意策略', '品牌定位', '视觉概念', '创意执行'],
-    personality: '充满想象力，善于从不同角度思考问题，注重创意的独特性和执行可行性',
-    color: '#8B5CF6',
-    avatar: '🎨'
-  },
-  {
-    id: 'marketing-strategist',
-    name: '王策略',
-    title: '营销策略师',
-    expertise: ['市场分析', '用户洞察', '传播策略', '效果评估'],
-    personality: '数据驱动，善于分析市场趋势和用户行为，注重策略的商业价值',
-    color: '#10B981',
-    avatar: '📊'
-  },
-  {
-    id: 'content-writer',
-    name: '张文案',
-    title: '内容编剧',
-    expertise: ['故事结构', '文案创作', '情感表达', '叙事技巧'],
-    personality: '富有文采，擅长用文字打动人心，注重内容的情感共鸣和传播力',
-    color: '#F59E0B',
-    avatar: '✍️'
-  },
-  {
-    id: 'visual-designer',
-    name: '陈视觉',
-    title: '视觉设计师',
-    expertise: ['视觉设计', '色彩搭配', '界面交互', '用户体验'],
-    personality: '追求美感和功能的平衡，善于用视觉语言传达信息，注重设计的实用性',
-    color: '#EF4444',
-    avatar: '🎭'
-  },
-  {
-    id: 'ux-expert',
-    name: '刘体验',
-    title: '用户体验专家',
-    expertise: ['用户研究', '交互设计', '可用性测试', '体验优化'],
-    personality: '以用户为中心，善于发现和解决用户痛点，注重产品的易用性和满意度',
-    color: '#3B82F6',
-    avatar: '👤'
-  }
-];
+// Expert base info (color and avatar are language-independent)
+const expertBaseInfo: Record<string, { color: string; avatar: string }> = {
+  'creative-director': { color: '#8B5CF6', avatar: '🎨' },
+  'marketing-strategist': { color: '#10B981', avatar: '📊' },
+  'content-writer': { color: '#F59E0B', avatar: '✍️' },
+  'visual-designer': { color: '#EF4444', avatar: '🎭' },
+  'ux-expert': { color: '#3B82F6', avatar: '👤' }
+};
+
+// Get expert profiles with translations
+export const getExpertProfiles = (translations: Translations['creativeBrainstormingModal']): ExpertProfile[] => {
+  const experts = translations.experts;
+  
+  return [
+    {
+      id: 'creative-director',
+      name: experts.creativeDirector.name,
+      title: experts.creativeDirector.title,
+      expertise: experts.creativeDirector.expertise,
+      personality: experts.creativeDirector.personality,
+      color: expertBaseInfo['creative-director'].color,
+      avatar: expertBaseInfo['creative-director'].avatar
+    },
+    {
+      id: 'marketing-strategist',
+      name: experts.marketingStrategist.name,
+      title: experts.marketingStrategist.title,
+      expertise: experts.marketingStrategist.expertise,
+      personality: experts.marketingStrategist.personality,
+      color: expertBaseInfo['marketing-strategist'].color,
+      avatar: expertBaseInfo['marketing-strategist'].avatar
+    },
+    {
+      id: 'content-writer',
+      name: experts.contentWriter.name,
+      title: experts.contentWriter.title,
+      expertise: experts.contentWriter.expertise,
+      personality: experts.contentWriter.personality,
+      color: expertBaseInfo['content-writer'].color,
+      avatar: expertBaseInfo['content-writer'].avatar
+    },
+    {
+      id: 'visual-designer',
+      name: experts.visualDesigner.name,
+      title: experts.visualDesigner.title,
+      expertise: experts.visualDesigner.expertise,
+      personality: experts.visualDesigner.personality,
+      color: expertBaseInfo['visual-designer'].color,
+      avatar: expertBaseInfo['visual-designer'].avatar
+    },
+    {
+      id: 'ux-expert',
+      name: experts.uxExpert.name,
+      title: experts.uxExpert.title,
+      expertise: experts.uxExpert.expertise,
+      personality: experts.uxExpert.personality,
+      color: expertBaseInfo['ux-expert'].color,
+      avatar: expertBaseInfo['ux-expert'].avatar
+    }
+  ];
+};
+
+// Legacy export for backward compatibility (will use default locale)
+export const expertProfiles: ExpertProfile[] = [];
 
 export const configCategories: ConfigCategory[] = [
   {
@@ -117,10 +135,12 @@ export const configCategories: ConfigCategory[] = [
   }
 ];
 
-export const getExpertById = (id: string): ExpertProfile | undefined => {
-  return expertProfiles.find(expert => expert.id === id);
+export const getExpertById = (id: string, translations: Translations['creativeBrainstormingModal']): ExpertProfile | undefined => {
+  const profiles = getExpertProfiles(translations);
+  return profiles.find(expert => expert.id === id);
 };
 
-export const getExpertsByIds = (ids: string[]): ExpertProfile[] => {
-  return expertProfiles.filter(expert => ids.includes(expert.id));
+export const getExpertsByIds = (ids: string[], translations: Translations['creativeBrainstormingModal']): ExpertProfile[] => {
+  const profiles = getExpertProfiles(translations);
+  return profiles.filter(expert => ids.includes(expert.id));
 }; 
