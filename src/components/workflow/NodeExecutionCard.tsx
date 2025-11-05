@@ -143,9 +143,11 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
         
         {/* 状态指示器 */}
         <div className="flex items-center space-x-2">
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${config.labelColor}`}>
-            {config.label}
-          </span>
+          {state.status !== 'completed' && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${config.labelColor}`}>
+              {config.label}
+            </span>
+          )}
           <div className={config.color}>
             {config.icon}
           </div>

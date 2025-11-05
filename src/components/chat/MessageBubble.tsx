@@ -17,12 +17,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
   const [showCopySuccess, setShowCopySuccess] = useState(false);
   const isUser = message.role === 'user';
   const isWorkflowExecution = !!message.workflowExecution;
+  const isIntentDetection = message.metadata?.type === 'intent_detection';
+  const isIntentResult = message.metadata?.type === 'intent_result';
   
   // 只在流式传输时记录日志
   if (message.isStreaming) {
     console.log('[MessageBubble] 流式消息更新', { 
       messageId: message.id, 
-      contentLength: message.content.length
+      contentLength: message.content.length,
+      isIntentDetection,
+      isIntentResult
     });
   }
 
@@ -45,6 +49,71 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
       setIsCopying(false);
     }
   };
+  
+  // 意图检测状态消息 - 显示正在分析
+  if (isIntentDetection) {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[95%] animate-fadeIn">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100/60 rounded-2xl px-5 py-4 border border-blue-200/60 shadow-sm">
+            <div className="flex items-center space-x-2.5 mb-2">
+              <div className="flex space-x-1.5">
+                <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1s' }}></span>
+                <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1s' }}></span>
+              </div>
+              <span className="text-sm font-semibold text-blue-900">正在分析意图</span>
+            </div>
+            <p className="text-xs text-blue-700 leading-relaxed">检测您的问题是否需要调用工作流...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // 意图检测结果消息 - 显示是否需要调用工作流
+  if (isIntentResult && message.metadata?.intention) {
+    const intention = message.metadata.intention;
+    const shouldCallWorkflow = intention.should_call_workflow;
+    
+    if (shouldCallWorkflow) {
+      return (
+        <div className="flex justify-start">
+          <div className="max-w-[95%] animate-fadeIn">
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 rounded-2xl px-5 py-4 border border-emerald-200/60 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-emerald-900">
+                    将调用工作流: {intention.workflow_name}
+                  </span>
+                </div>
+                <span className="text-xs text-emerald-700 bg-emerald-200/50 px-2.5 py-1 rounded-full font-medium">
+                  {Math.round((intention.confidence || 0) * 100)}%
+                </span>
+              </div>
+              <p className="text-xs text-emerald-700 leading-relaxed">{intention.reasoning}</p>
+            </div>
+          </div>
+        </div>
+      );
+    } else {
+      // 不需要调用工作流 - 使用更低调的样式
+      return (
+        <div className="flex justify-start">
+          <div className="max-w-[95%] animate-fadeIn opacity-75">
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100/60 rounded-2xl px-5 py-3 border border-gray-200/60 shadow-sm">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-medium">普通对话</span> · {intention.reasoning}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
   
   // If this is a workflow execution message, use the special component
   if (isWorkflowExecution && message.workflowExecution) {

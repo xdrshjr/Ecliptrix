@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { WorkflowExecutionState } from '@/types';
 import ExecutionProcessPanel from '@/components/workflow/ExecutionProcessPanel';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface WorkflowExecutionMessageProps {
   workflowName: string;
@@ -103,7 +104,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] w-full space-y-3">
+      <div className="max-w-[95%] w-full space-y-3">
         {/* Execution Process Panel - Shows node execution details */}
         {executionState && executionOrder.length > 0 && (
           <ExecutionProcessPanel
@@ -132,8 +133,8 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
             
             {/* Final Result Content */}
             <div className="px-5 py-4 bg-white">
-              <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                {finalResult}
+              <div className="text-sm text-gray-800 leading-relaxed">
+                <MarkdownRenderer content={finalResult} isUser={false} />
               </div>
               
               {/* Export Clip Button - Show when Video Export node was executed */}

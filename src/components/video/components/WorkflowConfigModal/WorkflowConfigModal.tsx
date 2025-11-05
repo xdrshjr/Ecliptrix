@@ -14,12 +14,15 @@ export interface WorkflowConfig {
   workflowName: string;
   enabled: boolean;
   toolDescription: string;
+  nodes?: any[];
+  connections?: any[];
 }
 
 interface WorkflowConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   taskId: string;
+  onSave?: (configs: Map<string, WorkflowConfig>) => void;
 }
 
 /**
@@ -37,6 +40,7 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
   isOpen,
   onClose,
   taskId,
+  onSave: onSaveCallback,
 }) => {
   const { t } = useLocale();
   const { user } = useAuth();
@@ -47,6 +51,8 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [workflowConfigs, setWorkflowConfigs] = useState<Map<string, WorkflowConfig>>(new Map());
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState<boolean>(false);
+  const [isSavingPreferences, setIsSavingPreferences] = useState<boolean>(false);
 
   console.log('[WorkflowConfigModal] Component rendered:', {
     isOpen,
@@ -59,10 +65,11 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
     timestamp: new Date().toISOString()
   });
 
-  // Load workflows when modal opens
+  // Load workflows and preferences when modal opens
   useEffect(() => {
     if (isOpen && user?.id) {
       loadWorkflows();
+      loadWorkflowPreferences();
     }
   }, [isOpen, user?.id]);
 
@@ -104,6 +111,127 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
   }, [user?.id, showError, t]);
 
   /**
+   * Load workflow preferences from backend
+   */
+  const loadWorkflowPreferences = useCallback(async () => {
+    if (!user?.id) {
+      console.warn('[WorkflowConfigModal] No user ID available, skipping preferences load');
+      return;
+    }
+
+    setIsLoadingPreferences(true);
+    
+    try {
+      console.log('[WorkflowConfigModal] Loading workflow preferences for user:', user.id);
+      
+      const response = await fetch('/api/workflow-preferences/load', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.preferences) {
+        // Convert preferences object to Map
+        const preferencesMap = new Map<string, WorkflowConfig>();
+        Object.entries(result.preferences).forEach(([key, value]: [string, any]) => {
+          // Find the corresponding workflow to get nodes and connections
+          const workflow = workflows.find(w => w.workflow_id === value.workflow_id);
+          preferencesMap.set(key, {
+            workflowId: value.workflow_id,
+            workflowName: value.workflow_name,
+            enabled: value.is_expanded, // Map is_expanded to enabled
+            toolDescription: value.tool_description || '',
+            nodes: workflow?.nodes,
+            connections: workflow?.connections
+          });
+        });
+        
+        setWorkflowConfigs(preferencesMap);
+        
+        console.log('[WorkflowConfigModal] Workflow preferences loaded successfully:', {
+          count: preferencesMap.size,
+          expandedCount: Array.from(preferencesMap.values()).filter(c => c.enabled).length,
+          configsWithNodes: Array.from(preferencesMap.values()).filter(c => c.nodes && c.nodes.length > 0).length,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      console.error('[WorkflowConfigModal] Failed to load workflow preferences:', error);
+      // Don't show error to user for preferences loading - it's not critical
+      console.log('[WorkflowConfigModal] Continuing with empty preferences');
+    } finally {
+      setIsLoadingPreferences(false);
+    }
+  }, [user?.id]);
+
+  /**
+   * Save workflow preferences to backend
+   */
+  const saveWorkflowPreferences = useCallback(async (configs: Map<string, WorkflowConfig>) => {
+    if (!user?.id) {
+      console.warn('[WorkflowConfigModal] No user ID available, skipping preferences save');
+      return;
+    }
+
+    setIsSavingPreferences(true);
+    
+    try {
+      console.log('[WorkflowConfigModal] Saving workflow preferences for user:', user.id);
+      
+      // Convert Map to object for API
+      const preferencesObject: Record<string, any> = {};
+      configs.forEach((config, workflowId) => {
+        preferencesObject[workflowId] = {
+          workflow_id: config.workflowId,
+          workflow_name: config.workflowName,
+          is_expanded: config.enabled, // Map enabled to is_expanded
+          tool_description: config.toolDescription || null
+        };
+      });
+
+      const response = await fetch('/api/workflow-preferences/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          preferences: preferencesObject
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('[WorkflowConfigModal] Workflow preferences saved successfully:', {
+          savedCount: result.savedCount,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      console.error('[WorkflowConfigModal] Failed to save workflow preferences:', error);
+      // Don't throw error - preferences save is non-critical
+      console.log('[WorkflowConfigModal] Continuing despite save failure');
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  }, [user?.id]);
+
+  /**
    * Handle workflow selection from left panel
    */
   const handleWorkflowSelect = useCallback((workflowId: string) => {
@@ -140,7 +268,9 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
         workflowId,
         workflowName: workflow.workflow_name,
         enabled: true,
-        toolDescription: workflow.workflow_description || ''
+        toolDescription: workflow.workflow_description || '',
+        nodes: workflow.nodes,
+        connections: workflow.connections
       };
       
       const newConfigs = new Map(workflowConfigs);
@@ -151,7 +281,9 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
         workflowId,
         enabled: true,
         descriptionInitialized: !!workflow.workflow_description,
-        descriptionLength: (workflow.workflow_description || '').length
+        descriptionLength: (workflow.workflow_description || '').length,
+        nodesCount: workflow.nodes?.length || 0,
+        connectionsCount: workflow.connections?.length || 0
       });
     }
   }, [workflowConfigs]);
@@ -210,7 +342,7 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
   /**
    * Handle save configuration
    */
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     console.log('[WorkflowConfigModal] Saving workflow configurations:', {
       configsCount: workflowConfigs.size,
       enabledCount: Array.from(workflowConfigs.values()).filter(c => c.enabled).length,
@@ -222,11 +354,18 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
       }))
     });
     
-    // Store configurations in memory (can be accessed via props or context in future)
-    // For now, we'll just show success message
+    // Save preferences to backend
+    await saveWorkflowPreferences(workflowConfigs);
+    
+    // Call the save callback to update parent component
+    if (onSaveCallback) {
+      onSaveCallback(workflowConfigs);
+    }
+    
+    // Show success message
     showSuccess(t.workflowConfigModal.successSave);
     onClose();
-  }, [workflowConfigs, showSuccess, onClose, t]);
+  }, [workflowConfigs, showSuccess, onClose, t, onSaveCallback, saveWorkflowPreferences]);
 
   /**
    * Get current config for a workflow

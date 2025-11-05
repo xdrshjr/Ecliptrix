@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
 
+// 工作流配置接口
+interface WorkflowConfig {
+  workflowId: string;
+  workflowName: string;
+  enabled: boolean;
+  toolDescription: string;
+}
+
 // 获取环境变量配置
 const getConfig = () => {
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
@@ -67,7 +75,15 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { taskId: reqTaskId, messages } = body as { taskId: string; messages: ChatMessage[] };
+    const { 
+      taskId: reqTaskId, 
+      messages, 
+      workflowConfigs 
+    } = body as { 
+      taskId: string; 
+      messages: ChatMessage[]; 
+      workflowConfigs?: WorkflowConfig[];
+    };
     taskId = reqTaskId || 'unknown';
 
     // 验证请求参数
@@ -81,8 +97,133 @@ export async function POST(request: NextRequest) {
 
     const config = getConfig();
     logRequest(taskId, messages, config);
+    
+    // 步骤1: 如果有启用的工作流，先进行意图检测（使用Fast LLM）
+    let workflowIntention: any = null;
+    if (workflowConfigs && workflowConfigs.length > 0) {
+      const enabledWorkflows = workflowConfigs.filter(wf => wf.enabled);
+      
+      if (enabledWorkflows.length > 0) {
+        console.log(`[Video Editing Chat API] Task ${taskId} - 检测到 ${enabledWorkflows.length} 个启用的工作流，准备调用Fast LLM进行意图检测`);
+        console.log(`[Video Editing Chat API] Task ${taskId} - 启用的工作流:`, enabledWorkflows.map(wf => wf.workflowName).join(', '));
+        
+        try {
+          // 获取最后一条用户消息
+          const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+          if (lastUserMessage) {
+            console.log(`[Video Editing Chat API] Task ${taskId} - 开始调用意图检测API，用户消息: ${lastUserMessage.content.substring(0, 100)}...`);
+            
+            const intentResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/intent-detection`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                user_message: lastUserMessage.content,
+                enabled_workflows: enabledWorkflows.map(wf => ({
+                  workflow_id: wf.workflowId,
+                  workflow_name: wf.workflowName,
+                  tool_description: wf.toolDescription,
+                  enabled: wf.enabled
+                })),
+                conversation_history: messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
+              }),
+            });
+            
+            console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测API响应状态: ${intentResponse.status}`);
+            
+            if (intentResponse.ok) {
+              const intentData = await intentResponse.json();
+              console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测API返回数据:`, {
+                success: intentData.success,
+                hasData: !!intentData.data,
+                error: intentData.error
+              });
+              
+              if (intentData.success && intentData.data) {
+                workflowIntention = intentData.data;
+                console.log(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测成功:`, {
+                  shouldCallWorkflow: workflowIntention.should_call_workflow,
+                  workflowName: workflowIntention.workflow_name,
+                  confidence: workflowIntention.confidence,
+                  reasoning: workflowIntention.reasoning
+                });
+              } else if (!intentData.success) {
+                console.error(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测失败: ${intentData.error || 'Unknown error'}`);
+              }
+            } else {
+              const errorText = await intentResponse.text();
+              console.error(`[Video Editing Chat API] Task ${taskId} - 意图检测API调用失败 (${intentResponse.status}): ${errorText}`);
+            }
+          } else {
+            console.warn(`[Video Editing Chat API] Task ${taskId} - 未找到用户消息，跳过意图检测`);
+          }
+        } catch (intentError) {
+          console.error(`[Video Editing Chat API] Task ${taskId} - 意图检测异常:`, intentError);
+          console.error(`[Video Editing Chat API] Task ${taskId} - 意图检测错误详情:`, {
+            message: intentError instanceof Error ? intentError.message : String(intentError),
+            stack: intentError instanceof Error ? intentError.stack : undefined
+          });
+          // 继续正常聊天流程
+        }
+      } else {
+        console.log(`[Video Editing Chat API] Task ${taskId} - 没有启用的工作流，跳过意图检测`);
+      }
+    } else {
+      console.log(`[Video Editing Chat API] Task ${taskId} - 未提供工作流配置，跳过意图检测`);
+    }
 
-    // 准备请求数据
+    // 创建流式响应
+    const encoder = new TextEncoder();
+    
+    // 如果检测到需要调用工作流，直接返回意图信息，不调用LLM
+    if (workflowIntention && workflowIntention.should_call_workflow) {
+      console.log(`[Video Editing Chat API] Task ${taskId} - 检测到需要调用工作流，跳过普通LLM回复`);
+      
+      const stream = new ReadableStream({
+        start(controller) {
+          try {
+            console.log(`[Video Editing Chat API] Task ${taskId} - 发送工作流意图信息并结束`);
+            
+            // 发送流建立信号
+            controller.enqueue(encoder.encode(`: stream-start\n\n`));
+            
+            // 发送工作流意图信息
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ 
+                type: 'workflow_intention',
+                intention: workflowIntention 
+              })}\n\n`)
+            );
+            
+            // 发送完成信号
+            controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+            
+            logResponse(taskId, true);
+            controller.close();
+          } catch (error) {
+            console.error(`[Video Editing Chat API] Task ${taskId} - 发送工作流意图错误:`, error);
+            logResponse(taskId, false, String(error));
+            controller.error(error);
+          }
+        }
+      });
+      
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          'X-Content-Type-Options': 'nosniff',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        },
+      });
+    }
+
+    // 准备请求数据（只在不需要调用工作流时执行）
     const requestData = {
       model: config.model,
       messages: formatMessages(messages),
@@ -114,8 +255,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 创建流式响应
-    const encoder = new TextEncoder();
+    // 创建流式响应（普通对话模式）
     const stream = new ReadableStream({
       async start(controller) {
         try {
@@ -125,6 +265,17 @@ export async function POST(request: NextRequest) {
           // 这对于生产环境中的 nginx/Apache 等反向代理至关重要
           controller.enqueue(encoder.encode(`: stream-start\n\n`));
           console.log(`[Video Editing Chat API] Task ${taskId} - 已发送流建立信号`);
+          
+          // 如果有工作流意图但不需要调用（普通对话），也发送意图信息
+          if (workflowIntention && !workflowIntention.should_call_workflow) {
+            console.log(`[Video Editing Chat API] Task ${taskId} - 发送普通对话意图信息`);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ 
+                type: 'workflow_intention',
+                intention: workflowIntention 
+              })}\n\n`)
+            );
+          }
           
           const reader = response.body?.getReader();
           if (!reader) {

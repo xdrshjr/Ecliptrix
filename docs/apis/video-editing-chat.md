@@ -4,6 +4,12 @@
 
 视频编辑聊天 API 提供一个基于 AI 的对话式助手，帮助用户进行视频编辑相关的工作，包括脚本编写、创意建议、技术指导等。该 API 使用服务器发送事件（SSE）实现流式响应，确保实时的对话体验。
 
+**智能意图检测**: API 集成了 Fast LLM 进行用户意图检测。当用户发送消息时，系统会：
+1. 使用 Fast LLM（qwen-max-latest）快速分析用户意图
+2. 判断是否需要调用特定工作流来处理请求
+3. 如果需要调用工作流，则触发相应的工作流执行
+4. 如果只是普通对话，则直接使用主 LLM 进行回答
+
 ## 端点
 
 ```
@@ -27,6 +33,14 @@ Content-Type: application/json
       "role": "user" | "assistant",
       "content": "string",
       "timestamp": "ISO8601 datetime"
+    }
+  ],
+  "workflowConfigs": [     // 可选：工作流配置数组，用于意图检测
+    {
+      "workflowId": "string",
+      "workflowName": "string",
+      "enabled": boolean,
+      "toolDescription": "string"
     }
   ]
 }
@@ -149,6 +163,36 @@ while (true) {
 4. **素材推荐**：根据脚本内容推荐合适的视频素材、音乐、图片等
 5. **时间轴规划**：帮助用户规划视频时间轴和节奏
 6. **文案润色**：优化视频文案、字幕、标题等文本内容
+7. **智能工作流调用**：基于 Fast LLM 意图检测，自动判断并调用相关工作流
+
+## 智能意图检测流程
+
+当用户发送消息时，系统会执行以下流程：
+
+```
+用户消息 
+  ↓
+检查是否有启用的工作流配置
+  ↓
+【是】调用 Fast LLM (qwen-max-latest) 进行意图分析
+  ↓
+Fast LLM 返回意图检测结果：
+  - should_call_workflow: 是否需要调用工作流
+  - workflow_id: 建议的工作流 ID
+  - workflow_name: 工作流名称
+  - confidence: 置信度 (0-1)
+  - reasoning: 判断理由
+  ↓
+【需要调用工作流】触发工作流执行 → 返回工作流结果
+【普通对话】使用主 LLM 生成回答 → 返回对话内容
+```
+
+### 意图检测特点
+
+- **快速响应**: 使用轻量级 Fast LLM，通常在 500ms 内完成
+- **高准确度**: 基于工作流描述和对话历史进行精准匹配
+- **优雅降级**: 如果意图检测失败，自动回退到普通对话模式
+- **详细日志**: 完整记录意图检测过程，便于调试和监控
 
 ## 错误处理
 
@@ -171,15 +215,27 @@ while (true) {
 ## 环境变量配置
 
 ```bash
-# LLM API 配置（必需）
+# 主 LLM API 配置（必需）- 用于正常对话
 LLM_API_URL=https://api.openai.com/v1  # 或其他兼容 OpenAI 的 API 地址
 LLM_API_KEY=your-api-key                 # API 密钥
 LLM_MODEL=gpt-3.5-turbo                  # 使用的模型
+
+# Fast LLM API 配置（必需）- 用于快速意图检测
+FAST_LLM_API_KEY=your-fast-llm-api-key
+FAST_LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+FAST_LLM_MODEL=qwen-max-latest
 
 # 或者使用 OpenAI 配置（兼容）
 OPENAI_API_URL=https://api.openai.com/v1
 OPENAI_API_KEY=your-api-key
 ```
+
+### 配置说明
+
+- **主 LLM**: 用于生成详细的对话响应，通常使用较强大的模型
+- **Fast LLM**: 用于快速意图检测，需要快速响应但不需要太复杂的推理
+- Fast LLM 配置在 Python 后端（`backend-services/basic-service/.env`）中
+- 如果 Fast LLM 未配置，意图检测功能将不可用，但不会影响基本聊天功能
 
 ## 生产环境部署注意事项
 

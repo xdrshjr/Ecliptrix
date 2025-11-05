@@ -326,6 +326,14 @@ app.include_router(video_understanding_script_router.router, prefix="/api")
 from app.routers import llm_router
 app.include_router(llm_router.router, prefix="/api")
 
+# Import and include Intent Detection router
+from app.routers import intent_detection_router
+app.include_router(intent_detection_router.router)
+
+# Import and include Workflow Preferences router
+from app.routers import workflow_preferences_router
+app.include_router(workflow_preferences_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

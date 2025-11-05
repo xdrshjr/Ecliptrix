@@ -50,7 +50,8 @@ import {
 } from './components';
 import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
-import { Conversation, ChatMessage } from '@/types';
+import { Conversation, ChatMessage, WorkflowExecutionState, WorkflowNode, WorkflowConnection } from '@/types';
+import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
 
@@ -125,6 +126,16 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     content?.uiState?.isWorkflowConfigModalOpen ?? false
   );
   
+  // 工作流配置状态 - 从 WorkflowConfigModal 保存的配置
+  const [workflowConfigs, setWorkflowConfigs] = useState<Map<string, {
+    workflowId: string;
+    workflowName: string;
+    enabled: boolean;
+    toolDescription: string;
+    nodes?: WorkflowNode[];
+    connections?: WorkflowConnection[];
+  }>>(content?.uiState?.workflowConfigs ? new Map(Object.entries(content.uiState.workflowConfigs)) : new Map());
+  
   // 新增：程序化添加素材到时间轴的状态 (not persisted - transient operation state)
   const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
     materials: MaterialItem[], 
@@ -160,6 +171,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isAIMixingModeModalOpen,
     isWorkflowConfigModalOpen,
     videoCutModalIsOpen: videoCutModal.isOpen,
+    workflowConfigsCount: workflowConfigs.size,
     timestamp: new Date().toISOString()
   });
 
@@ -186,6 +198,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         videoCutModal,
         isChatLoading,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
+        workflowConfigs: Object.fromEntries(workflowConfigs),
       },
     };
 
@@ -203,7 +216,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.isChatLoading !== isChatLoading ||
       content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
       JSON.stringify(content.uiState?.currentTimelineState) !== JSON.stringify(currentTimelineState) ||
-      JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal);
+      JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal) ||
+      JSON.stringify(Object.fromEntries(workflowConfigs)) !== JSON.stringify(content.uiState?.workflowConfigs);
 
     if (hasStateChanged) {
       console.log('[VideoEditingInterface] Persisting UI state:', {
@@ -1815,6 +1829,25 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
     setIsWorkflowConfigModalOpen(false);
   }, [taskId]);
+  
+  // 处理工作流配置保存
+  const handleWorkflowConfigSave = useCallback((configs: Map<string, {
+    workflowId: string;
+    workflowName: string;
+    enabled: boolean;
+    toolDescription: string;
+    nodes?: WorkflowNode[];
+    connections?: WorkflowConnection[];
+  }>) => {
+    console.log(`[VideoEditingInterface] 保存工作流配置`, {
+      taskId,
+      configsCount: configs.size,
+      enabledCount: Array.from(configs.values()).filter(c => c.enabled).length,
+      configsWithNodes: Array.from(configs.values()).filter(c => c.nodes && c.nodes.length > 0).length,
+      timestamp: new Date().toISOString()
+    });
+    setWorkflowConfigs(configs);
+  }, [taskId]);
 
   // 清除添加素材请求状态，避免重复处理
   React.useEffect(() => {
@@ -1956,8 +1989,43 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       // 添加用户消息
       const messagesWithUser = [...activeConversation.messages, userMessage];
       updateConversationMessages(activeConversationId, messagesWithUser);
+      
+      // 准备工作流配置（仅启用的工作流）
+      const enabledWorkflowConfigs = Array.from(workflowConfigs.values())
+        .filter(config => config.enabled)
+        .map(config => ({
+          workflowId: config.workflowId,
+          workflowName: config.workflowName,
+          enabled: config.enabled,
+          toolDescription: config.toolDescription
+        }));
+      
+      // 如果有启用的工作流，创建意图检测状态消息
+      let intentDetectionMessageId: string | null = null;
+      if (enabledWorkflowConfigs.length > 0) {
+        intentDetectionMessageId = `msg-${Date.now()}-intent-detection`;
+        const intentDetectionMessage: ChatMessage = {
+          id: intentDetectionMessageId,
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true,
+          metadata: {
+            type: 'intent_detection',
+            status: 'analyzing'
+          }
+        };
+        
+        const messagesWithIntent = [...messagesWithUser, intentDetectionMessage];
+        updateConversationMessages(activeConversationId, messagesWithIntent);
+        
+        console.log('[VideoEditingInterface] 显示意图检测状态', {
+          enabledWorkflowsCount: enabledWorkflowConfigs.length,
+          timestamp: new Date().toISOString()
+        });
+      }
 
-      // 创建助手消息占位符
+      // 创建助手消息占位符（只在可能有普通回复时创建）
       const assistantMessageId = `msg-${Date.now()}-assistant`;
       const assistantMessage: ChatMessage = {
         id: assistantMessageId,
@@ -1967,12 +2035,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isStreaming: true,
       };
 
-      // 添加助手消息占位符
-      const messagesWithAssistant = [...messagesWithUser, assistantMessage];
-      updateConversationMessages(activeConversationId, messagesWithAssistant);
-
       console.log('[VideoEditingInterface] 发送聊天消息到 API', {
         messageLength: message.length,
+        enabledWorkflowsCount: enabledWorkflowConfigs.length,
         timestamp: new Date().toISOString()
       });
       
@@ -1984,6 +2049,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         body: JSON.stringify({
           taskId: taskId,
           messages: messagesWithUser,
+          workflowConfigs: enabledWorkflowConfigs,
         }),
       });
 
@@ -1997,6 +2063,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       }
 
       let accumulatedContent = '';
+      let workflowIntention: any = null;
+      let shouldCallWorkflow = false;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -2015,15 +2083,64 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             try {
               const parsed = JSON.parse(data);
               
-              if (parsed.content) {
+              // 处理工作流意图信息
+              if (parsed.type === 'workflow_intention' && parsed.intention) {
+                workflowIntention = parsed.intention;
+                shouldCallWorkflow = workflowIntention.should_call_workflow;
+                console.log('[VideoEditingInterface] 收到工作流意图', {
+                  intention: workflowIntention,
+                  shouldCallWorkflow
+                });
+                
+                // 移除意图检测消息，添加意图结果消息
+                if (intentDetectionMessageId) {
+                  const intentResultMessage: ChatMessage = {
+                    id: `msg-${Date.now()}-intent-result`,
+                    role: 'assistant',
+                    content: '',
+                    timestamp: new Date(),
+                    isStreaming: false,
+                    metadata: {
+                      type: 'intent_result',
+                      intention: workflowIntention
+                    }
+                  };
+                  
+                  // 如果需要调用工作流，不添加助手消息占位符
+                  const updatedMessages = shouldCallWorkflow
+                    ? [...messagesWithUser, intentResultMessage]
+                    : [...messagesWithUser, intentResultMessage, { ...assistantMessage, content: '', isStreaming: true }];
+                  
+                  updateConversationMessages(activeConversationId, updatedMessages);
+                }
+              }
+              // 处理普通聊天内容（只在不调用工作流时处理）
+              else if (parsed.content && !shouldCallWorkflow) {
                 accumulatedContent += parsed.content;
                 
                 // 更新助手消息
-                const updatedMessages = [...messagesWithUser, {
-                  ...assistantMessage,
-                  content: accumulatedContent,
-                  isStreaming: true
-                }];
+                const currentMessages = intentDetectionMessageId && workflowIntention
+                  ? [
+                      ...messagesWithUser,
+                      {
+                        id: `msg-${Date.now()}-intent-result`,
+                        role: 'assistant' as const,
+                        content: '',
+                        timestamp: new Date(),
+                        isStreaming: false,
+                        metadata: { type: 'intent_result' as const, intention: workflowIntention }
+                      }
+                    ]
+                  : messagesWithUser;
+                
+                const updatedMessages = [
+                  ...currentMessages,
+                  {
+                    ...assistantMessage,
+                    content: accumulatedContent,
+                    isStreaming: true
+                  }
+                ];
                 
                 updateConversationMessages(activeConversationId, updatedMessages);
               }
@@ -2034,17 +2151,242 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         }
       }
 
-      // 标记流式传输完成
-      const finalMessages = [...messagesWithUser, {
-        ...assistantMessage,
-        content: accumulatedContent,
-        isStreaming: false
-      }];
-      
-      console.log(`[VideoEditingInterface] 聊天消息接收完成`, {
-        finalContentLength: accumulatedContent.length
-      });
-      updateConversationMessages(activeConversationId, finalMessages);
+      // 检查是否需要执行工作流
+      if (workflowIntention && workflowIntention.should_call_workflow) {
+        console.log('[VideoEditingInterface] 需要执行工作流:', {
+          workflowName: workflowIntention.workflow_name,
+          confidence: workflowIntention.confidence,
+          reasoning: workflowIntention.reasoning
+        });
+        
+        // 查找对应的工作流配置
+        const targetWorkflow = Array.from(workflowConfigs.values()).find(
+          config => config.workflowName === workflowIntention.workflow_name && config.enabled
+        );
+        
+        if (targetWorkflow && targetWorkflow.nodes && targetWorkflow.connections) {
+          console.log('[VideoEditingInterface] 找到工作流配置，开始执行', {
+            workflowId: targetWorkflow.workflowId,
+            nodesCount: targetWorkflow.nodes.length,
+            connectionsCount: targetWorkflow.connections.length
+          });
+          
+          // 创建工作流执行状态
+          let workflowExecutionState: WorkflowExecutionState = {
+            isRunning: true,
+            currentNodeId: null,
+            nodeStates: {},
+            logs: [],
+            startTime: new Date()
+          };
+          
+          // 移除普通助手消息，创建工作流执行消息
+          const workflowExecutionMessageId = `msg-${Date.now()}-workflow-execution`;
+          const workflowExecutionMessage: ChatMessage = {
+            id: workflowExecutionMessageId,
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            isStreaming: true,
+            workflowExecution: {
+              workflowId: targetWorkflow.workflowId,
+              workflowName: targetWorkflow.workflowName,
+              executionState: workflowExecutionState
+            }
+          };
+          
+          // 更新消息列表，显示工作流执行状态
+          const messagesWithWorkflowExecution = [
+            ...messagesWithUser,
+            {
+              id: `msg-${Date.now()}-intent-result`,
+              role: 'assistant' as const,
+              content: '',
+              timestamp: new Date(),
+              isStreaming: false,
+              metadata: { type: 'intent_result' as const, intention: workflowIntention }
+            },
+            workflowExecutionMessage
+          ];
+          updateConversationMessages(activeConversationId, messagesWithWorkflowExecution);
+          
+          // 创建工作流执行器并执行
+          let finalResult = '';
+          const executor = new WorkflowExecutor(
+            targetWorkflow.nodes,
+            targetWorkflow.connections,
+            (newState: WorkflowExecutionState) => {
+              console.log('[VideoEditingInterface] 工作流执行状态更新:', {
+                isRunning: newState.isRunning,
+                currentNodeId: newState.currentNodeId,
+                logsCount: newState.logs.length
+              });
+              
+              // 更新工作流执行状态
+              workflowExecutionState = { ...newState };
+              
+              // 提取最终结果
+              if (!newState.isRunning && newState.endTime) {
+                const finalResultLog = newState.logs.find(
+                  log => log.level === 'success' && log.message.includes('Workflow execution completed')
+                );
+                
+                const finalOutput = finalResultLog?.details?.output;
+                
+                if (finalOutput) {
+                  if (typeof finalOutput === 'string') {
+                    finalResult = finalOutput;
+                  } else if (finalOutput.finalResult) {
+                    const result = finalOutput.finalResult;
+                    if (typeof result === 'string') {
+                      finalResult = result;
+                    } else if (result?.text) {
+                      finalResult = result.text;
+                    } else if (result?.llmResponse) {
+                      finalResult = result.llmResponse;
+                    } else {
+                      finalResult = JSON.stringify(result, null, 2);
+                    }
+                  } else if (finalOutput.text) {
+                    finalResult = finalOutput.text;
+                  } else if (finalOutput.llmResponse) {
+                    finalResult = finalOutput.llmResponse;
+                  } else {
+                    finalResult = JSON.stringify(finalOutput, null, 2);
+                  }
+                }
+              }
+              
+              // 更新消息以显示最新的执行状态
+              const updatedWorkflowMessage: ChatMessage = {
+                ...workflowExecutionMessage,
+                content: finalResult,
+                isStreaming: newState.isRunning,
+                workflowExecution: {
+                  workflowId: targetWorkflow.workflowId,
+                  workflowName: targetWorkflow.workflowName,
+                  executionState: { ...newState }
+                }
+              };
+              
+              const updatedMessages = [
+                ...messagesWithUser,
+                {
+                  id: `msg-${Date.now()}-intent-result`,
+                  role: 'assistant' as const,
+                  content: '',
+                  timestamp: new Date(),
+                  isStreaming: false,
+                  metadata: { type: 'intent_result' as const, intention: workflowIntention }
+                },
+                updatedWorkflowMessage
+              ];
+              
+              updateConversationMessages(activeConversationId, updatedMessages);
+            },
+            message // 传递用户输入
+          );
+          
+          // 执行工作流
+          try {
+            console.log('[VideoEditingInterface] 开始执行工作流');
+            await executor.execute();
+            console.log('[VideoEditingInterface] 工作流执行完成', {
+              finalResultLength: finalResult.length
+            });
+          } catch (error) {
+            console.error('[VideoEditingInterface] 工作流执行失败:', error);
+            finalResult = `Error: ${error instanceof Error ? error.message : '未知错误'}`;
+            
+            // 更新消息以显示错误
+            const errorMessage: ChatMessage = {
+              ...workflowExecutionMessage,
+              content: finalResult,
+              isStreaming: false,
+              workflowExecution: {
+                workflowId: targetWorkflow.workflowId,
+                workflowName: targetWorkflow.workflowName,
+                executionState: {
+                  ...workflowExecutionState,
+                  isRunning: false,
+                  endTime: new Date()
+                }
+              }
+            };
+            
+            const errorMessages = [
+              ...messagesWithUser,
+              {
+                id: `msg-${Date.now()}-intent-result`,
+                role: 'assistant' as const,
+                content: '',
+                timestamp: new Date(),
+                isStreaming: false,
+                metadata: { type: 'intent_result' as const, intention: workflowIntention }
+              },
+              errorMessage
+            ];
+            
+            updateConversationMessages(activeConversationId, errorMessages);
+          }
+        } else {
+          console.warn('[VideoEditingInterface] 未找到工作流配置或缺少节点/连接信息:', {
+            workflowName: workflowIntention.workflow_name,
+            hasWorkflow: !!targetWorkflow,
+            hasNodes: targetWorkflow?.nodes ? true : false,
+            hasConnections: targetWorkflow?.connections ? true : false
+          });
+          
+          // 如果找不到工作流，仍然使用普通LLM响应
+          const finalMessages = [
+            ...messagesWithUser,
+            {
+              id: `msg-${Date.now()}-intent-result`,
+              role: 'assistant' as const,
+              content: '',
+              timestamp: new Date(),
+              isStreaming: false,
+              metadata: { type: 'intent_result' as const, intention: workflowIntention }
+            },
+            {
+              ...assistantMessage,
+              content: accumulatedContent,
+              isStreaming: false
+            }
+          ];
+          updateConversationMessages(activeConversationId, finalMessages);
+        }
+      } else {
+        // 不需要执行工作流，使用普通LLM响应
+        const finalCurrentMessages = workflowIntention
+          ? [
+              ...messagesWithUser,
+              {
+                id: `msg-${Date.now()}-intent-result`,
+                role: 'assistant' as const,
+                content: '',
+                timestamp: new Date(),
+                isStreaming: false,
+                metadata: { type: 'intent_result' as const, intention: workflowIntention }
+              }
+            ]
+          : messagesWithUser;
+        
+        const finalMessages = [
+          ...finalCurrentMessages,
+          {
+            ...assistantMessage,
+            content: accumulatedContent,
+            isStreaming: false
+          }
+        ];
+        
+        console.log(`[VideoEditingInterface] 聊天消息接收完成（无需工作流）`, {
+          finalContentLength: accumulatedContent.length,
+          hasWorkflowIntention: !!workflowIntention
+        });
+        updateConversationMessages(activeConversationId, finalMessages);
+      }
       
     } catch (error) {
       console.error('[VideoEditingInterface] 聊天消息发送失败:', error);
@@ -2063,7 +2405,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     } finally {
       setIsChatLoading(false);
     }
-  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError]);
+  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, workflowConfigs]);
 
   // 获取当前活动的聊天对话
   const activeConversation = content?.conversations?.find(
@@ -2268,6 +2610,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={isWorkflowConfigModalOpen}
         onClose={handleWorkflowConfigClose}
         taskId={taskId}
+        onSave={handleWorkflowConfigSave}
       />
 
       {/* Mobile Warning Dialog - Backup Safety Check (Legacy) */}

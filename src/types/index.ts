@@ -37,6 +37,11 @@ export interface ChatMessage {
     workflowName: string;
     executionState?: WorkflowExecutionState;
   };
+  metadata?: {
+    type?: 'intent_detection' | 'intent_result';
+    status?: string;
+    intention?: any;
+  };
 }
 
 export interface Conversation {
@@ -359,6 +364,15 @@ export interface VideoEditingTaskContent {
     // Chat UI state
     isChatLoading?: boolean;
     hasAutoChatInitialized?: boolean;
+    // Workflow configurations
+    workflowConfigs?: Record<string, {
+      workflowId: string;
+      workflowName: string;
+      enabled: boolean;
+      toolDescription: string;
+      nodes?: WorkflowNode[];
+      connections?: WorkflowConnection[];
+    }>;
   };
 }
 

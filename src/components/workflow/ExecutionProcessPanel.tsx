@@ -82,70 +82,24 @@ const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="w-full px-5 py-4 bg-white/80 backdrop-blur-sm border-b border-gray-200 hover:bg-white transition-all duration-200"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            {/* 折叠图标 */}
-            <div
-              className={`transform transition-transform duration-300 ${
-                isCollapsed ? '-rotate-90' : 'rotate-0'
-              }`}
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-            
-            {/* 标题 */}
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <span className="text-sm font-semibold text-gray-900">执行过程</span>
-            </div>
-            
-            {/* 状态标签 */}
-            {!isCompleted && stats.executing > 0 && (
-              <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-full">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span className="text-xs text-blue-700 font-medium">进行中</span>
-              </div>
-            )}
-            
-            {isCompleted && stats.error === 0 && (
-              <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full">
-                <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <span className="text-xs text-green-700 font-medium">已完成</span>
-              </div>
-            )}
-            
-            {stats.error > 0 && (
-              <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-red-50 border border-red-200 rounded-full">
-                <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                <span className="text-xs text-red-700 font-medium">有错误</span>
-              </div>
-            )}
+        <div className="flex items-center space-x-3">
+          {/* 折叠图标 */}
+          <div
+            className={`transform transition-transform duration-300 ${
+              isCollapsed ? '-rotate-90' : 'rotate-0'
+            }`}
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
           
-          {/* 统计信息 */}
-          <div className="flex items-center space-x-4 text-xs">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-gray-500">共</span>
-              <span className="font-semibold text-gray-900">{stats.total}</span>
-              <span className="text-gray-500">个节点</span>
-            </div>
-            
-            {totalTime && (
-              <div className="flex items-center space-x-1.5">
-                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="font-medium text-gray-700">{totalTime}s</span>
-              </div>
-            )}
+          {/* 标题 */}
+          <div className="flex items-center space-x-2">
+            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span className="text-sm font-semibold text-gray-900">执行过程</span>
           </div>
         </div>
         

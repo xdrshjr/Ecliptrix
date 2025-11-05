@@ -5,6 +5,12 @@
 
 **架构说明**: 此接口现在由Python FastAPI后端实现，通过Next.js代理层提供服务。LLM调用在Python后端进行，确保更好的性能和配置管理。
 
+**智能意图检测**: 集成Fast LLM进行用户意图快速分析：
+- 使用Fast LLM (qwen-max-latest)快速检测用户意图
+- 判断是否需要调用特定工作流处理请求
+- 自动在工作流执行和普通对话之间智能切换
+- 配置位置：`backend-services/basic-service/.env` 中的 `FAST_LLM_*` 环境变量
+
 ## 端点
 `POST /api/video-editing-chat` (通过Next.js代理到Python后端)
 
@@ -97,15 +103,25 @@ data: [DONE]
 ### 配置要求
 Python后端需要配置以下环境变量：
 ```env
+# 主 LLM 配置（用于正常对话响应）
 LLM_API_KEY=***REMOVED***
 LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=deepseek-v3
+
+# Fast LLM 配置（用于快速意图检测）
+FAST_LLM_API_KEY=***REMOVED***
+FAST_LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+FAST_LLM_MODEL=qwen-max-latest
 ```
 
 Next.js需要配置后端服务地址：
 ```env
 BACKEND_SERVICE_URL=http://localhost:8000
+# 或
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 ```
+
+**重要**: 如果 `FAST_LLM_API_KEY` 未配置，意图检测功能将不可用，但不会影响基本聊天功能。系统会在日志中记录警告信息。
 
 ### 性能特性
 - **流式传输**: 支持实时流式响应，提供更好的用户体验
