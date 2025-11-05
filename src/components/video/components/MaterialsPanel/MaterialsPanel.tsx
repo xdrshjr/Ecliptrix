@@ -1804,23 +1804,23 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               <button
                 onClick={onAICreation}
                 className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                title="打开AI创作面板，选择创作工作流进行内容创作"
+                title={t.materialsPanel.aiCreationTooltip}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
-                <span>AI创作</span>
+                <span>{t.materialsPanel.aiCreation}</span>
               </button>
 
               <button
                 onClick={onAIMixedEditing}
                 className="flex items-center space-x-1 text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded transition-colors"
-                title="基于当前素材自动生成剪辑方案，智能混剪视频内容"
+                title={t.materialsPanel.aiMixingTooltip}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                <span>AI混剪</span>
+                <span>{t.materialsPanel.aiMixing}</span>
               </button>
 
               {shouldShowLocalAIButtons && (

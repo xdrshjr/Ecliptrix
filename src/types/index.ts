@@ -351,6 +351,7 @@ export interface VideoEditingTaskContent {
     isAIMixing?: boolean;
     aiMixingProgress?: number;
     isAIMixingModeModalOpen?: boolean;
+    isWorkflowConfigModalOpen?: boolean;
     videoCutModal?: {
       isOpen: boolean;
       material: any | null; // MaterialItem

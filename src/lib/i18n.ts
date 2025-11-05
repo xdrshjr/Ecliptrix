@@ -297,6 +297,78 @@ export interface Translations {
       download: string;
       previewMaterial: string;
       downloadMaterial: string;
+      aiCreation: string;
+      aiCreationTooltip: string;
+      aiMixing: string;
+      aiMixingTooltip: string;
+  };
+  aiMixingModal: {
+    title: string;
+    subtitle: string;
+    quickMode: string;
+    quickModeDesc: string;
+    quickModeFeatures: string;
+    quickModeFast: string;
+    quickModeLowResource: string;
+    professionalMode: string;
+    professionalModeDesc: string;
+    professionalModeFeatures: string;
+    professionalModeHighPrecision: string;
+    professionalModeBetterResults: string;
+    frameIntervalLabel: string;
+    frameIntervalUnit: string;
+    frameIntervalHint: string;
+    cancel: string;
+    confirm: string;
+  };
+  aiCreationModal: {
+    title: string;
+    loadingWorkflows: string;
+    loadingWorkflowsDesc: string;
+    loadingFailed: string;
+    reload: string;
+    noWorkflows: string;
+    noWorkflowsDesc: string;
+    selectWorkflow: string;
+    fileUpload: string;
+    uploadRequired: string;
+    uploadSuccess: string;
+    uploadSuccessDesc: string;
+    copyFilename: string;
+    copied: string;
+    copiedToClipboard: string;
+    uploadError: string;
+    backToWorkflows: string;
+    fixIssues: string;
+    systemBusy: string;
+    executionFailed: string;
+    suggestions: string;
+    suggestionWait: string;
+    suggestionPrepare: string;
+    suggestionAutoQueue: string;
+    creationStarted: string;
+    taskId: string;
+    back: string;
+    startCreation: string;
+    creating: string;
+    uploadFilesFirst: string;
+    optionConfigError: string;
+    optionConfigMissing: string;
+    fallbackOptions: {
+      ratio_1_1: string;
+      ratio_4_3: string;
+      ratio_16_9: string;
+      ratio_9_16: string;
+      ratio_3_4: string;
+      version_fast: string;
+      version_hd: string;
+      version_uhd: string;
+      input_simple: string;
+      input_detailed: string;
+      input_professional: string;
+      input_custom: string;
+      option: string;
+    };
   };
   videoSearchModal: {
     title: string;
@@ -375,6 +447,25 @@ export interface Translations {
       exportVideoWithRatio: string;
       selectAspectRatio: string;
     };
+  };
+  videoExportProgressModal: {
+    title: string;
+    progressStages: {
+      preparing: string;
+      processing: string;
+      composing: string;
+      generating: string;
+      almostDone: string;
+      completed: string;
+    };
+    timeElapsed: string;
+    pleaseWait: string;
+    cancelExport: string;
+    exportSuccess: string;
+  };
+  videoExport: {
+    noContentToExport: string;
+    noContentToExportDesc: string;
   };
   scriptPanel: {
     header: {
@@ -821,6 +912,44 @@ export interface Translations {
     editingSuggestionsDesc: string;
     startChatTitle: string;
     startChatDesc: string;
+    viewWorkflowsTooltip: string;
+  };
+  workflowConfigModal: {
+    title: string;
+    subtitle: string;
+    workflowListTitle: string;
+    workflowConfigTitle: string;
+    enabledLabel: string;
+    disabledLabel: string;
+    toolDescriptionLabel: string;
+    toolDescriptionPlaceholder: string;
+    modelSelectionLabel: string;
+    modelPlaceholder: string;
+    noWorkflowSelected: string;
+    selectWorkflowPrompt: string;
+    noWorkflowsAvailable: string;
+    createWorkflowPrompt: string;
+    saveButton: string;
+    cancelButton: string;
+    loadingWorkflows: string;
+    workflowCount: string;
+    successSave: string;
+    errorLoad: string;
+    errorSave: string;
+  };
+  aiChat: {
+    welcomePage: {
+      title: string;
+      subtitle: string;
+      creativeAssistantTitle: string;
+      creativeAssistantDesc: string;
+      knowledgeAssistantTitle: string;
+      knowledgeAssistantDesc: string;
+    };
+    emptyConversation: {
+      title: string;
+      subtitle: string;
+    };
   };
 }
 
@@ -1039,6 +1168,78 @@ export const translations: Record<string, Translations> = {
       download: 'Download',
       previewMaterial: 'Preview Material',
       downloadMaterial: 'Download Material',
+      aiCreation: 'AI Creation',
+      aiCreationTooltip: 'Open AI creation panel to select creative workflows',
+      aiMixing: 'AI Mixing',
+      aiMixingTooltip: 'Auto-generate editing plan based on current materials, intelligently mix video content',
+    },
+    aiMixingModal: {
+      title: 'Select AI Mixing Mode',
+      subtitle: 'Choose the mixing method that best suits your needs',
+      quickMode: 'Quick Mixing',
+      quickModeDesc: 'Extract 1 frame per video for AI analysis, quickly generate editing plan. Suitable for previewing or scenarios with low precision requirements.',
+      quickModeFeatures: 'Features',
+      quickModeFast: 'Fast processing',
+      quickModeLowResource: 'Low resource consumption',
+      professionalMode: 'Professional Mixing',
+      professionalModeDesc: 'Extract multiple frames at specified intervals for deep AI analysis, generate high-quality editing plan. Suitable for professional production or scenarios requiring high quality.',
+      professionalModeFeatures: 'Features',
+      professionalModeHighPrecision: 'High precision analysis',
+      professionalModeBetterResults: 'Better results',
+      frameIntervalLabel: 'Video Analysis Frame Interval (seconds)',
+      frameIntervalUnit: 'seconds',
+      frameIntervalHint: 'Smaller interval means more detailed analysis but longer processing time (Recommended: 3-10 seconds)',
+      cancel: 'Cancel',
+      confirm: 'Start AI Mixing',
+    },
+    aiCreationModal: {
+      title: 'AI Creation',
+      loadingWorkflows: 'Loading creative workflows...',
+      loadingWorkflowsDesc: 'Fetching available creation tasks',
+      loadingFailed: 'Loading Failed',
+      reload: 'Reload',
+      noWorkflows: 'No workflows available',
+      noWorkflowsDesc: 'Please try again later or contact the administrator',
+      selectWorkflow: 'Select Creative Workflow',
+      fileUpload: 'File Upload',
+      uploadRequired: 'Upload {type}',
+      uploadSuccess: 'Upload successful: {filename}',
+      uploadSuccessDesc: 'Please use this filename in the related input field',
+      copyFilename: 'Copy filename',
+      copied: 'Copied!',
+      copiedToClipboard: 'Copied to clipboard!',
+      uploadError: 'Upload Error',
+      backToWorkflows: 'Back',
+      fixIssues: 'Please fix the following issues:',
+      systemBusy: 'System Busy',
+      executionFailed: 'Execution Failed',
+      suggestions: 'Suggestions:',
+      suggestionWait: 'Wait 2-3 minutes and try again',
+      suggestionPrepare: 'You can prepare other materials or edit content first',
+      suggestionAutoQueue: 'The system will automatically process queued tasks',
+      creationStarted: 'Creation task started',
+      taskId: 'Task ID: {id}',
+      back: 'Back',
+      startCreation: 'Start Creation',
+      creating: 'Creating...',
+      uploadFilesFirst: 'Please upload required files first',
+      optionConfigError: 'Please configure options',
+      optionConfigMissing: '⚠️ Configuration error: missing options in uiConfig',
+      fallbackOptions: {
+        ratio_1_1: '1:1 (Square)',
+        ratio_4_3: '4:3 (Standard)',
+        ratio_16_9: '16:9 (Widescreen)',
+        ratio_9_16: '9:16 (Portrait)',
+        ratio_3_4: '3:4 (Portrait Standard)',
+        version_fast: 'Fast Version',
+        version_hd: 'HD Version',
+        version_uhd: 'UHD Version',
+        input_simple: 'Simple Input',
+        input_detailed: 'Detailed Input',
+        input_professional: 'Professional Input',
+        input_custom: 'Custom Input',
+        option: 'Option {num}',
+      },
     },
     timeline: {
       toolbar: {
@@ -1202,6 +1403,25 @@ export const translations: Record<string, Translations> = {
         exportVideoWithRatio: 'Export video with aspect ratio',
         selectAspectRatio: 'Select aspect ratio',
       },
+    },
+    videoExportProgressModal: {
+      title: 'Export Video',
+      progressStages: {
+        preparing: 'Preparing export...',
+        processing: 'Processing video...',
+        composing: 'Composing...',
+        generating: 'Generating file...',
+        almostDone: 'Almost done...',
+        completed: 'Export completed',
+      },
+      timeElapsed: 'Time Elapsed',
+      pleaseWait: 'Please wait, do not close this page during export',
+      cancelExport: 'Cancel Export',
+      exportSuccess: 'Export successful',
+    },
+    videoExport: {
+      noContentToExport: 'No content to export',
+      noContentToExportDesc: 'Please add video materials to the timeline before exporting',
     },
          scriptPanel: {
        header: {
@@ -1646,24 +1866,62 @@ export const translations: Record<string, Translations> = {
          }
        }
      },
-     videoChatWindow: {
-       inputPlaceholder: 'Enter message... (Shift+Enter for new line)',
-       creativeBrainstormingTooltip: 'Creative Brainstorming',
-       polishContentTooltip: 'Polish current document content with AI',
-       generateScriptTooltip: 'Generate video script from current document',
-       generateScriptTooltipGenerating: 'Generating script...',
-       clearChatTooltip: 'Clear chat history',
-       sendMessageTooltip: 'Send message',
-       clearChatConfirm: 'Are you sure you want to clear all chat history? This action cannot be undone.',
-       emptyStateTitle: 'Video Editing AI Assistant',
-       emptyStateSubtitle: 'Start chatting with AI to get video editing suggestions, script optimization, and creative inspiration.',
-       scriptOptimizationTitle: 'Script Optimization',
-       scriptOptimizationDesc: 'Let AI help you improve your video script and creative direction',
-       editingSuggestionsTitle: 'Editing Suggestions',
-       editingSuggestionsDesc: 'Get professional video editing and material usage suggestions',
-       startChatTitle: 'Start chatting with AI',
-       startChatDesc: 'Enter your question or requirement, AI will help you',
-     },
+    videoChatWindow: {
+      inputPlaceholder: 'Enter message... (Shift+Enter for new line)',
+      creativeBrainstormingTooltip: 'Creative Brainstorming',
+      polishContentTooltip: 'Polish current document content with AI',
+      generateScriptTooltip: 'Generate video script from current document',
+      generateScriptTooltipGenerating: 'Generating script...',
+      clearChatTooltip: 'Clear chat history',
+      sendMessageTooltip: 'Send message',
+      clearChatConfirm: 'Are you sure you want to clear all chat history? This action cannot be undone.',
+      emptyStateTitle: 'Video Editing AI Assistant',
+      emptyStateSubtitle: 'Start chatting with AI to get video editing suggestions, script optimization, and creative inspiration.',
+      scriptOptimizationTitle: 'Script Optimization',
+      scriptOptimizationDesc: 'Let AI help you improve your video script and creative direction',
+      editingSuggestionsTitle: 'Editing Suggestions',
+      editingSuggestionsDesc: 'Get professional video editing and material usage suggestions',
+      startChatTitle: 'Start chatting with AI',
+      startChatDesc: 'Enter your question or requirement, AI will help you',
+      viewWorkflowsTooltip: 'View Workflows',
+    },
+    workflowConfigModal: {
+      title: 'Workflow Configuration',
+      subtitle: 'Select and configure workflows for video editing tasks',
+      workflowListTitle: 'Available Workflows',
+      workflowConfigTitle: 'Workflow Settings',
+      enabledLabel: 'Enabled',
+      disabledLabel: 'Disabled',
+      toolDescriptionLabel: 'Tool Description',
+      toolDescriptionPlaceholder: 'Describe what this workflow tool does for the AI assistant...',
+      modelSelectionLabel: 'Model Selection',
+      modelPlaceholder: 'Select a model...',
+      noWorkflowSelected: 'No Workflow Selected',
+      selectWorkflowPrompt: 'Please select a workflow from the left panel to configure',
+      noWorkflowsAvailable: 'No Workflows Available',
+      createWorkflowPrompt: 'Create workflows in the Workflows task first',
+      saveButton: 'Save Configuration',
+      cancelButton: 'Cancel',
+      loadingWorkflows: 'Loading workflows...',
+      workflowCount: '{count} workflow(s)',
+      successSave: 'Workflow configuration saved successfully',
+      errorLoad: 'Failed to load workflows',
+      errorSave: 'Failed to save configuration',
+    },
+    aiChat: {
+      welcomePage: {
+        title: 'Start Conversation',
+        subtitle: 'Create a new chat session to start an AI conversation. Ask questions, get help, or have a friendly chat.',
+        creativeAssistantTitle: 'Creative Assistant',
+        creativeAssistantDesc: 'Assist with writing, brainstorming, and creative projects',
+        knowledgeAssistantTitle: 'Knowledge Assistant',
+        knowledgeAssistantDesc: 'Ask questions and get detailed explanations on any topic',
+      },
+      emptyConversation: {
+        title: 'Ready to Chat',
+        subtitle: 'Send a message to start the conversation',
+      },
+    },
   },
   'zh-CN': {
     common: {
@@ -1879,6 +2137,78 @@ export const translations: Record<string, Translations> = {
         download: '下载',
         previewMaterial: '预览素材',
         downloadMaterial: '下载素材',
+        aiCreation: 'AI创作',
+        aiCreationTooltip: '打开AI创作面板，选择创作工作流进行内容创作',
+        aiMixing: 'AI混剪',
+        aiMixingTooltip: '基于当前素材自动生成剪辑方案，智能混剪视频内容',
+    },
+    aiMixingModal: {
+      title: '选择AI混剪模式',
+      subtitle: '选择最适合您需求的混剪方式',
+      quickMode: '快速混剪',
+      quickModeDesc: '每个视频提取1帧进行AI分析，快速生成剪辑方案。适合预览效果或对精度要求不高的场景。',
+      quickModeFeatures: '特点',
+      quickModeFast: '处理速度快',
+      quickModeLowResource: '资源消耗低',
+      professionalMode: '专业混剪',
+      professionalModeDesc: '按指定时间间隔提取多帧进行深度AI分析，生成高质量剪辑方案。适合专业制作或对效果要求较高的场景。',
+      professionalModeFeatures: '特点',
+      professionalModeHighPrecision: '分析精度高',
+      professionalModeBetterResults: '效果更佳',
+      frameIntervalLabel: '视频解析帧间隔（秒）',
+      frameIntervalUnit: '秒',
+      frameIntervalHint: '间隔越小，分析越详细，但处理时间越长（推荐：3-10秒）',
+      cancel: '取消',
+      confirm: '开始AI混剪',
+    },
+    aiCreationModal: {
+      title: 'AI创作',
+      loadingWorkflows: '加载创作工作流中...',
+      loadingWorkflowsDesc: '正在获取可用的创作任务',
+      loadingFailed: '加载失败',
+      reload: '重新加载',
+      noWorkflows: '暂无可用工作流',
+      noWorkflowsDesc: '请稍后再试或联系管理员',
+      selectWorkflow: '选择创作工作流',
+      fileUpload: '文件上传',
+      uploadRequired: '上传{type}',
+      uploadSuccess: '上传成功：{filename}',
+      uploadSuccessDesc: '请在相关输入框中使用此文件名',
+      copyFilename: '复制文件名',
+      copied: '已复制！',
+      copiedToClipboard: '已复制到剪贴板！',
+      uploadError: '上传错误',
+      backToWorkflows: '返回',
+      fixIssues: '请修正以下问题：',
+      systemBusy: '系统繁忙',
+      executionFailed: '执行失败',
+      suggestions: '建议：',
+      suggestionWait: '等待 2-3 分钟后重新尝试',
+      suggestionPrepare: '可以先准备其他素材或编辑文案',
+      suggestionAutoQueue: '系统会自动处理排队任务',
+      creationStarted: '创作任务已启动',
+      taskId: '任务ID: {id}',
+      back: '返回',
+      startCreation: '开始创作',
+      creating: '创作中...',
+      uploadFilesFirst: '请先上传必需文件',
+      optionConfigError: '请配置选项',
+      optionConfigMissing: '⚠️ 配置错误：uiConfig 中缺少 options',
+      fallbackOptions: {
+        ratio_1_1: '1:1 (正方形)',
+        ratio_4_3: '4:3 (标准)',
+        ratio_16_9: '16:9 (宽屏)',
+        ratio_9_16: '9:16 (竖屏)',
+        ratio_3_4: '3:4 (竖向标准)',
+        version_fast: '极速版',
+        version_hd: '高清版',
+        version_uhd: '超清版',
+        input_simple: '简单输入',
+        input_detailed: '详细输入',
+        input_professional: '专业输入',
+        input_custom: '自定义输入',
+        option: '选项 {num}',
+      },
     },
     timeline: {
       toolbar: {
@@ -2042,6 +2372,25 @@ export const translations: Record<string, Translations> = {
         exportVideoWithRatio: '导出带宽高比的影片',
         selectAspectRatio: '选择宽高比',
       },
+    },
+    videoExportProgressModal: {
+      title: '导出视频',
+      progressStages: {
+        preparing: '准备导出...',
+        processing: '处理视频...',
+        composing: '合成中...',
+        generating: '生成文件...',
+        almostDone: '即将完成...',
+        completed: '导出完成',
+      },
+      timeElapsed: '已用时',
+      pleaseWait: '请耐心等待，导出过程中请勿关闭页面',
+      cancelExport: '取消导出',
+      exportSuccess: '导出成功',
+    },
+    videoExport: {
+      noContentToExport: '没有视频内容可导出',
+      noContentToExportDesc: '请先添加视频素材到时间轴',
     },
          scriptPanel: {
        header: {
@@ -2486,24 +2835,62 @@ export const translations: Record<string, Translations> = {
          }
        }
      },
-     videoChatWindow: {
-       inputPlaceholder: '输入消息... (Shift+Enter 换行)',
-       creativeBrainstormingTooltip: '创意构思',
-       polishContentTooltip: '智能润色当前文档内容',
-       generateScriptTooltip: '根据当前文档内容生成视频脚本',
-       generateScriptTooltipGenerating: '正在生成脚本...',
-       clearChatTooltip: '清空聊天记录',
-       sendMessageTooltip: '发送消息',
-       clearChatConfirm: '确定要清空所有聊天记录吗？此操作无法撤销。',
-       emptyStateTitle: '视频编辑 AI 助手',
-       emptyStateSubtitle: '开始与 AI 对话，获取视频编辑建议、脚本优化和创意灵感。',
-       scriptOptimizationTitle: '脚本优化',
-       scriptOptimizationDesc: '让 AI 帮你改进视频脚本和创意方向',
-       editingSuggestionsTitle: '剪辑建议',
-       editingSuggestionsDesc: '获取专业的视频剪辑和素材使用建议',
-       startChatTitle: '开始与 AI 对话',
-       startChatDesc: '输入你的问题或需求，AI 将为你提供帮助',
-     },
+    videoChatWindow: {
+      inputPlaceholder: '输入消息... (Shift+Enter 换行)',
+      creativeBrainstormingTooltip: '创意构思',
+      polishContentTooltip: '智能润色当前文档内容',
+      generateScriptTooltip: '根据当前文档内容生成视频脚本',
+      generateScriptTooltipGenerating: '正在生成脚本...',
+      clearChatTooltip: '清空聊天记录',
+      sendMessageTooltip: '发送消息',
+      clearChatConfirm: '确定要清空所有聊天记录吗？此操作无法撤销。',
+      emptyStateTitle: '视频编辑 AI 助手',
+      emptyStateSubtitle: '开始与 AI 对话，获取视频编辑建议、脚本优化和创意灵感。',
+      scriptOptimizationTitle: '脚本优化',
+      scriptOptimizationDesc: '让 AI 帮你改进视频脚本和创意方向',
+      editingSuggestionsTitle: '剪辑建议',
+      editingSuggestionsDesc: '获取专业的视频剪辑和素材使用建议',
+      startChatTitle: '开始与 AI 对话',
+      startChatDesc: '输入你的问题或需求，AI 将为你提供帮助',
+      viewWorkflowsTooltip: '查看工作流',
+    },
+    workflowConfigModal: {
+      title: '工作流配置',
+      subtitle: '选择并配置用于视频编辑任务的工作流',
+      workflowListTitle: '可用工作流',
+      workflowConfigTitle: '工作流设置',
+      enabledLabel: '已启用',
+      disabledLabel: '未启用',
+      toolDescriptionLabel: '工具描述',
+      toolDescriptionPlaceholder: '描述此工作流工具为 AI 助手提供什么功能...',
+      modelSelectionLabel: '模型选择',
+      modelPlaceholder: '选择模型...',
+      noWorkflowSelected: '未选择工作流',
+      selectWorkflowPrompt: '请从左侧面板选择一个工作流进行配置',
+      noWorkflowsAvailable: '暂无可用工作流',
+      createWorkflowPrompt: '请先在工作流任务中创建工作流',
+      saveButton: '保存配置',
+      cancelButton: '取消',
+      loadingWorkflows: '加载工作流中...',
+      workflowCount: '{count} 个工作流',
+      successSave: '工作流配置已成功保存',
+      errorLoad: '加载工作流失败',
+      errorSave: '保存配置失败',
+    },
+    aiChat: {
+      welcomePage: {
+        title: '开始对话',
+        subtitle: '创建新的聊天会话开始 AI 对话。提问、获取帮助或进行友好的交流。',
+        creativeAssistantTitle: '创意助手',
+        creativeAssistantDesc: '协助写作、头脑风暴和创意项目',
+        knowledgeAssistantTitle: '知识助手',
+        knowledgeAssistantDesc: '提问并获取任何主题的详细解释',
+      },
+      emptyConversation: {
+        title: '准备开始聊天',
+        subtitle: '发送消息以开始对话',
+      },
+    },
   },
 };
 

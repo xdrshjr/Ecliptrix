@@ -14,6 +14,7 @@ interface VideoChatWindowProps {
   onPolishClick?: () => void;
   onGenerateScriptClick?: () => void;
   isGeneratingScript?: boolean;
+  onViewWorkflowsClick?: () => void;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -25,6 +26,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onPolishClick,
   onGenerateScriptClick,
   isGeneratingScript = false,
+  onViewWorkflowsClick,
 }) => {
   const { t } = useLocale();
   const [inputMessage, setInputMessage] = useState('');
@@ -41,6 +43,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     hasPolishButton: !!onPolishClick,
     hasGenerateScriptButton: !!onGenerateScriptClick,
     isGeneratingScript,
+    hasViewWorkflowsButton: !!onViewWorkflowsClick,
     timestamp: new Date().toISOString()
   });
 
@@ -225,6 +228,15 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     onGenerateScriptClick?.();
   };
 
+  const handleViewWorkflowsClick = () => {
+    console.log('[VideoChatWindow] 用户点击查看工作流按钮', {
+      hasConversation: !!conversation,
+      messageCount: conversation?.messages.length || 0,
+      timestamp: new Date().toISOString()
+    });
+    onViewWorkflowsClick?.();
+  };
+
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-white to-gray-50/50">
@@ -306,6 +318,21 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       {/* Action Buttons Bar - Above Input Area */}
       <div className="flex-shrink-0 px-6 py-3 border-t border-gray-100/80 bg-gray-50/50">
         <div className="flex items-center space-x-2 justify-start">
+          {/* 查看工作流按钮 */}
+          {onViewWorkflowsClick && (
+            <button
+              onClick={handleViewWorkflowsClick}
+              disabled={isLoading}
+              className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 border border-gray-200 hover:border-green-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+              title={t.videoChatWindow.viewWorkflowsTooltip}
+              aria-label={t.videoChatWindow.viewWorkflowsTooltip}
+            >
+              <svg className="w-4 h-4 text-green-600 group-hover:text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </button>
+          )}
+
           {/* 创意构思按钮 */}
           {onCreativeBrainstormingClick && (
             <button

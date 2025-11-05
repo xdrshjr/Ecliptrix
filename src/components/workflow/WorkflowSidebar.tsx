@@ -15,6 +15,7 @@ interface WorkflowSidebarProps {
   onAddWorkflow: () => void;
   onRenameWorkflow: (workflowId: string, newName: string) => void;
   onDeleteWorkflow?: (workflowId: string) => void;
+  onEditWorkflow?: (workflowId: string) => void;
 }
 
 /**
@@ -28,6 +29,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
   onAddWorkflow,
   onRenameWorkflow,
   onDeleteWorkflow,
+  onEditWorkflow,
 }) => {
   const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
@@ -182,11 +184,12 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           console.log('[WorkflowSidebar] Edit button clicked for workflow:', { workflowId: workflow.id });
-                          setEditingWorkflowId(workflow.id);
-                          setEditingName(workflow.name);
+                          if (onEditWorkflow) {
+                            onEditWorkflow(workflow.id);
+                          }
                         }}
                         className="p-1 hover:bg-blue-50 rounded transition-colors"
-                        title="Rename Workflow"
+                        title="Edit Workflow Details"
                       >
                         <svg className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

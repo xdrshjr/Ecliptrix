@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoExportProgressModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
   onCancel,
   allowCancel = false
 }) => {
+  const { t } = useLocale();
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -68,12 +70,12 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
   };
 
   const getProgressStage = () => {
-    if (progress < 20) return '准备导出...';
-    if (progress < 40) return '处理视频...';
-    if (progress < 70) return '合成中...';
-    if (progress < 95) return '生成文件...';
-    if (progress >= 100) return '导出完成';
-    return '即将完成...';
+    if (progress < 20) return t.videoExportProgressModal.progressStages.preparing;
+    if (progress < 40) return t.videoExportProgressModal.progressStages.processing;
+    if (progress < 70) return t.videoExportProgressModal.progressStages.composing;
+    if (progress < 95) return t.videoExportProgressModal.progressStages.generating;
+    if (progress >= 100) return t.videoExportProgressModal.progressStages.completed;
+    return t.videoExportProgressModal.progressStages.almostDone;
   };
 
   // 格式化经过时间
@@ -161,7 +163,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
             id="export-progress-title"
             className="text-lg font-semibold text-gray-900 mb-2"
           >
-            导出视频
+            {t.videoExportProgressModal.title}
           </h3>
           
           <p 
@@ -182,7 +184,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="12,6 12,12 16,14"/>
               </svg>
-              <span>已用时: {formatElapsedTime(elapsedTime)}</span>
+              <span>{t.videoExportProgressModal.timeElapsed}: {formatElapsedTime(elapsedTime)}</span>
             </div>
           )}
         </div>
@@ -201,7 +203,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
         <div className="px-6 pb-6">
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-3">
-              请耐心等待，导出过程中请勿关闭页面
+              {t.videoExportProgressModal.pleaseWait}
             </p>
             
             {allowCancel && onCancel && progress < 100 && (
@@ -209,7 +211,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                 onClick={onCancel}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors"
               >
-                取消导出
+                {t.videoExportProgressModal.cancelExport}
               </button>
             )}
             
@@ -218,7 +220,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                 </svg>
-                <span className="text-sm font-medium">导出成功</span>
+                <span className="text-sm font-medium">{t.videoExportProgressModal.exportSuccess}</span>
               </div>
             )}
           </div>

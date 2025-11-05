@@ -7,6 +7,7 @@ import { VideoEditingLogger } from '../../utils';
 import { MaterialItem } from '@/types';
 import { FileUploadComponent } from '../FileUpload';
 import { fileUploadService, FileUploadResult, UploadType } from '../../services/fileUploadService';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface AICreationModalProps extends UseAICreationReturn {
   addMaterial: (material: MaterialItem) => boolean;
@@ -32,6 +33,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
   taskId,
   addMaterial
 }) => {
+  const { t } = useLocale();
   const logger = new VideoEditingLogger({ taskId, component: 'AICreationModal' });
   
   // File upload state
@@ -207,30 +209,30 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
           
           if (nodeInfo.description.includes('比例') || nodeInfo.description.includes('ratio')) {
             fallbackOptions = [
-              { value: '1', label: '1:1 (正方形)' },
-              { value: '2', label: '4:3 (标准)' },
-              { value: '3', label: '16:9 (宽屏)' },
-              { value: '4', label: '9:16 (竖屏)' },
-              { value: '5', label: '3:4 (竖向标准)' }
+              { value: '1', label: t.aiCreationModal.fallbackOptions.ratio_1_1 },
+              { value: '2', label: t.aiCreationModal.fallbackOptions.ratio_4_3 },
+              { value: '3', label: t.aiCreationModal.fallbackOptions.ratio_16_9 },
+              { value: '4', label: t.aiCreationModal.fallbackOptions.ratio_9_16 },
+              { value: '5', label: t.aiCreationModal.fallbackOptions.ratio_3_4 }
             ];
-          } else if (nodeInfo.description.includes('版本') || nodeInfo.description.includes('质量')) {
+          } else if (nodeInfo.description.includes('版本') || nodeInfo.description.includes('质量') || nodeInfo.description.includes('version') || nodeInfo.description.includes('quality')) {
             fallbackOptions = [
-              { value: '1', label: '极速版' },
-              { value: '2', label: '高清版' },
-              { value: '3', label: '超清版' }
+              { value: '1', label: t.aiCreationModal.fallbackOptions.version_fast },
+              { value: '2', label: t.aiCreationModal.fallbackOptions.version_hd },
+              { value: '3', label: t.aiCreationModal.fallbackOptions.version_uhd }
             ];
-          } else if (nodeInfo.description.includes('输入方式')) {
+          } else if (nodeInfo.description.includes('输入方式') || nodeInfo.description.includes('input')) {
             fallbackOptions = [
-              { value: '1', label: '简单输入' },
-              { value: '2', label: '详细输入' },
-              { value: '3', label: '专业输入' },
-              { value: '4', label: '自定义输入' }
+              { value: '1', label: t.aiCreationModal.fallbackOptions.input_simple },
+              { value: '2', label: t.aiCreationModal.fallbackOptions.input_detailed },
+              { value: '3', label: t.aiCreationModal.fallbackOptions.input_professional },
+              { value: '4', label: t.aiCreationModal.fallbackOptions.input_custom }
             ];
           } else {
             fallbackOptions = [
-              { value: '1', label: '选项 1' },
-              { value: '2', label: '选项 2' },
-              { value: '3', label: '选项 3' }
+              { value: '1', label: t.aiCreationModal.fallbackOptions.option.replace('{num}', '1') },
+              { value: '2', label: t.aiCreationModal.fallbackOptions.option.replace('{num}', '2') },
+              { value: '3', label: t.aiCreationModal.fallbackOptions.option.replace('{num}', '3') }
             ];
           }
           
@@ -263,9 +265,9 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                 className={`${inputClasses} bg-white border-orange-300`}
                 required={validation?.required}
               >
-                <option value="">请配置选项</option>
+                <option value="">{t.aiCreationModal.optionConfigError}</option>
               </select>
-              <p className="text-sm text-orange-600">⚠️ 配置错误：uiConfig 中缺少 options</p>
+              <p className="text-sm text-orange-600">{t.aiCreationModal.optionConfigMissing}</p>
               {uiConfig?.helpText && (
                 <p className="text-sm text-gray-500">{uiConfig.helpText}</p>
               )}
@@ -348,8 +350,8 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
       return (
         <div className="flex flex-col items-center justify-center h-full text-gray-500">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-          <p className="text-lg font-medium">加载创作工作流中...</p>
-          <p className="text-sm text-gray-400 mt-1">正在获取可用的创作任务</p>
+          <p className="text-lg font-medium">{t.aiCreationModal.loadingWorkflows}</p>
+          <p className="text-sm text-gray-400 mt-1">{t.aiCreationModal.loadingWorkflowsDesc}</p>
         </div>
       );
     }
@@ -358,13 +360,13 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
       return (
         <div className="flex flex-col items-center justify-center h-full text-gray-500">
           <div className="text-6xl mb-4">⚠️</div>
-          <p className="text-lg font-medium text-red-600">加载失败</p>
+          <p className="text-lg font-medium text-red-600">{t.aiCreationModal.loadingFailed}</p>
           <p className="text-sm text-gray-400 mt-1">{workflowsError}</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            重新加载
+            {t.aiCreationModal.reload}
           </button>
         </div>
       );
@@ -374,8 +376,8 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
       return (
         <div className="flex flex-col items-center justify-center h-full text-gray-500">
           <div className="text-6xl mb-4">🚧</div>
-          <p className="text-lg font-medium">暂无可用工作流</p>
-          <p className="text-sm text-gray-400 mt-1">请稍后再试或联系管理员</p>
+          <p className="text-lg font-medium">{t.aiCreationModal.noWorkflows}</p>
+          <p className="text-sm text-gray-400 mt-1">{t.aiCreationModal.noWorkflowsDesc}</p>
         </div>
       );
     }
@@ -383,7 +385,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
     return (
       <div className="space-y-4 p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          选择创作工作流
+          {t.aiCreationModal.selectWorkflow}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.map((workflow) => (
@@ -453,12 +455,12 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
         {/* File Upload Section */}
         {requiredUploadTypes.length > 0 && (
           <div className="mb-6">
-            <h4 className="text-md font-semibold text-gray-900 mb-4">文件上传</h4>
+            <h4 className="text-md font-semibold text-gray-900 mb-4">{t.aiCreationModal.fileUpload}</h4>
             <div className="space-y-4">
               {requiredUploadTypes.map((uploadType) => (
                 <div key={uploadType} className="space-y-2">
                   <h5 className="text-sm font-medium text-gray-700">
-                    上传{fileUploadService.getUploadTypeDisplayName(uploadType)}
+                    {t.aiCreationModal.uploadRequired.replace('{type}', fileUploadService.getUploadTypeDisplayName(uploadType))}
                     <span className="text-red-500 ml-1">*</span>
                   </h5>
                   
@@ -481,10 +483,10 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                           </svg>
                           <div className="flex-1">
                             <p className="text-sm font-medium text-blue-900">
-                              上传成功：{uploadedFiles[uploadType]?.data?.filename}
+                              {t.aiCreationModal.uploadSuccess.replace('{filename}', uploadedFiles[uploadType]?.data?.filename || '')}
                             </p>
                             <p className="text-xs text-blue-700">
-                              请在相关输入框中使用此文件名
+                              {t.aiCreationModal.uploadSuccessDesc}
                             </p>
                           </div>
                         </div>
@@ -493,7 +495,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                         <button
                           onClick={() => handleCopyFilename(uploadType)}
                           className="flex-shrink-0 ml-2 p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                          title={copySuccess[uploadType] ? "已复制！" : "复制文件名"}
+                          title={copySuccess[uploadType] ? t.aiCreationModal.copied : t.aiCreationModal.copyFilename}
                         >
                           {copySuccess[uploadType] ? (
                             <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -510,7 +512,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                       {/* Copy success feedback */}
                       {copySuccess[uploadType] && (
                         <p className="text-xs text-green-600 mt-2 text-center">
-                          已复制到剪贴板！
+                          {t.aiCreationModal.copiedToClipboard}
                         </p>
                       )}
                     </div>
@@ -555,7 +557,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <h4 className="text-sm font-medium text-red-800">请修正以下问题：</h4>
+                  <h4 className="text-sm font-medium text-red-800">{t.aiCreationModal.fixIssues}</h4>
                   <ul className="mt-1 text-sm text-red-700 list-disc list-inside">
                     {validationErrors.map((error, index) => (
                       <li key={index}>{error}</li>
@@ -592,8 +594,8 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                       : 'text-red-800'
                   }`}>
                     {executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')
-                      ? '系统繁忙'
-                      : '执行失败'
+                      ? t.aiCreationModal.systemBusy
+                      : t.aiCreationModal.executionFailed
                     }
                   </h4>
                   <p className={`mt-1 text-sm ${
@@ -605,11 +607,11 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                   </p>
                   {(executionError.includes('当前有用户正在生成内容') || executionError.includes('稍后再试')) && (
                     <div className="mt-2 text-xs text-amber-600">
-                      <p>💡 建议：</p>
+                      <p>💡 {t.aiCreationModal.suggestions}</p>
                       <ul className="mt-1 list-disc list-inside space-y-1">
-                        <li>等待 2-3 分钟后重新尝试</li>
-                        <li>可以先准备其他素材或编辑文案</li>
-                        <li>系统会自动处理排队任务</li>
+                        <li>{t.aiCreationModal.suggestionWait}</li>
+                        <li>{t.aiCreationModal.suggestionPrepare}</li>
+                        <li>{t.aiCreationModal.suggestionAutoQueue}</li>
                       </ul>
                     </div>
                   )}
@@ -626,10 +628,12 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div>
-                  <h4 className="text-sm font-medium text-green-800">创作任务已启动</h4>
+                  <h4 className="text-sm font-medium text-green-800">{t.aiCreationModal.creationStarted}</h4>
                   <p className="mt-1 text-sm text-green-700">{executionResult.message}</p>
                   {executionResult.taskId && (
-                    <p className="mt-1 text-xs text-green-600">任务ID: {executionResult.taskId}</p>
+                    <p className="mt-1 text-xs text-green-600">
+                      {t.aiCreationModal.taskId.replace('{id}', executionResult.taskId)}
+                    </p>
                   )}
                 </div>
               </div>
@@ -643,7 +647,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
             onClick={handleBackToWorkflows}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            返回
+            {t.aiCreationModal.back}
           </button>
           <button
             onClick={() => handleStartCreation(addMaterial)}
@@ -655,10 +659,10 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
             )}
             <span>
               {isExecuting 
-                ? '创作中...' 
+                ? t.aiCreationModal.creating
                 : (requiredUploadTypes.length > 0 && !areRequiredFilesUploaded())
-                  ? '请先上传必需文件'
-                  : '开始创作'
+                  ? t.aiCreationModal.uploadFilesFirst
+                  : t.aiCreationModal.startCreation
               }
             </span>
           </button>
@@ -673,7 +677,7 @@ const AICreationModal: React.FC<AICreationModalProps> = ({
         {/* Header */}
         <div className="w-full flex flex-col">
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">AI创作</h2>
+            <h2 className="text-xl font-semibold text-gray-900">{t.aiCreationModal.title}</h2>
             <button
               onClick={closeModal}
               className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"

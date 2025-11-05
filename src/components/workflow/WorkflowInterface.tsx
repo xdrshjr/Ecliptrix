@@ -6,6 +6,7 @@ import WorkflowSidebar from './WorkflowSidebar';
 import WorkflowCanvas from './WorkflowCanvas';
 import WorkflowLogPanel from './WorkflowLogPanel';
 import WorkflowChatInterface from './WorkflowChatInterface';
+import WorkflowEditModal from './WorkflowEditModal';
 import { WorkflowExecutor } from './WorkflowExecutor';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -74,6 +75,13 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   
   // Track if auto-load has been done
   const hasAutoLoaded = useRef(content?.uiState?.hasAutoLoaded ?? false);
+  
+  // Edit modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
+  
+  // Description tooltip state
+  const [isDescriptionTooltipOpen, setIsDescriptionTooltipOpen] = useState(false);
 
   console.log('[WorkflowInterface] Restoring UI state:', {
     activeRightTab,
@@ -406,6 +414,96 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       );
     }
   }, [content, onUpdateContent, isAuthenticated, user, notification]);
+
+  // Handle edit workflow
+  const handleEditWorkflow = useCallback((workflowId: string) => {
+    console.log('[WorkflowInterface] Opening edit modal for workflow:', { workflowId });
+    setEditingWorkflowId(workflowId);
+    setIsEditModalOpen(true);
+  }, []);
+  
+  // Handle save workflow from edit modal
+  const handleSaveWorkflowFromModal = useCallback(async (name: string, description: string) => {
+    if (!content || !editingWorkflowId) return;
+    
+    // Check authentication
+    if (!isAuthenticated || !user) {
+      notification.showWarning('Please login to save workflow changes', 3000);
+      return;
+    }
+    
+    console.log('[WorkflowInterface] Saving workflow changes from modal:', {
+      workflowId: editingWorkflowId,
+      name,
+      description,
+      timestamp: new Date().toISOString()
+    });
+    
+    const workflowToUpdate = content.workflows.find(w => w.id === editingWorkflowId);
+    if (!workflowToUpdate) {
+      console.error('[WorkflowInterface] Workflow not found for saving:', editingWorkflowId);
+      notification.showError('Workflow not found', 3000);
+      return;
+    }
+    
+    // Update local state first
+    const updatedWorkflows = content.workflows.map(workflow =>
+      workflow.id === editingWorkflowId
+        ? {
+            ...workflow,
+            name: name,
+            data: {
+              ...workflow.data,
+              name: name,
+              description: description,
+            },
+          }
+        : workflow
+    );
+    
+    onUpdateContent({
+      ...content,
+      workflows: updatedWorkflows,
+    });
+    
+    console.log('[WorkflowInterface] Workflow updated in local state');
+
+    // Auto-save to database
+    try {
+      console.log('[WorkflowInterface] Auto-saving workflow changes to database');
+
+      const response = await saveAgentWorkflow({
+        user_id: user.id,
+        workflow_id: editingWorkflowId,
+        workflow_name: name,
+        workflow_description: description,
+        nodes: workflowToUpdate.data.nodes,
+        connections: workflowToUpdate.data.connections,
+      });
+
+      if (response.success) {
+        console.log('[WorkflowInterface] Workflow changes saved successfully:', {
+          workflow_id: response.data.workflow_id,
+          version: response.data.version,
+        });
+        
+        notification.showSuccess(`Workflow "${name}" updated successfully`, 2000);
+      }
+    } catch (error) {
+      console.error('[WorkflowInterface] Error saving workflow changes:', error);
+      notification.showError(
+        'Workflow updated locally but failed to save to database. Please save it manually.',
+        4000
+      );
+    }
+  }, [content, editingWorkflowId, onUpdateContent, isAuthenticated, user, notification]);
+  
+  // Handle close edit modal
+  const handleCloseEditModal = useCallback(() => {
+    console.log('[WorkflowInterface] Closing edit modal');
+    setIsEditModalOpen(false);
+    setEditingWorkflowId(null);
+  }, []);
 
   // Handle delete workflow
   const handleDeleteWorkflow = useCallback(async (workflowId: string) => {
@@ -768,6 +866,11 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     );
   }
 
+  // Get workflow being edited for modal
+  const editingWorkflow = editingWorkflowId 
+    ? content?.workflows.find(w => w.id === editingWorkflowId)
+    : null;
+
   return (
     <div className="h-full w-full flex overflow-hidden">
       {/* Left Sidebar - Fixed width, won't shrink */}
@@ -783,11 +886,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           onAddWorkflow={handleAddWorkflow}
           onRenameWorkflow={handleRenameWorkflow}
           onDeleteWorkflow={handleDeleteWorkflow}
+          onEditWorkflow={handleEditWorkflow}
         />
       </div>
 
       {/* Right Panel - Takes remaining space with overflow handling */}
-      <div className="flex-1 h-full min-w-0 overflow-hidden">
+      <div className="flex-1 h-full min-w-0 overflow-hidden relative">
         {activeWorkflow ? (
           <div className="h-full w-full flex flex-col">
             {/* Tab Header */}
@@ -837,14 +941,55 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
               {activeRightTab === 'workflow' && (
                 <div className="px-6 py-4 border-t border-gray-200">
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex items-center space-x-2">
                       <h2 className="text-xl font-semibold text-gray-900">
                         {activeWorkflow.name}
                       </h2>
                       {activeWorkflow.data.description && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          {activeWorkflow.data.description}
-                        </p>
+                        <div className="relative">
+                          <button
+                            onClick={() => setIsDescriptionTooltipOpen(!isDescriptionTooltipOpen)}
+                            onBlur={() => setTimeout(() => setIsDescriptionTooltipOpen(false), 200)}
+                            className="p-1 hover:bg-gray-100 rounded-full transition-colors group"
+                            title="View description"
+                          >
+                            <svg 
+                              className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                strokeWidth={2} 
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                              />
+                            </svg>
+                          </button>
+                          
+                          {/* Description Tooltip */}
+                          {isDescriptionTooltipOpen && (
+                            <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-white rounded-lg shadow-xl border border-gray-200 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                              <div className="flex items-start justify-between mb-2">
+                                <h3 className="text-sm font-semibold text-gray-900">Description</h3>
+                                <button
+                                  onClick={() => setIsDescriptionTooltipOpen(false)}
+                                  className="p-0.5 hover:bg-gray-100 rounded transition-colors"
+                                >
+                                  <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <p className="text-sm text-gray-600 leading-relaxed">
+                                {activeWorkflow.data.description}
+                              </p>
+                              {/* Arrow pointer */}
+                              <div className="absolute -top-2 left-6 w-4 h-4 bg-white border-l border-t border-gray-200 transform rotate-45"></div>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                 
@@ -975,6 +1120,19 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
               </p>
             </div>
           </div>
+        )}
+        
+        {/* Workflow Edit Modal - positioned within right panel */}
+        {editingWorkflow && (
+          <WorkflowEditModal
+            isOpen={isEditModalOpen}
+            workflowId={editingWorkflow.id}
+            workflowName={editingWorkflow.name}
+            workflowDescription={editingWorkflow.data.description || ''}
+            nodes={editingWorkflow.data.nodes}
+            onClose={handleCloseEditModal}
+            onSave={handleSaveWorkflowFromModal}
+          />
         )}
       </div>
     </div>

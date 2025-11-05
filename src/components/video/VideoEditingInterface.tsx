@@ -48,6 +48,7 @@ import {
   AIMixingProgressModal,
   AIMixingModeSelectionModal
 } from './components';
+import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
 import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
@@ -119,6 +120,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     content?.uiState?.isAIMixingModeModalOpen ?? false
   );
   
+  // 工作流配置弹窗状态
+  const [isWorkflowConfigModalOpen, setIsWorkflowConfigModalOpen] = useState<boolean>(
+    content?.uiState?.isWorkflowConfigModalOpen ?? false
+  );
+  
   // 新增：程序化添加素材到时间轴的状态 (not persisted - transient operation state)
   const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
     materials: MaterialItem[], 
@@ -152,6 +158,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isAIMixing,
     aiMixingProgress,
     isAIMixingModeModalOpen,
+    isWorkflowConfigModalOpen,
     videoCutModalIsOpen: videoCutModal.isOpen,
     timestamp: new Date().toISOString()
   });
@@ -175,6 +182,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isAIMixing,
         aiMixingProgress,
         isAIMixingModeModalOpen,
+        isWorkflowConfigModalOpen,
         videoCutModal,
         isChatLoading,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
@@ -191,6 +199,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.isAIMixing !== isAIMixing ||
       content.uiState?.aiMixingProgress !== aiMixingProgress ||
       content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
+      content.uiState?.isWorkflowConfigModalOpen !== isWorkflowConfigModalOpen ||
       content.uiState?.isChatLoading !== isChatLoading ||
       content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
       JSON.stringify(content.uiState?.currentTimelineState) !== JSON.stringify(currentTimelineState) ||
@@ -207,6 +216,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isAIMixing,
         aiMixingProgress,
         isAIMixingModeModalOpen,
+        isWorkflowConfigModalOpen,
         videoCutModalIsOpen: videoCutModal.isOpen,
         isChatLoading,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
@@ -224,6 +234,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isAIMixing,
     aiMixingProgress,
     isAIMixingModeModalOpen,
+    isWorkflowConfigModalOpen,
     videoCutModal,
     isChatLoading,
     taskId,
@@ -1787,6 +1798,24 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsAIMixingModeModalOpen(false);
   }, [taskId]);
 
+  // 处理工作流配置弹窗的打开
+  const handleViewWorkflowsClick = useCallback(() => {
+    console.log(`[VideoEditingInterface] 用户点击查看工作流按钮`, {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+    setIsWorkflowConfigModalOpen(true);
+  }, [taskId]);
+
+  // 处理工作流配置弹窗的关闭
+  const handleWorkflowConfigClose = useCallback(() => {
+    console.log(`[VideoEditingInterface] 关闭工作流配置弹窗`, {
+      taskId,
+      timestamp: new Date().toISOString()
+    });
+    setIsWorkflowConfigModalOpen(false);
+  }, [taskId]);
+
   // 清除添加素材请求状态，避免重复处理
   React.useEffect(() => {
     if (materialsToAddToTimeline) {
@@ -2054,6 +2083,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onPolishClick={handlePolishClick}
           onGenerateScriptClick={handleScriptGenerationClick}
           isGeneratingScript={scriptGeneration.isGeneratingScript}
+          onViewWorkflowsClick={handleViewWorkflowsClick}
         />
       </div>
 
@@ -2230,6 +2260,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         material={videoCutModal.material}
         onClose={handleCloseCutModal}
         onExportClips={handleExportClips}
+        taskId={taskId}
+      />
+
+      {/* 工作流配置弹窗 */}
+      <WorkflowConfigModal
+        isOpen={isWorkflowConfigModalOpen}
+        onClose={handleWorkflowConfigClose}
         taskId={taskId}
       />
 

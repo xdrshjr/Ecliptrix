@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -105,7 +106,8 @@ export const useVideoExport = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStartTime, setExportStartTime] = useState<number | null>(null);
-  const { showError } = useNotification();
+  const { showError, showWarning } = useNotification();
+  const { t } = useLocale();
 
   const handleExport = useCallback(async () => {
     console.log(`[useVideoExport] 开始导出处理`, {
@@ -430,8 +432,23 @@ export const useVideoExport = ({
 
       // Validate we have content to export
       if (videoItems.length === 0 && audioItems.length === 0 && imageItems.length === 0) {
-        console.warn(`[useVideoExport] 没有视频、音频或图片内容可导出`, { taskId });
-        alert('没有视频内容可导出，请先添加视频素材到时间轴');
+        console.warn(`[useVideoExport] 没有视频、音频或图片内容可导出`, { 
+          taskId,
+          videoItemsCount: videoItems.length,
+          audioItemsCount: audioItems.length,
+          imageItemsCount: imageItems.length,
+          timestamp: new Date().toISOString()
+        });
+        
+        // 使用 toast 警告提示，而不是 alert 弹窗
+        showWarning(`${t.videoExport.noContentToExport}，${t.videoExport.noContentToExportDesc}`, 5000);
+        
+        console.log(`[useVideoExport] 显示无内容警告提示`, {
+          taskId,
+          message: `${t.videoExport.noContentToExport}，${t.videoExport.noContentToExportDesc}`,
+          timestamp: new Date().toISOString()
+        });
+        
         return;
       }
 
@@ -674,7 +691,7 @@ export const useVideoExport = ({
         });
       }, 2000); // 2秒后重置状态
     }
-  }, [timelineState, materials, taskId, aspectRatio, showError]);
+  }, [timelineState, materials, taskId, aspectRatio, showError, showWarning, t]);
 
   return {
     isExporting,
