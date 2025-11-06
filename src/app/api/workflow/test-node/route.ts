@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
 
     // Execute node based on type
     let output: any = null;
+    let llmDetails: any = null; // Store LLM execution details separately
 
     switch (node_type) {
       case 'start':
@@ -162,16 +163,22 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'to-array':
-        output = await executeToArrayNode(node_config, convertedInput);
+        const toArrayResult = await executeToArrayNode(node_config, convertedInput);
+        output = toArrayResult.output;
+        llmDetails = toArrayResult.llmDetails;
         break;
 
       case 'results-combine':
-        output = await executeResultsCombineNode(node_config, convertedInput);
+        const combinedResult = await executeResultsCombineNode(node_config, convertedInput);
+        output = combinedResult.output;
+        llmDetails = combinedResult.llmDetails;
         break;
 
       case 'results-combine-item':
         // Special case: transform a single item from Results Combine node
-        output = await executeResultsCombineItemTransformation(node_config, convertedInput);
+        const itemResult = await executeResultsCombineItemTransformation(node_config, convertedInput);
+        output = itemResult.output;
+        llmDetails = itemResult.llmDetails;
         break;
 
       case 'end':
@@ -215,6 +222,8 @@ export async function POST(request: NextRequest) {
       execution_time_ms: duration,
       node_id,
       node_type,
+      // LLM execution details (if node uses LLM)
+      llm_details: llmDetails,
     });
 
   } catch (error: any) {
@@ -976,7 +985,18 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
     elementType: config?.elementType || 'string'
   });
 
-  return arrayResult;
+  // Return both output and LLM execution details
+  return {
+    output: arrayResult,
+    llmDetails: {
+      systemPrompt: enhancedSystemPrompt,
+      userPrompt: userMessage,
+      response: accumulatedContent,
+      model: config.model,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    }
+  };
 }
 
 /**
@@ -1086,9 +1106,9 @@ async function executeResultsCombineItemTransformation(config: any, input: any):
   });
 
   // Parse the LLM response as JSON object
+  let parsedOutput;
   try {
-    const parsed = JSON.parse(accumulatedContent.trim());
-    return parsed;
+    parsedOutput = JSON.parse(accumulatedContent.trim());
   } catch (e) {
     console.warn('[API] Failed to parse LLM response as JSON, attempting extraction');
     
@@ -1096,16 +1116,29 @@ async function executeResultsCombineItemTransformation(config: any, input: any):
     const jsonMatch = accumulatedContent.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
-        return JSON.parse(jsonMatch[0]);
+        parsedOutput = JSON.parse(jsonMatch[0]);
       } catch (e2) {
         // If still fails, return as plain object
-        return { result: accumulatedContent.trim(), parseError: true };
+        parsedOutput = { result: accumulatedContent.trim(), parseError: true };
       }
+    } else {
+      // Fallback: return as plain object
+      parsedOutput = { result: accumulatedContent.trim(), parseError: true };
     }
-    
-    // Fallback: return as plain object
-    return { result: accumulatedContent.trim(), parseError: true };
   }
+
+  // Return both output and LLM execution details
+  return {
+    output: parsedOutput,
+    llmDetails: {
+      systemPrompt: enhancedSystemPrompt,
+      userPrompt: userMessage,
+      response: accumulatedContent,
+      model: config.model,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    }
+  };
 }
 
 /**
@@ -1152,6 +1185,7 @@ async function executeResultsCombineNode(config: any, input: any): Promise<any> 
   });
 
   const transformedResults: any[] = [];
+  const allLlmDetails: any[] = []; // Collect LLM details from each item transformation
   let successCount = 0;
   let errorCount = 0;
 
@@ -1163,7 +1197,11 @@ async function executeResultsCombineNode(config: any, input: any): Promise<any> 
 
     try {
       const transformed = await executeResultsCombineItemTransformation(config, item);
-      transformedResults.push(transformed);
+      transformedResults.push(transformed.output);
+      allLlmDetails.push({
+        itemIndex: i,
+        ...transformed.llmDetails
+      });
       successCount++;
       
       console.log(`[API] Item ${i + 1} transformed successfully`);
@@ -1183,7 +1221,21 @@ async function executeResultsCombineNode(config: any, input: any): Promise<any> 
     errorCount
   });
 
-  return transformedResults;
+  // Return combined results with aggregated LLM details
+  return {
+    output: transformedResults,
+    llmDetails: {
+      model: config.model,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      systemPrompt: config.systemPrompt,
+      itemCount: inputArray.length,
+      successCount,
+      errorCount,
+      // Include details for each item transformation
+      items: allLlmDetails
+    }
+  };
 }
 
 /**

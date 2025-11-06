@@ -659,6 +659,17 @@ export class WorkflowExecutor {
       messagePreview: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : '')
     });
 
+    // Store LLM prompts in node execution state for display
+    this.executionState.nodeStates[node.id] = {
+      ...this.executionState.nodeStates[node.id],
+      llmSystemPrompt: config.systemPrompt,
+      llmUserPrompt: userMessage,
+      llmModel: config.model,
+      llmTemperature: config.temperature,
+      llmMaxTokens: config.maxTokens,
+    };
+    this.notifyStateChange();
+
     try {
       // Call the LLM API
       const response = await fetch('/api/chat', {
@@ -730,6 +741,13 @@ export class WorkflowExecutor {
         contentPreview: accumulatedContent.substring(0, 100) + (accumulatedContent.length > 100 ? '...' : ''),
         timestamp: new Date().toISOString()
       });
+
+      // Store LLM response in node execution state for display
+      this.executionState.nodeStates[node.id] = {
+        ...this.executionState.nodeStates[node.id],
+        llmResponse: accumulatedContent,
+      };
+      this.notifyStateChange();
 
       this.addLog('success', node.id, 'LLM response received', { 
         responseLength: accumulatedContent.length,
@@ -939,6 +957,20 @@ export class WorkflowExecutor {
 
       const arrayOutput = result.output;
 
+      // Store LLM details if available
+      if (result.llm_details) {
+        this.executionState.nodeStates[node.id] = {
+          ...this.executionState.nodeStates[node.id],
+          llmSystemPrompt: result.llm_details.systemPrompt,
+          llmUserPrompt: result.llm_details.userPrompt,
+          llmResponse: result.llm_details.response,
+          llmModel: result.llm_details.model,
+          llmTemperature: result.llm_details.temperature,
+          llmMaxTokens: result.llm_details.maxTokens,
+        };
+        this.notifyStateChange();
+      }
+
       this.addLog('success', node.id, `Array conversion completed: ${Array.isArray(arrayOutput) ? arrayOutput.length : 0} ${elementType} element(s)`, { 
         arrayLength: Array.isArray(arrayOutput) ? arrayOutput.length : 0,
         elementType,
@@ -1001,8 +1033,20 @@ export class WorkflowExecutor {
       hasOutputSchema: !!config.outputSchema
     });
 
+    // Store LLM configuration info (will be enhanced with responses as items are processed)
+    this.executionState.nodeStates[node.id] = {
+      ...this.executionState.nodeStates[node.id],
+      llmSystemPrompt: config.systemPrompt,
+      llmModel: config.model,
+      llmTemperature: config.temperature,
+      llmMaxTokens: config.maxTokens,
+      llmUserPrompt: `Processing array of ${inputArray.length} items`, // Summary of input
+    };
+    this.notifyStateChange();
+
     try {
       const transformedResults: any[] = [];
+      const llmResponses: string[] = []; // Collect LLM responses from each item
       let successCount = 0;
       let errorCount = 0;
 
@@ -1051,6 +1095,11 @@ export class WorkflowExecutor {
           transformedResults.push(result.output);
           successCount++;
 
+          // Collect LLM response if available
+          if (result.llm_details?.response) {
+            llmResponses.push(`Item ${i + 1}: ${result.llm_details.response.substring(0, 100)}...`);
+          }
+
           this.addLog('success', node.id, `Item ${i + 1} transformed successfully`, {
             itemIndex: i,
             output: this.createSafeLogObject(result.output)
@@ -1078,6 +1127,15 @@ export class WorkflowExecutor {
         errorCount,
         timestamp: new Date().toISOString()
       });
+
+      // Update node state with aggregated LLM responses
+      if (llmResponses.length > 0) {
+        this.executionState.nodeStates[node.id] = {
+          ...this.executionState.nodeStates[node.id],
+          llmResponse: `Processed ${successCount} items:\n${llmResponses.slice(0, 5).join('\n')}${llmResponses.length > 5 ? `\n... and ${llmResponses.length - 5} more` : ''}`,
+        };
+        this.notifyStateChange();
+      }
 
       this.addLog('success', node.id, `Combined ${successCount} items (${errorCount} failed)`, { 
         totalItems: inputArray.length,

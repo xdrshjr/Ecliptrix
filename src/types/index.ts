@@ -286,6 +286,13 @@ export interface WorkflowNodeExecutionState {
   error?: string;
   startTime?: Date;
   endTime?: Date;
+  // LLM-specific execution details (for Chat LLM, To Array, Results Combine nodes)
+  llmSystemPrompt?: string; // System prompt sent to LLM
+  llmUserPrompt?: string;   // User prompt sent to LLM
+  llmResponse?: string;     // Model response from LLM
+  llmModel?: string;        // Model name used
+  llmTemperature?: number;  // Temperature parameter
+  llmMaxTokens?: number;    // Max tokens parameter
 }
 
 export interface WorkflowExecutionState {
