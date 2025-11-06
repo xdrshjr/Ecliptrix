@@ -2065,19 +2065,47 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       let accumulatedContent = '';
       let workflowIntention: any = null;
       let shouldCallWorkflow = false;
+      let streamComplete = false; // 标记流是否完成
+      
+      console.log('[VideoEditingInterface] 开始处理流式响应', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
       
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[VideoEditingInterface] 流读取完成（reader.done）', {
+            taskId,
+            streamComplete,
+            timestamp: new Date().toISOString()
+          });
+          break;
+        }
 
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split('\n').filter(line => line.trim());
+        
+        console.log('[VideoEditingInterface] 收到数据块', {
+          taskId,
+          linesCount: lines.length,
+          timestamp: new Date().toISOString()
+        });
         
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') {
-              break;
+              console.log('[VideoEditingInterface] 收到[DONE]信号，准备结束流处理', {
+                taskId,
+                workflowIntention: workflowIntention ? {
+                  shouldCallWorkflow: workflowIntention.should_call_workflow,
+                  workflowName: workflowIntention.workflow_name
+                } : null,
+                timestamp: new Date().toISOString()
+              });
+              streamComplete = true;
+              break; // 跳出for循环
             }
             
             try {
@@ -2088,8 +2116,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 workflowIntention = parsed.intention;
                 shouldCallWorkflow = workflowIntention.should_call_workflow;
                 console.log('[VideoEditingInterface] 收到工作流意图', {
+                  taskId,
                   intention: workflowIntention,
-                  shouldCallWorkflow
+                  shouldCallWorkflow,
+                  timestamp: new Date().toISOString()
                 });
                 
                 // 移除意图检测消息，添加意图结果消息
@@ -2112,6 +2142,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                     : [...messagesWithUser, intentResultMessage, { ...assistantMessage, content: '', isStreaming: true }];
                   
                   updateConversationMessages(activeConversationId, updatedMessages);
+                  
+                  console.log('[VideoEditingInterface] 已更新消息列表（添加意图结果）', {
+                    taskId,
+                    messagesCount: updatedMessages.length,
+                    shouldCallWorkflow,
+                    timestamp: new Date().toISOString()
+                  });
                 }
               }
               // 处理普通聊天内容（只在不调用工作流时处理）
@@ -2145,11 +2182,33 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 updateConversationMessages(activeConversationId, updatedMessages);
               }
             } catch (e) {
-              console.error('Error parsing SSE data:', e);
+              console.error('[VideoEditingInterface] 解析SSE数据错误:', {
+                taskId,
+                error: e,
+                data,
+                timestamp: new Date().toISOString()
+              });
             }
           }
         }
+        
+        // 如果收到[DONE]信号，跳出while循环
+        if (streamComplete) {
+          console.log('[VideoEditingInterface] 流处理完成，退出while循环', {
+            taskId,
+            timestamp: new Date().toISOString()
+          });
+          break;
+        }
       }
+      
+      console.log('[VideoEditingInterface] 流处理结束，准备后续操作', {
+        taskId,
+        hasWorkflowIntention: !!workflowIntention,
+        shouldCallWorkflow,
+        accumulatedContentLength: accumulatedContent.length,
+        timestamp: new Date().toISOString()
+      });
 
       // 检查是否需要执行工作流
       if (workflowIntention && workflowIntention.should_call_workflow) {
