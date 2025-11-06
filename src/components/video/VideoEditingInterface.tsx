@@ -27,6 +27,7 @@ import {
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { analyzeVideosInBatch, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
 import {
   DocumentPanel,
@@ -72,6 +73,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 获取通知上下文
   const { showSuccess, showError } = useNotification();
   
+  // 获取用户认证信息
+  const { user } = useAuth();
+  
   // Mobile device detection and warning state (not persisted - runtime state)
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [currentDeviceType, setCurrentDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
@@ -102,6 +106,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [scriptGenerationStartTime, setScriptGenerationStartTime] = useState<number | null>(
     content?.uiState?.scriptGenerationStartTime ?? null
   );
+
+  // 存储要转换为脚本的消息内容 (not persisted - transient state)
+  const [messageContentForScript, setMessageContentForScript] = useState<string | null>(null);
 
   // 创意构思弹窗状态
   const [isCreativeBrainstormingModalOpen, setIsCreativeBrainstormingModalOpen] = useState<boolean>(
@@ -525,37 +532,78 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsScriptGenerationModalOpen(true);
   }, [taskId, documentState.markdownValue.length]);
 
+  // 处理将消息内容转换为视频脚本
+  const handleConvertMessageToScript = useCallback((content: string) => {
+    console.log(`[VideoEditingInterface] 用户点击转换消息为视频脚本`, {
+      taskId,
+      contentLength: content.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 存储要转换的消息内容
+    setMessageContentForScript(content);
+    
+    // 打开脚本生成配置弹窗
+    setIsScriptGenerationModalOpen(true);
+  }, [taskId]);
+
   const handleScriptGenerationClose = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭脚本生成配置弹窗`, {
       taskId,
+      hadMessageContent: !!messageContentForScript,
       timestamp: new Date().toISOString()
     });
     setIsScriptGenerationModalOpen(false);
-  }, [taskId]);
+    // 清除存储的消息内容
+    setMessageContentForScript(null);
+  }, [taskId, messageContentForScript]);
 
   const handleScriptGenerate = useCallback((config: ScriptGenerationConfig) => {
-    // 获取当前活动对话的消息
-    const activeConversation = content?.conversations?.find(
-      conv => conv.id === content?.activeConversationId
-    );
+    // 如果有特定的消息内容要转换，使用该内容；否则使用完整的聊天历史
+    let chatMessages: ChatMessage[] = [];
     
-    const chatMessages = activeConversation?.messages || [];
-    
-    console.log(`[VideoEditingInterface] 开始生成脚本`, {
-      taskId,
-      config,
-      contentLength: documentState.markdownValue.length,
-      chatMessageCount: chatMessages.length,
-      hasChatMessages: chatMessages.length > 0,
-      timestamp: new Date().toISOString()
-    });
+    if (messageContentForScript) {
+      // 使用特定消息内容创建一个临时聊天消息
+      chatMessages = [{
+        id: `temp_${Date.now()}`,
+        role: 'assistant',
+        content: messageContentForScript,
+        timestamp: new Date(),
+      }];
+      
+      console.log(`[VideoEditingInterface] 使用特定消息内容生成脚本`, {
+        taskId,
+        config,
+        messageContentLength: messageContentForScript.length,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 清除存储的消息内容
+      setMessageContentForScript(null);
+    } else {
+      // 获取当前活动对话的消息
+      const activeConversation = content?.conversations?.find(
+        conv => conv.id === content?.activeConversationId
+      );
+      
+      chatMessages = activeConversation?.messages || [];
+      
+      console.log(`[VideoEditingInterface] 使用完整聊天历史生成脚本`, {
+        taskId,
+        config,
+        contentLength: documentState.markdownValue.length,
+        chatMessageCount: chatMessages.length,
+        hasChatMessages: chatMessages.length > 0,
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // 关闭弹窗
     setIsScriptGenerationModalOpen(false);
     
     // 调用脚本生成服务，传入配置和聊天消息
     scriptGeneration.handleGenerateScriptWithConfig(config, chatMessages);
-  }, [taskId, documentState.markdownValue.length, scriptGeneration, content]);
+  }, [taskId, documentState.markdownValue.length, scriptGeneration, content, messageContentForScript]);
 
   // 处理添加素材到时间轴
   const handleAddMaterialToTimeline = useCallback((material: MaterialItem) => {
@@ -1901,6 +1949,136 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, []); // 只在组件挂载时运行一次
 
+  // 工作流配置自动加载 - 从后端加载已保存的工作流配置
+  useEffect(() => {
+    const loadWorkflowPreferences = async () => {
+      if (!user?.id) {
+        console.log('[VideoEditingInterface] 等待用户认证信息，跳过工作流配置加载', {
+          taskId,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      // 如果已经有配置了（例如从其他地方设置的），不需要重新加载
+      if (workflowConfigs.size > 0) {
+        console.log('[VideoEditingInterface] 工作流配置已存在，跳过自动加载', {
+          taskId,
+          configsCount: workflowConfigs.size,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      try {
+        console.log('[VideoEditingInterface] 开始从后端加载工作流配置', {
+          taskId,
+          userId: user.id,
+          timestamp: new Date().toISOString()
+        });
+
+        // 首先加载所有工作流，以获取节点和连接信息
+        const { loadAgentWorkflows } = await import('@/lib/api/workflow');
+        const workflowsResponse = await loadAgentWorkflows(user.id);
+        
+        if (!workflowsResponse.success || !workflowsResponse.data) {
+          console.warn('[VideoEditingInterface] 加载工作流列表失败，使用空配置', {
+            taskId,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const workflows = workflowsResponse.data;
+        console.log('[VideoEditingInterface] 成功加载工作流列表', {
+          taskId,
+          workflowsCount: workflows.length,
+          timestamp: new Date().toISOString()
+        });
+
+        // 加载工作流配置偏好设置
+        const preferencesResponse = await fetch('/api/workflow-preferences/load', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.id
+          }),
+        });
+
+        if (!preferencesResponse.ok) {
+          console.warn('[VideoEditingInterface] 加载工作流配置偏好失败，使用空配置', {
+            taskId,
+            status: preferencesResponse.status,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const preferencesResult = await preferencesResponse.json();
+        
+        if (preferencesResult.success && preferencesResult.preferences) {
+          // 转换偏好设置对象为 Map
+          const preferencesMap = new Map<string, {
+            workflowId: string;
+            workflowName: string;
+            enabled: boolean;
+            toolDescription: string;
+            nodes?: WorkflowNode[];
+            connections?: WorkflowConnection[];
+          }>();
+
+          Object.entries(preferencesResult.preferences).forEach(([key, value]: [string, any]) => {
+            // 查找对应的工作流以获取节点和连接信息
+            const workflow = workflows.find(w => w.workflow_id === value.workflow_id);
+            preferencesMap.set(key, {
+              workflowId: value.workflow_id,
+              workflowName: value.workflow_name,
+              enabled: value.is_expanded, // 将 is_expanded 映射为 enabled
+              toolDescription: value.tool_description || '',
+              nodes: workflow?.nodes,
+              connections: workflow?.connections
+            });
+          });
+          
+          setWorkflowConfigs(preferencesMap);
+          
+          console.log('[VideoEditingInterface] 工作流配置加载成功', {
+            taskId,
+            configsCount: preferencesMap.size,
+            enabledCount: Array.from(preferencesMap.values()).filter(c => c.enabled).length,
+            configsWithNodes: Array.from(preferencesMap.values()).filter(c => c.nodes && c.nodes.length > 0).length,
+            configs: Array.from(preferencesMap.entries()).map(([id, config]) => ({
+              id,
+              name: config.workflowName,
+              enabled: config.enabled,
+              hasDescription: !!config.toolDescription,
+              hasNodes: !!(config.nodes && config.nodes.length > 0)
+            })),
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.log('[VideoEditingInterface] 未找到已保存的工作流配置，使用空配置', {
+            taskId,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        console.error('[VideoEditingInterface] 加载工作流配置失败', {
+          taskId,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          timestamp: new Date().toISOString()
+        });
+        // 不显示错误给用户 - 工作流配置加载失败不是致命错误
+        // 用户仍然可以手动配置工作流
+      }
+    };
+
+    loadWorkflowPreferences();
+  }, [user?.id, taskId]); // 当用户ID或任务ID变化时重新加载
+
   // 聊天消息处理
   const updateConversationMessages = useCallback((conversationId: string, messages: ChatMessage[]) => {
     console.log(`[VideoEditingInterface] 更新聊天消息`, {
@@ -2485,6 +2663,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onGenerateScriptClick={handleScriptGenerationClick}
           isGeneratingScript={scriptGeneration.isGeneratingScript}
           onViewWorkflowsClick={handleViewWorkflowsClick}
+          onConvertMessageToScript={handleConvertMessageToScript}
         />
       </div>
 

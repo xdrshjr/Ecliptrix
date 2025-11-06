@@ -166,8 +166,18 @@ chatMessages (存在且非空) > markdownContent
 
 ## 使用场景
 
-### 场景1: 视频编辑聊天面板
+### 场景1: 视频编辑聊天面板 - 完整聊天历史生成脚本
 用户在视频编辑界面的聊天面板中与AI讨论视频内容，点击"生成脚本"按钮时，系统自动基于聊天对话生成视频脚本。
+
+### 场景1.1: 单条消息转换为视频脚本（新功能）
+用户在视频编辑界面的聊天面板中看到AI的回复后，可以直接点击该消息气泡右上角的"转换视频脚本"按钮（右箭头图标），将这条消息的内容转换为视频脚本，而不是使用完整的聊天历史。
+
+**功能特点：**
+- 在每条AI助手消息的右上角，复制按钮旁边显示"转换视频脚本"按钮
+- 按钮图标为向右的箭头，表示将内容转换到脚本
+- 点击后打开脚本生成配置弹窗
+- 点击"开始生成"时，仅使用该条消息的内容生成脚本，而非完整聊天历史
+- 适用于AI返回的内容本身就是完整的视频内容规划或脚本大纲
 
 ```typescript
 // 获取聊天消息
@@ -203,22 +213,127 @@ const response = await fetch('/api/video-script-generation', {
 });
 ```
 
+## UI交互说明
+
+### 消息气泡中的"转换视频脚本"按钮
+
+**位置：** 在Video Editing任务的左侧聊天界面中，每条AI助手消息的右上角
+
+**显示条件：**
+- 仅在非用户消息（AI助手消息）中显示
+- 位于复制按钮的右侧
+- 消息正在流式传输时按钮禁用
+
+**样式：**
+- 圆形按钮，蓝色渐变背景
+- 白色边框
+- 向右箭头图标
+- 悬停时放大效果
+- Tooltip: "转换视频脚本"
+
+**交互流程：**
+1. 用户在聊天面板与AI对话
+2. AI返回内容（例如视频内容规划、脚本大纲等）
+3. 用户点击该消息右上角的"转换视频脚本"按钮
+4. 系统打开脚本生成配置弹窗
+5. 用户选择语言、保持程度、段落数等配置
+6. 点击"开始生成"按钮
+7. 系统仅使用该条消息的内容（而非完整聊天历史）生成视频脚本
+8. 生成的脚本显示在脚本面板中
+
 ## 前端集成示例
 
-### VideoChatWindow 组件集成
+### MessageBubble 组件 - 添加转换按钮
 ```typescript
-// 在 VideoEditingInterface 中
+// MessageBubble.tsx
+interface MessageBubbleProps {
+  message: ChatMessage;
+  onNavigateToVideoEditing?: (materials: any[]) => void;
+  onConvertToScript?: (content: string) => void;  // 新增
+}
+
+// 在按钮组中添加转换按钮
+{!isUser && onConvertToScript && (
+  <button
+    onClick={() => onConvertToScript(message.content)}
+    disabled={message.isStreaming}
+    className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-500 to-blue-600..."
+    title="转换视频脚本"
+  >
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+    </svg>
+  </button>
+)}
+```
+
+### VideoChatWindow 组件 - 传递回调
+```typescript
+// VideoChatWindow.tsx
+interface VideoChatWindowProps {
+  // ... 其他props
+  onConvertMessageToScript?: (content: string) => void;  // 新增
+}
+
+// 渲染消息时传递回调
+conversation.messages.map((message) => (
+  <MessageBubble 
+    key={message.id} 
+    message={message}
+    onConvertToScript={handleConvertMessageToScript}
+  />
+))
+```
+
+### VideoEditingInterface 组件 - 处理转换逻辑
+```typescript
+// VideoEditingInterface.tsx
+const [messageContentForScript, setMessageContentForScript] = useState<string | null>(null);
+
+// 处理将消息内容转换为视频脚本
+const handleConvertMessageToScript = useCallback((content: string) => {
+  console.log(`[VideoEditingInterface] 用户点击转换消息为视频脚本`, {
+    taskId,
+    contentLength: content.length
+  });
+  
+  // 存储要转换的消息内容
+  setMessageContentForScript(content);
+  
+  // 打开脚本生成配置弹窗
+  setIsScriptGenerationModalOpen(true);
+}, [taskId]);
+
+// 修改脚本生成处理，支持单条消息或完整聊天历史
 const handleScriptGenerate = useCallback((config: ScriptGenerationConfig) => {
-  // 获取当前活动对话的消息
-  const activeConversation = content?.conversations?.find(
-    conv => conv.id === content?.activeConversationId
-  );
+  let chatMessages: ChatMessage[] = [];
   
-  const chatMessages = activeConversation?.messages || [];
+  if (messageContentForScript) {
+    // 使用特定消息内容
+    chatMessages = [{
+      id: `temp_${Date.now()}`,
+      role: 'assistant',
+      content: messageContentForScript,
+      timestamp: new Date(),
+    }];
+    setMessageContentForScript(null);
+  } else {
+    // 使用完整聊天历史
+    const activeConversation = content?.conversations?.find(
+      conv => conv.id === content?.activeConversationId
+    );
+    chatMessages = activeConversation?.messages || [];
+  }
   
-  // 调用脚本生成服务，传入聊天消息
+  // 调用脚本生成服务
   scriptGeneration.handleGenerateScriptWithConfig(config, chatMessages);
-}, [content, scriptGeneration]);
+}, [messageContentForScript, content, scriptGeneration]);
+
+// 传递给VideoChatWindow
+<VideoChatWindow
+  // ... 其他props
+  onConvertMessageToScript={handleConvertMessageToScript}
+/>
 ```
 
 ### useScriptGeneration Hook 更新
@@ -250,6 +365,10 @@ export const useScriptGeneration = (
 4. **两者都不提供**: 验证返回400错误
 5. **空聊天消息数组**: 验证回退到Markdown内容
 6. **聊天内容保持**: 验证生成脚本后聊天内容不丢失
+7. **单条消息转换**: 验证点击消息上的转换按钮能正确生成脚本（新增）
+8. **转换按钮显示**: 验证按钮仅在AI消息中显示，用户消息中不显示（新增）
+9. **流式传输禁用**: 验证消息正在流式传输时转换按钮禁用（新增）
+10. **关闭弹窗清理**: 验证关闭配置弹窗后清除存储的消息内容（新增）
 
 ### 单元测试示例
 ```typescript
@@ -283,6 +402,46 @@ describe('Script Generation with Chat Messages', () => {
     // 验证对话数量不变
     expect(conversation.messages.length).toBe(beforeCount);
   });
+
+  // 新增：测试单条消息转换功能
+  test('should convert single message to script', async () => {
+    const messageContent = '这是一个完整的视频脚本大纲...';
+    
+    // 模拟点击消息上的转换按钮
+    handleConvertMessageToScript(messageContent);
+    
+    // 验证弹窗打开
+    expect(isScriptGenerationModalOpen).toBe(true);
+    
+    // 验证消息内容被存储
+    expect(messageContentForScript).toBe(messageContent);
+    
+    // 模拟用户选择配置并生成
+    await handleScriptGenerate(testConfig);
+    
+    // 验证使用单条消息而非完整聊天历史
+    expect(scriptService.handleGenerateScriptWithConfig).toHaveBeenCalledWith(
+      testConfig,
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: messageContent,
+          role: 'assistant'
+        })
+      ])
+    );
+  });
+
+  test('should show convert button only on assistant messages', () => {
+    // 用户消息不应显示转换按钮
+    const userMessage = { role: 'user', content: 'Test', id: '1', timestamp: new Date() };
+    const userBubble = render(<MessageBubble message={userMessage} onConvertToScript={jest.fn()} />);
+    expect(userBubble.queryByTitle('转换视频脚本')).toBeNull();
+    
+    // AI消息应显示转换按钮
+    const assistantMessage = { role: 'assistant', content: 'Test', id: '2', timestamp: new Date() };
+    const assistantBubble = render(<MessageBubble message={assistantMessage} onConvertToScript={jest.fn()} />);
+    expect(assistantBubble.getByTitle('转换视频脚本')).toBeDefined();
+  });
 });
 ```
 
@@ -292,11 +451,16 @@ describe('Script Generation with Chat Messages', () => {
 2. **优先级**: 优先使用聊天消息，确保用户在聊天面板的讨论能被正确使用
 3. **向后兼容**: 保持对原有Markdown方式的完全兼容
 4. **错误提示**: 当两者都不提供时，给出清晰的错误提示
+5. **状态清理**: 关闭脚本生成配置弹窗时，要清除存储的消息内容，避免影响后续操作（新增）
+6. **按钮显示**: 转换按钮仅在AI助手消息中显示，用户消息不显示该按钮（新增）
+7. **禁用条件**: 消息正在流式传输时，转换按钮应该被禁用（新增）
 
 ## 相关文件
 
 ### 前端文件
-- `src/components/video/VideoEditingInterface.tsx` - 主界面，处理脚本生成触发
+- `src/components/video/VideoEditingInterface.tsx` - 主界面，处理脚本生成触发和消息内容转换
+- `src/components/video/components/VideoChatWindow/VideoChatWindow.tsx` - 视频编辑聊天窗口，传递转换回调
+- `src/components/chat/MessageBubble.tsx` - 消息气泡组件，显示转换按钮（新增）
 - `src/components/video/hooks/useScriptGeneration.ts` - 脚本生成Hook，处理聊天消息传递
 - `src/components/video/services/scriptService.ts` - 脚本服务，API调用
 - `src/components/video/types/videoEditingTypes.ts` - 类型定义更新
@@ -306,7 +470,13 @@ describe('Script Generation with Chat Messages', () => {
 
 ## 版本历史
 
-### v1.3.0 (当前版本)
+### v1.4.0 (当前版本)
+- **新增**: 消息气泡中的"转换视频脚本"按钮，支持单条消息快速转换为脚本
+- **新增**: UI交互优化，提供更直观的脚本生成入口
+- **改进**: 支持从单条消息或完整聊天历史生成脚本
+- **优化**: 弹窗关闭时自动清理临时状态
+
+### v1.3.0
 - **新增**: 支持基于聊天对话生成脚本
 - **新增**: `chatMessages` 请求参数
 - **优化**: 内容源优先级处理

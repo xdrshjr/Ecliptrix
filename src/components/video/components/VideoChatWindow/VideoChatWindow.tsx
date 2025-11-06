@@ -15,6 +15,7 @@ interface VideoChatWindowProps {
   onGenerateScriptClick?: () => void;
   isGeneratingScript?: boolean;
   onViewWorkflowsClick?: () => void;
+  onConvertMessageToScript?: (content: string) => void;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -27,6 +28,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onGenerateScriptClick,
   isGeneratingScript = false,
   onViewWorkflowsClick,
+  onConvertMessageToScript,
 }) => {
   const { t } = useLocale();
   const [inputMessage, setInputMessage] = useState('');
@@ -44,6 +46,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     hasGenerateScriptButton: !!onGenerateScriptClick,
     isGeneratingScript,
     hasViewWorkflowsButton: !!onViewWorkflowsClick,
+    hasConvertMessageToScriptButton: !!onConvertMessageToScript,
     timestamp: new Date().toISOString()
   });
 
@@ -237,6 +240,16 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     onViewWorkflowsClick?.();
   };
 
+  const handleConvertMessageToScript = (content: string) => {
+    console.log('[VideoChatWindow] 用户点击转换消息为视频脚本', {
+      hasConversation: !!conversation,
+      messageCount: conversation?.messages.length || 0,
+      contentLength: content.length,
+      timestamp: new Date().toISOString()
+    });
+    onConvertMessageToScript?.(content);
+  };
+
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-white to-gray-50/50">
@@ -309,6 +322,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             <MessageBubble 
               key={message.id} 
               message={message}
+              onConvertToScript={handleConvertMessageToScript}
             />
           ))
         )}
