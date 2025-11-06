@@ -209,6 +209,30 @@ pm2 logs ecliptrix-frontend
 
 ## 更新日志
 
+### v1.1.0 (2025-11-06)
+- 修复视频编辑聊天API内部调用问题（ECONNREFUSED错误）
+- 创建共享的意图检测服务模块
+- 移除对NEXTAUTH_URL的不当使用
+- 优化API架构，减少不必要的HTTP调用
+
+#### 具体修改
+1. 新增 `src/lib/intent-detection-service.ts` - 意图检测共享服务
+2. 重构 `src/app/api/video-editing-chat/route.ts` - 使用直接导入代替HTTP fetch
+3. 更新 `src/app/api/intent-detection/route.ts` - 使用共享服务
+
+#### 部署注意事项
+- **重要**: 部署时不要使用 `NEXTAUTH_URL` 进行内部API调用
+- **重要**: 确保 `NEXT_PUBLIC_BACKEND_URL` 正确配置后端服务地址
+- 内部服务调用应使用直接导入，而不是HTTP fetch
+- 测试端点（如 `/api/workflow/test-node`）需要正确配置 `NEXT_PUBLIC_API_URL`
+
+#### 环境变量补充说明
+```bash
+# 部署环境必需的配置
+NEXT_PUBLIC_BACKEND_URL=http://your-server-ip:8000  # Python后端服务地址
+NEXT_PUBLIC_API_URL=http://your-server-ip:3000     # Next.js前端服务地址（用于测试端点）
+```
+
 ### v1.0.0 (2024-01-10)
 - 完成TTS API架构重构
 - 添加Next.js API路由代理

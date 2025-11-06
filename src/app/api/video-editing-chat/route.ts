@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
+import { detectIntent } from '@/lib/intent-detection-service';
 
 // 工作流配置接口
 interface WorkflowConfig {
@@ -111,49 +112,36 @@ export async function POST(request: NextRequest) {
           // 获取最后一条用户消息
           const lastUserMessage = messages.filter(m => m.role === 'user').pop();
           if (lastUserMessage) {
-            console.log(`[Video Editing Chat API] Task ${taskId} - 开始调用意图检测API，用户消息: ${lastUserMessage.content.substring(0, 100)}...`);
+            console.log(`[Video Editing Chat API] Task ${taskId} - 开始调用意图检测服务，用户消息: ${lastUserMessage.content.substring(0, 100)}...`);
             
-            const intentResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/intent-detection`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                user_message: lastUserMessage.content,
-                enabled_workflows: enabledWorkflows.map(wf => ({
-                  workflow_id: wf.workflowId,
-                  workflow_name: wf.workflowName,
-                  tool_description: wf.toolDescription,
-                  enabled: wf.enabled
-                })),
-                conversation_history: messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
-              }),
+            // 直接调用意图检测服务，不通过HTTP fetch
+            const intentData = await detectIntent(
+              lastUserMessage.content,
+              enabledWorkflows.map(wf => ({
+                workflow_id: wf.workflowId,
+                workflow_name: wf.workflowName,
+                tool_description: wf.toolDescription,
+                enabled: wf.enabled
+              })),
+              messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
+            );
+            
+            console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测服务返回数据:`, {
+              success: intentData.success,
+              hasData: !!intentData.data,
+              error: intentData.error
             });
             
-            console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测API响应状态: ${intentResponse.status}`);
-            
-            if (intentResponse.ok) {
-              const intentData = await intentResponse.json();
-              console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测API返回数据:`, {
-                success: intentData.success,
-                hasData: !!intentData.data,
-                error: intentData.error
+            if (intentData.success && intentData.data) {
+              workflowIntention = intentData.data;
+              console.log(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测成功:`, {
+                shouldCallWorkflow: workflowIntention.should_call_workflow,
+                workflowName: workflowIntention.workflow_name,
+                confidence: workflowIntention.confidence,
+                reasoning: workflowIntention.reasoning
               });
-              
-              if (intentData.success && intentData.data) {
-                workflowIntention = intentData.data;
-                console.log(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测成功:`, {
-                  shouldCallWorkflow: workflowIntention.should_call_workflow,
-                  workflowName: workflowIntention.workflow_name,
-                  confidence: workflowIntention.confidence,
-                  reasoning: workflowIntention.reasoning
-                });
-              } else if (!intentData.success) {
-                console.error(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测失败: ${intentData.error || 'Unknown error'}`);
-              }
-            } else {
-              const errorText = await intentResponse.text();
-              console.error(`[Video Editing Chat API] Task ${taskId} - 意图检测API调用失败 (${intentResponse.status}): ${errorText}`);
+            } else if (!intentData.success) {
+              console.error(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测失败: ${intentData.error || 'Unknown error'}`);
             }
           } else {
             console.warn(`[Video Editing Chat API] Task ${taskId} - 未找到用户消息，跳过意图检测`);

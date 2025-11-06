@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { detectIntent } from '@/lib/intent-detection-service';
 
 /**
  * 用户意图检测API
- * 调用后端服务检测用户意图，判断是否需要调用工作流
+ * 调用共享的意图检测服务来检测用户意图，判断是否需要调用工作流
  */
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,57 +30,37 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('[Intent Detection API] 转发到Python后端进行Fast LLM意图检测:', {
+    console.log('[Intent Detection API] 调用意图检测服务:', {
       messagePreview: user_message.substring(0, 100) + '...',
       messageLength: user_message.length,
       workflowsCount: enabled_workflows.length,
       workflows: enabled_workflows.map((wf: any) => wf.workflow_name).join(', '),
       hasHistory: !!conversation_history,
-      historyLength: conversation_history?.length || 0,
-      backendUrl: BACKEND_URL
+      historyLength: conversation_history?.length || 0
     });
     
-    // 调用后端服务
-    const backendResponse = await fetch(`${BACKEND_URL}/api/intent-detection/detect`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_message,
-        enabled_workflows,
-        conversation_history: conversation_history || null
-      }),
+    // 调用共享的意图检测服务
+    const result = await detectIntent(
+      user_message,
+      enabled_workflows,
+      conversation_history
+    );
+    
+    console.log('[Intent Detection API] 意图检测服务响应:', {
+      success: result.success,
+      shouldCallWorkflow: result.data?.should_call_workflow || false,
+      workflowName: result.data?.workflow_name || null,
+      confidence: result.data?.confidence || 0,
+      reasoning: result.data?.reasoning || '',
+      error: result.error || null
     });
     
-    if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
-      console.error('[Intent Detection API] Python后端Fast LLM调用失败:', {
-        status: backendResponse.status,
-        error: errorText
-      });
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: `Backend Fast LLM error: ${backendResponse.status}`,
-          details: errorText 
-        },
-        { status: backendResponse.status }
-      );
+    // 如果检测失败，返回相应的HTTP状态码
+    if (!result.success) {
+      return NextResponse.json(result, { status: 500 });
     }
     
-    const data = await backendResponse.json();
-    
-    console.log('[Intent Detection API] Python后端Fast LLM响应:', {
-      success: data.success,
-      shouldCallWorkflow: data.data?.should_call_workflow || false,
-      workflowName: data.data?.workflow_name || null,
-      confidence: data.data?.confidence || 0,
-      reasoning: data.data?.reasoning || '',
-      error: data.error || null
-    });
-    
-    return NextResponse.json(data);
+    return NextResponse.json(result);
     
   } catch (error) {
     console.error('[Intent Detection API] Error:', error);
