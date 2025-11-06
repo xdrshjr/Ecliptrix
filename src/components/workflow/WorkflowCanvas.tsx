@@ -58,6 +58,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const [draggingNode, setDraggingNode] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [canvasOffset, setCanvasOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
+  const [isPanMode, setIsPanMode] = useState(false);
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+  const [canvasDragStart, setCanvasDragStart] = useState<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   
   // Config panel state
   const [configPanelNodeId, setConfigPanelNodeId] = useState<string | null>(null);
@@ -88,6 +91,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     selectedNodeId,
     selectedConnectionId,
     scale,
+    isPanMode,
+    isDraggingCanvas,
     connectingPort: connectingPort ? 'active' : 'none',
     timestamp: new Date().toISOString()
   });
@@ -742,8 +747,34 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     }
   }, [nodes, connections, selectedNodeId, onNodesChange, onConnectionsChange, onNodesAndConnectionsChange]);
 
+  // Handle canvas pan start
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only handle canvas panning in pan mode and when not clicking on nodes
+    if (isPanMode && !e.defaultPrevented && e.button === 0) {
+      console.log('[WorkflowCanvas] Canvas pan started:', {
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        currentOffset: canvasOffset,
+        timestamp: new Date().toISOString()
+      });
+      
+      setIsDraggingCanvas(true);
+      setCanvasDragStart({
+        x: e.clientX,
+        y: e.clientY,
+        offsetX: canvasOffset.x,
+        offsetY: canvasOffset.y,
+      });
+    }
+  }, [isPanMode, canvasOffset]);
+
   // Handle node drag start
   const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string) => {
+    // Don't drag nodes in pan mode
+    if (isPanMode) {
+      return;
+    }
+    
     e.stopPropagation();
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
@@ -770,13 +801,28 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         handleNodeClick(nodeId);
       }
     }
-  }, [nodes, handleNodeClick, scale, canvasOffset]);
+  }, [nodes, handleNodeClick, scale, canvasOffset, isPanMode]);
 
   // Handle node dragging (优化版本 - 使用 requestAnimationFrame)
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     // Handle connection drawing
     if (connectingPort) {
       handleConnectionMouseMove(e);
+      return;
+    }
+    
+    // Handle canvas panning
+    if (isDraggingCanvas && canvasDragStart) {
+      const deltaX = (e.clientX - canvasDragStart.x) / scale;
+      const deltaY = (e.clientY - canvasDragStart.y) / scale;
+      
+      setCanvasOffset({
+        x: canvasDragStart.offsetX + deltaX,
+        y: canvasDragStart.offsetY + deltaY,
+      });
+      
+      // Force re-render connections during canvas pan
+      setConnectionRenderKey(prev => prev + 1);
       return;
     }
     
@@ -817,13 +863,25 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         }
       }
     }
-  }, [draggingNode, scale, canvasOffset, connectingPort, handleConnectionMouseMove]);
+  }, [draggingNode, scale, canvasOffset, connectingPort, handleConnectionMouseMove, isDraggingCanvas, canvasDragStart]);
 
   // Handle node drag end
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     // Handle connection completion
     if (connectingPort) {
       handleConnectionMouseUp(e);
+      return;
+    }
+    
+    // Handle canvas pan end
+    if (isDraggingCanvas && canvasDragStart) {
+      console.log('[WorkflowCanvas] Canvas pan ended:', {
+        newOffset: canvasOffset,
+        timestamp: new Date().toISOString()
+      });
+      
+      setIsDraggingCanvas(false);
+      setCanvasDragStart(null);
       return;
     }
     
@@ -876,7 +934,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       hasMovedRef.current = false;
       setDraggingNode(null);
     }
-  }, [draggingNode, nodes, onNodesChange, connectingPort, handleConnectionMouseUp]);
+  }, [draggingNode, nodes, onNodesChange, connectingPort, handleConnectionMouseUp, isDraggingCanvas, canvasDragStart, canvasOffset]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -909,21 +967,51 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     };
   }, []);
 
+  // Toggle pan mode
+  const handleTogglePanMode = useCallback(() => {
+    const newPanMode = !isPanMode;
+    console.log('[WorkflowCanvas] Toggling pan mode:', {
+      previousMode: isPanMode ? 'pan' : 'node-drag',
+      newMode: newPanMode ? 'pan' : 'node-drag',
+      timestamp: new Date().toISOString()
+    });
+    
+    setIsPanMode(newPanMode);
+    
+    // Clear any active dragging states when switching modes
+    if (isDraggingCanvas) {
+      setIsDraggingCanvas(false);
+      setCanvasDragStart(null);
+    }
+    if (draggingNode) {
+      setDraggingNode(null);
+      isDraggingRef.current = false;
+      hasMovedRef.current = false;
+    }
+  }, [isPanMode, isDraggingCanvas, draggingNode]);
+
   return (
     <div className="h-full w-full bg-gray-50 relative overflow-hidden select-none">
       {/* Canvas */}
       <div
         ref={canvasRef}
-        className="h-full w-full relative cursor-default select-none"
+        className="h-full w-full relative select-none"
         onContextMenu={handleContextMenu}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onMouseDown={handleCanvasMouseDown}
         onClick={() => {
           console.log('[WorkflowCanvas] Canvas clicked, deselecting node and connection');
           setSelectedNodeId(null);
           setSelectedConnectionId(null);
         }}
-        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+        style={{ 
+          userSelect: 'none', 
+          WebkitUserSelect: 'none',
+          cursor: isPanMode 
+            ? (isDraggingCanvas ? 'grabbing' : 'grab')
+            : 'default'
+        }}
       >
         {/* Grid Background */}
         <div 
@@ -1071,12 +1159,15 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 // 始终设置 transform，拖动时会被 handleMouseMove 覆盖
                 transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
                 transformOrigin: 'top left',
-                cursor: isDragging ? 'grabbing' : 'grab',
+                cursor: isPanMode 
+                  ? 'grab' 
+                  : (isDragging ? 'grabbing' : 'grab'),
                 willChange: isDragging ? 'transform' : 'auto',
                 transition: isDragging ? 'none' : 'transform 0.1s ease',
                 // 启用硬件加速
                 backfaceVisibility: 'hidden',
                 WebkitBackfaceVisibility: 'hidden',
+                pointerEvents: isPanMode ? 'none' : 'auto',
               }}
               onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
               onClick={(e) => {
@@ -1388,6 +1479,22 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+          </svg>
+        </button>
+
+        <div className="w-px h-6 bg-gray-300 mx-1" />
+
+        <button
+          onClick={handleTogglePanMode}
+          className={`p-2 rounded transition-all ${
+            isPanMode 
+              ? 'bg-blue-100 text-blue-600 hover:bg-blue-200' 
+              : 'hover:bg-gray-100 text-gray-700'
+          }`}
+          title={isPanMode ? "Exit Pan Mode (Switch to Node Drag Mode)" : "Enter Pan Mode (Drag Canvas)"}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
           </svg>
         </button>
 
