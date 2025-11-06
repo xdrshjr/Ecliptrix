@@ -19,8 +19,10 @@ export interface BatchVideoAnalysisRequest {
   videos: Array<{
     video_url: string;
     frame_interval: number;
+    thumbnail_url?: string; // For quick mode: use thumbnail instead of downloading video
   }>;
   custom_prompt?: string;
+  use_thumbnails?: boolean; // Flag to indicate thumbnail-only analysis (quick mode)
 }
 
 export interface BatchVideoAnalysisResponse {
@@ -460,11 +462,14 @@ export async function analyzeVideosInBatch(
     return [];
   }
 
+  const isQuickMode = options.mode.type === 'quick';
+
   console.log(`[BatchVideoAnalysis] 开始批量视频分析`, {
     taskId,
     totalVideos: videoMaterials.length,
     mode: options.mode.type,
     frameInterval: options.mode.frameInterval,
+    useThumbnails: isQuickMode,
     timestamp: new Date().toISOString()
   });
 
@@ -475,16 +480,20 @@ export async function analyzeVideosInBatch(
     const requestBody: BatchVideoAnalysisRequest = {
       videos: videoMaterials.map(material => ({
         video_url: material.url,
-        frame_interval: options.mode.type === 'quick' ? 9999 : (options.mode.frameInterval || 5)
+        frame_interval: isQuickMode ? 9999 : (options.mode.frameInterval || 5),
+        thumbnail_url: isQuickMode ? (material.thumbnailUrl || material.url) : undefined
       })),
-      custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。"
+      custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。",
+      use_thumbnails: isQuickMode
     };
 
     console.log(`[BatchVideoAnalysis] 发送批量分析API请求`, {
       taskId,
       videosCount: requestBody.videos.length,
       videoUrls: requestBody.videos.map(v => v.video_url),
+      thumbnailUrls: isQuickMode ? requestBody.videos.map(v => v.thumbnail_url) : undefined,
       frameInterval: requestBody.videos[0]?.frame_interval,
+      useThumbnails: isQuickMode,
       timestamp: new Date().toISOString()
     });
 

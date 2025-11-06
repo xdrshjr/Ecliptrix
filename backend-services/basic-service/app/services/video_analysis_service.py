@@ -311,6 +311,46 @@ class VideoAnalysisService:
             })
             raise
     
+    async def download_thumbnail(self, thumbnail_url: str) -> str:
+        """
+        Download thumbnail from URL and return local path.
+        
+        Args:
+            thumbnail_url: URL of the thumbnail image
+            
+        Returns:
+            Local path to the downloaded thumbnail
+        """
+        try:
+            logger.info(f"Downloading thumbnail from URL: {thumbnail_url}")
+            
+            # Create temp directory for thumbnails
+            thumbnails_dir = os.path.join(
+                tempfile.gettempdir(),
+                self.config['temp_files']['video_download_dir'],
+                "thumbnails"
+            )
+            os.makedirs(thumbnails_dir, exist_ok=True)
+            
+            # Generate unique filename
+            thumbnail_filename = f"thumbnail_{uuid4()}.jpg"
+            thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
+            
+            # Download thumbnail
+            response = requests.get(thumbnail_url, timeout=30)
+            response.raise_for_status()
+            
+            # Save thumbnail
+            with open(thumbnail_path, "wb") as f:
+                f.write(response.content)
+            
+            logger.info(f"Thumbnail downloaded successfully: {thumbnail_path}")
+            return thumbnail_path
+            
+        except Exception as e:
+            logger.error(f"Failed to download thumbnail from {thumbnail_url}: {str(e)}")
+            raise
+    
     async def analyze_frame_with_llm(self, frame_path: str, custom_prompt: Optional[str] = None, semaphore: Optional[asyncio.Semaphore] = None) -> str:
         """
         Analyze a single frame using VL LLM with optional concurrency control.
@@ -576,18 +616,20 @@ class VideoAnalysisService:
     async def batch_analyze_videos(
         self,
         videos: List[VideoAnalysisItem],
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        use_thumbnails: bool = False
     ) -> BatchVideoAnalysisResponse:
         """
         Analyze multiple videos with sequential frame extraction and concurrent VLM analysis.
         
         This method implements a two-phase approach:
-        1. Sequential Frame Extraction: Extract frames from each video one by one
+        1. Sequential Frame Extraction: Extract frames from each video one by one (or use thumbnails in quick mode)
         2. Concurrent VLM Analysis: Analyze all extracted frames in parallel using configured thread count
         
         Args:
             videos: List of video items to analyze
             custom_prompt: Custom prompt for LLM analysis (applies to all videos)
+            use_thumbnails: If True, use thumbnails instead of downloading videos (quick mode)
             
         Returns:
             BatchVideoAnalysisResponse with results for all videos
@@ -596,11 +638,12 @@ class VideoAnalysisService:
         concurrent_threads = self.config['vlm_processing']['concurrent_threads']
         
         logger.info(f"Starting batch video analysis for {len(videos)} videos")
-        logger.info(f"Configuration - Concurrent threads: {concurrent_threads}, Custom prompt: {bool(custom_prompt)}")
+        logger.info(f"Configuration - Concurrent threads: {concurrent_threads}, Custom prompt: {bool(custom_prompt)}, Use thumbnails: {use_thumbnails}")
         
-        # Phase 1: Sequential Frame Extraction
+        # Phase 1: Sequential Frame Extraction (or Thumbnail Download for Quick Mode)
+        phase1_description = "Thumbnail Download" if use_thumbnails else "Sequential Frame Extraction"
         logger.info("=" * 80)
-        logger.info(f"PHASE 1: Sequential Frame Extraction - Processing {len(videos)} videos one by one")
+        logger.info(f"PHASE 1: {phase1_description} - Processing {len(videos)} videos one by one")
         logger.info("=" * 80)
         
         extraction_start_time = time.time()
@@ -611,49 +654,95 @@ class VideoAnalysisService:
         
         for idx, video_item in enumerate(videos, 1):
             video_url = video_item.video_url
+            thumbnail_url = video_item.thumbnail_url
             frame_interval = video_item.frame_interval if video_item.frame_interval and video_item.frame_interval > 0 else None
             
             if frame_interval is None:
                 frame_interval = self.config['frame_extraction']['default_frame_interval_seconds']
             
-            logger.info(f"Extracting frames from video {idx}/{len(videos)}: {video_url}")
-            logger.info(f"  Frame interval: {frame_interval}s")
-            
             video_path = None
             frames_dir = None
+            thumbnail_path = None
             
             try:
-                # Download video if needed
-                video_path = await self.download_video_if_needed(video_url)
-                
-                # Extract frames sequentially
-                frames_info, video_duration = self.extract_frames(video_path, frame_interval)
-                
-                if frames_info:
-                    frames_dir = os.path.dirname(frames_info[0]["frame_path"])
-                
-                logger.info(f"  Successfully extracted {len(frames_info)} frames from video {idx}/{len(videos)}")
-                logger.info(f"  Video duration: {video_duration:.2f}s")
-                
-                # Store frame data for later VLM analysis
-                for frame_info in frames_info:
+                if use_thumbnails and thumbnail_url:
+                    # Quick Mode: Use thumbnail instead of downloading video
+                    logger.info(f"Downloading thumbnail for video {idx}/{len(videos)}: {video_url}")
+                    logger.info(f"  Thumbnail URL: {thumbnail_url}")
+                    
+                    thumbnail_path = await self.download_thumbnail(thumbnail_url)
+                    
+                    # Create a single "frame" entry using the thumbnail
+                    frames_info = [{
+                        "frame_number": 1,
+                        "timestamp": 0.0,
+                        "frame_path": thumbnail_path,
+                        "original_frame_number": 0,
+                        "is_thumbnail": True
+                    }]
+                    video_duration = 0.0  # Unknown duration for thumbnail mode
+                    
+                    logger.info(f"  Successfully downloaded thumbnail for video {idx}/{len(videos)}")
+                    logger.info(f"  Using thumbnail as single frame for quick analysis")
+                    
+                    # Store frame data for later VLM analysis
                     all_frames_data.append({
                         "video_url": video_url,
-                        "frame_info": frame_info,
-                        "video_duration": video_duration
+                        "frame_info": frames_info[0],
+                        "video_duration": video_duration,
+                        "is_thumbnail": True
                     })
-                
-                # Store extraction results
-                video_extraction_results[video_url] = {
-                    "success": True,
-                    "frames_info": frames_info,
-                    "video_duration": video_duration,
-                    "frames_dir": frames_dir,
-                    "video_path": video_path
-                }
+                    
+                    # Store extraction results
+                    video_extraction_results[video_url] = {
+                        "success": True,
+                        "frames_info": frames_info,
+                        "video_duration": video_duration,
+                        "frames_dir": None,
+                        "video_path": None,
+                        "thumbnail_path": thumbnail_path,
+                        "is_thumbnail": True
+                    }
+                    
+                else:
+                    # Professional Mode: Download video and extract frames
+                    logger.info(f"Extracting frames from video {idx}/{len(videos)}: {video_url}")
+                    logger.info(f"  Frame interval: {frame_interval}s")
+                    
+                    # Download video if needed
+                    video_path = await self.download_video_if_needed(video_url)
+                    
+                    # Extract frames sequentially
+                    frames_info, video_duration = self.extract_frames(video_path, frame_interval)
+                    
+                    if frames_info:
+                        frames_dir = os.path.dirname(frames_info[0]["frame_path"])
+                    
+                    logger.info(f"  Successfully extracted {len(frames_info)} frames from video {idx}/{len(videos)}")
+                    logger.info(f"  Video duration: {video_duration:.2f}s")
+                    
+                    # Store frame data for later VLM analysis
+                    for frame_info in frames_info:
+                        all_frames_data.append({
+                            "video_url": video_url,
+                            "frame_info": frame_info,
+                            "video_duration": video_duration,
+                            "is_thumbnail": False
+                        })
+                    
+                    # Store extraction results
+                    video_extraction_results[video_url] = {
+                        "success": True,
+                        "frames_info": frames_info,
+                        "video_duration": video_duration,
+                        "frames_dir": frames_dir,
+                        "video_path": video_path,
+                        "thumbnail_path": None,
+                        "is_thumbnail": False
+                    }
                 
             except Exception as e:
-                logger.error(f"  Failed to extract frames from video {idx}/{len(videos)}: {video_url}", exc_info=True)
+                logger.error(f"  Failed to process video {idx}/{len(videos)}: {video_url}", exc_info=True)
                 logger.error(f"  Error: {str(e)}")
                 
                 # Store extraction failure
@@ -663,7 +752,9 @@ class VideoAnalysisService:
                     "frames_info": [],
                     "video_duration": 0.0,
                     "frames_dir": frames_dir,
-                    "video_path": video_path
+                    "video_path": video_path,
+                    "thumbnail_path": thumbnail_path,
+                    "is_thumbnail": use_thumbnails
                 }
         
         extraction_time = time.time() - extraction_start_time
@@ -807,6 +898,12 @@ class VideoAnalysisService:
                     if video_path and video_path != video_url and os.path.exists(video_path):
                         os.remove(video_path)
                         logger.info(f"Cleaned up downloaded video for {video_url}: {video_path}")
+                    
+                    # Clean up downloaded thumbnail if used
+                    thumbnail_path = extraction_result.get("thumbnail_path")
+                    if thumbnail_path and os.path.exists(thumbnail_path):
+                        os.remove(thumbnail_path)
+                        logger.info(f"Cleaned up downloaded thumbnail for {video_url}: {thumbnail_path}")
         except Exception as cleanup_error:
             logger.warning(f"Failed to cleanup temporary files: {str(cleanup_error)}")
         

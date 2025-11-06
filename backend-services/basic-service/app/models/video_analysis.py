@@ -48,12 +48,14 @@ class VideoAnalysisItem(BaseModel):
     """Model for individual video in batch analysis request."""
     video_url: str = Field(..., description="URL or path to the video file to analyze")
     frame_interval: int = Field(default=5, description="Interval in seconds between frames to extract")
+    thumbnail_url: Optional[str] = Field(None, description="Thumbnail URL for quick mode analysis (skips video download/frame extraction)")
 
 
 class BatchVideoAnalysisRequest(BaseModel):
     """Request model for batch video analysis."""
     videos: List[VideoAnalysisItem] = Field(..., description="List of videos to analyze")
     custom_prompt: Optional[str] = Field(None, description="Custom prompt for LLM analysis (applies to all videos)")
+    use_thumbnails: bool = Field(default=False, description="Use thumbnails instead of downloading videos (quick mode)")
 
 
 class BatchVideoAnalysisResult(BaseModel):

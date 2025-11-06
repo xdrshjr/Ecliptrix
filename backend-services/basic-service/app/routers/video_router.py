@@ -704,13 +704,16 @@ async def batch_analyze_videos(request: BatchVideoAnalysisRequest) -> BatchVideo
         logger.info(f"Starting batch video analysis", extra={
             "videos_count": len(request.videos),
             "video_urls": [v.video_url for v in request.videos],
+            "thumbnail_urls": [v.thumbnail_url for v in request.videos] if request.use_thumbnails else None,
             "concurrent_threads": concurrent_threads,
-            "has_custom_prompt": bool(request.custom_prompt)
+            "has_custom_prompt": bool(request.custom_prompt),
+            "use_thumbnails": request.use_thumbnails
         })
         
         result = await video_analysis_service.batch_analyze_videos(
             videos=request.videos,
-            custom_prompt=request.custom_prompt
+            custom_prompt=request.custom_prompt,
+            use_thumbnails=request.use_thumbnails
         )
         
         # Log batch analysis results

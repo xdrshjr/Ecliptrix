@@ -91,16 +91,30 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          console.log('[Chat API] 开始初始化流式传输连接');
+          
+          // 立即发送一个初始注释以建立流连接，防止代理服务器缓冲
+          // 这对于生产环境中的 nginx/Apache 等反向代理至关重要
+          controller.enqueue(encoder.encode(`: stream-start\n\n`));
+          console.log('[Chat API] 已发送流建立信号');
+          
           const reader = response.body?.getReader();
           if (!reader) {
             throw new Error('No reader available');
           }
 
           let buffer = '';
+          let totalChunks = 0;
+          let lastChunkTime = Date.now();
+          const startTime = Date.now();
           
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              const totalTime = Date.now() - startTime;
+              console.log(`[Chat API] 流式传输完成，总计 ${totalChunks} 个数据块，耗时 ${totalTime}ms，平均 ${totalChunks > 0 ? Math.round(totalTime / totalChunks) : 0}ms/块`);
+              break;
+            }
 
             buffer += new TextDecoder().decode(value);
             const lines = buffer.split('\n');
@@ -113,6 +127,7 @@ export async function POST(request: NextRequest) {
               const data = trimmedLine.slice(6);
               if (data === '[DONE]') {
                 controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                console.log('[Chat API] 收到完成信号 [DONE]');
                 continue;
               }
 
@@ -121,10 +136,20 @@ export async function POST(request: NextRequest) {
                 const content = parsed.choices?.[0]?.delta?.content;
                 
                 if (content) {
+                  totalChunks++;
+                  const currentTime = Date.now();
+                  const timeSinceLastChunk = currentTime - lastChunkTime;
+                  lastChunkTime = currentTime;
+                  
                   const responseData = { content };
                   controller.enqueue(
                     encoder.encode(`data: ${JSON.stringify(responseData)}\n\n`)
                   );
+                  
+                  // 每10个数据块记录一次详细日志，避免日志过多
+                  if (totalChunks % 10 === 0 || totalChunks <= 3) {
+                    console.log(`[Chat API] 已发送第 ${totalChunks} 个数据块 (间隔 ${timeSinceLastChunk}ms, 内容长度: ${content.length})`);
+                  }
                 }
               } catch (e) {
                 console.error('[Chat API] Error parsing SSE data:', e);
@@ -144,9 +169,18 @@ export async function POST(request: NextRequest) {
 
     return new Response(stream, {
       headers: {
+        // SSE 标准头
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
+        
+        // 防止反向代理（如 nginx）缓冲响应 - 这是生产环境流式传输的关键
+        'X-Accel-Buffering': 'no',
+        
+        // 安全头
+        'X-Content-Type-Options': 'nosniff',
+        
+        // CORS 头
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST',
         'Access-Control-Allow-Headers': 'Content-Type',
