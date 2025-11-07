@@ -16,7 +16,8 @@ interface ConvertToScriptModalProps {
     chatContent: string,
     selectedVideos: MaterialItem[],
     parameters: ScriptGenerationParameters,
-    enableVideoUnderstanding: boolean
+    enableVideoUnderstanding: boolean,
+    analysisMode: 'quick' | 'professional'
   ) => void;
   isGenerating?: boolean;
 }
@@ -42,6 +43,9 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
   // 视频理解开关
   const [enableVideoUnderstanding, setEnableVideoUnderstanding] = useState(false);
+
+  // 视频分析模式：快速分析 或 专业分析
+  const [analysisMode, setAnalysisMode] = useState<'quick' | 'professional'>('quick');
 
   // 视频选择
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
@@ -70,6 +74,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setEnableVideoUnderstanding(false);
+      setAnalysisMode('quick'); // 默认快速分析
       setSelectedVideos(new Set());
       setParameters({
         language: 'chinese',
@@ -134,10 +139,11 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
       chatContentLength: chatContent.length,
       selectedVideoCount: selectedVideoItems.length,
       videoUnderstandingEnabled: enableVideoUnderstanding,
+      analysisMode: enableVideoUnderstanding ? analysisMode : undefined,
       parameters
     });
 
-    onGenerateScript(chatContent, selectedVideoItems, parameters, enableVideoUnderstanding);
+    onGenerateScript(chatContent, selectedVideoItems, parameters, enableVideoUnderstanding, analysisMode);
   };
 
   const canGenerate = enableVideoUnderstanding ? selectedVideos.size > 0 : true;
@@ -159,7 +165,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0">
+        <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -305,48 +311,85 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
           {/* Right Panel - 视频理解 */}
           <div className="w-1/2 p-6 overflow-y-auto bg-gray-50">
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-md font-semibold text-gray-800 flex items-center">
-                  <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  视频理解
-                </h4>
-                
-                {/* Toggle Switch */}
-                <button
-                  onClick={() => {
-                    setEnableVideoUnderstanding(!enableVideoUnderstanding);
-                    if (enableVideoUnderstanding) {
-                      setSelectedVideos(new Set()); // 关闭时清除选择
-                    }
-                    logger.userAction('切换视频理解开关', 'toggleVideoUnderstanding', {
-                      newState: !enableVideoUnderstanding
-                    });
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    enableVideoUnderstanding ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
-                      enableVideoUnderstanding ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
+            {/* 视频理解标题和开关 */}
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-md font-semibold text-gray-800 flex items-center">
+                <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                视频理解
+              </h4>
               
-              <p className="text-sm text-gray-600">
+              {/* Toggle Switch */}
+              <button
+                onClick={() => {
+                  setEnableVideoUnderstanding(!enableVideoUnderstanding);
+                  if (enableVideoUnderstanding) {
+                    setSelectedVideos(new Set()); // 关闭时清除选择
+                  }
+                  logger.userAction('切换视频理解开关', 'toggleVideoUnderstanding', {
+                    newState: !enableVideoUnderstanding
+                  });
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  enableVideoUnderstanding ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                    enableVideoUnderstanding ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* 说明文本 */}
+            <div className="text-sm text-gray-600 mb-6">
+              <p>
                 {enableVideoUnderstanding 
                   ? '已启用视频理解，AI将分析选中的视频内容来生成脚本' 
                   : '视频理解已关闭，将仅根据对话内容生成脚本'}
               </p>
             </div>
 
+            {/* Analysis Mode Selection - 只在视频理解开启时显示 */}
+            {enableVideoUnderstanding && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-3">分析模式</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      setAnalysisMode('quick');
+                      logger.userAction('切换分析模式', 'changeAnalysisMode', { mode: 'quick' });
+                    }}
+                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                      analysisMode === 'quick'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                    }`}
+                  >
+                    ⚡ 快速分析
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAnalysisMode('professional');
+                      logger.userAction('切换分析模式', 'changeAnalysisMode', { mode: 'professional' });
+                    }}
+                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                      analysisMode === 'professional'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                    }`}
+                  >
+                    🎯 专业分析
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Video Selection Grid */}
             {enableVideoUnderstanding && (
-              <div className="space-y-4">
+              <div>
                 {videoMaterials.length === 0 ? (
                   <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
                     <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -386,9 +429,16 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                           
                           <div className="p-3">
                             <p className="text-sm font-medium text-gray-900 truncate">{video.name}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
-                            </p>
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-xs text-gray-500">
+                                {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
+                              </p>
+                              {video.duration && (
+                                <p className="text-xs text-blue-600 font-medium">
+                                  {video.duration < 60 ? '3s/帧' : video.duration < 300 ? '10s/帧' : '30s/帧'}
+                                </p>
+                              )}
+                            </div>
                           </div>
 
                           {selectedVideos.has(video.id) && (
@@ -427,7 +477,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-shrink-0 rounded-b-2xl">
           <div className="text-sm text-gray-600">
             {enableVideoUnderstanding && selectedVideos.size > 0 
               ? `将分析 ${selectedVideos.size} 个视频并生成脚本` 

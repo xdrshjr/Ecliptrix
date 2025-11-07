@@ -63,6 +63,10 @@ class VideoUnderstandingScriptRequest(BaseModel):
         ..., 
         description="Script generation parameters"
     )
+    analysisMode: Literal['quick', 'professional'] = Field(
+        default='quick',
+        description="Video analysis mode: 'quick' (thumbnail only) or 'professional' (frame extraction)"
+    )
 
 
 class ScriptSentence(BaseModel):

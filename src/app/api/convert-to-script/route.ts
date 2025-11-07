@@ -7,12 +7,15 @@ const getBackendConfig = () => {
 };
 
 // 日志记录函数
-const logRequest = (taskId: string, chatContentLength: number, videoCount: number, enableVideoUnderstanding: boolean) => {
+const logRequest = (taskId: string, chatContentLength: number, videoCount: number, enableVideoUnderstanding: boolean, analysisMode?: string) => {
   console.log(`[Convert To Script API] ${new Date().toISOString()} - Incoming convert to script request`);
   console.log(`[Convert To Script API] Task ID: ${taskId}`);
   console.log(`[Convert To Script API] Chat content length: ${chatContentLength}`);
   console.log(`[Convert To Script API] Video count: ${videoCount}`);
   console.log(`[Convert To Script API] Enable video understanding: ${enableVideoUnderstanding}`);
+  if (analysisMode) {
+    console.log(`[Convert To Script API] Analysis mode: ${analysisMode}`);
+  }
 };
 
 const logResponse = (success: boolean, taskId: string, error?: string, segmentCount?: number) => {
@@ -26,12 +29,13 @@ const logResponse = (success: boolean, taskId: string, error?: string, segmentCo
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { taskId, chatContent, selectedVideos, parameters, enableVideoUnderstanding } = body as { 
+    const { taskId, chatContent, selectedVideos, parameters, enableVideoUnderstanding, analysisMode } = body as { 
       taskId: string; 
       chatContent: string;
       selectedVideos: any[];
       parameters: any;
       enableVideoUnderstanding: boolean;
+      analysisMode?: 'quick' | 'professional';
     };
 
     // 验证请求参数
@@ -69,18 +73,20 @@ export async function POST(request: NextRequest) {
     }
 
     const config = getBackendConfig();
-    logRequest(taskId, chatContent.length, selectedVideos?.length || 0, enableVideoUnderstanding);
+    logRequest(taskId, chatContent.length, selectedVideos?.length || 0, enableVideoUnderstanding, analysisMode);
 
     // 准备发送给Python后端的请求数据
     // 注意：Python 后端使用 VideoUnderstandingScriptRequest 模型
     // - referenceText 对应前端的 chatContent
     // - selectedVideos 必须至少包含1个视频
     // - enableVideoUnderstanding 决定是否使用视频分析数据
+    // - analysisMode 决定视频分析模式（快速或专业）
     const requestData = {
       taskId: taskId,
       referenceText: chatContent,  // Python 后端使用 referenceText
       selectedVideos: selectedVideos,  // 始终发送视频列表
-      parameters: parameters
+      parameters: parameters,
+      analysisMode: analysisMode || 'quick'  // 默认快速分析
     };
 
     // Debug logging: print request body if needed
@@ -95,7 +101,8 @@ export async function POST(request: NextRequest) {
           name: v.name,
           hasAnalysis: !!v.metadata?.video_analysis || !!v.analysisData
         })),
-        parameters: requestData.parameters
+        parameters: requestData.parameters,
+        analysisMode: requestData.analysisMode
       }, null, 2));
     }
 

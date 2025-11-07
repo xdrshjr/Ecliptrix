@@ -20,7 +20,8 @@ export interface UseConvertToScriptReturn {
     chatContent: string,
     selectedVideos: MaterialItem[],
     parameters: ScriptGenerationParameters,
-    enableVideoUnderstanding: boolean
+    enableVideoUnderstanding: boolean,
+    analysisMode: 'quick' | 'professional'
   ) => void;
 }
 
@@ -85,9 +86,29 @@ export const useConvertToScript = (
     });
   }, [isGenerating, logger]);
 
+  /**
+   * 根据视频时长计算帧间隔
+   * - 小于1分钟：每3秒一帧，最多5帧
+   * - 1-5分钟：每10秒一帧，最多5帧
+   * - 大于5分钟：每30秒一帧，最多5帧
+   */
+  const calculateFrameInterval = useCallback((videoDuration: number): number => {
+    if (videoDuration < 60) {
+      // 小于1分钟：每3秒一帧
+      return 3;
+    } else if (videoDuration < 300) {
+      // 1-5分钟：每10秒一帧
+      return 10;
+    } else {
+      // 大于5分钟：每30秒一帧
+      return 30;
+    }
+  }, []);
+
   // 并行分析视频的函数
   const analyzeVideosInParallel = useCallback(async (
-    selectedVideos: MaterialItem[]
+    selectedVideos: MaterialItem[],
+    analysisMode: 'quick' | 'professional'
   ): Promise<MaterialItem[]> => {
     const videoMaterials = selectedVideos.filter(material => material.type === 'video' && material.url);
     
@@ -104,15 +125,14 @@ export const useConvertToScript = (
       failedVideos: 0,
     }));
 
-    logger.info('开始并行视频分析（快速模式）', {
+    logger.info('开始并行视频分析', {
       videoCount: videoMaterials.length,
-      frameInterval: 9999 // 快速模式只提取一帧
+      analysisMode: analysisMode,
+      strategy: analysisMode === 'quick' ? 'thumbnail-only' : 'duration-based-frame-extraction'
     });
 
     const maxConcurrentThreads = 5;
     const analysisResults: Array<{ material: MaterialItem; result?: any; error?: string }> = [];
-    
-    const frameInterval = 9999; // 快速模式：只提取一帧
 
     // 创建视频分析服务实例
     const videoAnalysisService = new VideoAnalysisServiceImpl(taskId);
@@ -126,22 +146,63 @@ export const useConvertToScript = (
             currentVideoName: material.name
           }));
 
-          logger.info(`开始分析视频: ${material.name}`, {
+          // 快速分析模式：只分析封面（第一帧）
+          if (analysisMode === 'quick') {
+            logger.info(`开始快速分析视频: ${material.name}`, {
+              videoId: material.id,
+              videoUrl: material.url,
+              analysisMode: 'quick',
+              strategy: 'thumbnail-only'
+            });
+
+            const result = await videoAnalysisService.analyzeVideo({
+              videoUrl: material.url!,
+              frameInterval: -1, // -1 表示只提取第一帧（封面）
+              taskId,
+              customPrompt: '请用一小段话（不超过50字）简要描述这个视频封面中的主要内容和关键元素。'
+            });
+
+            logger.info(`快速分析完成: ${material.name}`, {
+              videoId: material.id,
+              framesExtracted: result.total_frames_extracted,
+              processingTime: result.processing_time,
+              analysisMode: 'quick'
+            });
+
+            setProgress(prev => ({
+              ...prev,
+              analyzedVideos: prev.analyzedVideos + 1,
+              analysisProgress: ((prev.analyzedVideos + 1) / prev.totalVideos) * 100
+            }));
+
+            return { material, result };
+          }
+
+          // 专业分析模式：根据视频时长计算帧间隔
+          const videoDuration = material.duration || 60; // 默认60秒
+          const frameInterval = calculateFrameInterval(videoDuration);
+
+          logger.info(`开始专业分析视频: ${material.name}`, {
             videoId: material.id,
             videoUrl: material.url,
-            frameInterval
+            videoDuration: videoDuration,
+            frameInterval: frameInterval,
+            analysisMode: 'professional',
+            strategy: videoDuration < 60 ? 'short_video' : videoDuration < 300 ? 'medium_video' : 'long_video'
           });
 
           const result = await videoAnalysisService.analyzeVideo({
             videoUrl: material.url!,
             frameInterval,
-            taskId
+            taskId,
+            customPrompt: '请用一小段话（不超过50字）简要描述这个视频帧中的主要内容和关键元素。'
           });
 
-          logger.info(`视频分析完成: ${material.name}`, {
+          logger.info(`专业分析完成: ${material.name}`, {
             videoId: material.id,
             framesExtracted: result.total_frames_extracted,
-            processingTime: result.processing_time
+            processingTime: result.processing_time,
+            analysisMode: 'professional'
           });
 
           setProgress(prev => ({
@@ -157,7 +218,7 @@ export const useConvertToScript = (
           logger.error(`视频分析失败: ${material.name}`, {
             videoId: material.id,
             error: errorMessage,
-            frameInterval
+            videoDuration: material.duration || 60
           });
 
           setProgress(prev => ({
@@ -215,7 +276,8 @@ export const useConvertToScript = (
     logger.info('视频分析阶段完成', {
       totalVideos: videoMaterials.length,
       successful: successfulAnalyses,
-      failed: failedAnalyses
+      failed: failedAnalyses,
+      analysisMode: analysisMode
     });
 
     if (failedAnalyses > 0) {
@@ -226,13 +288,14 @@ export const useConvertToScript = (
     }
 
     return videosWithAnalysis;
-  }, [taskId, logger]);
+  }, [taskId, logger, calculateFrameInterval]);
 
   const generateScript = useCallback(async (
     chatContent: string,
     selectedVideos: MaterialItem[],
     parameters: ScriptGenerationParameters,
-    enableVideoUnderstanding: boolean
+    enableVideoUnderstanding: boolean,
+    analysisMode: 'quick' | 'professional'
   ) => {
     setIsGenerating(true);
     setGenerationError(null);
@@ -242,6 +305,7 @@ export const useConvertToScript = (
         chatContentLength: chatContent.length,
         videoCount: selectedVideos.length,
         enableVideoUnderstanding,
+        analysisMode: enableVideoUnderstanding ? analysisMode : undefined,
         parameters
       });
 
@@ -252,7 +316,7 @@ export const useConvertToScript = (
 
       // 如果启用了视频理解，先分析视频
       if (enableVideoUnderstanding && selectedVideos.length > 0) {
-        videosWithAnalysis = await analyzeVideosInParallel(selectedVideos);
+        videosWithAnalysis = await analyzeVideosInParallel(selectedVideos, analysisMode);
       }
 
       // 生成脚本
@@ -278,6 +342,7 @@ export const useConvertToScript = (
           selectedVideos: videosWithAnalysis,
           parameters,
           enableVideoUnderstanding,
+          analysisMode: enableVideoUnderstanding ? analysisMode : undefined,
           taskId
         }),
       });

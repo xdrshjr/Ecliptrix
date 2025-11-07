@@ -22,6 +22,29 @@ frame_extraction:
   # Maximum number of frames to extract from a single video
   max_frames_per_video: 5
   
+  # Duration-based frame extraction strategy for convert-to-script feature
+  # Determines frame interval based on video duration
+  duration_based_strategy:
+    # For videos shorter than 1 minute (60 seconds)
+    # Extract 1 frame every 3 seconds, max 5 frames
+    short_videos:
+      duration_threshold_seconds: 60
+      frame_interval_seconds: 3
+      max_frames: 5
+    
+    # For videos between 1 and 5 minutes (60-300 seconds)
+    # Extract 1 frame every 10 seconds, max 5 frames
+    medium_videos:
+      duration_threshold_seconds: 300
+      frame_interval_seconds: 10
+      max_frames: 5
+    
+    # For videos longer than 5 minutes (>300 seconds)
+    # Extract 1 frame every 30 seconds, max 5 frames
+    long_videos:
+      frame_interval_seconds: 30
+      max_frames: 5
+  
   # Supported video formats for frame extraction
   supported_formats: ["mp4", "avi", "mov", "mkv", "webm", "flv"]
 

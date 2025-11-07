@@ -37,33 +37,43 @@ class VideoUnderstandingScriptService:
     
     async def generate_script(
         self,
-        request: VideoUnderstandingScriptRequest
+        request: VideoUnderstandingScriptRequest,
+        retry_count: int = 0
     ) -> Dict[str, Any]:
         """
-        Generate script based on video understanding analysis.
+        Generate script based on video understanding analysis with retry mechanism.
         
         Args:
             request: Script generation request with videos and parameters
+            retry_count: Current retry attempt number (for internal use)
             
         Returns:
             Dict[str, Any]: Generated script segments and metadata
             
         Raises:
-            Exception: If video analysis or script generation fails
+            Exception: If video analysis or script generation fails after retries
         """
+        max_retries = 1  # Retry once on failure
+        
         try:
-            logger.info(f"Starting video understanding script generation for task: {request.taskId}")
+            logger.info(f"Starting video understanding script generation for task: {request.taskId} (attempt {retry_count + 1}/{max_retries + 1})")
             logger.info(f"Processing {len(request.selectedVideos)} videos with {request.parameters.analysisDepth} analysis depth")
+            logger.info(f"Analysis mode: {request.analysisMode} ({'thumbnail only' if request.analysisMode == 'quick' else 'frame extraction'})")
             logger.info(f"Reference text length: {len(request.referenceText)}, content preview: '{request.referenceText[:100]}...'" if request.referenceText else "No reference text provided")
             
             # Step 1: Analyze videos to get understanding results
             video_analysis_results = await self._analyze_videos(
                 request.selectedVideos, 
                 request.parameters,
-                request.taskId
+                request.taskId,
+                request.analysisMode
             )
             
             logger.info(f"Video analysis completed for task: {request.taskId}, analyzed {len(video_analysis_results)} videos")
+            
+            # Validate analysis results
+            for i, result in enumerate(video_analysis_results):
+                logger.debug(f"Analysis result {i + 1}: videoId={result.videoId}, frames={'None' if result.frames is None else len(result.frames)}")
             
             # Step 2: Generate script using LLM based on analysis results
             script_segments = await self._generate_script_with_llm(
@@ -81,7 +91,7 @@ class VideoUnderstandingScriptService:
                 script_segments
             )
             
-            logger.info(f"Video understanding script generation completed for task: {request.taskId}, generated {len(script_segments)} segments")
+            logger.info(f"Video understanding script generation completed for task: {request.taskId}, generated {len(script_segments)} segments in {request.analysisMode} mode")
             
             return {
                 "segments": [segment.model_dump() for segment in script_segments],
@@ -90,14 +100,22 @@ class VideoUnderstandingScriptService:
             
         except Exception as e:
             error_msg = f"Video understanding script generation error: {str(e)}"
-            logger.error(error_msg, extra={"task_id": request.taskId}, exc_info=True)
-            raise Exception(error_msg)
+            logger.error(error_msg, extra={"task_id": request.taskId, "retry_count": retry_count}, exc_info=True)
+            
+            # Retry logic
+            if retry_count < max_retries:
+                logger.warning(f"Retrying video understanding script generation for task: {request.taskId} (retry {retry_count + 1}/{max_retries})")
+                return await self.generate_script(request, retry_count + 1)
+            else:
+                logger.error(f"Video understanding script generation failed after {max_retries + 1} attempts for task: {request.taskId}")
+                raise Exception(error_msg)
     
     async def _analyze_videos(
         self,
         videos: List[VideoItem],
         parameters,
-        task_id: str
+        task_id: str,
+        analysis_mode: str = 'quick'
     ) -> List[VideoAnalysisResult]:
         """
         Analyze videos to extract understanding information.
@@ -106,34 +124,48 @@ class VideoUnderstandingScriptService:
             videos: List of selected videos
             parameters: Analysis parameters
             task_id: Task identifier
+            analysis_mode: Analysis mode ('quick' or 'professional')
             
         Returns:
             List[VideoAnalysisResult]: Video analysis results
         """
         analysis_results = []
         
-        for video in videos:
+        logger.info(f"Starting video analysis for task {task_id} in {analysis_mode} mode")
+        logger.info(f"Total videos to analyze: {len(videos)}")
+        
+        for idx, video in enumerate(videos, 1):
             try:
-                logger.info(f"Analyzing video {video.id} ({video.name}) for task: {task_id}")
+                logger.info(f"Analyzing video {idx}/{len(videos)}: {video.id} ({video.name}) for task: {task_id} in {analysis_mode} mode")
                 
                 # First, try to use analysis data from frontend (in metadata.video_analysis)
                 if (hasattr(video, 'metadata') and video.metadata and 
                     'video_analysis' in video.metadata and video.metadata['video_analysis']):
-                    logger.info(f"Using video analysis data from frontend metadata for video {video.id}")
-                    analysis_result = self._convert_frontend_analysis_to_result(
-                        video, video.metadata['video_analysis'], parameters
-                    )
-                    analysis_results.append(analysis_result)
-                    continue
+                    logger.info(f"Using video analysis data from frontend metadata for video {video.id} in {analysis_mode} mode")
+                    try:
+                        analysis_result = self._convert_frontend_analysis_to_result(
+                            video, video.metadata['video_analysis'], parameters, analysis_mode
+                        )
+                        analysis_results.append(analysis_result)
+                        logger.info(f"Successfully analyzed video {idx}/{len(videos)} from frontend metadata")
+                        continue
+                    except Exception as convert_error:
+                        logger.error(f"Error converting frontend metadata analysis for video {video.id}: {str(convert_error)}", exc_info=True)
+                        raise  # Re-raise to trigger fallback
                 
                 # Fallback: try to use analysis data from frontend (legacy analysisData field)
                 if hasattr(video, 'analysisData') and video.analysisData:
-                    logger.info(f"Using legacy analysis data from frontend for video {video.id}")
-                    analysis_result = self._convert_frontend_analysis_to_result(
-                        video, video.analysisData, parameters
-                    )
-                    analysis_results.append(analysis_result)
-                    continue
+                    logger.info(f"Using legacy analysis data from frontend for video {video.id} in {analysis_mode} mode")
+                    try:
+                        analysis_result = self._convert_frontend_analysis_to_result(
+                            video, video.analysisData, parameters, analysis_mode
+                        )
+                        analysis_results.append(analysis_result)
+                        logger.info(f"Successfully analyzed video {idx}/{len(videos)} from legacy analysisData")
+                        continue
+                    except Exception as convert_error:
+                        logger.error(f"Error converting legacy analysis data for video {video.id}: {str(convert_error)}", exc_info=True)
+                        raise  # Re-raise to trigger fallback
                 
                 # Try to get existing video analysis data from storage
                 existing_analysis = video_analysis_storage.get_video_analysis(video.id)
@@ -148,20 +180,24 @@ class VideoUnderstandingScriptService:
                     analysis_result = self._perform_basic_video_analysis(video, parameters)
                 
                 analysis_results.append(analysis_result)
+                logger.info(f"Successfully analyzed video {idx}/{len(videos)}")
                 
             except Exception as e:
-                logger.warning(f"Failed to analyze video {video.id}: {str(e)}")
+                logger.error(f"Failed to analyze video {video.id} (video {idx}/{len(videos)}): {str(e)}", exc_info=True)
                 # Create fallback analysis result
+                logger.warning(f"Creating fallback analysis result for video {video.id}")
                 fallback_result = self._create_fallback_analysis_result(video, parameters)
                 analysis_results.append(fallback_result)
         
+        logger.info(f"Completed video analysis for task {task_id}: {len(analysis_results)} videos analyzed")
         return analysis_results
     
     def _convert_frontend_analysis_to_result(
         self,
         video: VideoItem,
         frontend_analysis_data: Dict[str, Any],
-        parameters
+        parameters,
+        analysis_mode: str = 'professional'
     ) -> VideoAnalysisResult:
         """
         Convert frontend analysis data to VideoAnalysisResult.
@@ -170,25 +206,43 @@ class VideoUnderstandingScriptService:
             video: Video item
             frontend_analysis_data: Analysis data from frontend
             parameters: Analysis parameters
+            analysis_mode: Analysis mode ('quick' or 'professional')
             
         Returns:
             VideoAnalysisResult: Converted analysis result
         """
+        logger.info(f"Converting frontend analysis to result for video {video.id} ({video.name}) in {analysis_mode} mode")
+        
         # Extract frame descriptions for content understanding
         frame_descriptions = []
         frame_analyses = frontend_analysis_data.get('frame_analyses', [])
         
-        logger.info(f"Processing frontend analysis data for video {video.id}: found {len(frame_analyses)} frame analyses")
+        logger.info(f"Processing frontend analysis data for video {video.id} in {analysis_mode} mode: found {len(frame_analyses)} frame analyses")
         
-        for frame in frame_analyses[:10]:  # Limit to first 10 frames
+        # Validate frame_analyses data
+        if not isinstance(frame_analyses, list):
+            logger.error(f"Invalid frame_analyses data type for video {video.id}: expected list, got {type(frame_analyses)}")
+            frame_analyses = []
+        
+        # For quick mode, only use first frame (thumbnail)
+        # For professional mode, use up to 10 frames
+        max_frames = 1 if analysis_mode == 'quick' else 10
+        
+        for i, frame in enumerate(frame_analyses[:max_frames]):
+            if not isinstance(frame, dict):
+                logger.warning(f"Invalid frame data at index {i} for video {video.id}: expected dict, got {type(frame)}")
+                continue
+                
             analysis_text = frame.get('analysis', '')
             if analysis_text:
                 # Truncate frame analysis to 200 characters as mentioned in requirements
                 truncated_analysis = analysis_text[:200] + "..." if len(analysis_text) > 200 else analysis_text
                 frame_descriptions.append(truncated_analysis)
                 logger.debug(f"Frame {frame.get('frame_number', 'unknown')}: {truncated_analysis[:50]}...")
+            else:
+                logger.warning(f"Frame {i} for video {video.id} has no analysis text")
         
-        logger.info(f"Extracted {len(frame_descriptions)} frame descriptions for video {video.id}")
+        logger.info(f"Extracted {len(frame_descriptions)} frame descriptions for video {video.id} (max_frames={max_frames} for {analysis_mode} mode)")
         
         # Generate content description from frame analyses
         content_description = self._generate_content_description_from_frames(frame_descriptions)
@@ -200,16 +254,33 @@ class VideoUnderstandingScriptService:
         
         if parameters.includeVisualElements:
             visual_elements = self._extract_visual_elements_from_analysis(frame_descriptions)
+            logger.debug(f"Extracted {len(visual_elements)} visual elements for video {video.id}")
         
         if parameters.includeAudioAnalysis:
             audio_elements = self._extract_audio_elements_from_frontend_analysis(frontend_analysis_data)
+            logger.debug(f"Extracted {len(audio_elements)} audio elements for video {video.id}")
         
         key_topics = self._extract_key_topics_from_analysis(frame_descriptions, content_description)
+        logger.debug(f"Extracted {len(key_topics)} key topics for video {video.id}")
         
         # Get video duration from analysis data or video item
         video_duration = frontend_analysis_data.get('video_duration', video.duration or 0.0)
+        logger.info(f"Video {video.id} duration: {video_duration}s")
         
-        return VideoAnalysisResult(
+        # Prepare frames data for result - ensure it's not None
+        frames_for_result = []
+        if frame_analyses and len(frame_analyses) > 0:
+            for i, frame in enumerate(frame_analyses[:5]):  # Show first 5 frames
+                if isinstance(frame, dict):
+                    frames_for_result.append({
+                        "frame_number": frame.get('frame_number', i),
+                        "timestamp": frame.get('timestamp', i * 2.0),
+                        "analysis": frame.get('analysis', '')[:200]
+                    })
+        
+        logger.info(f"Prepared {len(frames_for_result)} frames for result for video {video.id}")
+        
+        analysis_result = VideoAnalysisResult(
             videoId=video.id,
             videoName=video.name,
             visualElements=visual_elements,
@@ -217,12 +288,11 @@ class VideoUnderstandingScriptService:
             keyTopics=key_topics,
             contentDescription=content_description,
             estimatedDuration=video_duration,
-            frames=[{
-                "frame_number": frame.get('frame_number', i),
-                "timestamp": frame.get('timestamp', i * 2.0),
-                "analysis": frame.get('analysis', '')[:200]
-            } for i, frame in enumerate(frame_analyses[:5])]  # Show first 5 frames
+            frames=frames_for_result if frames_for_result else None  # Set to None if empty to match model default
         )
+        
+        logger.info(f"Successfully converted frontend analysis to result for video {video.id}")
+        return analysis_result
     
     def _convert_existing_analysis_to_result(
         self,
@@ -489,7 +559,10 @@ class VideoUnderstandingScriptService:
         # Build video analysis summary
         video_analysis_summary = ""
         for i, result in enumerate(analysis_results, 1):
-            logger.info(f"Building prompt for video {result.videoId}: {len(result.frames)} frames available")
+            # Safely check frames availability
+            frames_count = len(result.frames) if result.frames is not None else 0
+            logger.info(f"Building prompt for video {result.videoId}: {frames_count} frames available")
+            
             video_analysis_summary += f"""
 <video id="{result.videoId}">
   <name>{result.videoName}</name>
@@ -500,16 +573,20 @@ class VideoUnderstandingScriptService:
                 video_analysis_summary += f"\n  <visual_elements>{', '.join(result.visualElements)}</visual_elements>"
             if result.audioElements:
                 video_analysis_summary += f"\n  <audio_elements>{', '.join(result.audioElements)}</audio_elements>"
-            if result.frames:
+            
+            # Safely handle frames data
+            if result.frames is not None and len(result.frames) > 0:
                 video_analysis_summary += f"\n  <frame_analysis count='{len(result.frames)}'>"
                 for frame in result.frames[:3]:  # Show first 3 frames
-                    frame_analysis = frame['analysis'][:150]
-                    video_analysis_summary += f"\n    <frame sequence='{frame['frame_number']}'>{frame_analysis}...</frame>"
-                    logger.debug(f"Including frame {frame['frame_number']} analysis in prompt: {frame_analysis[:30]}...")
+                    frame_analysis = frame.get('analysis', '')[:150]
+                    frame_number = frame.get('frame_number', 0)
+                    video_analysis_summary += f"\n    <frame sequence='{frame_number}'>{frame_analysis}...</frame>"
+                    logger.debug(f"Including frame {frame_number} analysis in prompt: {frame_analysis[:30]}...")
                 video_analysis_summary += "\n  </frame_analysis>"
                 logger.info(f"Added {len(result.frames[:3])} frame analyses to prompt for video {result.videoId}")
             else:
                 logger.warning(f"No frame analysis data available for video {result.videoId}")
+            
             video_analysis_summary += "\n</video>\n"
         
         # Build reference context
@@ -1147,6 +1224,7 @@ class VideoUnderstandingScriptService:
             "generatedSegmentCount": len(script_segments),
             "totalEstimatedDuration": total_duration,
             "analysisDepth": request.parameters.analysisDepth,
+            "analysisMode": request.analysisMode,
             "language": request.parameters.language,
             "includeVisualElements": request.parameters.includeVisualElements,
             "includeAudioAnalysis": request.parameters.includeAudioAnalysis,

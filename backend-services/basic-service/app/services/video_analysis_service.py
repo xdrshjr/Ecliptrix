@@ -383,7 +383,8 @@ class VideoAnalysisService:
             image_base64 = self.encode_image_to_base64(frame_path)
             
             # Prepare prompt
-            prompt = custom_prompt or "请详细描述这张图片中的内容，包括场景、人物、物体、动作等。"
+            # Default prompt now requests concise descriptions suitable for script generation
+            prompt = custom_prompt or "请用一小段话（不超过50字）简要描述这个画面中的主要内容、场景和关键元素。"
             
             # Log request info without BASE64 content
             logger.debug(f"Calling VL LLM API for frame analysis", extra={
