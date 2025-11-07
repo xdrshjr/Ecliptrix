@@ -128,6 +128,7 @@ export interface UseScriptGenerationReturn {
   handleGenerateScript: (chatMessages?: ChatMessage[]) => Promise<void>;
   handleGenerateScriptWithConfig: (config: ScriptGenerationConfig, chatMessages?: ChatMessage[]) => Promise<void>;
   handleUpdateSegments: (segments: ScriptSegment[]) => void;
+  handleScriptGenerated: (segments: ScriptSegment[]) => void;
   generationProgress: number;
   generationError: string | null;
 }

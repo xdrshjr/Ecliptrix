@@ -24,6 +24,7 @@ import {
   useComfyUIHealth,
   useAICreation
 } from './hooks';
+import { useConvertToScript } from './hooks/useConvertToScript';
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -49,6 +50,8 @@ import {
   AIMixingProgressModal,
   AIMixingModeSelectionModal
 } from './components';
+import ConvertToScriptModal from './components/ConvertToScriptModal';
+import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
 import { Conversation, ChatMessage, WorkflowExecutionState, WorkflowNode, WorkflowConnection } from '@/types';
@@ -455,6 +458,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content);
   const materialManagement = useMaterialManagement(taskId);
+  const convertToScript = useConvertToScript(taskId, scriptGeneration.handleScriptGenerated);
 
   // 监听脚本生成状态变化，自动记录开始时间和清除时间
   useEffect(() => {
@@ -540,12 +544,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       timestamp: new Date().toISOString()
     });
     
-    // 存储要转换的消息内容
-    setMessageContentForScript(content);
-    
-    // 打开脚本生成配置弹窗
-    setIsScriptGenerationModalOpen(true);
-  }, [taskId]);
+    // 打开新的转换视频脚本弹窗
+    convertToScript.openModal(content);
+  }, [taskId, convertToScript]);
 
   const handleScriptGenerationClose = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭脚本生成配置弹窗`, {
@@ -2785,6 +2786,24 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={scriptGeneration.isGeneratingScript}
         progress={scriptGeneration.generationProgress}
         startTime={scriptGenerationStartTime}
+      />
+
+      {/* 转换视频脚本弹窗 */}
+      <ConvertToScriptModal
+        isOpen={convertToScript.isModalOpen}
+        onClose={convertToScript.closeModal}
+        materials={materialManagement.materials}
+        taskId={taskId}
+        chatContent={convertToScript.chatContent}
+        onGenerateScript={convertToScript.generateScript}
+        isGenerating={convertToScript.isGenerating}
+      />
+
+      {/* 转换视频脚本进度弹窗 */}
+      <VideoUnderstandingScriptProgressModal
+        isOpen={convertToScript.isGenerating}
+        progress={convertToScript.progress}
+        onCancel={convertToScript.closeModal}
       />
 
       <CreativeBrainstormingModal

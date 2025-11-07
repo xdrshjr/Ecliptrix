@@ -18,10 +18,9 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-@router.post("/video-understanding-script", response_model=VideoUnderstandingScriptResponse)
-async def video_understanding_script(request: VideoUnderstandingScriptRequest):
+async def _generate_video_script_handler(request: VideoUnderstandingScriptRequest):
     """
-    Video understanding script generation endpoint.
+    Internal handler for video script generation logic.
     
     Args:
         request: Video understanding script request containing task ID, selected videos, 
@@ -136,4 +135,44 @@ async def video_understanding_script(request: VideoUnderstandingScriptRequest):
                 details=str(e),
                 taskId=getattr(request, 'taskId', None)
             ).model_dump()
-        ) 
+        )
+
+
+@router.post("/video-understanding-script", response_model=VideoUnderstandingScriptResponse)
+async def video_understanding_script(request: VideoUnderstandingScriptRequest):
+    """
+    Video understanding script generation endpoint.
+    
+    Args:
+        request: Video understanding script request containing task ID, selected videos, 
+                reference text, and generation parameters
+        
+    Returns:
+        VideoUnderstandingScriptResponse: Generated script segments and metadata
+        
+    Raises:
+        HTTPException: If request validation fails or service error occurs
+    """
+    return await _generate_video_script_handler(request)
+
+
+@router.post("/convert-to-script", response_model=VideoUnderstandingScriptResponse)
+async def convert_to_script(request: VideoUnderstandingScriptRequest):
+    """
+    Convert video content to script endpoint (alias for video-understanding-script).
+    
+    This endpoint provides the same functionality as /video-understanding-script
+    but with a more intuitive name for frontend integration.
+    
+    Args:
+        request: Video understanding script request containing task ID, selected videos, 
+                reference text, and generation parameters
+        
+    Returns:
+        VideoUnderstandingScriptResponse: Generated script segments and metadata
+        
+    Raises:
+        HTTPException: If request validation fails or service error occurs
+    """
+    logger.info(f"Convert to script endpoint called for task: {request.taskId}")
+    return await _generate_video_script_handler(request)

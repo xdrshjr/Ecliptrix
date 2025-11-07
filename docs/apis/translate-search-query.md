@@ -4,6 +4,8 @@
 
 翻译搜索查询API用于将非英语的视频搜索关键词翻译为英语，以提高视频搜索的准确性和覆盖范围。
 
+该API优先使用快速LLM（如Alibaba Cloud Qwen）以提供更快的响应速度，特别适合在"Video Editing"任务的"搜索在线视频"面板中使用。
+
 ## 接口信息
 
 - **路径**: `/api/translate-search-query`
@@ -138,7 +140,17 @@ API使用以下规则检测查询语言：
 
 ## 环境配置
 
-API需要以下环境变量：
+API支持以下环境变量配置，按优先级排序：
+
+### 快速LLM配置（推荐用于搜索翻译）
+
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| FAST_LLM_API_URL | 快速LLM服务API地址 | https://dashscope.aliyuncs.com/compatible-mode/v1 |
+| FAST_LLM_API_KEY | 快速LLM服务API密钥 | ***REMOVED*** |
+| FAST_LLM_MODEL | 快速LLM模型名称 | qwen3-next-80b-a3b-instruct |
+
+### 通用LLM配置（备选）
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
@@ -146,15 +158,51 @@ API需要以下环境变量：
 | LLM_API_KEY | LLM服务API密钥 | 无 |
 | LLM_MODEL | 使用的模型名称 | gpt-3.5-turbo |
 
+### OpenAI配置（最低优先级）
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| OPENAI_API_URL | OpenAI API地址 | https://api.openai.com/v1 |
+| OPENAI_API_KEY | OpenAI API密钥 | 无 |
+
+**配置优先级**：
+1. 优先使用 `FAST_LLM_*` 配置（推荐，响应更快）
+2. 其次使用 `LLM_*` 配置
+3. 最后使用 `OPENAI_*` 配置
+
 ## 日志记录
 
 API提供详细的日志记录，包括：
 
 - 请求接收和参数验证
+- LLM配置类型（FAST_LLM/LLM/OPENAI）
+- API URL和模型信息
 - 语言检测结果
 - 翻译过程和结果
+- 翻译质量检查（长度比例等）
 - 错误信息和异常处理
 - 响应时间和性能指标
+
+### 日志示例
+
+**使用快速LLM的日志**：
+```
+[Translate Search Query API] 2024-01-01T12:00:00.000Z - Incoming translation request
+[Translate Search Query API] Task ID: task_123
+[Translate Search Query API] LLM Configuration Type: FAST_LLM
+[Translate Search Query API] API URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+[Translate Search Query API] Model: qwen3-next-80b-a3b-instruct
+[Translate Search Query API] Original query: "可爱的小猫咪视频"
+[Translate Search Query API] Query length: 8 characters
+[Translate Search Query API] Detected as English: false
+[Translate Search Query API] Translation needed: true
+[Translate Search Query API] Non-English query detected, calling FAST_LLM for translation. Task: task_123
+[Translate Search Query API] Calling FAST_LLM API: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions for task: task_123
+[Translate Search Query API] Request model: qwen3-next-80b-a3b-instruct, temperature: 0.3, max_tokens: 200
+[Translate Search Query API] FAST_LLM translation completed for task: task_123
+[Translate Search Query API] Original: "可爱的小猫咪视频" -> Translated: "cute kitten videos"
+[Translate Search Query API] Translation quality check - Length ratio: 2.38
+```
 
 ## 错误处理
 
@@ -167,10 +215,12 @@ API提供详细的日志记录，包括：
 
 ## 性能考虑
 
-- 英语查询直接返回，无需调用LLM服务
-- 非英语查询使用较低的temperature(0.3)以确保翻译一致性
-- 限制最大token数量(200)以控制响应时间
-- 详细的性能日志记录用于监控和优化
+- **快速LLM优先**：优先使用FAST_LLM配置，提供更快的响应速度
+- **智能语言检测**：英语查询直接返回，无需调用LLM服务
+- **翻译一致性**：非英语查询使用较低的temperature(0.3)以确保翻译一致性
+- **响应时间控制**：限制最大token数量(200)以控制响应时间
+- **质量监控**：详细的性能日志记录用于监控和优化
+- **备选方案**：如果FAST_LLM未配置，自动降级到LLM或OPENAI配置
 
 ## 集成说明
 

@@ -278,13 +278,42 @@ export const useScriptGeneration = (
       totalSentences: updatedSegments.reduce((sum, segment) => sum + segment.sentences.length, 0),
       lastModified: updatedContent.lastModified.toISOString()
     });
-  }, [markdownContent, taskId, onUpdateContent, logger, currentContent]);
+  }, [markdownContent, onUpdateContent, logger, currentContent]);
+
+  // 处理从视频理解脚本生成的脚本（来自 useConvertToScript）
+  const handleScriptGenerated = useCallback((generatedSegments: ScriptSegment[]) => {
+    logger.userAction('接收视频理解生成的脚本', 'convertToScript', {
+      segmentCount: generatedSegments.length,
+      totalSentences: generatedSegments.reduce((sum, segment) => sum + segment.sentences.length, 0),
+      totalDuration: generatedSegments.reduce((sum, segment) => sum + (segment.duration || 0), 0),
+      hasVideos: generatedSegments.some(segment => segment.videos && segment.videos.length > 0)
+    });
+
+    // 更新脚本片段，同时保留原有数据（包括conversations等）
+    const updatedContent: VideoEditingTaskContent = {
+      ...currentContent, // 保留所有原有数据
+      markdownContent: markdownContent,
+      lastModified: new Date(),
+      scriptSegments: generatedSegments,
+    };
+
+    onUpdateContent(updatedContent);
+
+    logger.info('视频理解生成的脚本已更新到任务中', {
+      segmentCount: generatedSegments.length,
+      totalSentences: generatedSegments.reduce((sum, segment) => sum + segment.sentences.length, 0),
+      totalDuration: generatedSegments.reduce((sum, segment) => sum + (segment.duration || 0), 0),
+      segmentsWithVideos: generatedSegments.filter(segment => segment.videos && segment.videos.length > 0).length,
+      lastModified: updatedContent.lastModified.toISOString()
+    });
+  }, [markdownContent, onUpdateContent, logger, currentContent]);
 
   return {
     isGeneratingScript,
     handleGenerateScript,
     handleGenerateScriptWithConfig,
     handleUpdateSegments,
+    handleScriptGenerated,
     generationProgress,
     generationError
   };
