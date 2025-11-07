@@ -56,6 +56,51 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
   }
 
   /**
+   * 检查URL是否为blob URL
+   * @param url - 要检查的URL
+   * @returns 是否为blob URL
+   */
+  private isBlobUrl(url: string): boolean {
+    return url.startsWith('blob:');
+  }
+
+  /**
+   * 将blob URL转换为File对象
+   * @param blobUrl - blob URL
+   * @returns Promise<File> - File对象
+   */
+  private async blobUrlToFile(blobUrl: string): Promise<File> {
+    this.logger.info('开始转换blob URL为File对象', { blobUrl });
+    
+    try {
+      const response = await fetch(blobUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch blob: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      
+      // 从blob URL或使用默认文件名
+      const timestamp = Date.now();
+      const fileName = `video_${timestamp}.mp4`;
+      
+      // 创建File对象
+      const file = new File([blob], fileName, { type: blob.type || 'video/mp4' });
+      
+      this.logger.info('blob URL转换为File对象成功', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+      
+      return file;
+    } catch (error) {
+      this.logger.error('blob URL转换为File对象失败', error as Error, { blobUrl });
+      throw error;
+    }
+  }
+
+  /**
    * 分析视频内容
    * @param params - 请求参数
    * @returns Promise<VideoAnalysisResponse> - 解析结果
@@ -71,33 +116,71 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
     }
 
     const startTime = performance.now();
+    const isBlobUrl = this.isBlobUrl(videoUrl);
+    
     this.logger.apiCall('发送视频解析请求', '/api/video/analyze', {
       videoUrl,
+      isBlobUrl,
       frameInterval,
       hasCustomPrompt: !!customPrompt,
       taskId
     });
 
     try {
-      const requestBody: VideoAnalysisRequest = {
-        video_url: videoUrl,
-        frame_interval: frameInterval,
-        custom_prompt: customPrompt
-      };
+      let response: Response;
 
-      const response = await fetch('/api/video/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+      // 如果是blob URL，需要上传文件
+      if (isBlobUrl) {
+        this.logger.info('检测到blob URL，转换为文件上传', { videoUrl });
+        
+        // 将blob URL转换为File对象
+        const file = await this.blobUrlToFile(videoUrl);
+        
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('video', file);
+        formData.append('frame_interval', frameInterval.toString());
+        if (customPrompt) {
+          formData.append('custom_prompt', customPrompt);
+        }
+
+        this.logger.info('上传视频文件进行解析', {
+          fileName: file.name,
+          fileSize: file.size,
+          frameInterval,
+          hasCustomPrompt: !!customPrompt
+        });
+
+        // 发送multipart/form-data请求
+        response = await fetch('/api/video/analyze', {
+          method: 'POST',
+          body: formData,
+          // 不设置Content-Type，让浏览器自动设置boundary
+        });
+      } else {
+        // 如果是普通URL，使用JSON请求
+        this.logger.info('使用URL方式进行视频解析', { videoUrl });
+        
+        const requestBody: VideoAnalysisRequest = {
+          video_url: videoUrl,
+          frame_interval: frameInterval,
+          custom_prompt: customPrompt
+        };
+
+        response = await fetch('/api/video/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
+      }
 
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
         try {
           const errorData = await response.json();
-          errorMessage = errorData.detail || errorData.message || errorMessage;
+          errorMessage = errorData.detail || errorData.message || errorData.error || errorMessage;
         } catch (parseError) {
           this.logger.error('解析错误响应失败', parseError as Error, {
             status: response.status,
@@ -110,7 +193,8 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
           responseTime: performance.now() - startTime,
           status: response.status,
           statusText: response.statusText,
-          videoUrl
+          videoUrl,
+          isBlobUrl
         });
         throw error;
       }
@@ -134,7 +218,8 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
         videoDuration: data.video_duration,
         processingTime: data.processing_time,
         responseTime,
-        videoUrl
+        videoUrl,
+        isBlobUrl
       });
 
       return data;
@@ -144,6 +229,7 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
       this.logger.error('视频解析请求失败', error as Error, {
         responseTime,
         videoUrl,
+        isBlobUrl,
         frameInterval,
         hasCustomPrompt: !!customPrompt
       });

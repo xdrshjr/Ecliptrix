@@ -1337,11 +1337,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 .map((material) => (
                 <div
                   key={material.id}
-                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading'}
+                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading' && material.uploadStatus !== 'waiting'}
                   onDragStart={(e) => handleDragStart(e, material)}
                   onDragEnd={(e) => handleDragEnd(e, material)}
                   className={`group bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all ${
-                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading'
+                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading' || material.uploadStatus === 'waiting'
                       ? 'opacity-60 cursor-not-allowed' 
                       : 'cursor-grab active:cursor-grabbing'
                   } ${
@@ -1437,6 +1437,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                             ></div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* 素材等待上传状态覆盖层 */}
+                    {material.uploadStatus === 'waiting' && (
+                      <div className="absolute inset-0 bg-yellow-500 bg-opacity-50 flex flex-col items-center justify-center">
+                        <svg className="w-8 h-8 text-white mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-white text-xs font-medium text-center px-1">等待上传...</span>
                       </div>
                     )}
 

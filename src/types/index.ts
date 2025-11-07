@@ -398,7 +398,7 @@ export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
 export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'completed' | 'error';
 
 // 上传状态类型
-export type MaterialUploadStatus = 'uploading' | 'completed';
+export type MaterialUploadStatus = 'waiting' | 'uploading' | 'completed';
 
 export interface MaterialItem {
   id: string;

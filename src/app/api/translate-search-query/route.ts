@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 获取环境变量配置
+// 获取环境变量配置 - 优先使用快速LLM配置
 const getConfig = () => {
-  const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+  // 优先使用快速LLM配置，用于搜索查询翻译等快速响应场景
+  const apiUrl = process.env.FAST_LLM_API_URL || process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
+  const apiKey = ***REMOVED*** || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+  const model = process.env.FAST_LLM_MODEL || process.env.LLM_MODEL || 'gpt-3.5-turbo';
 
   if (!apiKey) {
-    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
+    throw new Error('API key not configured. Please set FAST_LLM_API_KEY, LLM_API_KEY or OPENAI_API_KEY in environment variables.');
   }
 
-  return { apiUrl, apiKey, model };
+  // 判断使用的是哪个配置
+  const configType = ***REMOVED*** ? 'FAST_LLM' : 
+                     process.env.LLM_API_KEY ? 'LLM' : 'OPENAI';
+
+  return { apiUrl, apiKey, model, configType };
 };
 
 // 检测是否为英语查询
@@ -68,6 +73,8 @@ const formatMessages = (prompt: string) => [
 const logRequest = (originalQuery: string, isEnglish: boolean, taskId: string, config: any) => {
   console.log(`[Translate Search Query API] ${new Date().toISOString()} - Incoming translation request`);
   console.log(`[Translate Search Query API] Task ID: ${taskId}`);
+  console.log(`[Translate Search Query API] LLM Configuration Type: ${config.configType}`);
+  console.log(`[Translate Search Query API] API URL: ${config.apiUrl}`);
   console.log(`[Translate Search Query API] Model: ${config.model}`);
   console.log(`[Translate Search Query API] Original query: "${originalQuery}"`);
   console.log(`[Translate Search Query API] Query length: ${originalQuery.length} characters`);
@@ -136,7 +143,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 需要翻译，调用LLM
-    console.log(`[Translate Search Query API] Non-English query detected, calling LLM for translation. Task: ${taskId}`);
+    console.log(`[Translate Search Query API] Non-English query detected, calling ${config.configType} for translation. Task: ${taskId}`);
     
     const prompt = generateTranslationPrompt(trimmedQuery);
     const requestData = {
@@ -147,7 +154,8 @@ export async function POST(request: NextRequest) {
       max_tokens: 200,
     };
 
-    console.log(`[Translate Search Query API] Calling LLM API: ${config.apiUrl}/chat/completions for task: ${taskId}`);
+    console.log(`[Translate Search Query API] Calling ${config.configType} API: ${config.apiUrl}/chat/completions for task: ${taskId}`);
+    console.log(`[Translate Search Query API] Request model: ${config.model}, temperature: 0.3, max_tokens: 200`);
 
     // 调用LLM API
     const response = await fetch(`${config.apiUrl}/chat/completions`, {
@@ -161,8 +169,8 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Translate Search Query API] LLM API error: ${response.status} - ${errorText} for task: ${taskId}`);
-      logResponse(false, taskId, trimmedQuery, undefined, `LLM API error: ${response.status}`);
+      console.error(`[Translate Search Query API] ${config.configType} API error: ${response.status} - ${errorText} for task: ${taskId}`);
+      logResponse(false, taskId, trimmedQuery, undefined, `${config.configType} API error: ${response.status}`);
       
       return NextResponse.json(
         { error: `Translation service error: ${response.status}` },
@@ -173,8 +181,9 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     const translatedQuery = data.choices?.[0]?.message?.content?.trim() || trimmedQuery;
 
-    console.log(`[Translate Search Query API] Translation completed for task: ${taskId}`);
+    console.log(`[Translate Search Query API] ${config.configType} translation completed for task: ${taskId}`);
     console.log(`[Translate Search Query API] Original: "${trimmedQuery}" -> Translated: "${translatedQuery}"`);
+    console.log(`[Translate Search Query API] Translation quality check - Length ratio: ${(translatedQuery.length / trimmedQuery.length).toFixed(2)}`);
     
     logResponse(true, taskId, trimmedQuery, translatedQuery);
 

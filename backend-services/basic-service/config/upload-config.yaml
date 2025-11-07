@@ -1,0 +1,85 @@
+# Upload Configuration
+# 文件上传配置
+
+# 并发上传配置
+concurrent_upload:
+  # 并发上传线程数，默认为3
+  # 建议值：1-10，根据服务器性能和网络带宽调整
+  # 设置过高可能导致服务器负载过大，设置过低会影响上传效率
+  max_concurrent_uploads: 3
+  
+  # 上传队列最大长度（0表示无限制）
+  # 当队列满时，新的上传请求将被拒绝
+  max_queue_size: 0
+  
+  # 上传任务超时时间（秒）
+  # 单个文件上传超过此时间将被取消
+  upload_timeout: 300
+  
+  # 是否启用上传队列
+  # 关闭后所有上传请求将立即处理，不进行队列管理
+  enable_queue: true
+
+# 文件大小限制
+file_size_limits:
+  # 视频文件最大大小（MB）
+  max_video_size_mb: 500
+  
+  # 音频文件最大大小（MB）
+  max_audio_size_mb: 100
+  
+  # 图片文件最大大小（MB）
+  max_image_size_mb: 50
+
+# 上传重试配置
+retry:
+  # 上传失败后的最大重试次数
+  max_retries: 3
+  
+  # 重试间隔（秒）
+  retry_delay: 5
+  
+  # 是否启用指数退避
+  # 启用后，每次重试的延迟时间会递增
+  exponential_backoff: true
+
+# 缩略图配置
+thumbnail:
+  # 是否自动生成视频缩略图
+  auto_generate_video_thumbnail: true
+  
+  # 缩略图质量（1-31，数字越小质量越高）
+  thumbnail_quality: 2
+  
+  # 缩略图最大宽度（像素）
+  thumbnail_max_width: 320
+  
+  # 缩略图最大高度（像素）
+  thumbnail_max_height: 180
+
+# 临时文件管理
+temp_file_management:
+  # 是否自动清理临时文件
+  auto_cleanup: true
+  
+  # 临时文件保留时间（小时）
+  # 超过此时间的临时文件将被自动删除
+  temp_file_retention_hours: 24
+  
+  # 临时文件存储路径（相对于项目根目录）
+  temp_file_directory: "temp"
+
+# 日志配置
+logging:
+  # 是否启用详细的上传日志
+  enable_detailed_logging: true
+  
+  # 是否记录上传进度
+  log_upload_progress: true
+  
+  # 进度日志间隔（秒）
+  progress_log_interval: 10
+  
+  # 是否记录上传统计信息
+  log_upload_statistics: true
+

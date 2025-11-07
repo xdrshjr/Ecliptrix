@@ -106,6 +106,61 @@ class WatermarkRemovalConfig(BaseModel):
     logging: WatermarkRemovalLoggingConfig = WatermarkRemovalLoggingConfig()
 
 
+class ConcurrentUploadConfig(BaseModel):
+    """Concurrent upload configuration."""
+    max_concurrent_uploads: int = 3
+    max_queue_size: int = 0
+    upload_timeout: int = 300
+    enable_queue: bool = True
+
+
+class FileSizeLimitsConfig(BaseModel):
+    """File size limits configuration."""
+    max_video_size_mb: int = 500
+    max_audio_size_mb: int = 100
+    max_image_size_mb: int = 50
+
+
+class UploadRetryConfig(BaseModel):
+    """Upload retry configuration."""
+    max_retries: int = 3
+    retry_delay: int = 5
+    exponential_backoff: bool = True
+
+
+class ThumbnailConfig(BaseModel):
+    """Thumbnail configuration."""
+    auto_generate_video_thumbnail: bool = True
+    thumbnail_quality: int = 2
+    thumbnail_max_width: int = 320
+    thumbnail_max_height: int = 180
+
+
+class TempFileManagementConfig(BaseModel):
+    """Temporary file management configuration."""
+    auto_cleanup: bool = True
+    temp_file_retention_hours: int = 24
+    temp_file_directory: str = "temp"
+
+
+class UploadLoggingConfig(BaseModel):
+    """Upload logging configuration."""
+    enable_detailed_logging: bool = True
+    log_upload_progress: bool = True
+    progress_log_interval: int = 10
+    log_upload_statistics: bool = True
+
+
+class UploadConfig(BaseModel):
+    """Upload configuration."""
+    concurrent_upload: ConcurrentUploadConfig = ConcurrentUploadConfig()
+    file_size_limits: FileSizeLimitsConfig = FileSizeLimitsConfig()
+    retry: UploadRetryConfig = UploadRetryConfig()
+    thumbnail: ThumbnailConfig = ThumbnailConfig()
+    temp_file_management: TempFileManagementConfig = TempFileManagementConfig()
+    logging: UploadLoggingConfig = UploadLoggingConfig()
+
+
 class SupabaseConfig(BaseModel):
     """Supabase configuration."""
     url: str = Field(..., description="Supabase URL")
@@ -155,6 +210,9 @@ class Settings(BaseModel):
     # Watermark Removal Configuration
     watermark_removal: WatermarkRemovalConfig = WatermarkRemovalConfig()
     
+    # Upload Configuration
+    upload: UploadConfig = UploadConfig()
+    
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
     
@@ -198,10 +256,12 @@ def get_settings() -> Settings:
     batch_tts_config_path = os.path.join(config_dir, 'batch_tts_config.yaml')
     youtube_config_path = os.path.join(config_dir, 'youtube.yaml')
     watermark_removal_config_path = os.path.join(config_dir, 'watermark_removal_config.yaml')
+    upload_config_path = os.path.join(config_dir, 'upload-config.yaml')
     
     batch_tts_yaml_config = load_yaml_config(batch_tts_config_path)
     youtube_yaml_config = load_yaml_config(youtube_config_path)
     watermark_removal_yaml_config = load_yaml_config(watermark_removal_config_path)
+    upload_yaml_config = load_yaml_config(upload_config_path)
     
     # Create batch TTS config from YAML
     batch_tts_config = BatchTTSConfig()
@@ -246,6 +306,25 @@ def get_settings() -> Settings:
             logging=WatermarkRemovalLoggingConfig(**watermark_data.get('logging', {}))
         )
     
+    # Create Upload config from YAML
+    upload_config = UploadConfig()
+    if upload_yaml_config:
+        concurrent_upload_data = upload_yaml_config.get('concurrent_upload', {})
+        file_size_limits_data = upload_yaml_config.get('file_size_limits', {})
+        retry_data = upload_yaml_config.get('retry', {})
+        thumbnail_data = upload_yaml_config.get('thumbnail', {})
+        temp_file_management_data = upload_yaml_config.get('temp_file_management', {})
+        logging_data = upload_yaml_config.get('logging', {})
+        
+        upload_config = UploadConfig(
+            concurrent_upload=ConcurrentUploadConfig(**concurrent_upload_data),
+            file_size_limits=FileSizeLimitsConfig(**file_size_limits_data),
+            retry=UploadRetryConfig(**retry_data),
+            thumbnail=ThumbnailConfig(**thumbnail_data),
+            temp_file_management=TempFileManagementConfig(**temp_file_management_data),
+            logging=UploadLoggingConfig(**logging_data)
+        )
+    
     # Create Supabase configuration
     supabase_config = SupabaseConfig(
         url=os.getenv("SUPABASE_URL", ""),
@@ -273,6 +352,7 @@ def get_settings() -> Settings:
         batch_tts=batch_tts_config,
         youtube=youtube_config,
         watermark_removal=watermark_removal_config,
+        upload=upload_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
