@@ -549,7 +549,12 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
     # Use default frame interval if not specified or invalid
     effective_frame_interval = request.frame_interval if request.frame_interval and request.frame_interval > 0 else default_frame_interval
     
+    # Log analysis mode
+    analysis_mode = "thumbnail-only (quick mode)" if request.use_thumbnail else "multi-frame extraction (professional mode)"
+    logger.info(f"Analysis mode: {analysis_mode}")
     logger.info(f"Frame interval: {effective_frame_interval}s (requested: {request.frame_interval}, default: {default_frame_interval}), Custom prompt: {bool(request.custom_prompt)}, Concurrent threads: {concurrent_threads}")
+    if request.use_thumbnail and request.thumbnail_url:
+        logger.info(f"Thumbnail URL: {request.thumbnail_url}")
     
     try:
         # Validate request parameters
@@ -577,7 +582,9 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
         result = await video_analysis_service.analyze_video(
             video_url=request.video_url,
             frame_interval=effective_frame_interval if request.frame_interval and request.frame_interval > 0 else None,
-            custom_prompt=request.custom_prompt
+            custom_prompt=request.custom_prompt,
+            thumbnail_url=request.thumbnail_url,
+            use_thumbnail=request.use_thumbnail
         )
         
         # Log analysis results (without detailed frame analysis content)

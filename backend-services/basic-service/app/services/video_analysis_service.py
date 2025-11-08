@@ -446,7 +446,9 @@ class VideoAnalysisService:
         self, 
         video_url: str, 
         frame_interval: int = None,
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        thumbnail_url: Optional[str] = None,
+        use_thumbnail: bool = False
     ) -> VideoAnalysisResponse:
         """
         Analyze video by extracting frames and analyzing them with VL LLM using concurrent processing.
@@ -455,29 +457,57 @@ class VideoAnalysisService:
             video_url: URL or path to the video file
             frame_interval: Interval in seconds between frames to extract (uses config default if None)
             custom_prompt: Custom prompt for LLM analysis
+            thumbnail_url: Thumbnail URL for quick mode analysis (skips video download/frame extraction)
+            use_thumbnail: If True, use thumbnail instead of downloading video (quick mode)
             
         Returns:
             VideoAnalysisResponse with analysis results
         """
         start_time = time.time()
         logger.info(f"Starting video analysis for: {video_url}")
+        logger.info(f"Analysis mode: {'thumbnail-only (quick mode)' if use_thumbnail else 'multi-frame extraction (professional mode)'}")
         
         # Use config default if not specified
         if frame_interval is None:
             frame_interval = self.config['frame_extraction']['default_frame_interval_seconds']
         
         concurrent_threads = self.config['vlm_processing']['concurrent_threads']
-        logger.info(f"Using concurrent processing with {concurrent_threads} threads, frame interval: {frame_interval}s")
         
         video_path = None
         frames_dir = None
+        thumbnail_path = None
         
         try:
-            # Download video if needed
-            video_path = await self.download_video_if_needed(video_url)
-            
-            # Extract frames
-            frames_info, video_duration = self.extract_frames(video_path, frame_interval)
+            # Quick Mode: Use thumbnail instead of downloading video
+            if use_thumbnail and thumbnail_url:
+                logger.info(f"Quick mode: Using thumbnail for analysis")
+                logger.info(f"  Thumbnail URL: {thumbnail_url}")
+                
+                thumbnail_path = await self.download_thumbnail(thumbnail_url)
+                
+                # Create a single "frame" entry using the thumbnail
+                frames_info = [{
+                    "frame_number": 1,
+                    "timestamp": 0.0,
+                    "frame_path": thumbnail_path,
+                    "original_frame_number": 0,
+                    "is_thumbnail": True
+                }]
+                video_duration = 0.0  # Unknown duration for thumbnail mode
+                
+                logger.info(f"  Successfully downloaded thumbnail for quick analysis")
+                logger.info(f"  Using thumbnail as single frame for VLM analysis")
+                
+            else:
+                # Professional Mode: Download video and extract frames
+                logger.info(f"Professional mode: Extracting multiple frames from video")
+                logger.info(f"  Frame interval: {frame_interval}s, Concurrent threads: {concurrent_threads}")
+                
+                # Download video if needed
+                video_path = await self.download_video_if_needed(video_url)
+                
+                # Extract frames
+                frames_info, video_duration = self.extract_frames(video_path, frame_interval)
             
             if frames_info:
                 frames_dir = os.path.dirname(frames_info[0]["frame_path"])
@@ -610,6 +640,11 @@ class VideoAnalysisService:
                     if video_path and video_path != video_url and os.path.exists(video_path):
                         os.remove(video_path)
                         logger.info(f"Cleaned up downloaded video: {video_path}")
+                    
+                    # Clean up downloaded thumbnail if it was downloaded
+                    if thumbnail_path and os.path.exists(thumbnail_path):
+                        os.remove(thumbnail_path)
+                        logger.info(f"Cleaned up downloaded thumbnail: {thumbnail_path}")
                         
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup temporary files: {str(cleanup_error)}")

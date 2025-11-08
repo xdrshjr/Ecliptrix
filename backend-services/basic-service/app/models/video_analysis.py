@@ -20,6 +20,8 @@ class VideoAnalysisRequest(BaseModel):
     video_url: str = Field(..., description="URL or path to the video file to analyze")
     frame_interval: int = Field(default=5, description="Interval in seconds between frames to extract")
     custom_prompt: Optional[str] = Field(None, description="Custom prompt for LLM analysis")
+    thumbnail_url: Optional[str] = Field(None, description="Thumbnail URL for quick mode analysis (skips video download/frame extraction)")
+    use_thumbnail: bool = Field(default=False, description="Use thumbnail instead of downloading video (quick mode)")
 
 
 class VideoAnalysisResponse(BaseModel):

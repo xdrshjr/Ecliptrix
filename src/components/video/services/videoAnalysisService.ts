@@ -17,6 +17,8 @@ export interface VideoAnalysisRequest {
   video_url: string;
   frame_interval?: number;
   custom_prompt?: string;
+  thumbnail_url?: string;
+  use_thumbnail?: boolean;
 }
 
 export interface VideoAnalysisResponse {
@@ -35,6 +37,8 @@ export interface VideoAnalysisServiceParams {
   frameInterval?: number;
   customPrompt?: string;
   taskId: string;
+  thumbnailUrl?: string;
+  useThumbnail?: boolean;
 }
 
 export interface VideoAnalysisService {
@@ -106,7 +110,7 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
    * @returns Promise<VideoAnalysisResponse> - 解析结果
    */
   async analyzeVideo(params: VideoAnalysisServiceParams): Promise<VideoAnalysisResponse> {
-    const { videoUrl, frameInterval = 5, customPrompt, taskId } = params;
+    const { videoUrl, frameInterval = 5, customPrompt, taskId, thumbnailUrl, useThumbnail = false } = params;
     
     // 参数验证
     if (!videoUrl.trim()) {
@@ -123,7 +127,9 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
       isBlobUrl,
       frameInterval,
       hasCustomPrompt: !!customPrompt,
-      taskId
+      taskId,
+      useThumbnail,
+      hasThumbnailUrl: !!thumbnailUrl
     });
 
     try {
@@ -159,12 +165,14 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
         });
       } else {
         // 如果是普通URL，使用JSON请求
-        this.logger.info('使用URL方式进行视频解析', { videoUrl });
+        this.logger.info('使用URL方式进行视频解析', { videoUrl, useThumbnail });
         
         const requestBody: VideoAnalysisRequest = {
           video_url: videoUrl,
           frame_interval: frameInterval,
-          custom_prompt: customPrompt
+          custom_prompt: customPrompt,
+          thumbnail_url: thumbnailUrl,
+          use_thumbnail: useThumbnail
         };
 
         response = await fetch('/api/video/analyze', {

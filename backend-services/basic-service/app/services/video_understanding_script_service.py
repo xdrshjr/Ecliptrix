@@ -59,7 +59,11 @@ class VideoUnderstandingScriptService:
             logger.info(f"Starting video understanding script generation for task: {request.taskId} (attempt {retry_count + 1}/{max_retries + 1})")
             logger.info(f"Processing {len(request.selectedVideos)} videos with {request.parameters.analysisDepth} analysis depth")
             logger.info(f"Analysis mode: {request.analysisMode} ({'thumbnail only' if request.analysisMode == 'quick' else 'frame extraction'})")
-            logger.info(f"Reference text length: {len(request.referenceText)}, content preview: '{request.referenceText[:100]}...'" if request.referenceText else "No reference text provided")
+            if request.referenceText:
+                logger.info(f"User requirements (chatContent) provided as foundation: length={len(request.referenceText)}, preview='{request.referenceText[:100]}...'")
+                logger.info("Script will be generated based on user requirements combined with video analysis")
+            else:
+                logger.warning("No user requirements (chatContent) provided - script will be generated solely from video analysis")
             
             # Step 1: Analyze videos to get understanding results
             video_analysis_results = await self._analyze_videos(
@@ -437,7 +441,7 @@ class VideoUnderstandingScriptService:
         
         Args:
             analysis_results: Video analysis results
-            reference_text: Reference text for context
+            reference_text: Reference text for context (user's chatContent as foundation)
             parameters: Generation parameters
             task_id: Task identifier
             original_videos: Original video items with complete information including URLs
@@ -445,12 +449,19 @@ class VideoUnderstandingScriptService:
         Returns:
             List[ScriptSegment]: Generated script segments
         """
+        logger.info(f"Starting LLM-based script generation for task: {task_id}")
+        logger.info(f"Generation approach: Using chatContent as foundation + video analysis as support")
+        logger.info(f"Reference text (chatContent): {'Provided' if reference_text and reference_text.strip() else 'Empty'}")
+        logger.info(f"Video analysis results: {len(analysis_results)} videos analyzed")
+        
         # Create prompt for script generation
         prompt = self._create_script_generation_prompt(
             analysis_results, 
             reference_text, 
             parameters
         )
+        
+        logger.info(f"LLM prompt generated: length={len(prompt)}, includes_user_requirements={'<user_requirements>' in prompt}")
         
         # Prepare request data
         request_data = {
@@ -614,10 +625,16 @@ class VideoUnderstandingScriptService:
             'comprehensive': '提供全面深入的内容分析，包括多维度的解读和专业见解'
         }.get(parameters.analysisDepth, '提供详细的内容分析和深入的观点阐述')
         
-        prompt = f"""<role>你是一个专业的视频脚本编写专家，擅长基于视频内容分析结果生成连贯、有逻辑的视频脚本文案。</role>
+        prompt = f"""<role>你是一个专业的视频脚本编写专家，擅长基于用户需求和视频内容分析结果生成连贯、有逻辑的视频脚本文案。</role>
 
 <task>
-基于提供的视频分析结果，生成一套完整的视频脚本文案。脚本需要上下文关联，形成连贯的叙事结构，严格依据用户输入的要求和视频解析信息。
+**核心任务**：以用户提供的对话内容（user_requirements）为基础，结合视频分析结果，融合编写一套完整的视频脚本文案。
+
+**创作原则**：
+1. **以用户需求为主导**：用户的对话内容是脚本的核心基础和主题方向
+2. **结合视频内容**：将视频分析结果作为素材支撑，丰富和具体化用户的需求
+3. **深度融合**：不是简单拼接，而是将用户需求和视频内容有机融合，创作出连贯统一的脚本
+4. **保持一致性**：脚本的主题、风格、表达方式要与用户需求保持一致
 </task>
 
 <video_analysis>
@@ -631,18 +648,21 @@ class VideoUnderstandingScriptService:
 - 生成 {parameters.segmentCount} 个相互关联的脚本段落
 - 每个段落包含一个吸引人的标题和适量的句子（根据视频长度调整）
 - 段落之间要有逻辑连接，形成完整的叙事流程
-- 严格基于视频分析结果的内容，不得添加视频中没有的信息
+- **首要原则：以用户需求（user_requirements）为脚本创作的核心基础**
+- **次要原则：结合视频分析结果提供具体素材和细节支撑**
 - {language_instruction}
 - {depth_instruction}
 </basic_requirements>
 
 <content_requirements>
+- **最重要：脚本内容必须紧密围绕用户在对话中提出的需求、主题和方向**
+- **将视频分析结果作为实现用户需求的具体素材和案例**
 - 脚本文案要具有视频脚本的特点：生动、吸引人、易于理解
-- 开头段落要能够吸引观众注意力，引入主题
-- 中间段落要深入展开内容，提供有价值的信息
-- 结尾段落要总结要点，给观众留下深刻印象
-- 如果用户提供了具体要求，必须严格遵循这些要求
-- 每个段落都要与对应的视频内容紧密相关
+- 开头段落要能够吸引观众注意力，引入用户关注的主题
+- 中间段落要深入展开用户需求的内容，结合视频素材提供有价值的信息
+- 结尾段落要总结要点，呼应用户需求，给观众留下深刻印象
+- 如果用户提供了具体要求，这些要求是最高优先级，必须严格遵循
+- 每个段落都要体现用户需求与视频内容的融合
 - **重要：生成的脚本文案中不得包含任何时间相关的描述（如"XX秒"、"XX分钟"、"时长"等）**
 - 专注于内容本身的描述，而非时间维度的信息
 </content_requirements>
@@ -677,15 +697,35 @@ class VideoUnderstandingScriptService:
 </output_format>
 
 <instruction>
-现在开始生成视频脚本文案，确保：
-1. 严格依据视频分析结果和用户要求
-2. 段落之间逻辑连贯，形成完整故事线
-3. 语言生动，适合视频脚本
-4. 准确关联对应的视频ID
-5. **绝对不要在生成的文案中提及任何时间信息（时长、秒数、分钟数等）**
-6. 专注于视频内容的实质性描述和分析
-7. **根据每个视频的时长（duration_for_script_length）调整对应段落的文案长度**
-8. 确保文案详细程度与视频内容丰富度相匹配
+现在开始生成视频脚本文案，创作流程如下：
+
+**第一步：理解用户需求**
+- 仔细阅读 <user_requirements> 中的用户对话内容
+- 提取用户的核心需求、主题方向、风格偏好
+- 用户的需求是脚本的"灵魂"和"骨架"
+
+**第二步：分析视频素材**
+- 研究 <video_analysis> 中的视频内容分析
+- 识别哪些视频素材可以用来支撑用户需求
+- 视频内容是脚本的"血肉"和"细节"
+
+**第三步：融合创作**
+- 以用户需求为主线，构建脚本结构
+- 将视频内容作为具体案例和素材，融入到用户需求的表达中
+- 确保每个段落都体现"用户需求+视频素材"的深度融合
+- 不是"用户说什么+视频有什么"的简单拼接，而是"用户需要什么，视频如何体现"的有机结合
+
+**质量检查标准：**
+1. **核心符合度**：脚本是否紧密围绕用户在对话中表达的需求和意图？
+2. **素材支撑度**：视频分析结果是否被恰当地用来丰富和支撑用户需求？
+3. **逻辑连贯性**：段落之间是否形成完整的故事线，逻辑是否连贯？
+4. **语言适配性**：语言是否生动，是否适合视频脚本？
+5. **视频关联性**：是否准确关联对应的视频ID？
+6. **时间规避性**：绝对不要在生成的文案中提及任何时间信息（时长、秒数、分钟数等）
+7. **长度匹配度**：根据每个视频的时长（duration_for_script_length）调整对应段落的文案长度
+8. **详略得当性**：确保文案详细程度与视频内容丰富度相匹配
+
+**记住：用户需求是"目标"，视频内容是"工具"。脚本要回答的是"如何用这些视频素材来实现用户的需求"。**
 </instruction>"""
         
         # Debug logging: print full prompt if DEBUG=true

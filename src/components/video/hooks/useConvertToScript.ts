@@ -146,20 +146,23 @@ export const useConvertToScript = (
             currentVideoName: material.name
           }));
 
-          // 快速分析模式：只分析封面（第一帧）
+          // 快速分析模式：只分析封面（使用缩略图）
           if (analysisMode === 'quick') {
             logger.info(`开始快速分析视频: ${material.name}`, {
               videoId: material.id,
               videoUrl: material.url,
+              thumbnailUrl: material.thumbnailUrl,
               analysisMode: 'quick',
               strategy: 'thumbnail-only'
             });
 
             const result = await videoAnalysisService.analyzeVideo({
               videoUrl: material.url!,
-              frameInterval: -1, // -1 表示只提取第一帧（封面）
+              frameInterval: 5, // 不再使用-1，而是传递useThumbnail标志
               taskId,
-              customPrompt: '请用一小段话（不超过50字）简要描述这个视频封面中的主要内容和关键元素。'
+              customPrompt: '请用一小段话（不超过50字）简要描述这个视频封面中的主要内容和关键元素。',
+              thumbnailUrl: material.thumbnailUrl || material.url, // 使用缩略图URL，如果没有则使用视频URL
+              useThumbnail: true // 标志使用缩略图模式
             });
 
             logger.info(`快速分析完成: ${material.name}`, {
