@@ -5,6 +5,7 @@ import { MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useLocale } from '@/contexts/LocaleContext';
 import { ScriptGenerationParameters } from '../../types/videoEditingTypes';
+import { VideoAnalysisResponse } from '../../services/videoAnalysisService';
 
 interface ConvertToScriptModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface ConvertToScriptModalProps {
     analysisMode: 'quick' | 'professional'
   ) => void;
   isGenerating?: boolean;
+  getAnalysisResult?: (videoUrl: string) => VideoAnalysisResponse | null; // 获取视频分析结果
 }
 
 const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
@@ -29,7 +31,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
   taskId,
   chatContent,
   onGenerateScript,
-  isGenerating = false
+  isGenerating = false,
+  getAnalysisResult
 }) => {
   const { t } = useLocale();
   const logger = new VideoEditingLogger({
@@ -84,10 +87,21 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         includeAudioAnalysis: true
       });
 
+      const totalVideoCount = materials.filter(m => m.type === 'video').length;
+      const analyzedCount = getAnalysisResult 
+        ? materials.filter(m => {
+            if (m.type !== 'video' || !m.url) return false;
+            const result = getAnalysisResult(m.url);
+            return result && result.success && result.frame_analyses && result.frame_analyses.length > 0;
+          }).length
+        : 0;
+      
       logger.info('转换视频脚本弹窗打开', {
         chatContentLength: chatContent.length,
-        availableVideoCount: materials.filter(m => m.type === 'video').length,
-        totalMaterials: materials.length
+        totalVideoCount,
+        analyzedVideoCount: analyzedCount,
+        totalMaterials: materials.length,
+        hasAnalysisFunction: !!getAnalysisResult
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,7 +109,39 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
   if (!isVisible) return null;
 
-  const videoMaterials = materials.filter(material => material.type === 'video');
+  // 根据是否启用视频理解，过滤视频素材
+  const allVideoMaterials = materials.filter(material => material.type === 'video');
+  
+  // 如果启用了视频理解，只显示已经分析过的视频
+  const videoMaterials = enableVideoUnderstanding && getAnalysisResult
+    ? allVideoMaterials.filter(material => {
+        const analysisResult = getAnalysisResult(material.url || '');
+        const hasValidAnalysis = analysisResult && 
+                                analysisResult.success && 
+                                analysisResult.frame_analyses && 
+                                analysisResult.frame_analyses.length > 0;
+        
+        if (hasValidAnalysis) {
+          logger.debug(`视频已分析: ${material.name}`, {
+            videoId: material.id,
+            framesCount: analysisResult.frame_analyses.length
+          });
+        }
+        
+        return hasValidAnalysis;
+      })
+    : allVideoMaterials;
+  
+  const analyzedVideoCount = enableVideoUnderstanding && getAnalysisResult
+    ? allVideoMaterials.filter(material => {
+        const analysisResult = getAnalysisResult(material.url || '');
+        return analysisResult && 
+               analysisResult.success && 
+               analysisResult.frame_analyses && 
+               analysisResult.frame_analyses.length > 0;
+      }).length
+    : 0;
+  
   const selectedVideoItems = Array.from(selectedVideos)
     .map(id => videoMaterials.find(v => v.id === id))
     .filter(Boolean) as MaterialItem[];
@@ -347,56 +393,58 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
             <div className="text-sm text-gray-600 mb-6">
               <p>
                 {enableVideoUnderstanding 
-                  ? '已启用视频理解，AI将分析选中的视频内容来生成脚本' 
+                  ? '已启用视频理解，将使用已解析视频的分析结果来生成脚本' 
                   : '视频理解已关闭，将仅根据对话内容生成脚本'}
               </p>
             </div>
 
-            {/* Analysis Mode Selection - 只在视频理解开启时显示 */}
-            {enableVideoUnderstanding && (
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">分析模式</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => {
-                      setAnalysisMode('quick');
-                      logger.userAction('切换分析模式', 'changeAnalysisMode', { mode: 'quick' });
-                    }}
-                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
-                      analysisMode === 'quick'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                    }`}
-                  >
-                    ⚡ 快速分析
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAnalysisMode('professional');
-                      logger.userAction('切换分析模式', 'changeAnalysisMode', { mode: 'professional' });
-                    }}
-                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
-                      analysisMode === 'professional'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                    }`}
-                  >
-                    🎯 专业分析
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Video Selection Grid */}
             {enableVideoUnderstanding && (
               <div>
+                {/* 显示已分析视频信息 */}
+                {getAnalysisResult && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start space-x-2">
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="text-sm">
+                        <p className="text-blue-800 font-medium">
+                          显示已解析的视频素材
+                        </p>
+                        <p className="text-blue-700 mt-1">
+                          当前共 <span className="font-semibold">{analyzedVideoCount}</span> 个已解析视频 
+                          {allVideoMaterials.length > analyzedVideoCount && (
+                            <span className="text-blue-600">
+                              （总共 {allVideoMaterials.length} 个视频）
+                            </span>
+                          )}
+                        </p>
+                        {allVideoMaterials.length > analyzedVideoCount && (
+                          <p className="text-blue-600 text-xs mt-1">
+                            💡 提示：其他未解析的视频需要先在素材面板中进行 AI 视频解析
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {videoMaterials.length === 0 ? (
                   <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
                     <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-gray-500 text-sm">暂无可用的视频素材</p>
-                    <p className="text-gray-400 text-xs mt-1">请先上传或搜索视频素材</p>
+                    <p className="text-gray-500 text-sm">
+                      {getAnalysisResult && allVideoMaterials.length > 0 
+                        ? '暂无已解析的视频素材'
+                        : '暂无可用的视频素材'}
+                    </p>
+                    <p className="text-gray-400 text-xs mt-1">
+                      {getAnalysisResult && allVideoMaterials.length > 0 
+                        ? '请先在素材面板中对视频进行 AI 视频解析'
+                        : '请先上传或搜索视频素材'}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -429,16 +477,9 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                           
                           <div className="p-3">
                             <p className="text-sm font-medium text-gray-900 truncate">{video.name}</p>
-                            <div className="flex items-center justify-between mt-1">
-                              <p className="text-xs text-gray-500">
-                                {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
-                              </p>
-                              {video.duration && (
-                                <p className="text-xs text-blue-600 font-medium">
-                                  {video.duration < 60 ? '3s/帧' : video.duration < 300 ? '10s/帧' : '30s/帧'}
-                                </p>
-                              )}
-                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
+                            </p>
                           </div>
 
                           {selectedVideos.has(video.id) && (
@@ -480,7 +521,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-shrink-0 rounded-b-2xl">
           <div className="text-sm text-gray-600">
             {enableVideoUnderstanding && selectedVideos.size > 0 
-              ? `将分析 ${selectedVideos.size} 个视频并生成脚本` 
+              ? `将使用 ${selectedVideos.size} 个已解析视频生成脚本` 
               : '将根据对话内容生成脚本'}
           </div>
           

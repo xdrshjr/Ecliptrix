@@ -6,7 +6,7 @@ import {
   ScriptGenerationParameters,
   VideoUnderstandingScriptProgress
 } from '../types/videoEditingTypes';
-import { VideoAnalysisServiceImpl } from '../services/videoAnalysisService';
+import { VideoAnalysisServiceImpl, VideoAnalysisResponse } from '../services/videoAnalysisService';
 
 export interface UseConvertToScriptReturn {
   isModalOpen: boolean;
@@ -27,7 +27,8 @@ export interface UseConvertToScriptReturn {
 
 export const useConvertToScript = (
   taskId: string,
-  onScriptGenerated?: (segments: ScriptSegment[]) => void
+  onScriptGenerated?: (segments: ScriptSegment[]) => void,
+  getAnalysisResult?: (videoUrl: string) => VideoAnalysisResponse | null
 ): UseConvertToScriptReturn => {
   const logger = new VideoEditingLogger({
     taskId,
@@ -317,9 +318,78 @@ export const useConvertToScript = (
 
       let videosWithAnalysis = selectedVideos;
 
-      // 如果启用了视频理解，先分析视频
+      // 如果启用了视频理解，先检查是否需要分析视频
       if (enableVideoUnderstanding && selectedVideos.length > 0) {
-        videosWithAnalysis = await analyzeVideosInParallel(selectedVideos, analysisMode);
+        // 使用getAnalysisResult将已有的分析结果添加到材料的metadata中
+        if (getAnalysisResult) {
+          logger.info('检查并使用现有视频分析结果', {
+            videoCount: selectedVideos.length
+          });
+
+          videosWithAnalysis = selectedVideos.map(video => {
+            if (video.type !== 'video' || !video.url) {
+              return video;
+            }
+
+            // 尝试从getAnalysisResult获取已有的分析结果
+            const existingAnalysis = getAnalysisResult(video.url);
+            
+            if (existingAnalysis && existingAnalysis.success && existingAnalysis.frame_analyses?.length > 0) {
+              logger.info(`使用现有分析结果: ${video.name}`, {
+                videoId: video.id,
+                videoUrl: video.url,
+                framesCount: existingAnalysis.frame_analyses.length,
+                videoDuration: existingAnalysis.video_duration
+              });
+
+              // 将分析结果添加到材料的metadata中
+              return {
+                ...video,
+                metadata: {
+                  ...video.metadata,
+                  video_analysis: {
+                    success: existingAnalysis.success,
+                    video_url: existingAnalysis.video_url,
+                    total_frames_extracted: existingAnalysis.total_frames_extracted,
+                    video_duration: existingAnalysis.video_duration,
+                    frame_analyses: existingAnalysis.frame_analyses,
+                    processing_time: existingAnalysis.processing_time,
+                    analysis_timestamp: existingAnalysis.timestamp
+                  }
+                }
+              };
+            }
+
+            return video;
+          });
+
+          const videosWithExistingAnalysis = videosWithAnalysis.filter(v => v.metadata?.video_analysis);
+          const videosNeedingAnalysis = videosWithAnalysis.filter(v => v.type === 'video' && !v.metadata?.video_analysis);
+
+          logger.info('视频分析状态检查', {
+            totalVideos: selectedVideos.filter(v => v.type === 'video').length,
+            videosWithExistingAnalysis: videosWithExistingAnalysis.length,
+            videosNeedingAnalysis: videosNeedingAnalysis.length
+          });
+
+          // 如果还有视频需要分析，则进行分析（这种情况不应该发生，因为modal已经过滤了）
+          if (videosNeedingAnalysis.length > 0) {
+            logger.warn('发现未分析的视频，将进行分析', {
+              needingAnalysisCount: videosNeedingAnalysis.length,
+              videos: videosNeedingAnalysis.map(v => ({ id: v.id, name: v.name }))
+            });
+            
+            videosWithAnalysis = await analyzeVideosInParallel(videosWithAnalysis, analysisMode);
+          } else {
+            logger.info('所有视频都已有分析结果，跳过视频分析步骤', {
+              totalVideos: videosWithExistingAnalysis.length
+            });
+          }
+        } else {
+          // 没有getAnalysisResult函数，执行原有的分析流程
+          logger.warn('getAnalysisResult函数未提供，将执行完整视频分析');
+          videosWithAnalysis = await analyzeVideosInParallel(selectedVideos, analysisMode);
+        }
       }
 
       // 生成脚本
@@ -401,7 +471,7 @@ export const useConvertToScript = (
         isAnalyzing: false
       }));
     }
-  }, [logger, showSuccess, showError, onScriptGenerated, analyzeVideosInParallel]);
+  }, [logger, showSuccess, showError, onScriptGenerated, analyzeVideosInParallel, getAnalysisResult]);
 
   return {
     isModalOpen,

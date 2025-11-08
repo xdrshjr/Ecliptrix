@@ -458,7 +458,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content);
   const materialManagement = useMaterialManagement(taskId);
-  const convertToScript = useConvertToScript(taskId, scriptGeneration.handleScriptGenerated);
+  
+  // 添加视频解析功能 - 需要在 convertToScript 之前初始化
+  const videoAnalysis = useVideoAnalysis(taskId);
+  
+  const convertToScript = useConvertToScript(taskId, scriptGeneration.handleScriptGenerated, videoAnalysis.getAnalysisResult);
 
   // 监听脚本生成状态变化，自动记录开始时间和清除时间
   useEffect(() => {
@@ -480,9 +484,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加时间轴组合播放功能（新增视频跳转回调）
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials, handleVideoSeekRequired);
-  
-  // 添加视频解析功能
-  const videoAnalysis = useVideoAnalysis(taskId);
   
   // 添加AI生图功能
   const aiImageGeneration = useAIImageGeneration(taskId, materialManagement.addMaterials);
@@ -2810,6 +2811,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         chatContent={convertToScript.chatContent}
         onGenerateScript={convertToScript.generateScript}
         isGenerating={convertToScript.isGenerating}
+        getAnalysisResult={videoAnalysis.getAnalysisResult}
       />
 
       {/* 转换视频脚本进度弹窗 */}
