@@ -31,6 +31,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+# Configure watchfiles logging to reduce noise during video processing
+# When extracting video frames to temp directories, watchfiles detects these changes
+# and logs "1 change detected" messages excessively. Setting to WARNING suppresses this.
+logging.getLogger("watchfiles").setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:

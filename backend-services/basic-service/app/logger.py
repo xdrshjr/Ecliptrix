@@ -87,6 +87,11 @@ def setup_logging(log_level: Optional[str] = None) -> logging.Logger:
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
     
+    # Configure third-party library logging levels to reduce noise
+    # watchfiles is used by uvicorn for auto-reload and generates excessive logs during video processing
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
+    logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
+    
     # Create application logger
     app_logger = logging.getLogger("basic_service")
     app_logger.info(f"Logging initialized with level: {log_level}")

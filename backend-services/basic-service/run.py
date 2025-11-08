@@ -4,11 +4,17 @@ Startup script for the Basic Service.
 """
 
 import uvicorn
+import logging
 from app.config import settings
 from app.logger import logger
 
 def main():
     """Main function to start the FastAPI server."""
+    # Configure watchfiles logging before starting uvicorn to prevent excessive logs
+    # during video processing when frames are extracted to temp directories
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
+    logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
+    
     logger.info("Starting Basic Service...")
     logger.info(f"Server configuration: {settings.host}:{settings.port}")
     logger.info(f"Debug mode: {settings.debug}")
