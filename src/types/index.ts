@@ -363,6 +363,7 @@ export interface VideoEditingTaskContent {
     isAIMixing?: boolean;
     aiMixingProgress?: number;
     isAIMixingModeModalOpen?: boolean;
+    isBatchAnalysisModalOpen?: boolean;
     isWorkflowConfigModalOpen?: boolean;
     videoCutModal?: {
       isOpen: boolean;

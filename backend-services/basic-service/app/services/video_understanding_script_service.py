@@ -453,6 +453,7 @@ class VideoUnderstandingScriptService:
         logger.info(f"Generation approach: Using chatContent as foundation + video analysis as support")
         logger.info(f"Reference text (chatContent): {'Provided' if reference_text and reference_text.strip() else 'Empty'}")
         logger.info(f"Video analysis results: {len(analysis_results)} videos analyzed")
+        logger.info(f"Character-to-duration mapping: 30 Chinese characters ≈ 10 seconds, 15 characters ≈ 5 seconds")
         
         # Create prompt for script generation
         prompt = self._create_script_generation_prompt(
@@ -572,7 +573,9 @@ class VideoUnderstandingScriptService:
         for i, result in enumerate(analysis_results, 1):
             # Safely check frames availability
             frames_count = len(result.frames) if result.frames is not None else 0
-            logger.info(f"Building prompt for video {result.videoId}: {frames_count} frames available")
+            # Calculate expected character count based on duration (30 chars ≈ 10 seconds)
+            expected_chars = int(result.estimatedDuration * 3)  # 3 chars per second
+            logger.info(f"Building prompt for video {result.videoId}: duration={result.estimatedDuration:.1f}s, expected_chars≈{expected_chars}, frames={frames_count}")
             
             video_analysis_summary += f"""
 <video id="{result.videoId}">
@@ -668,12 +671,14 @@ class VideoUnderstandingScriptService:
 </content_requirements>
 
 <script_length_requirements>
-- **根据视频时长调整脚本文案的长度和详细程度：**
-  - 短视频（0-30秒）：每段落2-3个简洁有力的句子，突出核心要点
-  - 中等视频（31-120秒）：每段落3-4个句子，适度展开内容描述
-  - 长视频（121秒以上）：每段落4-5个句子，深入详细地描述内容
+- **字符与时长的对应关系（重要参考）：**
+  - **30个字（中文字符）大约对应10秒左右的视频**
+  - **15个字（中文字符）大约对应5秒左右的视频**
+  - 以此类推，根据视频时长（duration_for_script_length）计算合适的文案字符数
+  - 例如：20秒的视频，文案应该在60个字左右；45秒的视频，文案应该在135个字左右
 - 文案长度要与视频内容的丰富程度相匹配
 - 确保每个段落的文案能够充分覆盖对应视频的主要内容
+- **生成的文案字符数应与视频时长相关联，遵循30字≈10秒的比例**
 - 避免文案过短导致内容空洞，也避免文案过长导致冗余
 </script_length_requirements>
 

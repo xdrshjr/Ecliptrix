@@ -10,9 +10,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { UseComfyUIHealthReturn } from '../../hooks/useComfyUIHealth';
 import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
 import WatermarkRemovalModal from '../WatermarkRemovalModal/WatermarkRemovalModal';
-import MyMaterialsModal from '../MyMaterialsModal/MyMaterialsModal';
 import { useNotification } from '@/contexts/NotificationContext';
-import { UserMaterial } from '@/lib/api/userMaterials';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -117,9 +115,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // My Materials Modal state
-  const [isMyMaterialsModalOpen, setIsMyMaterialsModalOpen] = useState(false);
-
   // Effect selection state
   const [selectedEffect, setSelectedEffect] = useState('');
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
@@ -222,7 +217,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     setIsDropdownOpen(!isDropdownOpen);
   }, [isDropdownOpen, materials.length, selectedMaterialType, logger]);
 
-  const handleDropdownOptionClick = useCallback((option: 'video' | 'audio' | 'image' | 'myMaterials') => {
+  const handleDropdownOptionClick = useCallback((option: 'video' | 'audio' | 'image') => {
     logger.info('用户选择素材库选项', {
       option,
       materialsCount: materials.length,
@@ -240,9 +235,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         break;
       case 'image':
         onSearchImages();
-        break;
-      case 'myMaterials':
-        setIsMyMaterialsModalOpen(true);
         break;
     }
   }, [materials.length, selectedMaterialType, logger, onSearchVideos, onSearchAudios, onSearchImages]);
@@ -1093,53 +1085,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   }, [handleDragUpload, showSuccess, showError, logger]);
 
-  // Handle adding materials from My Materials modal
-  const handleAddMyMaterials = useCallback(async (userMaterials: UserMaterial[]) => {
-    logger.info('添加我的素材到素材管理', {
-      count: userMaterials.length,
-      materials: userMaterials.map(m => ({ id: m.id, name: m.name, type: m.type }))
-    });
-
-    try {
-      for (const userMaterial of userMaterials) {
-        // Convert UserMaterial to MaterialItem
-        const materialItem: MaterialItem = {
-          id: userMaterial.id,
-          name: userMaterial.name,
-          type: userMaterial.type as MaterialType,
-          format: userMaterial.name.split('.').pop() || '',
-          size: userMaterial.size,
-          url: userMaterial.url,
-          thumbnailUrl: userMaterial.thumbnail_url, // 添加缩略图
-          createdAt: new Date(userMaterial.created_at),
-          metadata: {
-            originalUrl: userMaterial.url,
-            fileName: userMaterial.name,
-            isLocalFile: false,
-            contentType: userMaterial.content_type,
-            fromMyMaterials: true
-          }
-        };
-
-        // Add the material to the panel
-        addOrReplaceMaterial(materialItem);
-
-        logger.info('素材已添加到面板', {
-          materialId: materialItem.id,
-          materialName: materialItem.name,
-          materialType: materialItem.type,
-          hasThumbnail: !!materialItem.thumbnailUrl
-        });
-      }
-
-      showSuccess(`成功添加 ${userMaterials.length} 个素材到素材管理`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '添加素材失败';
-      showError(errorMessage);
-      logger.error('添加我的素材失败', error as Error);
-    }
-  }, [addOrReplaceMaterial, showSuccess, showError, logger]);
-
   const getEffectDescription = (effect: string) => {
     switch (effect) {
       case 'static':
@@ -1874,20 +1819,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         </svg>
                         <span>{t.materialsPanel.searchImages}</span>
                       </button>
-                      
-                      {/* Divider */}
-                      <div className="my-1 border-t border-gray-200"></div>
-                      
-                      {/* My Materials */}
-                      <button
-                        onClick={() => handleDropdownOptionClick('myMaterials')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                        </svg>
-                        <span>{t.materialsPanel.myMaterials}</span>
-                      </button>
                     </div>
                   </div>
                 )}
@@ -2178,14 +2109,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         material={watermarkRemovalModal.material}
         onClose={handleCloseWatermarkRemovalModal}
         onWatermarkRemoved={handleWatermarkRemoved}
-        taskId={taskId}
-      />
-
-      {/* 我的素材弹窗 */}
-      <MyMaterialsModal
-        isOpen={isMyMaterialsModalOpen}
-        onClose={() => setIsMyMaterialsModalOpen(false)}
-        onAddMaterials={handleAddMyMaterials}
         taskId={taskId}
       />
     </div>

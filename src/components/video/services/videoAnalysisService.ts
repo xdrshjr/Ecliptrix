@@ -87,10 +87,12 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
   /**
    * 将blob URL转换为File对象
    * @param blobUrl - blob URL
+   * @param fileName - 文件名（可选）
+   * @param fileType - 文件类型（可选）
    * @returns Promise<File> - File对象
    */
-  private async blobUrlToFile(blobUrl: string): Promise<File> {
-    this.logger.info('开始转换blob URL为File对象', { blobUrl });
+  private async blobUrlToFile(blobUrl: string, fileName?: string, fileType?: string): Promise<File> {
+    this.logger.info('开始转换blob URL为File对象', { blobUrl, fileName, fileType });
     
     try {
       const response = await fetch(blobUrl);
@@ -102,10 +104,14 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
       
       // 从blob URL或使用默认文件名
       const timestamp = Date.now();
-      const fileName = `video_${timestamp}.mp4`;
+      const defaultFileName = fileType?.startsWith('image/') 
+        ? `thumbnail_${timestamp}.jpg` 
+        : `video_${timestamp}.mp4`;
+      const finalFileName = fileName || defaultFileName;
+      const finalFileType = fileType || blob.type || 'video/mp4';
       
       // 创建File对象
-      const file = new File([blob], fileName, { type: blob.type || 'video/mp4' });
+      const file = new File([blob], finalFileName, { type: finalFileType });
       
       this.logger.info('blob URL转换为File对象成功', {
         fileName: file.name,
@@ -153,7 +159,7 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
 
       // 如果是blob URL，需要上传文件
       if (isBlobUrl) {
-        this.logger.info('检测到blob URL，转换为文件上传', { videoUrl });
+        this.logger.info('检测到blob URL，转换为文件上传', { videoUrl, useThumbnail });
         
         // 将blob URL转换为File对象
         const file = await this.blobUrlToFile(videoUrl);
@@ -165,12 +171,32 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
         if (customPrompt) {
           formData.append('custom_prompt', customPrompt);
         }
+        
+        // 添加缩略图相关参数
+        if (useThumbnail && thumbnailUrl) {
+          formData.append('use_thumbnail', 'true');
+          
+          // 如果缩略图也是blob URL，需要转换并上传
+          if (this.isBlobUrl(thumbnailUrl)) {
+            this.logger.info('缩略图是blob URL，转换为文件上传', { thumbnailUrl });
+            const thumbnailFile = await this.blobUrlToFile(thumbnailUrl, undefined, 'image/jpeg');
+            formData.append('thumbnail', thumbnailFile);
+            formData.append('thumbnail_url', ''); // 留空，使用上传的文件
+          } else {
+            // 如果是普通URL，直接传递
+            formData.append('thumbnail_url', thumbnailUrl);
+          }
+        } else {
+          formData.append('use_thumbnail', 'false');
+        }
 
         this.logger.info('上传视频文件进行解析', {
           fileName: file.name,
           fileSize: file.size,
           frameInterval,
-          hasCustomPrompt: !!customPrompt
+          hasCustomPrompt: !!customPrompt,
+          useThumbnail,
+          hasThumbnailUrl: !!thumbnailUrl
         });
 
         // 发送multipart/form-data请求

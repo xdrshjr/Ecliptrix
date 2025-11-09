@@ -316,27 +316,29 @@ class VideoAnalysisService:
         Download thumbnail from URL or decode from base64 data URL and return local path.
         
         Args:
-            thumbnail_url: URL of the thumbnail image or base64 data URL
+            thumbnail_url: URL of the thumbnail image, base64 data URL, or local file path
             
         Returns:
             Local path to the downloaded thumbnail
         """
         try:
-            # Create temp directory for thumbnails
-            thumbnails_dir = os.path.join(
-                tempfile.gettempdir(),
-                self.config['temp_files']['video_download_dir'],
-                "thumbnails"
-            )
-            os.makedirs(thumbnails_dir, exist_ok=True)
-            
-            # Generate unique filename
-            thumbnail_filename = f"thumbnail_{uuid4()}.jpg"
-            thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
-            
             # Check if thumbnail_url is a base64 data URL
             if thumbnail_url.startswith('data:'):
-                logger.info(f"Decoding base64 thumbnail data (length: {len(thumbnail_url)}, preview: {thumbnail_url[:80]}...)")
+                # Extract mime type from data URL
+                mime_type = thumbnail_url.split(';')[0].split(':')[1] if ';' in thumbnail_url else 'unknown'
+                logger.info(f"Decoding base64 thumbnail data (type: {mime_type}, total length: {len(thumbnail_url)} chars)")
+                
+                # Create temp directory for thumbnails
+                thumbnails_dir = os.path.join(
+                    tempfile.gettempdir(),
+                    self.config['temp_files']['video_download_dir'],
+                    "thumbnails"
+                )
+                os.makedirs(thumbnails_dir, exist_ok=True)
+                
+                # Generate unique filename
+                thumbnail_filename = f"thumbnail_{uuid4()}.jpg"
+                thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
                 
                 # Extract base64 data from data URL
                 # Format: data:image/jpeg;base64,/9j/4AAQSkZJRg...
@@ -355,9 +357,22 @@ class VideoAnalysisService:
                 except Exception as decode_error:
                     logger.error(f"Failed to decode base64 thumbnail: {str(decode_error)}")
                     raise
-            else:
-                # Regular URL, download it
+            
+            # Check if thumbnail_url is an HTTP/HTTPS URL
+            elif thumbnail_url.startswith('http://') or thumbnail_url.startswith('https://'):
                 logger.info(f"Downloading thumbnail from URL: {thumbnail_url}")
+                
+                # Create temp directory for thumbnails
+                thumbnails_dir = os.path.join(
+                    tempfile.gettempdir(),
+                    self.config['temp_files']['video_download_dir'],
+                    "thumbnails"
+                )
+                os.makedirs(thumbnails_dir, exist_ok=True)
+                
+                # Generate unique filename
+                thumbnail_filename = f"thumbnail_{uuid4()}.jpg"
+                thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
                 
                 response = requests.get(thumbnail_url, timeout=30)
                 response.raise_for_status()
@@ -368,6 +383,17 @@ class VideoAnalysisService:
                 
                 logger.info(f"Thumbnail downloaded successfully: {thumbnail_path}")
                 return thumbnail_path
+            
+            # Otherwise, treat it as a local file path
+            else:
+                # Check if file exists
+                if os.path.exists(thumbnail_url):
+                    logger.info(f"Thumbnail is already a local file: {thumbnail_url}")
+                    return thumbnail_url
+                else:
+                    error_msg = f"Local thumbnail file does not exist: {thumbnail_url}"
+                    logger.error(error_msg)
+                    raise FileNotFoundError(error_msg)
             
         except Exception as e:
             # 截断URL以避免日志过长（特别是base64数据）
@@ -505,10 +531,13 @@ class VideoAnalysisService:
             # Quick Mode: Use thumbnail instead of downloading video
             if use_thumbnail and thumbnail_url:
                 logger.info(f"Quick mode: Using thumbnail for analysis")
-                # 截断thumbnail URL避免打印超长base64数据
-                thumbnail_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
-                thumbnail_type = 'base64' if thumbnail_url.startswith('data:') else 'url'
-                logger.info(f"  Thumbnail: {thumbnail_type} (length: {len(thumbnail_url)}, preview: {thumbnail_preview})")
+                # 不打印base64预览，避免日志过长
+                if thumbnail_url.startswith('data:'):
+                    mime_type = thumbnail_url.split(';')[0].split(':')[1] if ';' in thumbnail_url else 'unknown'
+                    logger.info(f"  Thumbnail: base64 encoded (type: {mime_type}, size: {len(thumbnail_url)} chars)")
+                else:
+                    thumbnail_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
+                    logger.info(f"  Thumbnail: url (preview: {thumbnail_preview})")
                 
                 thumbnail_path = await self.download_thumbnail(thumbnail_url)
                 
@@ -745,10 +774,13 @@ class VideoAnalysisService:
                 if use_thumbnails and thumbnail_url:
                     # Quick Mode: Use thumbnail instead of downloading video
                     logger.info(f"│ Video URL: {video_url}")
-                    # 截断thumbnail URL避免打印超长base64数据
-                    thumbnail_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
-                    thumbnail_type = 'base64' if thumbnail_url.startswith('data:') else 'url'
-                    logger.info(f"│ Thumbnail: {thumbnail_type} (length: {len(thumbnail_url)}, preview: {thumbnail_preview})")
+                    # 不打印base64预览，避免日志过长
+                    if thumbnail_url.startswith('data:'):
+                        mime_type = thumbnail_url.split(';')[0].split(':')[1] if ';' in thumbnail_url else 'unknown'
+                        logger.info(f"│ Thumbnail: base64 encoded (type: {mime_type}, size: {len(thumbnail_url)} chars)")
+                    else:
+                        thumbnail_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
+                        logger.info(f"│ Thumbnail: url (preview: {thumbnail_preview})")
                     logger.info(f"│ Mode: Quick (thumbnail-only)")
                     logger.info(f"│ Downloading thumbnail...")
                     

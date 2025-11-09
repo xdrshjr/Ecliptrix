@@ -24,8 +24,8 @@ export interface UseVideoAnalysisReturn {
   currentVideoUrl: string | null;
   
   // 方法
-  analyzeVideo: (videoUrl: string, frameInterval?: number, customPrompt?: string) => Promise<void>;
-  analyzeVideoWithQueue: (videoUrl: string, frameInterval?: number, customPrompt?: string) => Promise<void>;
+  analyzeVideo: (videoUrl: string, frameInterval?: number, customPrompt?: string, thumbnailUrl?: string, useThumbnail?: boolean) => Promise<void>;
+  analyzeVideoWithQueue: (videoUrl: string, frameInterval?: number, customPrompt?: string, thumbnailUrl?: string, useThumbnail?: boolean) => Promise<void>;
   getAnalysisStatus: (videoUrl: string) => 'idle' | 'waiting' | 'analyzing' | 'completed' | 'error';
   getAnalysisResult: (videoUrl: string) => VideoAnalysisResponse | null;
   openAnalysisModal: (videoUrl: string) => void;
@@ -64,12 +64,16 @@ export const useVideoAnalysis = (taskId: string): UseVideoAnalysisReturn => {
   const analyzeVideo = useCallback(async (
     videoUrl: string, 
     frameInterval: number = 5, 
-    customPrompt?: string
+    customPrompt?: string,
+    thumbnailUrl?: string,
+    useThumbnail: boolean = false
   ) => {
     logger.userAction('开始视频解析', 'analyzeVideo', {
       videoUrl,
       frameInterval,
-      hasCustomPrompt: !!customPrompt
+      hasCustomPrompt: !!customPrompt,
+      thumbnailUrl,
+      useThumbnail
     });
 
     // 更新状态为分析中
@@ -85,7 +89,9 @@ export const useVideoAnalysis = (taskId: string): UseVideoAnalysisReturn => {
         videoUrl,
         frameInterval,
         customPrompt,
-        taskId
+        taskId,
+        thumbnailUrl,
+        useThumbnail
       });
 
       logger.info('视频解析完成', {
@@ -131,12 +137,16 @@ export const useVideoAnalysis = (taskId: string): UseVideoAnalysisReturn => {
   const analyzeVideoWithQueue = useCallback(async (
     videoUrl: string,
     frameInterval: number = 5,
-    customPrompt?: string
+    customPrompt?: string,
+    thumbnailUrl?: string,
+    useThumbnail: boolean = false
   ) => {
     logger.userAction('开始视频解析（队列管理）', 'analyzeVideoWithQueue', {
       videoUrl,
       frameInterval,
-      hasCustomPrompt: !!customPrompt
+      hasCustomPrompt: !!customPrompt,
+      thumbnailUrl,
+      useThumbnail
     });
 
     // 先设置为等待状态
@@ -232,10 +242,14 @@ export const useVideoAnalysis = (taskId: string): UseVideoAnalysisReturn => {
       }
 
       // 队列有空闲，开始解析
-      logger.info('队列检查完成，开始视频解析', { videoUrl });
+      logger.info('队列检查完成，开始视频解析', { 
+        videoUrl, 
+        useThumbnail,
+        thumbnailUrl 
+      });
       
       // 调用实际的解析方法
-      await analyzeVideo(videoUrl, frameInterval, customPrompt);
+      await analyzeVideo(videoUrl, frameInterval, customPrompt, thumbnailUrl, useThumbnail);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '视频解析失败';

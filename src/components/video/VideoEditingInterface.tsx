@@ -48,7 +48,8 @@ import {
   DigitalHumanGenerationModal,
   AICreationModal,
   AIMixingProgressModal,
-  AIMixingModeSelectionModal
+  AIMixingModeSelectionModal,
+  BatchAnalysisModeSelectionModal
 } from './components';
 import ConvertToScriptModal from './components/ConvertToScriptModal';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
@@ -129,6 +130,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     content?.uiState?.isAIMixingModeModalOpen ?? false
   );
   
+  // 批量解析模式选择弹窗状态
+  const [isBatchAnalysisModalOpen, setIsBatchAnalysisModalOpen] = useState<boolean>(
+    content?.uiState?.isBatchAnalysisModalOpen ?? false
+  );
+  
   // 工作流配置弹窗状态
   const [isWorkflowConfigModalOpen, setIsWorkflowConfigModalOpen] = useState<boolean>(
     content?.uiState?.isWorkflowConfigModalOpen ?? false
@@ -177,6 +183,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isAIMixing,
     aiMixingProgress,
     isAIMixingModeModalOpen,
+    isBatchAnalysisModalOpen,
     isWorkflowConfigModalOpen,
     videoCutModalIsOpen: videoCutModal.isOpen,
     workflowConfigsCount: workflowConfigs.size,
@@ -202,6 +209,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isAIMixing,
         aiMixingProgress,
         isAIMixingModeModalOpen,
+        isBatchAnalysisModalOpen,
         isWorkflowConfigModalOpen,
         videoCutModal,
         isChatLoading,
@@ -220,6 +228,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.isAIMixing !== isAIMixing ||
       content.uiState?.aiMixingProgress !== aiMixingProgress ||
       content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
+      content.uiState?.isBatchAnalysisModalOpen !== isBatchAnalysisModalOpen ||
       content.uiState?.isWorkflowConfigModalOpen !== isWorkflowConfigModalOpen ||
       content.uiState?.isChatLoading !== isChatLoading ||
       content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
@@ -881,12 +890,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, []);
 
   // 处理视频AI解析
-  const handleVideoAnalysis = useCallback(async (material: MaterialItem) => {
+  const handleVideoAnalysis = useCallback(async (material: MaterialItem, frameInterval?: number, useThumbnail?: boolean) => {
     console.log(`[VideoEditingInterface] 开始视频AI解析`, {
       taskId,
       materialId: material.id,
       materialName: material.name,
       videoUrl: material.url,
+      thumbnailUrl: material.thumbnailUrl,
+      frameInterval,
+      useThumbnail,
       timestamp: new Date().toISOString()
     });
 
@@ -912,15 +924,26 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         videoAnalysis.openAnalysisModal(material.url);
       } else if (currentStatus === 'idle') {
         // 开始新的解析（带队列管理）
+        const effectiveFrameInterval = frameInterval || 5;
+        const shouldUseThumbnail = useThumbnail === true;
+        
         console.log(`[VideoEditingInterface] 开始队列管理的视频解析`, {
           taskId,
           materialId: material.id,
           videoUrl: material.url,
-          frameInterval: 5
+          thumbnailUrl: material.thumbnailUrl,
+          frameInterval: effectiveFrameInterval,
+          useThumbnail: shouldUseThumbnail
         });
         
         // 使用队列管理的解析方法
-        await videoAnalysis.analyzeVideoWithQueue(material.url, 5); // 默认5秒间隔
+        await videoAnalysis.analyzeVideoWithQueue(
+          material.url, 
+          effectiveFrameInterval,
+          undefined, // customPrompt
+          material.thumbnailUrl, // thumbnailUrl
+          shouldUseThumbnail // useThumbnail
+        );
         
         console.log(`[VideoEditingInterface] 视频解析完成`, {
           taskId,
@@ -950,7 +973,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [taskId, videoAnalysis, showError]);
 
   // 处理批量视频AI解析
-  // 直接触发所有视频素材的AI解析，复用单个视频解析的队列逻辑
+  // 打开模式选择弹窗，让用户选择快速解析或专业解析
   const handleBatchVideoAnalysis = useCallback(async () => {
     console.log(`[VideoEditingInterface] 点击批量解析按钮`, {
       taskId,
@@ -973,29 +996,68 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       return;
     }
 
+    console.log(`[VideoEditingInterface] 打开批量解析模式选择弹窗`, {
+      taskId,
+      videoCount: videoMaterials.length,
+      timestamp: new Date().toISOString()
+    });
+
+    // 打开模式选择弹窗
+    setIsBatchAnalysisModalOpen(true);
+  }, [taskId, materialManagement.materials, showError]);
+
+  // 处理批量解析模式确认
+  const handleBatchAnalysisConfirm = useCallback(async (mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
+    console.log(`[VideoEditingInterface] 用户选择批量解析模式`, {
+      taskId,
+      mode: mode.type,
+      frameInterval: mode.frameInterval,
+      timestamp: new Date().toISOString()
+    });
+
+    // 关闭模式选择弹窗
+    setIsBatchAnalysisModalOpen(false);
+
+    // 筛选所有视频素材
+    const videoMaterials = materialManagement.materials.filter(material => {
+      return material.type === 'video' && material.url;
+    });
+
     console.log(`[VideoEditingInterface] 开始批量触发视频解析`, {
       taskId,
       videoCount: videoMaterials.length,
+      mode: mode.type,
+      frameInterval: mode.frameInterval,
       videoMaterials: videoMaterials.map(m => ({
         id: m.id,
         name: m.name,
         url: m.url,
+        thumbnailUrl: m.thumbnailUrl,
         currentStatus: videoAnalysis.getAnalysisStatus(m.url!)
       })),
       timestamp: new Date().toISOString()
     });
 
-    // 触发所有视频的AI解析，复用单个视频的队列管理逻辑
-    // 不使用 await，让所有请求同时进入队列系统
-    videoMaterials.forEach(material => {
-      handleVideoAnalysis(material);
-    });
+    // 根据模式触发不同的解析逻辑
+    if (mode.type === 'quick') {
+      // 快速解析：使用缩略图
+      videoMaterials.forEach(material => {
+        handleVideoAnalysis(material, undefined, true); // 第三个参数表示使用缩略图
+      });
+    } else {
+      // 专业解析：使用拆帧
+      const frameInterval = mode.frameInterval || 5;
+      videoMaterials.forEach(material => {
+        handleVideoAnalysis(material, frameInterval, false);
+      });
+    }
 
     console.log(`[VideoEditingInterface] 已触发 ${videoMaterials.length} 个视频的解析请求`, {
       taskId,
-      videoCount: videoMaterials.length
+      videoCount: videoMaterials.length,
+      mode: mode.type
     });
-  }, [taskId, materialManagement.materials, videoAnalysis, handleVideoAnalysis, showError]);
+  }, [taskId, materialManagement.materials, videoAnalysis, handleVideoAnalysis]);
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
@@ -2757,6 +2819,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={isAIMixingModeModalOpen}
         onClose={handleAIMixingModeClose}
         onConfirm={handleAIMixingModeConfirm}
+      />
+
+      {/* 批量解析模式选择弹窗 */}
+      <BatchAnalysisModeSelectionModal
+        isOpen={isBatchAnalysisModalOpen}
+        onClose={() => setIsBatchAnalysisModalOpen(false)}
+        onConfirm={handleBatchAnalysisConfirm}
       />
 
       {/* AI混剪进度弹窗 */}
