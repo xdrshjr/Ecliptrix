@@ -1,4 +1,5 @@
 import { MaterialItem } from '@/types';
+import type { UseVideoAnalysisReturn } from '../hooks/useVideoAnalysis';
 
 // Configuration constants
 export const VIDEO_ANALYSIS_CONFIG = {
@@ -149,21 +150,27 @@ async function analyzeSingleVideoWithRetry(
 
       const startTime = performance.now();
       
+      // Prepare appropriate prompt based on mode
+      const quickModePrompt = "用一句话简洁描述这个视频画面的主要内容，包括场景和主体。";
+      const professionalModePrompt = "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。";
+      
       // Prepare request body
       const requestBody: VideoAnalysisRequest = {
         video_url: material.url,
         frame_interval: mode.type === 'quick' ? 9999 : (mode.frameInterval || 5), // Quick mode uses large interval for single frame
-        custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。"
+        custom_prompt: mode.type === 'quick' ? quickModePrompt : professionalModePrompt
       };
 
       console.log(`[ParallelVideoAnalysis] 发送API请求: ${material.name}`, {
         taskId,
         videoId: material.id,
         attempt: attempts + 1,
+        mode: mode.type,
+        promptType: mode.type === 'quick' ? 'quick (简洁描述)' : 'professional (详细描述)',
         requestBody: {
           video_url: requestBody.video_url,
           frame_interval: requestBody.frame_interval,
-          custom_prompt: requestBody.custom_prompt.substring(0, 50) + '...'
+          custom_prompt: requestBody.custom_prompt
         },
         timestamp: new Date().toISOString()
       });
@@ -446,6 +453,23 @@ export async function analyzeVideosInParallel(
   return results;
 }
 
+// Helper function to convert blob URL to base64
+async function blobUrlToBase64(blobUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(blobUrl);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error(`[BatchVideoAnalysis] Failed to convert blob URL to base64:`, blobUrl, error);
+    return null;
+  }
+}
+
 /**
  * Analyze multiple videos using batch analysis API
  * This is the recommended approach for AI mixed editing as it uses optimized two-phase processing:
@@ -455,7 +479,8 @@ export async function analyzeVideosInParallel(
 export async function analyzeVideosInBatch(
   videoMaterials: MaterialItem[],
   options: ParallelAnalysisOptions,
-  taskId: string
+  taskId: string,
+  videoAnalysis?: UseVideoAnalysisReturn
 ): Promise<VideoAnalysisResult[]> {
   if (videoMaterials.length === 0) {
     console.log(`[BatchVideoAnalysis] 无视频素材需要分析`, { taskId });
@@ -475,15 +500,84 @@ export async function analyzeVideosInBatch(
 
   const startTime = performance.now();
 
+  // 获取后端配置的并发线程数（默认3）
+  const BACKEND_CONCURRENT_THREADS = 3;
+
+  // 设置初始状态：前BACKEND_CONCURRENT_THREADS个为analyzing，其余为waiting
+  if (videoAnalysis) {
+    console.log(`[BatchVideoAnalysis] 设置视频初始状态`, {
+      taskId,
+      videosCount: videoMaterials.length,
+      analyzingCount: Math.min(BACKEND_CONCURRENT_THREADS, videoMaterials.length),
+      waitingCount: Math.max(0, videoMaterials.length - BACKEND_CONCURRENT_THREADS)
+    });
+    
+    const statusUpdates = videoMaterials.map((material, index) => {
+      if (index < BACKEND_CONCURRENT_THREADS) {
+        // 前N个视频设置为analyzing状态
+        return {
+          videoUrl: material.url,
+          status: 'analyzing' as const
+        };
+      } else {
+        // 其余视频设置为waiting状态，并显示队列位置
+        return {
+          videoUrl: material.url,
+          status: 'waiting' as const,
+          queuePosition: index - BACKEND_CONCURRENT_THREADS + 1
+        };
+      }
+    });
+    
+    videoAnalysis.setBatchAnalysisStatus(statusUpdates);
+  }
+
   try {
-    // Prepare batch request
-    const requestBody: BatchVideoAnalysisRequest = {
-      videos: videoMaterials.map(material => ({
+    // Convert blob URLs to base64 for quick mode
+    const videos = await Promise.all(videoMaterials.map(async (material) => {
+      let thumbnailUrl = material.thumbnailUrl || material.url;
+      
+      // If in quick mode and thumbnail is a blob URL, convert to base64
+      if (isQuickMode && thumbnailUrl && thumbnailUrl.startsWith('blob:')) {
+        console.log(`[BatchVideoAnalysis] Converting blob thumbnail to base64 for ${material.name}`, {
+          taskId,
+          materialId: material.id,
+          blobUrl: thumbnailUrl
+        });
+        
+        const base64Data = await blobUrlToBase64(thumbnailUrl);
+        if (base64Data) {
+          thumbnailUrl = base64Data;
+          console.log(`[BatchVideoAnalysis] Successfully converted thumbnail to base64`, {
+            taskId,
+            materialId: material.id,
+            materialName: material.name,
+            base64Length: base64Data.length,
+            base64Preview: base64Data.substring(0, 50) + '...' // 只显示前50个字符
+          });
+        } else {
+          console.warn(`[BatchVideoAnalysis] Failed to convert thumbnail, will use original URL`, {
+            taskId,
+            materialId: material.id,
+            materialName: material.name
+          });
+        }
+      }
+      
+      return {
         video_url: material.url,
         frame_interval: isQuickMode ? 9999 : (options.mode.frameInterval || 5),
-        thumbnail_url: isQuickMode ? (material.thumbnailUrl || material.url) : undefined
-      })),
-      custom_prompt: "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。",
+        thumbnail_url: isQuickMode ? thumbnailUrl : undefined
+      };
+    }));
+
+    // Prepare batch request with appropriate prompt based on mode
+    const quickModePrompt = "用一句话简洁描述这个视频画面的主要内容，包括场景和主体。";
+    const professionalModePrompt = "请详细描述这张图片中的内容，包括场景、人物、物体、动作、情感等，用于视频剪辑分析。";
+    
+    const requestBody: BatchVideoAnalysisRequest = {
+      videos,
+      custom_prompt: isQuickMode ? quickModePrompt : professionalModePrompt,
       use_thumbnails: isQuickMode
     };
 
@@ -491,9 +585,18 @@ export async function analyzeVideosInBatch(
       taskId,
       videosCount: requestBody.videos.length,
       videoUrls: requestBody.videos.map(v => v.video_url),
-      thumbnailUrls: isQuickMode ? requestBody.videos.map(v => v.thumbnail_url) : undefined,
+      thumbnailTypes: isQuickMode ? requestBody.videos.map((v, index) => ({
+        index: index + 1,
+        type: v.thumbnail_url?.startsWith('data:') ? 'base64' : 
+              v.thumbnail_url?.startsWith('blob:') ? 'blob' : 
+              v.thumbnail_url?.startsWith('http') ? 'url' : 'unknown',
+        length: v.thumbnail_url?.startsWith('data:') ? v.thumbnail_url.length : undefined,
+        preview: v.thumbnail_url?.startsWith('data:') ? v.thumbnail_url.substring(0, 50) + '...' : v.thumbnail_url
+      })) : undefined,
       frameInterval: requestBody.videos[0]?.frame_interval,
       useThumbnails: isQuickMode,
+      customPrompt: requestBody.custom_prompt,
+      promptType: isQuickMode ? 'quick (简洁描述)' : 'professional (详细描述)',
       timestamp: new Date().toISOString()
     });
 
@@ -547,7 +650,7 @@ export async function analyzeVideosInBatch(
       timestamp: new Date().toISOString()
     });
 
-    // Convert batch results to VideoAnalysisResult format
+    // Convert batch results to VideoAnalysisResult format and update status
     const results: VideoAnalysisResult[] = videoMaterials.map(material => {
       const batchVideoResult = batchResult.results.find(r => r.video_url === material.url);
       
@@ -558,6 +661,11 @@ export async function analyzeVideosInBatch(
           videoUrl: material.url,
           timestamp: new Date().toISOString()
         });
+        
+        // 更新状态为error
+        if (videoAnalysis) {
+          videoAnalysis.setAnalysisStatus(material.url, 'error', undefined, 'Result not found in batch response');
+        }
         
         return {
           success: false,
@@ -576,6 +684,11 @@ export async function analyzeVideosInBatch(
           timestamp: new Date().toISOString()
         });
 
+        // 更新状态为error
+        if (videoAnalysis) {
+          videoAnalysis.setAnalysisStatus(material.url, 'error', undefined, batchVideoResult.error_message || 'Unknown error');
+        }
+
         return {
           success: false,
           video_url: material.url,
@@ -592,6 +705,23 @@ export async function analyzeVideosInBatch(
         videoDuration: batchVideoResult.video_duration,
         timestamp: new Date().toISOString()
       });
+
+      // 构建VideoAnalysisResponse对象
+      const analysisResponse: any = {
+        success: true,
+        video_url: material.url,
+        total_frames_extracted: batchVideoResult.total_frames_extracted,
+        video_duration: batchVideoResult.video_duration,
+        frame_analyses: batchVideoResult.frame_analyses || [],
+        processing_time: batchResult.total_processing_time / videoMaterials.length, // 平均时间
+        message: 'Video analysis completed successfully',
+        timestamp: new Date().toISOString()
+      };
+
+      // 更新状态为completed
+      if (videoAnalysis) {
+        videoAnalysis.setAnalysisStatus(material.url, 'completed', analysisResponse);
+      }
 
       return {
         success: true,
@@ -645,6 +775,23 @@ export async function analyzeVideosInBatch(
       totalTime: Math.round(totalTime),
       timestamp: new Date().toISOString()
     });
+
+    // 更新所有视频的状态为error
+    if (videoAnalysis) {
+      console.log(`[BatchVideoAnalysis] 设置所有视频状态为error`, {
+        taskId,
+        videosCount: videoMaterials.length,
+        error: errorMessage
+      });
+      
+      videoAnalysis.setBatchAnalysisStatus(
+        videoMaterials.map(material => ({
+          videoUrl: material.url,
+          status: 'error',
+          error: errorMessage
+        }))
+      );
+    }
 
     // Return failed results for all videos
     return videoMaterials.map(material => ({

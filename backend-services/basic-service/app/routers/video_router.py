@@ -520,26 +520,82 @@ async def add_subtitles(request: SubtitleAddRequest) -> SubtitleAddResponse:
         )
 
 
-@router.post("/analyze", response_model=VideoAnalysisResponse)
-async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
+@router.get("/analysis-queue-status", response_model=QueueStatusResponse)
+async def get_analysis_queue_status() -> QueueStatusResponse:
     """
-    Analyze video content using VL LLM with concurrent processing.
+    Get video analysis queue status.
     
-    This endpoint extracts frames from a video at specified intervals and analyzes
-    each frame using a Vision-Language Model to provide detailed descriptions.
-    The analysis is performed concurrently using configurable thread count for improved performance.
-    
-    Args:
-        request (VideoAnalysisRequest): Video analysis parameters including video URL,
-                                      frame interval, and optional custom prompt
+    This endpoint returns the current status of the video analysis queue,
+    including how many videos are being processed, how many are waiting,
+    and whether there are available slots for new analysis requests.
     
     Returns:
-        VideoAnalysisResponse: Analysis results with frame-by-frame descriptions
+        QueueStatusResponse: Queue status information including:
+            - queue_name: Name of the queue
+            - max_concurrent: Maximum concurrent analysis tasks
+            - current_processing: Number of videos currently being analyzed
+            - queued_count: Number of videos waiting in queue
+            - total_processed: Total number of videos processed
+            - average_processing_time: Average processing time per video
     
     Raises:
-        HTTPException: 400 for invalid request parameters, 500 for analysis errors
+        HTTPException: 500 if unable to retrieve queue status
     """
-    logger.info(f"Video analysis request received - Video: {request.video_url}")
+    try:
+        # Get queue configuration
+        config = video_analysis_service.config
+        queue_config = config.get('queue_management', {})
+        queue_name = queue_config.get('queue_name', 'video_analysis')
+        
+        logger.debug(f"Retrieving queue status for '{queue_name}'")
+        
+        # Get queue status from queue manager
+        queue_status = await queue_manager.get_queue_status(queue_name, include_tasks=False)
+        
+        if queue_status is None:
+            logger.error(f"Queue '{queue_name}' not found")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Video analysis queue '{queue_name}' not found"
+            )
+        
+        logger.debug(f"Queue status retrieved", extra={
+            "queue_name": queue_name,
+            "current_processing": queue_status.queue_info.current_processing,
+            "queued_count": queue_status.queue_info.queued_count,
+            "max_concurrent": queue_status.queue_info.max_concurrent,
+            "total_processed": queue_status.queue_info.total_processed
+        })
+        
+        return queue_status
+        
+    except HTTPException:
+        raise
+        
+    except Exception as e:
+        logger.error(f"Error retrieving queue status: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve queue status: {str(e)}"
+        )
+
+
+# Core video analysis function (with queuing)
+@with_simple_queue(
+    queue_name="video_analysis",
+    max_concurrent=2,
+    task_id_field="task_id",
+    metadata_fields=["video_url", "use_thumbnail"]
+)
+async def _process_video_analysis(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
+    """
+    Core video analysis function with queue management.
+    
+    This function handles the actual video analysis and is managed by the queue system.
+    It extracts frames from a video at specified intervals and analyzes each frame 
+    using a Vision-Language Model to provide detailed descriptions.
+    """
+    logger.info(f"Processing video analysis - Video: {request.video_url}")
     
     # Get configuration for logging
     config = video_analysis_service.config
@@ -557,18 +613,6 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
         logger.info(f"Thumbnail URL: {request.thumbnail_url}")
     
     try:
-        # Validate request parameters
-        if not request.video_url.strip():
-            logger.warning("Empty video URL provided")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Video URL cannot be empty"
-            )
-        
-        # Note: We allow frame_interval to be None or 0, service will use config default
-        if request.frame_interval is not None and request.frame_interval <= 0:
-            logger.warning(f"Invalid frame interval: {request.frame_interval}, using default: {default_frame_interval}")
-        
         # Perform video analysis
         logger.debug(f"Starting video analysis with concurrent processing", extra={
             "video_url": request.video_url,
@@ -576,7 +620,8 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
             "effective_frame_interval": effective_frame_interval,
             "concurrent_threads": concurrent_threads,
             "has_custom_prompt": bool(request.custom_prompt),
-            "custom_prompt_length": len(request.custom_prompt) if request.custom_prompt else 0
+            "custom_prompt_length": len(request.custom_prompt) if request.custom_prompt else 0,
+            "task_id": request.task_id
         })
         
         result = await video_analysis_service.analyze_video(
@@ -596,14 +641,16 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
             "processing_time": result.processing_time,
             "concurrent_threads": concurrent_threads,
             "effective_frame_interval": effective_frame_interval,
-            "total_analysis_length": sum(len(frame.analysis) for frame in result.frame_analyses) if result.frame_analyses else 0
+            "total_analysis_length": sum(len(frame.analysis) for frame in result.frame_analyses) if result.frame_analyses else 0,
+            "task_id": request.task_id
         })
         
         if not result.success:
             logger.warning(f"Video analysis failed: {result.message}", extra={
                 "video_url": result.video_url,
                 "processing_time": result.processing_time,
-                "concurrent_threads": concurrent_threads
+                "concurrent_threads": concurrent_threads,
+                "task_id": request.task_id
             })
         else:
             # Store analysis result for future use in AI mixed editing
@@ -628,8 +675,68 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
                 "actual_processing_time": actual_concurrent_time,
                 "estimated_speedup_factor": estimated_speedup,
                 "frames_processed": result.total_frames_extracted,
-                "concurrent_threads": concurrent_threads
+                "concurrent_threads": concurrent_threads,
+                "task_id": request.task_id
             })
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error during video analysis: {str(e)}", exc_info=True, extra={
+            "video_url": request.video_url,
+            "concurrent_threads": concurrent_threads,
+            "effective_frame_interval": effective_frame_interval,
+            "task_id": request.task_id
+        })
+        raise
+
+
+@router.post("/analyze", response_model=VideoAnalysisResponse)
+async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
+    """
+    Analyze video content using VL LLM with concurrent processing (with queue management).
+    
+    This endpoint extracts frames from a video at specified intervals and analyzes
+    each frame using a Vision-Language Model to provide detailed descriptions.
+    The analysis is performed concurrently using configurable thread count for improved performance.
+    
+    Features:
+    - Queue management: Maximum 2 concurrent video analysis tasks
+    - Automatic queuing when limit is reached
+    - Task status tracking via task_id
+    - Queue status available via /api/video/analysis-queue-status endpoint
+    
+    Args:
+        request (VideoAnalysisRequest): Video analysis parameters including video URL,
+                                      frame interval, and optional custom prompt
+    
+    Returns:
+        VideoAnalysisResponse: Analysis results with frame-by-frame descriptions
+    
+    Raises:
+        HTTPException: 400 for invalid request parameters, 500 for analysis errors
+    """
+    logger.info(f"Video analysis request received - Video: {request.video_url}, Task ID: {request.task_id}")
+    
+    try:
+        # Validate request parameters
+        if not request.video_url.strip():
+            logger.warning("Empty video URL provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video URL cannot be empty"
+            )
+        
+        # Get configuration
+        config = video_analysis_service.config
+        default_frame_interval = config['frame_extraction']['default_frame_interval_seconds']
+        
+        # Note: We allow frame_interval to be None or 0, service will use config default
+        if request.frame_interval is not None and request.frame_interval <= 0:
+            logger.warning(f"Invalid frame interval: {request.frame_interval}, using default: {default_frame_interval}")
+        
+        # Process video analysis through queue
+        result = await _process_video_analysis(request)
         
         return result
         
@@ -640,8 +747,7 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
     except Exception as e:
         logger.error(f"Unexpected error during video analysis: {str(e)}", exc_info=True, extra={
             "video_url": request.video_url,
-            "concurrent_threads": concurrent_threads,
-            "effective_frame_interval": effective_frame_interval
+            "task_id": request.task_id
         })
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -41,8 +41,24 @@ export interface VideoAnalysisServiceParams {
   useThumbnail?: boolean;
 }
 
+export interface QueueInfo {
+  queue_name: string;
+  max_concurrent: number;
+  current_processing: number;
+  queued_count: number;
+  total_processed: number;
+  average_processing_time: number | null;
+}
+
+export interface QueueStatusResponse {
+  success: boolean;
+  queue_info: QueueInfo;
+  tasks: any[] | null;
+}
+
 export interface VideoAnalysisService {
   analyzeVideo(params: VideoAnalysisServiceParams): Promise<VideoAnalysisResponse>;
+  getQueueStatus(): Promise<QueueStatusResponse>;
 }
 
 /**
@@ -241,6 +257,70 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
         frameInterval,
         hasCustomPrompt: !!customPrompt
       });
+      throw error;
+    }
+  }
+
+  /**
+   * 查询视频解析队列状态
+   * @returns Promise<QueueStatusResponse> - 队列状态信息
+   */
+  async getQueueStatus(): Promise<QueueStatusResponse> {
+    const startTime = performance.now();
+    
+    this.logger.apiCall('查询解析队列状态', '/api/video/analysis-queue-status', {});
+
+    try {
+      const response = await fetch('/api/video/analysis-queue-status', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorData.message || errorData.error || errorMessage;
+        } catch (parseError) {
+          this.logger.error('解析队列状态错误响应失败', parseError as Error, {
+            status: response.status,
+            statusText: response.statusText
+          });
+        }
+
+        const error = new Error(errorMessage);
+        this.logger.apiError('查询解析队列状态', '/api/video/analysis-queue-status', error, {
+          responseTime: performance.now() - startTime,
+          status: response.status,
+          statusText: response.statusText
+        });
+        throw error;
+      }
+
+      const data: QueueStatusResponse = await response.json();
+      const responseTime = performance.now() - startTime;
+
+      this.logger.info('查询解析队列状态成功', {
+        queueName: data.queue_info.queue_name,
+        maxConcurrent: data.queue_info.max_concurrent,
+        currentProcessing: data.queue_info.current_processing,
+        queuedCount: data.queue_info.queued_count,
+        totalProcessed: data.queue_info.total_processed,
+        averageProcessingTime: data.queue_info.average_processing_time,
+        responseTime
+      });
+
+      return data;
+
+    } catch (error) {
+      const responseTime = performance.now() - startTime;
+      
+      this.logger.apiError('查询解析队列状态', '/api/video/analysis-queue-status', error as Error, {
+        responseTime
+      });
+
       throw error;
     }
   }

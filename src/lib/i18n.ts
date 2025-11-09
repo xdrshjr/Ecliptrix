@@ -10,6 +10,7 @@ export interface Translations {
     systemStatus: string;
     operational: string;
     close: string;
+    cancel: string;
   };
   header: {
     brandSubtitle: string;
@@ -290,17 +291,28 @@ export interface Translations {
     downloadingVideo: string;
     downloadFailed: string;
     retryDownload: string;
-          aiAnalyzing: string;
-      viewAnalysisResult: string;
-      aiVideoAnalysis: string;
-      preview: string;
-      download: string;
-      previewMaterial: string;
-      downloadMaterial: string;
-      aiCreation: string;
-      aiCreationTooltip: string;
-      aiMixing: string;
-      aiMixingTooltip: string;
+        aiAnalyzing: string;
+    viewAnalysisResult: string;
+    aiVideoAnalysis: string;
+    preview: string;
+    download: string;
+    previewMaterial: string;
+    downloadMaterial: string;
+    aiCreation: string;
+    aiCreationTooltip: string;
+    aiMixing: string;
+    aiMixingTooltip: string;
+    myMaterials: string;
+    myMaterialsDescription: string;
+    loadingMaterials: string;
+    loadError: string;
+    retry: string;
+    noMaterialsFound: string;
+    selectAll: string;
+    deselectAll: string;
+    selectedCount: string;
+    addToMaterialManagement: string;
+    totalMaterials: string;
   };
   aiMixingModal: {
     title: string;
@@ -313,6 +325,23 @@ export interface Translations {
     professionalMode: string;
     professionalModeDesc: string;
     professionalModeFeatures: string;
+    professionalModeHighPrecision: string;
+    professionalModeBetterResults: string;
+    frameIntervalLabel: string;
+    frameIntervalUnit: string;
+    frameIntervalHint: string;
+    cancel: string;
+    confirm: string;
+  };
+  batchAnalysisModal: {
+    title: string;
+    subtitle: string;
+    quickMode: string;
+    quickModeDesc: string;
+    quickModeFast: string;
+    quickModeLowResource: string;
+    professionalMode: string;
+    professionalModeDesc: string;
     professionalModeHighPrecision: string;
     professionalModeBetterResults: string;
     frameIntervalLabel: string;
@@ -966,6 +995,7 @@ export const translations: Record<string, Translations> = {
       systemStatus: 'System Status',
       operational: 'Operational',
       close: 'Close',
+      cancel: 'Cancel',
     },
     header: {
       brandSubtitle: 'Where light and shadow collide',
@@ -1172,6 +1202,17 @@ export const translations: Record<string, Translations> = {
       aiCreationTooltip: 'Open AI creation panel to select creative workflows',
       aiMixing: 'AI Mixing',
       aiMixingTooltip: 'Auto-generate editing plan based on current materials, intelligently mix video content',
+      myMaterials: 'My Materials',
+      myMaterialsDescription: 'Browse and select all materials you have previously uploaded',
+      loadingMaterials: 'Loading materials...',
+      loadError: 'Loading failed',
+      retry: 'Retry',
+      noMaterialsFound: 'No materials found',
+      selectAll: 'Select All',
+      deselectAll: 'Deselect All',
+      selectedCount: '{count} selected',
+      addToMaterialManagement: 'Add to Material Management',
+      totalMaterials: 'Total {count} materials',
     },
     aiMixingModal: {
       title: 'Select AI Mixing Mode',
@@ -1191,6 +1232,23 @@ export const translations: Record<string, Translations> = {
       frameIntervalHint: 'Smaller interval means more detailed analysis but longer processing time (Recommended: 3-10 seconds)',
       cancel: 'Cancel',
       confirm: 'Start AI Mixing',
+    },
+    batchAnalysisModal: {
+      title: 'Select Batch Analysis Mode',
+      subtitle: 'Choose the analysis method that best suits your needs',
+      quickMode: 'Quick Analysis',
+      quickModeDesc: 'Use video thumbnails directly for AI analysis, quickly generate content descriptions. Suitable for quick previews or scenarios with low precision requirements.',
+      quickModeFast: 'Fast processing',
+      quickModeLowResource: 'Low resource consumption',
+      professionalMode: 'Professional Analysis',
+      professionalModeDesc: 'Extract multiple frames at specified intervals for deep AI analysis, generate detailed content descriptions. Suitable for professional production or scenarios requiring high quality.',
+      professionalModeHighPrecision: 'High precision analysis',
+      professionalModeBetterResults: 'Better results',
+      frameIntervalLabel: 'Video Analysis Frame Interval (seconds)',
+      frameIntervalUnit: 'seconds',
+      frameIntervalHint: 'Smaller interval means more detailed analysis but longer processing time (Recommended: 3-10 seconds)',
+      cancel: 'Cancel',
+      confirm: 'Start Analysis',
     },
     aiCreationModal: {
       title: 'AI Creation',
@@ -1935,6 +1993,7 @@ export const translations: Record<string, Translations> = {
       systemStatus: '系统状态',
       operational: '正常运行',
       close: '关闭',
+      cancel: '取消',
     },
     header: {
       brandSubtitle: '光与影之交汇',
@@ -2138,9 +2197,20 @@ export const translations: Record<string, Translations> = {
         previewMaterial: '预览素材',
         downloadMaterial: '下载素材',
         aiCreation: 'AI创作',
-        aiCreationTooltip: '打开AI创作面板，选择创作工作流进行内容创作',
-        aiMixing: 'AI混剪',
-        aiMixingTooltip: '基于当前素材自动生成剪辑方案，智能混剪视频内容',
+      aiCreationTooltip: '打开AI创作面板，选择创作工作流进行内容创作',
+      aiMixing: 'AI混剪',
+      aiMixingTooltip: '基于当前素材自动生成剪辑方案，智能混剪视频内容',
+      myMaterials: '我的素材',
+      myMaterialsDescription: '浏览和选择您之前上传的所有素材',
+      loadingMaterials: '正在加载素材...',
+      loadError: '加载失败',
+      retry: '重试',
+      noMaterialsFound: '未找到素材',
+      selectAll: '全选',
+      deselectAll: '取消全选',
+      selectedCount: '已选择 {count} 个',
+      addToMaterialManagement: '添加到素材管理',
+      totalMaterials: '共 {count} 个素材',
     },
     aiMixingModal: {
       title: '选择AI混剪模式',
@@ -2160,6 +2230,23 @@ export const translations: Record<string, Translations> = {
       frameIntervalHint: '间隔越小，分析越详细，但处理时间越长（推荐：3-10秒）',
       cancel: '取消',
       confirm: '开始AI混剪',
+    },
+    batchAnalysisModal: {
+      title: '选择批量解析模式',
+      subtitle: '选择最适合您需求的解析方式',
+      quickMode: '快速解析',
+      quickModeDesc: '直接使用视频缩略图进行AI解析，快速生成内容描述。适合快速预览或对精度要求不高的场景。',
+      quickModeFast: '处理速度快',
+      quickModeLowResource: '资源消耗低',
+      professionalMode: '专业解析',
+      professionalModeDesc: '按指定时间间隔提取多帧进行深度AI分析，生成详细的内容描述。适合专业制作或对效果要求较高的场景。',
+      professionalModeHighPrecision: '分析精度高',
+      professionalModeBetterResults: '效果更佳',
+      frameIntervalLabel: '视频解析帧间隔（秒）',
+      frameIntervalUnit: '秒',
+      frameIntervalHint: '间隔越小，分析越详细，但处理时间越长（推荐：3-10秒）',
+      cancel: '取消',
+      confirm: '开始解析',
     },
     aiCreationModal: {
       title: 'AI创作',

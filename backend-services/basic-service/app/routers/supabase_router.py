@@ -141,7 +141,8 @@ async def upload_file(
     file: UploadFile = File(..., description="要上传的文件"),
     bucket_path: str = Form(None, description="存储桶中的目标路径"),
     task_id: str = Form(None, description="任务ID"),
-    segment_id: str = Form(None, description="段落ID")
+    segment_id: str = Form(None, description="段落ID"),
+    user_id: str = Form(None, description="用户ID")
 ) -> Union[SupabaseUploadResponse, SupabaseUploadErrorResponse]:
     """
     上传文件到Supabase存储桶
@@ -151,6 +152,7 @@ async def upload_file(
         bucket_path: 存储桶中的目标路径
         task_id: 任务ID
         segment_id: 段落ID
+        user_id: 用户ID
     
     Returns:
         SupabaseUploadResponse: 上传成功的响应
@@ -162,7 +164,8 @@ async def upload_file(
             "content_type": file.content_type,
             "bucket_path": bucket_path,
             "task_id": task_id,
-            "segment_id": segment_id
+            "segment_id": segment_id,
+            "user_id": user_id
         })
         
         # 创建临时文件
@@ -172,6 +175,27 @@ async def upload_file(
             temp_file_path = temp_file.name
         
         try:
+            # 如果没有提供bucket_path，则根据文件类型和user_id生成
+            if not bucket_path:
+                # 确定文件类型文件夹
+                content_type = file.content_type or ''
+                if content_type.startswith('video/'):
+                    folder = 'video'
+                elif content_type.startswith('audio/'):
+                    folder = 'audio'
+                elif content_type.startswith('image/'):
+                    folder = 'images'
+                else:
+                    folder = 'files'
+                
+                bucket_path = supabase_service._generate_bucket_path(
+                    filename=file.filename,
+                    folder=folder,
+                    task_id=task_id,
+                    segment_id=segment_id,
+                    user_id=user_id
+                )
+            
             # 调用Supabase服务上传文件
             result = supabase_service.upload_file(
                 local_file_path=temp_file_path,
@@ -184,7 +208,8 @@ async def upload_file(
                     "error": result["message"],
                     "filename": file.filename,
                     "task_id": task_id,
-                    "segment_id": segment_id
+                    "segment_id": segment_id,
+                    "user_id": user_id
                 })
                 return SupabaseUploadErrorResponse(
                     success=False,
@@ -197,7 +222,8 @@ async def upload_file(
                 "file_size": result["file_size"],
                 "filename": file.filename,
                 "task_id": task_id,
-                "segment_id": segment_id
+                "segment_id": segment_id,
+                "user_id": user_id
             })
             
             return SupabaseUploadResponse(
@@ -219,7 +245,8 @@ async def upload_file(
             "error": str(e),
             "filename": file.filename,
             "task_id": task_id,
-            "segment_id": segment_id
+            "segment_id": segment_id,
+            "user_id": user_id
         })
         return SupabaseUploadErrorResponse(
             success=False,
@@ -238,7 +265,8 @@ async def upload_video_file(
     file: UploadFile = File(..., description="要上传的视频文件"),
     task_id: str = Form(None, description="任务ID"),
     custom_filename: str = Form(None, description="自定义文件名"),
-    generate_thumbnail: bool = Form(True, description="是否生成缩略图")
+    generate_thumbnail: bool = Form(True, description="是否生成缩略图"),
+    user_id: str = Form(None, description="用户ID")
 ) -> Union[VideoUploadResponse, VideoUploadErrorResponse]:
     """
     上传视频文件到Supabase存储桶
@@ -262,7 +290,8 @@ async def upload_video_file(
             "content_type": file.content_type,
             "task_id": task_id,
             "custom_filename": custom_filename,
-            "generate_thumbnail": generate_thumbnail
+            "generate_thumbnail": generate_thumbnail,
+            "user_id": user_id
         })
         
         # 验证文件类型
@@ -299,11 +328,13 @@ async def upload_video_file(
             base_name = os.path.splitext(file.filename)[0] if file.filename else "video"
             filename = f"{base_name}_{now.strftime('%Y%m%d_%H%M%S')}{file_extension}"
         
-        # 构建完整的bucket路径
-        if task_id:
-            bucket_path = f"video/uploaded/{date_path}/task-{task_id}/{filename}"
-        else:
-            bucket_path = f"video/uploaded/{date_path}/{filename}"
+        # 构建完整的bucket路径（包含user_id）
+        bucket_path = supabase_service._generate_bucket_path(
+            filename=filename,
+            folder='video',
+            task_id=task_id,
+            user_id=user_id
+        )
         
         # 初始化视频元数据
         video_metadata = {
@@ -537,4 +568,98 @@ async def supabase_health_check():
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error_info
+        )
+
+
+@router.get(
+    "/user-materials",
+    summary="获取用户上传的所有素材",
+    description="查询当前用户上传到Supabase的所有素材，支持分页和类型筛选"
+)
+async def get_user_materials(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    material_type: str = None
+):
+    """
+    获取用户上传的所有素材列表
+    
+    Args:
+        user_id: 用户ID
+        page: 页码（从1开始）
+        page_size: 每页数量
+        material_type: 素材类型筛选（video, audio, image），为空则返回所有类型
+    
+    Returns:
+        包含素材列表和分页信息的响应
+    """
+    try:
+        logger.info("收到用户素材查询请求", {
+            "user_id": user_id,
+            "page": page,
+            "page_size": page_size,
+            "material_type": material_type
+        })
+        
+        # 调用Supabase服务查询用户素材
+        result = supabase_service.list_user_materials(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+            material_type=material_type
+        )
+        
+        if not result["success"]:
+            logger.error("查询用户素材失败", {
+                "error": result.get("message"),
+                "user_id": user_id
+            })
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={
+                    "success": False,
+                    "message": result.get("message", "查询素材失败"),
+                    "materials": [],
+                    "total": 0,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": 0
+                }
+            )
+        
+        logger.info("用户素材查询成功", {
+            "user_id": user_id,
+            "total": result["total"],
+            "page": result["page"],
+            "returned": len(result["materials"])
+        })
+        
+        return {
+            "success": True,
+            "materials": result["materials"],
+            "total": result["total"],
+            "page": result["page"],
+            "page_size": result["page_size"],
+            "total_pages": result["total_pages"]
+        }
+        
+    except Exception as e:
+        logger.error("查询用户素材异常", {
+            "error": str(e),
+            "user_id": user_id,
+            "page": page,
+            "page_size": page_size
+        })
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "message": f"查询素材异常: {str(e)}",
+                "materials": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0
+            }
         ) 

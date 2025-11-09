@@ -68,6 +68,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.warning("VL LLM configuration not complete - video analysis may not work")
     
+    # Initialize video analysis queue
+    try:
+        from app.services.queue_manager import queue_manager
+        from app.services.video_analysis_service import video_analysis_service
+        
+        queue_config = video_analysis_service.config.get('queue_management', {})
+        queue_name = queue_config.get('queue_name', 'video_analysis')
+        max_concurrent = queue_config.get('max_concurrent', 2)
+        
+        await queue_manager.create_queue(queue_name, max_concurrent)
+        logger.info(f"Video analysis queue '{queue_name}' initialized with max_concurrent={max_concurrent}")
+    except Exception as e:
+        logger.error(f"Failed to initialize video analysis queue: {str(e)}", exc_info=True)
+    
     logger.info("Application startup completed")
     
     yield

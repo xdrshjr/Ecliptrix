@@ -1,10 +1,25 @@
 # Video Analysis Configuration
 # Configuration for video analysis service including VLM concurrent processing settings
 
+# Queue Management Configuration
+queue_management:
+  # Queue name for video analysis tasks
+  queue_name: "video_analysis"
+  
+  # Maximum number of concurrent video analysis tasks
+  # This controls how many videos can be analyzed simultaneously
+  max_concurrent: 2
+  
+  # Enable queue management for single video analysis requests
+  # If true, single video analysis will also be queued
+  # If false, only batch analysis uses queue management
+  enable_for_single_analysis: true
+
 # VLM Processing Configuration
 vlm_processing:
-  # Number of concurrent threads for VLM API calls
+  # Number of concurrent threads for VLM API calls during batch analysis
   # Higher values increase processing speed but may hit API rate limits
+  # Default: 3 threads for optimal balance between speed and API rate limits
   concurrent_threads: 3
   
   # Timeout for individual VLM API calls (seconds)
@@ -17,9 +32,11 @@ vlm_processing:
 frame_extraction:
   # Default interval in seconds between frames to extract
   # Can be overridden by API request parameter
+  # Used during batch processing frame extraction phase
   default_frame_interval_seconds: 5
   
   # Maximum number of frames to extract from a single video
+  # Prevents excessive frame extraction and processing time
   max_frames_per_video: 5
   
   # Duration-based frame extraction strategy for convert-to-script feature

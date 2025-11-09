@@ -3,6 +3,7 @@ import { MaterialItem, MaterialType } from '@/types';
 import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import localVideoManager from '@/lib/utils/localVideoManager';
+import { useAuth } from '@/contexts/AuthContext';
 
 // 确认对话框状态接口
 interface ConfirmationDialogState {
@@ -27,6 +28,9 @@ interface UploadTask {
  * @returns 素材管理相关的状态和方法
  */
 export const useMaterialManagement = (taskId: string): UseMaterialManagementReturn => {
+  // 获取当前用户信息
+  const { user } = useAuth();
+  
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
@@ -255,6 +259,9 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
         formData.append('file', file);
         formData.append('task_id', taskId);
         formData.append('generate_thumbnail', 'true');
+        if (user?.id) {
+          formData.append('user_id', user.id);
+        }
 
         const response = await fetch('/api/supabase/upload-video', {
           method: 'POST',
@@ -347,6 +354,9 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
         const formData = new FormData();
         formData.append('file', file);
         formData.append('task_id', taskId);
+        if (user?.id) {
+          formData.append('user_id', user.id);
+        }
 
         const response = await fetch('/api/supabase/upload-file', {
           method: 'POST',

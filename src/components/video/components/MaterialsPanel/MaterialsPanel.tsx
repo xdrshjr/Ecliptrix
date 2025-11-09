@@ -10,7 +10,9 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { UseComfyUIHealthReturn } from '../../hooks/useComfyUIHealth';
 import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
 import WatermarkRemovalModal from '../WatermarkRemovalModal/WatermarkRemovalModal';
+import MyMaterialsModal from '../MyMaterialsModal/MyMaterialsModal';
 import { useNotification } from '@/contexts/NotificationContext';
+import { UserMaterial } from '@/lib/api/userMaterials';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -24,8 +26,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
   onVideoAnalysis?: (material: MaterialItem) => void; // 新增：视频AI解析回调
   onBatchVideoAnalysis?: () => Promise<void>; // 新增：批量视频AI解析回调
-  isBatchAnalyzing?: boolean; // 新增：批量解析状态
-  getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'analyzing' | 'completed' | 'error';
+  getVideoAnalysisStatus?: (videoUrl: string) => 'idle' | 'waiting' | 'analyzing' | 'completed' | 'error';
   onRetryDownload?: (material: MaterialItem) => void; // 新增：重试下载回调
   onAddToTimeline?: (material: MaterialItem) => void; // 新增：添加到时间轴回调
   onCutMaterial?: (material: MaterialItem) => void; // 新增：剪切素材回调
@@ -55,7 +56,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onAutoMixAudio, // 新增：AI自动混剪回调
   onVideoAnalysis, // 新增：视频AI解析回调
   onBatchVideoAnalysis, // 新增：批量视频AI解析回调
-  isBatchAnalyzing = false, // 新增：批量解析状态
   getVideoAnalysisStatus, // 新增：获取视频解析状态
   onRetryDownload, // 新增：重试下载回调
   onAddToTimeline, // 新增：添加到时间轴回调
@@ -116,6 +116,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   // Material Library Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // My Materials Modal state
+  const [isMyMaterialsModalOpen, setIsMyMaterialsModalOpen] = useState(false);
 
   // Effect selection state
   const [selectedEffect, setSelectedEffect] = useState('');
@@ -219,7 +222,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     setIsDropdownOpen(!isDropdownOpen);
   }, [isDropdownOpen, materials.length, selectedMaterialType, logger]);
 
-  const handleDropdownOptionClick = useCallback((option: 'video' | 'audio' | 'image') => {
+  const handleDropdownOptionClick = useCallback((option: 'video' | 'audio' | 'image' | 'myMaterials') => {
     logger.info('用户选择素材库选项', {
       option,
       materialsCount: materials.length,
@@ -237,6 +240,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         break;
       case 'image':
         onSearchImages();
+        break;
+      case 'myMaterials':
+        setIsMyMaterialsModalOpen(true);
         break;
     }
   }, [materials.length, selectedMaterialType, logger, onSearchVideos, onSearchAudios, onSearchImages]);
@@ -1087,6 +1093,53 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   }, [handleDragUpload, showSuccess, showError, logger]);
 
+  // Handle adding materials from My Materials modal
+  const handleAddMyMaterials = useCallback(async (userMaterials: UserMaterial[]) => {
+    logger.info('添加我的素材到素材管理', {
+      count: userMaterials.length,
+      materials: userMaterials.map(m => ({ id: m.id, name: m.name, type: m.type }))
+    });
+
+    try {
+      for (const userMaterial of userMaterials) {
+        // Convert UserMaterial to MaterialItem
+        const materialItem: MaterialItem = {
+          id: userMaterial.id,
+          name: userMaterial.name,
+          type: userMaterial.type as MaterialType,
+          format: userMaterial.name.split('.').pop() || '',
+          size: userMaterial.size,
+          url: userMaterial.url,
+          thumbnailUrl: userMaterial.thumbnail_url, // 添加缩略图
+          createdAt: new Date(userMaterial.created_at),
+          metadata: {
+            originalUrl: userMaterial.url,
+            fileName: userMaterial.name,
+            isLocalFile: false,
+            contentType: userMaterial.content_type,
+            fromMyMaterials: true
+          }
+        };
+
+        // Add the material to the panel
+        addOrReplaceMaterial(materialItem);
+
+        logger.info('素材已添加到面板', {
+          materialId: materialItem.id,
+          materialName: materialItem.name,
+          materialType: materialItem.type,
+          hasThumbnail: !!materialItem.thumbnailUrl
+        });
+      }
+
+      showSuccess(`成功添加 ${userMaterials.length} 个素材到素材管理`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '添加素材失败';
+      showError(errorMessage);
+      logger.error('添加我的素材失败', error as Error);
+    }
+  }, [addOrReplaceMaterial, showSuccess, showError, logger]);
+
   const getEffectDescription = (effect: string) => {
     switch (effect) {
       case 'static':
@@ -1209,21 +1262,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   });
                   await onBatchVideoAnalysis();
                 }}
-                disabled={isBatchAnalyzing}
-                className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title={isBatchAnalyzing ? t.materialsPanel.batchAnalyzing : t.materialsPanel.batchAnalysisTooltip}
+                className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 transition-colors duration-200"
+                title={t.materialsPanel.batchAnalysisTooltip}
               >
-                {isBatchAnalyzing ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
               </button>
             )}
             
@@ -1450,6 +1495,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </div>
                     )}
 
+                    {/* 视频AI解析等待状态覆盖层 */}
+                    {material.type === 'video' && getVideoAnalysisStatus && getVideoAnalysisStatus(material.url || '') === 'waiting' && (
+                      <div className="absolute inset-0 bg-orange-500 bg-opacity-50 flex flex-col items-center justify-center">
+                        <svg className="w-8 h-8 text-white mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-white text-xs font-medium text-center px-1">等待AI解析...</span>
+                      </div>
+                    )}
+
                     {/* 素材上传状态覆盖层 */}
                     {material.uploadStatus === 'uploading' && (
                       <div className="absolute inset-0 bg-green-500 bg-opacity-50 flex flex-col items-center justify-center">
@@ -1571,29 +1626,42 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       {/* AI视频解析按钮 - 仅对视频素材显示 */}
                       {material.type === 'video' && (() => {
                         const analysisStatus = getVideoAnalysisStatus ? getVideoAnalysisStatus(material.url || '') : 'idle';
+                        const isWaiting = analysisStatus === 'waiting';
                         const isAnalyzing = analysisStatus === 'analyzing';
                         const isCompleted = analysisStatus === 'completed';
+                        
+                        // 获取队列位置（如果处于等待状态）
+                        const queuePosition = isWaiting ? (material as any)._queuePosition : undefined;
                         
                         return (
                           <button
                             onClick={(e) => handleVideoAnalysis(material, e)}
-                            disabled={isAnalyzing}
+                            disabled={isAnalyzing || isWaiting}
                             className={`w-5 h-5 rounded flex items-center justify-center transition-all duration-200 hover:scale-110 ${
-                              isAnalyzing 
-                                ? 'bg-yellow-500 cursor-not-allowed' 
-                                : isCompleted 
-                                  ? 'bg-green-500 hover:bg-green-600' 
-                                  : 'bg-purple-500 hover:bg-purple-600'
+                              isWaiting
+                                ? 'bg-orange-500 cursor-not-allowed'
+                                : isAnalyzing 
+                                  ? 'bg-yellow-500 cursor-not-allowed' 
+                                  : isCompleted 
+                                    ? 'bg-green-500 hover:bg-green-600' 
+                                    : 'bg-purple-500 hover:bg-purple-600'
                             } text-white`}
                             title={
-                              isAnalyzing 
-                                ? t.materialsPanel.aiAnalyzing 
-                                : isCompleted 
-                                  ? t.materialsPanel.viewAnalysisResult 
-                                  : t.materialsPanel.aiVideoAnalysis
+                              isWaiting
+                                ? `等待解析...`
+                                : isAnalyzing 
+                                  ? t.materialsPanel.aiAnalyzing 
+                                  : isCompleted 
+                                    ? t.materialsPanel.viewAnalysisResult 
+                                    : t.materialsPanel.aiVideoAnalysis
                             }
                           >
-                            {isAnalyzing ? (
+                            {isWaiting ? (
+                              // 等待图标
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            ) : isAnalyzing ? (
                               <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -1805,6 +1873,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                         <span>{t.materialsPanel.searchImages}</span>
+                      </button>
+                      
+                      {/* Divider */}
+                      <div className="my-1 border-t border-gray-200"></div>
+                      
+                      {/* My Materials */}
+                      <button
+                        onClick={() => handleDropdownOptionClick('myMaterials')}
+                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>{t.materialsPanel.myMaterials}</span>
                       </button>
                     </div>
                   </div>
@@ -2096,6 +2178,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         material={watermarkRemovalModal.material}
         onClose={handleCloseWatermarkRemovalModal}
         onWatermarkRemoved={handleWatermarkRemoved}
+        taskId={taskId}
+      />
+
+      {/* 我的素材弹窗 */}
+      <MyMaterialsModal
+        isOpen={isMyMaterialsModalOpen}
+        onClose={() => setIsMyMaterialsModalOpen(false)}
+        onAddMaterials={handleAddMyMaterials}
         taskId={taskId}
       />
     </div>

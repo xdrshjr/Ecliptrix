@@ -99,10 +99,15 @@ class SupabaseService:
                             filename: str, 
                             folder: str = "audio",
                             task_id: Optional[str] = None,
-                            segment_id: Optional[str] = None) -> str:
+                            segment_id: Optional[str] = None,
+                            user_id: Optional[str] = None) -> str:
         """Generate bucket path for file upload."""
         timestamp = datetime.now().strftime("%Y/%m/%d")
         path_parts = [self.environment, folder, timestamp]
+        
+        # Add user_id to path if provided
+        if user_id:
+            path_parts.append(f"user_{user_id}")
         
         if task_id:
             path_parts.append(task_id)
@@ -742,6 +747,272 @@ class SupabaseService:
                 "status": "unhealthy",
                 "message": f"连接测试失败: {str(e)}"
             }
+    
+    def list_user_materials(self, user_id: str, page: int = 1, page_size: int = 20, material_type: Optional[str] = None) -> Dict[str, Any]:
+        """
+        List all materials uploaded by a specific user from Supabase storage.
+        
+        Args:
+            user_id: User identifier
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+            material_type: Filter by material type (video, audio, image, etc.)
+            
+        Returns:
+            Dict containing list of materials and pagination info
+        """
+        if not self._validate_client():
+            return {
+                "success": False,
+                "message": "Supabase客户端不可用",
+                "materials": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0
+            }
+        
+        try:
+            logger.info("查询用户素材列表", {
+                "user_id": user_id,
+                "page": page,
+                "page_size": page_size,
+                "material_type": material_type
+            })
+            
+            # List all files in the bucket
+            # Note: Supabase storage API doesn't support direct user filtering in path listing
+            # We need to list files and filter by path prefix
+            all_files = []
+            
+            # Search in common material folders
+            folders = []
+            if material_type == 'video' or material_type is None:
+                folders.extend(['video'])
+            if material_type == 'audio' or material_type is None:
+                folders.append('audio')
+            if material_type == 'image' or material_type is None:
+                folders.append('images')
+            
+            # For each folder, list files recursively and filter by user_id
+            for folder in folders:
+                try:
+                    # Get the base path for this folder
+                    base_path = f"{self.environment}/{folder}"
+                    
+                    # List all date folders (YYYY/MM/DD structure)
+                    result = self.client.storage.from_(self.bucket_name).list(
+                        path=base_path,
+                        options={"limit": 1000}
+                    )
+                    
+                    if result:
+                        # Iterate through year folders
+                        for year_item in result:
+                            if not year_item.get('name'):
+                                continue
+                            year_path = f"{base_path}/{year_item['name']}"
+                            
+                            # List month folders
+                            month_result = self.client.storage.from_(self.bucket_name).list(
+                                path=year_path,
+                                options={"limit": 100}
+                            )
+                            
+                            if month_result:
+                                for month_item in month_result:
+                                    if not month_item.get('name'):
+                                        continue
+                                    month_path = f"{year_path}/{month_item['name']}"
+                                    
+                                    # List day folders
+                                    day_result = self.client.storage.from_(self.bucket_name).list(
+                                        path=month_path,
+                                        options={"limit": 100}
+                                    )
+                                    
+                                    if day_result:
+                                        for day_item in day_result:
+                                            if not day_item.get('name'):
+                                                continue
+                                            day_path = f"{month_path}/{day_item['name']}"
+                                            
+                                            # List user folders (looking for user_{user_id})
+                                            user_result = self.client.storage.from_(self.bucket_name).list(
+                                                path=day_path,
+                                                options={"limit": 100}
+                                            )
+                                            
+                                            if user_result:
+                                                for user_item in user_result:
+                                                    item_name = user_item.get('name')
+                                                    if not item_name:
+                                                        continue
+                                                    
+                                                    # Check if this is the user's folder
+                                                    if item_name == f"user_{user_id}":
+                                                        user_folder_path = f"{day_path}/{item_name}"
+                                                        
+                                                        # List files in user folder (could be direct files or task folders)
+                                                        files_result = self.client.storage.from_(self.bucket_name).list(
+                                                            path=user_folder_path,
+                                                            options={"limit": 100}
+                                                        )
+                                                        
+                                                        if files_result:
+                                                            self._process_user_files(files_result, user_folder_path, folder, all_files, material_type)
+                
+                except Exception as folder_error:
+                    logger.warning(f"无法列出文件夹 {folder}: {str(folder_error)}")
+                    continue
+            
+            # Sort by created_at (newest first)
+            all_files.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            
+            # Calculate pagination
+            total = len(all_files)
+            total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            
+            # Get page of results
+            materials = all_files[start_idx:end_idx]
+            
+            logger.info("用户素材查询成功", {
+                "user_id": user_id,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+                "returned": len(materials)
+            })
+            
+            return {
+                "success": True,
+                "materials": materials,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages
+            }
+            
+        except Exception as e:
+            logger.error("查询用户素材列表失败", {
+                "error": str(e),
+                "user_id": user_id,
+                "page": page,
+                "page_size": page_size
+            })
+            return {
+                "success": False,
+                "message": f"查询素材列表失败: {str(e)}",
+                "materials": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0
+            }
+    
+    def _process_user_files(self, files_result, parent_path, folder, all_files, material_type):
+        """Process files in user folder, handling both direct files and task subfolders."""
+        for item in files_result:
+            item_name = item.get('name')
+            if not item_name:
+                continue
+            
+            # Check if this is a file or subfolder (task folder)
+            if item.get('id'):  # It's a file
+                file_path = f"{parent_path}/{item_name}"
+                file_info = self._create_file_info(item, file_path, folder, item_name)
+                
+                # Filter by material type if specified
+                if material_type is None or file_info['type'] == material_type:
+                    all_files.append(file_info)
+            else:  # It's a subfolder (likely task folder)
+                subfolder_path = f"{parent_path}/{item_name}"
+                # List files in task subfolder
+                try:
+                    task_files_result = self.client.storage.from_(self.bucket_name).list(
+                        path=subfolder_path,
+                        options={"limit": 100}
+                    )
+                    
+                    if task_files_result:
+                        for task_file in task_files_result:
+                            if task_file.get('id'):  # It's a file
+                                task_file_name = task_file.get('name')
+                                if task_file_name:
+                                    file_path = f"{subfolder_path}/{task_file_name}"
+                                    file_info = self._create_file_info(task_file, file_path, folder, task_file_name)
+                                    
+                                    # Filter by material type if specified
+                                    if material_type is None or file_info['type'] == material_type:
+                                        all_files.append(file_info)
+                except Exception as e:
+                    logger.warning(f"无法列出任务文件夹 {subfolder_path}: {str(e)}")
+    
+    def _create_file_info(self, item, file_path, folder, name):
+        """Create file info dictionary from storage item."""
+        # Generate public URL
+        public_url_result = self.client.storage.from_(self.bucket_name).get_public_url(file_path)
+        
+        # Extract file info
+        file_info = {
+            "id": item.get('id', file_path),
+            "name": name,
+            "path": file_path,
+            "url": public_url_result,
+            "size": item.get('metadata', {}).get('size', 0),
+            "created_at": item.get('created_at', None),
+            "updated_at": item.get('updated_at', None),
+            "content_type": item.get('metadata', {}).get('mimetype', 'application/octet-stream')
+        }
+        
+        # Determine material type from content_type or extension
+        content_type = file_info['content_type']
+        name_lower = name.lower()
+        
+        if content_type.startswith('video/') or any(name_lower.endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.webm']):
+            file_info['type'] = 'video'
+            
+            # Try to find thumbnail for video
+            # Thumbnail naming convention: {video_name}_thumb.jpg
+            base_name = name.rsplit('.', 1)[0]  # Remove extension
+            thumbnail_name = f"{base_name}_thumb.jpg"
+            
+            # Get the directory path of the video
+            parent_dir = '/'.join(file_path.rsplit('/', 1)[:-1])
+            thumbnail_path = f"{parent_dir}/{thumbnail_name}"
+            
+            # Try to get thumbnail URL
+            try:
+                # Check if thumbnail exists by trying to get its public URL
+                thumbnail_url = self.client.storage.from_(self.bucket_name).get_public_url(thumbnail_path)
+                file_info['thumbnail_url'] = thumbnail_url
+                
+                logger.debug(f"找到视频缩略图", {
+                    "video": name,
+                    "thumbnail": thumbnail_name,
+                    "thumbnail_url": thumbnail_url
+                })
+            except Exception as e:
+                logger.debug(f"未找到视频缩略图: {str(e)}", {
+                    "video": name,
+                    "expected_thumbnail": thumbnail_name
+                })
+                # No thumbnail found, use video URL as fallback
+                file_info['thumbnail_url'] = public_url_result
+                
+        elif content_type.startswith('audio/') or any(name_lower.endswith(ext) for ext in ['.mp3', '.wav', '.m4a', '.aac']):
+            file_info['type'] = 'audio'
+        elif content_type.startswith('image/') or any(name_lower.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+            file_info['type'] = 'image'
+            # For images, thumbnail is the image itself
+            file_info['thumbnail_url'] = public_url_result
+        else:
+            file_info['type'] = 'file'
+        
+        return file_info
 
 
 # Global Supabase service instance

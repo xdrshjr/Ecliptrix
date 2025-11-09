@@ -18,4 +18,5 @@ export { AICreationModal } from './AICreationModal';
 export { FileUploadComponent } from './FileUpload';
 export { AIMixingProgressModal } from './AIMixingProgressModal';
 export { default as AIMixingModeSelectionModal } from './AIMixingModeSelectionModal';
+export { default as BatchAnalysisModeSelectionModal } from './BatchAnalysisModeSelectionModal';
 export { WorkflowConfigModal } from './WorkflowConfigModal'; 

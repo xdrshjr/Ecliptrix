@@ -313,17 +313,15 @@ class VideoAnalysisService:
     
     async def download_thumbnail(self, thumbnail_url: str) -> str:
         """
-        Download thumbnail from URL and return local path.
+        Download thumbnail from URL or decode from base64 data URL and return local path.
         
         Args:
-            thumbnail_url: URL of the thumbnail image
+            thumbnail_url: URL of the thumbnail image or base64 data URL
             
         Returns:
             Local path to the downloaded thumbnail
         """
         try:
-            logger.info(f"Downloading thumbnail from URL: {thumbnail_url}")
-            
             # Create temp directory for thumbnails
             thumbnails_dir = os.path.join(
                 tempfile.gettempdir(),
@@ -336,19 +334,45 @@ class VideoAnalysisService:
             thumbnail_filename = f"thumbnail_{uuid4()}.jpg"
             thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
             
-            # Download thumbnail
-            response = requests.get(thumbnail_url, timeout=30)
-            response.raise_for_status()
-            
-            # Save thumbnail
-            with open(thumbnail_path, "wb") as f:
-                f.write(response.content)
-            
-            logger.info(f"Thumbnail downloaded successfully: {thumbnail_path}")
-            return thumbnail_path
+            # Check if thumbnail_url is a base64 data URL
+            if thumbnail_url.startswith('data:'):
+                logger.info(f"Decoding base64 thumbnail data (length: {len(thumbnail_url)}, preview: {thumbnail_url[:80]}...)")
+                
+                # Extract base64 data from data URL
+                # Format: data:image/jpeg;base64,/9j/4AAQSkZJRg...
+                try:
+                    import base64
+                    header, encoded = thumbnail_url.split(',', 1)
+                    image_data = base64.b64decode(encoded)
+                    
+                    # Save decoded image
+                    with open(thumbnail_path, "wb") as f:
+                        f.write(image_data)
+                    
+                    logger.info(f"Base64 thumbnail decoded and saved successfully: {thumbnail_path} (decoded size: {len(image_data)} bytes)")
+                    return thumbnail_path
+                    
+                except Exception as decode_error:
+                    logger.error(f"Failed to decode base64 thumbnail: {str(decode_error)}")
+                    raise
+            else:
+                # Regular URL, download it
+                logger.info(f"Downloading thumbnail from URL: {thumbnail_url}")
+                
+                response = requests.get(thumbnail_url, timeout=30)
+                response.raise_for_status()
+                
+                # Save thumbnail
+                with open(thumbnail_path, "wb") as f:
+                    f.write(response.content)
+                
+                logger.info(f"Thumbnail downloaded successfully: {thumbnail_path}")
+                return thumbnail_path
             
         except Exception as e:
-            logger.error(f"Failed to download thumbnail from {thumbnail_url}: {str(e)}")
+            # 截断URL以避免日志过长（特别是base64数据）
+            url_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
+            logger.error(f"Failed to process thumbnail from {url_preview}: {str(e)}")
             raise
     
     async def analyze_frame_with_llm(self, frame_path: str, custom_prompt: Optional[str] = None, semaphore: Optional[asyncio.Semaphore] = None) -> str:
@@ -481,7 +505,10 @@ class VideoAnalysisService:
             # Quick Mode: Use thumbnail instead of downloading video
             if use_thumbnail and thumbnail_url:
                 logger.info(f"Quick mode: Using thumbnail for analysis")
-                logger.info(f"  Thumbnail URL: {thumbnail_url}")
+                # 截断thumbnail URL避免打印超长base64数据
+                thumbnail_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
+                thumbnail_type = 'base64' if thumbnail_url.startswith('data:') else 'url'
+                logger.info(f"  Thumbnail: {thumbnail_type} (length: {len(thumbnail_url)}, preview: {thumbnail_preview})")
                 
                 thumbnail_path = await self.download_thumbnail(thumbnail_url)
                 
@@ -675,12 +702,23 @@ class VideoAnalysisService:
         
         logger.info(f"Starting batch video analysis for {len(videos)} videos")
         logger.info(f"Configuration - Concurrent threads: {concurrent_threads}, Custom prompt: {bool(custom_prompt)}, Use thumbnails: {use_thumbnails}")
+        logger.info("")
+        logger.info("╔" + "═" * 78 + "╗")
+        logger.info("║" + " BATCH VIDEO ANALYSIS - TWO-PHASE PROCESSING".center(78) + "║")
+        logger.info("╠" + "═" * 78 + "╣")
+        logger.info("║ Phase 1: Sequential Frame Extraction (one-by-one)".ljust(79) + "║")
+        logger.info("║ Phase 2: Concurrent VLM Analysis (multi-threaded)".ljust(79) + "║")
+        logger.info("╚" + "═" * 78 + "╝")
+        logger.info("")
         
         # Phase 1: Sequential Frame Extraction (or Thumbnail Download for Quick Mode)
         phase1_description = "Thumbnail Download" if use_thumbnails else "Sequential Frame Extraction"
-        logger.info("=" * 80)
-        logger.info(f"PHASE 1: {phase1_description} - Processing {len(videos)} videos one by one")
-        logger.info("=" * 80)
+        logger.info("╔" + "═" * 78 + "╗")
+        logger.info("║" + f" PHASE 1: {phase1_description}".ljust(78) + "║")
+        logger.info("╠" + "═" * 78 + "╣")
+        logger.info("║" + f" Processing {len(videos)} videos sequentially (one by one)".ljust(78) + "║")
+        logger.info("║" + " This ensures no resource contention during frame extraction".ljust(78) + "║")
+        logger.info("╚" + "═" * 78 + "╝")
         
         extraction_start_time = time.time()
         
@@ -700,11 +738,19 @@ class VideoAnalysisService:
             frames_dir = None
             thumbnail_path = None
             
+            logger.info("")
+            logger.info(f"┌─ Processing Video {idx}/{len(videos)} ─────────────────────────────────────")
+            
             try:
                 if use_thumbnails and thumbnail_url:
                     # Quick Mode: Use thumbnail instead of downloading video
-                    logger.info(f"Downloading thumbnail for video {idx}/{len(videos)}: {video_url}")
-                    logger.info(f"  Thumbnail URL: {thumbnail_url}")
+                    logger.info(f"│ Video URL: {video_url}")
+                    # 截断thumbnail URL避免打印超长base64数据
+                    thumbnail_preview = thumbnail_url[:100] + '...' if len(thumbnail_url) > 100 else thumbnail_url
+                    thumbnail_type = 'base64' if thumbnail_url.startswith('data:') else 'url'
+                    logger.info(f"│ Thumbnail: {thumbnail_type} (length: {len(thumbnail_url)}, preview: {thumbnail_preview})")
+                    logger.info(f"│ Mode: Quick (thumbnail-only)")
+                    logger.info(f"│ Downloading thumbnail...")
                     
                     thumbnail_path = await self.download_thumbnail(thumbnail_url)
                     
@@ -718,8 +764,9 @@ class VideoAnalysisService:
                     }]
                     video_duration = 0.0  # Unknown duration for thumbnail mode
                     
-                    logger.info(f"  Successfully downloaded thumbnail for video {idx}/{len(videos)}")
-                    logger.info(f"  Using thumbnail as single frame for quick analysis")
+                    logger.info(f"│ ✓ Thumbnail downloaded successfully")
+                    logger.info(f"│ Will use thumbnail as single frame for analysis")
+                    logger.info(f"└─────────────────────────────────────────────────────────────────")
                     
                     # Store frame data for later VLM analysis
                     all_frames_data.append({
@@ -742,20 +789,32 @@ class VideoAnalysisService:
                     
                 else:
                     # Professional Mode: Download video and extract frames
-                    logger.info(f"Extracting frames from video {idx}/{len(videos)}: {video_url}")
-                    logger.info(f"  Frame interval: {frame_interval}s")
+                    logger.info(f"│ Video URL: {video_url}")
+                    logger.info(f"│ Mode: Professional (multi-frame extraction)")
+                    logger.info(f"│ Frame interval: {frame_interval}s")
+                    logger.info(f"│ Max frames: {self.config['frame_extraction']['max_frames_per_video']}")
+                    logger.info(f"│")
+                    logger.info(f"│ Step 1/2: Downloading video...")
                     
                     # Download video if needed
                     video_path = await self.download_video_if_needed(video_url)
+                    logger.info(f"│ ✓ Video downloaded")
+                    logger.info(f"│")
+                    logger.info(f"│ Step 2/2: Extracting frames (this may take a while)...")
                     
                     # Extract frames sequentially
+                    frame_extraction_start = time.time()
                     frames_info, video_duration = self.extract_frames(video_path, frame_interval)
+                    frame_extraction_time = time.time() - frame_extraction_start
                     
                     if frames_info:
                         frames_dir = os.path.dirname(frames_info[0]["frame_path"])
                     
-                    logger.info(f"  Successfully extracted {len(frames_info)} frames from video {idx}/{len(videos)}")
-                    logger.info(f"  Video duration: {video_duration:.2f}s")
+                    logger.info(f"│ ✓ Frame extraction completed")
+                    logger.info(f"│ Extracted frames: {len(frames_info)}")
+                    logger.info(f"│ Video duration: {video_duration:.2f}s")
+                    logger.info(f"│ Extraction time: {frame_extraction_time:.2f}s")
+                    logger.info(f"└─────────────────────────────────────────────────────────────────")
                     
                     # Store frame data for later VLM analysis
                     for frame_info in frames_info:
@@ -778,8 +837,9 @@ class VideoAnalysisService:
                     }
                 
             except Exception as e:
-                logger.error(f"  Failed to process video {idx}/{len(videos)}: {video_url}", exc_info=True)
-                logger.error(f"  Error: {str(e)}")
+                logger.error(f"│ ✗ Failed to process video {idx}/{len(videos)}")
+                logger.error(f"│ Error: {str(e)}", exc_info=True)
+                logger.error(f"└─────────────────────────────────────────────────────────────────")
                 
                 # Store extraction failure
                 video_extraction_results[video_url] = {
@@ -795,19 +855,31 @@ class VideoAnalysisService:
         
         extraction_time = time.time() - extraction_start_time
         total_frames = len(all_frames_data)
+        successful_extractions = sum(1 for r in video_extraction_results.values() if r["success"])
+        failed_extractions = len(video_extraction_results) - successful_extractions
         
-        logger.info("=" * 80)
-        logger.info(f"PHASE 1 COMPLETED: Sequential Frame Extraction")
-        logger.info(f"  Total frames extracted: {total_frames} from {len(videos)} videos")
-        logger.info(f"  Extraction time: {extraction_time:.2f}s")
-        logger.info(f"  Average time per video: {extraction_time / len(videos):.2f}s")
-        logger.info("=" * 80)
+        logger.info("")
+        logger.info("╔" + "═" * 78 + "╗")
+        logger.info("║" + " PHASE 1 COMPLETED: Sequential Frame Extraction".ljust(78) + "║")
+        logger.info("╠" + "═" * 78 + "╣")
+        logger.info("║" + f" Total videos processed: {len(videos)}".ljust(78) + "║")
+        logger.info("║" + f" Successful extractions: {successful_extractions}".ljust(78) + "║")
+        logger.info("║" + f" Failed extractions: {failed_extractions}".ljust(78) + "║")
+        logger.info("║" + f" Total frames extracted: {total_frames}".ljust(78) + "║")
+        logger.info("║" + f" Total extraction time: {extraction_time:.2f}s".ljust(78) + "║")
+        logger.info("║" + f" Average time per video: {extraction_time / len(videos):.2f}s".ljust(78) + "║")
+        logger.info("╚" + "═" * 78 + "╝")
         
         # Phase 2: Concurrent VLM Analysis
         logger.info("")
-        logger.info("=" * 80)
-        logger.info(f"PHASE 2: Concurrent VLM Analysis - Analyzing {total_frames} frames with {concurrent_threads} threads")
-        logger.info("=" * 80)
+        logger.info("╔" + "═" * 78 + "╗")
+        logger.info("║" + " PHASE 2: Concurrent VLM Analysis".ljust(78) + "║")
+        logger.info("╠" + "═" * 78 + "╣")
+        logger.info("║" + f" Total frames to analyze: {total_frames}".ljust(78) + "║")
+        logger.info("║" + f" Concurrent threads: {concurrent_threads}".ljust(78) + "║")
+        logger.info("║" + " All frames will be analyzed in parallel using multi-threading".ljust(78) + "║")
+        logger.info("║" + " This significantly reduces total processing time".ljust(78) + "║")
+        logger.info("╚" + "═" * 78 + "╝")
         
         vlm_start_time = time.time()
         
@@ -824,7 +896,9 @@ class VideoAnalysisService:
             )
             analysis_tasks.append((frame_data, task))
         
-        logger.info(f"Executing {len(analysis_tasks)} VLM analysis tasks concurrently with {concurrent_threads} threads")
+        logger.info("")
+        logger.info(f"⚡ Starting concurrent VLM analysis of {len(analysis_tasks)} frames...")
+        logger.info(f"⚡ Using {concurrent_threads} parallel threads")
         
         # Wait for all tasks to complete
         results = await asyncio.gather(*[task for _, task in analysis_tasks], return_exceptions=True)
@@ -835,16 +909,18 @@ class VideoAnalysisService:
         successful_analyses = sum(1 for result in results if not isinstance(result, Exception))
         failed_analyses = len(results) - successful_analyses
         
-        logger.info("=" * 80)
-        logger.info(f"PHASE 2 COMPLETED: Concurrent VLM Analysis")
-        logger.info(f"  Total frames analyzed: {total_frames}")
-        logger.info(f"  Successful analyses: {successful_analyses}")
-        logger.info(f"  Failed analyses: {failed_analyses}")
-        logger.info(f"  VLM analysis time: {vlm_time:.2f}s")
-        logger.info(f"  Average time per frame: {vlm_time / total_frames if total_frames > 0 else 0:.2f}s")
-        logger.info(f"  Estimated sequential time: {total_frames * 6:.2f}s (assuming 6s per frame)")
-        logger.info(f"  Speedup factor: {(total_frames * 6) / vlm_time if vlm_time > 0 else 0:.2f}x")
-        logger.info("=" * 80)
+        logger.info("")
+        logger.info("╔" + "═" * 78 + "╗")
+        logger.info("║" + " PHASE 2 COMPLETED: Concurrent VLM Analysis".ljust(78) + "║")
+        logger.info("╠" + "═" * 78 + "╣")
+        logger.info("║" + f" Total frames analyzed: {total_frames}".ljust(78) + "║")
+        logger.info("║" + f" Successful analyses: {successful_analyses}".ljust(78) + "║")
+        logger.info("║" + f" Failed analyses: {failed_analyses}".ljust(78) + "║")
+        logger.info("║" + f" VLM analysis time: {vlm_time:.2f}s".ljust(78) + "║")
+        logger.info("║" + f" Average time per frame: {vlm_time / total_frames if total_frames > 0 else 0:.2f}s".ljust(78) + "║")
+        logger.info("║" + f" Estimated sequential time: {total_frames * 6:.2f}s".ljust(78) + "║")
+        logger.info("║" + f" Speedup factor: {(total_frames * 6) / vlm_time if vlm_time > 0 else 0:.2f}x".ljust(78) + "║")
+        logger.info("╚" + "═" * 78 + "╝")
         
         # Build results per video
         batch_results = []
@@ -949,17 +1025,21 @@ class VideoAnalysisService:
         failed_videos = len(batch_results) - successful_videos
         
         logger.info("")
-        logger.info("=" * 80)
-        logger.info(f"BATCH VIDEO ANALYSIS COMPLETED")
-        logger.info(f"  Total videos: {len(videos)}")
-        logger.info(f"  Successful: {successful_videos}")
-        logger.info(f"  Failed: {failed_videos}")
-        logger.info(f"  Total frames extracted: {total_frames}")
-        logger.info(f"  Total processing time: {total_processing_time:.2f}s")
-        logger.info(f"  Frame extraction time: {extraction_time:.2f}s ({extraction_time/total_processing_time*100:.1f}%)")
-        logger.info(f"  VLM analysis time: {vlm_time:.2f}s ({vlm_time/total_processing_time*100:.1f}%)")
-        logger.info(f"  Concurrent threads used: {concurrent_threads}")
-        logger.info("=" * 80)
+        logger.info("╔" + "═" * 78 + "╗")
+        logger.info("║" + " BATCH VIDEO ANALYSIS COMPLETED".center(78) + "║")
+        logger.info("╠" + "═" * 78 + "╣")
+        logger.info("║" + " Overall Statistics:".ljust(78) + "║")
+        logger.info("║" + f"   Total videos: {len(videos)}".ljust(78) + "║")
+        logger.info("║" + f"   Successful: {successful_videos}".ljust(78) + "║")
+        logger.info("║" + f"   Failed: {failed_videos}".ljust(78) + "║")
+        logger.info("║" + f"   Total frames extracted: {total_frames}".ljust(78) + "║")
+        logger.info("║" + "".ljust(78) + "║")
+        logger.info("║" + " Performance Metrics:".ljust(78) + "║")
+        logger.info("║" + f"   Total processing time: {total_processing_time:.2f}s".ljust(78) + "║")
+        logger.info("║" + f"   Phase 1 (Frame extraction): {extraction_time:.2f}s ({extraction_time/total_processing_time*100:.1f}%)".ljust(78) + "║")
+        logger.info("║" + f"   Phase 2 (VLM analysis): {vlm_time:.2f}s ({vlm_time/total_processing_time*100:.1f}%)".ljust(78) + "║")
+        logger.info("║" + f"   Concurrent threads used: {concurrent_threads}".ljust(78) + "║")
+        logger.info("╚" + "═" * 78 + "╝")
         
         return BatchVideoAnalysisResponse(
             success=failed_videos == 0,

@@ -22,6 +22,7 @@ class VideoAnalysisRequest(BaseModel):
     custom_prompt: Optional[str] = Field(None, description="Custom prompt for LLM analysis")
     thumbnail_url: Optional[str] = Field(None, description="Thumbnail URL for quick mode analysis (skips video download/frame extraction)")
     use_thumbnail: bool = Field(default=False, description="Use thumbnail instead of downloading video (quick mode)")
+    task_id: Optional[str] = Field(None, description="Optional task ID for queue tracking")
 
 
 class VideoAnalysisResponse(BaseModel):
