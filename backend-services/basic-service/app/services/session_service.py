@@ -20,34 +20,47 @@ logger = get_logger(__name__)
 
 class SessionService:
     """Service for managing user sessions and single-device login."""
-    
+
     def __init__(self):
-        """Initialize session service."""
+        """Initialize session service with appropriate provider."""
+        # Check authentication mode
+        if settings.auth.mode == "local":
+            logger.info("Initializing session service in LOCAL mode")
+            from app.services.auth.local_session_provider import LocalSessionProvider
+            self.local_provider = LocalSessionProvider()
+            self.client = None
+            logger.info("Session service initialized in LOCAL mode")
+            return
+
+        # Supabase mode initialization
+        logger.info("Initializing session service in SUPABASE mode")
+        self.local_provider = None
+
         if not SUPABASE_AVAILABLE:
             logger.warning("Supabase客户端不可用于会话服务。请安装: pip install supabase")
             self.client = None
             return
-            
+
         try:
             # Validate environment variables
             if not settings.supabase.url:
                 raise ValueError("SUPABASE_URL环境变量未设置或为空")
             if not settings.supabase.anon_key:
                 raise ValueError("SUPABASE_ANON_KEY环境变量未设置或为空")
-            
+
             logger.info(f"初始化会话服务，Supabase URL: {settings.supabase.url[:50]}...")
-            
+
             # Create Supabase client for database operations
             self.client: Optional[Client] = create_client(
                 settings.supabase.url,
                 settings.supabase.anon_key
             )
-            
+
             logger.info("会话服务初始化成功", {
                 "service": "SessionService",
                 "supabase_url": settings.supabase.url[:50] + "..." if len(settings.supabase.url) > 50 else settings.supabase.url
             })
-            
+
         except Exception as e:
             logger.error(f"会话服务初始化失败: {str(e)}")
             logger.error(f"错误类型: {type(e).__name__}")
@@ -78,29 +91,34 @@ class SessionService:
         return token
     
     async def create_session(
-        self, 
-        user_id: str, 
+        self,
+        user_id: str,
         device_info: Optional[str] = None,
         ip_address: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create a new session for a user, invalidating any existing sessions.
-        
+
         Args:
             user_id: User ID
             device_info: Device information (User-Agent)
             ip_address: IP address of the client
-            
+
         Returns:
             Dict containing session creation result
         """
+        # Delegate to local provider if in local mode
+        if settings.auth.mode == "local":
+            return await self.local_provider.create_session(user_id, device_info, ip_address)
+
+        # Supabase implementation
         if not self._validate_client():
             return {
                 "success": False,
                 "message": "会话服务不可用",
                 "error_code": "SERVICE_UNAVAILABLE"
             }
-        
+
         try:
             logger.info("创建新用户会话", {
                 "user_id": user_id,
@@ -175,20 +193,25 @@ class SessionService:
             }
     
     async def validate_session(
-        self, 
-        user_id: str, 
+        self,
+        user_id: str,
         session_token: str
     ) -> Dict[str, Any]:
         """
         Validate if a session token is currently active for a user.
-        
+
         Args:
             user_id: User ID
             session_token: Session token to validate
-            
+
         Returns:
             Dict containing validation result
         """
+        # Delegate to local provider if in local mode
+        if settings.auth.mode == "local":
+            return await self.local_provider.validate_session(user_id, session_token)
+
+        # Supabase implementation
         if not self._validate_client():
             return {
                 "success": False,
@@ -196,7 +219,7 @@ class SessionService:
                 "message": "会话服务不可用",
                 "error_code": "SERVICE_UNAVAILABLE"
             }
-        
+
         try:
             logger.debug("验证用户会话", {
                 "user_id": user_id,
@@ -284,20 +307,25 @@ class SessionService:
     async def invalidate_session(self, user_id: str) -> Dict[str, Any]:
         """
         Invalidate a user's current session.
-        
+
         Args:
             user_id: User ID
-            
+
         Returns:
             Dict containing invalidation result
         """
+        # Delegate to local provider if in local mode
+        if settings.auth.mode == "local":
+            return await self.local_provider.invalidate_session(user_id)
+
+        # Supabase implementation
         if not self._validate_client():
             return {
                 "success": False,
                 "message": "会话服务不可用",
                 "error_code": "SERVICE_UNAVAILABLE"
             }
-        
+
         try:
             logger.info("注销用户会话", {
                 "user_id": user_id,

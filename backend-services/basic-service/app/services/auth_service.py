@@ -21,52 +21,75 @@ logger = get_logger(__name__)
 
 
 class AuthService:
-    """Service for handling user authentication."""
-    
+    """Service for handling user authentication with provider pattern."""
+
     def __init__(self):
-        """Initialize authentication service."""
+        """Initialize authentication service with appropriate provider."""
+        self.provider = self._initialize_provider()
+        provider_name = type(self.provider).__name__
+        logger.info(f"Authentication service initialized with {provider_name}", {
+            "auth_mode": settings.auth.mode,
+            "provider": provider_name
+        })
+
+    def _initialize_provider(self):
+        """Select and initialize authentication provider based on AUTH_MODE."""
+        if settings.auth.mode == "local":
+            logger.info("Initializing LOCAL authentication mode")
+            from app.services.auth.local_provider import LocalAuthProvider
+            return LocalAuthProvider()
+        else:
+            logger.info("Initializing SUPABASE authentication mode")
+            return self._create_supabase_provider()
+
+    def _create_supabase_provider(self):
+        """Create Supabase authentication provider (inline implementation)."""
+        # Return self to maintain backward compatibility with existing code
+        # The Supabase logic remains in this class
         if not SUPABASE_AVAILABLE:
             logger.warning("Supabase client not available for auth service. Install with: pip install supabase")
             self.client = None
-            return
-            
+            return self
+
         try:
             # Validate environment variables
             if not settings.supabase.url:
                 raise ValueError("SUPABASE_URL environment variable is not set or empty")
             if not settings.supabase.anon_key:
                 raise ValueError("SUPABASE_ANON_KEY environment variable is not set or empty")
-            
+
             logger.info(f"初始化认证服务，Supabase URL: {settings.supabase.url[:50]}...")
-            
+
             # Create Supabase client for database operations
             self.client: Optional[Client] = create_client(
                 settings.supabase.url,
                 settings.supabase.anon_key
             )
-            
+
             logger.info("认证服务初始化成功", {
                 "service": "AuthService",
                 "supabase_url": settings.supabase.url[:50] + "..." if len(settings.supabase.url) > 50 else settings.supabase.url
             })
-            
+
         except Exception as e:
             logger.error(f"认证服务初始化失败: {str(e)}")
             logger.error(f"Error type: {type(e).__name__}")
             self.client = None
-    
+
+        return self
+
     def _validate_client(self) -> bool:
         """Validate if Supabase client is available."""
         if not SUPABASE_AVAILABLE:
             logger.error("Supabase客户端不可用，请安装: pip install supabase")
             return False
-            
+
         if not self.client:
             logger.error("Supabase客户端未初始化")
             return False
-            
+
         return True
-    
+
     def _hash_password(self, password: str) -> str:
         """Hash password using bcrypt."""
         try:
@@ -77,7 +100,7 @@ class AuthService:
         except Exception as e:
             logger.error(f"密码哈希失败: {str(e)}")
             raise
-    
+
     def _verify_password(self, password: str, hashed_password: str) -> bool:
         """Verify password against hash."""
         try:
@@ -85,31 +108,36 @@ class AuthService:
         except Exception as e:
             logger.error(f"密码验证失败: {str(e)}")
             return False
-    
+
     async def authenticate_user(
-        self, 
+        self,
         login_data: UserLogin,
         device_info: Optional[str] = None,
         ip_address: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Authenticate user with username and password.
-        
+
         Args:
             login_data: User login credentials
             device_info: Device information (User-Agent)
             ip_address: IP address of the client
-            
+
         Returns:
             Dict containing authentication result
         """
+        # Delegate to provider if not using Supabase
+        if settings.auth.mode == "local":
+            return await self.provider.authenticate_user(login_data, device_info, ip_address)
+
+        # Supabase implementation (existing logic)
         if not self._validate_client():
             return {
                 "success": False,
                 "message": "认证服务不可用",
                 "error_code": "SERVICE_UNAVAILABLE"
             }
-        
+
         try:
             logger.info("用户登录认证开始", {
                 "username": login_data.username,
@@ -117,10 +145,10 @@ class AuthService:
                 "ip_address": ip_address,
                 "timestamp": datetime.now().isoformat()
             })
-            
+
             # Query user from database
             response = self.client.table('users').select('*').eq('username', login_data.username).eq('is_active', True).execute()
-            
+
             if not response.data:
                 logger.warning("用户不存在或已禁用", {
                     "username": login_data.username,
@@ -131,7 +159,7 @@ class AuthService:
                     "message": "用户名或密码错误",
                     "error_code": "INVALID_CREDENTIALS"
                 }
-            
+
             user_data = response.data[0]
             logger.info("用户查询成功", {
                 "username": login_data.username,
@@ -139,7 +167,7 @@ class AuthService:
                 "is_admin": user_data.get('is_admin', False),
                 "user_role": user_data.get('user_role', 'regular')
             })
-            
+
             # Verify password
             if not self._verify_password(login_data.password, user_data['password_hash']):
                 logger.warning("密码验证失败", {
@@ -151,14 +179,14 @@ class AuthService:
                     "message": "用户名或密码错误",
                     "error_code": "INVALID_CREDENTIALS"
                 }
-            
+
             # Create new session (this will invalidate any existing session)
             session_result = await session_service.create_session(
                 user_id=user_data['id'],
                 device_info=device_info,
                 ip_address=ip_address
             )
-            
+
             if not session_result.get("success"):
                 logger.error("会话创建失败", {
                     "user_id": user_data['id'],
@@ -173,7 +201,7 @@ class AuthService:
                     "user_id": user_data['id'],
                     "username": login_data.username
                 })
-            
+
             # Update last login time
             try:
                 self.client.table('users').update({
@@ -186,7 +214,7 @@ class AuthService:
             except Exception as update_error:
                 logger.warning(f"更新最后登录时间失败: {str(update_error)}")
                 # Don't fail the login if we can't update the last login time
-            
+
             # Create user info object
             user_info = UserInfo(
                 id=user_data['id'],
@@ -201,7 +229,7 @@ class AuthService:
                 updated_at=datetime.fromisoformat(user_data['updated_at'].replace('Z', '+00:00')),
                 last_login_at=datetime.now()
             )
-            
+
             logger.info("用户认证成功", {
                 "username": login_data.username,
                 "user_id": user_data['id'],
@@ -210,14 +238,14 @@ class AuthService:
                 "has_session_token": session_token is not None,
                 "login_time": datetime.now().isoformat()
             })
-            
+
             return {
                 "success": True,
                 "message": "登录成功",
                 "user": user_info,
                 "session_token": session_token
             }
-            
+
         except Exception as e:
             error_msg = str(e)
             logger.error("用户认证异常", {
@@ -231,36 +259,41 @@ class AuthService:
                 "error_code": "AUTHENTICATION_ERROR",
                 "error_details": {"error": error_msg}
             }
-    
+
     async def register_user(self, registration_data: UserRegistration) -> Dict[str, Any]:
         """
         Register a new user.
-        
+
         Args:
             registration_data: User registration data
-            
+
         Returns:
             Dict containing registration result
         """
+        # Delegate to provider if not using Supabase
+        if settings.auth.mode == "local":
+            return await self.provider.register_user(registration_data)
+
+        # Supabase implementation (existing logic)
         if not self._validate_client():
             return {
                 "success": False,
                 "message": "认证服务不可用",
                 "error_code": "SERVICE_UNAVAILABLE"
             }
-        
+
         try:
             logger.info("用户注册开始", {
                 "username": registration_data.username,
                 "email": registration_data.email,
                 "timestamp": datetime.now().isoformat()
             })
-            
+
             # Check if user already exists
             existing_user = self.client.table('users').select('username, email').or_(
                 f'username.eq.{registration_data.username},email.eq.{registration_data.email}'
             ).execute()
-            
+
             if existing_user.data:
                 existing = existing_user.data[0]
                 if existing['username'] == registration_data.username:
@@ -277,10 +310,10 @@ class AuthService:
                         "message": "邮箱已存在",
                         "error_code": "EMAIL_EXISTS"
                     }
-            
+
             # Hash password
             password_hash = self._hash_password(registration_data.password)
-            
+
             # Insert new user
             new_user_data = {
                 "username": registration_data.username,
@@ -291,9 +324,9 @@ class AuthService:
                 "is_admin": False,
                 "user_role": "regular"
             }
-            
+
             response = self.client.table('users').insert(new_user_data).execute()
-            
+
             if not response.data:
                 logger.error("用户创建失败", {
                     "username": registration_data.username,
@@ -304,9 +337,9 @@ class AuthService:
                     "message": "用户创建失败",
                     "error_code": "USER_CREATION_FAILED"
                 }
-            
+
             created_user = response.data[0]
-            
+
             # Create user info object
             user_info = UserInfo(
                 id=created_user['id'],
@@ -321,20 +354,20 @@ class AuthService:
                 updated_at=datetime.fromisoformat(created_user['updated_at'].replace('Z', '+00:00')),
                 last_login_at=None
             )
-            
+
             logger.info("用户注册成功", {
                 "username": registration_data.username,
                 "user_id": created_user['id'],
                 "email": registration_data.email,
                 "user_role": user_info.user_role
             })
-            
+
             return {
                 "success": True,
                 "message": "用户注册成功",
                 "user": user_info
             }
-            
+
         except Exception as e:
             error_msg = str(e)
             logger.error("用户注册异常", {
@@ -349,26 +382,31 @@ class AuthService:
                 "error_code": "REGISTRATION_ERROR",
                 "error_details": {"error": error_msg}
             }
-    
+
     async def get_user_by_id(self, user_id: str) -> Optional[UserInfo]:
         """
         Get user information by ID.
-        
+
         Args:
             user_id: User ID
-            
+
         Returns:
             UserInfo object or None if not found
         """
+        # Delegate to provider if not using Supabase
+        if settings.auth.mode == "local":
+            return await self.provider.get_user_by_id(user_id)
+
+        # Supabase implementation (existing logic)
         if not self._validate_client():
             return None
-        
+
         try:
             response = self.client.table('users').select('*').eq('id', user_id).eq('is_active', True).execute()
-            
+
             if not response.data:
                 return None
-            
+
             user_data = response.data[0]
             return UserInfo(
                 id=user_data['id'],
@@ -383,31 +421,36 @@ class AuthService:
                 updated_at=datetime.fromisoformat(user_data['updated_at'].replace('Z', '+00:00')),
                 last_login_at=datetime.fromisoformat(user_data['last_login_at'].replace('Z', '+00:00')) if user_data.get('last_login_at') else None
             )
-            
+
         except Exception as e:
             logger.error(f"获取用户信息异常: {str(e)}", {"user_id": user_id})
             return None
-    
+
     def health_check(self) -> Dict[str, Any]:
         """Check authentication service health."""
+        # Delegate to provider if not using Supabase
+        if settings.auth.mode == "local":
+            return self.provider.health_check()
+
+        # Supabase implementation (existing logic)
         if not self._validate_client():
             return {
                 "service": "AuthService",
                 "status": "unhealthy",
                 "message": "认证服务客户端不可用"
             }
-        
+
         try:
             # Try to query users table (just count)
             response = self.client.table('users').select('id', count='exact').limit(1).execute()
-            
+
             return {
                 "service": "AuthService",
                 "status": "healthy",
                 "message": "认证服务运行正常",
                 "users_table_accessible": True
             }
-            
+
         except Exception as e:
             logger.error("认证服务健康检查失败", {"error": str(e)})
             return {
@@ -418,4 +461,4 @@ class AuthService:
 
 
 # Global auth service instance
-auth_service = AuthService() 
+auth_service = AuthService()

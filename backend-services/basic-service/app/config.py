@@ -161,6 +161,13 @@ class UploadConfig(BaseModel):
     logging: UploadLoggingConfig = UploadLoggingConfig()
 
 
+class AuthConfig(BaseModel):
+    """Authentication configuration."""
+    mode: str = Field(default="supabase", description="Authentication mode: local or supabase")
+    local_admin_username: str = Field(default="admin", description="Local admin username")
+    local_admin_password: str = Field(default="admin", description="Local admin password")
+
+
 class SupabaseConfig(BaseModel):
     """Supabase configuration."""
     url: str = Field(..., description="Supabase URL")
@@ -198,9 +205,12 @@ class Settings(BaseModel):
     # RunningHub API Configuration
     running_hub_api_key: str = Field(default="", description="RunningHub API key for FLUX generation")
     
+    # Authentication Configuration
+    auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration")
+
     # Supabase Configuration
     supabase: SupabaseConfig = Field(..., description="Supabase configuration")
-    
+
     # Batch TTS Configuration
     batch_tts: BatchTTSConfig = BatchTTSConfig()
     
@@ -332,7 +342,14 @@ def get_settings() -> Settings:
         bucket=os.getenv("SUPABASE_BUCKET", ""),
         environment=os.getenv("ENVIRONMENT", "development")
     )
-    
+
+    # Create Authentication configuration
+    auth_config = AuthConfig(
+        mode=os.getenv("AUTH_MODE", "supabase"),
+        local_admin_username=os.getenv("LOCAL_ADMIN_USERNAME", "admin"),
+        local_admin_password=os.getenv("LOCAL_ADMIN_PASSWORD", "admin")
+    )
+
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
@@ -348,6 +365,7 @@ def get_settings() -> Settings:
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
         running_hub_api_key=os.getenv("RUNNING_HUB_API_KEY", ""),
+        auth=auth_config,
         supabase=supabase_config,
         batch_tts=batch_tts_config,
         youtube=youtube_config,

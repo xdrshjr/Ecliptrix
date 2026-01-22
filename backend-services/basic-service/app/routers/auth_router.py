@@ -204,21 +204,18 @@ async def register_user(registration_data: UserRegistration) -> UserRegistration
 async def validate_session(validation_data: SessionValidationRequest) -> SessionValidationResponse:
     """
     会话验证接口
-    
+
     Args:
         validation_data: 会话验证数据（用户ID和会话令牌）
-        
+
     Returns:
         SessionValidationResponse: 会话验证结果
-        
+
     Raises:
         HTTPException: 验证服务异常时抛出异常
     """
     try:
-        logger.info("接收到会话验证请求", {
-            "user_id": validation_data.user_id,
-            "endpoint": "/auth/validate-session"
-        })
+        logger.info(f"接收到会话验证请求 - user_id={validation_data.user_id}, type={type(validation_data.user_id).__name__}, token_length={len(validation_data.session_token) if validation_data.session_token else 0}")
         
         # 调用会话服务进行验证
         validation_result = await session_service.validate_session(
