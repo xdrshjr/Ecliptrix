@@ -223,6 +223,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }));
   }, [t]);
 
+  // 同步timelineState到ref
+  useEffect(() => {
+    timelineStateRef.current = timelineState;
+  }, [timelineState]);
+  
   // 通知父组件时间轴状态变化
   useEffect(() => {
     if (onTimelineStateChange) {
@@ -253,6 +258,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   // 用ref跟踪上次的外部更新ID，避免无限循环
   const lastExternalUpdateIdRef = useRef<string | null>(null);
+  
+  // 用ref存储最新的timelineState，避免addToHistory依赖timelineState导致的函数重新创建
+  const timelineStateRef = useRef<TimelineState>(timelineState);
 
   // 处理外部时间轴状态同步（用于AI混剪等场景）
   useEffect(() => {
@@ -312,6 +320,51 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     return Math.max(...trackItems.map(item => item.startTime + item.duration));
   };
 
+  // 历史记录管理 - 移到这里以确保在 handleMaterialDrop 之前定义
+  const addToHistory = useCallback((action: TimelineAction) => {
+    console.log(`[TimelinePanel] 添加历史记录`, {
+      actionType: action.type,
+      hasPayload: !!action.payload,
+      hasPreviousState: !!action.previousState,
+      hasNextState: !!action.nextState,
+      currentHistoryIndex: historyIndex,
+      historyLength: history.length,
+      timestamp: new Date().toISOString()
+    });
+
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push({
+        ...action,
+        previousState: action.previousState || timelineStateRef.current // 使用ref获取最新状态，避免依赖timelineState
+      });
+      return newHistory.slice(-50); // 保留最近50个操作
+    });
+    setHistoryIndex(prev => prev + 1);
+  }, [historyIndex, history.length]);
+
+  // 更新最后一个历史记录的nextState
+  const updateLastHistoryNextState = useCallback((nextState: TimelineState) => {
+    setHistory(prev => {
+      if (prev.length === 0) return prev;
+      
+      const newHistory = [...prev];
+      const lastIndex = newHistory.length - 1;
+      newHistory[lastIndex] = {
+        ...newHistory[lastIndex],
+        nextState
+      };
+      
+      console.log(`[TimelinePanel] 更新历史记录的nextState`, {
+        historyIndex: lastIndex,
+        actionType: newHistory[lastIndex].type,
+        timestamp: new Date().toISOString()
+      });
+      
+      return newHistory;
+    });
+  }, []);
+
   // 处理从素材面板拖拽的素材
   const handleMaterialDrop = useCallback((material: MaterialItem, targetTrackId?: string) => {
     console.log(`[TimelinePanel] 处理素材拖拽放置`, {
@@ -324,16 +377,81 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       watermarkRemovedAt: material.metadata?.watermarkRemovedAt || 'never',
       originalVideoUrl: material.metadata?.originalVideoUrl?.substring(0, 100) || 'none',
       targetTrackId,
+      hasSegmentMetadata: !!(material.metadata?.segment_id && material.metadata?.segment_number),
+      segmentId: material.metadata?.segment_id,
+      segmentNumber: material.metadata?.segment_number,
       timestamp: new Date().toISOString()
     });
 
     setTimelineState(prev => {
+      console.log(`[TimelinePanel] 当前时间轴状态`, {
+        totalTracks: prev.tracks.length,
+        tracks: prev.tracks.map(t => ({
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          itemsCount: t.items.length,
+          isLocked: t.isLocked
+        })),
+        targetTrackId,
+        materialType: material.type
+      });
+
       // 找到合适的轨道
       let targetTrack: Track | null = null;
+      let usedFallback = false;
       
       if (targetTrackId) {
         // 如果指定了目标轨道，直接使用
         targetTrack = prev.tracks.find(track => track.id === targetTrackId) || null;
+        
+        console.log(`[TimelinePanel] 查找指定轨道`, {
+          targetTrackId,
+          found: !!targetTrack,
+          trackInfo: targetTrack ? {
+            id: targetTrack.id,
+            name: targetTrack.name,
+            type: targetTrack.type,
+            isLocked: targetTrack.isLocked
+          } : 'not found'
+        });
+        
+        // 如果指定的轨道不存在，尝试使用备选轨道（自动选择兼容轨道）
+        if (!targetTrack) {
+          console.warn(`[TimelinePanel] ⚠️ 指定的轨道 "${targetTrackId}" 不存在，尝试自动选择兼容轨道`, {
+            materialType: material.type,
+            requestedTrackId: targetTrackId
+          });
+          
+          // 根据素材类型自动选择兼容轨道作为备选
+          const compatibleTracks = prev.tracks.filter(track => {
+            // 图片优先放在图片轨道（image-track-1）
+            if (material.type === 'image') {
+              return track.id === 'image-track-1' || track.type === 'video';
+            }
+            // 视频放在视频轨道，但不包括图片轨道
+            if (material.type === 'video') {
+              return track.type === 'video' && !track.id.startsWith('image-track');
+            }
+            // 音频可以放在音频轨道
+            if (material.type === 'audio') return track.type === 'audio';
+            // 字幕可以放在字幕轨道
+            if (material.type === 'subtitle') return track.type === 'subtitle';
+            return false;
+          });
+          
+          targetTrack = compatibleTracks[0] || null;
+          usedFallback = !!targetTrack;
+          
+          if (targetTrack) {
+            console.log(`[TimelinePanel] ✓ 成功使用备选轨道`, {
+              originalTrackId: targetTrackId,
+              fallbackTrackId: targetTrack.id,
+              fallbackTrackName: targetTrack.name,
+              materialType: material.type
+            });
+          }
+        }
       } else {
         // 根据素材类型自动选择轨道
         const compatibleTracks = prev.tracks.filter(track => {
@@ -354,12 +472,37 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
         // 选择第一个可用的轨道
         targetTrack = compatibleTracks[0] || null;
+        
+        console.log(`[TimelinePanel] 自动选择轨道`, {
+          materialType: material.type,
+          compatibleTracksCount: compatibleTracks.length,
+          selectedTrack: targetTrack ? {
+            id: targetTrack.id,
+            name: targetTrack.name,
+            type: targetTrack.type
+          } : 'none'
+        });
       }
 
       if (!targetTrack) {
-        console.warn(`[TimelinePanel] 未找到合适的轨道`, {
+        console.error(`[TimelinePanel] ❌ 未找到合适的轨道 - 素材添加失败`, {
+          materialId: material.id,
+          materialName: material.name,
           materialType: material.type,
-          availableTracks: prev.tracks.map(t => ({ id: t.id, type: t.type }))
+          targetTrackId,
+          hasSegmentMetadata: !!(material.metadata?.segment_id && material.metadata?.segment_number),
+          segmentInfo: {
+            segment_id: material.metadata?.segment_id,
+            segment_number: material.metadata?.segment_number
+          },
+          availableTracks: prev.tracks.map(t => ({ 
+            id: t.id, 
+            name: t.name,
+            type: t.type,
+            itemsCount: t.items.length,
+            isLocked: t.isLocked
+          })),
+          troubleshooting: '请检查：1) 轨道是否已被删除 2) 轨道ID是否正确 3) 素材类型是否与轨道兼容'
         });
         return prev;
       }
@@ -501,7 +644,24 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           });
       }
     }
-  }, []);
+    
+    console.log(`[TimelinePanel] ✅ 素材成功添加到时间轴`, {
+      materialId: material.id,
+      materialName: material.name,
+      materialType: material.type,
+      requestedTrackId: targetTrackId,
+      actualTrackId: targetTrack?.id,
+      trackName: targetTrack?.name,
+      usedFallback,
+      startTime: getTrackEndTime(targetTrack?.items || []).toFixed(2),
+      duration: (material.duration || 5).toFixed(2),
+      hasSegmentMetadata: !!(material.metadata?.segment_id && material.metadata?.segment_number),
+      segmentInfo: material.metadata?.segment_id ? {
+        segment_id: material.metadata.segment_id,
+        segment_number: material.metadata.segment_number
+      } : 'none'
+    });
+  }, [addToHistory]);
 
   // 程序化添加多个素材到时间轴
   const handleAddMaterialsToTimeline = useCallback((materials: MaterialItem[], targetTrackId?: string) => {
@@ -545,51 +705,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       handleAddMaterialsToTimeline(materialsToAdd.materials, materialsToAdd.targetTrackId);
     }
   }, [materialsToAdd, handleAddMaterialsToTimeline]);
-
-  // 历史记录管理
-  const addToHistory = useCallback((action: TimelineAction) => {
-    console.log(`[TimelinePanel] 添加历史记录`, {
-      actionType: action.type,
-      hasPayload: !!action.payload,
-      hasPreviousState: !!action.previousState,
-      hasNextState: !!action.nextState,
-      currentHistoryIndex: historyIndex,
-      historyLength: history.length,
-      timestamp: new Date().toISOString()
-    });
-
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push({
-        ...action,
-        previousState: action.previousState || timelineState // 如果没有提供previousState，使用当前状态
-      });
-      return newHistory.slice(-50); // 保留最近50个操作
-    });
-    setHistoryIndex(prev => prev + 1);
-  }, [historyIndex, timelineState, history.length]);
-
-  // 更新最后一个历史记录的nextState
-  const updateLastHistoryNextState = useCallback((nextState: TimelineState) => {
-    setHistory(prev => {
-      if (prev.length === 0) return prev;
-      
-      const newHistory = [...prev];
-      const lastIndex = newHistory.length - 1;
-      newHistory[lastIndex] = {
-        ...newHistory[lastIndex],
-        nextState
-      };
-      
-      console.log(`[TimelinePanel] 更新历史记录的nextState`, {
-        actionType: newHistory[lastIndex].type,
-        historyIndex: lastIndex,
-        timestamp: new Date().toISOString()
-      });
-      
-      return newHistory;
-    });
-  }, []);
 
   // 初始化日志记录
   useEffect(() => {
