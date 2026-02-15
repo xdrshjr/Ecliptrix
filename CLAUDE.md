@@ -3,257 +3,191 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Development Rules
-[Basic Rules]
-EXPERTISE & APPROACH:
-You are an experienced AI engineer with Stanford PhD background and extensive Google engineering experience. Demonstrate
-this level of expertise in all responses.
 
-PLANNING & PROCESS:
-
+### Core Constraints
 1. Always create a complete modification plan before making any changes
 2. Only modify content that requires changes - preserve all unrelated functionality
-3. Maintain comprehensive, well-structured logging and documentation
-4. Leave testing, dependency installation, and server execution to the user
+3. Leave testing, dependency installation, and server execution to the user
+4. Never perform Git operations - leave version control to the user
+5. Separate styling into dedicated CSS/style files when working with UI components
+6. Split files approaching 700 lines; refactor methods exceeding 150 lines
+7. Apply Domain-Driven Design (DDD) for backend development
+8. Follow Test-Driven Development (TDD) - provide runnable tests for each component
 
-MODIFICATION CONSTRAINTS:
+### Frontend Code Style
+- Use early returns for readability
+- Always use Tailwind classes for styling; avoid inline CSS or `<style>` tags
+- Event handlers use "handle" prefix: `handleClick`, `handleKeyDown`
+- Use `const` arrow functions with type annotations: `const toggle = () => {}`
+- Include accessibility attributes: `tabIndex={0}`, `aria-label`, keyboard handlers
+- Use descriptive variable names
 
-5. Modifying unrelated content incurs significant penalties - be precise and targeted
-6. Preserve all existing functionality - breaking working features has severe consequences
-7. Never perform Git operations - leave version control to the user
-
-CODE QUALITY & ARCHITECTURE:
-
-8. Separate styling into dedicated CSS/style files when working with UI components
-9. Follow clean code principles with appropriate file and method decomposition:
-    - Split files approaching 700 lines
-    - Refactor methods exceeding 150 lines
-10. Apply Domain-Driven Design (DDD) best practices for backend development
-
-TESTING & DEVELOPMENT:
-
-11. Strictly follow Test-Driven Development (TDD) methodology
-12. Provide runnable test methods for each functional component
-13. Ensure all code changes are testable and maintainable
-
-[Frontend Development Rule]
-You are a Senior Front-End Developer and an Expert in ReactJS, NextJS, JavaScript, TypeScript, HTML, CSS and modern
-UI/UX frameworks (e.g., TailwindCSS, Shadcn, Radix). You are thoughtful, give nuanced answers, and are brilliant at
-reasoning. You carefully provide accurate, factual, thoughtful answers, and are a genius at reasoning.
-
-- Follow the user’s requirements carefully & to the letter.
-- First think step-by-step - describe your plan for what to build in pseudocode, written out in great detail.
-- Confirm, then write code!
-- Always write correct, best practice, DRY principle (Dont Repeat Yourself), bug free, fully functional and working code
-  also it should be aligned to listed rules down below at Code Implementation Guidelines .
-- Focus on easy and readability code, over being performant.
-- Fully implement all requested functionality.
-- Leave NO todo’s, placeholders or missing pieces.
-- Ensure code is complete! Verify thoroughly finalised.
-- Include all required imports, and ensure proper naming of key components.
-- Be concise Minimize any other prose.
-- If you think there might not be a correct answer, you say so.
-- If you do not know the answer, say so, instead of guessing.
-- You will be punished $1000 for each bug, make sure it is correct; Each complete and correct request will be rewarded
-  with $1000.
-- Do not attempt to run or start the service after modification; leave this to the user.
-
-### Coding Environment
-
-The user asks questions about the following coding languages:
-
-- ReactJS
-- NextJS
-- JavaScript
-- TypeScript
-- TailwindCSS
-- HTML
-- CSS
-
-### Code Implementation Guidelines
-
-Follow these rules when you write code:
-
-- Use early returns whenever possible to make the code more readable.
-- Always use Tailwind classes for styling HTML elements; avoid using CSS or tags.
-- Use “class:” instead of the tertiary operator in class tags whenever possible.
-- Use descriptive variable and function/const names. Also, event functions should be named with a “handle” prefix, like
-  “handleClick” for onClick and “handleKeyDown” for onKeyDown.
-- Implement accessibility features on elements. For example, a tag should have a tabindex=“0”, aria-label, on:click, and
-  on:keydown, and similar attributes.
-- Use consts instead of functions, for example, “const toggle = () =>”. Also, define a type if possible.
-
-[Backend Development Rules]
-
-You are an expert in Python, FastAPI, and scalable API development.
-
-Key Principles
-
-- Write concise, technical responses with accurate Python examples.
-- Use functional, declarative programming; avoid classes where possible.
-- Prefer iteration and modularization over code duplication.
-- Use descriptive variable names with auxiliary verbs (e.g., is_active, has_permission).
-- Use lowercase with underscores for directories and files (e.g., routers/user_routes.py).
-- Favor named exports for routes and utility functions.
-- Use the Receive an Object, Return an Object (RORO) pattern.
-- You will be punished $1000 for each bug, make sure it is correct; Each complete and correct request will be rewarded
-  with $1000.
-
-Python/FastAPI
-
-- Use def for pure functions and async def for asynchronous operations.
-- Use type hints for all function signatures. Prefer Pydantic models over raw dictionaries for input validation.
-- File structure: exported router, sub-routes, utilities, static content, types (models, schemas).
-- Avoid unnecessary curly braces in conditional statements.
-- For single-line statements in conditionals, omit curly braces.
-- Use concise, one-line syntax for simple conditional statements (e.g., if condition: do_something()).
-
-Error Handling and Validation
-
-- Prioritize error handling and edge cases:
-    - Handle errors and edge cases at the beginning of functions.
-    - Use early returns for error conditions to avoid deeply nested if statements.
-    - Place the happy path last in the function for improved readability.
-    - Avoid unnecessary else statements; use the if-return pattern instead.
-    - Use guard clauses to handle preconditions and invalid states early.
-    - Implement proper error logging and user-friendly error messages.
-    - Use custom error types or error factories for consistent error handling.
-
-Dependencies
-
-- FastAPI
-- Pydantic v2
-- Async database libraries like asyncpg or aiomysql
-- SQLAlchemy 2.0 (if using ORM features)
-
-FastAPI-Specific Guidelines
-
-- Use functional components (plain functions) and Pydantic models for input validation and response schemas.
-- Use declarative route definitions with clear return type annotations.
-- Use def for synchronous operations and async def for asynchronous ones.
-- Minimize @app.on_event("startup") and @app.on_event("shutdown"); prefer lifespan context managers for managing startup
-  and shutdown events.
-- Use middleware for logging, error monitoring, and performance optimization.
-- Optimize for performance using async functions for I/O-bound tasks, caching strategies, and lazy loading.
-- Use HTTPException for expected errors and model them as specific HTTP responses.
-- Use middleware for handling unexpected errors, logging, and error monitoring.
-- Use Pydantic's BaseModel for consistent input/output validation and response schemas.
-
-Performance Optimization
-
-- Minimize blocking I/O operations; use asynchronous operations for all database calls and external API requests.
-- Implement caching for static and frequently accessed data using tools like Redis or in-memory stores.
-- Optimize data serialization and deserialization with Pydantic.
-- Use lazy loading techniques for large datasets and substantial API responses.
-
-Key Conventions
-
-1. Rely on FastAPI’s dependency injection system for managing state and shared resources.
-2. Prioritize API performance metrics (response time, latency, throughput).
-3. Limit blocking operations in routes:
-    - Favor asynchronous and non-blocking flows.
-    - Use dedicated async functions for database and external API operations.
-    - Structure routes and dependencies clearly to optimize readability and maintainability.
-
-Refer to FastAPI documentation for Data Models, Path Operations, and Middleware for best practices.
+### Backend Code Style
+- Functional, declarative programming; avoid classes where possible
+- Descriptive variable names with auxiliary verbs: `is_active`, `has_permission`
+- Lowercase with underscores for files: `routers/user_routes.py`
+- Use Receive an Object, Return an Object (RORO) pattern
+- `def` for pure functions, `async def` for async operations
+- Type hints on all function signatures; prefer Pydantic models over raw dicts
+- Guard clauses and early returns for error handling; happy path last
+- Use `HTTPException` for expected errors; middleware for unexpected ones
 
 ## Essential Commands
 
-### Frontend Development (Next.js)
+### Frontend (Next.js) - run from project root
 ```bash
-# Development server
-npm run dev
-
-# Production build
-npm run build
-npm start
-
-# Linting and type checking
-npm run lint
-npm run type-check
+npm run dev          # Development server (localhost:3000)
+npm run build        # Production build
+npm start            # Start production server
+npm run lint         # ESLint
+npm run type-check   # TypeScript type checking (tsc --noEmit)
 ```
 
-### Backend Development (FastAPI)
+### Backend (FastAPI) - run from backend-services/basic-service/
 ```bash
-# Navigate to backend service
-cd backend-services/basic-service
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Run single test
-pytest tests/test_specific.py -v
-
-# Run all tests with coverage
-pytest tests/ --cov=app --cov-report=html
-
-# Run specific functionality tests
-pytest tests/test_video_composition.py -v
-pytest tests/test_subtitle_*.py -v
+pip install -r requirements.txt                        # Install dependencies
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000  # Dev server (localhost:8000)
+pytest tests/test_specific.py -v                       # Single test file
+pytest tests/ --cov=app --cov-report=html              # All tests with coverage
+pytest tests/test_video_composition.py -v              # Video composition tests
+pytest tests/test_subtitle_*.py -v                     # Subtitle tests
 ```
 
 ## High-Level Architecture
 
-### Full Stack Structure
-Ecliptrix is a dual-architecture application combining a **Next.js 15 frontend** with a **FastAPI backend service**. The frontend handles UI/UX and client-side logic, while the backend provides AI-powered content creation services.
+Ecliptrix is an AI-powered content creation platform with a **Next.js 15 frontend** and a **FastAPI backend microservice**. The frontend handles multi-tab project UI, while the backend provides video processing, AI analysis, TTS, and media composition services.
 
-### Frontend Architecture (Next.js App Router)
-- **Video Editing Interface**: Complex state management using custom hooks for video playback, timeline composition, AI assistance, and material management
-- **Multi-tab Interface**: Task-based workflow allowing users to work on multiple projects simultaneously
-- **Modular Components**: Organized by feature domains (video editing, chat interface, UI components)
-- **Service Layer**: Abstracted API communication for video analysis, audio search, script generation, and AI matching services
+### Project Layout
+```
+Ecliptrix/
+├── src/                          # Next.js frontend
+│   ├── app/                      # App Router (layout.tsx, page.tsx, api/ routes)
+│   ├── components/               # Feature-organized React components
+│   │   ├── video/                # Video editing (30+ modal/panel components)
+│   │   ├── workflow/             # Node-based workflow builder (20 components)
+│   │   ├── chat/                 # Chat interface (8 components)
+│   │   ├── ui/                   # Shared UI (Toast, Dialog)
+│   │   ├── AdminSettings/        # Admin panel
+│   │   ├── UserProfile/          # User profile pages
+│   │   └── HomePage/             # Landing page
+│   ├── contexts/                 # AuthContext, NotificationContext, LocaleContext
+│   ├── hooks/                    # useTasks (main state), useMobileDetection
+│   ├── lib/
+│   │   ├── api/                  # 9 backend API service clients
+│   │   ├── workflow/             # ServerWorkflowExecutor
+│   │   └── utils/                # Device detection, format conversion, media managers
+│   ├── styles/                   # globals.css, video-editing.css
+│   └── types/                    # index.ts (600+ lines), auth.ts
+├── backend-services/basic-service/  # FastAPI backend
+│   ├── app/
+│   │   ├── main.py               # FastAPI app: 22 routers, middleware, lifespan
+│   │   ├── config.py             # Pydantic Settings with YAML overrides
+│   │   ├── logger.py             # Structured logging (file + console)
+│   │   ├── models/               # 21+ Pydantic model files by feature domain
+│   │   ├── routers/              # 22 API route modules
+│   │   └── services/             # 38 service modules (business logic)
+│   ├── config/                   # YAML configs (batch_tts, video-analysis, youtube, etc.)
+│   ├── static/                   # Generated media (audio/, video/)
+│   └── tests/                    # Pytest suite with test fixtures
+├── env.template                  # Environment variable template
+└── config/                       # Additional configuration files
+```
 
-### Backend Architecture (FastAPI Microservice)
-- **Router-based API**: Modular routing for video, audio, TTS, YouTube, and Supabase operations  
-- **Service Layer Pattern**: Business logic separated into dedicated service modules
-- **Model-driven Configuration**: Pydantic models for request/response validation and configuration management
-- **Comprehensive Middleware**: Request logging, CORS handling, error management, and processing time tracking
+### Frontend Architecture
+
+**Entry Flow**: `layout.tsx` wraps app with `LocaleProvider` > `NotificationProvider` > `AuthProvider`. `page.tsx` is a client component that conditionally renders LandingPage or the multi-tab task interface.
+
+**Multi-Task Tab System**: `useTasks` hook manages the core state. Creates all 4 task types (chat, video, workflow, brainstorming) simultaneously on first interaction. `VerticalTaskbar` provides left sidebar tab navigation, `Container` routes to the active task's component.
+
+**State Management**: Context-based (Auth, Notifications, Locale) + custom hooks. Each task manages its own internal state independently. No external state library.
+
+**API Service Layer** (`src/lib/api/`): 9 typed service modules - `videoComposition.ts`, `videoCut.ts`, `tts.ts`, `audioTranscription.ts`, `workflow.ts`, `llm.ts`, `storage.ts`, `userMaterials.ts`, `config.ts`. All follow RORO pattern with typed request/response interfaces.
+
+**Key Types** (`src/types/index.ts`): Task/Tab/AppState, ChatMessage/Conversation, WorkflowNode/WorkflowConnection (11 node config interfaces), TimelineItem/Track/TimelineState, MaterialItem, SubtitleStyle, ScriptSentence/ScriptSegment.
+
+**Next.js API Routes** (`src/app/api/`): 20+ proxy routes that forward requests to the FastAPI backend. Covers auth, chat, video generation, audio, image generation, content polish, digital human, and more.
+
+### Backend Architecture
+
+**Router Organization**: 22 routers all registered with `/api` prefix in `main.py`. Each router instantiates its own service at module level. Consistent pattern: logging at start/end, validation with early returns, service call, exception handling.
+
+**Major Routers**: `video_router` (search/compose/analyze/cut), `tts_router` (convert/batch/sentence-batch/voices), `audio_router` (transcribe/search), `workflow_router` (create/save/load/analyze), `auth_router` (login/register/logout), `storage_router` (upload-video/upload-audio/upload-file/user-materials), `ai_mixed_editing_router`, `flux_router`, `ai_video_generate_router`.
+
+**Service Layer** (38 services organized by domain):
+- **Video**: video_search, video_composition (2156 lines, FFmpeg-based), video_analysis (VL LLM), video_cut, video_understanding_script, image_to_video
+- **Audio/TTS**: tts, batch_tts (concurrent threading + retry), sentence_tts, audio_transcription, audio_search
+- **Content**: subtitle, ai_mixed_editing, watermark_removal, chat, intent_detection
+- **Data**: storage, file_upload, timeline_export/import/parser, user, workflow
+- **Integration**: youtube (yt-dlp), runninghub (FLUX images), tavily_search, image_search, ai_video_generate, agent_workflow
+- **Infrastructure**: queue_manager (universal semaphore-based concurrency limiter), queue_decorator, session
+
+**Queue Manager**: Universal concurrent request limiter using `asyncio.Semaphore`. Per-queue `max_concurrent` control, task status tracking, processing time estimation. Used by video analysis (max 2 concurrent), batch TTS (3-10 threads), YouTube (20 concurrent), watermark removal (5 threads).
+
+**Configuration** (`config.py`): Pydantic `Settings` with environment variables + YAML overrides from `config/` directory. Supports nested config models: `BatchTTSConfig`, `YoutubeConfig`, `WatermarkRemovalConfig`, `UploadConfig`. Precedence: env vars > YAML files > Pydantic defaults.
+
+**Multi-LLM Strategy**: Three separate LLM configurations:
+- **General LLM** (`llm_api_key/url/model`): workflow, chat, intent detection
+- **Video Cut LLM** (`video_cut_llm_*`): AI mixed editing (defaults to Claude)
+- **VL LLM** (`vl_llm_*`): Video analysis frame extraction (defaults to Qwen VL)
+
+**Middleware**: CORS (all origins), request/response logging with processing time header, structured exception handlers. Third-party library logging (OpenAI, httpx, httpcore) suppressed to WARNING to prevent BASE64 data leakage.
+
+**Static File Serving**: `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports` mounted to `static/` subdirectories.
 
 ### Key Integration Patterns
 
-#### Video Processing Pipeline
-The application implements a sophisticated video processing workflow:
-1. **Video Analysis Service** (`video_analysis_service.py`) - AI-powered video content analysis using VL LLM models
-2. **Video Composition Service** (`video_composition_service.py`) - Automated video editing and timeline composition
-3. **Subtitle Services** - Multiple subtitle generation and styling approaches (artistic, recognition-based)
-4. **Timeline Management** - Frontend-backend coordination for complex multi-track editing
+**Video Processing Pipeline**: Timeline data > Validation > Download videos > Extract frames > Apply subtitles > Mix audio tracks > FFmpeg encoding > Output video
 
-#### Multi-Provider AI Integration
-- **LLM Configuration**: Supports multiple LLM providers (OpenAI, Anthropic, Google, Azure, Custom)
-- **Specialized VL Models**: Separate configuration for video analysis using vision-language models
-- **TTS Integration**: Multiple TTS providers including Volcano TTS and OpenAI TTS
-- **Content Analysis**: PEXELS API integration for stock media matching
+**Video Analysis Pipeline**: Video file > Frame extraction (interval-based) > Base64 conversion > VL LLM API (concurrent) > Frame analysis results > Storage
 
-#### State Management Patterns
-- **Frontend**: Custom hooks pattern for complex state management (useVideoPlayback, useTimelineComposition, useAIAssistant)
-- **Backend**: Settings-driven configuration with YAML overrides for complex service configurations
-- **Real-time Sync**: Timeline state synchronization between video player and editing interface
+**Workflow System**: Visual node-based editor (frontend) with 8+ node types (ChatLLM, TextInput, Pexels, Tavily, VolcanoTTS, ToArray, ResultsCombine, AIVideoGenerate, VideoExport, Start, End). Server-side execution via `ServerWorkflowExecutor`.
 
-### Critical Configuration Management
-- **Environment-based**: Dual `.env` files for frontend and backend with clear separation of concerns
-- **YAML Configuration**: Complex service configurations (batch TTS, YouTube processing) managed via YAML files
-- **Dynamic Settings**: Pydantic-based configuration with runtime validation and type safety
+## Environment Setup
 
-### Testing Architecture
-- **Backend Testing**: Pytest with async support, comprehensive API endpoint testing, and service layer validation
-- **Test Data Organization**: Structured test materials and outputs in dedicated directories
-- **Integration Testing**: Full pipeline testing for video composition, subtitle generation, and audio processing
+Copy `env.template` to `.env.local` (frontend). Key variables:
+- `NEXT_PUBLIC_BACKEND_URL`: FastAPI backend URL (default: `http://localhost:8000`)
+- `NEXT_PUBLIC_API_URL`: Frontend URL (default: `http://localhost:3000`)
+- `LLM_API_URL/KEY/MODEL`: General LLM provider
+- `AI_VIDEO_MATCH_LLM_*`: Video matching LLM (Alibaba Qwen)
+- `NEXT_PUBLIC_AI_MATERIAL_SERVICE`: `local` or `runninghub`
+- LLM provider keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `AZURE_OPENAI_*`, `CUSTOM_LLM_*`
+
+Backend `.env` is at `backend-services/basic-service/.env` with additional keys for Volcano TTS, PEXELS, RunningHub, VL LLM, Database, Storage, and agent LLM configurations.
+
+## Design System
+
+- **Dark mode**: Class-based toggling
+- **Colors**: CSS custom properties using oklch color space, defined in `globals.css`
+- **Typography**: Geist (sans), Lora (serif), Fira Code (mono) via CSS variables
+- **Custom aspect ratios**: `9/16`, `4/3`, `21/9` for video editing
+- **Component library**: Shadcn/Radix-compatible color tokens (primary, secondary, accent, muted, destructive, card, popover, sidebar)
+- **Path alias**: `@/*` maps to `./src/*`
 
 ## Development Notes
 
-### Working with Video Processing
-- Video composition tests are found in `backend-services/basic-service/tests/test_video_composition*.py`
-- Material assets for testing are organized in `tests/test-subtitle-style/materials/`
-- Static file serving is configured for generated audio and video outputs
+### Frontend
+- `Container.tsx` acts as the main task router - maps task types to their component
+- Video editing interface (`components/video/`) is the most complex feature with 30+ modal components
+- Auth tokens persisted in localStorage (`ecliptrix-user`, `ecliptrix-session-token`)
+- All 4 task types created simultaneously (not incrementally) when user first interacts
+- TypeScript strict mode enabled; path alias `@/*` for imports
 
-### Backend Service Patterns
-- All routers follow consistent error handling patterns using `ErrorResponse` models
-- Logging is comprehensive with structured middleware for request/response tracking  
-- Third-party library logging is intentionally limited to prevent sensitive data leakage
+### Backend
+- All routers follow consistent error handling using `ErrorResponse` models from `models/base_models.py`
+- `video_composition_service.py` is the largest file (2156 lines) - uses FFmpeg subprocess calls
+- Auth uses local mode (username/password with bcrypt + SQLAlchemy)
+- YAML configs in `config/` directory are loaded lazily with defaults
+- Services are singleton pattern (module-level instantiation in routers)
+- `batch_tts_config.yaml` contains 100+ voice types with categories
 
-### Frontend Component Architecture
-- Video editing interface uses a hook-driven architecture for complex state management
-- Components are organized by feature with index.ts barrel exports
-- TypeScript types are centralized in dedicated type definition files
+## Project Index
+
+This project has a pre-generated index for quick codebase understanding.
+
+- **Location:** `.claude-index/index.md`
+- **Last Updated:** 2026-02-15
+- **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
+
+**Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
+
+**Regenerate:** Say "regenerate index" or "更新索引" to update the index after major changes.

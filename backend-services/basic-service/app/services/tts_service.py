@@ -18,7 +18,7 @@ import yaml
 from app.config import settings
 from app.logger import get_logger
 from app.models.tts_models import VoiceType, VoiceTypeInfo
-from app.services.supabase_service import supabase_service
+from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
 
@@ -509,36 +509,36 @@ class TTSService:
                         "estimated_duration": actual_duration
                     })
 
-                # 尝试上传到Supabase
-                supabase_url = None
-                supabase_upload_success = False
-                
+                # 尝试上传到存储服务
+                upload_url = None
+                upload_success = False
+
                 try:
                     # 在上传前验证文件完整性
                     if not os.path.exists(output_path):
-                        logger.error("音频文件不存在，无法上传到Supabase", {
+                        logger.error("音频文件不存在，无法上传到存储服务", {
                             "audio_file": output_path,
                             "segment_id": segment_id,
                             "task_id": task_id
                         })
                         raise Exception(f"音频文件不存在: {output_path}")
-                    
+
                     file_size = os.path.getsize(output_path)
                     if file_size == 0:
-                        logger.error("音频文件为空，无法上传到Supabase", {
+                        logger.error("音频文件为空，无法上传到存储服务", {
                             "audio_file": output_path,
                             "file_size": file_size,
                             "segment_id": segment_id,
                             "task_id": task_id
                         })
                         raise Exception(f"音频文件为空: {output_path}")
-                    
+
                     # 验证文件可读性
                     try:
                         with open(output_path, "rb") as test_file:
                             first_bytes = test_file.read(10)
                             if len(first_bytes) == 0:
-                                logger.error("音频文件无法读取，无法上传到Supabase", {
+                                logger.error("音频文件无法读取，无法上传到存储服务", {
                                     "audio_file": output_path,
                                     "segment_id": segment_id,
                                     "task_id": task_id
@@ -552,59 +552,64 @@ class TTSService:
                             "task_id": task_id
                         })
                         raise Exception(f"音频文件读取测试失败: {str(read_error)}")
-                    
-                    logger.info("开始上传音频文件到Supabase", {
+
+                    logger.info("开始上传音频文件到存储服务", {
                         "audio_file": output_path,
                         "file_size": file_size,
                         "segment_id": segment_id,
                         "task_id": task_id,
                         "voice_type": voice_type
                     })
-                    
-                    upload_result = supabase_service.upload_audio_file(
-                        audio_file_path=output_path,
-                        segment_id=segment_id,
-                        task_id=task_id,
-                        voice_type=voice_type
+
+                    with open(output_path, "rb") as f:
+                        file_data = f.read()
+
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    upload_result = loop.run_until_complete(
+                        storage_service.upload_audio_file(
+                            file_data=file_data,
+                            filename=filename,
+                            content_type="audio/mpeg",
+                            user_id="anonymous",
+                            task_id=task_id,
+                        )
                     )
-                    
+
                     if upload_result["success"]:
-                        supabase_url = upload_result["audio_url"]
-                        supabase_upload_success = True
-                        logger.info("音频文件上传到Supabase成功并获取到访问URL", {
-                            "supabase_url": supabase_url,
+                        upload_url = upload_result["file_url"]
+                        upload_success = True
+                        logger.info("音频文件上传到存储服务成功", {
+                            "audio_url": upload_url,
                             "file_size": upload_result["file_size"],
                             "segment_id": segment_id,
                             "task_id": task_id,
-                            "upload_success": True,
-                            "url_accessible": True,
-                            "is_signed_url": "signed" in supabase_url.lower() or "token" in supabase_url.lower(),
-                            "message": f"音频文件已成功上传到Supabase，{'签名URL' if ('signed' in supabase_url.lower() or 'token' in supabase_url.lower()) else '公共URL'}可正常访问"
+                            "upload_success": True
                         })
                     else:
-                        logger.warning("音频文件上传到Supabase失败，使用本地URL", {
-                            "error": upload_result["message"],
+                        logger.warning("音频文件上传到存储服务失败，使用本地URL", {
+                            "error": upload_result.get("message"),
                             "segment_id": segment_id,
                             "task_id": task_id
                         })
-                        
+
                 except Exception as e:
-                    logger.warning("上传到Supabase时发生异常，使用本地URL", {
+                    logger.warning("上传到存储服务时发生异常，使用本地URL", {
                         "error": str(e),
                         "segment_id": segment_id,
                         "task_id": task_id
                     })
-                
+
                 # 构造返回数据
-                # 优先使用Supabase URL，如果上传失败则使用本地URL
-                audio_url = supabase_url if supabase_upload_success else f"/api/audio/generated/{filename}"
-                
+                # 优先使用存储服务URL，如果上传失败则使用本地URL
+                audio_url = upload_url if upload_success else f"/api/audio/generated/{filename}"
+
                 result = {
                     "audio_url": audio_url,
                     "file_path": output_path,
                     "file_name": filename,
                     "file_size": file_size,
-                    "duration": actual_duration,  # 添加实际时长
+                    "duration": actual_duration,
                     "voice_type": voice_type,
                     "text_length": len(text),
                     "speed_ratio": speed_ratio,
@@ -613,16 +618,16 @@ class TTSService:
                     "segment_id": segment_id,
                     "task_id": task_id,
                     "mock_mode": MOCK_MODE,
-                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",  # 标记时长获取方式
-                    "supabase_upload": supabase_upload_success,  # 标记是否成功上传到Supabase
-                    "supabase_url": supabase_url  # Supabase URL
+                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",
+                    "storage_upload": upload_success,
+                    "audio_url": audio_url
                 }
 
                 logger.info("TTS转换成功", {
                     "audio_url": result["audio_url"],
                     "file_size": result["file_size"],
                     "duration": result["duration"],
-                    "supabase_upload": supabase_upload_success,
+                    "storage_upload": upload_success,
                     "segment_id": segment_id,
                     "task_id": task_id
                 })
@@ -663,7 +668,7 @@ class TTSService:
         task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        将文本转换为语音并保存到本地（不上传到Supabase）
+        将文本转换为语音并保存到本地（不上传到存储服务）
         
         Args:
             text: 要转换的文本
@@ -748,7 +753,7 @@ class TTSService:
                         "estimated_duration": actual_duration
                     })
                 
-                # 构造返回数据（本地保存，不上传到Supabase）
+                # 构造返回数据（本地保存，不上传到存储服务）
                 result = {
                     "audio_url": f"/api/audio/generated/{filename}",
                     "file_path": output_path,
@@ -764,8 +769,8 @@ class TTSService:
                     "task_id": task_id,
                     "mock_mode": MOCK_MODE,
                     "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",
-                    "supabase_upload": False,  # 标记未上传到Supabase
-                    "local_only": True  # 标记仅本地保存
+                    "storage_upload": False,
+                    "local_only": True
                 }
 
                 logger.info("TTS本地转换成功", {

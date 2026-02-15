@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
       });
 
       // 在服务器环境中，前端和后端可能运行在不同的容器中
-      // 需要先将视频上传到 Supabase 以便后端可以访问
-      console.log('[Video Analyze API] Uploading video to Supabase first...');
+      // 需要先将视频上传到存储服务以便后端可以访问
+      console.log('[Video Analyze API] Uploading video to storage first...');
       
       // 创建上传请求的 FormData
       const uploadFormData = new FormData();
@@ -44,22 +44,22 @@ export async function POST(request: NextRequest) {
       uploadFormData.append('task_id', `video_analysis_${Date.now()}`);
       uploadFormData.append('generate_thumbnail', 'false'); // 我们已经有缩略图了
       
-      // 上传到 Supabase
-      const uploadResponse = await fetch(`${BACKEND_URL}/api/supabase/upload-video`, {
+      // 上传到存储服务
+      const uploadResponse = await fetch(`${BACKEND_URL}/api/storage/upload-video`, {
         method: 'POST',
         body: uploadFormData,
       });
       
       if (!uploadResponse.ok) {
         const uploadError = await uploadResponse.json();
-        console.error('[Video Analyze API] Failed to upload video to Supabase:', uploadError);
+        console.error('[Video Analyze API] Failed to upload video to storage:', uploadError);
         throw new Error(`Failed to upload video: ${uploadError.message || 'Unknown error'}`);
       }
       
       const uploadResult = await uploadResponse.json();
       const videoUrl = uploadResult.video_url;
       
-      console.log('[Video Analyze API] Video uploaded to Supabase:', videoUrl);
+      console.log('[Video Analyze API] Video uploaded to storage:', videoUrl);
 
       // 处理缩略图文件（如果存在）
       let finalThumbnailUrl = thumbnailUrl;
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
 
       const data = await response.json();
 
-      // 视频已上传到 Supabase，缩略图已转换为 base64
+      // 视频已上传到存储服务，缩略图已转换为 base64
       // 不需要清理本地临时文件
 
       if (!response.ok) {

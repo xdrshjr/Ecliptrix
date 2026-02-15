@@ -637,7 +637,7 @@ class YouTubeService:
 
     async def download_and_upload_video(self, request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
         """
-        下载YouTube视频并上传到Supabase
+        下载YouTube视频并上传到存储服务
         支持并发控制（最多5个并发）和自动重试（最多3次）
         
         Args:
@@ -647,13 +647,13 @@ class YouTubeService:
             YoutubeVideoDownloadAndUploadResponse: 操作结果
         """
         from app.models.youtube_models import YoutubeVideoDownloadAndUploadResponse
-        from app.services.supabase_service import supabase_service
+        from app.services.storage_service import storage_service
         from datetime import datetime
         import tempfile
         import os
         import subprocess
         import json
-        
+
         # 获取信号量状态信息
         semaphore_available = _download_semaphore._value
         try:
@@ -719,13 +719,13 @@ class YouTubeService:
             YoutubeVideoDownloadAndUploadResponse: 操作结果
         """
         from app.models.youtube_models import YoutubeVideoDownloadAndUploadResponse
-        from app.services.supabase_service import supabase_service
+        from app.services.storage_service import storage_service
         from datetime import datetime
         import tempfile
         import os
         import subprocess
         import json
-        
+
         start_time = time.time()
         logger.info(f"开始内部下载流程 - URL: {request.url}")
         
@@ -815,41 +815,37 @@ class YouTubeService:
             step_duration = time.time() - step_start
             logger.info(f"步骤2: 视频元数据获取完成，耗时: {step_duration:.2f}秒")
             
-            # 第三步：上传视频到Supabase
+            # 第三步：上传视频到存储服务
             step_start = time.time()
-            logger.info(f"步骤3: 开始上传视频到Supabase - URL: {request.url}")
-            
+            logger.info(f"步骤3: 开始上传视频到存储服务 - URL: {request.url}")
+
             # 构建自定义文件名
             custom_filename = request.custom_filename
             if not custom_filename:
-                # 从下载的文件路径中提取文件名并清理
                 base_name = os.path.splitext(os.path.basename(download_result.file_path))[0]
-                # 清理文件名，移除特殊字符和emoji
                 sanitized_name = self.sanitize_filename(base_name)
                 custom_filename = f"youtube_{sanitized_name}.{request.format_type}"
-            
-            # 构建bucket路径
-            now = datetime.now()
-            date_path = now.strftime("%Y/%m/%d")
-            if request.task_id:
-                bucket_path = f"video/youtube/{date_path}/task-{request.task_id}/{custom_filename}"
-            else:
-                bucket_path = f"video/youtube/{date_path}/{custom_filename}"
-            
-            upload_result = supabase_service.upload_file(
-                local_file_path=download_result.file_path,
-                bucket_path=bucket_path,
-                content_type="video/mp4"
+
+            with open(download_result.file_path, "rb") as f:
+                file_data = f.read()
+
+            upload_result = await storage_service.upload_file(
+                file_data=file_data,
+                filename=custom_filename,
+                content_type="video/mp4",
+                folder="video",
+                user_id="anonymous",
+                task_id=request.task_id,
             )
-            
+
             if not upload_result.get("success", False):
                 error_msg = upload_result.get("message", "未知错误")
-                logger.error(f"Supabase上传失败: {error_msg}")
-                raise Exception(f"视频上传到Supabase失败: {error_msg}")
-            
+                logger.error(f"存储服务上传失败: {error_msg}")
+                raise Exception(f"视频上传到存储服务失败: {error_msg}")
+
             video_url = upload_result.get("file_url", "")
             step_duration = time.time() - step_start
-            logger.info(f"步骤3: 视频成功上传到Supabase，耗时: {step_duration:.2f}秒, URL: {video_url}")
+            logger.info(f"步骤3: 视频成功上传到存储服务，耗时: {step_duration:.2f}秒, URL: {video_url}")
             
             # 第四步：生成缩略图（如果需要且有时长信息）
             thumbnail_url = None
@@ -877,13 +873,19 @@ class YouTubeService:
                     result = subprocess.run(cmd, capture_output=True, timeout=30)
                     
                     if result.returncode == 0 and os.path.exists(thumbnail_path):
-                        # 上传缩略图到Supabase
-                        thumb_result = supabase_service.upload_file(
-                            local_file_path=thumbnail_path,
-                            bucket_path=thumbnail_bucket_path,
-                            content_type="image/jpeg"
+                        # 上传缩略图到存储服务
+                        with open(thumbnail_path, "rb") as f:
+                            thumb_data = f.read()
+
+                        thumb_result = await storage_service.upload_file(
+                            file_data=thumb_data,
+                            filename=thumbnail_filename,
+                            content_type="image/jpeg",
+                            folder="video",
+                            user_id="anonymous",
+                            task_id=request.task_id,
                         )
-                        
+
                         if thumb_result.get("success", False):
                             thumbnail_url = thumb_result.get("file_url", "")
                             step_duration = time.time() - step_start

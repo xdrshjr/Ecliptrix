@@ -33,7 +33,7 @@ export interface UserMaterialsResponse {
 }
 
 /**
- * Get user's uploaded materials from Supabase
+ * Get user's uploaded materials from storage
  * 获取用户上传的所有素材
  * 
  * @param userId - User ID
@@ -66,7 +66,7 @@ export async function getUserMaterials(
       params.append('material_type', materialType);
     }
 
-    const response = await fetch(`/api/supabase/user-materials?${params}`, {
+    const response = await fetch(`/api/storage/user-materials?${params}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

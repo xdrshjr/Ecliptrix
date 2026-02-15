@@ -463,8 +463,8 @@ class VideoCutResponse(BaseResponse):
                     {
                         "id": "clip_1",
                         "name": "First Clip",
-                        "video_url": "https://supabase.example.com/storage/v1/object/public/videos/clip_1.mp4",
-                        "thumbnail_url": "https://supabase.example.com/storage/v1/object/public/thumbnails/clip_1.jpg",
+                        "video_url": "/api/storage/files/video/2026/02/16/clip_1.mp4",
+                        "thumbnail_url": "/api/storage/files/video/2026/02/16/clip_1_thumb.jpg",
                         "file_size": 1024000,
                         "duration": 20.0,
                         "width": 1920,

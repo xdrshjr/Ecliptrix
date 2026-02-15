@@ -442,55 +442,61 @@ class SentenceTTSService:
         else:
             result = self._concatenate_audio_files_ffmpeg(successful_results, output_filename)
         
-        # 上传拼接后的音频到 Supabase
+        # 上传拼接后的音频到存储服务
         try:
-            from app.services.supabase_service import SupabaseService
-            
-            supabase_service = SupabaseService()
+            from app.services.storage_service import storage_service
+            import asyncio
+
             output_path = Path(result["output_path"])
-            
-            logger.info("开始上传拼接音频到Supabase", {
+
+            logger.info("开始上传拼接音频到存储服务", {
                 "output_filename": output_filename,
                 "file_size": result["file_size"],
                 "segment_id": segment_id,
                 "task_id": task_id
             })
-            
-            # 上传到 Supabase
-            upload_result = supabase_service.upload_audio_file(
-                audio_file_path=str(output_path),
-                segment_id=segment_id,
-                task_id=task_id or "default-task",
-                voice_type="concatenated_sentences"
+
+            with open(output_path, "rb") as f:
+                file_data = f.read()
+
+            loop = asyncio.get_event_loop()
+            upload_result = loop.run_until_complete(
+                storage_service.upload_audio_file(
+                    file_data=file_data,
+                    filename=output_filename,
+                    content_type="audio/mpeg",
+                    user_id="anonymous",
+                    task_id=task_id or "default-task",
+                )
             )
-            
+
             if upload_result["success"]:
-                audio_url = upload_result["audio_url"]
-                logger.info("拼接音频上传到Supabase成功", {
+                audio_url = upload_result["file_url"]
+                logger.info("拼接音频上传到存储服务成功", {
                     "output_filename": output_filename,
-                    "supabase_url": audio_url,
+                    "audio_url": audio_url,
                     "segment_id": segment_id,
                     "task_id": task_id
                 })
             else:
-                logger.error("拼接音频上传到Supabase失败", {
+                logger.error("拼接音频上传到存储服务失败", {
                     "output_filename": output_filename,
-                    "error": upload_result.get("error"),
+                    "error": upload_result.get("message"),
                     "segment_id": segment_id,
                     "task_id": task_id
                 })
                 # 使用本地URL作为备用
                 audio_url = f"/api/audio/generated/{output_filename}"
-            
+
             # 清理本地临时文件（保留单个句子的音频文件，只清理拼接文件）
             try:
                 output_path.unlink()
                 logger.debug(f"清理本地拼接音频文件: {output_path}")
             except Exception as cleanup_error:
                 logger.warning(f"清理本地拼接文件失败: {cleanup_error}")
-                 
+
         except Exception as upload_error:
-            logger.error("上传拼接音频到Supabase异常", {
+            logger.error("上传拼接音频到存储服务异常", {
                 "output_filename": output_filename,
                 "error": str(upload_error),
                 "segment_id": segment_id,

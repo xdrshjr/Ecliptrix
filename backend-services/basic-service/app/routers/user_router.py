@@ -5,51 +5,44 @@ User profile management router.
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user_models import (
-    UserProfileUpdate, 
-    UserProfileResponse, 
+    UserProfileUpdate,
+    UserProfileResponse,
     UserListResponse,
     UserCreateRequest,
     UserCreateResponse
 )
-from app.services.user_service import UserService
+from app.services.user_service import user_service
+from app.database import get_db_session
 from app.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/user", tags=["user"])
 
-# Initialize user service
-user_service = UserService()
-
 
 @router.get("/profile", response_model=UserProfileResponse)
-async def get_user_profile(user_id: str = "admin") -> UserProfileResponse:
+async def get_user_profile(
+    user_id: str = "admin",
+    db: AsyncSession = Depends(get_db_session)
+) -> UserProfileResponse:
     """
-    获取用户资料信息
-    
-    Args:
-        user_id: 用户ID（暂时使用默认admin用户）
-        
-    Returns:
-        UserProfileResponse: 用户资料响应
-        
-    Raises:
-        HTTPException: 当用户不存在或服务不可用时
+    Get user profile information.
     """
-    logger.info("获取用户资料", {
+    logger.info("Getting user profile", {
         "user_id": user_id,
         "endpoint": "/user/profile",
         "method": "GET",
         "timestamp": datetime.now().isoformat()
     })
-    
+
     try:
-        result = await user_service.get_user_profile(user_id)
-        
+        result = await user_service.get_user_profile(db=db, user_id=user_id)
+
         if not result["success"]:
-            logger.warning("用户资料获取失败", {
+            logger.warning("User profile retrieval failed", {
                 "user_id": user_id,
                 "error": result.get("message", "Unknown error")
             })
@@ -57,23 +50,23 @@ async def get_user_profile(user_id: str = "admin") -> UserProfileResponse:
                 status_code=404 if result.get("error_code") == "USER_NOT_FOUND" else 500,
                 detail=result.get("message", "获取用户资料失败")
             )
-        
-        logger.info("用户资料获取成功", {
+
+        logger.info("User profile retrieved successfully", {
             "user_id": user_id,
             "username": result["user"]["username"]
         })
-        
+
         return UserProfileResponse(
             success=True,
             message="用户资料获取成功",
             timestamp=datetime.now(),
             user=result["user"]
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("用户资料获取异常", {
+        logger.error("User profile retrieval exception", {
             "user_id": user_id,
             "error": str(e),
             "error_type": type(e).__name__
@@ -84,61 +77,52 @@ async def get_user_profile(user_id: str = "admin") -> UserProfileResponse:
 @router.put("/profile", response_model=UserProfileResponse)
 async def update_user_profile(
     profile_data: UserProfileUpdate,
-    user_id: str = "admin"
+    user_id: str = "admin",
+    db: AsyncSession = Depends(get_db_session)
 ) -> UserProfileResponse:
     """
-    更新用户资料信息
-    
-    Args:
-        profile_data: 用户资料更新数据
-        user_id: 用户ID（暂时使用默认admin用户）
-        
-    Returns:
-        UserProfileResponse: 更新后的用户资料响应
-        
-    Raises:
-        HTTPException: 当用户不存在、验证失败或服务不可用时
+    Update user profile information.
     """
-    logger.info("更新用户资料", {
+    logger.info("Updating user profile", {
         "user_id": user_id,
         "endpoint": "/user/profile",
         "method": "PUT",
         "username": profile_data.username,
         "timestamp": datetime.now().isoformat()
     })
-    
+
     try:
-        result = await user_service.update_user_profile(user_id, profile_data)
-        
+        result = await user_service.update_user_profile(db=db, user_id=user_id, profile_data=profile_data)
+
         if not result["success"]:
-            logger.warning("用户资料更新失败", {
+            logger.warning("User profile update failed", {
                 "user_id": user_id,
                 "error": result.get("message", "Unknown error"),
                 "error_code": result.get("error_code")
             })
-            
+
             status_code = 404 if result.get("error_code") == "USER_NOT_FOUND" else 400
             raise HTTPException(
                 status_code=status_code,
                 detail=result.get("message", "用户资料更新失败")
             )
-        
-        logger.info("用户资料更新成功", {
+
+        logger.info("User profile updated successfully", {
             "user_id": user_id,
             "username": result["user"]["username"]
         })
-        
+
         return UserProfileResponse(
             success=True,
             message="用户资料更新成功",
             timestamp=datetime.now(),
             user=result["user"]
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("用户资料更新异常", {
+        logger.error("User profile update exception", {
             "user_id": user_id,
             "error": str(e),
             "error_type": type(e).__name__
@@ -147,20 +131,19 @@ async def update_user_profile(
 
 
 @router.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check(
+    db: AsyncSession = Depends(get_db_session)
+) -> Dict[str, Any]:
     """
-    用户服务健康检查
-    
-    Returns:
-        Dict: 健康状态信息
+    User service health check.
     """
-    logger.info("用户服务健康检查", {
+    logger.info("User service health check", {
         "endpoint": "/user/health",
         "timestamp": datetime.now().isoformat()
     })
-    
-    service_status = user_service.check_health()
-    
+
+    service_status = await user_service.check_health(db=db)
+
     return {
         "success": True,
         "message": "用户服务运行正常",
@@ -172,27 +155,23 @@ async def health_check() -> Dict[str, Any]:
 
 
 @router.get("/list", response_model=UserListResponse)
-async def list_all_users() -> UserListResponse:
+async def list_all_users(
+    db: AsyncSession = Depends(get_db_session)
+) -> UserListResponse:
     """
-    获取所有用户列表（管理员专用）
-    
-    Returns:
-        UserListResponse: 用户列表响应
-        
-    Raises:
-        HTTPException: 当服务不可用或查询失败时
+    Get all users list (admin only).
     """
-    logger.info("获取所有用户列表", {
+    logger.info("Getting all users list", {
         "endpoint": "/user/list",
         "method": "GET",
         "timestamp": datetime.now().isoformat()
     })
-    
+
     try:
-        result = await user_service.get_all_users()
-        
+        result = await user_service.get_all_users(db=db)
+
         if not result["success"]:
-            logger.warning("获取用户列表失败", {
+            logger.warning("Get user list failed", {
                 "error": result.get("message", "Unknown error"),
                 "error_code": result.get("error_code")
             })
@@ -200,11 +179,11 @@ async def list_all_users() -> UserListResponse:
                 status_code=500,
                 detail=result.get("message", "获取用户列表失败")
             )
-        
-        logger.info("用户列表获取成功", {
+
+        logger.info("User list retrieved successfully", {
             "total_count": result["total_count"]
         })
-        
+
         return UserListResponse(
             success=True,
             message="用户列表获取成功",
@@ -212,11 +191,11 @@ async def list_all_users() -> UserListResponse:
             total_count=result["total_count"],
             users=result["users"]
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("用户列表获取异常", {
+        logger.error("User list retrieval exception", {
             "error": str(e),
             "error_type": type(e).__name__
         })
@@ -224,20 +203,14 @@ async def list_all_users() -> UserListResponse:
 
 
 @router.post("/create", response_model=UserCreateResponse)
-async def create_user(user_data: UserCreateRequest) -> UserCreateResponse:
+async def create_user(
+    user_data: UserCreateRequest,
+    db: AsyncSession = Depends(get_db_session)
+) -> UserCreateResponse:
     """
-    创建新用户（管理员专用）
-    
-    Args:
-        user_data: 用户创建数据
-        
-    Returns:
-        UserCreateResponse: 创建的用户信息响应
-        
-    Raises:
-        HTTPException: 当创建失败或服务不可用时
+    Create a new user (admin only).
     """
-    logger.info("创建新用户请求", {
+    logger.info("Create user request", {
         "endpoint": "/user/create",
         "method": "POST",
         "username": user_data.username,
@@ -246,47 +219,46 @@ async def create_user(user_data: UserCreateRequest) -> UserCreateResponse:
         "user_role": user_data.user_role,
         "timestamp": datetime.now().isoformat()
     })
-    
+
     try:
-        result = await user_service.create_user(user_data)
-        
+        result = await user_service.create_user(db=db, user_data=user_data)
+
         if not result["success"]:
-            logger.warning("用户创建失败", {
+            logger.warning("User creation failed", {
                 "username": user_data.username,
                 "error": result.get("message", "Unknown error"),
                 "error_code": result.get("error_code")
             })
-            
-            # 根据错误类型返回不同的HTTP状态码
+
             if result.get("error_code") in ["USERNAME_EXISTS", "EMAIL_EXISTS"]:
-                status_code = 409  # Conflict
+                status_code = 409
             elif result.get("error_code") == "SERVICE_UNAVAILABLE":
-                status_code = 503  # Service Unavailable
+                status_code = 503
             else:
-                status_code = 400  # Bad Request
-            
+                status_code = 400
+
             raise HTTPException(
                 status_code=status_code,
                 detail=result.get("message", "用户创建失败")
             )
-        
-        logger.info("用户创建成功", {
+
+        logger.info("User created successfully", {
             "user_id": result["user"]["id"],
             "username": result["user"]["username"],
             "email": result["user"]["email"]
         })
-        
+
         return UserCreateResponse(
             success=True,
             message="用户创建成功",
             timestamp=datetime.now(),
             user=result["user"]
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("用户创建接口异常", {
+        logger.error("User creation endpoint exception", {
             "username": user_data.username,
             "error": str(e),
             "error_type": type(e).__name__
@@ -295,65 +267,58 @@ async def create_user(user_data: UserCreateRequest) -> UserCreateResponse:
 
 
 @router.delete("/delete/{user_id}")
-async def delete_user(user_id: str) -> Dict[str, Any]:
+async def delete_user(
+    user_id: str,
+    db: AsyncSession = Depends(get_db_session)
+) -> Dict[str, Any]:
     """
-    删除用户（管理员专用）
-    
-    Args:
-        user_id: 要删除的用户ID
-        
-    Returns:
-        Dict: 删除结果
-        
-    Raises:
-        HTTPException: 当删除失败或服务不可用时
+    Delete a user (admin only).
     """
-    logger.info("删除用户请求", {
+    logger.info("Delete user request", {
         "endpoint": "/user/delete/{user_id}",
         "method": "DELETE",
         "user_id": user_id,
         "timestamp": datetime.now().isoformat()
     })
-    
+
     try:
-        result = await user_service.delete_user(user_id)
-        
+        result = await user_service.delete_user(db=db, user_id=user_id)
+
         if not result["success"]:
-            logger.warning("用户删除失败", {
+            logger.warning("User deletion failed", {
                 "user_id": user_id,
                 "error": result.get("message", "Unknown error"),
                 "error_code": result.get("error_code")
             })
-            
-            # 根据错误类型返回不同的HTTP状态码
+
             if result.get("error_code") == "USER_NOT_FOUND":
-                status_code = 404  # Not Found
+                status_code = 404
             elif result.get("error_code") == "SERVICE_UNAVAILABLE":
-                status_code = 503  # Service Unavailable
+                status_code = 503
             else:
-                status_code = 400  # Bad Request
-            
+                status_code = 400
+
             raise HTTPException(
                 status_code=status_code,
                 detail=result.get("message", "用户删除失败")
             )
-        
-        logger.info("用户删除成功", {
+
+        logger.info("User deleted successfully", {
             "user_id": user_id
         })
-        
+
         return {
             "success": True,
             "message": "用户删除成功",
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("用户删除接口异常", {
+        logger.error("User deletion endpoint exception", {
             "user_id": user_id,
             "error": str(e),
             "error_type": type(e).__name__
         })
-        raise HTTPException(status_code=500, detail="服务器内部错误") 
+        raise HTTPException(status_code=500, detail="服务器内部错误")

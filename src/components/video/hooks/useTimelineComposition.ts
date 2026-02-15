@@ -101,7 +101,7 @@ export const useTimelineComposition = (
               const videoSequence: VideoSequenceItem = {
                 id: item.id,
                 name: item.name,
-                // 优先使用serverUrl（Supabase URL），如果没有则使用本地url
+                // 优先使用serverUrl（存储服务URL），如果没有则使用本地url
                 // 这样确保视频合成时能够正确下载文件
                 url: finalUrl,
                 startTime: item.startTime,

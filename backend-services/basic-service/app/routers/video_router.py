@@ -990,10 +990,10 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
 @router.post("/cut", response_model=VideoCutResponse)
 async def cut_video_clips(request: VideoCutRequest) -> VideoCutResponse:
     """
-    Cut video clips from source video and upload to Supabase.
-    
+    Cut video clips from source video and upload to storage.
+
     This endpoint takes a video URL and a list of clip specifications,
-    cuts the clips from the source video, and uploads them to Supabase
+    cuts the clips from the source video, and uploads them to storage
     with optional thumbnail generation.
     
     Args:
@@ -1226,7 +1226,7 @@ async def remove_watermark(request: WatermarkRemovalRequest) -> Union[WatermarkR
     - Downloading the source video if it's a remote URL
     - Processing each frame to remove the watermark using inpainting
     - Preserving the original audio track
-    - Uploading the processed video to Supabase
+    - Uploading the processed video to storage
     
     Features:
     - Supports both TELEA and Navier-Stokes inpainting methods

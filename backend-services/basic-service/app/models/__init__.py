@@ -54,14 +54,14 @@ from .tts_models import (
     SentenceBatchTTSResponse
 )
 
-from .supabase_models import (
-    SupabaseUploadRequest,
-    SupabaseUploadResponse,
-    SupabaseUploadErrorResponse,
-    AudioUploadRequest,
-    AudioUploadResponse,
-    BatchAudioUploadRequest,
-    BatchAudioUploadResponse
+from .storage_models import (
+    FileUploadResponse,
+    StorageUploadResponse,
+    StorageUploadErrorResponse,
+    VideoUploadResponse as StorageVideoUploadResponse,
+    VideoUploadErrorResponse as StorageVideoUploadErrorResponse,
+    MaterialItem,
+    UserMaterialsResponse,
 )
 
 from .audio_models import (
@@ -205,13 +205,14 @@ __all__ = [
     "SentenceBatchTTSRequest",
     "SentenceTTSResult",
     "SentenceBatchTTSResponse",
-    "SupabaseUploadRequest",
-    "SupabaseUploadResponse",
-    "SupabaseUploadErrorResponse",
-    "AudioUploadRequest",
-    "AudioUploadResponse",
-    "BatchAudioUploadRequest",
-    "BatchAudioUploadResponse",
+    # Storage Models (new)
+    "FileUploadResponse",
+    "StorageUploadResponse",
+    "StorageUploadErrorResponse",
+    "StorageVideoUploadResponse",
+    "StorageVideoUploadErrorResponse",
+    "MaterialItem",
+    "UserMaterialsResponse",
     "SubtitleItem",
     "AudioTranscriptionRequest",
     "AudioTranscriptionResponse",

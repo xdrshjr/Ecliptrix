@@ -161,19 +161,43 @@ class UploadConfig(BaseModel):
     logging: UploadLoggingConfig = UploadLoggingConfig()
 
 
+class StorageConfig(BaseModel):
+    """Local storage configuration."""
+    root: str = Field(default="static/uploads", description="Storage root directory")
+    max_file_size: int = Field(
+        default=524288000,  # 500MB
+        description="Maximum file size in bytes"
+    )
+    allowed_video_types: List[str] = Field(
+        default=["video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"],
+        description="Allowed video MIME types"
+    )
+    allowed_audio_types: List[str] = Field(
+        default=["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm", "audio/mp4"],
+        description="Allowed audio MIME types"
+    )
+    allowed_image_types: List[str] = Field(
+        default=["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+        description="Allowed image MIME types"
+    )
+
+
+class DatabaseConfig(BaseModel):
+    """Database configuration."""
+    url: str = Field(
+        default="postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix",
+        description="Database connection URL"
+    )
+    pool_size: int = Field(default=10, description="Connection pool size")
+    max_overflow: int = Field(default=20, description="Max overflow connections")
+    pool_timeout: int = Field(default=30, description="Connection timeout in seconds")
+    pool_recycle: int = Field(default=1800, description="Connection recycle time in seconds")
+
+
 class AuthConfig(BaseModel):
     """Authentication configuration."""
-    mode: str = Field(default="supabase", description="Authentication mode: local or supabase")
-    local_admin_username: str = Field(default="admin", description="Local admin username")
-    local_admin_password: str = Field(default="admin", description="Local admin password")
-
-
-class SupabaseConfig(BaseModel):
-    """Supabase configuration."""
-    url: str = Field(..., description="Supabase URL")
-    anon_key: str = Field(..., description="Supabase anonymous key")
-    bucket: str = Field(..., description="Supabase storage bucket name")
-    environment: str = Field(default="development", description="Environment")
+    admin_username: str = Field(default="admin", description="Admin username")
+    admin_password: str = Field(default="admin", description="Admin password")
 
 
 class Settings(BaseModel):
@@ -205,11 +229,11 @@ class Settings(BaseModel):
     # RunningHub API Configuration
     running_hub_api_key: str = Field(default="", description="RunningHub API key for FLUX generation")
     
+    # Database Configuration
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig, description="Database configuration")
+
     # Authentication Configuration
     auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration")
-
-    # Supabase Configuration
-    supabase: SupabaseConfig = Field(..., description="Supabase configuration")
 
     # Batch TTS Configuration
     batch_tts: BatchTTSConfig = BatchTTSConfig()
@@ -222,7 +246,10 @@ class Settings(BaseModel):
     
     # Upload Configuration
     upload: UploadConfig = UploadConfig()
-    
+
+    # Storage Configuration
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
     
@@ -335,19 +362,26 @@ def get_settings() -> Settings:
             logging=UploadLoggingConfig(**logging_data)
         )
     
-    # Create Supabase configuration
-    supabase_config = SupabaseConfig(
-        url=os.getenv("SUPABASE_URL", ""),
-        anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
-        bucket=os.getenv("SUPABASE_BUCKET", ""),
-        environment=os.getenv("ENVIRONMENT", "development")
+    # Create Database configuration
+    database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix")
+    database_config = DatabaseConfig(
+        url=database_url,
+        pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
+        pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "1800"))
+    )
+
+    # Create Storage configuration
+    storage_config = StorageConfig(
+        root=os.getenv("STORAGE_ROOT", "static/uploads"),
+        max_file_size=int(os.getenv("STORAGE_MAX_FILE_SIZE", "524288000"))
     )
 
     # Create Authentication configuration
     auth_config = AuthConfig(
-        mode=os.getenv("AUTH_MODE", "supabase"),
-        local_admin_username=os.getenv("LOCAL_ADMIN_USERNAME", "admin"),
-        local_admin_password=os.getenv("LOCAL_ADMIN_PASSWORD", "admin")
+        admin_username=os.getenv("ADMIN_USERNAME", "admin"),
+        admin_password=os.getenv("ADMIN_PASSWORD", "admin")
     )
 
     return Settings(
@@ -365,12 +399,13 @@ def get_settings() -> Settings:
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
         running_hub_api_key=os.getenv("RUNNING_HUB_API_KEY", ""),
+        database=database_config,
         auth=auth_config,
-        supabase=supabase_config,
         batch_tts=batch_tts_config,
         youtube=youtube_config,
         watermark_removal=watermark_removal_config,
         upload=upload_config,
+        storage=storage_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),

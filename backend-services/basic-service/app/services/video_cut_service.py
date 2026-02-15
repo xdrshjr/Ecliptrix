@@ -1,5 +1,5 @@
 """
-Video cutting service for extracting video clips and uploading to Supabase.
+Video cutting service for extracting video clips and uploading to storage.
 """
 
 import os
@@ -12,22 +12,21 @@ from pathlib import Path
 from app.logger import get_logger
 from app.config import settings
 from app.models import VideoCutRequest, VideoCutResponse, VideoCutClipResult, VideoCutClipRequest
-from app.services.supabase_service import SupabaseService
+from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
 
 
 class VideoCutService:
-    """Service for cutting video clips and uploading to Supabase."""
-    
+    """Service for cutting video clips and uploading to storage."""
+
     def __init__(self):
-        self.supabase_service = SupabaseService()
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
         
     async def cut_and_upload_video_clips(self, request: VideoCutRequest) -> VideoCutResponse:
         """
-        Cut video clips from source video and upload to Supabase.
+        Cut video clips from source video and upload to storage.
         
         Args:
             request: Video cutting request with clips information
@@ -174,7 +173,7 @@ class VideoCutService:
         task_id: str,
         generate_thumbnails: bool
     ) -> VideoCutClipResult:
-        """Cut a single clip and upload to Supabase."""
+        """Cut a single clip and upload to storage."""
         
         # Generate temporary file names
         clip_filename = f"{task_id}_{clip.id}.mp4"
@@ -252,22 +251,25 @@ class VideoCutService:
                 
                 if thumbnail_result.returncode == 0:
                     logger.info(f"Thumbnail generated successfully for clip {clip.id}")
-                    # Upload thumbnail to Supabase
-                    thumbnail_bucket_path = f"video/thumbnails/{date_path}/task-{task_id}/{thumbnail_filename}"
-                    logger.debug(f"Uploading thumbnail to: {thumbnail_bucket_path}")
-                    
-                    thumbnail_upload_result = self.supabase_service.upload_file(
-                        local_file_path=str(thumbnail_temp_path),
-                        bucket_path=thumbnail_bucket_path,
-                        content_type="image/jpeg"
+                    # Upload thumbnail to storage
+                    with open(str(thumbnail_temp_path), "rb") as f:
+                        thumb_data = f.read()
+
+                    thumbnail_upload_result = await storage_service.upload_file(
+                        file_data=thumb_data,
+                        filename=thumbnail_filename,
+                        content_type="image/jpeg",
+                        folder="video",
+                        user_id="anonymous",
+                        task_id=task_id,
                     )
-                    
+
                     if thumbnail_upload_result.get('success'):
                         thumbnail_url = thumbnail_upload_result.get('file_url')
                         logger.info(f"Thumbnail uploaded successfully for clip {clip.id}: {thumbnail_url}")
                     else:
                         logger.warning(f"Failed to upload thumbnail for clip {clip.id}: {thumbnail_upload_result.get('message')}")
-                    
+
                     # Clean up thumbnail temp file
                     try:
                         os.remove(thumbnail_temp_path)
@@ -281,22 +283,27 @@ class VideoCutService:
                 logger.warning(f"Failed to generate thumbnail for clip {clip.id}: {e}")
                 logger.debug(f"Thumbnail generation error details: {str(e)}", exc_info=True)
         
-        # Upload video clip to Supabase
-        logger.info(f"Uploading clip {clip.id} to Supabase")
-        logger.info(f"Upload path: {bucket_path}")
+        # Upload video clip to storage
+        logger.info(f"Uploading clip {clip.id} to storage")
         logger.info(f"File size: {clip_file_size / 1024 / 1024:.2f} MB")
-        
-        upload_result = self.supabase_service.upload_file(
-            local_file_path=str(clip_temp_path),
-            bucket_path=bucket_path,
-            content_type="video/mp4"
+
+        with open(str(clip_temp_path), "rb") as f:
+            clip_data = f.read()
+
+        upload_result = await storage_service.upload_file(
+            file_data=clip_data,
+            filename=clip_filename,
+            content_type="video/mp4",
+            folder="video",
+            user_id="anonymous",
+            task_id=task_id,
         )
-        
+
         if not upload_result.get('success'):
-            logger.error(f"Failed to upload clip {clip.id} to Supabase")
+            logger.error(f"Failed to upload clip {clip.id} to storage")
             logger.error(f"Upload error: {upload_result.get('message')}")
-            raise Exception(f"Failed to upload clip {clip.id} to Supabase: {upload_result.get('message')}")
-        
+            raise Exception(f"Failed to upload clip {clip.id} to storage: {upload_result.get('message')}")
+
         logger.info(f"Successfully uploaded clip {clip.id} to: {upload_result.get('file_url')}")
         
         # Clean up temporary file

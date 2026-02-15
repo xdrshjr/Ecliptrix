@@ -256,7 +256,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
         formData.append('task_id', taskId);
         formData.append('generate_thumbnail', 'true');
 
-        const response = await fetch('/api/supabase/upload-video', {
+        const response = await fetch('/api/storage/upload-video', {
           method: 'POST',
           body: formData
         });
@@ -271,7 +271,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           throw new Error(`视频上传失败: ${result.message}`);
         }
 
-        logger.info('视频上传到Supabase成功', {
+        logger.info('视频上传到存储服务成功', {
           fileName: file.name,
           videoUrl: result.video_url,
           thumbnailUrl: result.thumbnail_url
@@ -331,7 +331,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
             originalUrl: result.video_url,
             fileName: file.name,
             isLocalFile: true,
-            supabaseMetadata: result.metadata
+            storageMetadata: result.metadata
           }
         };
 
@@ -348,7 +348,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
         formData.append('file', file);
         formData.append('task_id', taskId);
 
-        const response = await fetch('/api/supabase/upload-file', {
+        const response = await fetch('/api/storage/upload-file', {
           method: 'POST',
           body: formData
         });
@@ -363,7 +363,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           throw new Error(`文件上传失败: ${result.message}`);
         }
 
-        logger.info('文件上传到Supabase成功', {
+        logger.info('文件上传到存储服务成功', {
           fileName: file.name,
           fileUrl: result.file_url
         });

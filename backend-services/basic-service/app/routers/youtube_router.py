@@ -193,15 +193,15 @@ async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> Youtub
 @router.post("/download-and-upload", response_model=YoutubeVideoDownloadAndUploadResponse)
 async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
     """
-    下载YouTube视频并上传到Supabase
-    
-    This endpoint downloads a YouTube video and automatically uploads it to Supabase storage.
+    下载YouTube视频并上传到存储服务
+
+    This endpoint downloads a YouTube video and automatically uploads it to storage.
     
     Args:
         request (YoutubeVideoDownloadAndUploadRequest): 下载并上传参数
     
     Returns:
-        YoutubeVideoDownloadAndUploadResponse: 操作结果包含Supabase URL等信息
+        YoutubeVideoDownloadAndUploadResponse: 操作结果包含存储URL等信息
     
     Raises:
         HTTPException: 400 for invalid parameters, 500 for internal errors
@@ -235,7 +235,7 @@ async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUplo
             logger.warning(f"YouTube视频下载并上传失败: {result.error}")
             return result
         
-        logger.info(f"成功下载并上传YouTube视频 - Supabase URL: {result.video_url}")
+        logger.info(f"成功下载并上传YouTube视频 - URL: {result.video_url}")
         return result
         
     except HTTPException:

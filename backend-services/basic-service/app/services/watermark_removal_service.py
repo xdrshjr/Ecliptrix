@@ -24,7 +24,7 @@ from app.models.video_models import (
     WatermarkRemovalErrorResponse,
     WatermarkArea
 )
-from app.services.supabase_service import SupabaseService
+from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,6 @@ class WatermarkRemovalService:
     """Service for removing watermarks from videos using OpenCV inpainting."""
     
     def __init__(self):
-        self.supabase_service = SupabaseService()
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
         self.config = settings.watermark_removal
@@ -41,13 +40,13 @@ class WatermarkRemovalService:
     
     def _sanitize_filename(self, filename: str) -> str:
         """
-        Sanitize filename to ensure compatibility with Supabase storage.
+        Sanitize filename to ensure compatibility with storage service.
         
         Args:
             filename: Original filename
             
         Returns:
-            Sanitized filename safe for cloud storage
+            Sanitized filename safe for storage
         """
         # Remove file extension if present to handle it separately
         name_without_ext = os.path.splitext(filename)[0]
@@ -113,7 +112,7 @@ class WatermarkRemovalService:
                 request.task_id
             )
             
-            # Upload processed video to Supabase
+            # Upload processed video to storage
             processed_video_url = await self._upload_processed_video(
                 processed_video_path,
                 request.task_id,
@@ -473,51 +472,47 @@ class WatermarkRemovalService:
             raise e
     
     async def _upload_processed_video(
-        self, 
-        processed_video_path: str, 
+        self,
+        processed_video_path: str,
         task_id: str,
         custom_filename: Optional[str] = None
     ) -> str:
-        """Upload processed video to Supabase."""
+        """Upload processed video to storage service."""
         logger.info(f"Uploading processed video for task {task_id}")
-        
+
         try:
             # Determine filename
             if custom_filename:
-                # Sanitize the custom filename to ensure cloud storage compatibility
                 filename = self._sanitize_filename(custom_filename)
                 if not filename.endswith('.mp4'):
                     filename += '.mp4'
             else:
                 filename = f"{task_id}_watermark_removed.mp4"
-            
-            # Generate bucket path for video
-            bucket_path = self.supabase_service._generate_bucket_path(
+
+            logger.info(f"Uploading video: {filename}")
+
+            with open(processed_video_path, "rb") as f:
+                file_data = f.read()
+
+            upload_result = await storage_service.upload_file(
+                file_data=file_data,
                 filename=filename,
+                content_type="video/mp4",
                 folder="video",
-                task_id=task_id
+                user_id="anonymous",
+                task_id=task_id,
             )
-            
-            logger.info(f"Uploading video to bucket path: {bucket_path}")
-            
-            # Upload to Supabase using the general upload_file method
-            upload_result = self.supabase_service.upload_file(
-                local_file_path=processed_video_path,
-                bucket_path=bucket_path,
-                content_type="video/mp4"
-            )
-            
+
             if not upload_result.get("success"):
                 raise Exception(f"Upload failed: {upload_result.get('message', 'Unknown error')}")
-            
-            # Get the file URL (this is the public URL)
+
             video_url = upload_result.get("file_url")
             if not video_url:
                 raise Exception("No file URL returned from upload")
-            
+
             logger.info(f"Video uploaded successfully: {video_url}")
             return video_url
-            
+
         finally:
             # Clean up temporary file
             if os.path.exists(processed_video_path):

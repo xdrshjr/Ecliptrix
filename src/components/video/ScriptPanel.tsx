@@ -1139,21 +1139,21 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         setCompletedSegments(prev => new Set([...Array.from(prev), segment.id]));
 
         try {
-          // 直接从Supabase URL下载拼接音频文件到本地
-          console.log('[ScriptPanel] 开始从Supabase下载拼接音频', {
+          // 直接从存储服务URL下载拼接音频文件到本地
+          console.log('[ScriptPanel] 开始从存储服务下载拼接音频', {
             url: cleanAudioUrl,
             segmentId: segment.id
           });
           
           const fetchResponse = await fetch(cleanAudioUrl);
           if (!fetchResponse.ok) {
-            console.error('[ScriptPanel] Supabase拼接音频下载失败', {
+            console.error('[ScriptPanel] 存储服务拼接音频下载失败', {
               url: cleanAudioUrl,
               status: fetchResponse.status,
               statusText: fetchResponse.statusText,
               segmentId: segment.id
             });
-            throw new Error(`Failed to fetch concatenated audio from Supabase: ${fetchResponse.status} ${fetchResponse.statusText}`);
+            throw new Error(`Failed to fetch concatenated audio from storage: ${fetchResponse.status} ${fetchResponse.statusText}`);
           }
           const audioBlob = await fetchResponse.blob();
           const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);

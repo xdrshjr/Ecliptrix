@@ -1,49 +1,38 @@
 """
-Pytest configuration and fixtures for the Basic Service tests.
+Test fixtures and configuration for pytest.
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from app.models.db_models import Base
+
+
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Provide a test database session with in-memory SQLite."""
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        yield session
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+    await engine.dispose()
 
 
 @pytest.fixture
-def client():
-    """
-    Create a test client for the FastAPI application.
-    
-    Returns:
-        TestClient: FastAPI test client
-    """
-    return TestClient(app)
-
-
-@pytest.fixture
-def sample_api_response():
-    """
-    Sample API response data for testing.
-    
-    Returns:
-        dict: Sample response data
-    """
-    return {
-        "success": True,
-        "message": "Test response",
-        "data": {"test": "data"}
-    }
-
-
-@pytest.fixture
-def sample_error_response():
-    """
-    Sample error response data for testing.
-    
-    Returns:
-        dict: Sample error response data
-    """
-    return {
-        "success": False,
-        "message": "Test error",
-        "error_code": "TEST_ERROR",
-        "error_details": {"detail": "Test error details"}
-    } 
+def storage_root(tmp_path):
+    """Provide a temporary storage root directory for tests."""
+    storage_dir = tmp_path / "test_uploads"
+    storage_dir.mkdir()
+    return storage_dir

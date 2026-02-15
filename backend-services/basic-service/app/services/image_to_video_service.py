@@ -19,7 +19,7 @@ from app.models import (
     ImageToVideoErrorResponse,
     ImageToVideoEffect
 )
-from app.services.supabase_service import SupabaseService
+from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
 
@@ -31,10 +31,7 @@ class ImageToVideoService:
         """Initialize the image to video service."""
         self.output_dir = Path("static/video/generated")
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize Supabase service
-        self.supabase_service = SupabaseService()
-        
+
         # Check ffmpeg availability
         self._check_ffmpeg()
         
@@ -489,21 +486,21 @@ class ImageToVideoService:
             # Get file size
             file_size = os.path.getsize(output_video_path)
             
-            # Upload to Supabase
-            video_upload_result = await self._upload_to_supabase(
+            # Upload to storage
+            video_upload_result = await self._upload_to_storage(
                 output_video_path, request.task_id, "video"
             )
-            
+
             thumbnail_url = None
             if thumbnail_path:
-                thumbnail_upload_result = await self._upload_to_supabase(
+                thumbnail_upload_result = await self._upload_to_storage(
                     thumbnail_path, request.task_id, "thumbnail"
                 )
                 if thumbnail_upload_result["success"]:
                     thumbnail_url = thumbnail_upload_result["file_url"]
-            
+
             if not video_upload_result["success"]:
-                logger.error(f"Failed to upload video to Supabase: {video_upload_result['message']}")
+                logger.error(f"Failed to upload video to storage: {video_upload_result['message']}")
                 return ImageToVideoErrorResponse(
                     success=False,
                     message="Failed to upload video to storage",
@@ -565,35 +562,37 @@ class ImageToVideoService:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup thumbnail: {e}")
     
-    async def _upload_to_supabase(self, file_path: str, task_id: Optional[str], file_type: str) -> Dict[str, Any]:
-        """Upload file to Supabase storage."""
+    async def _upload_to_storage(self, file_path: str, task_id: Optional[str], file_type: str) -> Dict[str, Any]:
+        """Upload file to local storage service."""
         try:
-            from datetime import datetime
-            now = datetime.now()
-            date_path = now.strftime("%Y/%m/%d")
-            
+            import mimetypes
             filename = os.path.basename(file_path)
-            
-            if task_id:
-                bucket_path = f"video/generated/{date_path}/task-{task_id}/{filename}"
-            else:
-                bucket_path = f"video/generated/{date_path}/{filename}"
-            
-            result = self.supabase_service.upload_file(
-                local_file_path=file_path,
-                bucket_path=bucket_path
+            content_type, _ = mimetypes.guess_type(file_path)
+            content_type = content_type or "application/octet-stream"
+
+            with open(file_path, "rb") as f:
+                file_data = f.read()
+
+            folder = "video" if file_type in ("video", "thumbnail") else "files"
+
+            result = await storage_service.upload_file(
+                file_data=file_data,
+                filename=filename,
+                content_type=content_type,
+                folder=folder,
+                user_id="anonymous",
+                task_id=task_id,
             )
-            
-            logger.info(f"File uploaded to Supabase", {
+
+            logger.info(f"File uploaded to storage", {
                 "file_type": file_type,
-                "bucket_path": bucket_path,
                 "success": result["success"]
             })
-            
+
             return result
-            
+
         except Exception as e:
-            logger.error(f"Supabase upload failed: {str(e)}")
+            logger.error(f"Storage upload failed: {str(e)}")
             return {
                 "success": False,
                 "message": str(e)

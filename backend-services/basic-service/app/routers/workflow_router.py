@@ -6,6 +6,8 @@ import json
 from typing import List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db_session
 from app.models.workflow_models import (
     WorkflowListResponse, 
     WorkflowInfo, 
@@ -365,7 +367,10 @@ async def get_workflow_task_results(runninghub_task_id: str) -> BaseResponse:
 # Agent Workflow Persistence Endpoints
 
 @router.post("/agent/save", response_model=SaveAgentWorkflowResponse)
-async def save_agent_workflow(request: SaveAgentWorkflowRequest) -> SaveAgentWorkflowResponse:
+async def save_agent_workflow(
+    request: SaveAgentWorkflowRequest,
+    db: AsyncSession = Depends(get_db_session)
+) -> SaveAgentWorkflowResponse:
     """
     Save an agent workflow to the database.
     
@@ -388,7 +393,7 @@ async def save_agent_workflow(request: SaveAgentWorkflowRequest) -> SaveAgentWor
         })
         
         # Save workflow using the service
-        result = await agent_workflow_service.save_workflow(request)
+        result = await agent_workflow_service.save_workflow(db=db, request=request)
         
         if not result.get('success'):
             logger.error(f"Failed to save workflow: {result.get('message')}")
@@ -422,7 +427,10 @@ async def save_agent_workflow(request: SaveAgentWorkflowRequest) -> SaveAgentWor
 
 
 @router.get("/agent/load/{user_id}", response_model=LoadAgentWorkflowsResponse)
-async def load_agent_workflows(user_id: str) -> LoadAgentWorkflowsResponse:
+async def load_agent_workflows(
+    user_id: str,
+    db: AsyncSession = Depends(get_db_session)
+) -> LoadAgentWorkflowsResponse:
     """
     Load all agent workflows for a user.
     
@@ -439,7 +447,7 @@ async def load_agent_workflows(user_id: str) -> LoadAgentWorkflowsResponse:
         logger.info(f"API request: Load agent workflows for user: {user_id}")
         
         # Load workflows using the service
-        result = await agent_workflow_service.load_workflows(user_id)
+        result = await agent_workflow_service.load_workflows(db=db, user_id=user_id)
         
         if not result.get('success'):
             logger.error(f"Failed to load workflows: {result.get('message')}")
@@ -474,7 +482,11 @@ async def load_agent_workflows(user_id: str) -> LoadAgentWorkflowsResponse:
 
 
 @router.delete("/agent/delete/{user_id}/{workflow_id}", response_model=BaseResponse)
-async def delete_agent_workflow(user_id: str, workflow_id: str) -> BaseResponse:
+async def delete_agent_workflow(
+    user_id: str,
+    workflow_id: str,
+    db: AsyncSession = Depends(get_db_session)
+) -> BaseResponse:
     """
     Delete an agent workflow.
     
@@ -495,7 +507,7 @@ async def delete_agent_workflow(user_id: str, workflow_id: str) -> BaseResponse:
         })
         
         # Delete workflow using the service
-        result = await agent_workflow_service.delete_workflow(user_id, workflow_id)
+        result = await agent_workflow_service.delete_workflow(db=db, user_id=user_id, workflow_id=workflow_id)
         
         if not result.get('success'):
             logger.error(f"Failed to delete workflow: {result.get('message')}")

@@ -248,7 +248,7 @@ export const useVideoExport = ({
               }
 
               // 正常视频处理逻辑
-              // 优先使用服务器URL（Supabase URL），如果没有则使用本地URL
+              // 优先使用服务器URL（存储服务URL），如果没有则使用本地URL
               // 这样确保视频合成时后端能够正确下载文件
               const videoUrl = material.serverUrl || material.url;
               

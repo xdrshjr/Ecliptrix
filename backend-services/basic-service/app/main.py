@@ -19,6 +19,7 @@ from app.config import settings
 from app.logger import get_logger, setup_logging
 from app.routers import api_router
 from app.models import ErrorResponse
+from app.database import init_db, close_db
 
 
 # Initialize logging
@@ -82,12 +83,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to initialize video analysis queue: {str(e)}", exc_info=True)
     
+    # Initialize database
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
+
     logger.info("Application startup completed")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down application")
+    await close_db()
     logger.info("Application shutdown completed")
 
 
@@ -277,9 +286,9 @@ app.include_router(video_router.router, prefix="/api")
 from app.routers import tts_router
 app.include_router(tts_router.router, prefix="/api")
 
-# Import and include Supabase router
-from app.routers import supabase_router
-app.include_router(supabase_router.router, prefix="/api")
+# Import and include Storage router (replaces former Supabase router)
+from app.routers import storage_router
+app.include_router(storage_router.router, prefix="/api")
 
 # Import and include Audio router
 from app.routers import audio_router
@@ -367,5 +376,10 @@ app.mount("/api/audio/subtitles", StaticFiles(directory=subtitle_static_dir), na
 timeline_export_static_dir = "static/timeline_exports"
 os.makedirs(timeline_export_static_dir, exist_ok=True)
 app.mount("/static/timeline_exports", StaticFiles(directory=timeline_export_static_dir), name="timeline_exports")
+
+# Mount static files for user uploads (storage service)
+uploads_dir = settings.storage.root if hasattr(settings, 'storage') else "static/uploads"
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/api/storage/files", StaticFiles(directory=uploads_dir), name="storage_files")
 
 logger.info("FastAPI application configured successfully") 

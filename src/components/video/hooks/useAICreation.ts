@@ -6,7 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { workflowService, WorkflowInfo, WorkflowParameter, WorkflowExecutionResult, WorkflowError } from '../services/workflowService';
 import { VideoEditingLogger } from '../utils';
 import { MaterialItem, MaterialType } from '@/types';
-import { uploadVideoToSupabase, uploadFileToSupabase } from '@/lib/api/supabase';
+import { uploadVideo, uploadFile } from '@/lib/api/storage';
 
 export interface UseAICreationReturn {
   // Modal state
@@ -243,9 +243,9 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
   }, [logger]);
 
   /**
-   * Upload AI creation result to Supabase
+   * Upload AI creation result to storage
    */
-  const uploadResultToSupabase = useCallback(async (
+  const uploadResultToStorage = useCallback(async (
     result: any, 
     workflowType: string, 
     workflowName: string,
@@ -253,7 +253,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
     resultIndex: number = 0
   ) => {
     try {
-      logger.info('开始上传AI创作结果到Supabase', {
+      logger.info('开始上传AI创作结果到存储服务', {
         fileUrl: result.fileUrl,
         fileType: result.fileType,
         workflowType,
@@ -275,21 +275,21 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         type: workflowType.endsWith('-VIDEO') ? 'video/mp4' : 'image/png' 
       });
 
-      logger.info('AI创作结果文件下载完成，准备上传到Supabase', {
+      logger.info('AI创作结果文件下载完成，准备上传到存储服务', {
         fileName,
         fileSize: file.size,
         fileType: file.type
       });
 
-      // Upload to Supabase based on workflow type suffix
+      // Upload to storage based on workflow type suffix
       if (workflowType.endsWith('-VIDEO')) {
-        // Upload video to Supabase for any *-VIDEO workflow type
+        // Upload video to storage for any *-VIDEO workflow type
         logger.info('检测到视频工作流类型，使用视频上传接口', {
           workflowType,
-          uploadInterface: '/api/supabase/upload-video'
+          uploadInterface: '/api/storage/upload-video'
         });
 
-        const uploadResult = await uploadVideoToSupabase({
+        const uploadResult = await uploadVideo({
           file,
           taskId,
           customFilename: `ai_creation_${runninghubTaskId}_${resultIndex}`,
@@ -297,10 +297,10 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         });
 
         if (!uploadResult.success) {
-          throw new Error(`视频上传Supabase失败: ${uploadResult.message}`);
+          throw new Error(`视频上传存储服务失败: ${uploadResult.message}`);
         }
 
-        logger.info('AI创作视频上传Supabase成功', {
+        logger.info('AI创作视频上传存储服务成功', {
           videoUrl: uploadResult.video_url,
           thumbnailUrl: uploadResult.thumbnail_url,
           fileSize: uploadResult.file_size,
@@ -316,30 +316,30 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
           width: uploadResult.width,
           height: uploadResult.height,
           metadata: {
-            supabaseUpload: true,
+            storageUpload: true,
             originalUrl: result.fileUrl,
             uploadTime: uploadResult.upload_time,
             workflowType
           }
         };
       } else if (workflowType.endsWith('-IMG')) {
-        // Upload image to Supabase for any *-IMG workflow type
+        // Upload image to storage for any *-IMG workflow type
         logger.info('检测到图片工作流类型，使用文件上传接口', {
           workflowType,
-          uploadInterface: '/api/supabase/upload-file'
+          uploadInterface: '/api/storage/upload-file'
         });
 
         const now = new Date();
         const datePath = now.toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD format
         const bucketPath = `dev/ai-creations/${datePath}/${taskId}/${fileName}`;
         
-        const uploadResult = await uploadFileToSupabase(file, taskId, bucketPath);
+        const uploadResult = await uploadFile(file, taskId, bucketPath);
 
         if (!uploadResult.success) {
-          throw new Error(`图片上传Supabase失败: ${uploadResult.message}`);
+          throw new Error(`图片上传存储服务失败: ${uploadResult.message}`);
         }
 
-        logger.info('AI创作图片上传Supabase成功', {
+        logger.info('AI创作图片上传存储服务成功', {
           fileUrl: uploadResult.file_url,
           fileSize: uploadResult.file_size,
           bucketPath,
@@ -351,7 +351,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
           thumbnailUrl: uploadResult.file_url, // For images, use the same URL as thumbnail
           size: uploadResult.file_size,
           metadata: {
-            supabaseUpload: true,
+            storageUpload: true,
             originalUrl: result.fileUrl,
             uploadTime: uploadResult.upload_time,
             bucketPath,
@@ -362,7 +362,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         // For other workflow types, default to image upload with warning
         logger.warn('未知工作流类型，默认使用图片上传接口', {
           workflowType,
-          uploadInterface: '/api/supabase/upload-file',
+          uploadInterface: '/api/storage/upload-file',
           recommendation: '建议工作流类型使用-VIDEO或-IMG后缀'
         });
 
@@ -370,13 +370,13 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         const datePath = now.toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD format
         const bucketPath = `dev/ai-creations/${datePath}/${taskId}/${fileName}`;
         
-        const uploadResult = await uploadFileToSupabase(file, taskId, bucketPath);
+        const uploadResult = await uploadFile(file, taskId, bucketPath);
 
         if (!uploadResult.success) {
-          throw new Error(`文件上传Supabase失败: ${uploadResult.message}`);
+          throw new Error(`文件上传存储服务失败: ${uploadResult.message}`);
         }
 
-        logger.info('AI创作文件上传Supabase成功（默认处理）', {
+        logger.info('AI创作文件上传存储服务成功（默认处理）', {
           fileUrl: uploadResult.file_url,
           fileSize: uploadResult.file_size,
           bucketPath,
@@ -388,7 +388,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
           thumbnailUrl: uploadResult.file_url, // Default to same URL as thumbnail
           size: uploadResult.file_size,
           metadata: {
-            supabaseUpload: true,
+            storageUpload: true,
             originalUrl: result.fileUrl,
             uploadTime: uploadResult.upload_time,
             bucketPath,
@@ -398,7 +398,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         };
       }
     } catch (error) {
-      logger.error('AI创作结果上传Supabase失败', error instanceof Error ? error : new Error(String(error)), {
+      logger.error('AI创作结果上传存储服务失败', error instanceof Error ? error : new Error(String(error)), {
         fileUrl: result.fileUrl,
         workflowType,
         runninghubTaskId,
@@ -411,7 +411,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         thumbnailUrl: workflowType.endsWith('-VIDEO') ? undefined : result.fileUrl,
         size: 0,
         metadata: {
-          supabaseUpload: false,
+          storageUpload: false,
           originalUrl: result.fileUrl,
           uploadError: error instanceof Error ? error.message : String(error),
           workflowType
@@ -649,10 +649,10 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                 timestamp: new Date().toISOString()
               });
 
-              // Upload result to Supabase and get the updated URLs
-              let supabaseResult;
+              // Upload result to storage and get the updated URLs
+              let storageResult;
               try {
-                console.log(`🔄 AI Creation - Starting Supabase upload for result ${i + 1}/${resultsResponse.results.length}`, {
+                console.log(`🔄 AI Creation - Starting storage upload for result ${i + 1}/${resultsResponse.results.length}`, {
                   runninghubTaskId,
                   resultIndex: i,
                   fileUrl: result.fileUrl,
@@ -663,7 +663,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                   timestamp: new Date().toISOString()
                 });
                 
-                supabaseResult = await uploadResultToSupabase(
+                storageResult = await uploadResultToStorage(
                   result,
                   selectedWorkflow?.workflowType || 'TEXT-2-IMAGE',
                   selectedWorkflow?.workflowName || '未知工作流',
@@ -671,33 +671,33 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                   i
                 );
                 
-                console.log('✅ AI Creation - Supabase upload successful', {
+                console.log('✅ AI Creation - Storage upload successful', {
                   runninghubTaskId,
                   resultIndex: i,
-                  supabaseUrl: supabaseResult.url,
-                  thumbnailUrl: supabaseResult.thumbnailUrl,
-                  fileSize: supabaseResult.size,
+                  storageUrl: storageResult.url,
+                  thumbnailUrl: storageResult.thumbnailUrl,
+                  fileSize: storageResult.size,
                   uploadSuccess: true,
                   timestamp: new Date().toISOString()
                 });
                 
               } catch (uploadError) {
-                logger.error('Failed to upload result to Supabase', uploadError instanceof Error ? uploadError : new Error(String(uploadError)), {
+                logger.error('Failed to upload result to storage', uploadError instanceof Error ? uploadError : new Error(String(uploadError)), {
                   runninghubTaskId,
                   resultIndex: i,
                   originalFileUrl: result.fileUrl,
                   fileType: result.fileType
                 });
                 
-                console.error('❌ AI Creation - Supabase upload failed', {
+                console.error('❌ AI Creation - Storage upload failed', {
                   runninghubTaskId,
                   resultIndex: i,
                   error: uploadError,
                   originalFileUrl: result.fileUrl
                 });
                 
-                // Use original URL as fallback if Supabase upload fails
-                supabaseResult = {
+                // Use original URL as fallback if storage upload fails
+                storageResult = {
                   url: result.fileUrl,
                   thumbnailUrl: result.fileUrl,
                   size: 0,
@@ -742,15 +742,15 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                 name: `AI创作结果_${selectedWorkflow?.showNameCh || '未知'}_${new Date().toLocaleString()}${i > 0 ? `_${i + 1}` : ''}`,
                 type: materialType,
                 format: result.fileType || defaultFormat,
-                size: supabaseResult.size,
-                url: supabaseResult.url, // Use Supabase URL
+                size: storageResult.size,
+                url: storageResult.url, // Use storage URL
                 serverUrl: result.fileUrl, // Keep original server URL for reference
-                thumbnailUrl: supabaseResult.thumbnailUrl,
+                thumbnailUrl: storageResult.thumbnailUrl,
                 downloadStatus: 'completed',
                 createdAt: new Date(),
-                duration: supabaseResult.duration,
-                width: supabaseResult.width,
-                height: supabaseResult.height,
+                duration: storageResult.duration,
+                width: storageResult.width,
+                height: storageResult.height,
                 metadata: {
                   workflowId: selectedWorkflow?.workflowId,
                   workflowName: selectedWorkflow?.workflowName,
@@ -764,7 +764,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
                   originalGeneratingId: `generating_${runninghubTaskId}`,
                   resultIndex: i,
                   source: 'ai_creation',
-                  ...supabaseResult.metadata, // Include Supabase upload metadata (includes workflowType)
+                  ...storageResult.metadata, // Include storage upload metadata (includes workflowType)
                   // Override workflowType to ensure consistency
                   workflowType: selectedWorkflow?.workflowType
                 }
@@ -773,35 +773,35 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
               // Add/replace material in the materials panel
               const added = addMaterial(material);
               
-              console.log(`🎯 AI Creation - ${i === 0 ? 'Replaced generating' : 'Added additional'} material with Supabase URLs`, {
+              console.log(`🎯 AI Creation - ${i === 0 ? 'Replaced generating' : 'Added additional'} material with storage URLs`, {
                 materialId: material.id,
                 materialName: material.name,
                 materialType: material.type,
-                supabaseUrl: supabaseResult.url,
+                storageUrl: storageResult.url,
                 originalUrl: result.fileUrl,
-                thumbnailUrl: supabaseResult.thumbnailUrl,
-                fileSize: supabaseResult.size,
+                thumbnailUrl: storageResult.thumbnailUrl,
+                fileSize: storageResult.size,
                 taskCostTime: result.taskCostTime,
                 added,
                 isReplacement: i === 0,
                 resultIndex: i,
-                supabaseUpload: supabaseResult.metadata?.supabaseUpload
+                storageUpload: storageResult.metadata?.storageUpload
               });
-              
-              logger.info(`AI creation result ${i === 0 ? 'replaced generating' : 'added as additional'} material with Supabase upload`, {
+
+              logger.info(`AI creation result ${i === 0 ? 'replaced generating' : 'added as additional'} material with storage upload`, {
                 materialId: material.id,
                 materialName: material.name,
                 materialType: material.type,
-                supabaseUrl: supabaseResult.url,
+                storageUrl: storageResult.url,
                 originalUrl: result.fileUrl,
-                thumbnailUrl: supabaseResult.thumbnailUrl,
-                fileSize: supabaseResult.size,
+                thumbnailUrl: storageResult.thumbnailUrl,
+                fileSize: storageResult.size,
                 taskCostTime: result.taskCostTime,
                 added,
                 isReplacement: i === 0,
                 resultIndex: i,
-                supabaseUploadSuccess: supabaseResult.metadata?.supabaseUpload,
-                uploadError: supabaseResult.metadata?.uploadError
+                storageUploadSuccess: storageResult.metadata?.storageUpload,
+                uploadError: storageResult.metadata?.uploadError
               });
             }
             
@@ -915,7 +915,7 @@ export const useAICreation = (taskId: string): UseAICreationReturn => {
         timestamp: new Date().toISOString()
       });
     }
-  }, [logger, selectedWorkflow, stopPolling, uploadResultToSupabase]);
+  }, [logger, selectedWorkflow, stopPolling, uploadResultToStorage]);
 
   /**
    * Start task polling

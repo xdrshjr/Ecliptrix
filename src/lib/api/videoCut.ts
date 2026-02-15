@@ -12,8 +12,8 @@ export class VideoCutAPI {
   }
 
   /**
-   * Cut video clips and upload to Supabase
-   * 切分视频片段并上传到Supabase
+   * Cut video clips and upload to storage
+   * 切分视频片段并上传到存储服务
    */
   async cutVideoClips(request: VideoCutRequest): Promise<VideoCutResponse> {
     const url = `/api/video-cut`;

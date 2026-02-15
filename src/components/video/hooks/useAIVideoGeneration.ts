@@ -3,7 +3,7 @@ import { MaterialItem } from '@/types';
 import { UseAIVideoGenerationReturn, AIVideoGenerationRequest, VideoInfo } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createAIVideoGenerationService, AIVideoGenerationService } from '../services/aiVideoGenerationService';
-import { uploadVideoToSupabase, VideoUploadErrorResponse } from '@/lib/api/supabase';
+import { uploadVideo, VideoUploadErrorResponse } from '@/lib/api/storage';
 
 export const useAIVideoGeneration = (
   taskId: string,
@@ -56,9 +56,9 @@ export const useAIVideoGeneration = (
     };
   }, [clearPolling]);
 
-  // 自动上传到Supabase
-  const handleAutoUploadToSupabase = useCallback(async (promptId: string, videos: VideoInfo[]) => {
-    logger.info('开始自动上传视频到Supabase', { promptId, videosCount: videos.length });
+  // 自动上传到存储服务
+  const handleAutoUploadToStorage = useCallback(async (promptId: string, videos: VideoInfo[]) => {
+    logger.info('开始自动上传视频到存储服务', { promptId, videosCount: videos.length });
 
     try {
       for (const video of videos) {
@@ -72,14 +72,14 @@ export const useAIVideoGeneration = (
           const blob = await response.blob();
           const file = new File([blob], `ai_video_${promptId}.mp4`, { type: 'video/mp4' });
           
-          logger.info('准备上传视频到Supabase', {
+          logger.info('准备上传视频到存储服务', {
             promptId,
             filename: file.name,
             fileSize: file.size
           });
 
-          // 上传到Supabase
-          const uploadResult = await uploadVideoToSupabase({
+          // 上传到存储服务
+          const uploadResult = await uploadVideo({
             file,
             taskId,
             customFilename: `ai_video_${promptId}`,
@@ -87,7 +87,7 @@ export const useAIVideoGeneration = (
           });
 
           if (uploadResult.success) {
-            logger.info('视频上传Supabase成功', {
+            logger.info('视频上传存储服务成功', {
               promptId,
               videoUrl: uploadResult.video_url,
               thumbnailUrl: uploadResult.thumbnail_url
@@ -132,7 +132,7 @@ export const useAIVideoGeneration = (
               logger.error('添加AI视频素材到素材库失败', new Error('onAddMaterials returned false'));
             }
           } else {
-            logger.error('视频上传Supabase失败', new Error(uploadResult.message), {
+            logger.error('视频上传存储服务失败', new Error(uploadResult.message), {
               promptId,
               errorCode: (uploadResult as VideoUploadErrorResponse).error_code
             });
@@ -149,7 +149,7 @@ export const useAIVideoGeneration = (
         }
       }
     } catch (error) {
-      logger.error('自动上传视频到Supabase时发生错误', error as Error, { promptId });
+      logger.error('自动上传视频到存储服务时发生错误', error as Error, { promptId });
     }
   }, [aiVideoService, taskId, onAddMaterials, logger, positivePrompt, width, height, durationSeconds, steps, enableLora, aspectRatio]);
 
@@ -229,10 +229,10 @@ export const useAIVideoGeneration = (
           setGeneratedVideos(status.videos || []);
           clearPolling();
           
-          // 自动下载并上传到Supabase
+          // 自动下载并上传到存储服务
           if (status.videos && status.videos.length > 0 && !downloadedPromptIds.current.has(promptId)) {
             downloadedPromptIds.current.add(promptId);
-            await handleAutoUploadToSupabase(promptId, status.videos);
+            await handleAutoUploadToStorage(promptId, status.videos);
           }
           
         } else if (status.status === 'failed') {
@@ -247,7 +247,7 @@ export const useAIVideoGeneration = (
         // 不中断轮询，继续尝试
       }
     }, 3000); // 3秒轮询一次
-  }, [aiVideoService, logger, clearPolling, onAddMaterials, handleAutoUploadToSupabase]);
+  }, [aiVideoService, logger, clearPolling, onAddMaterials, handleAutoUploadToStorage]);
 
   // 打开弹窗
   const openModal = useCallback(() => {

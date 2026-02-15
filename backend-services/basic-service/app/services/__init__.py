@@ -12,7 +12,7 @@ from .sentence_tts_service import SentenceTTSService
 from .audio_search_service import AudioSearchService
 from .audio_transcription_service import AudioTranscriptionService
 from .youtube_service import YouTubeService
-from .supabase_service import SupabaseService
+from .storage_service import StorageService
 from .image_to_video_service import ImageToVideoService
 from .timeline_export_service import TimelineExportService
 from .timeline_import_service import TimelineImportService
@@ -35,7 +35,7 @@ __all__ = [
     'AudioSearchService',
     'AudioTranscriptionService',
     'YouTubeService',
-    'SupabaseService',
+    'StorageService',
     'ImageToVideoService',
     'TimelineExportService',
     'TimelineImportService',

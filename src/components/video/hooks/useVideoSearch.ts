@@ -557,7 +557,7 @@ export const useVideoSearch = (
           metadata: {
             ...material.metadata,
             originalUrl: material.youtubeUrl,
-            supabaseUrl: result.video_url,
+            storageUrl: result.video_url,
             thumbnailUrl: result.thumbnail_url,
             videoMetadata: {
               duration: result.duration,
