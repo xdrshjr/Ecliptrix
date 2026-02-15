@@ -2,135 +2,246 @@
 
 **Where light and shadow collide**
 
-A powerful content creation platform for social media, video editing, voice synthesis, and creative brainstorming powered by AI.
+[中文文档](README.zh-CN.md)
 
-## 🌟 Features
+An AI-powered content creation platform combining video editing, voice synthesis, workflow automation, and creative brainstorming — built with Next.js 15 and FastAPI.
 
-- **Content Creation**: Generate engaging social media content with AI assistance
-- **Video Editing**: Automatic video mixing and editing capabilities
-- **Voice Synthesis**: AI-powered speech generation and audio processing
-- **Brainstorming**: Creative ideation and inspiration tools
-- **Multi-tab Interface**: Work on multiple projects simultaneously
-- **Apple-inspired Design**: Clean, elegant, and intuitive user interface
+## Features
 
-## 🚀 Getting Started
+- **AI Video Editing** — Automatic video search, mixing, cutting, and composition with subtitle overlay
+- **Voice Synthesis** — Volcano TTS integration with 100+ voice types and batch processing
+- **Workflow Builder** — Visual node-based editor with 10+ node types (ChatLLM, Pexels, TTS, etc.)
+- **Video Analysis** — Vision-Language model powered frame-by-frame video understanding
+- **Content Chat** — Multi-turn AI chat with streaming responses
+- **Image Generation** — FLUX-based image generation via RunningHub
+- **Multi-tab Interface** — Work on chat, video, workflow, and brainstorming simultaneously
+- **YouTube Integration** — Download and process YouTube videos with yt-dlp
+
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm or yarn or pnpm
+| Tool | Version | Required |
+|------|---------|----------|
+| Node.js | 18+ | Yes |
+| Python | 3.10+ | Yes |
+| PostgreSQL | 13+ | Yes |
+| FFmpeg | 4+ | For video features |
 
-### Installation
+### One-Click Install
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/xdrshjr/Ecliptrix.git
 cd Ecliptrix
+bash install.sh
 ```
 
-2. Install dependencies:
+The install script handles everything: dependency installation, Python virtual environment, environment file creation, PostgreSQL database setup, Alembic migrations, and directory creation.
+
+**Options:**
+
+```bash
+bash install.sh --cn-mirror      # Use Chinese mirror sources (npm + pip)
+bash install.sh --skip-db        # Skip PostgreSQL auto-setup
+bash install.sh --skip-frontend  # Skip npm install
+bash install.sh --skip-backend   # Skip Python venv + pip install
+bash install.sh --help           # Show all options
+```
+
+### Manual Install
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+**1. Frontend**
+
 ```bash
 npm install
-# or
-yarn install
-# or
-pnpm install
-```
-
-3. Set up environment variables:
-```bash
 cp env.template .env.local
+# Edit .env.local with your API keys
 ```
-Edit `.env.local` and add your API keys for various LLM providers.
 
-4. Run the development server:
+**2. Backend**
+
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+cd backend-services/basic-service
+python3 -m venv venv
+source venv/bin/activate        # Windows: source venv/Scripts/activate
+pip install -r requirements.txt
+cp env.template .env
+# Edit .env with your API keys
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+**3. Database**
 
-## 🛠️ Tech Stack
+```sql
+-- Connect as postgres superuser
+CREATE USER ecliptrix WITH PASSWORD 'ecliptrix';
+CREATE DATABASE ecliptrix OWNER ecliptrix;
+GRANT ALL PRIVILEGES ON DATABASE ecliptrix TO ecliptrix;
+```
 
-- **Framework**: Next.js 15 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: Custom components with Apple-inspired design
-- **State Management**: React hooks with custom task management
-- **Linting**: ESLint with Next.js configuration
+```bash
+cd backend-services/basic-service
+source venv/bin/activate
+alembic upgrade head
+```
 
-## 📁 Project Structure
+</details>
+
+### Start Services
+
+```bash
+# Terminal 1 — Backend
+cd backend-services/basic-service
+source venv/bin/activate        # Windows: source venv/Scripts/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2 — Frontend
+npm run dev
+```
+
+Or use the startup script:
+
+```bash
+bash start.sh
+```
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
+
+**Default login:** `admin` / `admin`
+
+## Tech Stack
+
+### Frontend
+
+- **Framework:** Next.js 15 (App Router)
+- **Language:** TypeScript 5
+- **Styling:** Tailwind CSS 3
+- **State:** React hooks + Context (Auth, Locale, Notifications)
+
+### Backend
+
+- **Framework:** FastAPI 0.104
+- **Database:** PostgreSQL + SQLAlchemy (async) + Alembic
+- **Auth:** Local auth with bcrypt + JWT
+- **Storage:** Local filesystem (configurable)
+- **Video:** FFmpeg subprocess, OpenCV
+- **TTS:** Volcano Engine TTS
+- **LLM:** Multi-provider (OpenAI-compatible API, supports Qwen, Claude, GPT, etc.)
+
+## Project Structure
 
 ```
 Ecliptrix/
-├── src/
-│   ├── app/                 # Next.js App Router
-│   │   ├── layout.tsx       # Root layout
-│   │   └── page.tsx         # Home page
-│   ├── components/          # React components
-│   │   ├── Header.tsx       # Header component
-│   │   ├── Taskbar.tsx      # Task management bar
-│   │   ├── Container.tsx    # Main content area
-│   │   └── Footer.tsx       # Footer component
-│   ├── hooks/               # Custom React hooks
-│   │   └── useTasks.ts      # Task management hook
-│   ├── lib/                 # Utility functions
-│   ├── styles/              # CSS styles
-│   │   └── globals.css      # Global styles
-│   └── types/               # TypeScript type definitions
-│       └── index.ts         # Main type definitions
-├── public/                  # Static assets
-├── env.template            # Environment variables template
-├── next.config.js          # Next.js configuration
-├── tailwind.config.js      # Tailwind CSS configuration
-├── tsconfig.json           # TypeScript configuration
-└── package.json            # Project dependencies
+├── src/                              # Next.js frontend
+│   ├── app/                          # App Router + API proxy routes
+│   ├── components/                   # Feature-organized React components
+│   │   ├── video/                    # Video editing (30+ components)
+│   │   ├── workflow/                 # Node-based workflow builder
+│   │   ├── chat/                     # Chat interface
+│   │   └── ui/                       # Shared UI components
+│   ├── contexts/                     # Auth, Notification, Locale
+│   ├── hooks/                        # useTasks, useMobileDetection
+│   ├── lib/api/                      # Backend API service clients
+│   └── types/                        # TypeScript type definitions
+├── backend-services/basic-service/   # FastAPI backend
+│   ├── app/
+│   │   ├── main.py                   # App entry: 22 routers, middleware
+│   │   ├── config.py                 # Pydantic Settings + YAML overrides
+│   │   ├── database.py               # Async SQLAlchemy engine
+│   │   ├── models/                   # Pydantic + ORM models
+│   │   ├── routers/                  # 22 API route modules
+│   │   └── services/                 # 38 service modules
+│   ├── config/                       # YAML configs (TTS, upload, youtube, etc.)
+│   ├── alembic/                      # Database migrations
+│   └── tests/                        # Pytest suite
+├── install.sh                        # One-click installation script
+├── start.sh                          # Service startup script
+├── kill.sh                           # Kill all service processes
+└── env.template                      # Frontend environment template
 ```
 
-## 🎨 Design Philosophy
+## Configuration
 
-Ecliptrix follows Apple's design principles:
+### Frontend `.env.local`
 
-- **Simplicity**: Clean, uncluttered interface
-- **Consistency**: Uniform design patterns throughout
-- **Accessibility**: Keyboard navigation and screen reader support
-- **Performance**: Smooth animations and responsive interactions
-- **Typography**: System fonts for optimal readability
+```bash
+# LLM API (required)
+LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_API_KEY=your_key_here
+LLM_MODEL=qwen3-next-80b-a3b-instruct
 
-## 🔧 Configuration
+# Backend connection
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:3000
 
-### Environment Variables
+# App settings
+NEXT_PUBLIC_APP_NAME=Ecliptrix
+NEXT_PUBLIC_AI_MATERIAL_SERVICE=local
+```
 
-The application supports multiple LLM providers. Configure them in your `.env.local` file:
+### Backend `.env`
 
-- **OpenAI**: For GPT models
-- **Anthropic**: For Claude models  
-- **Google**: For Gemini models
-- **Azure OpenAI**: For enterprise OpenAI deployments
-- **Custom LLM**: For self-hosted or other LLM providers
+```bash
+# LLM APIs (general, video cut, vision-language)
+LLM_API_KEY=your_key_here
+VIDEO_CUT_LLM_API_KEY=your_key_here
+VL_LLM_API_KEY=your_key_here
 
-### Customization
+# Database
+DATABASE_URL=postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix
 
-- **Themes**: Modify `src/styles/globals.css` for custom color schemes
-- **Components**: Extend or modify components in `src/components/`
-- **Types**: Add custom types in `src/types/`
+# Auth
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin
 
-## 🌐 Internationalization
+# External APIs (optional)
+PEXELS_API_KEY=your_key_here
+VOLCANO_TTS_APPID=your_appid
+```
 
-The project is prepared for internationalization. Currently supports:
-- English (default)
-- Chinese (planned)
+See `env.template` (frontend) and `backend-services/basic-service/env.template` (backend) for all available options.
 
-## 📱 Platform Support
+### Multi-LLM Strategy
 
-- **Desktop**: Full feature support
-- **Mobile**: Limited support (desktop experience recommended)
+The backend supports three independent LLM configurations:
 
-## 🤝 Contributing
+| Config | Used For | Default Model |
+|--------|----------|---------------|
+| `LLM_*` | Chat, workflow, intent detection | qwen3-next-80b |
+| `VIDEO_CUT_LLM_*` | AI mixed editing | claude-sonnet-4 |
+| `VL_LLM_*` | Video frame analysis | qwen-vl-plus |
+
+All endpoints use the OpenAI-compatible API format.
+
+## Commands
+
+### Frontend
+
+```bash
+npm run dev          # Development server
+npm run build        # Production build
+npm start            # Production server
+npm run lint         # ESLint
+npm run type-check   # TypeScript check
+```
+
+### Backend
+
+```bash
+# From backend-services/basic-service/ with venv activated
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # Dev server
+pytest tests/ -v                                             # Run tests
+pytest tests/ --cov=app --cov-report=html                    # Coverage
+alembic upgrade head                                         # Run migrations
+```
+
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -138,21 +249,10 @@ The project is prepared for internationalization. Currently supports:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
-This project is licensed under the ISC License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Next.js team for the excellent framework
-- Tailwind CSS for the utility-first CSS framework
-- Apple for design inspiration
-- Open source community for various tools and libraries
-
-## 📞 Support
-
-For support, please open an issue on GitHub or contact the development team.
+This project is licensed under the ISC License.
 
 ---
 
-**Ecliptrix** - Transforming ideas into reality through the collision of light and shadow. 
+**Ecliptrix** — Transforming ideas into reality through the collision of light and shadow.
