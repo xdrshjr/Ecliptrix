@@ -1,0 +1,11 @@
+1
+00:00:00,240 --> 00:00:02,420
+say hello to the star of our show
+
+2
+00:00:02,920 --> 00:00:06,700
+this is dog's name and they're ready to steal your heart
+
+3
+00:00:07,000 --> 00:00:10,540
+let's dive into what makes him her so special

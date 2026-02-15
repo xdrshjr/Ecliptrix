@@ -383,6 +383,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       timestamp: new Date().toISOString()
     });
 
+    let actualTrack: Track | null = null;
+    let actualUsedFallback = false;
+
     setTimelineState(prev => {
       console.log(`[TimelinePanel] 当前时间轴状态`, {
         totalTracks: prev.tracks.length,
@@ -592,6 +595,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         maxItemEndTime: maxItemEndTime.toFixed(2)
       });
 
+      actualTrack = targetTrack;
+      actualUsedFallback = usedFallback;
+
       return {
         ...prev,
         tracks: newTracks,
@@ -650,10 +656,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       materialName: material.name,
       materialType: material.type,
       requestedTrackId: targetTrackId,
-      actualTrackId: targetTrack?.id,
-      trackName: targetTrack?.name,
-      usedFallback,
-      startTime: getTrackEndTime(targetTrack?.items || []).toFixed(2),
+      actualTrackId: (actualTrack as Track | null)?.id,
+      trackName: (actualTrack as Track | null)?.name,
+      usedFallback: actualUsedFallback,
+      startTime: getTrackEndTime((actualTrack as Track | null)?.items || []).toFixed(2),
       duration: (material.duration || 5).toFixed(2),
       hasSegmentMetadata: !!(material.metadata?.segment_id && material.metadata?.segment_number),
       segmentInfo: material.metadata?.segment_id ? {
@@ -2314,7 +2320,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       }
       
       // 5. 更新时间轴状态，直接替换现有字幕项目
-      setTimelineState(prev => {
+    let actualTrack: Track | null = null;
+    let actualUsedFallback = false;
+
+    setTimelineState(prev => {
         const updatedTracks = prev.tracks.map(track => {
           if (track.id === subtitleTrack.id) {
             return {
