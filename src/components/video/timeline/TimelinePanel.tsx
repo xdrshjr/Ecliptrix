@@ -700,16 +700,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [handleMaterialDrop]);
 
   // 监听外部传入的素材添加请求
-  React.useEffect(() => {
-    if (materialsToAdd && materialsToAdd.materials.length > 0) {
-      console.log(`[TimelinePanel] 接收到外部素材添加请求`, {
-        materialsCount: materialsToAdd.materials.length,
-        targetTrackId: materialsToAdd.targetTrackId,
-        timestamp: materialsToAdd.timestamp
-      });
-      
-      handleAddMaterialsToTimeline(materialsToAdd.materials, materialsToAdd.targetTrackId);
-    }
+  // 用 ref 记录已处理的 timestamp，防止因 handleAddMaterialsToTimeline 回调重建导致 effect 重复触发，造成素材重复添加
+  const lastProcessedMaterialsTimestampRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!materialsToAdd || materialsToAdd.materials.length === 0) return;
+    // 每个唯一请求（由 timestamp 标识）只处理一次
+    if (materialsToAdd.timestamp === lastProcessedMaterialsTimestampRef.current) return;
+
+    lastProcessedMaterialsTimestampRef.current = materialsToAdd.timestamp;
+    console.log(`[TimelinePanel] 接收到外部素材添加请求`, {
+      materialsCount: materialsToAdd.materials.length,
+      targetTrackId: materialsToAdd.targetTrackId,
+      timestamp: materialsToAdd.timestamp
+    });
+
+    handleAddMaterialsToTimeline(materialsToAdd.materials, materialsToAdd.targetTrackId);
   }, [materialsToAdd, handleAddMaterialsToTimeline]);
 
   // 初始化日志记录

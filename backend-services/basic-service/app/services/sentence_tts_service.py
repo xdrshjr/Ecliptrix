@@ -2,7 +2,6 @@
 Sentence-level Text-to-Speech service for concurrent processing with audio concatenation.
 """
 
-import asyncio
 import os
 import time
 import uuid
