@@ -108,20 +108,13 @@ class TTSClient:
             )
             
             # 检查HTTP状态码
-            if response.status_code == 401:
-                logger.error("TTS API认证失败", {
-                    "request_id": req_id,
-                    "status_code": response.status_code,
-                    "response_text": response.text[:200]
-                })
-                return False
-            elif response.status_code != 200:
-                logger.error(f"HTTP错误: {response.status_code}", {
-                    "request_id": req_id,
-                    "status_code": response.status_code,
-                    "response_text": response.text,
-                    "headers": dict(response.headers)
-                })
+            if response.status_code != 200:
+                response_body = response.text[:500] if response.text else "(empty)"
+                logger.error(
+                    f"TTS API HTTP错误: status={response.status_code}, "
+                    f"appid={self.appid}, "
+                    f"response={response_body}"
+                )
                 return False
             
             result = response.json()
@@ -289,7 +282,11 @@ class TTSService:
         self.appid = settings.volcano_tts_appid
         self.access_token = ***REMOVED***
         self.audio_dir = "static/audio/generated"
-        
+
+        # 启动时记录 token 状态，方便排查 403 问题
+        token_preview = f"{self.access_token[:6]}...{self.access_token[-4:]}" if len(self.access_token) > 10 else "(empty or short)"
+        logger.info(f"TTSService 初始化: appid={self.appid}, token={token_preview}")
+
         # 确保音频目录存在
         os.makedirs(self.audio_dir, exist_ok=True)
         

@@ -534,26 +534,25 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsPolishModalOpen(false);
   }, [taskId, documentState.markdownValue.length, documentState.handleMarkdownChange]);
 
-  // 处理脚本生成弹窗 - 使用转换脚本弹窗
+  // 处理脚本生成弹窗
   const handleScriptGenerationClick = useCallback(() => {
     // 获取当前活动对话
     const activeConversation = content?.conversations?.find(
       conv => conv.id === content?.activeConversationId
     );
-    
+
     // 将所有聊天消息内容合并为一个字符串
     const chatContent = activeConversation?.messages
       .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
       .join('\n\n') || '';
-    
+
     console.log(`[VideoEditingInterface] 用户点击生成脚本按钮`, {
       taskId,
       messageCount: activeConversation?.messages.length || 0,
       chatContentLength: chatContent.length,
       timestamp: new Date().toISOString()
     });
-    
-    // 打开转换视频脚本弹窗，传入完整聊天内容
+
     convertToScript.openModal(chatContent);
   }, [taskId, content, convertToScript]);
 
@@ -564,8 +563,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       contentLength: content.length,
       timestamp: new Date().toISOString()
     });
-    
-    // 打开新的转换视频脚本弹窗
+
     convertToScript.openModal(content);
   }, [taskId, convertToScript]);
 

@@ -51,9 +51,8 @@ class VideoUnderstandingScriptRequest(BaseModel):
     """Request model for video understanding script generation."""
     taskId: str = Field(..., description="Task unique identifier")
     selectedVideos: List[VideoItem] = Field(
-        ..., 
-        min_items=1, 
-        description="List of selected videos for script generation"
+        default_factory=list,
+        description="List of selected videos for script generation (can be empty for text-only script generation)"
     )
     referenceText: str = Field(
         default="", 

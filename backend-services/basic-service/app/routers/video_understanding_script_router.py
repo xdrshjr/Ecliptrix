@@ -49,17 +49,6 @@ async def _generate_video_script_handler(request: VideoUnderstandingScriptReques
         logger.info(f"Reference text received: length={len(request.referenceText)}, content='{request.referenceText[:200]}...'" if request.referenceText else "No reference text in request")
         
         # Validate request parameters
-        if not request.selectedVideos:
-            logger.error(f"Video understanding script request validation failed: no videos selected for task: {request.taskId}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=VideoUnderstandingScriptErrorResponse(
-                    error="At least one video must be selected",
-                    details="selectedVideos array cannot be empty",
-                    taskId=request.taskId
-                ).model_dump()
-            )
-        
         if request.parameters.segmentCount < 1 or request.parameters.segmentCount > 20:
             logger.error(f"Video understanding script request validation failed: invalid segment count {request.parameters.segmentCount} for task: {request.taskId}")
             raise HTTPException(

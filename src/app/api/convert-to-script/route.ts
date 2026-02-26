@@ -55,14 +55,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Python 后端要求 selectedVideos 至少包含1个视频（无论是否启用视频理解）
-    if (!selectedVideos || !Array.isArray(selectedVideos) || selectedVideos.length === 0) {
-      console.error('[Convert To Script API] Invalid request: selectedVideos array must contain at least one video');
-      return NextResponse.json(
-        { error: 'At least one video must be selected' },
-        { status: 400 }
-      );
-    }
+    // selectedVideos 是可选的，没有视频时也能基于 referenceText 生成脚本
+    const validatedVideos = Array.isArray(selectedVideos) ? selectedVideos : [];
 
     if (!parameters || typeof parameters !== 'object') {
       console.error('[Convert To Script API] Invalid request: parameters object is required');
@@ -73,18 +67,18 @@ export async function POST(request: NextRequest) {
     }
 
     const config = getBackendConfig();
-    logRequest(taskId, chatContent.length, selectedVideos?.length || 0, enableVideoUnderstanding, analysisMode);
+    logRequest(taskId, chatContent.length, validatedVideos.length, enableVideoUnderstanding, analysisMode);
 
     // 准备发送给Python后端的请求数据
     // 注意：Python 后端使用 VideoUnderstandingScriptRequest 模型
     // - referenceText 对应前端的 chatContent
-    // - selectedVideos 必须至少包含1个视频
+    // - selectedVideos 可以为空，此时仅基于 referenceText 生成脚本
     // - enableVideoUnderstanding 决定是否使用视频分析数据
     // - analysisMode 决定视频分析模式（快速或专业）
     const requestData = {
       taskId: taskId,
       referenceText: chatContent,  // Python 后端使用 referenceText
-      selectedVideos: selectedVideos,  // 始终发送视频列表
+      selectedVideos: validatedVideos,  // 可以为空列表
       parameters: parameters,
       analysisMode: analysisMode || 'quick'  // 默认快速分析
     };

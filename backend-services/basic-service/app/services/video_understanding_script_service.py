@@ -61,7 +61,10 @@ class VideoUnderstandingScriptService:
             logger.info(f"Analysis mode: {request.analysisMode} ({'thumbnail only' if request.analysisMode == 'quick' else 'frame extraction'})")
             if request.referenceText:
                 logger.info(f"User requirements (chatContent) provided as foundation: length={len(request.referenceText)}, preview='{request.referenceText[:100]}...'")
-                logger.info("Script will be generated based on user requirements combined with video analysis")
+                if request.selectedVideos:
+                    logger.info("Script will be generated based on user requirements combined with video analysis")
+                else:
+                    logger.info("No videos selected - script will be generated solely from user requirements (referenceText)")
             else:
                 logger.warning("No user requirements (chatContent) provided - script will be generated solely from video analysis")
             

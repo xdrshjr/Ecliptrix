@@ -111,37 +111,38 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
   // 根据是否启用视频理解，过滤视频素材
   const allVideoMaterials = materials.filter(material => material.type === 'video');
-  
+  const hasVideoMaterials = allVideoMaterials.length > 0;
+
   // 如果启用了视频理解，只显示已经分析过的视频
   const videoMaterials = enableVideoUnderstanding && getAnalysisResult
     ? allVideoMaterials.filter(material => {
         const analysisResult = getAnalysisResult(material.url || '');
-        const hasValidAnalysis = analysisResult && 
-                                analysisResult.success && 
-                                analysisResult.frame_analyses && 
+        const hasValidAnalysis = analysisResult &&
+                                analysisResult.success &&
+                                analysisResult.frame_analyses &&
                                 analysisResult.frame_analyses.length > 0;
-        
+
         if (hasValidAnalysis) {
           logger.debug(`视频已分析: ${material.name}`, {
             videoId: material.id,
             framesCount: analysisResult.frame_analyses.length
           });
         }
-        
+
         return hasValidAnalysis;
       })
     : allVideoMaterials;
-  
+
   const analyzedVideoCount = enableVideoUnderstanding && getAnalysisResult
     ? allVideoMaterials.filter(material => {
         const analysisResult = getAnalysisResult(material.url || '');
-        return analysisResult && 
-               analysisResult.success && 
-               analysisResult.frame_analyses && 
+        return analysisResult &&
+               analysisResult.success &&
+               analysisResult.frame_analyses &&
                analysisResult.frame_analyses.length > 0;
       }).length
     : 0;
-  
+
   const selectedVideoItems = Array.from(selectedVideos)
     .map(id => videoMaterials.find(v => v.id === id))
     .filter(Boolean) as MaterialItem[];
@@ -204,8 +205,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div 
-        className={`bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-6xl w-full max-h-[90vh] flex flex-col transform transition-all duration-300 ${
+      <div
+        className={`bg-white rounded-2xl shadow-2xl border border-gray-100 ${hasVideoMaterials ? 'max-w-6xl' : 'max-w-2xl'} w-full max-h-[90vh] flex flex-col transform transition-all duration-300 ${
           isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -221,7 +222,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               </div>
               <div>
                 <h3 id="modal-title" className="text-xl font-semibold text-gray-900">
-                  转换视频脚本
+                  生成脚本
                 </h3>
                 <p className="text-sm text-gray-600">
                   将对话内容转换为视频脚本
@@ -240,10 +241,10 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
           </div>
         </div>
 
-        {/* Content - Left-Right Layout */}
+        {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - 参数设置 */}
-          <div className="w-1/2 p-6 border-r border-gray-200 overflow-y-auto">
+          <div className={`${hasVideoMaterials ? 'w-1/2 border-r border-gray-200' : 'w-full'} p-6 overflow-y-auto`}>
             <h4 className="text-md font-semibold text-gray-800 mb-4 flex items-center">
               <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -355,166 +356,168 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
             </div>
           </div>
 
-          {/* Right Panel - 视频理解 */}
-          <div className="w-1/2 p-6 overflow-y-auto bg-gray-50">
-            {/* 视频理解标题和开关 */}
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-md font-semibold text-gray-800 flex items-center">
-                <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                视频理解
-              </h4>
-              
-              {/* Toggle Switch */}
-              <button
-                onClick={() => {
-                  setEnableVideoUnderstanding(!enableVideoUnderstanding);
-                  if (enableVideoUnderstanding) {
-                    setSelectedVideos(new Set()); // 关闭时清除选择
-                  }
-                  logger.userAction('切换视频理解开关', 'toggleVideoUnderstanding', {
-                    newState: !enableVideoUnderstanding
-                  });
-                }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  enableVideoUnderstanding ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
-                    enableVideoUnderstanding ? 'translate-x-6' : 'translate-x-1'
+          {/* Right Panel - 视频理解（仅在有视频素材时显示） */}
+          {hasVideoMaterials && (
+            <div className="w-1/2 p-6 overflow-y-auto bg-gray-50">
+              {/* 视频理解标题和开关 */}
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-md font-semibold text-gray-800 flex items-center">
+                  <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  视频理解
+                </h4>
+
+                {/* Toggle Switch */}
+                <button
+                  onClick={() => {
+                    setEnableVideoUnderstanding(!enableVideoUnderstanding);
+                    if (enableVideoUnderstanding) {
+                      setSelectedVideos(new Set()); // 关闭时清除选择
+                    }
+                    logger.userAction('切换视频理解开关', 'toggleVideoUnderstanding', {
+                      newState: !enableVideoUnderstanding
+                    });
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    enableVideoUnderstanding ? 'bg-blue-600' : 'bg-gray-300'
                   }`}
-                />
-              </button>
-            </div>
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                      enableVideoUnderstanding ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
 
-            {/* 说明文本 */}
-            <div className="text-sm text-gray-600 mb-6">
-              <p>
-                {enableVideoUnderstanding 
-                  ? '已启用视频理解，将使用已解析视频的分析结果来生成脚本' 
-                  : '视频理解已关闭，将仅根据对话内容生成脚本'}
-              </p>
-            </div>
+              {/* 说明文本 */}
+              <div className="text-sm text-gray-600 mb-6">
+                <p>
+                  {enableVideoUnderstanding
+                    ? '已启用视频理解，将使用已解析视频的分析结果来生成脚本'
+                    : '视频理解已关闭，将仅根据对话内容生成脚本'}
+                </p>
+              </div>
 
-            {/* Video Selection Grid */}
-            {enableVideoUnderstanding && (
-              <div>
-                {/* 显示已分析视频信息 */}
-                {getAnalysisResult && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-start space-x-2">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="text-sm">
-                        <p className="text-blue-800 font-medium">
-                          显示已解析的视频素材
-                        </p>
-                        <p className="text-blue-700 mt-1">
-                          当前共 <span className="font-semibold">{analyzedVideoCount}</span> 个已解析视频 
-                          {allVideoMaterials.length > analyzedVideoCount && (
-                            <span className="text-blue-600">
-                              （总共 {allVideoMaterials.length} 个视频）
-                            </span>
-                          )}
-                        </p>
-                        {allVideoMaterials.length > analyzedVideoCount && (
-                          <p className="text-blue-600 text-xs mt-1">
-                            💡 提示：其他未解析的视频需要先在素材面板中进行 AI 视频解析
+              {/* Video Selection Grid */}
+              {enableVideoUnderstanding && (
+                <div>
+                  {/* 显示已分析视频信息 */}
+                  {getAnalysisResult && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-start space-x-2">
+                        <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className="text-sm">
+                          <p className="text-blue-800 font-medium">
+                            显示已解析的视频素材
                           </p>
-                        )}
+                          <p className="text-blue-700 mt-1">
+                            当前共 <span className="font-semibold">{analyzedVideoCount}</span> 个已解析视频
+                            {allVideoMaterials.length > analyzedVideoCount && (
+                              <span className="text-blue-600">
+                                （总共 {allVideoMaterials.length} 个视频）
+                              </span>
+                            )}
+                          </p>
+                          {allVideoMaterials.length > analyzedVideoCount && (
+                            <p className="text-blue-600 text-xs mt-1">
+                              提示：其他未解析的视频需要先在素材面板中进行 AI 视频解析
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-                
-                {videoMaterials.length === 0 ? (
-                  <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <p className="text-gray-500 text-sm">
-                      {getAnalysisResult && allVideoMaterials.length > 0 
-                        ? '暂无已解析的视频素材'
-                        : '暂无可用的视频素材'}
-                    </p>
-                    <p className="text-gray-400 text-xs mt-1">
-                      {getAnalysisResult && allVideoMaterials.length > 0 
-                        ? '请先在素材面板中对视频进行 AI 视频解析'
-                        : '请先上传或搜索视频素材'}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
-                      {videoMaterials.map((video) => (
-                        <div
-                          key={video.id}
-                          className={`relative group cursor-pointer rounded-lg border-2 transition-all duration-200 bg-white ${
-                            selectedVideos.has(video.id)
-                              ? 'border-blue-500 bg-blue-50 shadow-md'
-                              : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                          }`}
-                          onClick={() => handleVideoSelect(video.id)}
-                        >
-                          <div className="aspect-video bg-gray-100 rounded-t-lg overflow-hidden">
-                            {video.thumbnailUrl ? (
-                              <img
-                                src={video.thumbnailUrl}
-                                alt={video.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  )}
+
+                  {videoMaterials.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                      <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-gray-500 text-sm">
+                        {getAnalysisResult && allVideoMaterials.length > 0
+                          ? '暂无已解析的视频素材'
+                          : '暂无可用的视频素材'}
+                      </p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        {getAnalysisResult && allVideoMaterials.length > 0
+                          ? '请先在素材面板中对视频进行 AI 视频解析'
+                          : '请先上传或搜索视频素材'}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
+                        {videoMaterials.map((video) => (
+                          <div
+                            key={video.id}
+                            className={`relative group cursor-pointer rounded-lg border-2 transition-all duration-200 bg-white ${
+                              selectedVideos.has(video.id)
+                                ? 'border-blue-500 bg-blue-50 shadow-md'
+                                : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                            }`}
+                            onClick={() => handleVideoSelect(video.id)}
+                          >
+                            <div className="aspect-video bg-gray-100 rounded-t-lg overflow-hidden">
+                              {video.thumbnailUrl ? (
+                                <img
+                                  src={video.thumbnailUrl}
+                                  alt={video.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="p-3">
+                              <p className="text-sm font-medium text-gray-900 truncate">{video.name}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
+                              </p>
+                            </div>
+
+                            {selectedVideos.has(video.id) && (
+                              <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                 </svg>
                               </div>
                             )}
                           </div>
-                          
-                          <div className="p-3">
-                            <p className="text-sm font-medium text-gray-900 truncate">{video.name}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
-                            </p>
-                          </div>
-
-                          {selectedVideos.has(video.id) && (
-                            <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
-                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {selectedVideos.size > 0 && (
-                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                        <p className="text-sm text-blue-800">
-                          已选择 <span className="font-semibold">{selectedVideos.size}</span> 个视频
-                        </p>
+                        ))}
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
 
-            {/* Chat Content Preview */}
-            {!enableVideoUnderstanding && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h5 className="text-sm font-medium text-gray-700 mb-2">对话内容预览：</h5>
-                <div className="text-sm text-gray-600 max-h-64 overflow-y-auto p-3 bg-gray-50 rounded border border-gray-200">
-                  {chatContent}
+                      {selectedVideos.size > 0 && (
+                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                          <p className="text-sm text-blue-800">
+                            已选择 <span className="font-semibold">{selectedVideos.size}</span> 个视频
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+
+              {/* Chat Content Preview */}
+              {!enableVideoUnderstanding && (
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">对话内容预览：</h5>
+                  <div className="text-sm text-gray-600 max-h-64 overflow-y-auto p-3 bg-gray-50 rounded border border-gray-200">
+                    {chatContent}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}

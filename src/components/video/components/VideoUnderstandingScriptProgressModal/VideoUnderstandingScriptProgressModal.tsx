@@ -29,6 +29,8 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
 
   if (!isVisible) return null;
 
+  const hasVideos = progress.totalVideos > 0;
+
   const getStepTitle = () => {
     switch (progress.currentStep) {
       case 'mode-selection':
@@ -47,7 +49,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
       case 'video-analysis':
         return `正在分析视频 (${progress.analyzedVideos}/${progress.totalVideos})`;
       case 'script-generation':
-        return '基于视频分析结果生成脚本内容';
+        return hasVideos ? '基于视频分析结果生成脚本内容' : '基于对话内容生成脚本';
       default:
         return '请稍候...';
     }
@@ -88,7 +90,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
             </div>
             <div>
               <h3 id="progress-title" className="text-lg font-semibold text-gray-900">
-                视频理解生成脚本
+                {hasVideos ? '视频理解生成脚本' : '生成脚本'}
               </h3>
               <p id="progress-description" className="text-sm text-gray-500">
                 {getStepTitle()}
