@@ -312,6 +312,21 @@ else
     handle_error
 fi
 
+# --- Load Frontend Environment Variables ---
+# Next.js may fail to load .env in production on some systems (CRLF issues, etc.)
+# Explicitly export env vars from root .env to ensure they're available at runtime
+# This only affects the frontend process (backend is already running)
+step "Loading frontend environment variables / 加载前端环境变量..."
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    # Strip CRLF (Windows line endings) before sourcing to avoid \r in values
+    source <(sed 's/\r$//' "$SCRIPT_DIR/.env") 2>/dev/null || true
+    set +a
+    success "Environment variables loaded from .env / 已从 .env 加载环境变量"
+else
+    warn "No .env file found / 未找到 .env 文件, frontend may use default config"
+fi
+
 # --- Start Frontend Service ---
 step "Starting frontend service / 启动前端服务..."
 cd "$SCRIPT_DIR"
