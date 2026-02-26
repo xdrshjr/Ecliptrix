@@ -163,6 +163,9 @@ class AuthService:
             except Exception as update_error:
                 logger.warning(f"Failed to update last login time: {str(update_error)}")
 
+            # Refresh user object to avoid MissingGreenlet on lazy-loaded attributes
+            await db.refresh(user)
+
             # Create user info object
             user_info = UserInfo(
                 id=str(user.id),
@@ -196,11 +199,7 @@ class AuthService:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("User authentication exception", {
-                "username": login_data.username,
-                "error": error_msg,
-                "error_type": type(e).__name__
-            })
+            logger.error(f"User authentication exception: {type(e).__name__}: {error_msg}")
             return {
                 "success": False,
                 "message": "认证服务异常",
