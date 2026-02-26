@@ -1,309 +1,374 @@
 #!/bin/bash
 
+# ============================================
+# Ecliptrix - One-Click Start Script
 # Ecliptrix 一键启动脚本
-# 同时启动前端Next.js应用和后端FastAPI服务
+# ============================================
+# Usage: bash start.sh [PORT]
+#
+# Options:
+#   PORT   Custom frontend port (default: 3010)
+#   --dev  Start frontend in dev mode (no build, npm run dev)
+#   --help Show this help message
+# ============================================
+
+set -o pipefail
 unset all_proxy; unset ALL_PROXY
 
-# 颜色定义
+# ============ Color Definitions ============
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+BOLD='\033[1m'
+NC='\033[0m'
 
-# 默认配置
-FRONTEND_PORT=3010
-BACKEND_DIR="backend-services/basic-service"
-COMFYUI_API_DIR="backend-services/comfyui-api-service"
-LOG_DIR="logs"
+# ============ Configuration ============
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$SCRIPT_DIR/backend-services/basic-service"
+LOG_DIR="$SCRIPT_DIR/logs"
+
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 BACKEND_LOG="$LOG_DIR/backend.log"
-COMFYUI_API_LOG="$LOG_DIR/comfyui-api.log"
 STARTUP_LOG="$LOG_DIR/startup.log"
 
-# 创建日志目录
+FRONTEND_PORT=3010
+DEV_MODE=false
+
+# PIDs for cleanup
+FRONTEND_PID=""
+BACKEND_PID=""
+
+# ============ Parse Arguments ============
+for arg in "$@"; do
+    case $arg in
+        --dev)   DEV_MODE=true ;;
+        --help)
+            head -n 12 "$0" | tail -n 8
+            exit 0
+            ;;
+        *)
+            if [[ $arg =~ ^[0-9]+$ ]]; then
+                FRONTEND_PORT=$arg
+            else
+                echo "Unknown option: $arg (use --help for usage)"
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+# ============ Logging Functions ============
 mkdir -p "$LOG_DIR"
 
-# 日志函数
-log_info() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo -e "${BLUE}[INFO]${NC} ${timestamp} - $1" | tee -a "$STARTUP_LOG"
+log() {
+    local level=$1 color=$2 msg=$3
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "${color}[${level}]${NC} ${timestamp} - ${msg}" | tee -a "$STARTUP_LOG"
 }
 
-log_success() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo -e "${GREEN}[SUCCESS]${NC} ${timestamp} - $1" | tee -a "$STARTUP_LOG"
+info()    { log "INFO"    "$BLUE"   "$1"; }
+success() { log "OK"      "$GREEN"  "$1"; }
+warn()    { log "WARN"    "$YELLOW" "$1"; }
+error()   { log "ERROR"   "$RED"    "$1"; }
+step()    { log "STEP"    "$PURPLE" "$1"; }
+header()  { echo -e "\n${BOLD}${CYAN}$1${NC}" | tee -a "$STARTUP_LOG"; }
+
+# ============ Helper Functions ============
+
+detect_os() {
+    case "$(uname -s)" in
+        Linux*)   echo "linux" ;;
+        Darwin*)  echo "macos" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        *)        echo "unknown" ;;
+    esac
 }
 
-log_warning() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo -e "${YELLOW}[WARNING]${NC} ${timestamp} - $1" | tee -a "$STARTUP_LOG"
+# ============ Port Cleanup ============
+
+# Kill any existing process on a given port
+kill_port() {
+    local port=$1
+    local killed=false
+
+    if [ "$OS" = "windows" ]; then
+        local pids
+        pids=$(netstat -ano 2>/dev/null | grep ":${port} " | grep "LISTENING" | awk '{print $5}' | sort -u)
+        for pid in $pids; do
+            if [ "$pid" != "0" ] && [ -n "$pid" ]; then
+                taskkill //F //PID "$pid" > /dev/null 2>&1 && \
+                    warn "Killed existing process on port $port (PID: $pid) / 已停止端口 $port 上的进程"
+                killed=true
+            fi
+        done
+    else
+        # Try lsof first, then fuser as fallback
+        local pids
+        pids=$(lsof -ti :"$port" 2>/dev/null)
+        if [ -z "$pids" ] && command -v fuser &>/dev/null; then
+            pids=$(fuser "$port/tcp" 2>/dev/null | tr -s ' ')
+        fi
+        if [ -z "$pids" ] && command -v ss &>/dev/null; then
+            pids=$(ss -tlnp "sport = :$port" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u)
+        fi
+        for pid in $pids; do
+            pid=$(echo "$pid" | tr -d '[:space:]')
+            [ -z "$pid" ] && continue
+            kill -9 "$pid" 2>/dev/null && \
+                warn "Killed existing process on port $port (PID: $pid) / 已停止端口 $port 上的进程"
+            killed=true
+        done
+    fi
+
+    # Wait for port to be released
+    if [ "$killed" = true ]; then
+        sleep 1
+    fi
 }
 
-log_error() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo -e "${RED}[ERROR]${NC} ${timestamp} - $1" | tee -a "$STARTUP_LOG"
+# ============ Cleanup & Signal Handling ============
+
+cleanup() {
+    echo ""
+    info "Stopping all services / 正在停止所有服务..."
+
+    for pid_var in FRONTEND_PID BACKEND_PID; do
+        pid=${!pid_var}
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            info "Stopping PID $pid..."
+            kill "$pid" 2>/dev/null
+        fi
+    done
+
+    sleep 2
+
+    for pid_var in FRONTEND_PID BACKEND_PID; do
+        pid=${!pid_var}
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            warn "Force stopping PID $pid..."
+            kill -9 "$pid" 2>/dev/null
+        fi
+    done
+
+    info "All services stopped / 所有服务已停止"
 }
 
-log_step() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo -e "${PURPLE}[STEP]${NC} ${timestamp} - $1" | tee -a "$STARTUP_LOG"
-}
-
-# 错误处理函数
 handle_error() {
-    log_error "脚本执行失败，正在清理进程..."
+    error "Script failed, cleaning up / 脚本执行失败，正在清理..."
     cleanup
     exit 1
 }
 
-# 清理函数
-cleanup() {
-    log_info "正在停止所有服务..."
-    
-    # 停止前端进程
-    if [ ! -z "$FRONTEND_PID" ]; then
-        log_info "停止前端服务 (PID: $FRONTEND_PID)..."
-        kill $FRONTEND_PID 2>/dev/null
-    fi
-    
-    # 停止后端进程
-    if [ ! -z "$BACKEND_PID" ]; then
-        log_info "停止后端服务 (PID: $BACKEND_PID)..."
-        kill $BACKEND_PID 2>/dev/null
-    fi
-    
-    # 停止ComfyUI API进程
-    if [ ! -z "$COMFYUI_API_PID" ]; then
-        log_info "停止ComfyUI API服务 (PID: $COMFYUI_API_PID)..."
-        kill $COMFYUI_API_PID 2>/dev/null
-    fi
-    
-    # 等待进程结束
-    sleep 2
-    
-    # 强制停止如果还在运行
-    if [ ! -z "$FRONTEND_PID" ] && kill -0 $FRONTEND_PID 2>/dev/null; then
-        log_warning "强制停止前端服务..."
-        kill -9 $FRONTEND_PID 2>/dev/null
-    fi
-    
-    if [ ! -z "$BACKEND_PID" ] && kill -0 $BACKEND_PID 2>/dev/null; then
-        log_warning "强制停止后端服务..."
-        kill -9 $BACKEND_PID 2>/dev/null
-    fi
-    
-    if [ ! -z "$COMFYUI_API_PID" ] && kill -0 $COMFYUI_API_PID 2>/dev/null; then
-        log_warning "强制停止ComfyUI API服务..."
-        kill -9 $COMFYUI_API_PID 2>/dev/null
-    fi
-    
-    log_info "所有服务已停止"
-}
-
-# 设置信号处理
 trap cleanup INT TERM
 
-# 参数处理
-if [ $# -eq 1 ]; then
-    if [[ $1 =~ ^[0-9]+$ ]]; then
-        FRONTEND_PORT=$1
-        log_info "使用自定义前端端口: $FRONTEND_PORT"
-    else
-        log_error "端口号必须是数字"
-        exit 1
-    fi
+# ============ Main Script ============
+
+OS=$(detect_os)
+
+header "=========================================="
+header "   Ecliptrix Start Script"
+header "   Ecliptrix 一键启动脚本"
+header "=========================================="
+echo ""
+info "OS / 操作系统: $OS"
+info "Working Directory / 工作目录: $SCRIPT_DIR"
+info "Frontend port / 前端端口: $FRONTEND_PORT"
+if [ "$DEV_MODE" = true ]; then
+    info "Mode / 模式: Development (npm run dev)"
+else
+    info "Mode / 模式: Production (npm run build + npm start)"
 fi
+echo ""
 
-# 获取脚本目录
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+# ============ Step 1: Check Prerequisites ============
+header "[1/5] Checking Prerequisites / 检查运行环境"
 
-log_info "=========================================="
-log_info "         Ecliptrix 启动脚本"
-log_info "=========================================="
-log_info "工作目录: $(pwd)"
-log_info "前端端口: $FRONTEND_PORT"
-log_info "后端目录: $BACKEND_DIR"
-log_info "ComfyUI API目录: $COMFYUI_API_DIR"
-
-# 环境检查
-log_step "检查运行环境..."
-
-# 检查 Node.js
-if ! command -v node &> /dev/null; then
-    log_error "Node.js 未安装，请先安装 Node.js"
+# --- Node.js ---
+if ! command -v node &>/dev/null; then
+    error "Node.js not found / 未找到 Node.js. Run install.sh first / 请先运行 install.sh"
     exit 1
 fi
-NODE_VERSION=$(node --version)
-log_success "Node.js 版本: $NODE_VERSION"
+success "Node.js $(node --version)"
 
-# 检查 npm
-if ! command -v npm &> /dev/null; then
-    log_error "npm 未安装，请先安装 npm"
+# --- npm ---
+if ! command -v npm &>/dev/null; then
+    error "npm not found / 未找到 npm"
     exit 1
 fi
-NPM_VERSION=$(npm --version)
-log_success "npm 版本: $NPM_VERSION"
+success "npm $(npm --version)"
 
-# 检查 Python
-if ! command -v python &> /dev/null && ! command -v python3 &> /dev/null; then
-    log_error "Python 未安装，请先安装 Python"
-    exit 1
-fi
-
+# --- Python ---
 PYTHON_CMD="python3"
-if ! command -v python3 &> /dev/null; then
+if ! command -v python3 &>/dev/null; then
     PYTHON_CMD="python"
 fi
-
-PYTHON_VERSION=$($PYTHON_CMD --version)
-log_success "Python 版本: $PYTHON_VERSION"
-
-# 检查 pip
-if ! command -v pip &> /dev/null && ! command -v pip3 &> /dev/null; then
-    log_error "pip 未安装，请先安装 pip"
+if ! command -v $PYTHON_CMD &>/dev/null; then
+    error "Python not found / 未找到 Python. Run install.sh first / 请先运行 install.sh"
     exit 1
 fi
+success "Python $($PYTHON_CMD --version 2>&1 | awk '{print $2}')"
 
-PIP_CMD="pip3"
-if ! command -v pip3 &> /dev/null; then
-    PIP_CMD="pip"
-fi
-
-PIP_VERSION=$($PIP_CMD --version)
-log_success "pip 版本: $PIP_VERSION"
-
-# 检查后端目录
+# --- Backend directory ---
 if [ ! -d "$BACKEND_DIR" ]; then
-    log_error "后端目录不存在: $BACKEND_DIR"
+    error "Backend directory not found / 未找到后端目录: $BACKEND_DIR"
+    exit 1
+fi
+success "Backend directory found / 后端目录已找到"
+
+# --- Python environment ---
+if [ -n "$CONDA_DEFAULT_ENV" ]; then
+    success "Conda environment: $CONDA_DEFAULT_ENV"
+elif [ -n "$VIRTUAL_ENV" ]; then
+    success "Virtual environment: $VIRTUAL_ENV"
+else
+    warn "No conda/virtual environment detected / 未检测到 conda/虚拟环境"
+    warn "Please activate your environment first / 请先激活你的环境:"
+    warn "  conda activate ecliptrix"
     exit 1
 fi
 
-if [ ! -f "$BACKEND_DIR/run.py" ]; then
-    log_error "后端启动文件不存在: $BACKEND_DIR/run.py"
-    exit 1
+echo ""
+
+# ============ Step 2: Ensure Database ============
+header "[2/5] Checking Database / 检查数据库"
+
+DB_STARTED=false
+
+# Check if PostgreSQL is running via systemctl
+if command -v systemctl &>/dev/null; then
+    if systemctl is-active --quiet postgresql 2>/dev/null; then
+        success "PostgreSQL service is running / PostgreSQL 服务运行中"
+        DB_STARTED=true
+    fi
 fi
 
-# 检查ComfyUI API目录
-if [ ! -d "$COMFYUI_API_DIR" ]; then
-    log_error "ComfyUI API服务目录不存在: $COMFYUI_API_DIR"
-    exit 1
+# Verify database connectivity
+if [ "$DB_STARTED" = false ] && command -v psql &>/dev/null; then
+    if PGPASSWORD=ecliptrix psql -w -h localhost -p 5432 -U ecliptrix -d ecliptrix -c "SELECT 1" &>/dev/null 2>&1; then
+        success "PostgreSQL is reachable / PostgreSQL 可连接"
+        DB_STARTED=true
+    elif sudo -u postgres psql -c "SELECT 1" &>/dev/null 2>&1; then
+        success "PostgreSQL server is running / PostgreSQL 服务器运行中"
+        DB_STARTED=true
+    fi
 fi
 
-if [ ! -f "$COMFYUI_API_DIR/run.py" ]; then
-    log_error "ComfyUI API启动文件不存在: $COMFYUI_API_DIR/run.py"
-    exit 1
+if [ "$DB_STARTED" = false ]; then
+    warn "Could not verify PostgreSQL is running / 无法确认 PostgreSQL 是否运行"
+    warn "Start PostgreSQL: sudo systemctl start postgresql"
+    warn "请启动 PostgreSQL: sudo systemctl start postgresql"
+    warn "Backend may fail to start without database / 没有数据库后端可能无法启动"
 fi
+
+echo ""
+
+# ============ Step 3: Build Frontend (production mode only) ============
+if [ "$DEV_MODE" = false ]; then
+    header "[3/5] Building Frontend / 构建前端项目"
+    cd "$SCRIPT_DIR"
+
+    step "Running npm run build..."
+    if ESLINT_NO_DEV_ERRORS=true npm run build 2>&1 | tee -a "$STARTUP_LOG"; then
+        success "Frontend build complete / 前端构建完成"
+    else
+        error "Frontend build failed / 前端构建失败"
+        handle_error
+    fi
+else
+    info "[3/5] Skipping build (dev mode) / 跳过构建（开发模式）"
+fi
+
+echo ""
+
+# ============ Step 4: Start Services ============
+header "[4/5] Starting Services / 启动服务"
 
 cd "$SCRIPT_DIR"
 
-# 构建前端
-log_step "构建前端项目..."
-ESLINT_NO_DEV_ERRORS=true npm run build
-if [ $? -ne 0 ]; then
-    log_error "前端构建失败"
-    handle_error
-fi
-log_success "前端构建完成"
+# --- Kill existing processes on service ports ---
+step "Cleaning up occupied ports / 清理被占用的端口..."
+kill_port 8000
+kill_port $FRONTEND_PORT
 
-# 启动服务
-log_step "启动服务..."
-
-# 启动后端服务
-log_info "启动后端服务..."
-cd "$BACKEND_DIR"
-nohup $PYTHON_CMD run.py > "../../$BACKEND_LOG" 2>&1 &
+# --- Start Backend Service ---
+step "Starting backend service / 启动后端服务..."
+(
+    cd "$BACKEND_DIR"
+    $PYTHON_CMD run.py
+) > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
-cd "$SCRIPT_DIR"
 
-# 等待后端启动
 sleep 3
 
-# 检查后端是否启动成功
 if kill -0 $BACKEND_PID 2>/dev/null; then
-    log_success "后端服务启动成功 (PID: $BACKEND_PID)"
+    success "Backend service started (PID: $BACKEND_PID) / 后端服务已启动"
 else
-    log_error "后端服务启动失败"
+    error "Backend service failed to start / 后端服务启动失败"
+    error "Check log / 查看日志: $BACKEND_LOG"
     handle_error
 fi
 
-# 启动ComfyUI API服务
-log_info "启动ComfyUI API服务..."
-cd "$COMFYUI_API_DIR"
-nohup $PYTHON_CMD run.py > "../../$COMFYUI_API_LOG" 2>&1 &
-COMFYUI_API_PID=$!
+# --- Start Frontend Service ---
+step "Starting frontend service / 启动前端服务..."
 cd "$SCRIPT_DIR"
-
-# 等待ComfyUI API启动
-sleep 3
-
-# 检查ComfyUI API是否启动成功
-if kill -0 $COMFYUI_API_PID 2>/dev/null; then
-    log_success "ComfyUI API服务启动成功 (PID: $COMFYUI_API_PID)"
+if [ "$DEV_MODE" = true ]; then
+    npm run dev -- -p $FRONTEND_PORT > "$FRONTEND_LOG" 2>&1 &
 else
-    log_error "ComfyUI API服务启动失败"
-    handle_error
+    npm start -- -p $FRONTEND_PORT > "$FRONTEND_LOG" 2>&1 &
 fi
-
-# 启动前端服务
-log_info "启动前端服务..."
-nohup npm start -- -p $FRONTEND_PORT > "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
-# 等待前端启动
 sleep 3
 
-# 检查前端是否启动成功
 if kill -0 $FRONTEND_PID 2>/dev/null; then
-    log_success "前端服务启动成功 (PID: $FRONTEND_PID)"
+    success "Frontend service started (PID: $FRONTEND_PID) / 前端服务已启动"
 else
-    log_error "前端服务启动失败"
+    error "Frontend service failed to start / 前端服务启动失败"
+    error "Check log / 查看日志: $FRONTEND_LOG"
     handle_error
 fi
 
-# 显示启动信息
-log_info "=========================================="
-log_success "🚀 Ecliptrix 启动成功！"
-log_info "=========================================="
-log_info "前端地址: http://localhost:$FRONTEND_PORT"
-log_info "后端地址: http://localhost:8000"
-log_info "ComfyUI API地址: http://localhost:8001"
-log_info "前端PID: $FRONTEND_PID"
-log_info "后端PID: $BACKEND_PID"
-log_info "ComfyUI API PID: $COMFYUI_API_PID"
-log_info "=========================================="
-log_info "日志文件:"
-log_info "  启动日志: $STARTUP_LOG"
-log_info "  前端日志: $FRONTEND_LOG"
-log_info "  后端日志: $BACKEND_LOG"
-log_info "  ComfyUI API日志: $COMFYUI_API_LOG"
-log_info "=========================================="
-log_info "按 Ctrl+C 停止所有服务"
+echo ""
 
-# 等待用户中断
+# ============ Step 5: Show Status ============
+header "[5/5] All Services Running / 所有服务已启动"
+echo ""
+info "=========================================="
+success "Ecliptrix started successfully!"
+success "Ecliptrix 启动成功！"
+info "=========================================="
+echo ""
+info "Services / 服务:"
+info "  Frontend / 前端:     http://localhost:$FRONTEND_PORT  (PID: $FRONTEND_PID)"
+info "  Backend  / 后端:     http://localhost:8000            (PID: $BACKEND_PID)"
+echo ""
+info "Logs / 日志:"
+info "  Startup  / 启动: $STARTUP_LOG"
+info "  Frontend / 前端: $FRONTEND_LOG"
+info "  Backend  / 后端: $BACKEND_LOG"
+echo ""
+info "Press Ctrl+C to stop all services / 按 Ctrl+C 停止所有服务"
+info "Or run: bash kill.sh / 或运行: bash kill.sh"
+echo ""
+
+# ============ Monitor Processes ============
 while true; do
-    # 检查进程是否还在运行
     if ! kill -0 $FRONTEND_PID 2>/dev/null; then
-        log_error "前端服务已停止"
-        break
-    fi
-    
-    if ! kill -0 $BACKEND_PID 2>/dev/null; then
-        log_error "后端服务已停止"
+        error "Frontend service stopped / 前端服务已停止"
         break
     fi
 
-    if ! kill -0 $COMFYUI_API_PID 2>/dev/null; then
-        log_error "ComfyUI API服务已停止"
+    if ! kill -0 $BACKEND_PID 2>/dev/null; then
+        error "Backend service stopped / 后端服务已停止"
         break
     fi
-    
+
     sleep 5
 done
 
-# 清理并退出
+# Cleanup on exit
 cleanup
-log_info "脚本执行完成" 

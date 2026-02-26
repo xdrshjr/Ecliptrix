@@ -31,7 +31,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend-services/basic-service"
 LOG_DIR="$SCRIPT_DIR/logs"
 INSTALL_LOG="$LOG_DIR/install.log"
-VENV_DIR="$BACKEND_DIR/venv"
 
 # Database defaults
 DB_NAME="ecliptrix"
@@ -39,6 +38,9 @@ DB_USER="ecliptrix"
 DB_PASS="ecliptrix"
 DB_HOST="localhost"
 DB_PORT="5432"
+
+# Database method (detected in Step 1): psql | none
+DB_METHOD="none"
 
 # Flags
 SKIP_DB=false
@@ -193,22 +195,57 @@ else
 fi
 
 # --- PostgreSQL ---
-step "Checking PostgreSQL..."
-if command -v psql &>/dev/null; then
-    PG_VER=$(psql --version 2>&1 | awk '{print $3}')
-    success "PostgreSQL client $PG_VER"
-else
-    if [ "$SKIP_DB" = false ]; then
-        warn "PostgreSQL client (psql) not found / 未找到 psql"
-        warn "Database auto-setup will be skipped. You can set up PostgreSQL manually."
-        warn "将跳过数据库自动配置，你可以手动设置 PostgreSQL"
+step "Checking PostgreSQL setup method..."
+if [ "$SKIP_DB" = false ]; then
+    if command -v psql &>/dev/null; then
+        PG_VER=$(psql --version 2>&1 | awk '{print $3}')
+        success "PostgreSQL client $PG_VER"
+        DB_METHOD="psql"
+    else
+        warn "psql not found / 未找到 psql"
+        warn "Will attempt to install PostgreSQL / 将尝试安装 PostgreSQL"
         case $OS in
-            linux)   warn "  Install: sudo apt install postgresql postgresql-client" ;;
-            macos)   warn "  Install: brew install postgresql@16" ;;
-            windows) warn "  Install: https://www.postgresql.org/download/windows/" ;;
+            linux)
+                step "Installing PostgreSQL via apt / 通过 apt 安装 PostgreSQL..."
+                if sudo apt-get update -qq >> "$INSTALL_LOG" 2>&1 && \
+                   sudo apt-get install -y -qq postgresql postgresql-client >> "$INSTALL_LOG" 2>&1; then
+                    success "PostgreSQL installed / PostgreSQL 安装完成"
+                    # Start PostgreSQL service
+                    sudo systemctl enable postgresql >> "$INSTALL_LOG" 2>&1 || true
+                    sudo systemctl start postgresql >> "$INSTALL_LOG" 2>&1 || true
+                    DB_METHOD="psql"
+                else
+                    error "Failed to install PostgreSQL / PostgreSQL 安装失败"
+                    warn "Install manually: sudo apt install postgresql postgresql-client"
+                    SKIP_DB=true
+                fi
+                ;;
+            macos)
+                if command -v brew &>/dev/null; then
+                    step "Installing PostgreSQL via Homebrew / 通过 Homebrew 安装 PostgreSQL..."
+                    if brew install postgresql@16 >> "$INSTALL_LOG" 2>&1; then
+                        brew services start postgresql@16 >> "$INSTALL_LOG" 2>&1 || true
+                        success "PostgreSQL installed / PostgreSQL 安装完成"
+                        DB_METHOD="psql"
+                    else
+                        error "Failed to install PostgreSQL / PostgreSQL 安装失败"
+                        SKIP_DB=true
+                    fi
+                else
+                    warn "Homebrew not found. Install PostgreSQL manually: brew install postgresql@16"
+                    SKIP_DB=true
+                fi
+                ;;
+            *)
+                warn "Auto-install not supported on this OS / 该系统不支持自动安装"
+                warn "Please install PostgreSQL manually / 请手动安装 PostgreSQL"
+                warn "  https://www.postgresql.org/download/"
+                SKIP_DB=true
+                ;;
         esac
-        SKIP_DB=true
     fi
+else
+    info "Database setup skipped by flag / 已通过参数跳过数据库配置"
 fi
 
 if [ "$PREREQ_OK" = false ]; then
@@ -242,32 +279,38 @@ if [ "$SKIP_FRONTEND" = false ]; then
         exit 1
     fi
 else
-    info "[2/7] Skipping frontend installation (--skip-frontend)"
+    info "[2/8] Skipping frontend installation (--skip-frontend)"
 fi
 
-# ============ Step 3: Backend Python Virtual Environment ============
+# ============ Step 3: Backend Python Dependencies (basic-service) ============
 if [ "$SKIP_BACKEND" = false ]; then
-    header "[3/7] Setting Up Backend Python Environment / 配置后端 Python 环境"
+    header "[3/7] Installing Backend Python Dependencies / 安装后端 Python 依赖"
 
     cd "$BACKEND_DIR"
 
-    # Create virtual environment if it doesn't exist
-    if [ ! -d "$VENV_DIR" ]; then
-        step "Creating Python virtual environment / 创建 Python 虚拟环境..."
-        $PYTHON_CMD -m venv venv
-        success "Virtual environment created at $VENV_DIR"
+    # Check if running inside a conda/virtual environment
+    if [ -n "$CONDA_DEFAULT_ENV" ]; then
+        info "Using conda environment: $CONDA_DEFAULT_ENV"
+    elif [ -n "$VIRTUAL_ENV" ]; then
+        info "Using virtual environment: $VIRTUAL_ENV"
     else
-        info "Virtual environment already exists / 虚拟环境已存在"
+        warn "============================================"
+        warn "No conda/virtual environment detected! / 未检测到 conda/虚拟环境！"
+        warn "It is recommended to create a dedicated environment first / 建议先创建独立环境："
+        warn ""
+        warn "  conda create -n ecliptrix python=3.10 -y"
+        warn "  conda activate ecliptrix"
+        warn ""
+        warn "Then re-run this script / 然后重新运行此脚本"
+        warn "============================================"
+        echo ""
+        read -r -p "Continue installing into system Python anyway? / 仍然安装到系统 Python？ [y/N] " REPLY
+        if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+            info "Installation aborted. Please activate a conda environment and re-run."
+            info "安装已中止，请激活 conda 环境后重新运行。"
+            exit 0
+        fi
     fi
-
-    # Activate virtual environment
-    step "Activating virtual environment / 激活虚拟环境..."
-    if [ "$OS" = "windows" ]; then
-        source "$VENV_DIR/Scripts/activate" 2>/dev/null || source "$VENV_DIR/bin/activate"
-    else
-        source "$VENV_DIR/bin/activate"
-    fi
-    success "Virtual environment activated"
 
     PIP_ARGS=""
     if [ "$CN_MIRROR" = true ]; then
@@ -290,11 +333,8 @@ if [ "$SKIP_BACKEND" = false ]; then
     # Install Playwright browsers (for browser automation features)
     step "Installing Playwright browsers (this may take a while) / 安装 Playwright 浏览器..."
     $PYTHON_CMD -m playwright install chromium 2>&1 | tee -a "$INSTALL_LOG" || warn "Playwright install skipped (optional) / Playwright 安装跳过（可选功能）"
-
-    # Deactivate venv (we'll reactivate when needed)
-    deactivate 2>/dev/null || true
 else
-    info "[3/7] Skipping backend installation (--skip-backend)"
+    info "[3/8] Skipping backend installation (--skip-backend)"
 fi
 
 # ============ Step 4: Environment Configuration ============
@@ -336,55 +376,63 @@ fi
 if [ "$SKIP_DB" = false ]; then
     header "[5/7] Setting Up PostgreSQL Database / 配置 PostgreSQL 数据库"
 
-    # Check if PostgreSQL server is running (-w: never prompt for password)
-    step "Checking PostgreSQL server connection..."
-    if psql -w -h "$DB_HOST" -p "$DB_PORT" -U postgres -c "SELECT 1" &>/dev/null; then
-        success "PostgreSQL server is running / PostgreSQL 服务器运行中"
+    if [ "$DB_METHOD" = "psql" ]; then
+        step "Setting up PostgreSQL database / 配置 PostgreSQL 数据库..."
 
-        # Check if database exists
-        DB_EXISTS=$(psql -w -h "$DB_HOST" -p "$DB_PORT" -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null)
+        # Try connecting via sudo -u postgres (common on Linux servers)
+        # or via psql -U postgres (password-based auth)
+        PG_CONNECTED=false
 
-        if [ "$DB_EXISTS" = "1" ]; then
-            info "Database '$DB_NAME' already exists / 数据库已存在"
-        else
-            step "Creating database and user / 创建数据库和用户..."
-
-            # Create user (ignore error if exists)
-            psql -w -h "$DB_HOST" -p "$DB_PORT" -U postgres -c \
-                "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" 2>/dev/null || true
-
-            # Create database
-            if psql -w -h "$DB_HOST" -p "$DB_PORT" -U postgres -c \
-                "CREATE DATABASE $DB_NAME OWNER $DB_USER;" 2>/dev/null; then
-                success "Database '$DB_NAME' created / 数据库创建成功"
-
-                # Grant privileges
-                psql -w -h "$DB_HOST" -p "$DB_PORT" -U postgres -c \
-                    "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" 2>/dev/null
-
-                # Enable UUID extension
-                PGPASSWORD="$DB_PASS" psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c \
-                    "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" 2>/dev/null || true
-
-                success "Database privileges granted / 数据库权限已配置"
-            else
-                error "Failed to create database / 数据库创建失败"
-                warn "You may need to create it manually / 你可能需要手动创建数据库"
-                warn "  psql -U postgres"
-                warn "  CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
-                warn "  CREATE DATABASE $DB_NAME OWNER $DB_USER;"
-            fi
+        if sudo -u postgres psql -c "SELECT 1" &>/dev/null 2>&1; then
+            PG_CMD="sudo -u postgres psql"
+            PG_CONNECTED=true
+        elif psql -w -h "$DB_HOST" -p "$DB_PORT" -U postgres -c "SELECT 1" &>/dev/null 2>&1; then
+            PG_CMD="psql -w -h $DB_HOST -p $DB_PORT -U postgres"
+            PG_CONNECTED=true
         fi
-    else
-        warn "Cannot connect to PostgreSQL server / 无法连接到 PostgreSQL 服务器"
-        warn "Make sure PostgreSQL is running / 请确保 PostgreSQL 正在运行"
-        warn "You can set up the database manually later / 你可以稍后手动设置数据库"
-        echo ""
-        warn "Manual setup commands / 手动设置命令:"
-        warn "  psql -U postgres"
-        warn "  CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
-        warn "  CREATE DATABASE $DB_NAME OWNER $DB_USER;"
-        warn "  GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
+
+        if [ "$PG_CONNECTED" = true ]; then
+            success "PostgreSQL server is running / PostgreSQL 服务器运行中"
+
+            DB_EXISTS=$($PG_CMD -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null)
+
+            if [ "$DB_EXISTS" = "1" ]; then
+                info "Database '$DB_NAME' already exists / 数据库已存在"
+            else
+                step "Creating database and user / 创建数据库和用户..."
+
+                $PG_CMD -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" 2>/dev/null || true
+
+                if $PG_CMD -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" 2>/dev/null; then
+                    success "Database '$DB_NAME' created / 数据库创建成功"
+
+                    $PG_CMD -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" 2>/dev/null
+
+                    PGPASSWORD="$DB_PASS" psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c \
+                        "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" 2>/dev/null || \
+                    $PG_CMD -d "$DB_NAME" -c \
+                        "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" 2>/dev/null || true
+
+                    success "Database setup complete / 数据库配置完成"
+                else
+                    error "Failed to create database / 数据库创建失败"
+                    warn "You may need to create it manually / 你可能需要手动创建数据库:"
+                    warn "  sudo -u postgres psql"
+                    warn "  CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
+                    warn "  CREATE DATABASE $DB_NAME OWNER $DB_USER;"
+                fi
+            fi
+        else
+            warn "Cannot connect to PostgreSQL server / 无法连接到 PostgreSQL 服务器"
+            warn "Make sure PostgreSQL is running / 请确保 PostgreSQL 正在运行"
+            warn "  sudo systemctl start postgresql"
+            echo ""
+            warn "Then set up the database manually / 然后手动设置数据库:"
+            warn "  sudo -u postgres psql"
+            warn "  CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
+            warn "  CREATE DATABASE $DB_NAME OWNER $DB_USER;"
+            warn "  GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
+        fi
     fi
 else
     info "[5/7] Skipping database setup (--skip-db)"
@@ -396,13 +444,6 @@ if [ "$SKIP_DB" = false ] && [ "$SKIP_BACKEND" = false ]; then
 
     cd "$BACKEND_DIR"
 
-    # Activate venv
-    if [ "$OS" = "windows" ]; then
-        source "$VENV_DIR/Scripts/activate" 2>/dev/null || source "$VENV_DIR/bin/activate"
-    else
-        source "$VENV_DIR/bin/activate"
-    fi
-
     step "Running Alembic migrations / 运行 Alembic 迁移..."
     if alembic upgrade head 2>&1 | tee -a "$INSTALL_LOG"; then
         success "Database migrations complete / 数据库迁移完成"
@@ -410,14 +451,8 @@ if [ "$SKIP_DB" = false ] && [ "$SKIP_BACKEND" = false ]; then
         warn "Alembic migration failed (database may not be accessible yet)"
         warn "迁移失败（数据库可能尚未就绪）"
         warn "Run manually later / 稍后手动运行:"
-        if [ "$OS" = "windows" ]; then
-            warn "  cd $BACKEND_DIR && source venv/Scripts/activate && alembic upgrade head"
-        else
-            warn "  cd $BACKEND_DIR && source venv/bin/activate && alembic upgrade head"
-        fi
+        warn "  cd $BACKEND_DIR && alembic upgrade head"
     fi
-
-    deactivate 2>/dev/null || true
 else
     info "[6/7] Skipping database migrations"
 fi
@@ -453,9 +488,11 @@ header "============================================"
 echo ""
 
 echo -e "${BOLD}Project Structure / 项目结构:${NC}"
-echo "  Frontend / 前端: $SCRIPT_DIR"
-echo "  Backend  / 后端: $BACKEND_DIR"
-echo "  Python venv:     $VENV_DIR"
+echo "  Frontend   / 前端:     $SCRIPT_DIR"
+echo "  Backend    / 后端:     $BACKEND_DIR"
+if [ -n "$CONDA_DEFAULT_ENV" ]; then
+    echo "  Conda env:              $CONDA_DEFAULT_ENV"
+fi
 echo ""
 
 echo -e "${BOLD}Configuration Files / 配置文件:${NC}"
@@ -480,39 +517,41 @@ echo ""
 
 if [ "$SKIP_DB" = true ]; then
     echo -e "  ${YELLOW}2.${NC} Set up PostgreSQL database / 配置 PostgreSQL 数据库:"
-    echo "     psql -U postgres"
+    echo ""
+    case $OS in
+        linux)   echo "     Install: sudo apt install postgresql postgresql-client" ;;
+        macos)   echo "     Install: brew install postgresql@16 && brew services start postgresql@16" ;;
+        windows) echo "     Install: https://www.postgresql.org/download/windows/" ;;
+    esac
+    echo ""
+    echo "     Then create the database / 然后创建数据库:"
+    echo "     sudo -u postgres psql"
     echo "     CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
     echo "     CREATE DATABASE $DB_NAME OWNER $DB_USER;"
     echo "     GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
     echo ""
     echo -e "  ${YELLOW}3.${NC} Run database migrations / 运行数据库迁移:"
     echo "     cd $BACKEND_DIR"
-    if [ "$OS" = "windows" ]; then
-        echo "     source venv/Scripts/activate"
-    else
-        echo "     source venv/bin/activate"
-    fi
+    echo "     conda activate ecliptrix  # or your environment name"
     echo "     alembic upgrade head"
     echo ""
 fi
 
 echo -e "  ${YELLOW}Start Services / 启动服务:${NC}"
 echo ""
+echo "     # One-click start (recommended) / 一键启动（推荐）:"
+echo "     bash start.sh"
+echo ""
+echo "     # Or start manually / 或手动启动:"
+echo ""
 echo "     # Terminal 1: Start Backend / 启动后端"
 echo "     cd $BACKEND_DIR"
-if [ "$OS" = "windows" ]; then
-    echo "     source venv/Scripts/activate"
-else
-    echo "     source venv/bin/activate"
-fi
+echo "     conda activate ecliptrix  # or your environment name"
 echo "     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 echo ""
 echo "     # Terminal 2: Start Frontend / 启动前端"
 echo "     cd $SCRIPT_DIR"
 echo "     npm run dev"
-echo ""
-echo "     # Or use the start script / 或使用启动脚本:"
-echo "     bash start.sh"
 echo ""
 
 echo -e "  ${YELLOW}Access / 访问:${NC}"
