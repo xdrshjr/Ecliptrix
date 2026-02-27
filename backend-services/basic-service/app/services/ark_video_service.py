@@ -222,7 +222,9 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     param_flags = (
         f"--duration {request.duration} "
         f"--camerafixed {str(request.camera_fixed).lower()} "
-        f"--watermark {str(request.watermark).lower()}"
+        f"--watermark {str(request.watermark).lower()} "
+        f"--ratio {request.aspect_ratio} "
+        f"--rs {request.resolution}"
     )
     full_prompt = f"{request.prompt} {param_flags}"
 
