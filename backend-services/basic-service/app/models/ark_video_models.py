@@ -28,7 +28,7 @@ class ArkVideoStatusResponse(BaseResponse):
         default="running",
         description="Task status"
     )
-    video_url: Optional[str] = Field(default=None, description="Local storage URL when succeeded")
+    video_url: Optional[str] = Field(default=None, description="Video URL when succeeded (CDN URL immediately; local storage URL after background download completes)")
     thumbnail_url: Optional[str] = Field(default=None, description="Thumbnail image URL when succeeded")
     duration: Optional[int] = Field(default=None, description="Video duration in seconds")
     width: Optional[int] = Field(default=None, description="Video width in pixels")

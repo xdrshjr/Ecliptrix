@@ -21,9 +21,42 @@ interface UploadTask {
 }
 
 /**
+ * Extract a thumbnail frame from a video URL using an offscreen canvas.
+ * Works with CDN URLs that support CORS. Returns a JPEG data URL or null on failure.
+ */
+async function extractVideoThumbnail(videoUrl: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.preload = 'metadata';
+    video.muted = true;
+    video.src = videoUrl;
+    video.onloadedmetadata = () => {
+      video.currentTime = video.duration > 2 ? 1 : 0;
+    };
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = Math.round(320 * video.videoHeight / video.videoWidth) || 180;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      } catch {
+        resolve(null);
+      }
+    };
+    video.onerror = () => resolve(null);
+    // Fallback: if seek event doesn't fire within 10s, give up
+    setTimeout(() => resolve(null), 10000);
+  });
+}
+
+/**
  * useMaterialManagement Hook
  * 管理素材库操作，支持并发上传队列
- * 
+ *
  * @param taskId - 任务ID，用于日志记录
  * @returns 素材管理相关的状态和方法
  */
@@ -657,9 +690,14 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
   // AI视频生成轮询任务 ref: tempId -> current setTimeout handle
   const pendingAiTasks = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  // Tracks whether the hook's host component is still mounted
+  const isMountedRef = useRef(true);
+
   // Clear all polling timers on unmount to prevent state updates on dead components
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       pendingAiTasks.current.forEach(id => clearTimeout(id));
       pendingAiTasks.current.clear();
     };
@@ -722,7 +760,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
             size: 0,
             url: status.video_url,
             serverUrl: status.video_url,
-            thumbnailUrl: status.thumbnail_url,
+            thumbnailUrl: status.thumbnail_url || undefined,
             duration: status.duration,
             width: status.width,
             height: status.height,
@@ -733,6 +771,18 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           };
           addOrReplaceMaterial(realMaterial);
           pendingAiTasks.current.delete(tempId);
+
+          // Backend returns null thumbnail when using CDN URL (thumbnail generated in background).
+          // Extract thumbnail client-side from the video URL via canvas.
+          if (!status.thumbnail_url) {
+            extractVideoThumbnail(status.video_url).then(dataUrl => {
+              if (dataUrl && isMountedRef.current) {
+                setMaterials(prev => prev.map(m =>
+                  m.id === tempId ? { ...m, thumbnailUrl: dataUrl } : m
+                ));
+              }
+            });
+          }
           return;
         }
 

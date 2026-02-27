@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="public/logo-ai.png" alt="Ecliptrix Logo" width="200" />
+</div>
+
 # Ecliptrix
 
 **Where light and shadow collide**

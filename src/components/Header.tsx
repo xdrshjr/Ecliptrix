@@ -80,11 +80,11 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
           }}
           aria-label="Return to homepage"
         >
-          <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
-            <Image 
-              src="/logo-basic.png" 
-              alt="Ecliptrix Logo" 
-              width={32} 
+          <div className="w-8 h-8 flex items-center justify-center">
+            <Image
+              src="/logo-ai.png"
+              alt="Ecliptrix Logo"
+              width={32}
               height={32}
               className="w-full h-full object-contain"
             />

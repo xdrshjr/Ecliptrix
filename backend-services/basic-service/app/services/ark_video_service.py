@@ -2,9 +2,9 @@
 Service for Ark Seedance video generation via Ark API.
 """
 
+import asyncio
 import os
 import logging
-import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Dict, Optional
@@ -26,6 +26,13 @@ ARK_MODEL = "doubao-seedance-1-5-pro-251215"
 # Capped at _TASK_RESULTS_MAX_SIZE to prevent unbounded growth.
 _task_results: Dict[str, dict] = {}
 _TASK_RESULTS_MAX_SIZE = 200
+
+# Tracks in-progress background download tasks to avoid duplicates.
+_pending_downloads: Dict[str, asyncio.Task] = {}
+
+# Caches CDN URL info for tasks whose background download is still in progress.
+# Allows subsequent polls to return CDN URL without re-querying the Ark API.
+_cdn_urls: Dict[str, dict] = {}
 
 
 def _cache_result(ark_task_id: str, result: dict) -> None:
@@ -67,6 +74,107 @@ def _parse_resolution(data: dict) -> tuple[Optional[int], Optional[int]]:
         return 854, 480
 
     return None, None
+
+
+async def _download_and_cache(
+    ark_task_id: str,
+    video_remote_url: str,
+    duration: Optional[int],
+    width: Optional[int],
+    height: Optional[int],
+) -> None:
+    """
+    Background task: download video from ARK CDN to local storage and extract thumbnail.
+    Uses asyncio.create_subprocess_exec for non-blocking ffmpeg execution.
+    Updates _task_results cache when complete so subsequent polls return local URL.
+    """
+    try:
+        today_str = date.today().strftime("%Y%m%d")
+        storage_root = settings.storage.root  # e.g. "static/uploads"
+        local_dir = os.path.join(storage_root, "video", "ark", today_str)
+        os.makedirs(local_dir, exist_ok=True)
+
+        local_filename = f"{ark_task_id}.mp4"
+        local_path = os.path.join(local_dir, local_filename)
+
+        # Skip download if file already exists (e.g. after server restart)
+        if not Path(local_path).exists():
+            logger.info(f"Background: downloading Ark video {ark_task_id} to {local_path}")
+            async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as dl_client:
+                async with dl_client.stream("GET", video_remote_url) as stream_response:
+                    stream_response.raise_for_status()
+                    async with aiofiles.open(local_path, "wb") as f:
+                        async for chunk in stream_response.aiter_bytes(chunk_size=65536):
+                            await f.write(chunk)
+            logger.info(f"Background: Ark video {ark_task_id} downloaded")
+        else:
+            logger.info(f"Background: Ark video {ark_task_id} already exists locally, skipping download")
+
+        local_url = f"/api/storage/files/video/ark/{today_str}/{local_filename}"
+
+        # Generate thumbnail via ffmpeg — use asyncio subprocess to avoid blocking event loop
+        thumbnail_url: Optional[str] = None
+        try:
+            thumb_filename = f"thumb_{ark_task_id}.jpg"
+            thumb_path = os.path.join(local_dir, thumb_filename)
+
+            if not Path(thumb_path).exists():
+                seek_time = 1 if (duration or 0) > 2 else 0
+                ffmpeg_cmd = [
+                    "ffmpeg", "-ss", str(seek_time),
+                    "-i", local_path,
+                    "-vframes", "1",
+                    "-q:v", "2",
+                    "-vf", "scale=320:-1",
+                    "-y", thumb_path,
+                ]
+                process = await asyncio.create_subprocess_exec(
+                    *ffmpeg_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+                if process.returncode == 0 and Path(thumb_path).exists():
+                    thumbnail_url = f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
+                    logger.info(f"Background: Ark video thumbnail generated: {thumb_path}")
+                else:
+                    logger.warning(
+                        f"Background: ffmpeg thumbnail failed for {ark_task_id}: "
+                        + (stderr.decode(errors="replace")[:300] if stderr else "")
+                    )
+            else:
+                thumbnail_url = f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
+                logger.info(f"Background: Ark video thumbnail already exists: {thumb_path}")
+        except FileNotFoundError:
+            logger.warning("Background: ffmpeg not found — skipping Ark video thumbnail generation")
+        except asyncio.TimeoutError:
+            logger.warning(f"Background: ffmpeg thumbnail timed out for {ark_task_id}")
+            try:
+                process.kill()
+                await process.wait()
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.warning(f"Background: Ark video thumbnail generation failed: {exc}")
+
+        result = {
+            "video_url": local_url,
+            "thumbnail_url": thumbnail_url,
+            "duration": duration,
+            "width": width,
+            "height": height,
+        }
+        _cache_result(ark_task_id, result)
+        logger.info(f"Background: Ark video {ark_task_id} processing complete, local URL: {local_url}")
+
+    except asyncio.CancelledError:
+        logger.info(f"Background: Ark video {ark_task_id} download cancelled")
+        raise
+    except Exception as exc:
+        logger.error(f"Background: Ark video {ark_task_id} download/processing failed: {exc}")
+    finally:
+        _pending_downloads.pop(ark_task_id, None)
+        _cdn_urls.pop(ark_task_id, None)
 
 
 async def create_task(request: ArkVideoGenerateRequest) -> str:
@@ -120,11 +228,15 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
 
 async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
     """
-    Query task status from Ark. On success, downloads the video to local storage.
+    Query task status from Ark.
 
-    Returns an ArkVideoStatusResponse.
+    On first successful poll: returns CDN URL immediately and starts a background
+    task to download the video to local storage + extract thumbnail.
+
+    On subsequent polls (after background download completes): returns local URL
+    and server-side thumbnail from cache.
     """
-    # Return cached result for completed tasks
+    # Return cached result (local URL + thumbnail) if background download completed
     if ark_task_id in _task_results:
         cached = _task_results[ark_task_id]
         return ArkVideoStatusResponse(
@@ -136,6 +248,20 @@ async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
             duration=cached.get("duration"),
             width=cached.get("width"),
             height=cached.get("height"),
+        )
+
+    # Background download in progress — return CDN URL without re-querying Ark API
+    if ark_task_id in _cdn_urls:
+        cdn = _cdn_urls[ark_task_id]
+        return ArkVideoStatusResponse(
+            success=True,
+            message="Video generation succeeded",
+            status="succeeded",
+            video_url=cdn["video_url"],
+            thumbnail_url=None,
+            duration=cdn.get("duration"),
+            width=cdn.get("width"),
+            height=cdn.get("height"),
         )
 
     if not settings.ark_api_key:
@@ -179,70 +305,31 @@ async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
         duration: Optional[int] = int(duration_val) if duration_val is not None else None
         width, height = _parse_resolution(data)
 
-        # Download video to local storage using async file I/O
-        today_str = date.today().strftime("%Y%m%d")
-        storage_root = settings.storage.root  # e.g. "static/uploads"
-        local_dir = os.path.join(storage_root, "video", "ark", today_str)
-        os.makedirs(local_dir, exist_ok=True)
+        # Start background download+thumbnail task if not already running
+        if ark_task_id not in _pending_downloads:
+            _cdn_urls[ark_task_id] = {
+                "video_url": video_remote_url,
+                "duration": duration,
+                "width": width,
+                "height": height,
+            }
+            task = asyncio.create_task(
+                _download_and_cache(ark_task_id, video_remote_url, duration, width, height)
+            )
+            _pending_downloads[ark_task_id] = task
+            logger.info(
+                f"Ark task {ark_task_id}: started background download, "
+                "returning CDN URL immediately for instant playback"
+            )
 
-        local_filename = f"{ark_task_id}.mp4"
-        local_path = os.path.join(local_dir, local_filename)
-
-        logger.info(f"Downloading Ark video {ark_task_id} to {local_path}")
-        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as dl_client:
-            async with dl_client.stream("GET", video_remote_url) as stream_response:
-                stream_response.raise_for_status()
-                async with aiofiles.open(local_path, "wb") as f:
-                    async for chunk in stream_response.aiter_bytes(chunk_size=65536):
-                        await f.write(chunk)
-
-        # Build local URL accessible via /api/storage/files/
-        local_url = f"/api/storage/files/video/ark/{today_str}/{local_filename}"
-
-        # Generate thumbnail via ffmpeg (same pattern as storage_service.py)
-        thumbnail_url: Optional[str] = None
-        try:
-            thumb_filename = f"thumb_{ark_task_id}.jpg"
-            thumb_path = os.path.join(local_dir, thumb_filename)
-            # Seek to 1 second into the video (or 0 if very short)
-            seek_time = 1 if (duration or 0) > 2 else 0
-            ffmpeg_cmd = [
-                "ffmpeg", "-ss", str(seek_time),
-                "-i", local_path,
-                "-vframes", "1",
-                "-q:v", "2",
-                "-vf", "scale=320:-1",
-                "-y", thumb_path,
-            ]
-            ff_result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=30)
-            if ff_result.returncode == 0 and Path(thumb_path).exists():
-                thumbnail_url = f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
-                logger.info(f"Ark video thumbnail generated: {thumb_path}")
-            else:
-                logger.warning(
-                    f"ffmpeg thumbnail failed for {ark_task_id}: "
-                    + (ff_result.stderr.decode(errors="replace")[:300] if ff_result.stderr else "")
-                )
-        except FileNotFoundError:
-            logger.warning("ffmpeg not found — skipping Ark video thumbnail generation")
-        except Exception as exc:
-            logger.warning(f"Ark video thumbnail generation failed: {exc}")
-
-        result = {
-            "video_url": local_url,
-            "thumbnail_url": thumbnail_url,
-            "duration": duration,
-            "width": width,
-            "height": height,
-        }
-        _cache_result(ark_task_id, result)
-
+        # Return CDN URL immediately — frontend can play video right away.
+        # thumbnail_url is None here; the frontend generates it client-side via canvas.
         return ArkVideoStatusResponse(
             success=True,
             message="Video generation succeeded",
             status="succeeded",
-            video_url=local_url,
-            thumbnail_url=thumbnail_url,
+            video_url=video_remote_url,
+            thumbnail_url=None,
             duration=duration,
             width=width,
             height=height,

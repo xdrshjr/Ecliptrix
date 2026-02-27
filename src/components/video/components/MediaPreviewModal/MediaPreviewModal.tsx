@@ -367,6 +367,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleEnded}
               controls={false}
+              preload="metadata"
             />
             
             {/* 进度条 */}
