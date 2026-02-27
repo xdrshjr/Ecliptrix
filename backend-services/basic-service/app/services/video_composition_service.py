@@ -24,6 +24,7 @@ from pydub import AudioSegment
 
 from app.logger import get_logger
 from app.config import settings
+from app.services.oss_client import get_oss_client
 from app.models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
@@ -1232,16 +1233,32 @@ class VideoCompositionService:
             # Final processing
             processing_time = time.time() - start_time
             file_size = output_path.stat().st_size
-            
+
+            # Try uploading the composed video to OSS
+            oss_video_url = None
+            oss_client = get_oss_client()
+            if oss_client:
+                try:
+                    oss_relative = f"video/composed/{output_filename}"
+                    oss_video_url = oss_client.upload_file_sync(
+                        str(output_path), oss_relative, "video/mp4"
+                    )
+                    logger.info(f"Composed video uploaded to OSS: {oss_video_url}")
+                except Exception as oss_exc:
+                    logger.warning(f"OSS upload failed for composed video, using local: {oss_exc}")
+
             # Update composition info
-            self.compositions[composition_id].update({
+            composition_update = {
                 "status": "completed",
                 "progress": 1.0,
                 "output_file_path": str(output_path),
                 "output_file_size": file_size,
                 "processing_time": processing_time,
-                "completed_at": datetime.utcnow()
-            })
+                "completed_at": datetime.utcnow(),
+            }
+            if oss_video_url:
+                composition_update["oss_url"] = oss_video_url
+            self.compositions[composition_id].update(composition_update)
             
             logger.info(f"Video composition completed: {output_filename}")
             logger.info(f"File size: {file_size / 1024 / 1024:.2f}MB")
@@ -1249,14 +1266,17 @@ class VideoCompositionService:
             
             # Update composition status for successful completion
             if composition_id in self.compositions:
-                self.compositions[composition_id].update({
+                final_update = {
                     "status": "completed",
                     "progress": 1.0,
                     "output_file_path": str(output_path),
                     "output_file_size": file_size,
                     "processing_time": processing_time,
-                    "completed_at": datetime.utcnow()
-                })
+                    "completed_at": datetime.utcnow(),
+                }
+                if oss_video_url:
+                    final_update["oss_url"] = oss_video_url
+                self.compositions[composition_id].update(final_update)
             
             # Clean up temp directory
             try:

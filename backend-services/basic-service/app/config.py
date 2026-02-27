@@ -182,6 +182,17 @@ class StorageConfig(BaseModel):
     )
 
 
+class OSSConfig(BaseModel):
+    """Alibaba Cloud OSS configuration."""
+    enabled: bool = Field(default=False, description="Enable OSS storage")
+    access_key_id: str = Field(default="", description="OSS Access Key ID")
+    access_key_secret: str = Field(default="", description="OSS Access Key Secret")
+    endpoint: str = Field(default="oss-cn-hangzhou.aliyuncs.com", description="OSS endpoint")
+    bucket_name: str = Field(default="", description="OSS bucket name")
+    cdn_domain: str = Field(default="", description="Optional CDN domain, e.g. https://cdn.example.com")
+    key_prefix: str = Field(default="", description="Optional key prefix, e.g. ecliptrix/")
+
+
 class DatabaseConfig(BaseModel):
     """Database configuration."""
     url: str = Field(
@@ -252,6 +263,9 @@ class Settings(BaseModel):
 
     # Storage Configuration
     storage: StorageConfig = Field(default_factory=StorageConfig)
+
+    # OSS Configuration
+    oss: OSSConfig = Field(default_factory=OSSConfig)
 
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
@@ -387,6 +401,17 @@ def get_settings() -> Settings:
         admin_password=os.getenv("ADMIN_PASSWORD", "admin")
     )
 
+    # Create OSS configuration
+    oss_config = OSSConfig(
+        enabled=os.getenv("OSS_ENABLED", "false").lower() == "true",
+        access_key_id=os.getenv("OSS_ACCESS_KEY_ID", ""),
+        access_key_secret=os.getenv("OSS_ACCESS_KEY_SECRET", ""),
+        endpoint=os.getenv("OSS_ENDPOINT", "oss-cn-hangzhou.aliyuncs.com"),
+        bucket_name=os.getenv("OSS_BUCKET_NAME", ""),
+        cdn_domain=os.getenv("OSS_CDN_DOMAIN", ""),
+        key_prefix=os.getenv("OSS_KEY_PREFIX", ""),
+    )
+
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
@@ -410,6 +435,7 @@ def get_settings() -> Settings:
         watermark_removal=watermark_removal_config,
         upload=upload_config,
         storage=storage_config,
+        oss=oss_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),

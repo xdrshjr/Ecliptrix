@@ -19,6 +19,7 @@ from app.config import settings
 from app.logger import get_logger
 from app.models.tts_models import VoiceType, VoiceTypeInfo
 from app.services.storage_service import storage_service
+from app.services.oss_client import get_oss_client
 
 logger = get_logger(__name__)
 
@@ -750,9 +751,25 @@ class TTSService:
                         "estimated_duration": actual_duration
                     })
                 
-                # 构造返回数据（本地保存，不上传到存储服务）
+                # Try uploading to OSS; fall back to local URL on failure
+                audio_url = f"/api/audio/generated/{filename}"
+                oss_uploaded = False
+                oss_client = get_oss_client()
+                if oss_client:
+                    try:
+                        oss_relative = f"audio/generated/{filename}"
+                        audio_url = oss_client.upload_file_sync(output_path, oss_relative, "audio/mpeg")
+                        oss_uploaded = True
+                        logger.info("TTS音频上传OSS成功", {"oss_url": audio_url, "segment_id": segment_id})
+                    except Exception as oss_exc:
+                        logger.warning("TTS音频上传OSS失败，使用本地URL", {
+                            "error": str(oss_exc),
+                            "segment_id": segment_id,
+                        })
+
+                # 构造返回数据
                 result = {
-                    "audio_url": f"/api/audio/generated/{filename}",
+                    "audio_url": audio_url,
                     "file_path": output_path,
                     "file_name": filename,
                     "file_size": file_size,
@@ -766,8 +783,8 @@ class TTSService:
                     "task_id": task_id,
                     "mock_mode": MOCK_MODE,
                     "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",
-                    "storage_upload": False,
-                    "local_only": True
+                    "storage_upload": oss_uploaded,
+                    "local_only": not oss_uploaded
                 }
 
                 logger.info("TTS本地转换成功", {
