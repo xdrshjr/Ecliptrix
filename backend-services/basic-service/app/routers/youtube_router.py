@@ -45,25 +45,31 @@ async def search_youtube_videos(request: YoutubeSearchRequest) -> YoutubeSearchR
                 detail="搜索关键词不能为空"
             )
         
-        # 执行YouTube视频搜索（在线程池中运行，避免阻塞 asyncio 事件循环）
+        # 执行YouTube视频搜索（线程池运行 + 总超时，避免 yt-dlp 无限挂起）
         logger.debug(f"调用YouTube搜索服务，参数: {request.model_dump()}")
-        result = await asyncio.to_thread(youtube_service.search_videos, request)
-        
+        result = await asyncio.wait_for(
+            asyncio.to_thread(youtube_service.search_videos, request),
+            timeout=45,
+        )
+
         # 记录搜索结果
         logger.info(f"YouTube搜索完成 - 成功: {result.success}, 找到: {result.total_found} 个视频")
-        
+
         if not result.success:
             logger.warning(f"YouTube搜索失败: {result.error}")
-            # 返回服务响应，即使不成功（包含错误信息）
             return result
-        
+
         logger.info(f"成功找到 {len(result.videos)} 个YouTube视频，关键词: '{request.query}'")
         return result
-        
+
+    except asyncio.TimeoutError:
+        logger.error(f"YouTube搜索超时（45s），关键词: '{request.query}'")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="YouTube搜索超时，请检查服务器网络是否能访问YouTube",
+        )
     except HTTPException:
-        # 重新抛出HTTP异常
         raise
-        
     except Exception as e:
         logger.error(f"YouTube搜索过程中发生意外错误: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -106,24 +112,30 @@ async def get_youtube_video_info(request: YoutubeVideoInfoRequest) -> YoutubeVid
                 detail="请提供有效的YouTube视频URL"
             )
         
-        # 获取视频信息（在线程池中运行，避免阻塞 asyncio 事件循环）
+        # 获取视频信息（线程池运行 + 总超时）
         logger.debug(f"调用YouTube信息服务，URL: {request.url}")
-        result = await asyncio.to_thread(youtube_service.get_video_info, request)
-        
-        # 记录结果
+        result = await asyncio.wait_for(
+            asyncio.to_thread(youtube_service.get_video_info, request),
+            timeout=30,
+        )
+
         logger.info(f"YouTube视频信息获取完成 - 成功: {result.success}")
-        
+
         if not result.success:
             logger.warning(f"YouTube视频信息获取失败: {result.error}")
             return result
-        
+
         logger.info(f"成功获取YouTube视频信息 - 标题: {result.video.title if result.video else 'Unknown'}")
         return result
-        
+
+    except asyncio.TimeoutError:
+        logger.error(f"YouTube视频信息获取超时（30s），URL: {request.url}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="获取视频信息超时，请检查服务器网络是否能访问YouTube",
+        )
     except HTTPException:
-        # 重新抛出HTTP异常
         raise
-        
     except Exception as e:
         logger.error(f"获取YouTube视频信息过程中发生意外错误: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -166,24 +178,30 @@ async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> Youtub
                 detail="请提供有效的YouTube视频URL"
             )
         
-        # 执行视频下载（在线程池中运行，避免阻塞 asyncio 事件循环）
+        # 执行视频下载（线程池运行 + 总超时）
         logger.debug(f"调用YouTube下载服务，参数: {request.model_dump()}")
-        result = await asyncio.to_thread(youtube_service.download_video, request)
-        
-        # 记录下载结果
+        result = await asyncio.wait_for(
+            asyncio.to_thread(youtube_service.download_video, request),
+            timeout=300,  # 下载允许更长时间
+        )
+
         logger.info(f"YouTube视频下载完成 - 成功: {result.success}")
-        
+
         if not result.success:
             logger.warning(f"YouTube视频下载失败: {result.error}")
             return result
-        
+
         logger.info(f"成功下载YouTube视频 - 文件: {result.file_path}")
         return result
-        
+
+    except asyncio.TimeoutError:
+        logger.error(f"YouTube视频下载超时（300s），URL: {request.url}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="视频下载超时，请检查服务器网络是否能访问YouTube",
+        )
     except HTTPException:
-        # 重新抛出HTTP异常
         raise
-        
     except Exception as e:
         logger.error(f"YouTube视频下载过程中发生意外错误: {str(e)}", exc_info=True)
         raise HTTPException(
