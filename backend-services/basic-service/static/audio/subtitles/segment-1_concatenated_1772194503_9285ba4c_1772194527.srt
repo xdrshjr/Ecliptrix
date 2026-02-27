@@ -1,0 +1,11 @@
+1
+00:00:00,120 --> 00:00:03,100
+hello everyone welcome to today's video tutorial
+
+2
+00:00:03,480 --> 00:00:06,900
+today we will learn how to use this powerful video editing tool
+
+3
+00:00:07,240 --> 00:00:11,260
+this tool can help us quickly create professional level video content

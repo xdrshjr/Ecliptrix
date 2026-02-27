@@ -757,6 +757,9 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     let estimatedProgress = 0;
     let errorRetries = 0;
     const MAX_ERROR_RETRIES = 10;
+    // After video generation succeeds, keep polling for OSS URL + thumbnail (max ~60s)
+    let ossWaitRetries = 0;
+    const MAX_OSS_WAIT_RETRIES = 20;
 
     const poll = async () => {
       // Slow progress crawl up to 90%
@@ -770,7 +773,33 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
         errorRetries = 0; // reset on success
 
         if (status.status === 'succeeded' && status.video_url) {
-          const realMaterial: MaterialItem = {
+          // OSS upload complete: backend returns thumbnail_url once video+thumbnail are on OSS
+          if (status.thumbnail_url) {
+            const finalMaterial: MaterialItem = {
+              id: tempId,
+              name: materialName,
+              type: 'video',
+              format: 'mp4',
+              size: 0,
+              url: status.video_url,
+              serverUrl: status.video_url,
+              thumbnailUrl: status.thumbnail_url,
+              duration: status.duration,
+              width: status.width,
+              height: status.height,
+              createdAt,
+              downloadStatus: undefined,
+              downloadProgress: undefined,
+              metadata: { source: 'ark-ai-video', prompt: params.prompt },
+            };
+            addOrReplaceMaterial(finalMaterial);
+            pendingAiTasks.current.delete(tempId);
+            return;
+          }
+
+          // OSS upload still in progress: set CDN URL for instant playback, keep polling
+          ossWaitRetries++;
+          const cdnMaterial: MaterialItem = {
             id: tempId,
             name: materialName,
             type: 'video',
@@ -778,21 +807,22 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
             size: 0,
             url: status.video_url,
             serverUrl: status.video_url,
-            thumbnailUrl: status.thumbnail_url || undefined,
+            thumbnailUrl: undefined,
             duration: status.duration,
             width: status.width,
             height: status.height,
             createdAt,
-            downloadStatus: undefined,
-            downloadProgress: undefined,
+            downloadStatus: 'generating',
+            downloadProgress: 95,
             metadata: { source: 'ark-ai-video', prompt: params.prompt },
           };
-          addOrReplaceMaterial(realMaterial);
-          pendingAiTasks.current.delete(tempId);
+          addOrReplaceMaterial(cdnMaterial);
 
-          // Backend returns null thumbnail when using CDN URL (thumbnail generated in background).
-          // Extract thumbnail client-side from the video URL via canvas.
-          if (!status.thumbnail_url) {
+          if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
+            // OSS upload timed out — finalise with CDN URL, extract thumbnail client-side
+            logger.warn(`Ark视频OSS上传等待超时，使用CDN URL`, { arkTaskId, ossWaitRetries });
+            addOrReplaceMaterial({ ...cdnMaterial, downloadStatus: undefined, downloadProgress: undefined });
+            pendingAiTasks.current.delete(tempId);
             extractVideoThumbnail(status.video_url).then(dataUrl => {
               if (dataUrl && isMountedRef.current) {
                 setMaterials(prev => prev.map(m =>
@@ -800,7 +830,12 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
                 ));
               }
             });
+            return;
           }
+
+          // Continue polling every 3s while waiting for OSS
+          const timeoutId = setTimeout(poll, 3000);
+          pendingAiTasks.current.set(tempId, timeoutId);
           return;
         }
 
