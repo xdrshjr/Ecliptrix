@@ -19,7 +19,14 @@ logger = get_logger(__name__)
 
 class AudioTranscriptionService:
     """音频转字幕服务类"""
-    
+
+    # 与 main.py 静态文件挂载一致的 URL 前缀 → 本地目录映射
+    # 键为 URL 前缀（含尾部 /），值为对应的本地目录路径
+    _URL_TO_DIR: Dict[str, str] = {
+        '/api/audio/generated/': 'static/audio/generated',
+        '/api/audio/subtitles/': 'static/audio/subtitles',
+    }
+
     def __init__(self):
         """初始化音频转字幕服务"""
         self.appid = settings.volcano_tts_appid
@@ -27,16 +34,32 @@ class AudioTranscriptionService:
         self.secret_key = ***REMOVED***
         self.base_url = 'https://openspeech.bytedance.com/api/v1/vc'
         self.headers = {
-            'Authorization': f'Bearer; {self.access_token}',
+            'Authorization': f'Bearer;{self.access_token}',
             'Content-Type': 'application/json'
         }
-        
+
         # 验证配置
         if not all([self.appid, self.access_token, self.secret_key]):
             logger.error("火山引擎API配置不完整")
             raise ValueError("火山引擎API配置不完整，请检查环境变量")
-        
+
         logger.info("音频转字幕服务初始化完成")
+
+    def _resolve_local_path(self, url: str) -> Optional[str]:
+        """
+        将 /api/... 风格的服务器 URL 自动解析为本地文件系统路径。
+        映射关系与 main.py 中的静态文件挂载保持一致，
+        /api/storage/files/ 动态读取 settings.storage.root。
+        """
+        # 动态补充 storage 映射（路径来自配置，不硬编码）
+        url_map = dict(self._URL_TO_DIR)
+        url_map['/api/storage/files/'] = settings.storage.root
+
+        for prefix, directory in url_map.items():
+            if url.startswith(prefix):
+                filename = url[len(prefix):]
+                return os.path.join(directory, filename)
+        return None
 
     def submit_audio(self, audio_path: str, language: str = "zh-CN", 
                     use_itn: bool = True, use_punc: bool = False,
@@ -72,9 +95,19 @@ class AudioTranscriptionService:
             with open(audio_path, 'rb') as audio_file:
                 audio_data = audio_file.read()
                 
+                # Content-Type 根据文件扩展名判断
+                ext = os.path.splitext(audio_path)[1].lower()
+                content_type_map = {
+                    '.mp3': 'audio/mpeg',
+                    '.wav': 'audio/wav',
+                    '.ogg': 'audio/ogg',
+                    '.m4a': 'audio/mp4',
+                    '.aac': 'audio/aac',
+                }
+                content_type = content_type_map.get(ext, 'audio/mpeg')
                 headers = {
-                    'Authorization': f'Bearer; {self.access_token}',
-                    'Content-Type': 'audio/wav'
+                    'Authorization': f'Bearer;{self.access_token}',
+                    'Content-Type': content_type
                 }
 
                 response = requests.post(
@@ -130,7 +163,7 @@ class AudioTranscriptionService:
                 response = requests.get(
                     url,
                     params=params,
-                    headers={'Authorization': f'Bearer; {self.access_token}'},
+                    headers={'Authorization': f'Bearer;{self.access_token}'},
                     timeout=30
                 )
 
@@ -402,16 +435,17 @@ class AudioTranscriptionService:
                 try:
                     # 如果是本地文件路径，直接使用
                     if audio_url.startswith('/') or audio_url.startswith('static/'):
-                        # 本地文件路径
+                        # 本地文件路径：通过映射表自动解析 /api/xxx → 实际目录
                         if audio_url.startswith('/api/'):
-                            # 去掉API前缀，转换为实际文件路径
-                            temp_file_path = audio_url.replace('/api/', '')
+                            temp_file_path = self._resolve_local_path(audio_url)
+                            if temp_file_path is None:
+                                raise ValueError(f"无法识别的API路径，无对应本地目录: {audio_url}")
                         else:
                             temp_file_path = audio_url
-                        
+
                         if not os.path.exists(temp_file_path):
                             raise FileNotFoundError(f"本地音频文件不存在: {temp_file_path}")
-                            
+
                         logger.info(f"使用本地音频文件: {temp_file_path}")
                         
                     else:
