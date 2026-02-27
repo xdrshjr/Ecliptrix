@@ -691,7 +691,10 @@ class SubtitleService:
             text_content = '\n'.join(wrapped_lines)
             
             # Escape special characters for ffmpeg
-            text_content = text_content.replace("'", "\\'").replace(":", "\\:")
+            # NOTE: actual newline chars (\n) must be replaced with ffmpeg's \n escape sequence
+            # because a literal newline in the -vf filter string corrupts ffmpeg's expression parser,
+            # causing the 'enable=between(t,...)' expression to be truncated → subtitles silently dropped
+            text_content = text_content.replace("'", "\\'").replace(":", "\\:").replace("\n", "\\n")
             
             # Build drawtext filter with font support
             drawtext_filter = f"drawtext=text='{text_content}'"
