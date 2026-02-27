@@ -15,6 +15,8 @@ class ArkVideoGenerateRequest(BaseModel):
     camera_fixed: bool = Field(default=False, description="Whether to fix the camera position")
     watermark: bool = Field(default=False, description="Whether to add a watermark")
     image_url: Optional[str] = Field(default=None, description="Optional reference image URL")
+    aspect_ratio: Literal["16:9", "9:16", "1:1"] = Field(default="16:9", description="Video aspect ratio")
+    resolution: Literal["480p", "720p", "1080p"] = Field(default="720p", description="Video resolution")
 
 
 class ArkVideoGenerateResponse(BaseResponse):
