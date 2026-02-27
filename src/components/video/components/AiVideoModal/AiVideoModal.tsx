@@ -26,6 +26,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
   const [watermark, setWatermark] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [imageUrlError, setImageUrlError] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
+  const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('720p');
 
   const resetForm = () => {
     setPrompt('');
@@ -35,6 +37,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
     setWatermark(false);
     setShowAdvanced(false);
     setImageUrlError('');
+    setAspectRatio('16:9');
+    setResolution('720p');
   };
 
   const handleClose = () => {
@@ -63,6 +67,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
       camera_fixed: cameraFixed,
       watermark,
       image_url: imageUrl.trim() || undefined,
+      aspect_ratio: aspectRatio,
+      resolution,
     });
     // Parent closes the modal via onConfirm handler; form is reset in handleClose
   };
@@ -137,6 +143,42 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
                   }`}
                 >
                   {d} 秒
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Aspect Ratio */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              视频比例
+            </label>
+            <div className="flex space-x-3">
+              {([
+                { value: '16:9' as const, label: '16:9', desc: '横屏', icon: (
+                  <rect x="1" y="4" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                )},
+                { value: '9:16' as const, label: '9:16', desc: '竖屏', icon: (
+                  <rect x="7" y="1" width="10" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                )},
+                { value: '1:1' as const, label: '1:1', desc: '方形', icon: (
+                  <rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                )},
+              ]).map(({ value, label, desc, icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setAspectRatio(value)}
+                  className={`flex-1 py-2 px-2 rounded-xl text-sm font-medium border transition-all flex flex-col items-center space-y-1 ${
+                    aspectRatio === value
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                  }`}
+                >
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                    {icon}
+                  </svg>
+                  <span>{label}</span>
+                  <span className={`text-xs ${aspectRatio === value ? 'text-white/80' : 'text-gray-400'}`}>{desc}</span>
                 </button>
               ))}
             </div>
@@ -225,6 +267,26 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
                       }`}
                     />
                   </button>
+                </div>
+
+                {/* Resolution */}
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">分辨率</p>
+                  <div className="flex space-x-2">
+                    {(['480p', '720p', '1080p'] as const).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setResolution(r)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          resolution === r
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
