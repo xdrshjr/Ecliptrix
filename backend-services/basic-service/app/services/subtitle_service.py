@@ -4,6 +4,7 @@ Subtitle service for adding subtitles to videos with automatic edge detection an
 
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -570,13 +571,14 @@ class SubtitleService:
             return 0.0
     
     def _build_ffmpeg_command(
-        self, 
-        input_video: str, 
-        output_video: str, 
+        self,
+        input_video: str,
+        output_video: str,
         subtitles: List[SubtitleEntry],
         request: SubtitleAddRequest,
         video_width: int,
-        video_height: int
+        video_height: int,
+        text_files_dir: str
     ) -> List[str]:
         """
         Build ffmpeg command for adding subtitles.
@@ -602,13 +604,13 @@ class SubtitleService:
             logger.info("Portrait video detected - using multi-line centered subtitle rendering for optimal display")
             # Use special handling for portrait videos to ensure each line is centered
             drawtext_filters = self._build_multiline_centered_drawtext_filters(
-                subtitles, request, video_width, video_height
+                subtitles, request, video_width, video_height, text_files_dir
             )
         else:
             logger.info("Landscape video detected - using standard subtitle rendering")
             # Use standard handling for landscape videos
             drawtext_filters = self._build_standard_drawtext_filters(
-                subtitles, request, video_width, video_height
+                subtitles, request, video_width, video_height, text_files_dir
             )
         
         if not drawtext_filters:
@@ -634,7 +636,8 @@ class SubtitleService:
         subtitles: List[SubtitleEntry],
         request: SubtitleAddRequest,
         video_width: int,
-        video_height: int
+        video_height: int,
+        text_files_dir: str
     ) -> List[str]:
         """
         Build standard drawtext filters for landscape videos.
@@ -687,17 +690,16 @@ class SubtitleService:
             start_time = self._convert_time_to_seconds(subtitle.start_time)
             end_time = self._convert_time_to_seconds(subtitle.end_time)
             
-            # Create multi-line text with actual newlines
-            text_content = '\n'.join(wrapped_lines)
-            
-            # Escape special characters for ffmpeg
-            # NOTE: actual newline chars (\n) must be replaced with ffmpeg's \n escape sequence
-            # because a literal newline in the -vf filter string corrupts ffmpeg's expression parser,
-            # causing the 'enable=between(t,...)' expression to be truncated → subtitles silently dropped
-            text_content = text_content.replace("'", "\\'").replace(":", "\\:").replace("\n", "\\n")
-            
-            # Build drawtext filter with font support
-            drawtext_filter = f"drawtext=text='{text_content}'"
+            # Write subtitle text to a temp file so ffmpeg reads it via textfile=.
+            # This bypasses all text escaping issues (apostrophes, colons, etc.) entirely,
+            # since ffmpeg reads the file content directly without filter-graph parsing.
+            text_file_path = os.path.join(text_files_dir, f"sub_{subtitle.index}.txt")
+            with open(text_file_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(wrapped_lines))  # actual newlines — supported by textfile=
+
+            # Escape path separators and colons for ffmpeg filter syntax
+            escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
+            drawtext_filter = f"drawtext=textfile={escaped_path}"
             
             # Add font file if available - pass text content for Chinese character detection
             font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
@@ -718,21 +720,22 @@ class SubtitleService:
             
             # Add background if specified
             if request.background_color:
-                logger.info(f"Adding background color {request.background_color} to subtitle: '{text_content[:20]}...'")
+                logger.info(f"Adding background color {request.background_color} to subtitle: '{subtitle.text[:20]}...'")
                 drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
             else:
-                logger.info(f"No background color specified for subtitle: '{text_content[:20]}...'")
-            
+                logger.info(f"No background color specified for subtitle: '{subtitle.text[:20]}...'")
+
             drawtext_filters.append(drawtext_filter)
-        
+
         return drawtext_filters
-    
+
     def _build_multiline_centered_drawtext_filters(
         self,
         subtitles: List[SubtitleEntry],
         request: SubtitleAddRequest,
         video_width: int,
-        video_height: int
+        video_height: int,
+        text_files_dir: str
     ) -> List[str]:
         """
         Build multi-line centered drawtext filters for portrait videos.
@@ -806,11 +809,14 @@ class SubtitleService:
                 # Calculate Y position for this line
                 line_y = start_y + (line_index * line_height)
                 
-                # Escape special characters for ffmpeg
-                escaped_text = line_text.replace("'", "\\'").replace(":", "\\:")
-                
-                # Build drawtext filter with font support
-                drawtext_filter = f"drawtext=text='{escaped_text}'"
+                # Write this line to a temp file so ffmpeg reads it via textfile=,
+                # bypassing all filter-graph escaping issues.
+                text_file_path = os.path.join(text_files_dir, f"sub_{subtitle.index}_line_{line_index}.txt")
+                with open(text_file_path, 'w', encoding='utf-8') as f:
+                    f.write(line_text)  # single line, no newline needed
+
+                escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
+                drawtext_filter = f"drawtext=textfile={escaped_path}"
                 
                 # Add font file if available
                 font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
@@ -892,48 +898,56 @@ class SubtitleService:
             output_filename = f"{input_path.stem}_subtitled_{int(time.time())}.mp4"
             output_path = self.output_dir / output_filename
             
-            # Build ffmpeg command
-            ffmpeg_cmd = self._build_ffmpeg_command(
-                request.video_file_path,
-                str(output_path),
-                subtitles,
-                request,
-                video_width,
-                video_height
-            )
-            
-            if not ffmpeg_cmd:
-                return SubtitleAddResponse(
-                    success=False,
-                    message="Failed to build ffmpeg command"
-                )
-            
-            # Execute ffmpeg command
-            logger.info(f"Executing ffmpeg command: {' '.join(ffmpeg_cmd)}")
-            
+            # Create a temporary directory to hold subtitle text files for ffmpeg textfile= params.
+            # These files bypass all filter-graph escaping issues with special characters.
+            text_files_dir = tempfile.mkdtemp(prefix="ecliptrix_subs_")
             try:
-                result = subprocess.run(
-                    ffmpeg_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5 minute timeout
+                # Build ffmpeg command
+                ffmpeg_cmd = self._build_ffmpeg_command(
+                    request.video_file_path,
+                    str(output_path),
+                    subtitles,
+                    request,
+                    video_width,
+                    video_height,
+                    text_files_dir
                 )
-                
-                if result.returncode != 0:
-                    logger.error(f"ffmpeg failed with return code {result.returncode}")
-                    logger.error(f"ffmpeg stderr: {result.stderr}")
+
+                if not ffmpeg_cmd:
                     return SubtitleAddResponse(
                         success=False,
-                        message=f"Video processing failed: {result.stderr}"
+                        message="Failed to build ffmpeg command"
                     )
-                
-            except subprocess.TimeoutExpired:
-                logger.error("ffmpeg process timed out")
-                return SubtitleAddResponse(
-                    success=False,
-                    message="Video processing timed out"
-                )
-            
+
+                # Execute ffmpeg command
+                logger.info(f"Executing ffmpeg command: {' '.join(ffmpeg_cmd)}")
+
+                try:
+                    result = subprocess.run(
+                        ffmpeg_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300  # 5 minute timeout
+                    )
+
+                    if result.returncode != 0:
+                        logger.error(f"ffmpeg failed with return code {result.returncode}")
+                        logger.error(f"ffmpeg stderr: {result.stderr}")
+                        return SubtitleAddResponse(
+                            success=False,
+                            message=f"Video processing failed: {result.stderr}"
+                        )
+
+                except subprocess.TimeoutExpired:
+                    logger.error("ffmpeg process timed out")
+                    return SubtitleAddResponse(
+                        success=False,
+                        message="Video processing timed out"
+                    )
+            finally:
+                # Clean up temp text files regardless of success or failure
+                shutil.rmtree(text_files_dir, ignore_errors=True)
+
             # Check output file
             if not output_path.exists():
                 logger.error(f"Output file was not created: {output_path}")
