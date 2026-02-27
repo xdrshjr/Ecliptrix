@@ -150,6 +150,8 @@ export interface UseMaterialManagementReturn {
   // 新增的删除功能
   confirmationDialog: ConfirmationDialogState;
   handleCloseConfirmationDialog: () => void;
+  // AI视频生成
+  handleAiVideoGenerate: (params: { prompt: string; duration: 5 | 10; camera_fixed: boolean; watermark: boolean; image_url?: string }) => Promise<void>;
 }
 
 // 新增：Youtube视频搜索结果接口

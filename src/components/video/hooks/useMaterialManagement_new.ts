@@ -745,7 +745,9 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     addMaterials,
     addOrReplaceMaterial,
     confirmationDialog,
-    handleCloseConfirmationDialog
+    handleCloseConfirmationDialog,
+    // AI视频生成（stub — 此文件不再维护，主实现在 useMaterialManagement.ts）
+    handleAiVideoGenerate: async () => {},
   };
 };
 

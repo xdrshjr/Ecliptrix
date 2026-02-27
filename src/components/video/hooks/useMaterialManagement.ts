@@ -1,9 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
 import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
-import localVideoManager from '@/lib/utils/localVideoManager';
 import { useAuth } from '@/contexts/AuthContext';
+import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 
 // 确认对话框状态接口
 interface ConfirmationDialogState {
@@ -284,43 +284,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           thumbnailUrl: result.thumbnail_url
         });
 
-        // 下载视频文件到本地
-        const videoResponse = await fetch(result.video_url);
-        if (!videoResponse.ok) {
-          throw new Error(`下载视频失败: ${videoResponse.status}`);
-        }
-        const videoBlob = await videoResponse.blob();
-
-        // 下载缩略图（如果有）
-        let thumbnailBlob: Blob | undefined;
-        if (result.thumbnail_url) {
-          try {
-            const thumbnailResponse = await fetch(result.thumbnail_url);
-            if (thumbnailResponse.ok) {
-              thumbnailBlob = await thumbnailResponse.blob();
-            }
-          } catch (error) {
-            logger.warn('下载缩略图失败', {
-              error: error instanceof Error ? error.message : String(error),
-              fileName: file.name
-            });
-          }
-        }
-
-        // 存储到本地视频管理器
-        const { videoUrl, thumbnailUrl } = await localVideoManager.storeVideoFile(
-          file.name,
-          videoBlob,
-          thumbnailBlob,
-          {
-            duration: result.duration,
-            width: result.width,
-            height: result.height,
-            format: file.name.split('.').pop()
-          }
-        );
-
-        // 创建视频素材项
+        // 直接使用服务器URL（通过Next.js代理 /api/storage/files/ 可访问）
         const videoMaterial: MaterialItem = {
           id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           name: file.name,
@@ -330,14 +294,14 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           duration: result.duration,
           width: result.width,
           height: result.height,
-          thumbnailUrl: thumbnailUrl,
-          url: videoUrl,
+          thumbnailUrl: result.thumbnail_url || undefined,
+          url: result.video_url,
           serverUrl: result.video_url,
           createdAt: new Date(),
           metadata: {
             originalUrl: result.video_url,
             fileName: file.name,
-            isLocalFile: true,
+            isLocalFile: false,
             storageMetadata: result.metadata
           }
         };
@@ -378,63 +342,21 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
           fileUrl: result.file_url
         });
 
-        // 下载文件到本地
-        const fileResponse = await fetch(result.file_url);
-        if (!fileResponse.ok) {
-          throw new Error(`下载文件失败: ${fileResponse.status}`);
-        }
-        const fileBlob = await fileResponse.blob();
-
-        // 创建本地URL
-        const localUrl = URL.createObjectURL(fileBlob);
-
-        // 对于图片类型，获取图片尺寸信息
-        let imageWidth: number | undefined;
-        let imageHeight: number | undefined;
-        
-        if (materialType === 'image') {
-          try {
-            const img = new Image();
-            await new Promise<void>((resolve, reject) => {
-              img.onload = () => {
-                imageWidth = img.naturalWidth;
-                imageHeight = img.naturalHeight;
-                resolve();
-              };
-              img.onerror = () => reject(new Error('无法加载图片'));
-              img.src = localUrl;
-            });
-            
-            logger.info('图片尺寸获取成功', {
-              fileName: file.name,
-              width: imageWidth,
-              height: imageHeight
-            });
-          } catch (error) {
-            logger.warn('获取图片尺寸失败', {
-              fileName: file.name,
-              error: error instanceof Error ? error.message : String(error)
-            });
-          }
-        }
-
-        // 创建素材项
+        // 直接使用服务器URL（通过Next.js代理 /api/storage/files/ 可访问）
         const fileMaterial: MaterialItem = {
           id: `${materialType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           name: file.name,
           type: materialType,
           format: file.name.split('.').pop() || '',
           size: result.file_size,
-          url: localUrl,
+          url: result.file_url,
           serverUrl: result.file_url,
           thumbnailUrl: materialType === 'image' ? result.file_url : undefined,
-          width: imageWidth,
-          height: imageHeight,
           createdAt: new Date(),
           metadata: {
             originalUrl: result.file_url,
             fileName: file.name,
-            isLocalFile: true
+            isLocalFile: false
           }
         };
 
@@ -732,6 +654,117 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     return true;
   }, [logger]);
 
+  // AI视频生成轮询任务 ref: tempId -> current setTimeout handle
+  const pendingAiTasks = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Clear all polling timers on unmount to prevent state updates on dead components
+  useEffect(() => {
+    return () => {
+      pendingAiTasks.current.forEach(id => clearTimeout(id));
+      pendingAiTasks.current.clear();
+    };
+  }, []);
+
+  // AI视频生成
+  const handleAiVideoGenerate = useCallback(async (params: ArkVideoGenerateParams) => {
+    const tempId = crypto.randomUUID();
+    const createdAt = new Date();
+    // Use timestamp-based name so the material has a stable, identifiable name
+    const materialName = `AI视频_${createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+
+    // Insert placeholder card at the front of the list
+    const placeholder: MaterialItem = {
+      id: tempId,
+      name: materialName,
+      type: 'video',
+      format: 'mp4',
+      size: 0,
+      url: '',
+      createdAt,
+      downloadStatus: 'generating',
+      downloadProgress: 0,
+      metadata: { source: 'ark-ai-video', prompt: params.prompt },
+    };
+    setMaterials(prev => [placeholder, ...prev]);
+
+    let arkTaskId: string;
+    try {
+      const result = await createArkVideoTask(params);
+      arkTaskId = result.ark_task_id;
+    } catch (error) {
+      logger.error('创建Ark视频任务失败', error as Error);
+      setMaterials(prev => prev.filter(m => m.id !== tempId));
+      return;
+    }
+
+    // Polling with simulated progress crawl and error retry cap
+    let estimatedProgress = 0;
+    let errorRetries = 0;
+    const MAX_ERROR_RETRIES = 10;
+
+    const poll = async () => {
+      // Slow progress crawl up to 90%
+      estimatedProgress = Math.min(estimatedProgress + Math.random() * 3 + 1, 90);
+      setMaterials(prev => prev.map(m =>
+        m.id === tempId ? { ...m, downloadProgress: estimatedProgress } : m
+      ));
+
+      try {
+        const status = await getArkVideoStatus(arkTaskId);
+        errorRetries = 0; // reset on success
+
+        if (status.status === 'succeeded' && status.video_url) {
+          const realMaterial: MaterialItem = {
+            id: tempId,
+            name: materialName,
+            type: 'video',
+            format: 'mp4',
+            size: 0,
+            url: status.video_url,
+            serverUrl: status.video_url,
+            thumbnailUrl: status.thumbnail_url,
+            duration: status.duration,
+            width: status.width,
+            height: status.height,
+            createdAt,
+            downloadStatus: undefined,
+            downloadProgress: undefined,
+            metadata: { source: 'ark-ai-video', prompt: params.prompt },
+          };
+          addOrReplaceMaterial(realMaterial);
+          pendingAiTasks.current.delete(tempId);
+          return;
+        }
+
+        if (status.status === 'failed') {
+          setMaterials(prev => prev.filter(m => m.id !== tempId));
+          pendingAiTasks.current.delete(tempId);
+          return;
+        }
+
+        // Still running — schedule next poll
+        const timeoutId = setTimeout(poll, 5000);
+        pendingAiTasks.current.set(tempId, timeoutId);
+      } catch (error) {
+        errorRetries++;
+        logger.error(`轮询Ark视频状态失败 (retry ${errorRetries}/${MAX_ERROR_RETRIES})`, error as Error);
+
+        if (errorRetries >= MAX_ERROR_RETRIES) {
+          logger.error(`Ark视频轮询达到最大重试次数，放弃任务`, { arkTaskId, retries: errorRetries });
+          setMaterials(prev => prev.filter(m => m.id !== tempId));
+          pendingAiTasks.current.delete(tempId);
+          return;
+        }
+
+        const timeoutId = setTimeout(poll, 5000);
+        pendingAiTasks.current.set(tempId, timeoutId);
+      }
+    };
+
+    const initialTimeout = setTimeout(poll, 5000);
+    pendingAiTasks.current.set(tempId, initialTimeout);
+  }, [logger, addOrReplaceMaterial]);
+
   // 过滤后的素材列表
   const filteredMaterials = useMemo(() => {
     if (selectedMaterialType === 'all') {
@@ -755,7 +788,8 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     addMaterials,
     addOrReplaceMaterial,
     confirmationDialog,
-    handleCloseConfirmationDialog
+    handleCloseConfirmationDialog,
+    handleAiVideoGenerate,
   };
 };
 
