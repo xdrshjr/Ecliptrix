@@ -437,49 +437,6 @@ export interface AIImageGenerationStatus {
   completed_at?: string;
 }
 
-export interface UseAIImageGenerationReturn {
-  // Modal state
-  isModalOpen: boolean;
-  openModal: () => void;
-  closeModal: () => void;
-  
-  // Generation state
-  isGenerating: boolean;
-  generationProgress: number;
-  generatedImages: string[];
-  generationError: string | null;
-  generationStatus: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
-  currentPromptId: string | null;
-  
-  // Generation parameters
-  positivePrompt: string;
-  negativePrompt: string;
-  width: number;
-  height: number;
-  steps: number;
-  seed: number | null;
-  cfg: number;
-  guidance: number;
-  checkpoint: string;
-  
-  // Actions
-  handleGenerate: () => Promise<void>;
-  handleAddToMaterials: (imageUrls: string[]) => Promise<boolean>;
-  handleAddSingleToMaterials: (imageUrl: string) => Promise<boolean>;
-  setPositivePrompt: (prompt: string) => void;
-  setNegativePrompt: (prompt: string) => void;
-  setWidth: (width: number) => void;
-  setHeight: (height: number) => void;
-  setSteps: (steps: number) => void;
-  setSeed: (seed: number | null) => void;
-  setCfg: (cfg: number) => void;
-  setGuidance: (guidance: number) => void;
-  setCheckpoint: (checkpoint: string) => void;
-  clearError: () => void;
-  
-  taskId: string;
-}
-
 // Digital Human Generation Types
 export interface DigitalHumanGenerationRequest {
   positive_prompt: string;
@@ -518,61 +475,6 @@ export interface DigitalHumanGenerationStatus {
   error_message?: string;
   created_at?: string;
   completed_at?: string;
-}
-
-export interface UseDigitalHumanGenerationReturn {
-  // Modal state
-  isModalOpen: boolean;
-  openModal: () => void;
-  closeModal: () => void;
-  
-  // Generation state
-  isGenerating: boolean;
-  generationProgress: number;
-  generatedVideos: VideoInfo[];
-  generationError: string | null;
-  generationStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
-  currentPromptId: string | null;
-  
-  // Upload state
-  isUploadingVideo: boolean;
-  isUploadingAudio: boolean;
-  videoUploadProgress: number;
-  audioUploadProgress: number;
-  uploadError: string | null;
-  uploadedVideoFilename: string | null;
-  uploadedAudioFilename: string | null;
-  
-  // Generation parameters
-  positivePrompt: string;
-  negativePrompt: string;
-  width: number;
-  height: number;
-  steps: number;
-  seed: number | null;
-  cfg: number;
-  shift: number;
-  referenceVideoFile: File | null;
-  audioFile: File | null;
-  
-  // Actions
-  handleGenerate: () => Promise<void>;
-  handleAddToMaterials: () => boolean;
-  handleAddSingleToMaterials: (videoInfo: VideoInfo) => boolean;
-  setPositivePrompt: (prompt: string) => void;
-  setNegativePrompt: (prompt: string) => void;
-  setWidth: (width: number) => void;
-  setHeight: (height: number) => void;
-  setSteps: (steps: number) => void;
-  setSeed: (seed: number | null) => void;
-  setCfg: (cfg: number) => void;
-  setShift: (shift: number) => void;
-  setReferenceVideoFile: (file: File | null) => void;
-  setAudioFile: (file: File | null) => void;
-  clearError: () => void;
-  clearUploadError: () => void;
-  
-  taskId: string;
 }
 
 // AI Video Generation Types
@@ -649,45 +551,3 @@ export interface AIVideoGenerationStatus {
   request_parameters?: AIVideoGenerationRequest;
 }
 
-export interface UseAIVideoGenerationReturn {
-  // Modal state
-  isModalOpen: boolean;
-  openModal: () => void;
-  closeModal: () => void;
-  
-  // Generation state
-  isGenerating: boolean;
-  generationProgress: number;
-  generatedVideos: VideoInfo[];
-  generationError: string | null;
-  generationStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
-  currentPromptId: string | null;
-  
-  // Generation parameters
-  positivePrompt: string;
-  negativePrompt: string;
-  width: number;
-  height: number;
-  durationSeconds: number;
-  steps: number;
-  seed: number | null;
-  enableLora: boolean;
-  aspectRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | null;
-  
-  // Actions
-  handleGenerate: () => Promise<void>;
-  handleAddToMaterials: () => boolean;
-  handleAddSingleToMaterials: (videoInfo: VideoInfo) => boolean;
-  setPositivePrompt: (prompt: string) => void;
-  setNegativePrompt: (prompt: string) => void;
-  setWidth: (width: number) => void;
-  setHeight: (height: number) => void;
-  setDurationSeconds: (duration: number) => void;
-  setSteps: (steps: number) => void;
-  setSeed: (seed: number | null) => void;
-  setEnableLora: (enable: boolean) => void;
-  setAspectRatio: (ratio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | null) => void;
-  clearError: () => void;
-  
-  taskId: string;
-}

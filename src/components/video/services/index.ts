@@ -49,37 +49,6 @@ export {
   createYoutubeVideoSearchService
 } from './youtubeVideoSearchService';
 
-// AI Image Generation Service
-export type {
-  AIImageGenerationService
-} from './aiImageGenerationService';
-
-export {
-  AIImageGenerationServiceImpl,
-  createAIImageGenerationService
-} from './aiImageGenerationService';
-
-// AI Video Generation Service
-export type {
-  AIVideoGenerationService
-} from './aiVideoGenerationService';
-
-export {
-  AIVideoGenerationServiceImpl,
-  createAIVideoGenerationService
-} from './aiVideoGenerationService';
-
-// ComfyUI Health Service
-export type {
-  ComfyUIHealthService,
-  ComfyUIHealthStatus
-} from './comfyuiHealthService';
-
-export {
-  ComfyUIHealthServiceImpl,
-  createComfyUIHealthService
-} from './comfyuiHealthService';
-
 // Prompt Optimization Service
 export {
   PromptOptimizationService

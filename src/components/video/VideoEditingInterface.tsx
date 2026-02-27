@@ -18,10 +18,6 @@ import {
   useImageSearch,
   useTimelineComposition,
   useVideoAnalysis,
-  useAIImageGeneration,
-  useAIVideoGeneration,
-  useDigitalHumanGeneration,
-  useComfyUIHealth,
   useAICreation
 } from './hooks';
 import { useConvertToScript } from './hooks/useConvertToScript';
@@ -43,9 +39,6 @@ import {
   ScriptGenerationProgressModal,
   CreativeBrainstormingModal,
   VideoAnalysisModal,
-  AIImageGenerationModal,
-  AIVideoGenerationModal,
-  DigitalHumanGenerationModal,
   AICreationModal,
   AIMixingProgressModal,
   AIMixingModeSelectionModal,
@@ -491,14 +484,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 添加时间轴组合播放功能（新增视频跳转回调）
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials, handleVideoSeekRequired);
-  
-  // 添加AI生图功能
-  const aiImageGeneration = useAIImageGeneration(taskId, materialManagement.addMaterials);
-  const aiVideoGeneration = useAIVideoGeneration(taskId, materialManagement.addMaterials);
-  const digitalHumanGeneration = useDigitalHumanGeneration(taskId, materialManagement.addMaterials);
-  
-  // 添加ComfyUI健康检查功能
-  const comfyuiHealth = useComfyUIHealth(taskId, true);
   
   // 添加AI创作功能
   const aiCreation = useAICreation(taskId);
@@ -2668,9 +2653,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onSearchImages={imageSearch.openSearchModal}
             onAICreation={aiCreation.openModal}
             onAIMixedEditing={handleAIMixedEditing}
-            onAIImageGeneration={aiImageGeneration.openModal}
-            onAIVideoGeneration={aiVideoGeneration.openModal}
-            onDigitalHumanGeneration={digitalHumanGeneration.openModal}
             onAutoMixAudio={handleAutoMixAudio}
             onVideoAnalysis={handleVideoAnalysis}
             onBatchVideoAnalysis={handleBatchVideoAnalysis}
@@ -2680,7 +2662,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onCutMaterial={handleCutMaterial}
             onWatermarkRemoval={handleWatermarkRemoval}
             taskId={taskId}
-            comfyuiHealthStatus={comfyuiHealth}
             className="video-editing-materials-panel bg-white border-r border-gray-200"
           />
 
@@ -2793,19 +2774,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         analysisResult={videoAnalysis.currentAnalysisResult}
         videoUrl={videoAnalysis.currentVideoUrl || undefined}
       />
-
-      <AIImageGenerationModal
-        {...aiImageGeneration}
-      />
-
-      <AIVideoGenerationModal
-        {...aiVideoGeneration}
-      />
-
-      <DigitalHumanGenerationModal
-        {...digitalHumanGeneration}
-      />
-
 
       <AICreationModal
         {...aiCreation}
