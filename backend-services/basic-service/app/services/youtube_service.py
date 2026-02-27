@@ -254,6 +254,7 @@ class YouTubeService:
                 'no_warnings': True,
                 'extract_flat': True,
                 'default_search': 'ytsearch',
+                'socket_timeout': 30,
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:

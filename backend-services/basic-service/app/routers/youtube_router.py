@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, status
 from app.logger import get_logger
 from app.models.youtube_models import (
@@ -43,9 +45,9 @@ async def search_youtube_videos(request: YoutubeSearchRequest) -> YoutubeSearchR
                 detail="搜索关键词不能为空"
             )
         
-        # 执行YouTube视频搜索
+        # 执行YouTube视频搜索（在线程池中运行，避免阻塞 asyncio 事件循环）
         logger.debug(f"调用YouTube搜索服务，参数: {request.model_dump()}")
-        result = youtube_service.search_videos(request)
+        result = await asyncio.to_thread(youtube_service.search_videos, request)
         
         # 记录搜索结果
         logger.info(f"YouTube搜索完成 - 成功: {result.success}, 找到: {result.total_found} 个视频")
@@ -104,9 +106,9 @@ async def get_youtube_video_info(request: YoutubeVideoInfoRequest) -> YoutubeVid
                 detail="请提供有效的YouTube视频URL"
             )
         
-        # 获取视频信息
+        # 获取视频信息（在线程池中运行，避免阻塞 asyncio 事件循环）
         logger.debug(f"调用YouTube信息服务，URL: {request.url}")
-        result = youtube_service.get_video_info(request)
+        result = await asyncio.to_thread(youtube_service.get_video_info, request)
         
         # 记录结果
         logger.info(f"YouTube视频信息获取完成 - 成功: {result.success}")
@@ -164,9 +166,9 @@ async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> Youtub
                 detail="请提供有效的YouTube视频URL"
             )
         
-        # 执行视频下载
+        # 执行视频下载（在线程池中运行，避免阻塞 asyncio 事件循环）
         logger.debug(f"调用YouTube下载服务，参数: {request.model_dump()}")
-        result = youtube_service.download_video(request)
+        result = await asyncio.to_thread(youtube_service.download_video, request)
         
         # 记录下载结果
         logger.info(f"YouTube视频下载完成 - 成功: {result.success}")
