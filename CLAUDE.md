@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, workflow automation, and creative brainstorming. It's a monorepo with a Next.js 15 frontend and two Python backend services.
+Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, workflow automation, and creative brainstorming. It's a monorepo with a Next.js 15 frontend and a FastAPI backend service.
 
 ## Commands
 
@@ -40,14 +40,25 @@ bash start.sh [PORT] [--dev]   # Starts DB + backend(:8000) + frontend(:3010)
 bash kill.sh           # Kills processes on ports 8000, 3000, 3001, 3008, 3010
 ```
 
+### System Dependencies
+
+- **Node.js** 18+ and **npm** for the frontend
+- **Python** 3.10+ for the backend
+- **PostgreSQL** 13+ (required for production; tests use SQLite in-memory)
+- **FFmpeg** (required for video composition, cutting, watermark removal, and audio processing)
+
 ## Architecture
 
-### Two-Service Stack
+### Frontend + Backend Stack
 
 - **Frontend** (Next.js 15, App Router): `src/` — TypeScript + React 19 + Tailwind CSS 3
 - **Backend** (FastAPI): `backend-services/basic-service/` — Python async with SQLAlchemy, port 8000
 
-The frontend proxies API calls through Next.js API routes (`src/app/api/`) to the backend. The backend URL is read from `process.env.BACKEND_URL` (server-side only, no `NEXT_PUBLIC_` prefix). Most backend routes are mounted under `/api` prefix, except `flux_router`, `ai_video_generate_router`, `video_export_router`, and `intent_detection_router` which mount at root.
+The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patterns**:
+1. **Backend proxy** (most routes): Read `process.env.BACKEND_URL` and forward requests to the FastAPI backend. Example: `video-search/route.ts` proxies to `${BACKEND_URL}/api/video/search`.
+2. **Direct LLM call** (chat routes): Read `process.env.LLM_API_URL` and `LLM_API_KEY` to call OpenAI-compatible APIs directly, bypassing the backend. Example: `chat/route.ts`.
+
+`BACKEND_URL` is server-side only (no `NEXT_PUBLIC_` prefix). Most backend routes are mounted under `/api` prefix, except `flux_router`, `ai_video_generate_router`, `video_export_router`, and `intent_detection_router` which mount at root.
 
 ### Frontend Structure
 
@@ -59,7 +70,8 @@ The frontend proxies API calls through Next.js API routes (`src/app/api/`) to th
 - **Auth tokens**: Stored in localStorage as `ecliptrix-user` and `ecliptrix-session-token`; session validated on load and every 5 minutes
 - **Types**: Centralized in `src/types/index.ts`
 - **Dark mode**: Class-based (`darkMode: ["class"]` in Tailwind config), colors use CSS variables
-- **Comment language**: Mixed English and Chinese throughout frontend code
+- **UI components**: shadcn/ui (style: "new-york", RSC enabled) — see `components.json`
+- **Comment language**: Mixed English and Chinese throughout frontend and backend code
 
 ### Backend Structure
 
@@ -88,6 +100,7 @@ The backend uses multiple independent LLM configurations, all using OpenAI-compa
 - ORM models in `app/models/db_models.py` — `User` (UUID PK, session fields for single-device login), `AgentWorkflow` (JSON workflow_data)
 - Default connection: `postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix`
 - **Tests use SQLite in-memory** (`sqlite+aiosqlite:///:memory:`), not PostgreSQL
+- **API docs**: Available at `http://localhost:8000/docs` (Swagger) and `/redoc` when backend is running
 
 ### Service Configuration
 
@@ -99,9 +112,28 @@ Complex services load YAML configs from `backend-services/basic-service/config/`
 - `watermark_removal_config.yaml` — Watermark removal
 - `video-download.yaml` — Video download settings
 
+### External API Integrations
+
+The backend integrates with numerous external services, each requiring its own API key in `.env`:
+
+| Service | Env Key(s) | Purpose |
+|---------|-----------|---------|
+| Pexels | `PEXELS_API_KEY` | Video search |
+| Unsplash | `UNSPLASH_ACCESS_KEYS` | Image search |
+| Tavily | `TAVILY_API_KEYS` | Web search |
+| RunningHub | `RUNNING_HUB_API_KEY` | FLUX image generation (async task-based with polling) |
+| ByteDance ARK | `ARK_API_KEY` | AI video generation |
+| Volcano TTS | `VOLCANO_TTS_*` | Text-to-speech (100+ voices) |
+| Alibaba Cloud OSS | `OSS_*` | Optional cloud storage (enabled via `OSS_ENABLED=true`) |
+| Freesound | `FREESOUND_API_KEY` | Audio search |
+
+YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
+
 ### Storage
 
-Local filesystem storage (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by `install.sh`: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`.
+**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by `install.sh`: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`.
+
+**Optional**: Alibaba Cloud OSS as secondary/CDN storage when `OSS_ENABLED=true`.
 
 ## Key Conventions
 
@@ -111,3 +143,15 @@ Local filesystem storage (replaced Supabase). Root at `STORAGE_ROOT` env var (de
 - **Git commit style**: Messages prefixed with `[add]`, `[modify]`, `[update]`, `[refactor]`, `[fix]`.
 - **Environment files**: Frontend uses `.env.local`, backend uses `.env` in its own directory. Templates are `env.template` in each location.
 - **Auth**: bcrypt password hashing, session token stored in `User.active_session_token` column (single-device login enforcement), no JWT expiry — token validated by DB lookup.
+
+## Project Index
+
+This project has a pre-generated index for quick codebase understanding.
+
+- **Location:** `.claude-index/index.md`
+- **Last Updated:** 2026-03-04
+- **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
+
+**Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
+
+**Regenerate:** Say "regenerate index" or "更新索引" to update the index after major changes.

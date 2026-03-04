@@ -70,45 +70,40 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
       aspect_ratio: aspectRatio,
       resolution,
     });
-    // Parent closes the modal via onConfirm handler; form is reset in handleClose
   };
 
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
     >
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[500px] max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-              </svg>
-            </div>
+        <div className="px-8 py-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+          <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-white font-semibold text-base">AI 视频生成</h2>
-              <p className="text-white/70 text-xs">Seedance · 字节跳动 Ark 平台</p>
+              <h2 className="text-2xl font-semibold text-gray-900">AI 视频生成</h2>
+              <p className="text-sm text-gray-500 mt-1">Seedance · 字节跳动 Ark 平台</p>
             </div>
+            <button
+              onClick={handleClose}
+              className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors flex items-center justify-center"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-          <button
-            onClick={handleClose}
-            className="w-7 h-7 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
-          >
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
           {/* Prompt */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               提示词 <span className="text-red-500">*</span>
             </label>
             <div className="relative">
@@ -118,9 +113,9 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
                 rows={4}
                 autoFocus
                 placeholder="描述你想要生成的视频内容，例如：一只猫咪在阳光下玩耍，镜头缓缓移动..."
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              <span className="absolute bottom-2 right-3 text-xs text-gray-400">
+              <span className="absolute bottom-2.5 right-3 text-xs text-gray-400">
                 {prompt.length}/500
               </span>
             </div>
@@ -128,18 +123,18 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
 
           {/* Duration */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               视频时长
             </label>
-            <div className="flex space-x-3">
+            <div className="flex gap-3">
               {([5, 10] as const).map((d) => (
                 <button
                   key={d}
                   onClick={() => setDuration(d)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all ${
                     duration === d
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                      ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                 >
                   {d} 秒
@@ -150,10 +145,10 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
 
           {/* Aspect Ratio */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               视频比例
             </label>
-            <div className="flex space-x-3">
+            <div className="flex gap-3">
               {([
                 { value: '16:9' as const, label: '16:9', desc: '横屏', icon: (
                   <rect x="1" y="4" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
@@ -168,10 +163,10 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
                 <button
                   key={value}
                   onClick={() => setAspectRatio(value)}
-                  className={`flex-1 py-2 px-2 rounded-xl text-sm font-medium border transition-all flex flex-col items-center space-y-1 ${
+                  className={`flex-1 py-2.5 px-2 rounded-xl text-sm font-medium border transition-all flex flex-col items-center gap-1 ${
                     aspectRatio === value
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                      ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                 >
                   <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
@@ -186,7 +181,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
 
           {/* Reference Image URL */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               参考图片 URL <span className="text-gray-400 text-xs font-normal">（可选）</span>
             </label>
             <div className="relative">
@@ -200,15 +195,13 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
                 value={imageUrl}
                 onChange={(e) => handleImageUrlChange(e.target.value)}
                 placeholder="https://example.com/image.jpg"
-                className={`w-full border rounded-xl pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  imageUrlError
-                    ? 'border-red-400 dark:border-red-500'
-                    : 'border-gray-300 dark:border-gray-600'
+                className={`w-full border rounded-xl pl-9 pr-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  imageUrlError ? 'border-red-400' : 'border-gray-200'
                 }`}
               />
             </div>
             {imageUrlError && (
-              <p className="mt-1 text-xs text-red-500">{imageUrlError}</p>
+              <p className="mt-1.5 text-xs text-red-500">{imageUrlError}</p>
             )}
           </div>
 
@@ -216,7 +209,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
           <div>
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600 transition-colors"
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-500 transition-colors"
             >
               <svg
                 className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
@@ -228,59 +221,55 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
             </button>
 
             {showAdvanced && (
-              <div className="mt-3 space-y-3 pl-2 border-l-2 border-indigo-100 dark:border-indigo-900">
+              <div className="mt-4 space-y-4 pl-3 border-l-2 border-blue-100">
                 {/* Camera Fixed */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">固定镜头</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">锁定镜头位置，减少镜头移动</p>
+                    <p className="text-sm font-medium text-gray-700">固定镜头</p>
+                    <p className="text-xs text-gray-500 mt-0.5">锁定镜头位置，减少镜头移动</p>
                   </div>
-                  <button
+                  <div
                     onClick={() => setCameraFixed(!cameraFixed)}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      cameraFixed ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                    className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer flex items-center ${
+                      cameraFixed ? 'bg-blue-500' : 'bg-gray-300'
                     }`}
                   >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                        cameraFixed ? 'translate-x-4' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
+                    <div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${
+                      cameraFixed ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </div>
                 </div>
 
                 {/* Watermark */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">添加水印</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">在生成视频上添加平台水印</p>
+                    <p className="text-sm font-medium text-gray-700">添加水印</p>
+                    <p className="text-xs text-gray-500 mt-0.5">在生成视频上添加平台水印</p>
                   </div>
-                  <button
+                  <div
                     onClick={() => setWatermark(!watermark)}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      watermark ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                    className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer flex items-center ${
+                      watermark ? 'bg-blue-500' : 'bg-gray-300'
                     }`}
                   >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                        watermark ? 'translate-x-4' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
+                    <div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${
+                      watermark ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </div>
                 </div>
 
                 {/* Resolution */}
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">分辨率</p>
-                  <div className="flex space-x-2">
+                  <p className="text-sm font-medium text-gray-700 mb-2">分辨率</p>
+                  <div className="flex gap-2">
                     {(['480p', '720p', '1080p'] as const).map((r) => (
                       <button
                         key={r}
                         onClick={() => setResolution(r)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-all ${
                           resolution === r
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                            ? 'bg-blue-500 text-white border-blue-500'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                         }`}
                       >
                         {r}
@@ -294,20 +283,20 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-end space-x-3 flex-shrink-0">
+        <div className="px-8 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
           <button
             onClick={handleClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
           >
             取消
           </button>
           <button
             onClick={handleSubmit}
             disabled={!prompt.trim() || !!imageUrlError}
-            className={`px-5 py-2 text-sm font-medium text-white rounded-xl transition-all ${
+            className={`px-6 py-2.5 text-sm font-medium text-white rounded-xl transition-all ${
               prompt.trim() && !imageUrlError
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm hover:shadow-md'
-                : 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
+                ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg'
+                : 'bg-gray-300 cursor-not-allowed'
             }`}
           >
             开始生成

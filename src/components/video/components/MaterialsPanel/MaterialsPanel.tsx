@@ -11,6 +11,7 @@ import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
 import WatermarkRemovalModal from '../WatermarkRemovalModal/WatermarkRemovalModal';
 import { useNotification } from '@/contexts/NotificationContext';
 import AiVideoModal from '../AiVideoModal/AiVideoModal';
+import AiImageModal from '../AiImageModal/AiImageModal';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -57,6 +58,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   confirmationDialog,
   handleCloseConfirmationDialog,
   handleAiVideoGenerate,
+  handleAiImageGenerate,
 }) => {
   const { t } = useLocale();
   const { showSuccess, showError } = useNotification();
@@ -100,6 +102,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // AI视频生成弹窗状态
   const [isAiVideoModalOpen, setIsAiVideoModalOpen] = useState(false);
+  // AI图像生成弹窗状态
+  const [isAiImageModalOpen, setIsAiImageModalOpen] = useState(false);
   
   // Material Library Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -1757,6 +1761,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               </button>
 
               <button
+                onClick={() => setIsAiImageModalOpen(true)}
+                className="flex items-center space-x-1 text-pink-600 hover:text-pink-700 bg-pink-50 hover:bg-pink-100 px-2 py-1 rounded transition-colors"
+                title="AI 图像生成（Seedream）"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>AI图像</span>
+              </button>
+
+              <button
                 onClick={() => setIsAiVideoModalOpen(true)}
                 className="flex items-center space-x-1 text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded transition-colors"
                 title="AI 视频生成（Seedance）"
@@ -1974,6 +1989,18 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onConfirm={(params) => {
           handleAiVideoGenerate(params);
           setIsAiVideoModalOpen(false);
+        }}
+      />
+
+      {/* AI图像生成弹窗 */}
+      <AiImageModal
+        isOpen={isAiImageModalOpen}
+        onClose={() => setIsAiImageModalOpen(false)}
+        onConfirm={(params) => {
+          setIsAiImageModalOpen(false);
+          handleAiImageGenerate(params).catch((err: Error) => {
+            showError(err.message || 'AI图像生成失败');
+          });
         }}
       />
     </div>

@@ -4,6 +4,7 @@ import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
+import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
 
 // 确认对话框状态接口
 interface ConfirmationDialogState {
@@ -868,6 +869,70 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     pendingAiTasks.current.set(tempId, initialTimeout);
   }, [logger, addOrReplaceMaterial]);
 
+  // AI图像生成
+  const handleAiImageGenerate = useCallback(async (params: ArkImageGenerateParams) => {
+    const createdAt = new Date();
+    const timeStr = createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    // Insert placeholder cards for each requested image
+    const placeholderIds: string[] = [];
+    for (let i = 0; i < params.count; i++) {
+      const tempId = crypto.randomUUID();
+      placeholderIds.push(tempId);
+      const placeholder: MaterialItem = {
+        id: tempId,
+        name: `AI图像_${timeStr}_${i + 1}`,
+        type: 'image',
+        format: 'png',
+        size: 0,
+        url: '',
+        createdAt,
+        downloadStatus: 'generating',
+        downloadProgress: 0,
+        metadata: { source: 'ark-ai-image', prompt: params.prompt },
+      };
+      setMaterials(prev => [placeholder, ...prev]);
+    }
+
+    try {
+      const images = await generateArkImages(params);
+
+      // Replace placeholders with actual results
+      for (let i = 0; i < placeholderIds.length; i++) {
+        const placeholderId = placeholderIds[i];
+        const image = images[i];
+
+        if (image) {
+          const finalMaterial: MaterialItem = {
+            id: placeholderId,
+            name: `AI图像_${timeStr}_${i + 1}`,
+            type: 'image',
+            format: 'png',
+            size: 0,
+            url: image.image_url,
+            serverUrl: image.image_url,
+            thumbnailUrl: image.image_url,
+            width: image.width,
+            height: image.height,
+            createdAt,
+            downloadStatus: undefined,
+            downloadProgress: undefined,
+            metadata: { source: 'ark-ai-image', prompt: params.prompt },
+          };
+          addOrReplaceMaterial(finalMaterial);
+        } else {
+          // No corresponding image returned — remove placeholder
+          setMaterials(prev => prev.filter(m => m.id !== placeholderId));
+        }
+      }
+    } catch (error) {
+      logger.error('AI图像生成失败', error as Error);
+      // Remove all placeholders on failure
+      setMaterials(prev => prev.filter(m => !placeholderIds.includes(m.id)));
+      throw error;
+    }
+  }, [logger, addOrReplaceMaterial]);
+
   // 过滤后的素材列表
   const filteredMaterials = useMemo(() => {
     if (selectedMaterialType === 'all') {
@@ -893,6 +958,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     confirmationDialog,
     handleCloseConfirmationDialog,
     handleAiVideoGenerate,
+    handleAiImageGenerate,
   };
 };
 

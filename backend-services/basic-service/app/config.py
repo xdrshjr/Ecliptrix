@@ -239,6 +239,9 @@ class Settings(BaseModel):
     
     # Ark API Configuration (Seedance video generation)
     ark_api_key: str = Field(default="", description="ARK API key for Seedance video generation")
+
+    # YouTube Proxy Configuration
+    youtube_proxy: str = Field(default="", description="Proxy URL for YouTube access (e.g. socks5://127.0.0.1:1080 or http://127.0.0.1:7890)")
     
     # Database Configuration
     database: DatabaseConfig = Field(default_factory=DatabaseConfig, description="Database configuration")
@@ -424,6 +427,7 @@ def get_settings() -> Settings:
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
         ark_api_key=os.getenv("ARK_API_KEY", ""),
+        youtube_proxy=os.getenv("YOUTUBE_PROXY", ""),
         database=database_config,
         auth=auth_config,
         batch_tts=batch_tts_config,

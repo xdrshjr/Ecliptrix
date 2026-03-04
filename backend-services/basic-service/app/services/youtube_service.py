@@ -28,7 +28,8 @@ _settings = get_settings()
 _max_concurrent_downloads = _settings.youtube.download.max_concurrent_downloads
 _download_semaphore = asyncio.Semaphore(_max_concurrent_downloads)
 
-logger.info(f"YouTube服务初始化 - 最大并发下载数: {_max_concurrent_downloads}")
+_youtube_proxy = _settings.youtube_proxy
+logger.info(f"YouTube服务初始化 - 最大并发下载数: {_max_concurrent_downloads}, 代理: {'已配置' if _youtube_proxy else '未配置'}")
 
 
 async def retry_with_exponential_backoff(
@@ -95,13 +96,14 @@ class YouTubeService:
     def __init__(self, output_dir: str = "./static/video/youtube"):
         """
         初始化YouTube服务
-        
+
         Args:
             output_dir: 下载文件保存目录
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"YouTube服务初始化完成，下载目录: {self.output_dir}")
+        self.proxy = _youtube_proxy or None
+        logger.info(f"YouTube服务初始化完成，下载目录: {self.output_dir}, 代理: {self.proxy or '无'}")
 
     def progress_hook(self, d: Dict[str, Any]) -> None:
         """下载进度回调函数"""
@@ -148,9 +150,12 @@ class YouTubeService:
             }
         }
         
+        if self.proxy:
+            robust_opts['proxy'] = self.proxy
+
         if base_opts:
             robust_opts.update(base_opts)
-            
+
         return robust_opts
 
     def sanitize_filename(self, title: str, max_length: int = 200) -> str:
@@ -258,6 +263,9 @@ class YouTubeService:
                 'retries': 1,
                 'fragment_retries': 1,
             }
+
+            if self.proxy:
+                ydl_opts['proxy'] = self.proxy
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 search_results = ydl.extract_info(search_url, download=False)

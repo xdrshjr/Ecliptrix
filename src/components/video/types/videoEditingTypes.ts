@@ -1,4 +1,5 @@
 import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem, ScriptGenerationConfig, ChatMessage } from '@/types';
+import { ArkImageSize } from '@/lib/api/arkImage';
 
 // Video playback types
 export type PreviewQuality = 'low' | 'medium' | 'high' | 'original';
@@ -152,6 +153,8 @@ export interface UseMaterialManagementReturn {
   handleCloseConfirmationDialog: () => void;
   // AI视频生成
   handleAiVideoGenerate: (params: { prompt: string; duration: 5 | 10; camera_fixed: boolean; watermark: boolean; image_url?: string }) => Promise<void>;
+  // AI图像生成
+  handleAiImageGenerate: (params: { prompt: string; size: ArkImageSize; count: number; watermark: boolean }) => Promise<void>;
 }
 
 // 新增：Youtube视频搜索结果接口
