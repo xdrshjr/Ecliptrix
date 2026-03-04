@@ -298,8 +298,6 @@ export interface Translations {
     download: string;
     previewMaterial: string;
     downloadMaterial: string;
-    aiCreation: string;
-    aiCreationTooltip: string;
     aiMixing: string;
     aiMixingTooltip: string;
     myMaterials: string;
@@ -349,55 +347,6 @@ export interface Translations {
     frameIntervalHint: string;
     cancel: string;
     confirm: string;
-  };
-  aiCreationModal: {
-    title: string;
-    loadingWorkflows: string;
-    loadingWorkflowsDesc: string;
-    loadingFailed: string;
-    reload: string;
-    noWorkflows: string;
-    noWorkflowsDesc: string;
-    selectWorkflow: string;
-    fileUpload: string;
-    uploadRequired: string;
-    uploadSuccess: string;
-    uploadSuccessDesc: string;
-    copyFilename: string;
-    copied: string;
-    copiedToClipboard: string;
-    uploadError: string;
-    backToWorkflows: string;
-    fixIssues: string;
-    systemBusy: string;
-    executionFailed: string;
-    suggestions: string;
-    suggestionWait: string;
-    suggestionPrepare: string;
-    suggestionAutoQueue: string;
-    creationStarted: string;
-    taskId: string;
-    back: string;
-    startCreation: string;
-    creating: string;
-    uploadFilesFirst: string;
-    optionConfigError: string;
-    optionConfigMissing: string;
-    fallbackOptions: {
-      ratio_1_1: string;
-      ratio_4_3: string;
-      ratio_16_9: string;
-      ratio_9_16: string;
-      ratio_3_4: string;
-      version_fast: string;
-      version_hd: string;
-      version_uhd: string;
-      input_simple: string;
-      input_detailed: string;
-      input_professional: string;
-      input_custom: string;
-      option: string;
-    };
   };
   videoSearchModal: {
     title: string;
@@ -1198,8 +1147,6 @@ export const translations: Record<string, Translations> = {
       download: 'Download',
       previewMaterial: 'Preview Material',
       downloadMaterial: 'Download Material',
-      aiCreation: 'AI Creation',
-      aiCreationTooltip: 'Open AI creation panel to select creative workflows',
       aiMixing: 'AI Mixing',
       aiMixingTooltip: 'Auto-generate editing plan based on current materials, intelligently mix video content',
       myMaterials: 'My Materials',
@@ -1249,55 +1196,6 @@ export const translations: Record<string, Translations> = {
       frameIntervalHint: 'Smaller interval means more detailed analysis but longer processing time (Recommended: 3-10 seconds)',
       cancel: 'Cancel',
       confirm: 'Start Analysis',
-    },
-    aiCreationModal: {
-      title: 'AI Creation',
-      loadingWorkflows: 'Loading creative workflows...',
-      loadingWorkflowsDesc: 'Fetching available creation tasks',
-      loadingFailed: 'Loading Failed',
-      reload: 'Reload',
-      noWorkflows: 'No workflows available',
-      noWorkflowsDesc: 'Please try again later or contact the administrator',
-      selectWorkflow: 'Select Creative Workflow',
-      fileUpload: 'File Upload',
-      uploadRequired: 'Upload {type}',
-      uploadSuccess: 'Upload successful: {filename}',
-      uploadSuccessDesc: 'Please use this filename in the related input field',
-      copyFilename: 'Copy filename',
-      copied: 'Copied!',
-      copiedToClipboard: 'Copied to clipboard!',
-      uploadError: 'Upload Error',
-      backToWorkflows: 'Back',
-      fixIssues: 'Please fix the following issues:',
-      systemBusy: 'System Busy',
-      executionFailed: 'Execution Failed',
-      suggestions: 'Suggestions:',
-      suggestionWait: 'Wait 2-3 minutes and try again',
-      suggestionPrepare: 'You can prepare other materials or edit content first',
-      suggestionAutoQueue: 'The system will automatically process queued tasks',
-      creationStarted: 'Creation task started',
-      taskId: 'Task ID: {id}',
-      back: 'Back',
-      startCreation: 'Start Creation',
-      creating: 'Creating...',
-      uploadFilesFirst: 'Please upload required files first',
-      optionConfigError: 'Please configure options',
-      optionConfigMissing: '⚠️ Configuration error: missing options in uiConfig',
-      fallbackOptions: {
-        ratio_1_1: '1:1 (Square)',
-        ratio_4_3: '4:3 (Standard)',
-        ratio_16_9: '16:9 (Widescreen)',
-        ratio_9_16: '9:16 (Portrait)',
-        ratio_3_4: '3:4 (Portrait Standard)',
-        version_fast: 'Fast Version',
-        version_hd: 'HD Version',
-        version_uhd: 'UHD Version',
-        input_simple: 'Simple Input',
-        input_detailed: 'Detailed Input',
-        input_professional: 'Professional Input',
-        input_custom: 'Custom Input',
-        option: 'Option {num}',
-      },
     },
     timeline: {
       toolbar: {
@@ -2196,8 +2094,6 @@ export const translations: Record<string, Translations> = {
         download: '下载',
         previewMaterial: '预览素材',
         downloadMaterial: '下载素材',
-        aiCreation: 'AI创作',
-      aiCreationTooltip: '打开AI创作面板，选择创作工作流进行内容创作',
       aiMixing: 'AI混剪',
       aiMixingTooltip: '基于当前素材自动生成剪辑方案，智能混剪视频内容',
       myMaterials: '我的素材',
@@ -2247,55 +2143,6 @@ export const translations: Record<string, Translations> = {
       frameIntervalHint: '间隔越小，分析越详细，但处理时间越长（推荐：3-10秒）',
       cancel: '取消',
       confirm: '开始解析',
-    },
-    aiCreationModal: {
-      title: 'AI创作',
-      loadingWorkflows: '加载创作工作流中...',
-      loadingWorkflowsDesc: '正在获取可用的创作任务',
-      loadingFailed: '加载失败',
-      reload: '重新加载',
-      noWorkflows: '暂无可用工作流',
-      noWorkflowsDesc: '请稍后再试或联系管理员',
-      selectWorkflow: '选择创作工作流',
-      fileUpload: '文件上传',
-      uploadRequired: '上传{type}',
-      uploadSuccess: '上传成功：{filename}',
-      uploadSuccessDesc: '请在相关输入框中使用此文件名',
-      copyFilename: '复制文件名',
-      copied: '已复制！',
-      copiedToClipboard: '已复制到剪贴板！',
-      uploadError: '上传错误',
-      backToWorkflows: '返回',
-      fixIssues: '请修正以下问题：',
-      systemBusy: '系统繁忙',
-      executionFailed: '执行失败',
-      suggestions: '建议：',
-      suggestionWait: '等待 2-3 分钟后重新尝试',
-      suggestionPrepare: '可以先准备其他素材或编辑文案',
-      suggestionAutoQueue: '系统会自动处理排队任务',
-      creationStarted: '创作任务已启动',
-      taskId: '任务ID: {id}',
-      back: '返回',
-      startCreation: '开始创作',
-      creating: '创作中...',
-      uploadFilesFirst: '请先上传必需文件',
-      optionConfigError: '请配置选项',
-      optionConfigMissing: '⚠️ 配置错误：uiConfig 中缺少 options',
-      fallbackOptions: {
-        ratio_1_1: '1:1 (正方形)',
-        ratio_4_3: '4:3 (标准)',
-        ratio_16_9: '16:9 (宽屏)',
-        ratio_9_16: '9:16 (竖屏)',
-        ratio_3_4: '3:4 (竖向标准)',
-        version_fast: '极速版',
-        version_hd: '高清版',
-        version_uhd: '超清版',
-        input_simple: '简单输入',
-        input_detailed: '详细输入',
-        input_professional: '专业输入',
-        input_custom: '自定义输入',
-        option: '选项 {num}',
-      },
     },
     timeline: {
       toolbar: {

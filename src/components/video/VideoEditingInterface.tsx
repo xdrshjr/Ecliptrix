@@ -17,8 +17,7 @@ import {
   useAudioSearch,
   useImageSearch,
   useTimelineComposition,
-  useVideoAnalysis,
-  useAICreation
+  useVideoAnalysis
 } from './hooks';
 import { useConvertToScript } from './hooks/useConvertToScript';
 import { getMockScriptSegments, mockVideoPreview } from './data';
@@ -39,7 +38,6 @@ import {
   ScriptGenerationProgressModal,
   CreativeBrainstormingModal,
   VideoAnalysisModal,
-  AICreationModal,
   AIMixingProgressModal,
   AIMixingModeSelectionModal,
   BatchAnalysisModeSelectionModal
@@ -485,9 +483,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 添加时间轴组合播放功能（新增视频跳转回调）
   const timelineComposition = useTimelineComposition(taskId, materialManagement.materials, handleVideoSeekRequired);
   
-  // 添加AI创作功能
-  const aiCreation = useAICreation(taskId);
-
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
     console.log(`[VideoEditingInterface] 用户点击智能润色按钮`, {
@@ -2651,7 +2646,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onSearchVideos={videoSearch.openSearchModal}
             onSearchAudios={audioSearch.openSearchModal}
             onSearchImages={imageSearch.openSearchModal}
-            onAICreation={aiCreation.openModal}
             onAIMixedEditing={handleAIMixedEditing}
             onAutoMixAudio={handleAutoMixAudio}
             onVideoAnalysis={handleVideoAnalysis}
@@ -2773,11 +2767,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={videoAnalysis.closeAnalysisModal}
         analysisResult={videoAnalysis.currentAnalysisResult}
         videoUrl={videoAnalysis.currentVideoUrl || undefined}
-      />
-
-      <AICreationModal
-        {...aiCreation}
-        addMaterial={materialManagement.addOrReplaceMaterial}
       />
 
       {/* AI混剪模式选择弹窗 */}

@@ -298,10 +298,6 @@ app.include_router(audio_router.router, prefix="/api")
 from app.routers import youtube_router
 app.include_router(youtube_router.router, prefix="/api")
 
-# Import and include FLUX router
-from app.routers import flux_router
-app.include_router(flux_router.router)
-
 # Import and include Workflow router
 from app.routers import workflow_router
 app.include_router(workflow_router.router, prefix="/api")
@@ -309,10 +305,6 @@ app.include_router(workflow_router.router, prefix="/api")
 # Import and include Image router
 from app.routers import image_router
 app.include_router(image_router.router, prefix="/api")
-
-# Import and include File Upload router
-from app.routers import file_upload_router
-app.include_router(file_upload_router.router, prefix="/api")
 
 # Import and include Timeline Export router
 from app.routers import timeline_export_router

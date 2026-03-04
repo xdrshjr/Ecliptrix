@@ -11,8 +11,6 @@ export { ScriptGenerationProgressModal } from './ScriptGenerationProgressModal';
 export { SubtitleEditModal } from './SubtitleEditModal';
 export { CreativeBrainstormingModal } from './CreativeBrainstormingModal';
 export { VideoAnalysisModal } from './VideoAnalysisModal';
-export { AICreationModal } from './AICreationModal';
-export { FileUploadComponent } from './FileUpload';
 export { AIMixingProgressModal } from './AIMixingProgressModal';
 export { default as AIMixingModeSelectionModal } from './AIMixingModeSelectionModal';
 export { default as BatchAnalysisModeSelectionModal } from './BatchAnalysisModeSelectionModal';

@@ -237,9 +237,6 @@ class Settings(BaseModel):
     volcano_tts_access_token: str = Field(default="", description="Volcano TTS Access Token")
     volcano_tts_secret_key: str = Field(default="", description="Volcano TTS Secret Key")
     
-    # RunningHub API Configuration
-    running_hub_api_key: str = Field(default="", description="RunningHub API key for FLUX generation")
-
     # Ark API Configuration (Seedance video generation)
     ark_api_key: str = Field(default="", description="ARK API key for Seedance video generation")
     
@@ -426,7 +423,6 @@ def get_settings() -> Settings:
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
-        running_hub_api_key=os.getenv("RUNNING_HUB_API_KEY", ""),
         ark_api_key=os.getenv("ARK_API_KEY", ""),
         database=database_config,
         auth=auth_config,

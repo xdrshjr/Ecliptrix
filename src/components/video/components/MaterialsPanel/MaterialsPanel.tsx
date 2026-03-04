@@ -16,7 +16,6 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
   onSearchImages: () => void; // 新增：搜索图片回调
-  onAICreation?: () => void; // 新增：AI创作回调
   onAIMixedEditing?: () => void; // 新增：AI混剪回调
   onAutoMixAudio?: () => void; // 新增：AI自动混剪回调
   onVideoAnalysis?: (material: MaterialItem) => void; // 新增：视频AI解析回调
@@ -42,7 +41,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onSearchVideos,
   onSearchAudios, // 新增：搜索音频回调
   onSearchImages, // 新增：搜索图片回调
-  onAICreation, // 新增：AI创作回调
   onAIMixedEditing, // 新增：AI混剪回调
   onAutoMixAudio, // 新增：AI自动混剪回调
   onVideoAnalysis, // 新增：视频AI解析回调
@@ -1746,17 +1744,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   </div>
                 )}
               </div>
-
-              <button
-                onClick={onAICreation}
-                className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
-                title={t.materialsPanel.aiCreationTooltip}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span>{t.materialsPanel.aiCreation}</span>
-              </button>
 
               <button
                 onClick={onAIMixedEditing}
