@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 
 interface AiVideoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (params: ArkVideoGenerateParams) => void;
+  initialImageUrl?: string;
+  initialImageName?: string;
 }
 
 function isValidUrl(value: string): boolean {
@@ -18,7 +20,11 @@ function isValidUrl(value: string): boolean {
   }
 }
 
-const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm }) => {
+function isDataUri(value: string): boolean {
+  return value.startsWith('data:image/');
+}
+
+const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm, initialImageUrl, initialImageName }) => {
   const [prompt, setPrompt] = useState('');
   const [duration, setDuration] = useState<5 | 10>(5);
   const [imageUrl, setImageUrl] = useState('');
@@ -28,6 +34,14 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
   const [imageUrlError, setImageUrlError] = useState('');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('720p');
+
+  // Pre-fill image URL when modal opens with initialImageUrl
+  useEffect(() => {
+    if (isOpen && initialImageUrl) {
+      setImageUrl(initialImageUrl);
+      setImageUrlError('');
+    }
+  }, [isOpen, initialImageUrl]);
 
   const resetForm = () => {
     setPrompt('');
@@ -48,7 +62,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
 
   const handleImageUrlChange = (value: string) => {
     setImageUrl(value);
-    if (value && !isValidUrl(value)) {
+    if (value && !isValidUrl(value) && !isDataUri(value)) {
       setImageUrlError('请输入有效的 HTTP/HTTPS 链接');
     } else {
       setImageUrlError('');
@@ -57,7 +71,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
 
   const handleSubmit = () => {
     if (!prompt.trim()) return;
-    if (imageUrl && !isValidUrl(imageUrl)) {
+    if (imageUrl && !isValidUrl(imageUrl) && !isDataUri(imageUrl)) {
       setImageUrlError('请输入有效的 HTTP/HTTPS 链接');
       return;
     }
@@ -182,24 +196,62 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm 
           {/* Reference Image URL */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              参考图片 URL <span className="text-gray-400 text-xs font-normal">（可选）</span>
+              参考图片 {imageUrl && isDataUri(imageUrl) ? '' : 'URL '}<span className="text-gray-400 text-xs font-normal">（可选）</span>
             </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
+            {/* Image preview when pre-filled from materials panel */}
+            {imageUrl && isDataUri(imageUrl) ? (
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <img
+                  src={imageUrl}
+                  alt={initialImageName || '参考图片'}
+                  className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-700 truncate">{initialImageName || '参考图片'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">已从素材库选取</p>
+                </div>
+                <button
+                  onClick={() => { setImageUrl(''); setImageUrlError(''); }}
+                  className="w-7 h-7 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors flex items-center justify-center flex-shrink-0"
+                  title="移除图片"
+                >
+                  <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <input
-                type="text"
-                value={imageUrl}
-                onChange={(e) => handleImageUrlChange(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                className={`w-full border rounded-xl pl-9 pr-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  imageUrlError ? 'border-red-400' : 'border-gray-200'
-                }`}
-              />
-            </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={imageUrl}
+                    onChange={(e) => handleImageUrlChange(e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    className={`w-full border rounded-xl pl-9 pr-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      imageUrlError ? 'border-red-400' : 'border-gray-200'
+                    }`}
+                  />
+                </div>
+                {/* Show thumbnail preview for HTTP URLs */}
+                {imageUrl && isValidUrl(imageUrl) && (
+                  <div className="mt-2 flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                    <img
+                      src={imageUrl}
+                      alt="预览"
+                      className="w-12 h-12 object-cover rounded border border-gray-200"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    <p className="text-xs text-gray-400 truncate flex-1">{initialImageName || imageUrl}</p>
+                  </div>
+                )}
+              </>
+            )}
             {imageUrlError && (
               <p className="mt-1.5 text-xs text-red-500">{imageUrlError}</p>
             )}

@@ -102,8 +102,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // AI视频生成弹窗状态
   const [isAiVideoModalOpen, setIsAiVideoModalOpen] = useState(false);
+  const [aiVideoInitialImage, setAiVideoInitialImage] = useState<{ url: string; name: string } | null>(null);
   // AI图像生成弹窗状态
   const [isAiImageModalOpen, setIsAiImageModalOpen] = useState(false);
+
+  // 图片转视频弹出菜单状态
+  const [imageToVideoPopover, setImageToVideoPopover] = useState<{
+    visible: boolean;
+    material: MaterialItem | null;
+    position: { x: number; y: number };
+  }>({ visible: false, material: null, position: { x: 0, y: 0 } });
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   
   // Material Library Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -125,6 +134,18 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       emptyStateUpdate: 'removed-search-button'
     });
   }, []);
+
+  // 关闭图片转视频弹出菜单（点击外部）
+  useEffect(() => {
+    if (!imageToVideoPopover.visible) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setImageToVideoPopover(prev => ({ ...prev, visible: false }));
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [imageToVideoPopover.visible]);
 
   // 监听 materials 变化
   useEffect(() => {
@@ -658,11 +679,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   };
 
-  // 处理图片转视频
+  // 处理图片转视频 - 显示弹出菜单
   const handleImageToVideo = (material: MaterialItem, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     logger.userAction('点击图片转视频按钮', 'imageToVideo', {
       materialId: material.id,
       materialName: material.name,
@@ -670,8 +691,64 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       imageUrl: material.url
     });
 
-    setSelectedImageForConversion(material);
-    setShowImageToVideoModal(true);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setImageToVideoPopover({
+      visible: true,
+      material,
+      position: { x: rect.left, y: rect.bottom + 4 },
+    });
+  };
+
+  // 选择效果转换
+  const handleChooseEffectConversion = () => {
+    const material = imageToVideoPopover.material;
+    setImageToVideoPopover(prev => ({ ...prev, visible: false }));
+    if (material) {
+      setSelectedImageForConversion(material);
+      setShowImageToVideoModal(true);
+    }
+  };
+
+  // 判断是否为可被外部API访问的公网URL（排除相对路径和本地地址）
+  const isPublicUrl = (url: string): boolean => {
+    try {
+      const u = new URL(url); // 不传base，相对路径会抛异常
+      return (u.protocol === 'http:' || u.protocol === 'https:') && !u.hostname.match(/^(localhost|127\.|0\.0\.0\.|10\.|192\.168\.)/);
+    } catch {
+      return false;
+    }
+  };
+
+  // 解析图片URL（优先公网URL，否则转base64）
+  const resolveImageUrl = async (material: MaterialItem): Promise<string> => {
+    // 1. 公网原始URL（Pexels/Unsplash）
+    if (material.metadata?.originalUrl && isPublicUrl(material.metadata.originalUrl)) {
+      return material.metadata.originalUrl;
+    }
+    // 2. serverUrl 为公网URL（如OSS CDN）
+    if (material.serverUrl && isPublicUrl(material.serverUrl)) {
+      return material.serverUrl;
+    }
+    // 3. 转 base64（本地文件、blob URL、相对路径）
+    const fetchUrl = material.serverUrl || material.url;
+    const response = await fetch(fetchUrl);
+    const blob = await response.blob();
+    return await blobToBase64(blob);
+  };
+
+  // 选择AI视频生成
+  const handleChooseAiVideoGeneration = async () => {
+    const material = imageToVideoPopover.material;
+    setImageToVideoPopover(prev => ({ ...prev, visible: false }));
+    if (!material) return;
+    try {
+      const resolvedUrl = await resolveImageUrl(material);
+      setAiVideoInitialImage({ url: resolvedUrl, name: material.name });
+      setIsAiVideoModalOpen(true);
+    } catch (err) {
+      logger.error('解析图片URL失败', err instanceof Error ? err : new Error(String(err)));
+      showError('无法解析图片，请重试');
+    }
   };
 
   // 处理水印去除
@@ -1800,6 +1877,34 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onCancel={handleCloseConfirmationDialog}
       />
 
+      {/* 图片转视频方式选择弹出菜单 */}
+      {imageToVideoPopover.visible && imageToVideoPopover.material && (
+        <div
+          ref={popoverRef}
+          className="fixed z-[1200] bg-white rounded-xl shadow-xl border border-gray-200 py-1 w-44 animate-in fade-in zoom-in-95 duration-150"
+          style={{ left: imageToVideoPopover.position.x, top: imageToVideoPopover.position.y }}
+        >
+          <button
+            onClick={handleChooseEffectConversion}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2m0 2a2 2 0 012 2m-2-2a2 2 0 00-2 2M7 20v2m0-2a2 2 0 01-2-2m2 2a2 2 0 002-2M3 8h2M3 16h2m14-8h2m-2 8h2M7 8h10a2 2 0 012 2v4a2 2 0 01-2 2H7a2 2 0 01-2-2v-4a2 2 0 012-2z" />
+            </svg>
+            <span>效果转换</span>
+          </button>
+          <button
+            onClick={handleChooseAiVideoGeneration}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-4 h-4 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+            <span>AI视频生成</span>
+          </button>
+        </div>
+      )}
+
       {/* 图片转视频效果选择弹窗 */}
       {showImageToVideoModal && selectedImageForConversion && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4">
@@ -1985,11 +2090,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       {/* AI视频生成弹窗 */}
       <AiVideoModal
         isOpen={isAiVideoModalOpen}
-        onClose={() => setIsAiVideoModalOpen(false)}
+        onClose={() => { setIsAiVideoModalOpen(false); setAiVideoInitialImage(null); }}
         onConfirm={(params) => {
           handleAiVideoGenerate(params);
           setIsAiVideoModalOpen(false);
+          setAiVideoInitialImage(null);
         }}
+        initialImageUrl={aiVideoInitialImage?.url}
+        initialImageName={aiVideoInitialImage?.name}
       />
 
       {/* AI图像生成弹窗 */}
