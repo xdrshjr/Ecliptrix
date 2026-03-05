@@ -372,14 +372,17 @@ export const useConvertToScript = (
             videosNeedingAnalysis: videosNeedingAnalysis.length
           });
 
-          // 如果还有视频需要分析，则进行分析（这种情况不应该发生，因为modal已经过滤了）
+          // 如果还有视频需要分析，则自动进行并发分析
           if (videosNeedingAnalysis.length > 0) {
-            logger.warn('发现未分析的视频，将进行分析', {
+            logger.info('开始分析未解析的视频', {
               needingAnalysisCount: videosNeedingAnalysis.length,
               videos: videosNeedingAnalysis.map(v => ({ id: v.id, name: v.name }))
             });
-            
-            videosWithAnalysis = await analyzeVideosInParallel(videosWithAnalysis, analysisMode);
+
+            // 只分析未解析的视频，然后合并回完整列表
+            const newlyAnalyzed = await analyzeVideosInParallel(videosNeedingAnalysis, analysisMode);
+            const newlyAnalyzedMap = new Map(newlyAnalyzed.map(v => [v.id, v]));
+            videosWithAnalysis = videosWithAnalysis.map(v => newlyAnalyzedMap.get(v.id) ?? v);
           } else {
             logger.info('所有视频都已有分析结果，跳过视频分析步骤', {
               totalVideos: videosWithExistingAnalysis.length

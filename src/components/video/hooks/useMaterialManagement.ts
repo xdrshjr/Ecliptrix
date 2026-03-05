@@ -6,6 +6,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
 
+/** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback using crypto.getRandomValues
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // 确认对话框状态接口
 interface ConfirmationDialogState {
   isOpen: boolean;
@@ -724,7 +737,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
 
   // AI视频生成
   const handleAiVideoGenerate = useCallback(async (params: ArkVideoGenerateParams) => {
-    const tempId = crypto.randomUUID();
+    const tempId = generateUUID();
     const createdAt = new Date();
     // Use timestamp-based name so the material has a stable, identifiable name
     const materialName = `AI视频_${createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
@@ -877,7 +890,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
     // Insert placeholder cards for each requested image
     const placeholderIds: string[] = [];
     for (let i = 0; i < params.count; i++) {
-      const tempId = crypto.randomUUID();
+      const tempId = generateUUID();
       placeholderIds.push(tempId);
       const placeholder: MaterialItem = {
         id: tempId,
