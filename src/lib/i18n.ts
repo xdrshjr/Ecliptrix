@@ -547,6 +547,8 @@ export interface Translations {
       cancel: string;
       noImagesInMaterials: string;
       cancelGeneration: string;
+      aiGenerate: string;
+      aiGenerating: string;
     };
   };
   documentPanel: {
@@ -1507,6 +1509,8 @@ export const translations: Record<string, Translations> = {
          cancel: 'Cancel',
          noImagesInMaterials: 'No images in materials',
          cancelGeneration: 'Cancel',
+         aiGenerate: 'AI Generate',
+         aiGenerating: 'Generating...',
        },
      },
    documentPanel: {
@@ -2480,6 +2484,8 @@ export const translations: Record<string, Translations> = {
          cancel: '取消',
          noImagesInMaterials: '素材中暂无图片',
          cancelGeneration: '取消',
+         aiGenerate: 'AI 生成',
+         aiGenerating: '生成中...',
        },
      },
    documentPanel: {

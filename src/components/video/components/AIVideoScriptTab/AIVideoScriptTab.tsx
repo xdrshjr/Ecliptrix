@@ -6,11 +6,11 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useAIVideoScriptGeneration } from '../../hooks/useAIVideoScriptGeneration';
 import ImagePickerSlot from './ImagePickerSlot';
 
-export function createAIVideoSegment(title: string): AIVideoScriptSegment {
+export function createAIVideoSegment(title: string, scriptText?: string): AIVideoScriptSegment {
   return {
     id: `ai-video-seg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     title,
-    scriptText: '',
+    scriptText: scriptText || '',
     generationStatus: 'idle',
   };
 }

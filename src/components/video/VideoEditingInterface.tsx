@@ -43,6 +43,7 @@ import {
   BatchAnalysisModeSelectionModal
 } from './components';
 import ConvertToScriptModal from './components/ConvertToScriptModal';
+import { createAIVideoSegment } from './components/AIVideoScriptTab';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
@@ -102,6 +103,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 存储要转换为脚本的消息内容 (not persisted - transient state)
   const [messageContentForScript, setMessageContentForScript] = useState<string | null>(null);
+
+  // AI视频脚本生成弹窗状态
+  const [isAIVideoScriptModalOpen, setIsAIVideoScriptModalOpen] = useState(false);
 
   // 创意构思弹窗状态
   const [isCreativeBrainstormingModalOpen, setIsCreativeBrainstormingModalOpen] = useState<boolean>(
@@ -583,6 +587,70 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       aiVideoScriptSegments: segments,
     });
   }, [content, onUpdateContent]);
+
+  // AI视频脚本生成状态
+  const [isGeneratingAIVideoScript, setIsGeneratingAIVideoScript] = useState(false);
+
+  // AI视频脚本 - 打开配置弹窗
+  const handleAIVideoScriptGenerationClick = useCallback(() => {
+    setIsAIVideoScriptModalOpen(true);
+  }, []);
+
+  // AI视频脚本 - 关闭配置弹窗
+  const handleAIVideoScriptModalClose = useCallback(() => {
+    setIsAIVideoScriptModalOpen(false);
+  }, []);
+
+  // AI视频脚本 - 确认生成
+  const handleAIVideoScriptGenerate = useCallback(async (config: ScriptGenerationConfig) => {
+    const activeConversation = content?.conversations?.find(
+      conv => conv.id === content?.activeConversationId
+    );
+    const chatMessages = activeConversation?.messages || [];
+
+    if (!chatMessages.length) {
+      showError('无法生成AI视频脚本：请先在聊天面板中进行对话');
+      return;
+    }
+
+    setIsAIVideoScriptModalOpen(false);
+    setIsGeneratingAIVideoScript(true);
+
+    try {
+      const response = await fetch('/api/ai-video-script-generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId,
+          scriptConfig: config,
+          chatMessages,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.segments) {
+        const newSegments: AIVideoScriptSegment[] = result.segments.map(
+          (seg: { title: string; scriptText: string }) =>
+            createAIVideoSegment(seg.title, seg.scriptText)
+        );
+        const existing = content?.aiVideoScriptSegments || [];
+        handleUpdateAIVideoScriptSegments([...existing, ...newSegments]);
+      } else {
+        throw new Error('Failed to generate AI video script');
+      }
+    } catch (error) {
+      console.error('[VideoEditingInterface] AI video script generation failed:', error);
+      showError(`AI视频脚本生成失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsGeneratingAIVideoScript(false);
+    }
+  }, [taskId, content, handleUpdateAIVideoScriptSegments, showError]);
 
   const handleScriptGenerationClose = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭脚本生成配置弹窗`, {
@@ -2674,6 +2742,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
               aiVideoScriptSegments={content?.aiVideoScriptSegments || []}
               onUpdateAIVideoScriptSegments={handleUpdateAIVideoScriptSegments}
+              onGenerateAIVideoScript={handleAIVideoScriptGenerationClick}
+              isGeneratingAIVideoScript={isGeneratingAIVideoScript}
             />
           </div>
 
@@ -2763,6 +2833,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={isScriptGenerationModalOpen}
         onClose={handleScriptGenerationClose}
         onGenerate={handleScriptGenerate}
+        taskId={taskId}
+      />
+
+      {/* AI视频脚本生成配置弹窗（复用ScriptGenerationModal） */}
+      <ScriptGenerationModal
+        isOpen={isAIVideoScriptModalOpen}
+        onClose={handleAIVideoScriptModalClose}
+        onGenerate={handleAIVideoScriptGenerate}
         taskId={taskId}
       />
 
