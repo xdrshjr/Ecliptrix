@@ -128,6 +128,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // Video ref
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Canvas 帧缓冲 ref - 视频源切换期间显示上一帧，防止黑屏闪烁
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   // 新增：跳转状态标记，防止handleTimeUpdate在跳转过程中的干扰
   const isSeekingRef = useRef(false);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
@@ -144,6 +146,64 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // 获取当前video元素
   const getCurrentVideoElement = useCallback((): HTMLVideoElement | null => {
     return videoRef.current;
+  }, []);
+
+  // URL归一化：统一比较绝对URL和相对路径
+  const normalizeVideoUrl = useCallback((url: string): string => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return url.startsWith('/') ? url : `/${url}`;
+    }
+  }, []);
+
+  // 捕获当前视频帧到 canvas 并显示，防止 src 切换时黑屏
+  const captureFrameToCanvas = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    // 锁定父容器尺寸，防止 src 清空后 intrinsic size 变为 0 导致布局抖动
+    const container = video.parentElement as HTMLElement | null;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      container.style.width = `${rect.width}px`;
+      container.style.height = `${rect.height}px`;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.style.display = 'block';
+
+    // 隐藏 video 元素，防止 src 切换瞬间黑帧透过 canvas 可见
+    video.style.opacity = '0';
+  }, []);
+
+  // 新视频帧就绪后隐藏 canvas、恢复 video 可见、解锁容器尺寸
+  const hideCanvasBuffer = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    // 先恢复 video 可见（此时新帧已解码但可能尚未 paint）
+    if (video) video.style.opacity = '1';
+
+    // 等一帧让浏览器 paint 新帧，再移除 canvas，避免 1-frame 黑闪
+    requestAnimationFrame(() => {
+      if (canvas) canvas.style.display = 'none';
+
+      // 解锁容器尺寸
+      if (video) {
+        const container = video.parentElement as HTMLElement | null;
+        if (container) {
+          container.style.width = '';
+          container.style.height = '';
+        }
+      }
+    });
   }, []);
 
   // 新增：应用音量到video元素
@@ -479,43 +539,32 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     logger.info('选择图片叠加', { itemId });
   }, [logger]);
 
-  // 新增：监听容器尺寸变化
+  // 播放状态ref，供事件回调中引用最新状态
+  const isCompositionPlayingRef = useRef(false);
+  useEffect(() => { isCompositionPlayingRef.current = isCompositionPlaying; }, [isCompositionPlaying]);
+
+  // 新增：监听容器尺寸变化（ResizeObserver）
   useEffect(() => {
-    const updateContainerDimensions = () => {
-      if (videoContainerRef.current) {
-        const rect = videoContainerRef.current.getBoundingClientRect();
-        const newDimensions = {
-          width: rect.width,
-          height: rect.height
-        };
-        
-        console.log('[VideoPlayerPanel] Container dimensions updated:', {
-          previous: containerDimensions,
-          new: newDimensions,
-          element: videoContainerRef.current.className
-        });
-        
-        setContainerDimensions(newDimensions);
-      } else {
-        console.warn('[VideoPlayerPanel] Video container ref not available');
+    const container = videoContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setContainerDimensions({ width, height });
+        }
       }
-    };
+    });
+    observer.observe(container);
 
-    // 多次尝试更新尺寸以确保获取到正确的值
-    const timers = [
-      setTimeout(updateContainerDimensions, 100),
-      setTimeout(updateContainerDimensions, 500),
-      setTimeout(updateContainerDimensions, 1000)
-    ];
-    
-    updateContainerDimensions();
-    
-    window.addEventListener('resize', updateContainerDimensions);
+    // 初始测量
+    const rect = container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setContainerDimensions({ width: rect.width, height: rect.height });
+    }
 
-    return () => {
-      timers.forEach(timer => clearTimeout(timer));
-      window.removeEventListener('resize', updateContainerDimensions);
-    };
+    return () => observer.disconnect();
   }, []);
 
   // 处理视频比例切换 - 优化稳定性和日志记录
@@ -616,7 +665,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       const newSrc = firstSequence.url;
       const currentVideoTime = videoRef.current.currentTime;
       
-      if (currentSrc !== newSrc || Math.abs(currentVideoTime - clipStart) > 0.1) {
+      if (normalizeVideoUrl(currentSrc) !== normalizeVideoUrl(newSrc) || Math.abs(currentVideoTime - clipStart) > 0.1) {
         logger.info('自动设置视频合成播放的首个视频（缓存优化）', {
           sequenceIndex: 0,
           sequenceName: firstSequence.name,
@@ -628,12 +677,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           timelineStartTime: firstSequence.startTime.toFixed(2),
           timelineDuration: firstSequence.duration.toFixed(2),
           currentSrc: currentSrc,
-          needsUpdate: currentSrc !== newSrc,
+          needsUpdate: normalizeVideoUrl(currentSrc) !== normalizeVideoUrl(newSrc),
           action: '优先使用缓存设置视频源'
         });
 
         // 对于首个视频，优先使用缓存但不进行无缝切换（避免复杂性）
-        if (currentSrc !== newSrc) {
+        if (normalizeVideoUrl(currentSrc) !== normalizeVideoUrl(newSrc)) {
           let cachedVideo: HTMLVideoElement | null = null;
           if (firstSequence.materialId) {
             cachedVideo = videoCache.getCachedVideo(firstSequence.materialId);
@@ -774,6 +823,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               }
             });
 
+            // 捕获当前帧到canvas，防止切换src时黑屏
+            captureFrameToCanvas();
+
             if (cachedVideo) {
               // 缓存命中：使用预加载的视频，减少切换延迟
               logger.info('缓存命中，快速切换视频', {
@@ -783,7 +835,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 cacheHitRate: videoCache.cacheStats.cacheHitRate + '%',
                 containerStability: '容器尺寸已固定，防止切换闪烁'
               });
-              
+
               currentVideo.src = cachedVideo.src;
             } else {
               // 缓存未命中：使用传统方式
@@ -794,18 +846,34 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 cacheState: nextSequence.materialId ? videoCache.getCacheState(nextSequence.materialId) : 'no-material-id',
                 containerStability: '容器尺寸已固定，防止切换闪烁'
               });
-              
+
               currentVideo.src = nextSequence.url;
             }
-            
-            currentVideo.currentTime = nextClipStart;
-            currentVideo.play().catch(error => {
-              logger.error('播放下一个视频失败', error, {
-                nextIndex,
-                sequenceName: nextSequence.name,
-                clipStart: nextClipStart.toFixed(2)
-              });
-            });
+
+            // 等待视频加载完成后再播放，避免黑屏闪烁
+            isSeekingRef.current = true;
+            const handleLoaded = () => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = nextClipStart;
+                if (isCompositionPlayingRef.current) {
+                  videoRef.current.play().catch(error => {
+                    logger.error('播放下一个视频失败', error, {
+                      nextIndex,
+                      sequenceName: nextSequence.name,
+                      clipStart: nextClipStart.toFixed(2)
+                    });
+                  });
+                }
+                isSeekingRef.current = false;
+                hideCanvasBuffer();
+              }
+            };
+            videoRef.current.addEventListener('loadeddata', handleLoaded, { once: true });
+            setTimeout(() => {
+              if (videoRef.current) videoRef.current.removeEventListener('loadeddata', handleLoaded);
+              isSeekingRef.current = false;
+              hideCanvasBuffer();
+            }, 5000);
           }
 
           // 新增：切换到下一个视频时同步音频
@@ -845,7 +913,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         }
       }
     }
-  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, logger]);
+  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, captureFrameToCanvas, hideCanvasBuffer, logger]);
 
   // 更新组合播放时间
   const handleTimeUpdate = useCallback(() => {
@@ -870,9 +938,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       const stateSequence = compositionPlayback.videoSequences[stateSequenceIndex];
       
       // 检查状态中的序列是否与当前播放的视频URL匹配
-      if (stateSequence && 
-          (currentVideoSrc.includes(stateSequence.url) || 
-           stateSequence.url.includes(currentVideoSrc.split('/').pop() || ''))) {
+      if (stateSequence &&
+          normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(stateSequence.url)) {
         // 状态序列匹配当前视频URL，直接使用
         actualSequenceIndex = stateSequenceIndex;
         currentSequence = stateSequence;
@@ -895,9 +962,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           const sequenceEndTime = accumulatedTime + sequence.duration;
           
           // 检查URL匹配且当前组合时间落在这个序列的时间范围内
-          if ((currentVideoSrc.includes(sequence.url) || 
-               sequence.url.includes(currentVideoSrc.split('/').pop() || '')) &&
-              compositionCurrentTime >= sequenceStartTime && 
+          if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(sequence.url) &&
+              compositionCurrentTime >= sequenceStartTime &&
               compositionCurrentTime < sequenceEndTime) {
             actualSequenceIndex = i;
             currentSequence = sequence;
@@ -922,7 +988,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         if (!foundSequence) {
           for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
             const sequence = compositionPlayback.videoSequences[i];
-            if (currentVideoSrc.includes(sequence.url) || sequence.url.includes(currentVideoSrc.split('/').pop() || '')) {
+            if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(sequence.url)) {
               actualSequenceIndex = i;
               currentSequence = sequence;
               foundSequence = true;
@@ -1079,7 +1145,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, syncAudioPlayback, logger, getCurrentVideoElement]);
+  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, normalizeVideoUrl, syncAudioPlayback, logger, getCurrentVideoElement]);
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
@@ -1143,10 +1209,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 accumulatedTime: accumulatedTime.toFixed(2)
               });
               
-              currentVideo.src = targetSequence.url;
-              currentVideo.currentTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd)); // 确保在裁剪范围内
-              setCompositionCurrentTime(startTime);
-              
               // 更新当前序列索引
               if (compositionPlayback.currentSequenceIndex !== targetSequenceIndex) {
                 logger.info('播放开始时切换视频序列（裁剪模式）', {
@@ -1155,22 +1217,57 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   clipStart: clipStart.toFixed(2),
                   clipEnd: clipEnd.toFixed(2)
                 });
-                
+
                 if (onSequenceIndexUpdate) {
                   onSequenceIndexUpdate(targetSequenceIndex);
                 }
               }
-              
-              currentVideo.play().catch(error => {
-                logger.error('开始播放组合视频失败（裁剪模式）', error, {
-                  sequenceIndex: targetSequenceIndex,
-                  sequenceName: targetSequence.name,
-                  startTime: targetVideoTime.toFixed(2),
-                  actualVideoTime: actualVideoTime.toFixed(2),
-                  clipStart: clipStart.toFixed(2),
-                  clipEnd: clipEnd.toFixed(2)
+
+              const clampedVideoTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd));
+              const needsSourceChange = normalizeVideoUrl(currentVideo.src) !== normalizeVideoUrl(targetSequence.url);
+
+              if (needsSourceChange) {
+                // 捕获当前帧到canvas，防止切换src时黑屏
+                captureFrameToCanvas();
+                // 视频源不同，等待loadeddata后再播放
+                isSeekingRef.current = true;
+                currentVideo.src = targetSequence.url;
+                const handleLoaded = () => {
+                  if (videoRef.current) {
+                    videoRef.current.currentTime = clampedVideoTime;
+                    videoRef.current.play().catch(error => {
+                      logger.error('开始播放组合视频失败（裁剪模式）', error, {
+                        sequenceIndex: targetSequenceIndex,
+                        sequenceName: targetSequence.name,
+                        actualVideoTime: actualVideoTime.toFixed(2),
+                        clipStart: clipStart.toFixed(2),
+                        clipEnd: clipEnd.toFixed(2)
+                      });
+                    });
+                    isSeekingRef.current = false;
+                    hideCanvasBuffer();
+                  }
+                };
+                currentVideo.addEventListener('loadeddata', handleLoaded, { once: true });
+                setTimeout(() => {
+                  currentVideo.removeEventListener('loadeddata', handleLoaded);
+                  isSeekingRef.current = false;
+                  hideCanvasBuffer();
+                }, 5000);
+              } else {
+                // 视频源相同，直接设置时间并播放
+                currentVideo.currentTime = clampedVideoTime;
+                currentVideo.play().catch(error => {
+                  logger.error('开始播放组合视频失败（裁剪模式）', error, {
+                    sequenceIndex: targetSequenceIndex,
+                    sequenceName: targetSequence.name,
+                    actualVideoTime: actualVideoTime.toFixed(2),
+                    clipStart: clipStart.toFixed(2),
+                    clipEnd: clipEnd.toFixed(2)
+                  });
                 });
-              });
+              }
+              setCompositionCurrentTime(startTime);
 
               // 新增：同步播放音频
               await syncAudioPlayback(startTime, true);
@@ -1205,7 +1302,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, syncAudioPlayback, logger]);
+  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, logger]);
 
   // 新增：核心组合播放跳转函数，可被timeline和播放器UI调用
   const handleCompositionSeek = useCallback(async (
@@ -1236,9 +1333,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         const wasPlayingBefore = isCompositionPlaying;
         
         // 如果视频源不同，需要切换视频
-        const needsSwitchVideo = videoRef.current.src !== targetSequence.url;
+        const needsSwitchVideo = normalizeVideoUrl(videoRef.current.src) !== normalizeVideoUrl(targetSequence.url);
         
         if (needsSwitchVideo) {
+          // 捕获当前帧到canvas，防止切换src时黑屏
+          captureFrameToCanvas();
+
           logger.info('切换视频序列', {
             previousSrc: videoRef.current.src,
             newSrc: targetSequence.url,
@@ -1247,12 +1347,14 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             source
           });
           videoRef.current.src = targetSequence.url;
-          
+
           // 如果需要切换视频源，等待视频加载完成再设置时间和播放状态
           const handleVideoLoaded = () => {
             if (videoRef.current) {
               videoRef.current.currentTime = videoTime;
-              
+              isSeekingRef.current = false;
+              hideCanvasBuffer();
+
               // 如果之前是播放状态，恢复播放
               if (wasPlayingBefore) {
                 videoRef.current.play().then(() => {
@@ -1273,17 +1375,20 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
           // 监听视频加载完成事件
           videoRef.current.addEventListener('loadeddata', handleVideoLoaded, { once: true });
-          
+
           // 设置超时清理，防止事件监听器泄漏
           setTimeout(() => {
             if (videoRef.current) {
               videoRef.current.removeEventListener('loadeddata', handleVideoLoaded);
             }
+            isSeekingRef.current = false;
+            hideCanvasBuffer();
           }, 5000);
-          
+
         } else {
           // 如果不需要切换视频，直接设置时间
           videoRef.current.currentTime = videoTime;
+          isSeekingRef.current = false;
           
           // 如果之前是播放状态且当前已暂停，恢复播放
           if (wasPlayingBefore && videoRef.current.paused) {
@@ -1332,16 +1437,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       onCompositionSeek(compositionTime);
     }
 
-    // 清除跳转状态标记，允许handleTimeUpdate正常工作
-    setTimeout(() => {
-      isSeekingRef.current = false;
-      logger.info('组合播放跳转状态标记已清除', {
-        compositionTime: compositionTime.toFixed(2),
-        source,
-        reason: '跳转操作完成，恢复正常时间更新'
-      });
-    }, 100); // 短暂延迟确保跳转操作完全完成
-  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, syncAudioPlayback, onCompositionSeek, logger]);
+  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, logger]);
 
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
@@ -1655,7 +1751,22 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     }}
                   />
 
-                  
+                  {/* Canvas 帧缓冲 - 视频源切换期间显示上一帧 */}
+                  <canvas
+                    ref={canvasRef}
+                    className="w-full h-full object-contain"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      pointerEvents: 'none',
+                      zIndex: 1,
+                      display: 'none',
+                    }}
+                  />
+
                   {/* 新增：图片叠加层 */}
                   {(() => {
                     const overlays = getCurrentImageOverlays();
