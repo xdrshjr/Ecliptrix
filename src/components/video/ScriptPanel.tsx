@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment } from '@/types';
+import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment, AIVideoScriptSegment } from '@/types';
 import { 
   convertTextToSpeech, 
   convertBatchTextToSpeech,
@@ -32,6 +32,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { VideoAnalysisResponse } from './services/videoAnalysisService';
 import { useLocale } from '@/contexts/LocaleContext';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { AIVideoScriptTab, createAIVideoSegment } from './components/AIVideoScriptTab';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -43,10 +44,12 @@ interface ScriptPanelProps {
   taskId?: string;
   materials?: MaterialItem[]; // 添加材料列表，用于查找音频文件
   getVideoAnalysisResult?: (videoUrl: string) => VideoAnalysisResponse | null; // 获取视频分析结果
+  aiVideoScriptSegments?: AIVideoScriptSegment[];
+  onUpdateAIVideoScriptSegments?: (segments: AIVideoScriptSegment[]) => void;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
-  segments, 
+  segments,
   className = '',
   onGenerateScript,
   isGenerating = false,
@@ -54,7 +57,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   onAddMaterial,
   taskId,
   materials = [],
-  getVideoAnalysisResult
+  getVideoAnalysisResult,
+  aiVideoScriptSegments = [],
+  onUpdateAIVideoScriptSegments,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -66,6 +71,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   
   // 获取国际化翻译
   const { t } = useLocale();
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'narration' | 'aiVideo'>('narration');
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -1574,60 +1582,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     });
   }, [segments, onUpdateSegments, logger, showSuccess, handleCloseConfirmationDialog]);
 
-  // 如果没有片段，显示空状态
-  if (!segments || segments.length === 0) {
-    return (
-      <div className={`flex flex-col h-full ${className}`}>
-        {/* 标题栏 - 与其他面板保持一致的样式 */}
-        <div className="script-panel-header relative">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-sm font-semibold text-gray-900">文本脚本</h3>
-              <span className="text-xs text-gray-500 ml-3">0 个片段 · 0 句话</span>
-            </div>
-            {onGenerateScript && (
-              <button
-                onClick={handleGenerateScript}
-                disabled={isGenerating}
-                className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title={t.scriptPanel.header.generateScript}
-              >
-                {isGenerating ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* 空状态内容 */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center">
-            <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p className="text-sm text-gray-600">{t.scriptPanel.emptyState.noScript}</p>
-            <p className="text-xs text-gray-500 mt-1">
-              {t.scriptPanel.emptyState.scriptWillAppear}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={`flex flex-col h-full ${className}`}>
       {/* 标题栏 - 与其他面板保持一致的样式 */}
@@ -1640,55 +1594,127 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-gray-900">{t.scriptPanel.header.title}</h3>
-            <span className="text-xs text-gray-500 ml-3">
-              {t.scriptPanel.header.segmentsCount.replace('{count}', segments.length.toString())} · {t.scriptPanel.header.sentencesCount.replace('{count}', segments.reduce((sum, segment) => sum + segment.sentences.length, 0).toString())}
-            </span>
+            {activeTab === 'narration' && (
+              <span className="text-xs text-gray-500 ml-3">
+                {t.scriptPanel.header.segmentsCount.replace('{count}', segments.length.toString())} · {t.scriptPanel.header.sentencesCount.replace('{count}', segments.reduce((sum, segment) => sum + segment.sentences.length, 0).toString())}
+              </span>
+            )}
           </div>
           <div className="flex items-center space-x-2">
-            {/* 生成脚本按钮 */}
-            {onGenerateScript && (
-              <button
-                onClick={handleGenerateScript}
-                disabled={isGenerating}
-                className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title={t.scriptPanel.header.generateScript}
-              >
-                {isGenerating ? (
-                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
+            {activeTab === 'narration' ? (
+              <>
+                {/* 生成脚本按钮 */}
+                {onGenerateScript && (
+                  <button
+                    onClick={handleGenerateScript}
+                    disabled={isGenerating}
+                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                    title={t.scriptPanel.header.generateScript}
+                  >
+                    {isGenerating ? (
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                      </svg>
+                    )}
+                    <span>{isGenerating ? '生成中...' : 'AI 生成'}</span>
+                  </button>
                 )}
-                <span>{isGenerating ? '生成中...' : 'AI 生成'}</span>
-              </button>
+                {/* 统一转换所有语音按钮 */}
+                <button
+                  onClick={handleBatchConvertToSpeech}
+                  disabled={isBatchConverting || segments.length === 0}
+                  className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  title="统一转换所有语音"
+                >
+                  {isBatchConverting ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6 10l4-4v3h8v2H10v3l-4-4z" />
+                    </svg>
+                  )}
+                </button>
+              </>
+            ) : (
+              /* AI视频脚本 tab - 添加场景按钮 */
+              onUpdateAIVideoScriptSegments && (
+                <button
+                  onClick={() => {
+                    const title = t.scriptPanel.aiVideoScript.segmentTitle.replace('{index}', String(aiVideoScriptSegments.length + 1));
+                    onUpdateAIVideoScriptSegments([...aiVideoScriptSegments, createAIVideoSegment(title)]);
+                  }}
+                  className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors duration-200"
+                  title={t.scriptPanel.aiVideoScript.addSegment}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span>{t.scriptPanel.aiVideoScript.addSegment}</span>
+                </button>
+              )
             )}
-            {/* 统一转换所有语音按钮 - 恢复之前删除的功能 */}
-            <button
-              onClick={handleBatchConvertToSpeech}
-              disabled={isBatchConverting || segments.length === 0}
-              className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              title="统一转换所有语音"
-            >
-              {isBatchConverting ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6 10l4-4v3h8v2H10v3l-4-4z" />
-                </svg>
-              )}
-            </button>
           </div>
         </div>
 
+        {/* Tab 栏 */}
+        <div className="flex space-x-1 mt-3 p-1 bg-gray-100 rounded-lg">
+          <button
+            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              activeTab === 'narration' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveTab('narration')}
+          >
+            {t.scriptPanel.tabs.narrationScript}
+          </button>
+          <button
+            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              activeTab === 'aiVideo' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveTab('aiVideo')}
+          >
+            {t.scriptPanel.tabs.aiVideoScript}
+          </button>
+        </div>
       </div>
 
+      {/* Tab 内容区域 */}
+      {activeTab === 'aiVideo' ? (
+        onUpdateAIVideoScriptSegments ? (
+          <AIVideoScriptTab
+            segments={aiVideoScriptSegments}
+            onUpdateSegments={onUpdateAIVideoScriptSegments}
+            onAddMaterial={onAddMaterial}
+            materials={materials}
+            taskId={taskId}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <p className="text-sm text-gray-400">{t.scriptPanel.aiVideoScript.emptyState}</p>
+          </div>
+        )
+      ) : (!segments || segments.length === 0) ? (
+        /* 解说脚本空状态 */
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="text-center">
+            <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-sm text-gray-600">{t.scriptPanel.emptyState.noScript}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {t.scriptPanel.emptyState.scriptWillAppear}
+            </p>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* 脚本内容区域 */}
       <div className="flex-1 overflow-y-auto p-2 space-y-3">
         {segments.map((segment, segmentIndex) => (
@@ -2188,7 +2214,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       </div>
 
       {/* 视频搜索模态框 */}
-            <VideoSearchModal 
+            <VideoSearchModal
         {...videoSearch}
         taskId={taskId || 'unknown'}
       />
@@ -2204,6 +2230,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         onConfirm={confirmationDialog.onConfirm}
         onCancel={handleCloseConfirmationDialog}
       />
+      </>
+      )}
     </div>
   );
 };

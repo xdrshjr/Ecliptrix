@@ -218,24 +218,29 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
             "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
         )
 
-    # Parameters are embedded in the prompt text (confirmed by Ark API spec)
-    param_flags = (
-        f"--duration {request.duration} "
-        f"--camerafixed {str(request.camera_fixed).lower()} "
-        f"--watermark {str(request.watermark).lower()} "
-        f"--ratio {request.aspect_ratio} "
-        f"--rs {request.resolution}"
-    )
-    full_prompt = f"{request.prompt} {param_flags}"
+    # Merge all image URLs (image_urls takes priority, image_url kept for backward compatibility)
+    all_images = list(request.image_urls or [])
+    if request.image_url and request.image_url not in all_images:
+        all_images.insert(0, request.image_url)
 
     # Build content list
-    content: list = [{"type": "text", "text": full_prompt}]
-    if request.image_url:
-        content.append({"type": "image_url", "image_url": {"url": request.image_url}})
+    content: list = [{"type": "text", "text": request.prompt}]
+    # Ark API requires role for each image: first_frame for first, last_frame for second
+    image_roles = ["first_frame", "last_frame"]
+    for i, img_url in enumerate(all_images[:2]):
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": img_url},
+            "role": image_roles[i],
+        })
 
-    payload = {
+    # duration, ratio, resolution are top-level payload fields (not prompt flags)
+    payload: dict = {
         "model": ARK_MODEL,
         "content": content,
+        "duration": request.duration,
+        "ratio": "adaptive" if all_images else request.aspect_ratio,
+        "resolution": request.resolution,
     }
 
     headers = {
@@ -243,9 +248,14 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
         "Content-Type": "application/json",
     }
 
+    logger.info(f"Ark video task request: model={ARK_MODEL}, images={len(all_images)}, duration={request.duration}")
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(ARK_API_BASE, json=payload, headers=headers)
-        response.raise_for_status()
+        if response.status_code != 200:
+            error_body = response.text
+            logger.error(f"Ark API error {response.status_code}: {error_body}")
+            response.raise_for_status()
         data = response.json()
 
     ark_task_id = data.get("id")

@@ -342,10 +342,30 @@ export interface ScriptSegment {
   keywords?: string[]; // 视频搜索关键词，用于自动填充搜索框
 }
 
+export interface AIVideoScriptSegment {
+  id: string;
+  title: string;
+  scriptText: string;
+  characterImageUrl?: string;
+  characterImageName?: string;
+  sceneImageUrl?: string;
+  sceneImageName?: string;
+  generationStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
+  generationProgress?: number;
+  arkTaskId?: string;
+  generatedVideoUrl?: string;
+  generatedVideoThumbnailUrl?: string;
+  generatedVideoDuration?: number;
+  generatedVideoWidth?: number;
+  generatedVideoHeight?: number;
+  generationError?: string;
+}
+
 export interface VideoEditingTaskContent {
   markdownContent: string;
   lastModified: Date;
   scriptSegments?: ScriptSegment[]; // 文本脚本片段数据
+  aiVideoScriptSegments?: AIVideoScriptSegment[]; // AI视频脚本片段数据
   materials?: MaterialItem[]; // 素材数据
   pendingTimelineData?: any; // 待导入的时间轴数据（从Workflow AI Video Generate节点）
   pendingMaterials?: MaterialItem[]; // 待导入的素材数据（从Workflow Video Export节点）

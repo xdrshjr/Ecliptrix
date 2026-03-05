@@ -4,6 +4,7 @@ export interface ArkVideoGenerateParams {
   camera_fixed: boolean;
   watermark: boolean;
   image_url?: string;
+  image_urls?: string[];
   aspect_ratio?: '16:9' | '9:16' | '1:1';
   resolution?: '480p' | '720p' | '1080p';
 }

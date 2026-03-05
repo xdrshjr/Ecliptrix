@@ -584,6 +584,7 @@ class VideoUnderstandingScriptService:
 <video id="{result.videoId}">
   <name>{result.videoName}</name>
   <duration_for_script_length>{result.estimatedDuration:.1f}秒</duration_for_script_length>
+  <expected_character_count>该视频对应的脚本文案应约{expected_chars}个中文字符</expected_character_count>
   <content_description>{result.contentDescription}</content_description>
   <key_topics>{', '.join(result.keyTopics)}</key_topics>"""
             if result.visualElements:
@@ -682,6 +683,7 @@ class VideoUnderstandingScriptService:
 - 文案长度要与视频内容的丰富程度相匹配
 - 确保每个段落的文案能够充分覆盖对应视频的主要内容
 - **生成的文案字符数应与视频时长相关联，遵循30字≈10秒的比例**
+- **每个视频标签中已提供了 <expected_character_count>，请严格按照该字符数目标生成对应段落的文案**
 - 避免文案过短导致内容空洞，也避免文案过长导致冗余
 </script_length_requirements>
 
@@ -958,7 +960,7 @@ class VideoUnderstandingScriptService:
                     id=segment_id,
                     title=segment_data.get("title", f"脚本段落 {i+1}"),
                     sentences=sentences,
-                    duration=associated_videos[0].duration if associated_videos else 15.0,
+                    duration=sum(v.duration or 0.0 for v in associated_videos) if associated_videos else 15.0,
                     videos=associated_videos,
                     keywords=segment_data.get("keywords", [])
                 )
@@ -1128,7 +1130,7 @@ class VideoUnderstandingScriptService:
             id=segment_id,
             title=title,
             sentences=sentences,
-            duration=associated_videos[0].duration if associated_videos else 15.0,
+            duration=sum(v.duration or 0.0 for v in associated_videos) if associated_videos else 15.0,
             videos=associated_videos,
             keywords=self._extract_keywords_from_text(title + " " + " ".join(sentences_text))
         )

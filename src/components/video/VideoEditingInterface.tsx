@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -158,9 +158,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   });
 
   // 聊天状态管理
-  const [isChatLoading, setIsChatLoading] = useState<boolean>(
-    content?.uiState?.isChatLoading ?? false
-  );
+  // isChatLoading 始终初始化为 false —— 这是瞬态运行时状态，不应从持久化状态恢复
+  // 因为组件挂载时不可能有活跃的 HTTP 请求
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
   const hasAutoChatInitialized = useRef(content?.uiState?.hasAutoChatInitialized ?? false);
 
   console.log('[VideoEditingInterface] Restoring UI state:', {
@@ -203,7 +203,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isBatchAnalysisModalOpen,
         isWorkflowConfigModalOpen,
         videoCutModal,
-        isChatLoading,
+        isChatLoading: false, // 始终持久化为 false —— 这是瞬态状态，不应被恢复
         hasAutoChatInitialized: hasAutoChatInitialized.current,
         workflowConfigs: Object.fromEntries(workflowConfigs),
       },
@@ -221,7 +221,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
       content.uiState?.isBatchAnalysisModalOpen !== isBatchAnalysisModalOpen ||
       content.uiState?.isWorkflowConfigModalOpen !== isWorkflowConfigModalOpen ||
-      content.uiState?.isChatLoading !== isChatLoading ||
       content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
       JSON.stringify(content.uiState?.currentTimelineState) !== JSON.stringify(currentTimelineState) ||
       JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal) ||
@@ -240,7 +239,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isAIMixingModeModalOpen,
         isWorkflowConfigModalOpen,
         videoCutModalIsOpen: videoCutModal.isOpen,
-        isChatLoading,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
         timestamp: new Date().toISOString()
       });
@@ -258,10 +256,40 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isAIMixingModeModalOpen,
     isWorkflowConfigModalOpen,
     videoCutModal,
-    isChatLoading,
     taskId,
     content
   ]);
+
+  // 组件挂载时清理残留的 isStreaming 状态
+  // 持久化的消息可能带有 isStreaming: true（如果上次会话在流式传输中中断），
+  // 但挂载时不可能有活跃的流，所以需要重置
+  useEffect(() => {
+    if (!content?.conversations) return;
+
+    const hasStaleStreaming = content.conversations.some(conv =>
+      conv.messages.some(msg => msg.isStreaming)
+    );
+
+    if (hasStaleStreaming) {
+      console.log('[VideoEditingInterface] 清理残留的 isStreaming 状态', {
+        taskId,
+        timestamp: new Date().toISOString()
+      });
+
+      const cleanedConversations = content.conversations.map(conv => ({
+        ...conv,
+        messages: conv.messages.map(msg =>
+          msg.isStreaming ? { ...msg, isStreaming: false } : msg
+        ),
+      }));
+
+      onUpdateContent({
+        ...content,
+        conversations: cleanedConversations,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 仅在挂载时运行一次
 
   // Mobile device detection effect - backup safety check
   useEffect(() => {
@@ -546,6 +574,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     convertToScript.openModal(content);
   }, [taskId, convertToScript]);
+
+  // AI视频脚本片段更新
+  const handleUpdateAIVideoScriptSegments = useCallback((segments: AIVideoScriptSegment[]) => {
+    if (!content) return;
+    onUpdateContent({
+      ...content,
+      aiVideoScriptSegments: segments,
+    });
+  }, [content, onUpdateContent]);
 
   const handleScriptGenerationClose = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭脚本生成配置弹窗`, {
@@ -2614,8 +2651,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           isLoading={isChatLoading}
           onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
           onPolishClick={handlePolishClick}
-          onGenerateScriptClick={handleScriptGenerationClick}
-          isGeneratingScript={scriptGeneration.isGeneratingScript}
           onViewWorkflowsClick={handleViewWorkflowsClick}
           onConvertMessageToScript={handleConvertMessageToScript}
         />
@@ -2627,16 +2662,18 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         <div className="video-editing-upper-panels flex min-h-0 overflow-hidden">
           {/* Text Script 面板 */}
           <div className="video-editing-script-panel bg-gray-50 border-r border-gray-200">
-            <ScriptPanel 
-              segments={content?.scriptSegments || getMockScriptSegments(locale)} 
+            <ScriptPanel
+              segments={content?.scriptSegments || getMockScriptSegments(locale)}
               className="h-full"
-              onGenerateScript={scriptGeneration.handleGenerateScript}
+              onGenerateScript={handleScriptGenerationClick}
               isGenerating={scriptGeneration.isGeneratingScript}
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
               onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
               taskId={taskId}
               materials={materialManagement.materials}
               getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
+              aiVideoScriptSegments={content?.aiVideoScriptSegments || []}
+              onUpdateAIVideoScriptSegments={handleUpdateAIVideoScriptSegments}
             />
           </div>
 

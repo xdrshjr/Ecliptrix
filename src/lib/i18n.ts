@@ -446,6 +446,10 @@ export interface Translations {
     noContentToExportDesc: string;
   };
   scriptPanel: {
+    tabs: {
+      narrationScript: string;
+      aiVideoScript: string;
+    };
     header: {
       title: string;
       segmentsCount: string;
@@ -521,6 +525,28 @@ export interface Translations {
         '有声阅读': string;
         '其他': string;
       };
+    };
+    aiVideoScript: {
+      addSegment: string;
+      removeSegment: string;
+      scriptPlaceholder: string;
+      characterImage: string;
+      sceneImage: string;
+      selectImage: string;
+      removeImage: string;
+      generateVideo: string;
+      generating: string;
+      generationFailed: string;
+      retry: string;
+      generatedVideo: string;
+      emptyState: string;
+      emptyHint: string;
+      fromMaterials: string;
+      pasteUrl: string;
+      segmentTitle: string;
+      cancel: string;
+      noImagesInMaterials: string;
+      cancelGeneration: string;
     };
   };
   documentPanel: {
@@ -1380,6 +1406,10 @@ export const translations: Record<string, Translations> = {
       noContentToExportDesc: 'Please add video materials to the timeline before exporting',
     },
          scriptPanel: {
+       tabs: {
+         narrationScript: 'Narration Script',
+         aiVideoScript: 'AI Video Script',
+       },
        header: {
          title: 'Script',
          segmentsCount: '{count} Seg',
@@ -1455,6 +1485,28 @@ export const translations: Record<string, Translations> = {
            '有声阅读': 'Audio Reading',
            '其他': 'Others'
          },
+       },
+       aiVideoScript: {
+         addSegment: 'Add Scene',
+         removeSegment: 'Remove Scene',
+         scriptPlaceholder: 'Enter video script description for this scene...',
+         characterImage: 'Character Image',
+         sceneImage: 'Scene Image',
+         selectImage: 'Select Image',
+         removeImage: 'Remove',
+         generateVideo: 'Generate AI Video',
+         generating: 'Generating...',
+         generationFailed: 'Generation Failed',
+         retry: 'Retry',
+         generatedVideo: 'Generated Video',
+         emptyState: 'No AI video script segments',
+         emptyHint: 'Click "Add Scene" button above to start creating',
+         fromMaterials: 'From Materials',
+         pasteUrl: 'Paste URL',
+         segmentTitle: 'Scene {index}',
+         cancel: 'Cancel',
+         noImagesInMaterials: 'No images in materials',
+         cancelGeneration: 'Cancel',
        },
      },
    documentPanel: {
@@ -2327,6 +2379,10 @@ export const translations: Record<string, Translations> = {
       noContentToExportDesc: '请先添加视频素材到时间轴',
     },
          scriptPanel: {
+       tabs: {
+         narrationScript: '解说脚本',
+         aiVideoScript: 'AI视频脚本',
+       },
        header: {
          title: '文本脚本',
          segmentsCount: '{count} 个片段',
@@ -2402,6 +2458,28 @@ export const translations: Record<string, Translations> = {
            '有声阅读': '有声阅读',
            '其他': '其他'
          },
+       },
+       aiVideoScript: {
+         addSegment: '添加场景',
+         removeSegment: '删除场景',
+         scriptPlaceholder: '输入这个场景的视频脚本描述...',
+         characterImage: '场景人物图',
+         sceneImage: '场景图',
+         selectImage: '选择图片',
+         removeImage: '移除',
+         generateVideo: '生成AI视频',
+         generating: '生成中...',
+         generationFailed: '生成失败',
+         retry: '重试',
+         generatedVideo: '已生成视频',
+         emptyState: '暂无AI视频脚本片段',
+         emptyHint: '点击上方"添加场景"按钮开始创作',
+         fromMaterials: '从素材选择',
+         pasteUrl: '粘贴URL',
+         segmentTitle: '场景 {index}',
+         cancel: '取消',
+         noImagesInMaterials: '素材中暂无图片',
+         cancelGeneration: '取消',
        },
      },
    documentPanel: {
