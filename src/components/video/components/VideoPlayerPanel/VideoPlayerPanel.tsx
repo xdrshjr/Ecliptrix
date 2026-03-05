@@ -132,6 +132,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 新增：跳转状态标记，防止handleTimeUpdate在跳转过程中的干扰
   const isSeekingRef = useRef(false);
+  // 过渡代数计数器 - 每次 src 切换时递增，让旧的 loadeddata 回调失效
+  const transitionIdRef = useRef(0);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
   
@@ -852,7 +854,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
             // 等待视频加载完成后再播放，避免黑屏闪烁
             isSeekingRef.current = true;
+            const tid = ++transitionIdRef.current;
             const handleLoaded = () => {
+              if (transitionIdRef.current !== tid) return; // 已被更新的过渡取代，忽略
               if (videoRef.current) {
                 videoRef.current.currentTime = nextClipStart;
                 if (isCompositionPlayingRef.current) {
@@ -870,6 +874,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             };
             videoRef.current.addEventListener('loadeddata', handleLoaded, { once: true });
             setTimeout(() => {
+              if (transitionIdRef.current !== tid) return; // 过期超时，忽略
               if (videoRef.current) videoRef.current.removeEventListener('loadeddata', handleLoaded);
               isSeekingRef.current = false;
               hideCanvasBuffer();
@@ -1231,8 +1236,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 captureFrameToCanvas();
                 // 视频源不同，等待loadeddata后再播放
                 isSeekingRef.current = true;
+                const tid = ++transitionIdRef.current;
                 currentVideo.src = targetSequence.url;
                 const handleLoaded = () => {
+                  if (transitionIdRef.current !== tid) return;
                   if (videoRef.current) {
                     videoRef.current.currentTime = clampedVideoTime;
                     videoRef.current.play().catch(error => {
@@ -1250,6 +1257,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 };
                 currentVideo.addEventListener('loadeddata', handleLoaded, { once: true });
                 setTimeout(() => {
+                  if (transitionIdRef.current !== tid) return;
                   currentVideo.removeEventListener('loadeddata', handleLoaded);
                   isSeekingRef.current = false;
                   hideCanvasBuffer();
@@ -1346,10 +1354,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             wasPlayingBefore,
             source
           });
+          const tid = ++transitionIdRef.current;
           videoRef.current.src = targetSequence.url;
 
           // 如果需要切换视频源，等待视频加载完成再设置时间和播放状态
           const handleVideoLoaded = () => {
+            if (transitionIdRef.current !== tid) return; // 已被更新的过渡取代，忽略
             if (videoRef.current) {
               videoRef.current.currentTime = videoTime;
               isSeekingRef.current = false;
@@ -1378,6 +1388,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
           // 设置超时清理，防止事件监听器泄漏
           setTimeout(() => {
+            if (transitionIdRef.current !== tid) return; // 过期超时，忽略
             if (videoRef.current) {
               videoRef.current.removeEventListener('loadeddata', handleVideoLoaded);
             }
@@ -1386,7 +1397,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           }, 5000);
 
         } else {
-          // 如果不需要切换视频，直接设置时间
+          // 不需要切换视频源 — 但可能有上一次切换遗留的 canvas/opacity 状态需要清理
+          ++transitionIdRef.current; // 作废上一次 src 切换的回调
+          hideCanvasBuffer();        // 恢复 video opacity + 解锁容器
+
           videoRef.current.currentTime = videoTime;
           isSeekingRef.current = false;
           
