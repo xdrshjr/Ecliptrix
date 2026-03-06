@@ -354,17 +354,17 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
   return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-card rounded-md border border-border max-w-7xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex-shrink-0">
+        <div className="bg-muted px-6 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">字幕编辑与样式设置</h2>
-              <p className="text-sm text-gray-600 mt-1">左侧设置样式，右侧编辑内容</p>
+              <h2 className="text-xl font-semibold text-foreground">字幕编辑与样式设置</h2>
+              <p className="text-sm text-muted-foreground mt-1">左侧设置样式，右侧编辑内容</p>
             </div>
             <button
               onClick={handleCancel}
-              className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
+              className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-md hover:bg-accent"
               aria-label="关闭"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -380,20 +380,20 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
             // No subtitles message
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="text-center">
-                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-16 h-16 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                 </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">暂无字幕</h3>
-                <p className="text-gray-500">请先在时间轴上添加字幕后再进行编辑</p>
+                <h3 className="text-lg font-medium text-foreground mb-2">暂无字幕</h3>
+                <p className="text-muted-foreground">请先在时间轴上添加字幕后再进行编辑</p>
               </div>
             </div>
           ) : (
             <>
               {/* Left Panel - Style Settings */}
-              <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col">
-                <div className="p-4 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">样式设置</h3>
-                  <p className="text-sm text-gray-600">
+              <div className="w-80 bg-muted border-r border-border flex flex-col">
+                <div className="p-4 border-b border-border">
+                  <h3 className="text-lg font-semibold text-foreground mb-2">样式设置</h3>
+                  <p className="text-sm text-muted-foreground">
                     {selectedSubtitleId ? '当前编辑单个字幕' : '当前编辑所有字幕'}
                   </p>
                 </div>
@@ -402,15 +402,15 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                 <div className="flex-1 overflow-y-auto p-4 space-y-6">
                   {/* Style Presets */}
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">预设样式</h4>
+                    <h4 className="text-sm font-semibold text-foreground mb-3">预设样式</h4>
                     <div className="grid grid-cols-2 gap-2">
                       {SUBTITLE_STYLE_PRESETS.map((preset) => (
                         <button
                           key={preset.id}
                           onClick={() => handlePresetSelect(preset)}
-                          className="p-3 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                          className="p-3 text-left border border-border rounded-md hover:border-primary/30 hover:bg-primary/10 transition-colors"
                         >
-                          <div className="text-sm font-medium text-gray-900">{preset.name}</div>
+                          <div className="text-sm font-medium text-foreground">{preset.name}</div>
                           <div 
                             className="text-xs mt-1 px-2 py-1 rounded"
                             style={{
@@ -429,11 +429,11 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
                   {/* Font Family */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">字体类型</label>
+                    <label className="block text-sm font-semibold text-foreground mb-2">字体类型</label>
                     <select
                       value={currentStyle.fontFamily}
                       onChange={(e) => handleStyleChange('fontFamily', e.target.value as SubtitleFontFamily)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
                     >
                       {FONT_FAMILY_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -445,7 +445,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
                   {/* Font Size */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-foreground mb-2">
                       字体大小: {currentStyle.fontSize}px
                     </label>
                     <input
@@ -454,9 +454,9 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                       max="120"
                       value={currentStyle.fontSize}
                       onChange={(e) => handleStyleChange('fontSize', parseInt(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      className="w-full h-2 bg-accent rounded-md appearance-none cursor-pointer"
                     />
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
                       <span>10px</span>
                       <span>120px</span>
                     </div>
@@ -464,19 +464,19 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
                   {/* Font Color */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">字体颜色</label>
+                    <label className="block text-sm font-semibold text-foreground mb-2">字体颜色</label>
                     <div className="flex items-center space-x-3">
                       <input
                         type="color"
                         value={currentStyle.fontColor}
                         onChange={(e) => handleStyleChange('fontColor', e.target.value)}
-                        className="w-12 h-8 border border-gray-300 rounded cursor-pointer"
+                        className="w-12 h-8 border border-border rounded-md cursor-pointer"
                       />
                       <input
                         type="text"
                         value={currentStyle.fontColor}
                         onChange={(e) => handleStyleChange('fontColor', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                        className="flex-1 px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary font-mono text-sm"
                         placeholder="#FFFFFF"
                       />
                     </div>
@@ -484,15 +484,15 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
                   {/* Background Color */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">背景颜色</label>
+                    <label className="block text-sm font-semibold text-foreground mb-2">背景颜色</label>
                     <div className="flex items-center space-x-3">
                       <input
                         type="checkbox"
                         checked={!!currentStyle.backgroundColor}
                         onChange={(e) => handleStyleChange('backgroundColor', e.target.checked ? '#000000' : undefined)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-4 h-4 text-primary border-border rounded focus:ring-primary"
                       />
-                      <span className="text-sm text-gray-600">启用背景</span>
+                      <span className="text-sm text-muted-foreground">启用背景</span>
                     </div>
                     {currentStyle.backgroundColor && (
                       <div className="flex items-center space-x-3 mt-2">
@@ -500,13 +500,13 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                           type="color"
                           value={currentStyle.backgroundColor}
                           onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
-                          className="w-12 h-8 border border-gray-300 rounded cursor-pointer"
+                          className="w-12 h-8 border border-border rounded-md cursor-pointer"
                         />
                         <input
                           type="text"
                           value={currentStyle.backgroundColor}
                           onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                          className="flex-1 px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary font-mono text-sm"
                           placeholder="#000000"
                         />
                       </div>
@@ -515,11 +515,11 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
                   {/* Position */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">字幕位置</label>
+                    <label className="block text-sm font-semibold text-foreground mb-2">字幕位置</label>
                     <select
                       value={currentStyle.position}
                       onChange={(e) => handleStyleChange('position', e.target.value as SubtitlePosition)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-colors"
+                      className="w-full px-3 py-2 text-sm border border-border rounded-md bg-card text-foreground hover:border-border focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
                     >
                       {POSITION_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -531,8 +531,8 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
                   {/* Preview */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">样式预览</label>
-                    <div className="bg-black rounded-lg p-4 flex items-center justify-center min-h-[80px]">
+                    <label className="block text-sm font-semibold text-foreground mb-2">样式预览</label>
+                    <div className="bg-black rounded-md p-4 flex items-center justify-center min-h-[80px]">
                       <div
                         style={{
                           color: currentStyle.fontColor,
@@ -550,10 +550,10 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                 </div>
 
                 {/* Fixed Apply to All Button at bottom */}
-                <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                <div className="p-4 border-t border-border bg-muted flex-shrink-0">
                   <button
                     onClick={handleApplyToAll}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium"
                   >
                     应用到所有字幕
                   </button>
@@ -562,9 +562,9 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
 
               {/* Right Panel - Content Editing */}
               <div className="flex-1 flex flex-col">
-                <div className="p-4 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900">字幕内容编辑</h3>
-                  <p className="text-sm text-gray-600 mt-1">点击字幕片段进行编辑</p>
+                <div className="p-4 border-b border-border">
+                  <h3 className="text-lg font-semibold text-foreground">字幕内容编辑</h3>
+                  <p className="text-sm text-muted-foreground mt-1">点击字幕片段进行编辑</p>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-4">
@@ -574,10 +574,10 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                       .map((subtitle, index) => (
                         <div 
                           key={subtitle.id} 
-                          className={`rounded-xl p-4 border transition-colors cursor-pointer ${
+                          className={`rounded-md p-4 border transition-colors cursor-pointer ${
                             selectedSubtitleId === subtitle.id
-                              ? 'bg-blue-50 border-blue-300'
-                              : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                              ? 'bg-primary/10 border-primary/30'
+                              : 'bg-muted border-border hover:border-border'
                           }`}
                           onClick={() => handleSubtitleSelect(subtitle.id)}
                         >
@@ -585,8 +585,8 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                             {/* Subtitle number */}
                             <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                               selectedSubtitleId === subtitle.id
-                                ? 'bg-blue-100 text-blue-600'
-                                : 'bg-gray-100 text-gray-600'
+                                ? 'bg-primary/10 text-primary'
+                                : 'bg-muted text-muted-foreground'
                             }`}>
                               {index + 1}
                             </div>
@@ -594,16 +594,16 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                             {/* Subtitle content */}
                             <div className="flex-1 space-y-3">
                               {/* Time info */}
-                              <div className="flex items-center space-x-4 text-sm text-gray-500">
+                              <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                                 <div className="flex items-center space-x-1">
                                   <span className="font-medium">开始:</span>
-                                  <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+                                  <span className="font-mono bg-muted px-2 py-1 rounded-md">
                                     {formatTime(subtitle.startTime)}
                                   </span>
                                 </div>
                                 <div className="flex items-center space-x-1">
                                   <span className="font-medium">时长:</span>
-                                  <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+                                  <span className="font-mono bg-muted px-2 py-1 rounded-md">
                                     {formatTime(subtitle.duration)}
                                   </span>
                                 </div>
@@ -611,14 +611,14 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                               
                               {/* Text editor */}
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                <label className="block text-sm font-medium text-foreground mb-2">
                                   字幕文本
                                 </label>
                                 <textarea
                                   value={subtitle.text || ''}
                                   onChange={(e) => handleSubtitleChange(subtitle.id, e.target.value)}
                                   placeholder="输入字幕文本..."
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none transition-colors"
+                                  className="w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary resize-none transition-colors text-foreground"
                                   rows={2}
                                   onClick={(e) => e.stopPropagation()}
                                 />
@@ -653,9 +653,9 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex-shrink-0">
+        <div className="bg-muted px-6 py-4 border-t border-border flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-muted-foreground">
               {editedSubtitles.length > 0 && (
                 <span>共 {editedSubtitles.length} 个字幕片段</span>
               )}
@@ -663,17 +663,17 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
             <div className="flex items-center space-x-3">
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                className="px-4 py-2 text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors font-medium"
               >
                 取消
               </button>
               <button
                 onClick={handleSave}
                 disabled={!hasChanges}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-4 py-2 rounded-md font-medium transition-colors ${
                   hasChanges
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'bg-muted-foreground/30 text-muted-foreground cursor-not-allowed'
                 }`}
               >
                 保存

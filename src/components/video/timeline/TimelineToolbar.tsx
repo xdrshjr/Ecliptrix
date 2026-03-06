@@ -280,11 +280,11 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         }}
         className={`
           relative p-2 rounded-md transition-all duration-200 flex items-center justify-center w-8 h-8
-          ${button.disabled 
-            ? 'text-gray-400 cursor-not-allowed bg-gray-100' 
+          ${button.disabled
+            ? 'text-muted-foreground cursor-not-allowed bg-muted'
             : isActive
-              ? 'text-blue-700 bg-blue-100 border border-blue-300 shadow-sm'
-              : button.className || 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
+              ? 'text-primary bg-primary/10 border border-primary'
+              : button.className || 'text-foreground hover:text-foreground hover:bg-muted border border-transparent'
           }
         `}
         disabled={button.disabled}
@@ -297,10 +297,10 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         
         {/* 悬停提示 - 使用CSS hover，确保显示 */}
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-          <div className="bg-gray-900 text-white text-xs px-3 py-2 rounded-md shadow-2xl whitespace-nowrap border border-gray-600">
+          <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
             {button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-              <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+              <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
             </div>
           </div>
         </div>
@@ -309,7 +309,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   );
 
   return (
-    <div className="timeline-toolbar h-8 bg-white border-b border-gray-200 flex items-center justify-between px-4 relative overflow-visible">
+    <div className="timeline-toolbar h-8 bg-card border-b border-border flex items-center justify-between px-4 relative overflow-visible">
       {/* 隐藏的文件输入 */}
       <input
         ref={fileInputRef}
@@ -326,13 +326,13 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           {renderIconButton(importButton)}
         </div>
         
-        <div className="w-px h-4 bg-gray-300 mx-1" />
+        <div className="w-px h-4 bg-border mx-1" />
         
         <div className="flex items-center space-x-1">
           {basicEditButtons.map(button => renderIconButton(button))}
         </div>
         
-        <div className="w-px h-4 bg-gray-300 mx-2" />
+        <div className="w-px h-4 bg-border mx-2" />
         
         <div className="flex items-center space-x-1">
           {historyButtons.map(button => renderIconButton(button))}
@@ -340,13 +340,13 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       </div>
 
       {/* 中间状态显示 */}
-      <div className="flex items-center space-x-3 text-xs text-gray-600">
+      <div className="flex items-center space-x-3 text-xs text-muted-foreground">
         {selectedItemsCount > 0 && (
-          <div className="flex items-center space-x-1 bg-blue-50 px-2 py-1 rounded-full">
-            <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center space-x-1 bg-primary/10 px-2 py-1 rounded-full">
+            <svg className="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
             </svg>
-            <span className="text-blue-700 font-medium text-xs">
+            <span className="text-primary font-medium text-xs">
               {t.timeline.status.selectedItems.replace('{count}', selectedItemsCount.toString())}
             </span>
           </div>

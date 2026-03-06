@@ -2711,7 +2711,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
       {/* 左侧区域 - AI Chat 面板贯穿上下，占20%宽度 */}
-      <div className="video-editing-left-sidebar flex flex-col border-r border-gray-200 bg-white">
+      <div className="video-editing-left-sidebar flex flex-col border-r border-border bg-card">
         <VideoChatWindow
           conversation={activeConversation}
           onSendMessage={handleSendChatMessage}
@@ -2729,7 +2729,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         {/* 上方面板区域 */}
         <div className="video-editing-upper-panels flex min-h-0 overflow-hidden">
           {/* Text Script 面板 */}
-          <div className="video-editing-script-panel bg-gray-50 border-r border-gray-200">
+          <div className="video-editing-script-panel bg-muted border-r border-border">
             <ScriptPanel
               segments={content?.scriptSegments || getMockScriptSegments(locale)}
               className="h-full"
@@ -2763,11 +2763,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onCutMaterial={handleCutMaterial}
             onWatermarkRemoval={handleWatermarkRemoval}
             taskId={taskId}
-            className="video-editing-materials-panel bg-white border-r border-gray-200"
+            className="video-editing-materials-panel bg-card border-r border-border"
           />
 
           {/* Play Preview 面板 */}
-          <div className="video-editing-player-panel bg-white">
+          <div className="video-editing-player-panel bg-card">
             <VideoPlayerPanel
               ref={videoPlayerRef}
               {...videoPlayback}
@@ -2789,7 +2789,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         </div>
 
         {/* 下方时间轴面板 - 在右侧区域的下方，全宽度 */}
-        <div className="video-editing-timeline-section border-t border-gray-200 bg-gray-50">
+        <div className="video-editing-timeline-section border-t border-border bg-muted">
           <TimelinePanel 
             className="h-full" 
             onTimelineStateChange={handleTimelineStateChange}

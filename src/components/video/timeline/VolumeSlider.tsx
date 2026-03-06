@@ -104,7 +104,7 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
   const sliderContent = (
     <div 
       ref={sliderRef}
-      className="fixed bg-gray-900 text-white rounded-lg shadow-xl p-3 min-w-[120px] transform -translate-x-1/2"
+      className="fixed bg-background text-foreground rounded-md p-3 min-w-[120px] transform -translate-x-1/2 border border-border"
       style={{ 
         zIndex: 999999,
         left: position.x,
@@ -128,12 +128,12 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
           max="200"
           value={volume}
           onChange={handleSliderChange}
-          className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+          className="w-full h-2 bg-muted rounded-md appearance-none cursor-pointer slider"
           style={{
-            background: `linear-gradient(to right, #10b981 0%, #10b981 ${volume/2}%, #374151 ${volume/2}%, #374151 100%)`
+            background: `linear-gradient(to right, #10b981 0%, #10b981 ${volume/2}%, var(--muted) ${volume/2}%, var(--muted) 100%)`
           }}
         />
-        <div className="flex justify-between text-xs text-gray-400 mt-1">
+        <div className="flex justify-between text-xs text-muted-foreground mt-1">
           <span>0%</span>
           <span>100%</span>
           <span>200%</span>
@@ -142,7 +142,7 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
       
       {/* 箭头指示器 */}
       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
       </div>
       
       <style jsx>{`

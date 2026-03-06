@@ -69,8 +69,8 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
     return (
       <div key={category.id} className="space-y-3">
         <div>
-          <h4 className="text-sm font-semibold text-gray-900 mb-1">{categoryTranslation.title}</h4>
-          <p className="text-xs text-gray-500">{categoryTranslation.description}</p>
+          <h4 className="text-sm font-semibold text-foreground mb-1">{categoryTranslation.title}</h4>
+          <p className="text-xs text-muted-foreground">{categoryTranslation.description}</p>
         </div>
         
         <div className="space-y-2">
@@ -83,19 +83,19 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
                 key={option.id}
                 onClick={() => handleOptionToggle(category.id, option.id)}
                 className={`
-                  p-3 rounded-lg border cursor-pointer transition-all duration-200
-                  ${isSelected 
-                    ? 'bg-blue-50 border-blue-200 shadow-sm' 
-                    : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  p-3 rounded-md border cursor-pointer transition-all duration-200
+                  ${isSelected
+                    ? 'bg-primary/10 border-primary/30'
+                    : 'bg-card border-border hover:border-border hover:bg-accent'
                   }
                 `}
               >
                 <div className="flex items-start space-x-3">
                   <div className={`
                     w-4 h-4 rounded border-2 flex items-center justify-center mt-0.5 transition-colors
-                    ${isSelected 
-                      ? 'bg-blue-500 border-blue-500' 
-                      : 'border-gray-300 bg-white'
+                    ${isSelected
+                      ? 'bg-primary border-primary'
+                      : 'border-border bg-card'
                     }
                   `}>
                     {isSelected && (
@@ -105,8 +105,8 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 mb-1">{optionTranslation.label}</div>
-                    <div className="text-xs text-gray-500 leading-relaxed">{optionTranslation.description}</div>
+                    <div className="text-sm font-medium text-foreground mb-1">{optionTranslation.label}</div>
+                    <div className="text-xs text-muted-foreground leading-relaxed">{optionTranslation.description}</div>
                   </div>
                 </div>
               </div>
@@ -118,7 +118,7 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
   };
 
   return (
-    <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col">
+    <div className="w-80 bg-muted border-r border-border flex flex-col">
       {/* 配置选项区域 */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {configCategories.map(renderConfigCategory)}
@@ -126,8 +126,8 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
         {/* 自定义创意输入框 */}
         <div className="space-y-3">
           <div>
-            <h4 className="text-sm font-semibold text-gray-900 mb-1">{translations.configPanel.customCreativeTitle}</h4>
-            <p className="text-xs text-gray-500">{translations.configPanel.customCreativeDescription}</p>
+            <h4 className="text-sm font-semibold text-foreground mb-1">{translations.configPanel.customCreativeTitle}</h4>
+            <p className="text-xs text-muted-foreground">{translations.configPanel.customCreativeDescription}</p>
           </div>
           
           <div className="space-y-2">
@@ -135,7 +135,7 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
               value={config.customCreativeInput}
               onChange={(e) => handleCustomCreativeInputChange(e.target.value)}
               placeholder={translations.configPanel.customCreativePlaceholder}
-              className="w-full p-3 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+              className="w-full p-3 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200"
               rows={4}
               disabled={isDiscussing}
             />
@@ -144,15 +144,15 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
       </div>
 
       {/* 底部按钮区域 */}
-      <div className="p-6 bg-white border-t border-gray-200">
+      <div className="p-6 bg-card border-t border-border">
         <button
           onClick={onStartBrainstorming}
           disabled={!isConfigValid || isDiscussing}
           className={`
-            w-full py-3 px-4 rounded-lg font-medium text-sm transition-all duration-200
+            w-full py-3 px-4 rounded-md font-medium text-sm transition-all duration-200
             ${isConfigValid && !isDiscussing
-              ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
-              : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              : 'bg-accent text-muted-foreground cursor-not-allowed'
             }
           `}
         >
@@ -160,7 +160,7 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
         </button>
         
         {!isConfigValid && (
-          <p className="text-xs text-red-500 mt-2 text-center">
+          <p className="text-xs text-destructive mt-2 text-center">
             {translations.configPanel.validationError}
           </p>
         )}

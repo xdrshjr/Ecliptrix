@@ -383,17 +383,17 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
 
   return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full h-[85vh] flex flex-col overflow-hidden">
+      <div className="bg-card rounded-md border border-border max-w-6xl w-full h-[85vh] flex flex-col overflow-hidden">
         {/* 标题栏 */}
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex-shrink-0">
+        <div className="bg-muted px-6 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">{t.contentPolishModal.title}</h2>
-              <p className="text-sm text-gray-600 mt-1">{t.contentPolishModal.subtitle}</p>
+              <h2 className="text-xl font-semibold text-foreground">{t.contentPolishModal.title}</h2>
+              <p className="text-sm text-muted-foreground mt-1">{t.contentPolishModal.subtitle}</p>
             </div>
             <button
               onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
               aria-label={t.contentPolishModal.close}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -406,13 +406,13 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
         {/* 主要内容区域 */}
         <div className="flex flex-1 min-h-0">
           {/* 左侧设置区域 */}
-          <div className="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col">
+          <div className="w-1/3 bg-muted border-r border-border flex flex-col">
             {/* 原始内容预览区域（固定高度） */}
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-border">
               <div className="mb-0">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">{t.contentPolishModal.originalContent}</h3>
-                <div className="bg-white rounded-lg border border-gray-200 p-4 max-h-24 overflow-y-auto">
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                <h3 className="text-sm font-medium text-foreground mb-3">{t.contentPolishModal.originalContent}</h3>
+                <div className="bg-card rounded-md border border-border p-4 max-h-24 overflow-y-auto">
+                  <p className="text-sm text-foreground whitespace-pre-wrap">
                     {originalContent || t.contentPolishModal.noContent}
                   </p>
                 </div>
@@ -424,10 +424,10 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
               {/* 选择润色目标标题和统计 */}
               <div className="flex-shrink-0 mb-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-gray-900">{t.contentPolishModal.selectPolishGoals}</h3>
+                  <h3 className="text-sm font-medium text-foreground">{t.contentPolishModal.selectPolishGoals}</h3>
                   {selectedStyles.size > 0 && (
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
                         {t.contentPolishModal.selectedCount.replace('{count}', selectedStyles.size.toString())}
                       </span>
                       <button
@@ -438,7 +438,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                             timestamp: new Date().toISOString()
                           });
                         }}
-                        className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                       >
                         {t.contentPolishModal.clear}
                       </button>
@@ -451,21 +451,21 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
               <div className="flex-1 overflow-y-auto pr-2 -mr-2">
                 {configLoading ? (
                   <div className="flex items-center justify-center py-12">
-                    <svg className="w-6 h-6 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span className="ml-2 text-sm text-gray-600">{t.contentPolishModal.loadingConfig}</span>
+                    <span className="ml-2 text-sm text-muted-foreground">{t.contentPolishModal.loadingConfig}</span>
                   </div>
                 ) : configError ? (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-sm text-red-700">{t.contentPolishModal.configLoadError.replace('{error}', configError)}</p>
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
+                    <p className="text-sm text-destructive">{t.contentPolishModal.configLoadError.replace('{error}', configError)}</p>
                   </div>
                 ) : (
                   <div className="space-y-4 pb-2">
                     {Object.entries(groupedGoals).map(([category, goals]) => (
                       <div key={category}>
-                        <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 sticky top-0 bg-gray-50 py-1">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3 sticky top-0 bg-muted py-1">
                           {getCategoryName(category)}
                         </h4>
                         {/* 使用网格布局，一行两个 */}
@@ -476,17 +476,17 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                               <div
                                 key={goal.id}
                                 onClick={() => handleStyleToggle(goal.id)}
-                                className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 hover:shadow-sm ${
-                                  isSelected 
-                                    ? 'border-blue-300 bg-blue-50 shadow-sm' 
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                className={`relative p-3 rounded-md border-2 cursor-pointer transition-all duration-200 ${
+                                  isSelected
+                                    ? 'border-primary/30 bg-primary/10'
+                                    : 'border-border bg-card hover:border-border'
                                 }`}
                               >
                                 {/* 选中状态指示器 */}
                                 <div className={`absolute top-2 right-2 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-                                  isSelected 
-                                    ? 'border-blue-500 bg-blue-500' 
-                                    : 'border-gray-300 bg-white'
+                                  isSelected
+                                    ? 'border-primary bg-primary'
+                                    : 'border-border bg-card'
                                 }`}>
                                   {isSelected && (
                                     <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -497,12 +497,12 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                                 
                                 <div className="pr-6">
                                   <h5 className={`font-medium text-sm mb-1 transition-colors ${
-                                    isSelected ? 'text-blue-900' : 'text-gray-900'
+                                    isSelected ? 'text-primary' : 'text-foreground'
                                   }`}>
                                     {t.contentPolishModal.polishGoals[goal.id as keyof typeof t.contentPolishModal.polishGoals]?.name || goal.name}
                                   </h5>
                                   <p className={`text-xs leading-relaxed transition-colors ${
-                                    isSelected ? 'text-blue-700' : 'text-gray-600'
+                                    isSelected ? 'text-primary' : 'text-muted-foreground'
                                   }`}>
                                     {t.contentPolishModal.polishGoals[goal.id as keyof typeof t.contentPolishModal.polishGoals]?.description || goal.description}
                                   </p>
@@ -519,11 +519,11 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
             </div>
 
             {/* 下部分：开始润色按钮（固定在底部） */}
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+            <div className="p-6 border-t border-border bg-muted flex-shrink-0">
               <button
                 onClick={handlePolish}
                 disabled={selectedStyles.size === 0 || !originalContent.trim() || isLoading || configLoading}
-                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-md font-medium disabled:bg-muted-foreground/30 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
               >
                 {isLoading ? (
                   <div className="flex items-center justify-center space-x-2">
@@ -540,7 +540,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
               
               {/* 添加详细的操作日志记录 */}
               {selectedStyles.size > 0 && (
-                <div className="mt-2 text-xs text-gray-500 text-center">
+                <div className="mt-2 text-xs text-muted-foreground text-center">
                   {t.contentPolishModal.operationHint.replace('{count}', selectedStyles.size.toString())}
                 </div>
               )}
@@ -550,7 +550,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
           {/* 右侧结果展示区域 */}
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 p-6 overflow-y-auto">
-              <h3 className="text-sm font-medium text-gray-900 mb-4">{t.contentPolishModal.polishResults}</h3>
+              <h3 className="text-sm font-medium text-foreground mb-4">{t.contentPolishModal.polishResults}</h3>
               
               {polishResults.length > 0 ? (
                 <div className="space-y-4">
@@ -558,15 +558,15 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                     <div
                       key={index}
                       onClick={() => setSelectedResult(result.content)}
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                        selectedResult === result.content 
-                          ? 'border-blue-300 bg-blue-50' 
-                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      className={`p-4 rounded-md border-2 cursor-pointer transition-all ${
+                        selectedResult === result.content
+                          ? 'border-primary/30 bg-primary/10'
+                          : 'border-border bg-card hover:border-border'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center space-x-2">
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className="px-2 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
                             {result.style}
                           </span>
                         </div>
@@ -574,9 +574,9 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                           <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">{t.contentPolishModal.selected}</span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-600 mb-3">{result.description}</p>
-                      <div className="bg-gray-50 rounded-lg p-3 max-h-64 overflow-y-auto">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                      <p className="text-xs text-muted-foreground mb-3">{result.description}</p>
+                      <div className="bg-muted rounded-md p-3 max-h-64 overflow-y-auto">
+                        <p className="text-sm text-foreground whitespace-pre-wrap">
                           {result.content}
                         </p>
                       </div>
@@ -585,29 +585,29 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-64 text-center">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                    <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </div>
-                  <p className="text-gray-500 text-sm">{t.contentPolishModal.emptyStateTitle}</p>
-                  <p className="text-gray-400 text-xs mt-2">{t.contentPolishModal.emptyStateSubtitle}</p>
+                  <p className="text-muted-foreground text-sm">{t.contentPolishModal.emptyStateTitle}</p>
+                  <p className="text-muted-foreground text-xs mt-2">{t.contentPolishModal.emptyStateSubtitle}</p>
                 </div>
               )}
             </div>
 
             {/* 底部操作栏（固定在底部） */}
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end space-x-3 flex-shrink-0">
+            <div className="bg-muted px-6 py-4 border-t border-border flex justify-end space-x-3 flex-shrink-0">
               <button
                 onClick={handleClose}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
               >
                 {t.contentPolishModal.cancel}
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={!selectedResult}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md disabled:bg-muted-foreground/30 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
               >
                 {t.contentPolishModal.confirmApply}
               </button>

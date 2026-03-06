@@ -169,12 +169,12 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       marks.push(
         <div key={time} className="absolute flex flex-col items-center">
           <div
-            className={`border-l ${isMajor ? 'border-gray-400 h-4' : 'border-gray-300 h-2'}`}
+            className={`border-l ${isMajor ? 'border-border h-4' : 'border-border h-2'}`}
             style={{ left: `${left}px` }}
           />
           {isMajor && (
             <span
-              className="text-xs text-gray-600 mt-1 font-mono"
+              className="text-xs text-muted-foreground mt-1 font-mono"
               style={{ left: `${left - 20}px`, position: 'absolute', top: '16px' }}
             >
               {formatTime(time)}
@@ -233,11 +233,11 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   };
 
   return (
-    <div className="timeline-ruler h-8 bg-gray-50 border-b border-gray-200 flex relative select-none">
+    <div className="timeline-ruler h-8 bg-muted border-b border-border flex relative select-none">
       {/* 左侧控制区域 */}
       <div 
         ref={controlPanelRef}
-        className="w-48 bg-gray-100 border-r border-gray-200 flex items-center justify-between px-3"
+        className="w-48 bg-muted border-r border-border flex items-center justify-between px-3"
       >
         <div className="flex items-center space-x-2">
           {/* 时间轴图标，替换原来的文字 */}
@@ -246,7 +246,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             onMouseEnter={handleTimelineIconMouseEnter}
             onMouseLeave={handleTimelineIconMouseLeave}
           >
-            <div className="text-gray-600 cursor-help">
+            <div className="text-muted-foreground cursor-help">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
               </svg>
@@ -254,14 +254,14 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             
             {/* 工具提示 */}
             {showTooltip && (
-              <div className="absolute left-0 top-6 bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
+              <div className="absolute left-0 top-6 bg-card text-foreground text-xs px-2 py-1 rounded whitespace-nowrap z-50">
                 时间轴
-                <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-800 transform rotate-45"></div>
+                <div className="absolute -top-1 left-2 w-2 h-2 bg-card transform rotate-45"></div>
               </div>
             )}
           </div>
           
-          <span className="text-xs text-gray-500 font-mono">
+          <span className="text-xs text-muted-foreground font-mono">
             {formatTime(currentTime)}
           </span>
         </div>
@@ -270,17 +270,17 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         <div className="flex items-center space-x-1">
           <button
             onClick={handleZoomOut}
-            className="p-1 rounded hover:bg-gray-200 transition-colors"
+            className="p-1 rounded hover:bg-accent transition-colors"
             title="缩小"
           >
-            <svg className="w-3 h-3 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 13H5v-2h14v2z"/>
             </svg>
           </button>
           
           <button
             onClick={handleZoomReset}
-            className="px-2 py-0.5 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+            className="px-2 py-0.5 text-xs bg-card border border-border rounded hover:bg-muted transition-colors"
             title="重置缩放"
           >
             {Math.round(zoomLevel * 100)}%
@@ -288,10 +288,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           
           <button
             onClick={handleZoomIn}
-            className="p-1 rounded hover:bg-gray-200 transition-colors"
+            className="p-1 rounded hover:bg-accent transition-colors"
             title="放大"
           >
-            <svg className="w-3 h-3 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
             </svg>
           </button>
@@ -311,7 +311,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       >
         {/* 滚动内容容器 */}
         <div 
-          className="relative bg-white"
+          className="relative bg-card"
           style={{ 
             minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`,
             height: '100%'
@@ -372,7 +372,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               return [...Array(maxTimeForGrid)].map((_, i) => (
                 <div
                   key={i}
-                  className="absolute top-0 bottom-0 border-l border-gray-100"
+                  className="absolute top-0 bottom-0 border-l border-border"
                   style={{ left: `${i * pixelsPerSecond}px` }}
                 />
               ));

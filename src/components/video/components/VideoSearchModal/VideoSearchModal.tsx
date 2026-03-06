@@ -256,40 +256,40 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   const currentSearching = getCurrentSearching();
 
   return (
-      <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[200]">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-5/6 flex flex-col overflow-hidden border border-gray-100">
+      <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-[200]">
+      <div className="bg-card rounded-md w-full max-w-7xl h-5/6 flex flex-col overflow-hidden border border-border">
         {/* 模态框头部 - Apple风格 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-primary/10 rounded-md flex items-center justify-center">
+              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">搜索在线视频</h2>
-              <p className="text-sm text-gray-500">发现高质量的免费视频素材</p>
+              <h2 className="text-xl font-semibold text-foreground">搜索在线视频</h2>
+              <p className="text-sm text-muted-foreground">发现高质量的免费视频素材</p>
             </div>
           </div>
           <button
             onClick={handleClose}
-            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors duration-200"
+            className="w-8 h-8 rounded-full bg-muted hover:bg-accent flex items-center justify-center transition-colors duration-200"
           >
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* 新增：视频库页签 */}
-        <div className="px-6 py-3 border-b border-gray-100 bg-white">
-          <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+        <div className="px-6 py-3 border-b border-border bg-card">
+          <div className="flex space-x-1 bg-muted rounded-md p-1">
             <button
               onClick={() => handleLibrarySwitch('official')}
               className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                 activeLibrary === 'official'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-card text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               官方视频库
@@ -298,8 +298,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               onClick={() => handleLibrarySwitch('youtube')}
               className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                 activeLibrary === 'youtube'
-                  ? 'bg-white text-red-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-card text-destructive'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Youtube视频库
@@ -308,7 +308,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
         </div>
 
         {/* 搜索控制区 - Apple风格 */}
-        <div className="px-6 py-4 border-b border-gray-100 bg-white">
+        <div className="px-6 py-4 border-b border-border bg-card">
           <div className="flex items-center space-x-4">
             <div className="flex-1">
               <input
@@ -320,16 +320,16 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 placeholder-gray-400 text-gray-900"
+                className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all duration-200 placeholder-muted-foreground text-foreground"
                 disabled={currentSearching}
               />
             </div>
             <div className="flex items-center space-x-3">
-              <label className="text-sm font-medium text-gray-700">方向:</label>
+              <label className="text-sm font-medium text-foreground">方向:</label>
               <select
                 value={searchOrientation}
                 onChange={(e) => setSearchOrientation(e.target.value as any)}
-                className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 text-gray-900"
+                className="px-3 py-3 bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all duration-200 text-foreground"
                 disabled={currentSearching}
               >
                 <option value="mixed">混合</option>
@@ -341,7 +341,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
             {/* YouTube时间范围选择器 */}
             {activeLibrary === 'youtube' && (
               <div className="flex items-center space-x-3">
-                <label className="text-sm font-medium text-gray-700">时长:</label>
+                <label className="text-sm font-medium text-foreground">时长:</label>
                 <select
                   value={youtubeDurationPreset}
                   onChange={(e) => {
@@ -352,7 +352,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                       activeLibrary
                     });
                   }}
-                  className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all duration-200 text-gray-900"
+                  className="px-3 py-3 bg-muted border border-border rounded-md focus:ring-2 focus:ring-destructive focus:border-destructive outline-none transition-all duration-200 text-foreground"
                   disabled={currentSearching}
                 >
                   <option value="under_1min">1分钟内</option>
@@ -376,11 +376,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           minDuration
                         });
                       }}
-                      className="w-20 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none"
+                      className="w-20 px-2 py-1 text-xs bg-muted border border-border rounded-md focus:ring-1 focus:ring-destructive focus:border-destructive outline-none"
                       disabled={currentSearching}
                       min="0"
                     />
-                    <span className="text-xs text-gray-500">-</span>
+                    <span className="text-xs text-muted-foreground">-</span>
                     <input
                       type="number"
                       placeholder="最大秒数"
@@ -392,11 +392,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           maxDuration
                         });
                       }}
-                      className="w-20 px-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none"
+                      className="w-20 px-2 py-1 text-xs bg-muted border border-border rounded-md focus:ring-1 focus:ring-destructive focus:border-destructive outline-none"
                       disabled={currentSearching}
                       min="1"
                     />
-                    <span className="text-xs text-gray-500">秒</span>
+                    <span className="text-xs text-muted-foreground">秒</span>
                   </div>
                 )}
               </div>
@@ -404,10 +404,10 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
             <button
               onClick={handleSearchClick}
               disabled={currentSearching || !searchQuery.trim()}
-              className={`px-6 py-3 rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 font-medium shadow-sm ${
+              className={`px-6 py-3 rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 font-medium ${
                 activeLibrary === 'official'
-                  ? 'bg-blue-500 text-white hover:bg-blue-600'
-                  : 'bg-red-500 text-white hover:bg-red-600'
+                  ? 'bg-primary text-white hover:bg-primary'
+                  : 'bg-destructive text-white hover:bg-destructive/90'
               }`}
             >
               {currentSearching ? (
@@ -433,17 +433,17 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
         {/* 主内容区域 - 左中右三栏布局 */}
         <div className="flex-1 flex overflow-hidden">
           {/* 左栏 - 视频预览区域 */}
-          <div className="w-1/3 border-r border-gray-100 flex flex-col bg-gray-50/30">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-              <h4 className="font-medium text-gray-900">视频预览</h4>
+          <div className="w-1/3 border-r border-border flex flex-col bg-muted">
+            <div className="px-4 py-3 border-b border-border bg-muted">
+              <h4 className="font-medium text-foreground">视频预览</h4>
             </div>
-            <div className="flex-1 flex flex-col bg-white">
+            <div className="flex-1 flex flex-col bg-card">
               {currentPreviewVideo ? (
                 <>
                   {/* 预览视频标题栏 */}
-                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-                    <h5 className="font-medium text-gray-900 truncate text-sm">{currentPreviewVideo.title}</h5>
-                    <div className="text-xs text-gray-500 mt-1">
+                  <div className="px-4 py-3 border-b border-border bg-muted">
+                    <h5 className="font-medium text-foreground truncate text-sm">{currentPreviewVideo.title}</h5>
+                    <div className="text-xs text-muted-foreground mt-1">
                       {activeLibrary === 'official' ? (
                         <span>作者: {currentPreviewVideo.author}</span>
                       ) : (
@@ -454,7 +454,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
                   {/* 预览视频内容 */}
                   <div className="flex-1 p-4 max-h-96 overflow-y-auto">
-                    <div className="w-full h-full min-h-[200px] max-h-[320px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+                    <div className="w-full h-full min-h-[200px] max-h-[320px] bg-muted rounded-md overflow-hidden flex items-center justify-center">
                       {(currentPreviewVideo.video_url || currentPreviewVideo.videoUrl) ? (
                         activeLibrary === 'youtube' ? (
                           // YouTube视频使用嵌入式播放器
@@ -529,7 +529,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                               className="max-w-full max-h-full object-contain"
                             />
                           ) : (
-                            <div className="text-center text-gray-400">
+                            <div className="text-center text-muted-foreground">
                               <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                               </svg>
@@ -543,7 +543,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center text-gray-400">
+                  <div className="text-center text-muted-foreground">
                     <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
@@ -556,20 +556,20 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           </div>
 
           {/* 中栏 - 搜索结果展示区域 */}
-          <div className="w-1/3 border-r border-gray-100 flex flex-col">
+          <div className="w-1/3 border-r border-border flex flex-col">
             {/* 标题栏 */}
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-              <h4 className="font-medium text-gray-900">搜索结果</h4>
+            <div className="px-4 py-3 border-b border-border bg-muted">
+              <h4 className="font-medium text-foreground">搜索结果</h4>
             </div>
             
             {/* 结果统计栏 */}
             {allCurrentResults.length > 0 && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  找到 <span className="font-semibold text-gray-900">{allCurrentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-blue-600' : 'text-red-600'}`}>{currentSelectedResults.size}</span> 个
+              <div className="px-4 py-3 border-b border-border bg-muted flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  找到 <span className="font-semibold text-foreground">{allCurrentResults.length}</span> 个{activeLibrary === 'official' ? '官方' : 'Youtube'}视频，已选择 <span className={`font-semibold ${activeLibrary === 'official' ? 'text-primary' : 'text-destructive'}`}>{currentSelectedResults.size}</span> 个
                 </div>
                 {totalPages > 1 && (
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-muted-foreground">
                     第 {currentPage} / {totalPages} 页
                   </div>
                 )}
@@ -581,11 +581,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               {currentSearching ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
-                    <svg className={`w-12 h-12 animate-spin mx-auto mb-4 ${activeLibrary === 'official' ? 'text-blue-500' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24">
+                    <svg className={`w-12 h-12 animate-spin mx-auto mb-4 ${activeLibrary === 'official' ? 'text-primary' : 'text-destructive'}`} fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <p className="text-gray-600 font-medium">正在搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频...</p>
+                    <p className="text-muted-foreground font-medium">正在搜索{activeLibrary === 'official' ? '官方' : 'Youtube'}视频...</p>
                   </div>
                 </div>
               ) : currentResults.length > 0 ? (
@@ -597,10 +597,10 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     return (
                       <div
                         key={video.id}
-                        className={`group relative bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all duration-200 cursor-pointer ${
+                        className={`group relative bg-card border rounded-md overflow-hidden hover:transition-all duration-200 cursor-pointer ${
                           isPreviewActive 
-                            ? `ring-2 ${activeLibrary === 'official' ? 'ring-blue-500 border-blue-500' : 'ring-red-500 border-red-500'}` 
-                            : 'border-gray-200 hover:border-gray-300'
+                            ? `ring-2 ${activeLibrary === 'official' ? 'ring-primary border-primary' : 'ring-destructive border-destructive'}` 
+                            : 'border-border hover:border-border'
                         }`}
                         onClick={() => handleVideoClick(video)}
                       >
@@ -608,7 +608,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           // 官方视频库 - 紧凑横向布局（小缩略图）
                           <div className="flex items-center p-3 space-x-3">
                             {/* 视频缩略图 */}
-                            <div className="relative w-16 h-12 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
+                            <div className="relative w-16 h-12 bg-muted rounded-md overflow-hidden flex-shrink-0">
                               {(video.thumbnail || video.thumbnailUrl) ? (
                                 <img 
                                   src={video.thumbnail || video.thumbnailUrl} 
@@ -617,7 +617,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                   </svg>
                                 </div>
@@ -626,15 +626,15 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
                             {/* 视频信息 */}
                             <div className="flex-1 min-w-0">
-                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight mb-1">{video.title}</h5>
+                              <h5 className="text-sm font-medium text-foreground line-clamp-2 leading-tight mb-1">{video.title}</h5>
                               <div className="space-y-1">
-                                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                                   <span>{video.width} × {video.height}</span>
                                   {video.duration && (
                                     <span>• {formatDuration(video.duration)}</span>
                                   )}
                                 </div>
-                                <div className="text-xs text-gray-500">
+                                <div className="text-xs text-muted-foreground">
                                   <span>作者: {video.author}</span>
                                 </div>
                               </div>
@@ -643,10 +643,10 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             {/* 添加合成按钮 */}
                             <button
                               onClick={(e) => handleAddToComposition(video, e)}
-                              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
+                              className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
                                 isSelected
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                                  ? 'bg-primary text-white'
+                                  : 'bg-primary/10 text-primary hover:bg-primary/10 border border-primary/20'
                               }`}
                             >
                               {isSelected ? (
@@ -670,23 +670,23 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           // YouTube视频库 - 紧凑的文字列表布局（无缩略图）
                           <div className="flex items-center p-3 space-x-3">
                             {/* 视频图标 */}
-                            <div className="flex-shrink-0 w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
-                              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex-shrink-0 w-10 h-10 bg-destructive/10 rounded-md flex items-center justify-center">
+                              <svg className="w-5 h-5 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                               </svg>
                             </div>
 
                             {/* 视频信息 */}
                             <div className="flex-1 min-w-0">
-                              <h5 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight mb-1">{video.title}</h5>
+                              <h5 className="text-sm font-medium text-foreground line-clamp-2 leading-tight mb-1">{video.title}</h5>
                               <div className="space-y-1">
-                                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                                   <span>{video.width} × {video.height}</span>
                                   {video.duration && (
                                     <span>• {formatDuration(video.duration)}</span>
                                   )}
                                 </div>
-                                <div className="text-xs text-gray-500">
+                                <div className="text-xs text-muted-foreground">
                                   <span>频道: {video.channelTitle}</span>
                                   {video.viewCount && (
                                     <span> • {video.viewCount.toLocaleString()} 次观看</span>
@@ -698,10 +698,10 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             {/* 添加合成按钮 */}
                             <button
                               onClick={(e) => handleAddToComposition(video, e)}
-                              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
+                              className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
                                 isSelected
-                                  ? 'bg-red-500 text-white'
-                                  : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                                  ? 'bg-destructive text-white'
+                                  : 'bg-destructive/10 text-destructive hover:bg-destructive/10 border border-destructive/20'
                               }`}
                             >
                               {isSelected ? (
@@ -728,7 +728,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 </div>
               ) : (
                 <div className="flex-1 flex items-center justify-center p-8">
-                  <div className="text-center text-gray-400">
+                  <div className="text-center text-muted-foreground">
                     <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
@@ -740,16 +740,16 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               
               {/* 分页控件 */}
               {totalPages > 1 && allCurrentResults.length > 0 && (
-                <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/30">
+                <div className="px-4 py-3 border-t border-border bg-muted">
                   <div className="flex items-center justify-center space-x-2">
                     <button
                       onClick={goToPreviousPage}
                       disabled={currentPage === 1}
-                      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors duration-200 ${
+                      className={`px-3 py-1.5 text-sm rounded-md border transition-colors duration-200 ${
                         currentPage === 1
-                          ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                          : `border-gray-300 text-gray-700 hover:bg-gray-50 ${
-                              activeLibrary === 'official' ? 'hover:border-blue-300' : 'hover:border-red-300'
+                          ? 'border-border text-muted-foreground cursor-not-allowed'
+                          : `border-border text-foreground hover:bg-muted ${
+                              activeLibrary === 'official' ? 'hover:border-primary/30' : 'hover:border-destructive/30'
                             }`
                       }`}
                     >
@@ -763,11 +763,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           <button
                             key={page}
                             onClick={() => goToPage(page)}
-                            className={`w-8 h-8 text-sm rounded-lg transition-colors duration-200 ${
+                            className={`w-8 h-8 text-sm rounded-md transition-colors duration-200 ${
                               currentPage === page
-                                ? `${activeLibrary === 'official' ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'}`
-                                : `text-gray-700 hover:bg-gray-100 ${
-                                    activeLibrary === 'official' ? 'hover:text-blue-600' : 'hover:text-red-600'
+                                ? `${activeLibrary === 'official' ? 'bg-primary text-white' : 'bg-destructive text-white'}`
+                                : `text-foreground hover:bg-muted ${
+                                    activeLibrary === 'official' ? 'hover:text-primary' : 'hover:text-destructive'
                                   }`
                             }`}
                           >
@@ -780,11 +780,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <button
                       onClick={goToNextPage}
                       disabled={currentPage === totalPages}
-                      className={`px-3 py-1.5 text-sm rounded-lg border transition-colors duration-200 ${
+                      className={`px-3 py-1.5 text-sm rounded-md border transition-colors duration-200 ${
                         currentPage === totalPages
-                          ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                          : `border-gray-300 text-gray-700 hover:bg-gray-50 ${
-                              activeLibrary === 'official' ? 'hover:border-blue-300' : 'hover:border-red-300'
+                          ? 'border-border text-muted-foreground cursor-not-allowed'
+                          : `border-border text-foreground hover:bg-muted ${
+                              activeLibrary === 'official' ? 'hover:border-primary/30' : 'hover:border-destructive/30'
                             }`
                       }`}
                     >
@@ -797,16 +797,16 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           </div>
 
           {/* 右栏 - 已选择的视频列表区域 */}
-          <div className="w-1/3 flex flex-col bg-gray-50/30">
-            <div className="flex flex-col bg-white h-full">
+          <div className="w-1/3 flex flex-col bg-muted">
+            <div className="flex flex-col bg-card h-full">
               {/* 已选择标题栏 */}
-              <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/50">
+              <div className="px-6 py-3 border-b border-border bg-muted">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-gray-900">已选择的视频</h4>
+                  <h4 className="font-medium text-foreground">已选择的视频</h4>
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     activeLibrary === 'official' 
-                      ? 'text-blue-600 bg-blue-100' 
-                      : 'text-red-600 bg-red-100'
+                      ? 'text-primary bg-primary/10' 
+                      : 'text-destructive bg-destructive/10'
                   }`}>
                     {selectedVideos.length} 个
                   </span>
@@ -820,11 +820,11 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     {selectedVideos.map((video) => (
                       <div
                         key={video.id}
-                        className="group bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:shadow-sm transition-all duration-200"
+                        className="group bg-muted border border-border rounded-md overflow-hidden hover:transition-all duration-200"
                       >
                         <div className="flex p-2 space-x-3">
                           {/* 视频缩略图 */}
-                          <div className="relative w-16 h-10 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
+                          <div className="relative w-16 h-10 bg-muted rounded-md overflow-hidden flex-shrink-0">
                             {(video.thumbnail || video.thumbnailUrl) ? (
                               <img 
                                 src={video.thumbnail || video.thumbnailUrl} 
@@ -833,7 +833,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                 </svg>
                               </div>
@@ -842,8 +842,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
                           {/* 视频信息 */}
                           <div className="flex-1 min-w-0">
-                            <h6 className="text-xs font-medium text-gray-900 truncate mb-1">{video.title}</h6>
-                            <div className="flex items-center space-x-2 text-xs text-gray-500">
+                            <h6 className="text-xs font-medium text-foreground truncate mb-1">{video.title}</h6>
+                            <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                               <span>{video.width} × {video.height}</span>
                               {video.duration && (
                                 <span>• {formatDuration(video.duration)}</span>
@@ -854,9 +854,9 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           {/* 移除按钮 */}
                           <button
                             onClick={() => handleRemoveSelected(video.id)}
-                            className="flex-shrink-0 w-5 h-5 rounded-full bg-gray-200 hover:bg-red-100 flex items-center justify-center transition-colors duration-200 group"
+                            className="flex-shrink-0 w-5 h-5 rounded-full bg-accent hover:bg-destructive/10 flex items-center justify-center transition-colors duration-200 group"
                           >
-                            <svg className="w-3 h-3 text-gray-500 group-hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3 h-3 text-muted-foreground group-hover:text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
@@ -866,7 +866,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center p-4">
-                    <div className="text-center text-gray-400">
+                    <div className="text-center text-muted-foreground">
                       <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
@@ -881,23 +881,23 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
         </div>
 
         {/* 底部操作栏 */}
-        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+        <div className="px-6 py-4 border-t border-border bg-muted">
           {/* 错误信息显示区域 */}
           {validationError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3">
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-start space-x-3">
               <div className="flex-shrink-0">
-                <svg className="w-5 h-5 text-red-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-destructive mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-red-800 mb-1">视频时长不足</h4>
-                <p className="text-sm text-red-700">{validationError}</p>
-                <p className="text-xs text-red-600 mt-1">请选择更多视频或时长更长的视频素材。</p>
+                <h4 className="text-sm font-medium text-destructive mb-1">视频时长不足</h4>
+                <p className="text-sm text-destructive">{validationError}</p>
+                <p className="text-xs text-destructive mt-1">请选择更多视频或时长更长的视频素材。</p>
               </div>
               <button
                 onClick={() => setValidationError(null)}
-                className="flex-shrink-0 text-red-400 hover:text-red-600 transition-colors"
+                className="flex-shrink-0 text-destructive hover:text-destructive transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -910,15 +910,15 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           <div className="flex items-center justify-end space-x-3">
             <button
               onClick={handleReselect}
-              className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium"
+              className="px-6 py-2.5 bg-muted text-foreground rounded-md hover:bg-accent transition-colors duration-200 font-medium"
             >
               重新选择
             </button>
             <button
               onClick={handleConfirmAdd}
               disabled={currentSelectedResults.size === 0}
-              className={`px-6 py-2.5 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium shadow-sm flex items-center space-x-2 ${
-                activeLibrary === 'official' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-red-500 hover:bg-red-600'
+              className={`px-6 py-2.5 text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium flex items-center space-x-2 ${
+                activeLibrary === 'official' ? 'bg-primary hover:bg-primary' : 'bg-destructive hover:bg-destructive/90'
               }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

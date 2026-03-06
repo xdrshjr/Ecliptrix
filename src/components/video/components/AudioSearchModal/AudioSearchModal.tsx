@@ -159,14 +159,14 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
-      <div className="bg-white rounded-lg w-full max-w-6xl h-5/6 flex flex-col">
+      <div className="bg-card rounded-md border border-border w-full max-w-6xl h-5/6 flex flex-col">
         {/* 标题栏 */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-800">搜索音频</h2>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="text-xl font-semibold text-foreground">搜索音频</h2>
           <button
             onClick={handleClose}
             disabled={isAddingAudios}
-            className="text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             aria-label="关闭"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,7 +176,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
         </div>
 
         {/* 搜索区域 */}
-        <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+        <div className="p-4 border-b border-border bg-muted flex-shrink-0">
           <div className="flex flex-col space-y-4">
             {/* 搜索输入 */}
             <div className="flex space-x-2">
@@ -186,13 +186,13 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="输入音频搜索关键词，如：ambient music, nature sounds..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 disabled={isSearching}
               />
               <button
                 onClick={handleSearchClick}
                 disabled={isSearching || !searchQuery.trim()}
-                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isSearching ? (
                   <div className="flex items-center space-x-2">
@@ -209,11 +209,11 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
             <div className="flex items-center space-x-6">
               {/* 音频类型选择器 */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">音频类型：</span>
+                <span className="text-sm text-muted-foreground">音频类型：</span>
                 <select
                   value={audioType}
                   onChange={(e) => setAudioType(e.target.value as any)}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="px-3 py-1 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   disabled={isSearching}
                 >
                   <option value="all">全部</option>
@@ -227,11 +227,11 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
 
               {/* 排序选择器 */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">排序方式：</span>
+                <span className="text-sm text-muted-foreground">排序方式：</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="px-3 py-1 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   disabled={isSearching}
                 >
                   <option value="score">相关度</option>
@@ -246,23 +246,23 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
 
               {/* 时长过滤器 */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">时长过滤：</span>
+                <span className="text-sm text-muted-foreground">时长过滤：</span>
                 <div className="flex items-center space-x-2">
                   <input
                     type="number"
                     value={durationMin || ''}
                     onChange={(e) => setDurationMin(e.target.value ? parseFloat(e.target.value) : null)}
                     placeholder="最小(秒)"
-                    className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-20 px-2 py-1 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                     min="0"
                   />
-                  <span className="text-sm text-gray-500">至</span>
+                  <span className="text-sm text-muted-foreground">至</span>
                   <input
                     type="number"
                     value={durationMax || ''}
                     onChange={(e) => setDurationMax(e.target.value ? parseFloat(e.target.value) : null)}
                     placeholder="最大(秒)"
-                    className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-20 px-2 py-1 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                     min="0"
                   />
                 </div>
@@ -283,16 +283,16 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
           {/* 搜索结果列表 - 修改为flex-1并添加flex flex-col */}
           <div className="flex-1 p-4 flex flex-col">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h3 className="text-lg font-medium text-gray-800">
+              <h3 className="text-lg font-medium text-foreground">
                 搜索结果 {searchResults.length > 0 && `(${searchResults.length} 个音频)`}
               </h3>
               {searchResults.length > 0 && (
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600">已选择: {selectedResults.size}</span>
+                  <span className="text-sm text-muted-foreground">已选择: {selectedResults.size}</span>
                   {selectedResults.size > 0 && (
                     <button
                       onClick={handleClearSelection}
-                      className="text-sm text-blue-600 hover:text-blue-700"
+                      className="text-sm text-primary hover:text-primary/80"
                     >
                       清空选择
                     </button>
@@ -306,10 +306,10 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
               {searchResults.map((audio, index) => (
                 <div
                   key={audio.id}
-                  className={`p-4 border rounded-lg transition-colors ${
+                  className={`p-4 border rounded-md transition-colors ${
                     selectedResults.has(index)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-border hover:bg-muted'
                   }`}
                 >
                   {/* 音频基本信息 */}
@@ -320,17 +320,17 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0 pr-4">
                         <div className="flex items-center space-x-2 mb-1">
-                          <h4 className="font-medium text-gray-900 truncate max-w-full" title={audio.name}>
+                          <h4 className="font-medium text-foreground truncate max-w-full" title={audio.name}>
                             {audio.name}
                           </h4>
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded flex-shrink-0">
+                          <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md flex-shrink-0">
                             {audio.license}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 truncate" title={audio.username}>
+                        <p className="text-sm text-muted-foreground truncate" title={audio.username}>
                           by {audio.username}
                         </p>
-                        <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
+                        <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
                           <span>{formatDuration(audio.duration)}</span>
                           {audio.filesize && <span>{formatFileSize(audio.filesize)}</span>}
                           {audio.type && <span>{audio.type.toUpperCase()}</span>}
@@ -349,14 +349,14 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                             {audio.tags.slice(0, 4).map((tag, tagIndex) => (
                               <span
                                 key={tagIndex}
-                                className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded truncate max-w-20"
+                                className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md truncate max-w-20"
                                 title={tag}
                               >
                                 {tag}
                               </span>
                             ))}
                             {audio.tags.length > 4 && (
-                              <span className="text-xs text-gray-500 px-2 py-1">
+                              <span className="text-xs text-muted-foreground px-2 py-1">
                                 +{audio.tags.length - 4}
                               </span>
                             )}
@@ -367,7 +367,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                       {/* 选择状态指示器 */}
                       <div className="flex-shrink-0">
                         {selectedResults.has(index) && (
-                          <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                          <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
                             <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
@@ -378,7 +378,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                   </div>
 
                   {/* 音频播放器 */}
-                  <div className="border-t border-gray-100 pt-3">
+                  <div className="border-t border-border pt-3">
                     <AudioPlayer
                       audioUrl={audio.preview_url}
                       audioId={audio.id}
@@ -421,8 +421,8 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
               ))}
 
               {!isSearching && searchResults.length === 0 && searchQuery && (
-                <div className="text-center py-8 text-gray-500">
-                  <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="text-center py-8 text-muted-foreground">
+                  <svg className="w-12 h-12 mx-auto mb-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <p>未找到相关音频</p>
@@ -431,8 +431,8 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
               )}
 
               {!searchQuery && (
-                <div className="text-center py-8 text-gray-500">
-                  <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="text-center py-8 text-muted-foreground">
+                  <svg className="w-12 h-12 mx-auto mb-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                   </svg>
                   <p>输入关键词开始搜索音频</p>
@@ -444,24 +444,24 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
 
           {/* 预览面板 */}
           {previewAudio && (
-            <div className="w-80 border-l border-gray-200 p-4 flex-shrink-0">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">音频预览</h3>
+            <div className="w-80 border-l border-border p-4 flex-shrink-0">
+              <h3 className="text-lg font-medium text-foreground mb-4">音频预览</h3>
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-medium text-gray-900">{previewAudio.name}</h4>
-                  <p className="text-sm text-gray-600 mt-1">by {previewAudio.username}</p>
+                  <h4 className="font-medium text-foreground">{previewAudio.name}</h4>
+                  <p className="text-sm text-muted-foreground mt-1">by {previewAudio.username}</p>
                 </div>
                 
                 {previewAudio.description && (
                   <div>
-                    <h5 className="text-sm font-medium text-gray-700">描述</h5>
-                    <p className="text-sm text-gray-600 mt-1">{previewAudio.description}</p>
+                    <h5 className="text-sm font-medium text-foreground">描述</h5>
+                    <p className="text-sm text-muted-foreground mt-1">{previewAudio.description}</p>
                   </div>
                 )}
 
                 <div>
-                  <h5 className="text-sm font-medium text-gray-700">音频信息</h5>
-                  <div className="text-sm text-gray-600 mt-1 space-y-1">
+                  <h5 className="text-sm font-medium text-foreground">音频信息</h5>
+                  <div className="text-sm text-muted-foreground mt-1 space-y-1">
                     <div>时长: {formatDuration(previewAudio.duration)}</div>
                     <div>许可证: {previewAudio.license}</div>
                     {previewAudio.filesize && <div>大小: {formatFileSize(previewAudio.filesize)}</div>}
@@ -473,12 +473,12 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
 
                 {previewAudio.tags.length > 0 && (
                   <div>
-                    <h5 className="text-sm font-medium text-gray-700">标签</h5>
+                    <h5 className="text-sm font-medium text-foreground">标签</h5>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {previewAudio.tags.map((tag, index) => (
                         <span
                           key={index}
-                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded"
+                          className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md"
                         >
                           {tag}
                         </span>
@@ -492,12 +492,12 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
         </div>
 
         {/* 底部操作栏 */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+        <div className="p-4 border-t border-border bg-muted flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-muted-foreground">
               {isAddingAudios ? (
                 <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                   <span>正在添加 {selectedResults.size} 个音频，请稍候...</span>
                 </div>
               ) : (
@@ -508,14 +508,14 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
               <button
                 onClick={handleClose}
                 disabled={isAddingAudios}
-                className="px-4 py-2 text-gray-600 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-secondary-foreground bg-secondary rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 取消
               </button>
               <button
                 onClick={handleAddSelectedAudios}
                 disabled={selectedResults.size === 0 || isAddingAudios}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
               >
                 {isAddingAudios ? (
                   <>

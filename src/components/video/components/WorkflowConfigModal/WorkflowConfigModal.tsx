@@ -388,25 +388,25 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30">
+      <div className="bg-card rounded-md w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-8 py-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+        <div className="px-8 py-6 border-b border-border bg-gradient-to-r from-muted to-card">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">
+              <h2 className="text-2xl font-semibold text-foreground">
                 {t.workflowConfigModal.title}
               </h2>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {t.workflowConfigModal.subtitle}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors flex items-center justify-center"
+              className="w-10 h-10 rounded-md bg-muted hover:bg-accent transition-colors flex items-center justify-center"
               aria-label="Close"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -416,13 +416,13 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
         {/* Content - Left-Right Layout */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {/* Left Panel - Workflow List */}
-          <div className="w-1/3 border-r border-gray-100 bg-gray-50/50 flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+          <div className="w-1/3 border-r border-border bg-muted flex flex-col">
+            <div className="px-6 py-4 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
                 {t.workflowConfigModal.workflowListTitle}
               </h3>
               {workflows.length > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {t.workflowConfigModal.workflowCount.replace('{count}', workflows.length.toString())}
                 </p>
               )}
@@ -432,22 +432,22 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
               {isLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                    <p className="text-sm text-gray-500">{t.workflowConfigModal.loadingWorkflows}</p>
+                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-sm text-muted-foreground">{t.workflowConfigModal.loadingWorkflows}</p>
                   </div>
                 </div>
               ) : workflows.length === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center px-6">
-                    <div className="w-16 h-16 bg-gray-200 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-16 h-16 bg-accent rounded-md mx-auto mb-4 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                       </svg>
                     </div>
-                    <p className="text-sm font-medium text-gray-900 mb-1">
+                    <p className="text-sm font-medium text-foreground mb-1">
                       {t.workflowConfigModal.noWorkflowsAvailable}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {t.workflowConfigModal.createWorkflowPrompt}
                     </p>
                   </div>
@@ -464,20 +464,20 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
                         key={workflow.workflow_id}
                         onClick={() => handleWorkflowSelect(workflow.workflow_id)}
                         className={`
-                          px-4 py-3 rounded-xl cursor-pointer transition-all
+                          px-4 py-3 rounded-md cursor-pointer transition-all
                           ${isSelected 
-                            ? 'bg-blue-50 border-2 border-blue-200 shadow-sm' 
-                            : 'bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                            ? 'bg-primary/10 border-2 border-primary/20' 
+                            : 'bg-card border border-border hover:border-border '
                           }
                         `}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0 mr-3">
-                            <h4 className={`text-sm font-medium truncate ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                            <h4 className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : 'text-foreground'}`}>
                               {workflow.workflow_name}
                             </h4>
                             {workflow.workflow_description && (
-                              <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                 {workflow.workflow_description}
                               </p>
                             )}
@@ -498,10 +498,10 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
                           >
                             <div className={`
                               relative w-11 h-6 rounded-full transition-colors cursor-pointer flex items-center
-                              ${isEnabled ? 'bg-blue-500' : 'bg-gray-300'}
+                              ${isEnabled ? 'bg-primary/100' : 'bg-accent'}
                             `}>
                               <div className={`
-                                absolute w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out
+                                absolute w-4 h-4 bg-card rounded-full transition-transform duration-200 ease-in-out
                                 ${isEnabled ? 'translate-x-6' : 'translate-x-1'}
                               `} />
                             </div>
@@ -516,9 +516,9 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
           </div>
 
           {/* Right Panel - Workflow Configuration */}
-          <div className="flex-1 flex flex-col bg-white">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+          <div className="flex-1 flex flex-col bg-card">
+            <div className="px-6 py-4 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
                 {t.workflowConfigModal.workflowConfigTitle}
               </h3>
             </div>
@@ -528,11 +528,11 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
                 <div className="space-y-6">
                   {/* Workflow Name */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-foreground mb-2">
                       工作流名称
                     </label>
-                    <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
-                      <p className="text-sm text-gray-900 font-medium">
+                    <div className="px-4 py-3 bg-muted border border-border rounded-md">
+                      <p className="text-sm text-foreground font-medium">
                         {selectedWorkflow.workflow_name}
                       </p>
                     </div>
@@ -540,7 +540,7 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
 
                   {/* Tool Description */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-foreground mb-2">
                       {t.workflowConfigModal.toolDescriptionLabel}
                     </label>
                     <textarea
@@ -548,30 +548,30 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
                       onChange={(e) => handleToolDescriptionChange(selectedWorkflowId!, e.target.value)}
                       placeholder={t.workflowConfigModal.toolDescriptionPlaceholder}
                       rows={6}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      className="w-full px-4 py-3 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
                     />
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       描述此工作流的功能，让 AI 助手了解何时调用它
                     </p>
                   </div>
 
                   {/* Workflow Info */}
-                  <div className="pt-4 border-t border-gray-100">
-                    <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                  <div className="pt-4 border-t border-border">
+                    <h4 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-3">
                       工作流信息
                     </h4>
                     <div className="space-y-2 text-xs">
                       <div className="flex justify-between">
-                        <span className="text-gray-500">节点数量:</span>
-                        <span className="text-gray-900 font-medium">{selectedWorkflow.nodes.length}</span>
+                        <span className="text-muted-foreground">节点数量:</span>
+                        <span className="text-foreground font-medium">{selectedWorkflow.nodes.length}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500">连接数量:</span>
-                        <span className="text-gray-900 font-medium">{selectedWorkflow.connections.length}</span>
+                        <span className="text-muted-foreground">连接数量:</span>
+                        <span className="text-foreground font-medium">{selectedWorkflow.connections.length}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500">版本:</span>
-                        <span className="text-gray-900 font-medium">{selectedWorkflow.version}</span>
+                        <span className="text-muted-foreground">版本:</span>
+                        <span className="text-foreground font-medium">{selectedWorkflow.version}</span>
                       </div>
                     </div>
                   </div>
@@ -579,15 +579,15 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center px-6">
-                    <div className="w-20 h-20 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                      <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-20 h-20 bg-muted rounded-md mx-auto mb-4 flex items-center justify-center">
+                      <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
-                    <p className="text-base font-medium text-gray-900 mb-2">
+                    <p className="text-base font-medium text-foreground mb-2">
                       {t.workflowConfigModal.noWorkflowSelected}
                     </p>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       {t.workflowConfigModal.selectWorkflowPrompt}
                     </p>
                   </div>
@@ -598,16 +598,16 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
+        <div className="px-8 py-4 border-t border-border bg-muted flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+            className="px-6 py-2.5 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-muted transition-colors"
           >
             {t.workflowConfigModal.cancelButton}
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg"
+            className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary rounded-md hover:from-primary/90 hover:to-primary/80 transition-all hover:shadow-lg"
           >
             {t.workflowConfigModal.saveButton}
           </button>

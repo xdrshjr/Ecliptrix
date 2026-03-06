@@ -362,22 +362,22 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         return {
           ...baseStyles,
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-          border: isSelected ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.2)',
-          boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+          border: isSelected ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.2)',
+          boxShadow: isSelected ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : 'none',
         };
       case 'audio':
         return {
           ...baseStyles,
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.2)',
-          boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+          boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
         };
       case 'subtitle':
         return {
           ...baseStyles,
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.2)',
-          boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+          boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : 'none',
         };
       default:
         return baseStyles;
@@ -463,7 +463,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                 <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
                   <div className="flex items-center space-x-1 min-w-0">
                     <div 
-                      className="flex-shrink-0 drop-shadow-sm"
+                      className="flex-shrink-0 "
                       style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
                     >
                       <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -471,7 +471,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                       </svg>
                     </div>
                     <span 
-                      className="text-white font-medium truncate drop-shadow-sm"
+                      className="text-white font-medium truncate "
                       style={{ fontSize: `${fontSize}px` }}
                     >
                       {item.name}
@@ -481,13 +481,13 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                   {/* 句子数量指示器 */}
                   <div className="flex items-center space-x-1 flex-shrink-0">
                     <span 
-                      className="text-white opacity-90 bg-black bg-opacity-30 px-1.5 py-0.5 rounded text-xs font-medium drop-shadow-sm"
+                      className="text-white opacity-90 bg-black bg-opacity-30 px-1.5 py-0.5 rounded text-xs font-medium "
                       style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
                     >
                       {item.sentenceSegments.sentences.length} 句
                     </span>
                     <span 
-                      className="text-white opacity-75 drop-shadow-sm"
+                      className="text-white opacity-75 "
                       style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
                     >
                       {item.duration.toFixed(1)}s

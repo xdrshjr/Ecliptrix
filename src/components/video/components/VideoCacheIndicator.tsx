@@ -29,13 +29,13 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
       case 'loading':
         return {
           icon: (
-            <svg className={`${sizeClasses[size]} animate-spin text-blue-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`${sizeClasses[size]} animate-spin text-primary`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           ),
           text: '预加载中...',
-          bgColor: 'bg-blue-50',
-          textColor: 'text-blue-700'
+          bgColor: 'bg-primary/10',
+          textColor: 'text-primary'
         };
       
       case 'loaded':
@@ -58,21 +58,21 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
             </svg>
           ),
           text: '加载失败',
-          bgColor: 'bg-red-50',
-          textColor: 'text-red-700'
+          bgColor: 'bg-destructive/10',
+          textColor: 'text-destructive'
         };
       
       case 'not-found':
       default:
         return {
           icon: (
-            <svg className={`${sizeClasses[size]} text-gray-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`${sizeClasses[size]} text-muted-foreground`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12m-9 0a9 9 0 1018 0 9 9 0 10-18 0" />
             </svg>
           ),
           text: '未缓存',
-          bgColor: 'bg-gray-50',
-          textColor: 'text-gray-500'
+          bgColor: 'bg-muted',
+          textColor: 'text-muted-foreground'
         };
     }
   };

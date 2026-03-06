@@ -92,7 +92,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   };
 
   return (
-    <div className={`video-editing-ai-assistant-section flex flex-col bg-gray-50 border-t border-gray-200 ${className}`}>
+    <div className={`video-editing-ai-assistant-section flex flex-col bg-muted border-t border-border ${className}`}>
       {/* 输入区域 */}
       <div className="flex flex-col p-4">
 
@@ -106,7 +106,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                 onChange={handleInputChange}
                 onKeyDown={handleTextareaKeyDown}
                 placeholder="Ask me anything about video editing, content creation, or project planning..."
-                className="w-full h-10 px-4 py-2 pr-12 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm transition-all duration-200 hover:border-gray-400"
+                className="w-full h-10 px-4 py-2 pr-12 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-sm transition-all duration-200 hover:border-border"
                 disabled={isLoading}
               />
             </div>
@@ -120,7 +120,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                   onClick={handleClearContent}
                   onMouseEnter={() => handleButtonHover('clear', true)}
                   onMouseLeave={() => handleButtonHover('clear', false)}
-                  className="flex items-center justify-center w-10 h-10 text-gray-600 bg-gray-50 border border-gray-300 rounded-lg hover:bg-gray-100 hover:border-gray-400 hover:text-gray-800 transition-all duration-200 group"
+                  className="flex items-center justify-center w-10 h-10 text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent hover:border-border hover:text-foreground transition-all duration-200 group"
                   title="清空文档编辑器中的所有内容"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,7 +135,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                 disabled={!inputMessage.trim() || isLoading}
                 onMouseEnter={() => handleButtonHover('send', true)}
                 onMouseLeave={() => handleButtonHover('send', false)}
-                className="flex items-center justify-center w-10 h-10 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-all duration-200 group"
+                className="flex items-center justify-center w-10 h-10 bg-primary hover:bg-primary/90 disabled:bg-accent disabled:cursor-not-allowed text-white rounded-md transition-all duration-200 group"
                 title={isLoading ? "发送中..." : "发送消息"}
               >
                 {isLoading ? (

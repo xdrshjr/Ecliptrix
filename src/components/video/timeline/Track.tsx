@@ -217,7 +217,7 @@ const Track: React.FC<TrackProps> = ({
       case 'subtitle':
         return 'text-amber-600';
       default:
-        return 'text-gray-600';
+        return 'text-muted-foreground';
     }
   };
 
@@ -281,9 +281,9 @@ const Track: React.FC<TrackProps> = ({
   };
 
   return (
-    <div className="track flex border-b border-gray-100 last:border-b-0">
+    <div className="track flex border-b border-border last:border-b-0">
       {/* 轨道控制区域 - 紧凑设计 */}
-      <div className="track-controls w-48 bg-gray-50 border-r border-gray-200">
+      <div className="track-controls w-48 bg-muted border-r border-border">
         {/* 轨道标题和控制按钮在同一行 */}
         <div 
           className="flex items-center justify-between p-2" 
@@ -294,7 +294,7 @@ const Track: React.FC<TrackProps> = ({
             <div className={`${getTrackColor()}`}>
               {getTrackIcon()}
             </div>
-            <span className="text-xs font-medium text-gray-900 truncate" title={track.name}>
+            <span className="text-xs font-medium text-foreground truncate" title={track.name}>
               {track.name}
             </span>
           </div>
@@ -307,9 +307,9 @@ const Track: React.FC<TrackProps> = ({
                 <button
                   onClick={handleVolumeClick}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                    showVolumeSlider 
-                      ? 'bg-gray-200 text-gray-600 hover:bg-gray-300' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    showVolumeSlider
+                      ? 'bg-accent text-muted-foreground hover:bg-accent'
+                      : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
                   aria-label={`音量控制 - ${track.name}`}
                 >
@@ -331,10 +331,10 @@ const Track: React.FC<TrackProps> = ({
                   
                   {/* 悬停提示 */}
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                    <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                    <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                       {`${track.type === 'video' ? '视频' : '音频'}轨道音量控制 (${track.volume}%)`}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
                     </div>
                   </div>
@@ -367,7 +367,7 @@ const Track: React.FC<TrackProps> = ({
                   disabled={track.items.length === 0}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     track.items.length === 0
-                      ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
                       : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
                   }`}
                   aria-label={t.timeline.track.editSubtitles}
@@ -378,10 +378,10 @@ const Track: React.FC<TrackProps> = ({
                   
                   {/* 悬停提示 */}
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                    <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                    <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                       {t.timeline.track.editSubtitles}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
                     </div>
                   </div>
@@ -394,9 +394,9 @@ const Track: React.FC<TrackProps> = ({
               <button
                 onClick={handleSelectAllClick}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  allItemsSelected 
-                    ? 'bg-blue-100 text-blue-600 hover:bg-blue-200' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-600'
+                  allItemsSelected
+                    ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                    : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
                 aria-label={t.timeline.track.selectAll}
               >
@@ -406,10 +406,10 @@ const Track: React.FC<TrackProps> = ({
                 
                 {/* 悬停提示 */}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.track.selectAll}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
                   </div>
                 </div>
@@ -421,9 +421,9 @@ const Track: React.FC<TrackProps> = ({
               <button
                 onClick={handleLockClick}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  track.isLocked 
-                    ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  track.isLocked
+                    ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                    : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
                 aria-label={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
               >
@@ -437,10 +437,10 @@ const Track: React.FC<TrackProps> = ({
                 
                 {/* 悬停提示 */}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
                   </div>
                 </div>
@@ -452,9 +452,9 @@ const Track: React.FC<TrackProps> = ({
               <button
                 onClick={handleVisibilityClick}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  track.isVisible 
-                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
-                    : 'bg-gray-300 text-gray-500 hover:bg-gray-400'
+                  track.isVisible
+                    ? 'bg-muted text-muted-foreground hover:bg-accent'
+                    : 'bg-accent text-muted-foreground hover:bg-accent'
                 }`}
                 aria-label={track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
               >
@@ -468,10 +468,10 @@ const Track: React.FC<TrackProps> = ({
                 
                 {/* 悬停提示 */}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
                   </div>
                 </div>
@@ -484,7 +484,7 @@ const Track: React.FC<TrackProps> = ({
       {/* 轨道内容区域 - 高度与标题栏一致 */}
       <div 
         className={`track-content flex-1 relative ${
-          isDragOver ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-white'
+          isDragOver ? 'bg-primary/10 border-2 border-primary border-dashed' : 'bg-card'
         }`}
         style={{ 
           opacity: track.isVisible ? 1 : 0.3,
@@ -516,7 +516,7 @@ const Track: React.FC<TrackProps> = ({
             return [...Array(maxTimeForGrid)].map((_, i) => (
               <div
                 key={i}
-                className="absolute top-0 bottom-0 border-l border-gray-100"
+                className="absolute top-0 bottom-0 border-l border-border"
                 style={{ left: `${i * pixelsPerSecond}px` }}
               />
             ));
@@ -575,8 +575,8 @@ const Track: React.FC<TrackProps> = ({
 
         {/* 拖拽放置区域提示 */}
         {track.items.length === 0 && (
-          <div className={`absolute inset-0 flex items-center justify-center text-gray-400 text-xs pointer-events-none ${
-            isDragOver ? 'text-blue-600' : ''
+          <div className={`absolute inset-0 flex items-center justify-center text-muted-foreground text-xs pointer-events-none ${
+            isDragOver ? 'text-primary' : ''
           }`}>
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3">
@@ -598,8 +598,8 @@ const Track: React.FC<TrackProps> = ({
 
         {/* 拖拽悬停提示 */}
         {isDragOver && (
-          <div className="absolute inset-0 flex items-center justify-center bg-blue-50 bg-opacity-90 pointer-events-none">
-            <div className="bg-blue-600 text-white px-2 py-1 rounded shadow-lg">
+          <div className="absolute inset-0 flex items-center justify-center bg-primary/10 bg-opacity-90 pointer-events-none">
+            <div className="bg-primary text-primary-foreground px-2 py-1 rounded">
               <div className="flex items-center space-x-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />

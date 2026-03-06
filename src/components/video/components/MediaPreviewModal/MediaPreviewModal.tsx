@@ -240,7 +240,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
       onClick={handleBackdropClick}
     >
       {/* 工具栏 */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-black bg-opacity-60 backdrop-blur-sm rounded-lg px-4 py-2 z-10">
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-black bg-opacity-60 rounded-md px-4 py-2 z-10">
         <span className="text-white text-sm font-medium">{material.name}</span>
         
         {/* 图片缩放控制 */}
@@ -248,7 +248,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
           <div className="flex items-center space-x-2">
             <button
               onClick={handleZoomOut}
-              className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+              className="p-2 text-white hover:bg-accent rounded-md transition-colors"
               title="缩小 (-)"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -260,7 +260,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             </span>
             <button
               onClick={handleZoomIn}
-              className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+              className="p-2 text-white hover:bg-accent rounded-md transition-colors"
               title="放大 (+)"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -269,7 +269,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             </button>
             <button
               onClick={handleResetZoom}
-              className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+              className="p-2 text-white hover:bg-accent rounded-md transition-colors"
               title="重置 (0)"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,7 +284,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
           <div className="flex items-center space-x-2">
             <button
               onClick={handlePlayPause}
-              className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+              className="p-2 text-white hover:bg-accent rounded-md transition-colors"
               title={isPlaying ? '暂停 (空格)' : '播放 (空格)'}
             >
               {isPlaying ? (
@@ -314,7 +314,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
                 step="0.1"
                 value={volume}
                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                className="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-16 h-1 bg-border rounded-md appearance-none cursor-pointer"
               />
             </div>
           </div>
@@ -323,7 +323,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
-          className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+          className="p-2 text-white hover:bg-accent rounded-md transition-colors"
           title="关闭 (ESC)"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -371,21 +371,21 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             />
             
             {/* 进度条 */}
-            <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-50 rounded-lg p-2">
+            <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-50 rounded-md p-2">
               <input
                 type="range"
                 min="0"
                 max={duration}
                 value={currentTime}
                 onChange={(e) => handleSeek(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-2 bg-border rounded-md appearance-none cursor-pointer"
               />
             </div>
           </div>
         )}
 
         {material.type === 'audio' && (
-          <div className="flex flex-col items-center space-y-6 bg-black bg-opacity-50 rounded-lg p-8">
+          <div className="flex flex-col items-center space-y-6 bg-black bg-opacity-50 rounded-md p-8">
             <audio
               ref={audioRef}
               src={material.url}
@@ -395,7 +395,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             />
             
             {/* 音频图标 */}
-            <div className="w-32 h-32 bg-white bg-opacity-10 rounded-full flex items-center justify-center">
+            <div className="w-32 h-32 bg-card bg-opacity-10 rounded-full flex items-center justify-center">
               <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6z" />
               </svg>
@@ -410,14 +410,14 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             </div>
             
             {/* 进度条 */}
-            <div className="w-80 bg-black bg-opacity-50 rounded-lg p-2">
+            <div className="w-80 bg-black bg-opacity-50 rounded-md p-2">
               <input
                 type="range"
                 min="0"
                 max={duration}
                 value={currentTime}
                 onChange={(e) => handleSeek(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-2 bg-border rounded-md appearance-none cursor-pointer"
               />
             </div>
           </div>
@@ -425,7 +425,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
       </div>
 
       {/* 快捷键提示 */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-60 backdrop-blur-sm rounded-lg px-4 py-2">
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-60 rounded-md px-4 py-2">
         <div className="text-white text-xs text-center space-y-1">
           {material.type === 'image' && (
             <>

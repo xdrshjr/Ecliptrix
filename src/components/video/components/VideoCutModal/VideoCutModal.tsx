@@ -403,38 +403,38 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
   if (!isOpen || !material || material.type !== 'video') return null;
 
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
-      <div className="w-[92vw] h-[88vh] bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[200] p-4">
+      <div className="w-[92vw] h-[88vh] bg-card rounded-md overflow-hidden border border-border">
         {/* 标题栏 */}
-        <div className="h-16 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center justify-between px-8">
+        <div className="h-16 bg-gradient-to-r from-muted to-card border-b border-border flex items-center justify-between px-8">
           <div className="flex items-center space-x-4">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-primary/10 rounded-md flex items-center justify-center">
+              <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">剪切素材</h2>
-              <p className="text-sm text-gray-500 font-medium">{material.name}</p>
+              <h2 className="text-xl font-semibold text-foreground">剪切素材</h2>
+              <p className="text-sm text-muted-foreground font-medium">{material.name}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-10 h-10 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105"
+            className="w-10 h-10 bg-muted hover:bg-muted rounded-md flex items-center justify-center transition-all duration-200 hover:scale-105"
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* 主内容区域 */}
-        <div className="h-[calc(100%-4rem)] flex bg-gray-25">
+        <div className="h-[calc(100%-4rem)] flex bg-muted">
           {/* 左侧区域 - 原始视频预览和时间轴 */}
-          <div className="w-1/2 border-r border-gray-100 flex flex-col bg-white">
+          <div className="w-1/2 border-r border-border flex flex-col bg-card">
             {/* 原始视频预览区域 (50%) - 添加内边距 */}
-            <div className="h-[50%] bg-gray-50 relative p-6">
-              <div className="w-full h-full rounded-2xl overflow-hidden bg-black shadow-lg">
+            <div className="h-[50%] bg-muted relative p-6">
+              <div className="w-full h-full rounded-md overflow-hidden bg-black">
                 <video
                   ref={originalVideoRef}
                   src={material.url}
@@ -447,13 +447,13 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
               </div>
               
               {/* 视频控制覆盖层 */}
-              <div className="absolute inset-6 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none">
+              <div className="absolute inset-6 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300 rounded-md pointer-events-none">
                 <div className="absolute bottom-6 left-6 right-6 pointer-events-auto">
                   {/* 播放控制 */}
                   <div className="flex items-center space-x-4 mb-4">
                     <button
                       onClick={handlePlayPause}
-                      className="w-12 h-12 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
+                      className="w-12 h-12 bg-card/20 hover:bg-card/30 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
                     >
                       {isPlaying ? (
                         <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -465,7 +465,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                         </svg>
                       )}
                     </button>
-                    <span className="text-white text-sm font-semibold backdrop-blur-sm bg-black/20 px-3 py-1 rounded-lg">
+                    <span className="text-white text-sm font-semibold bg-black/20 px-3 py-1 rounded-md">
                       {formatTime(currentTime)} / {formatTime(duration)}
                     </span>
                   </div>
@@ -478,18 +478,18 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                       max={duration || 0}
                       value={currentTime}
                       onChange={(e) => seekTo(Number(e.target.value))}
-                      className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer backdrop-blur-sm"
+                      className="w-full h-2 bg-card/20 rounded-md appearance-none cursor-pointer"
                       style={{
                         background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(currentTime / duration) * 100}%, rgba(255,255,255,0.2) ${(currentTime / duration) * 100}%, rgba(255,255,255,0.2) 100%)`
                       }}
                     />
                     {/* 标记开始和结束时间 */}
                     <div 
-                      className="absolute top-0 w-2 h-2 bg-green-400 rounded-full transform -translate-y-0.5 shadow-lg"
+                      className="absolute top-0 w-2 h-2 bg-green-400 rounded-full transform -translate-y-0.5"
                       style={{ left: `${(startTime / duration) * 100}%` }}
                     />
                     <div 
-                      className="absolute top-0 w-2 h-2 bg-red-400 rounded-full transform -translate-y-0.5 shadow-lg"
+                      className="absolute top-0 w-2 h-2 bg-destructive rounded-full transform -translate-y-0.5"
                       style={{ left: `${(endTime / duration) * 100}%` }}
                     />
                   </div>
@@ -498,28 +498,28 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
             </div>
 
             {/* 时间轴切片区域 (50%) */}
-            <div className="h-[50%] bg-gray-50 p-6">
+            <div className="h-[50%] bg-muted p-6">
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold text-gray-900">时间轴控制</h3>
-                  <div className="text-sm text-gray-600 bg-blue-50 px-3 py-1 rounded-lg font-medium">
+                  <h3 className="text-base font-semibold text-foreground">时间轴控制</h3>
+                  <div className="text-sm text-muted-foreground bg-primary/10 px-3 py-1 rounded-md font-medium">
                     选择范围: {formatTime(startTime)} - {formatTime(endTime)} ({formatTime(endTime - startTime)})
                   </div>
                 </div>
                 
                 {/* 操作提示 */}
-                <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <div className="text-sm text-blue-700 space-y-2">
+                <div className="mb-4 p-4 bg-primary/10 rounded-md border border-primary/10">
+                  <div className="text-sm text-primary space-y-2">
                     <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-green-500 rounded-full shadow-sm"></div>
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                       <span>拖拽绿色控制条调整开始时间</span>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-red-500 rounded-full shadow-sm"></div>
+                      <div className="w-3 h-3 bg-destructive rounded-full"></div>
                       <span>拖拽红色控制条调整结束时间</span>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
+                      <div className="w-3 h-3 bg-primary/100 rounded-full"></div>
                       <span>蓝色线条表示当前播放位置</span>
                     </div>
                   </div>
@@ -529,30 +529,30 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                 <div className="flex items-center space-x-3 mb-4">
                   <button
                     onClick={handleSetStartTime}
-                    className="px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-xl transition-all duration-200 hover:scale-105 border border-green-200"
+                    className="px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 border border-green-200"
                   >
                     设为开始 ({formatTime(currentTime)})
                   </button>
                   <button
                     onClick={handleSetEndTime}
-                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-semibold rounded-xl transition-all duration-200 hover:scale-105 border border-red-200"
+                    className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 border border-destructive/20"
                   >
                     设为结束 ({formatTime(currentTime)})
                   </button>
                   <button
                     onClick={handleCreateClip}
                     disabled={startTime >= endTime}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-all duration-200 hover:scale-105 disabled:hover:scale-100 shadow-md hover:shadow-lg"
+                    className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:bg-accent disabled:cursor-not-allowed text-white text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 disabled:hover:scale-100 hover:shadow-lg"
                   >
                     创建切片
                   </button>
                 </div>
 
                 {/* 时间轴可视化 */}
-                <div className="flex-1 bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                <div className="flex-1 bg-card rounded-md border border-border p-4">
                   <div 
                     ref={timelineRef}
-                    className="relative h-10 bg-gray-100 rounded-lg cursor-pointer shadow-inner"
+                    className="relative h-10 bg-muted rounded-md cursor-pointer shadow-inner"
                     onClick={(e) => {
                       if (!timelineRef.current) return;
                       const rect = timelineRef.current.getBoundingClientRect();
@@ -563,13 +563,13 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                   >
                     {/* 当前播放位置 */}
                     <div 
-                      className="absolute top-0 w-1 h-full bg-blue-500 z-30 pointer-events-none rounded-full shadow-lg"
+                      className="absolute top-0 w-1 h-full bg-primary/100 z-30 pointer-events-none rounded-full"
                       style={{ left: `${(currentTime / duration) * 100}%` }}
                     />
                     
                     {/* 选中范围背景 */}
                     <div 
-                      className="absolute top-0 h-full bg-blue-200 opacity-70 rounded-lg"
+                      className="absolute top-0 h-full bg-primary/20 opacity-70 rounded-md"
                       style={{ 
                         left: `${(startTime / duration) * 100}%`,
                         width: `${((endTime - startTime) / duration) * 100}%`
@@ -578,29 +578,29 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                     
                     {/* 开始时间控制条 */}
                     <div 
-                      className={`absolute top-0 w-4 h-full bg-green-500 rounded-l-lg cursor-col-resize z-20 flex items-center justify-center hover:bg-green-600 transition-colors duration-200 shadow-lg ${
-                        isDragging === 'start' ? 'bg-green-600 shadow-xl scale-110' : ''
+                      className={`absolute top-0 w-4 h-full bg-green-500 rounded-l-lg cursor-col-resize z-20 flex items-center justify-center hover:bg-green-600 transition-colors duration-200 ${
+                        isDragging === 'start' ? 'bg-green-600 scale-110' : ''
                       }`}
                       style={{ left: `${(startTime / duration) * 100}%`, transform: 'translateX(-50%)' }}
                       onMouseDown={(e) => handleDragStart('start', e)}
                       title={`开始时间: ${formatTime(startTime)}`}
                     >
-                      <div className="w-1.5 h-6 bg-white rounded opacity-90 shadow-sm"></div>
+                      <div className="w-1.5 h-6 bg-card rounded opacity-90"></div>
                     </div>
                     
                     {/* 结束时间控制条 */}
                     <div 
-                      className={`absolute top-0 w-4 h-full bg-red-500 rounded-r-lg cursor-col-resize z-20 flex items-center justify-center hover:bg-red-600 transition-colors duration-200 shadow-lg ${
-                        isDragging === 'end' ? 'bg-red-600 shadow-xl scale-110' : ''
+                      className={`absolute top-0 w-4 h-full bg-destructive rounded-r-lg cursor-col-resize z-20 flex items-center justify-center hover:bg-destructive/90 transition-colors duration-200 ${
+                        isDragging === 'end' ? 'bg-destructive scale-110' : ''
                       }`}
                       style={{ left: `${(endTime / duration) * 100}%`, transform: 'translateX(-50%)' }}
                       onMouseDown={(e) => handleDragStart('end', e)}
                       title={`结束时间: ${formatTime(endTime)}`}
                     >
-                      <div className="w-1.5 h-6 bg-white rounded opacity-90 shadow-sm"></div>
+                      <div className="w-1.5 h-6 bg-card rounded opacity-90"></div>
                     </div>
                   </div>
-                  <div className="flex justify-between text-xs text-gray-500 mt-2 font-medium">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-2 font-medium">
                     <span>0:00</span>
                     <span>{formatTime(duration)}</span>
                   </div>
@@ -610,12 +610,12 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
           </div>
 
           {/* 右侧区域 - 剪切后视频预览和切片列表 */}
-          <div className="w-1/2 flex flex-col bg-white">
+          <div className="w-1/2 flex flex-col bg-card">
             {/* 剪切后视频预览区域 (50%) - 添加内边距 */}
-            <div className="h-[50%] bg-gray-50 relative p-6">
+            <div className="h-[50%] bg-muted relative p-6">
               {previewClip ? (
                 <>
-                  <div className="w-full h-full rounded-2xl overflow-hidden bg-black shadow-lg">
+                  <div className="w-full h-full rounded-md overflow-hidden bg-black">
                     <video
                       ref={previewVideoRef}
                       src={material.url}
@@ -632,12 +632,12 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                       }}
                     />
                   </div>
-                  <div className="absolute inset-6 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none">
+                  <div className="absolute inset-6 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300 rounded-md pointer-events-none">
                     <div className="absolute bottom-6 left-6 right-6 pointer-events-auto">
                       <div className="flex items-center space-x-4">
                         <button
                           onClick={handlePreviewPlayPause}
-                          className="w-12 h-12 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
+                          className="w-12 h-12 bg-card/20 hover:bg-card/30 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
                         >
                           {previewIsPlaying ? (
                             <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -651,18 +651,18 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                         </button>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-3">
-                            <span className="text-white text-sm font-semibold backdrop-blur-sm bg-black/20 px-3 py-1 rounded-lg">
+                            <span className="text-white text-sm font-semibold bg-black/20 px-3 py-1 rounded-md">
                               预览: {previewClip.name}
                             </span>
-                            <span className="text-white text-xs font-medium backdrop-blur-sm bg-black/20 px-2 py-1 rounded">
+                            <span className="text-white text-xs font-medium bg-black/20 px-2 py-1 rounded">
                               {formatTime(Math.max(0, previewCurrentTime - previewClip.startTime))} / {formatTime(previewClip.duration)}
                             </span>
                           </div>
                           {/* 切片播放进度条 */}
                           <div className="relative">
-                            <div className="w-full h-2 bg-white/20 rounded-lg backdrop-blur-sm overflow-hidden">
+                            <div className="w-full h-2 bg-card/20 rounded-md overflow-hidden">
                               <div 
-                                className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-lg transition-all duration-100"
+                                className="h-full bg-gradient-to-r from-primary to-primary rounded-md transition-all duration-100"
                                 style={{ 
                                   width: `${Math.max(0, Math.min(100, ((previewCurrentTime - previewClip.startTime) / previewClip.duration) * 100))}%`
                                 }}
@@ -675,8 +675,8 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                   </div>
                 </>
               ) : (
-                <div className="w-full h-full flex items-center justify-center rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-200">
-                  <div className="text-center text-gray-400">
+                <div className="w-full h-full flex items-center justify-center rounded-md bg-gradient-to-br from-muted to-muted border-2 border-dashed border-border">
+                  <div className="text-center text-muted-foreground">
                     <svg className="w-20 h-20 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
@@ -687,19 +687,19 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
             </div>
 
             {/* 切片列表区域 (50%) */}
-            <div className="h-[50%] bg-gray-50 p-6">
+            <div className="h-[50%] bg-muted p-6">
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold text-gray-900">切片列表</h3>
+                  <h3 className="text-base font-semibold text-foreground">切片列表</h3>
                   <div className="flex items-center space-x-4">
-                    <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-lg font-medium">{clips.length} 个切片</span>
+                    <span className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-md font-medium">{clips.length} 个切片</span>
                     <button
                       onClick={handleExportClips}
                       disabled={clips.length === 0}
-                      className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 shadow-md ${
+                      className={`px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${
                         clips.length === 0
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 hover:shadow-lg'
+                          ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                          : 'bg-primary hover:bg-primary/90 text-white hover:scale-105 hover:shadow-lg'
                       }`}
                       title={clips.length === 0 ? '没有可导出的切片' : `导出 ${clips.length} 个切片到素材管理面板`}
                     >
@@ -716,7 +716,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                 <div className="flex-1 overflow-y-auto">
                   {clips.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
-                      <div className="text-center text-gray-400">
+                      <div className="text-center text-muted-foreground">
                         <svg className="w-16 h-16 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
@@ -728,21 +728,21 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                       {clips.map((clip) => (
                         <div
                           key={clip.id}
-                          className={`p-4 bg-white rounded-xl border transition-all duration-200 cursor-pointer hover:shadow-md ${
+                          className={`p-4 bg-card rounded-md border transition-all duration-200 cursor-pointer hover:${
                             selectedClipId === clip.id 
-                              ? 'border-blue-500 shadow-lg ring-2 ring-blue-100' 
-                              : 'border-gray-200 hover:border-gray-300'
+                              ? 'border-primary ring-2 ring-primary/10' 
+                              : 'border-border hover:border-border'
                           }`}
                           onClick={() => handlePreviewClip(clip)}
                         >
                           <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-base font-semibold text-gray-900">{clip.name}</h4>
+                            <h4 className="text-base font-semibold text-foreground">{clip.name}</h4>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteClip(clip.id);
                               }}
-                              className="w-8 h-8 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all duration-200 flex items-center justify-center"
+                              className="w-8 h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-all duration-200 flex items-center justify-center"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -750,8 +750,8 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                             </button>
                           </div>
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600 font-medium">{formatTime(clip.startTime)} - {formatTime(clip.endTime)}</span>
-                            <span className="text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded">{formatTime(clip.duration)}</span>
+                            <span className="text-muted-foreground font-medium">{formatTime(clip.startTime)} - {formatTime(clip.endTime)}</span>
+                            <span className="text-primary font-semibold bg-primary/10 px-2 py-1 rounded">{formatTime(clip.duration)}</span>
                           </div>
                         </div>
                       ))}

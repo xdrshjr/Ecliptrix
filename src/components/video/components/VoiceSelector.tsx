@@ -110,14 +110,14 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
       '播报解说': 'bg-orange-500',
       '有声阅读': 'bg-indigo-500'
     };
-    return colors[category as keyof typeof colors] || 'bg-gray-500';
+    return colors[category as keyof typeof colors] || 'bg-muted-foreground';
   };
 
   if (isLoading) {
     return (
       <div className={`flex items-center space-x-2 ${className}`}>
-        <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
-        <span className="text-xs text-gray-500">{t.scriptPanel.voiceSelector.loadingVoices}</span>
+        <div className="w-4 h-4 bg-accent rounded-full animate-pulse"></div>
+        <span className="text-xs text-muted-foreground">{t.scriptPanel.voiceSelector.loadingVoices}</span>
       </div>
     );
   }
@@ -130,10 +130,10 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
         </div>
-        <span className="text-xs text-red-600">{t.scriptPanel.voiceSelector.loadFailed}</span>
+        <span className="text-xs text-destructive">{t.scriptPanel.voiceSelector.loadFailed}</span>
         <button
           onClick={loadVoiceTypes}
-          className="text-xs text-blue-600 hover:text-blue-700 underline"
+          className="text-xs text-primary hover:text-primary underline"
         >
           {t.scriptPanel.voiceSelector.retryLoad}
         </button>
@@ -156,23 +156,23 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
           });
           setIsOpen(newIsOpen);
         }}
-        className="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors duration-200 w-full text-left"
+        className="flex items-center space-x-2 px-3 py-2 bg-card border border-border rounded-md hover:border-border transition-colors duration-200 w-full text-left"
       >
         <div className="flex items-center space-x-2 flex-1">
           <div className={`w-3 h-3 rounded-full ${
-            selectedVoice ? getCategoryColor(selectedVoice.category) : 'bg-gray-400'
+            selectedVoice ? getCategoryColor(selectedVoice.category) : 'bg-muted-foreground'
           }`}></div>
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-foreground">
             {selectedVoice?.name || t.scriptPanel.voiceSelector.selectVoice}
           </span>
           {selectedVoice && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-muted-foreground">
               ({getCategoryDisplayName(selectedVoice.category)})
             </span>
           )}
         </div>
         <svg 
-          className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
             isOpen ? 'transform rotate-180' : ''
           }`} 
           fill="none" 
@@ -185,29 +185,29 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
       {/* 下拉菜单 - 按分类显示 */}
       {isOpen && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+        <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-md z-50 max-h-80 overflow-y-auto">
           {sortedCategories.map((category, categoryIndex) => (
-            <div key={category} className={`p-2 ${categoryIndex > 0 ? 'border-t border-gray-100' : ''}`}>
-              <div className="text-xs font-medium text-gray-500 px-2 py-1 flex items-center">
+            <div key={category} className={`p-2 ${categoryIndex > 0 ? 'border-t border-border' : ''}`}>
+              <div className="text-xs font-medium text-muted-foreground px-2 py-1 flex items-center">
                 <div className={`w-3 h-3 rounded-full ${getCategoryColor(category)} mr-2`}></div>
                 {getCategoryDisplayName(category)}
-                <span className="ml-1 text-gray-400">({voicesByCategory[category].length})</span>
+                <span className="ml-1 text-muted-foreground">({voicesByCategory[category].length})</span>
               </div>
               {voicesByCategory[category].map((voice) => (
                 <button
                   key={voice.id}
                   onClick={() => handleVoiceSelect(voice.id)}
-                  className={`w-full text-left px-3 py-2 rounded-md hover:bg-gray-50 transition-colors duration-150 ${
-                    selectedVoiceId === voice.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                  className={`w-full text-left px-3 py-2 rounded-md hover:bg-accent transition-colors duration-150 ${
+                    selectedVoiceId === voice.id ? 'bg-primary/10 text-primary' : 'text-foreground'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-medium">{voice.name}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{voice.description}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{voice.description}</div>
                     </div>
                     {selectedVoiceId === voice.id && (
-                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -218,7 +218,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
           ))}
 
           {voiceList.length === 0 && (
-            <div className="p-4 text-center text-sm text-gray-500">
+            <div className="p-4 text-center text-sm text-muted-foreground">
               {t.scriptPanel.voiceSelector.noVoicesAvailable}
             </div>
           )}

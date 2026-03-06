@@ -20,7 +20,7 @@ const UserInput: React.FC<UserInputProps> = ({
   placeholder = "输入您的想法或问题..."
 }) => {
   return (
-    <div className="p-4 border-t border-gray-200 bg-white">
+    <div className="p-4 border-t border-border bg-card">
       <div className="flex items-end space-x-3">
         <div className="flex-1">
           <textarea
@@ -31,15 +31,15 @@ const UserInput: React.FC<UserInputProps> = ({
             placeholder={placeholder}
             rows={2}
             className={`
-              w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 
-              focus:ring-blue-500 focus:border-transparent transition-colors text-sm
-              ${disabled 
-                ? 'bg-gray-100 text-gray-500 cursor-not-allowed' 
-                : 'bg-white text-gray-900'
+              w-full px-4 py-3 border border-border rounded-md resize-none focus:ring-2
+              focus:ring-primary focus:border-transparent transition-colors text-sm
+              ${disabled
+                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                : 'bg-card text-foreground'
               }
             `}
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             按 Enter 发送，Shift+Enter 换行
           </p>
         </div>
@@ -48,10 +48,10 @@ const UserInput: React.FC<UserInputProps> = ({
           onClick={onSend}
           disabled={disabled || !value.trim()}
           className={`
-            px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200 flex-shrink-0
+            px-4 py-3 rounded-md font-medium text-sm transition-all duration-200 flex-shrink-0
             ${!disabled && value.trim()
-              ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-md hover:shadow-lg'
-              : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              : 'bg-accent text-muted-foreground cursor-not-allowed'
             }
           `}
         >

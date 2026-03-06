@@ -1617,17 +1617,17 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       <div className="composition-panel-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
+            <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center">
               <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">
+            <h3 className="text-sm font-semibold text-foreground">
               {playbackMode === 'composition' ? t.videoPlayerPanel.playback.videoCompositionPlayback : t.videoPlayerPanel.playback.videoPreviewPlayback}
             </h3>
             {playbackMode === 'composition' && (
               <div className="flex items-center space-x-2">
-                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
                   {compositionPlayback?.videoSequences.length || 0} {t.videoPlayerPanel.playback.videosCount}
                 </span>
                 {compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0 && (
@@ -1645,10 +1645,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               onClick={handleVideoExport}
               disabled={videoExport.isExporting}
               className={`
-                flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200
+                flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200
                 ${videoExport.isExporting 
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 hover:shadow-md'
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                  : 'bg-primary text-white hover:bg-primary/90 active:bg-primary/80'
                 }
               `}
               tabIndex={0}
@@ -1667,7 +1667,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                     </svg>
                     {videoExport.exportProgress > 0 && (
-                      <div className="absolute -top-0.5 -right-0.5 text-[8px] bg-blue-500 text-white rounded-full w-2 h-2 flex items-center justify-center">
+                      <div className="absolute -top-0.5 -right-0.5 text-[8px] bg-primary text-white rounded-full w-2 h-2 flex items-center justify-center">
                         {Math.round(videoExport.exportProgress)}
                       </div>
                     )}
@@ -1703,7 +1703,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
                 // 组合播放模式 - 稳定的宽高比容器
                 <div 
-                  className={`${selectedAspectRatio.cssClass} bg-black rounded-xl overflow-hidden shadow-lg relative`} 
+                  className={`${selectedAspectRatio.cssClass} bg-black rounded-md overflow-hidden relative`} 
                   style={{ 
                     maxHeight: '100%', 
                     maxWidth: '100%',

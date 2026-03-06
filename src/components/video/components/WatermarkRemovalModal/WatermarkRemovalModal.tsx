@@ -476,35 +476,35 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[200] p-4"
+      className="fixed inset-0 bg-black/30 flex items-center justify-center z-[200] p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isProcessing) {
           onClose();
         }
       }}
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col overflow-hidden">
+      <div className="bg-card rounded-md w-full max-w-6xl h-full max-h-[95vh] flex flex-col overflow-hidden">
         {/* 标题栏 */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 bg-destructive/10 rounded-md flex items-center justify-center">
+              <svg className="w-5 h-5 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">去除水印</h2>
-              <p className="text-sm text-gray-500">{material?.name}</p>
+              <h2 className="text-lg font-semibold text-foreground">去除水印</h2>
+              <p className="text-sm text-muted-foreground">{material?.name}</p>
             </div>
           </div>
           
           {!isProcessing && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-accent rounded-md transition-colors"
               title="关闭"
             >
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -546,14 +546,14 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
                   <div className="text-center text-white">
                     <div className="animate-spin w-8 h-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
                     <p className="text-lg font-medium">{processingProgress}</p>
-                    <p className="text-sm text-gray-300 mt-2">请勿关闭窗口，处理中...</p>
+                    <p className="text-sm text-muted-foreground mt-2">请勿关闭窗口，处理中...</p>
                   </div>
                 </div>
               )}
             </div>
 
             {/* 视频控制栏 - 始终显示，但在处理时禁用交互 */}
-            <div className="bg-gray-900 p-4 text-white">
+            <div className="bg-background p-4 text-white">
               <div className="flex items-center space-x-4">
                 {/* 播放/暂停按钮 */}
                 <button
@@ -585,10 +585,10 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
                     value={currentTime}
                     onChange={(e) => seekTo(parseFloat(e.target.value))}
                     disabled={isProcessing}
-                    className={`w-full h-2 rounded-lg appearance-none transition-opacity ${
-                      isProcessing 
-                        ? 'bg-gray-700 cursor-not-allowed opacity-50' 
-                        : 'bg-gray-600 cursor-pointer'
+                    className={`w-full h-2 rounded-md appearance-none transition-opacity ${
+                      isProcessing
+                        ? 'bg-muted-foreground/30 cursor-not-allowed opacity-50'
+                        : 'bg-muted-foreground/50 cursor-pointer'
                     }`}
                   />
                 </div>
@@ -604,19 +604,19 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
           </div>
 
           {/* 右侧：控制面板 */}
-          <div className="w-80 bg-gray-50 border-l border-gray-200 flex flex-col">
+          <div className="w-80 bg-muted border-l border-border flex flex-col">
             <div className="p-6 space-y-6">
               {/* 选择指导 */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="bg-primary/10 border border-border rounded-md p-4">
                 <div className="flex items-start space-x-3">
-                  <div className="w-5 h-5 text-blue-600 mt-0.5">
+                  <div className="w-5 h-5 text-primary mt-0.5">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-blue-900 mb-1">如何使用</h3>
-                    <p className="text-sm text-blue-700">
+                    <h3 className="text-sm font-medium text-primary mb-1">如何使用</h3>
+                    <p className="text-sm text-primary">
                       在视频上点击并拖拽选择水印区域，然后点击"开始去除水印"按钮。
                     </p>
                   </div>
@@ -625,12 +625,12 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
 
               {/* 水印区域信息 */}
               {watermarkArea && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="bg-card rounded-md border border-border p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-gray-900">选中的水印区域</h3>
+                    <h3 className="text-sm font-medium text-foreground">选中的水印区域</h3>
                     <button
                       onClick={clearSelection}
-                      className="text-sm text-red-600 hover:text-red-700 transition-colors"
+                      className="text-sm text-destructive hover:text-destructive/80 transition-colors"
                       disabled={isProcessing}
                     >
                       清除
@@ -638,15 +638,15 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <span className="text-gray-500">起始:</span>
+                      <span className="text-muted-foreground">起始:</span>
                       <span className="ml-1 font-mono">({Math.round(watermarkArea.x1)}, {Math.round(watermarkArea.y1)})</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">结束:</span>
+                      <span className="text-muted-foreground">结束:</span>
                       <span className="ml-1 font-mono">({Math.round(watermarkArea.x2)}, {Math.round(watermarkArea.y2)})</span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-gray-500">大小:</span>
+                      <span className="text-muted-foreground">大小:</span>
                       <span className="ml-1 font-mono">{Math.round(watermarkArea.x2 - watermarkArea.x1)} × {Math.round(watermarkArea.y2 - watermarkArea.y1)}</span>
                     </div>
                   </div>
@@ -654,29 +654,29 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
               )}
 
               {/* 处理设置 */}
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 className="text-sm font-medium text-gray-900 mb-4">处理设置</h3>
+              <div className="bg-card rounded-md border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground mb-4">处理设置</h3>
                 
                 {/* 修复方法 */}
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">修复方法</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">修复方法</label>
                   <select
                     value={inpaintMethod}
                     onChange={(e) => setInpaintMethod(e.target.value as 'telea' | 'ns')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     disabled={isProcessing}
                   >
                     <option value="telea">TELEA (推荐)</option>
                     <option value="ns">Navier-Stokes</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     TELEA适合大多数情况，Navier-Stokes适合流体纹理
                   </p>
                 </div>
 
                 {/* 修复半径 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     修复半径: {inpaintRadius}px
                   </label>
                   <input
@@ -685,14 +685,14 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
                     max="20"
                     value={inpaintRadius}
                     onChange={(e) => setInpaintRadius(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full h-2 bg-accent rounded-md appearance-none cursor-pointer"
                     disabled={isProcessing}
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
                     <span>1px</span>
                     <span>20px</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     较大的半径可以处理更大的水印，但可能影响细节
                   </p>
                 </div>
@@ -700,14 +700,14 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
             </div>
 
             {/* 底部按钮区域 */}
-            <div className="mt-auto p-6 border-t border-gray-200 space-y-3">
+            <div className="mt-auto p-6 border-t border-border space-y-3">
               <button
                 onClick={handleRemoveWatermark}
                 disabled={!watermarkArea || isProcessing}
-                className={`w-full px-4 py-3 rounded-lg font-medium transition-colors ${
+                className={`w-full px-4 py-3 rounded-md font-medium transition-colors ${
                   watermarkArea && !isProcessing
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    ? 'bg-destructive hover:bg-destructive/90 text-white'
+                    : 'bg-accent text-muted-foreground cursor-not-allowed'
                 }`}
               >
                 {isProcessing ? '处理中...' : '开始去除水印'}
@@ -716,7 +716,7 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
               {!isProcessing && (
                 <button
                   onClick={onClose}
-                  className="w-full px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                  className="w-full px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   取消
                 </button>

@@ -99,7 +99,7 @@ const ScriptGenerationProgressModal: React.FC<ScriptGenerationProgressModalProps
       aria-describedby="script-generation-progress-description"
     >
       <div 
-        className={`bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-sm w-full transform transition-all duration-300 ${
+        className={`bg-card rounded-md border border-border max-w-sm w-full transform transition-all duration-300 ${
           isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -159,14 +159,14 @@ const ScriptGenerationProgressModal: React.FC<ScriptGenerationProgressModalProps
           
           <h3 
             id="script-generation-progress-title"
-            className="text-lg font-semibold text-gray-900 mb-2"
+            className="text-lg font-semibold text-foreground mb-2"
           >
             生成脚本
           </h3>
           
           <p 
             id="script-generation-progress-description"
-            className="text-sm text-gray-600 mb-1"
+            className="text-sm text-muted-foreground mb-1"
           >
             {getProgressStage()}
           </p>
@@ -177,7 +177,7 @@ const ScriptGenerationProgressModal: React.FC<ScriptGenerationProgressModalProps
           
           {/* 显示经过时间 */}
           {startTime && (
-            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+            <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="12,6 12,12 16,14"/>
@@ -189,7 +189,7 @@ const ScriptGenerationProgressModal: React.FC<ScriptGenerationProgressModalProps
 
         {/* Progress Bar */}
         <div className="px-6 pb-4">
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-accent rounded-full h-2 overflow-hidden">
             <div 
               className="h-2 bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${Math.min(progress, 100)}%` }}
@@ -200,14 +200,14 @@ const ScriptGenerationProgressModal: React.FC<ScriptGenerationProgressModalProps
         {/* Footer */}
         <div className="px-6 pb-6">
           <div className="text-center">
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-muted-foreground mb-3">
               请耐心等待，脚本生成过程中请勿关闭页面
             </p>
             
             {allowCancel && onCancel && progress < 100 && (
               <button
                 onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors"
               >
                 取消生成
               </button>

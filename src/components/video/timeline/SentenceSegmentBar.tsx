@@ -90,7 +90,7 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
             {width * (sentence.duration / duration) > 30 && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <span 
-                  className="text-xs font-medium text-white drop-shadow-sm"
+                  className="text-xs font-medium text-white "
                   style={{
                     fontSize: Math.min(10, height * 0.3),
                     opacity: 0.8
@@ -103,9 +103,9 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
             
             {/* 悬停时的详细信息提示 */}
             {isHovered && (
-              <div 
-                className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50 
-                           bg-gray-900 text-white text-xs rounded-md px-2 py-1 shadow-lg
+              <div
+                className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50
+                           bg-background text-foreground text-xs rounded-md px-2 py-1 border border-border
                            whitespace-nowrap pointer-events-none max-w-xs"
                 style={{ 
                   minWidth: '120px',
@@ -115,11 +115,11 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
                 <div className="font-medium mb-1">
                   句子 {sentence.order}
                 </div>
-                <div className="text-gray-300 mb-1">
+                <div className="text-muted-foreground mb-1">
                   {sentence.start_time.toFixed(1)}s - {sentence.end_time.toFixed(1)}s 
                   ({sentence.duration.toFixed(1)}s)
                 </div>
-                <div className="text-gray-100 text-wrap break-words">
+                <div className="text-foreground text-wrap break-words">
                   {sentence.text.length > 50 
                     ? `${sentence.text.substring(0, 50)}...` 
                     : sentence.text
@@ -127,9 +127,9 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
                 </div>
                 
                 {/* 箭头指示器 */}
-                <div 
-                  className="absolute top-full left-1/2 transform -translate-x-1/2 
-                             border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"
+                <div
+                  className="absolute top-full left-1/2 transform -translate-x-1/2
+                             border-l-4 border-r-4 border-t-4 border-transparent border-t-background"
                 />
               </div>
             )}

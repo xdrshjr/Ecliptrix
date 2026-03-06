@@ -90,12 +90,12 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
       <div className="markdown-panel-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
+            <div className="w-6 h-6 bg-indigo-100 rounded-md flex items-center justify-center">
               <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">{t.documentPanel.title}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t.documentPanel.title}</h3>
           </div>
           
           {/* 功能按钮组 - 仅图标显示 */}
@@ -103,8 +103,8 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
             {/* 创意构思按钮 */}
             <button
               onClick={handleCreativeBrainstormingClick}
-              className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-purple-50 to-blue-50 
-                       hover:from-purple-100 hover:to-blue-100 border border-purple-200 rounded-lg 
+              className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-purple-50 to-primary/10
+                       hover:from-purple-100 hover:to-primary/20 border border-purple-200 rounded-md
                        transition-all duration-200 group"
               title={t.documentPanel.creativeBrainstorming}
               aria-label={t.documentPanel.creativeBrainstormingAriaLabel}
@@ -118,7 +118,7 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
             {onPolishClick && (
               <button
                 onClick={handlePolishClick}
-                className="flex items-center justify-center w-8 h-8 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 hover:border-purple-300 transition-all duration-200 group"
+                className="flex items-center justify-center w-8 h-8 text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-all duration-200 group"
                 title={t.documentPanel.polishContent}
                 aria-label={t.documentPanel.polishContentAriaLabel}
               >
@@ -133,7 +133,7 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
               <button
                 onClick={handleGenerateScriptClick}
                 disabled={isGeneratingScript}
-                className="flex items-center justify-center w-8 h-8 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 group"
+                className="flex items-center justify-center w-8 h-8 text-primary bg-primary/10 border border-primary/20 rounded-md hover:bg-primary/20 hover:border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 group"
                 title={isGeneratingScript ? t.documentPanel.generatingScript : t.documentPanel.generateScript}
                 aria-label={t.documentPanel.generateScriptAriaLabel}
               >

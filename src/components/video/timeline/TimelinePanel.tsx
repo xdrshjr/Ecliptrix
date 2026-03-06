@@ -2556,7 +2556,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   return (
     <div 
-      className={`timeline-panel flex flex-col h-full bg-white ${className}`}
+      className={`timeline-panel flex flex-col h-full bg-card ${className}`}
       tabIndex={0} // 使div可以接收焦点，以便捕获键盘事件
     >
       {/* 工具栏 */}

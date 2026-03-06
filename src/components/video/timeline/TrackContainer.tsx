@@ -321,7 +321,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   return (
     <div 
       ref={containerRef}
-      className="track-container flex-1 flex flex-col overflow-hidden bg-gray-50"
+      className="track-container flex-1 flex flex-col overflow-hidden bg-muted"
     >
       {/* 轨道列表 */}
       <div 
@@ -361,13 +361,13 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
             >
               {/* 顶部指示器 */}
               <div 
-                className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white shadow-sm"
+                className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white"
                 style={{ opacity: 0.9 }}
               />
               
               {/* 底部指示器 */}
               <div 
-                className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white shadow-sm"
+                className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white"
                 style={{ opacity: 0.9 }}
               />
             </div>
@@ -401,19 +401,19 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
           /* 空状态显示 */
           <div className="flex-1 flex items-center justify-center py-16">
             <div className="text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">暂无轨道</h3>
-              <p className="text-gray-500 mb-6 max-w-sm">
+              <h3 className="text-lg font-medium text-foreground mb-2">暂无轨道</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm">
                 开始创建您的第一个轨道，添加视频、音频或字幕素材
               </p>
               <div className="flex items-center justify-center space-x-3">
                 <button
                   onClick={() => handleAddTrack('video')}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  className="flex items-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
@@ -446,9 +446,9 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
       </div>
 
       {/* 底部轨道管理栏 - 高度与时间刻度轴一致 */}
-      <div className="flex-shrink-0 h-8 bg-gray-100 border-t border-gray-200 flex items-center justify-between px-4">
+      <div className="flex-shrink-0 h-8 bg-muted border-t border-border flex items-center justify-between px-4">
         {/* 左侧轨道信息 */}
-        <div className="flex items-center space-x-3 text-xs text-gray-600">
+        <div className="flex items-center space-x-3 text-xs text-muted-foreground">
           <span>{t.timeline.trackBar.tracks}: {tracks.length}</span>
           <span>{t.timeline.trackBar.materials}: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
           <span>{t.timeline.trackBar.duration}: {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toFixed(0).padStart(2, '0')}</span>
@@ -456,7 +456,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
 
         {/* 右侧添加轨道按钮 */}
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-gray-600">{t.timeline.trackBar.addTrack}:</span>
+          <span className="text-xs text-muted-foreground">{t.timeline.trackBar.addTrack}:</span>
           
           <div className="flex items-center space-x-1">
             {/* 视频轨道按钮 */}
@@ -468,7 +468,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   });
                   handleAddTrack('video');
                 }}
-                className="p-1.5 rounded hover:bg-gray-200 transition-colors w-6 h-6 flex items-center justify-center"
+                className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addVideoTrack}
               >
                 <svg className="w-3 h-3 text-blue-600 group-hover:text-blue-700" fill="currentColor" viewBox="0 0 24 24">
@@ -477,10 +477,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 
                 {/* 悬停提示 */}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addVideoTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
                   </div>
                 </div>
@@ -496,7 +496,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   });
                   handleAddTrack('audio');
                 }}
-                className="p-1.5 rounded hover:bg-gray-200 transition-colors w-6 h-6 flex items-center justify-center"
+                className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addAudioTrack}
               >
                 <svg className="w-3 h-3 text-green-600 group-hover:text-green-700" fill="currentColor" viewBox="0 0 24 24">
@@ -505,10 +505,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 
                 {/* 悬停提示 */}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addAudioTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
                   </div>
                 </div>
@@ -524,7 +524,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   });
                   handleAddTrack('subtitle');
                 }}
-                className="p-1.5 rounded hover:bg-gray-200 transition-colors w-6 h-6 flex items-center justify-center"
+                className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addSubtitleTrack}
               >
                 <svg className="w-3 h-3 text-amber-600 group-hover:text-amber-700" fill="currentColor" viewBox="0 0 24 24">
@@ -533,10 +533,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 
                 {/* 悬停提示 */}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-xl whitespace-nowrap border border-gray-600">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addSubtitleTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
                   </div>
                 </div>

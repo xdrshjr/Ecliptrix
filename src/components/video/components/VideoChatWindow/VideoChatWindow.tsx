@@ -236,34 +236,34 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-white to-gray-50/50">
+      <div className="flex-1 flex items-center justify-center bg-background">
         <div className="text-center max-w-md mx-auto px-6">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-lg">
+          <div className="w-20 h-20 bg-primary rounded-md mx-auto mb-6 flex items-center justify-center">
             <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-2xl font-semibold text-foreground mb-3">
             {t.videoChatWindow.emptyStateTitle}
           </h2>
-          <p className="text-gray-600 mb-6 leading-relaxed">
+          <p className="text-muted-foreground mb-6 leading-relaxed">
             {t.videoChatWindow.emptyStateSubtitle}
           </p>
           <div className="grid grid-cols-1 gap-3 text-sm">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-4 text-left border border-blue-200/50 shadow-sm">
+            <div className="bg-primary/10 rounded-md p-4 text-left border border-border">
               <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm">
+                <div className="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-blue-900">{t.videoChatWindow.scriptOptimizationTitle}</h3>
+                <h3 className="font-semibold text-primary">{t.videoChatWindow.scriptOptimizationTitle}</h3>
               </div>
-              <p className="text-blue-700 leading-relaxed">{t.videoChatWindow.scriptOptimizationDesc}</p>
+              <p className="text-primary leading-relaxed">{t.videoChatWindow.scriptOptimizationDesc}</p>
             </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-4 text-left border border-purple-200/50 shadow-sm">
+            <div className="bg-purple-50 rounded-md p-4 text-left border border-border">
               <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
+                <div className="w-10 h-10 bg-purple-500 rounded-md flex items-center justify-center">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -280,7 +280,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-white to-gray-50/30 min-h-0">
+    <div className="flex flex-col h-full bg-background min-h-0">
       {/* Messages Area */}
       <div 
         ref={messagesContainerRef}
@@ -290,13 +290,13 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         {conversation.messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-sm">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-20 h-20 bg-muted rounded-md mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{t.videoChatWindow.startChatTitle}</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <h3 className="text-lg font-semibold text-foreground mb-2">{t.videoChatWindow.startChatTitle}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 {t.videoChatWindow.startChatDesc}
               </p>
             </div>
@@ -314,14 +314,14 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       </div>
 
       {/* Action Buttons Bar - Above Input Area */}
-      <div className="flex-shrink-0 px-6 py-3 border-t border-gray-100/80 bg-gray-50/50">
+      <div className="flex-shrink-0 px-6 py-3 border-t border-border bg-muted">
         <div className="flex items-center space-x-2 justify-start">
           {/* 查看工作流按钮 */}
           {onViewWorkflowsClick && (
             <button
               onClick={handleViewWorkflowsClick}
               disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 border border-gray-200 hover:border-green-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+              className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-green-200 rounded-md transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed"
               title={t.videoChatWindow.viewWorkflowsTooltip}
               aria-label={t.videoChatWindow.viewWorkflowsTooltip}
             >
@@ -336,7 +336,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             <button
               onClick={handleCreativeBrainstormingClick}
               disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 border border-gray-200 hover:border-purple-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+              className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-purple-200 rounded-md transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed"
               title={t.videoChatWindow.creativeBrainstormingTooltip}
               aria-label={t.videoChatWindow.creativeBrainstormingTooltip}
             >
@@ -351,7 +351,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             <button
               onClick={handlePolishClick}
               disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 bg-white hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 border border-gray-200 hover:border-indigo-200 rounded-lg transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+              className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-indigo-200 rounded-md transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed"
               title={t.videoChatWindow.polishContentTooltip}
               aria-label={t.videoChatWindow.polishContentTooltip}
             >
@@ -365,7 +365,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       </div>
 
       {/* Input Area - Apple style with backdrop blur */}
-      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200/80 bg-white/80 backdrop-blur-sm">
+      <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card">
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1 relative flex items-center">
             <textarea
@@ -376,7 +376,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onFocus={handleFocus}
               onBlur={handleBlur}
               placeholder={t.videoChatWindow.inputPlaceholder}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-24 bg-gray-50 min-h-[32px] transition-all shadow-sm text-sm"
+              className="w-full px-3 py-2 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-24 bg-muted min-h-[32px] transition-all text-sm"
               rows={1}
               disabled={isLoading}
               style={{ height: '32px', overflow: 'hidden' }}
@@ -387,7 +387,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             type="button"
             onClick={handleClearChat}
             disabled={!conversation || conversation.messages.length === 0 || isLoading}
-            className="bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 rounded-lg transition-all flex items-center justify-center shrink-0 shadow-sm hover:shadow-md"
+            className="bg-card border border-border hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-foreground rounded-md transition-all flex items-center justify-center shrink-0"
             title={t.videoChatWindow.clearChatTooltip}
             style={{ width: '32px', height: '32px' }}
           >
@@ -399,7 +399,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           <button
             type="submit"
             disabled={!inputMessage.trim() || isLoading}
-            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center justify-center shrink-0 shadow-md hover:shadow-lg"
+            className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-all flex items-center justify-center shrink-0"
             title={t.videoChatWindow.sendMessageTooltip}
             style={{ width: '32px', height: '32px' }}
           >

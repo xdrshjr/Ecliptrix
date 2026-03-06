@@ -1184,12 +1184,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <div className="materials-panel-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-6 h-6 bg-primary/10 rounded-md flex items-center justify-center">
+              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">{t.materialsPanel.title}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t.materialsPanel.title}</h3>
           </div>
           <div className="flex items-center space-x-2">
             {/* 新增：AI解析视频按钮 */}
@@ -1243,7 +1243,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             <button
               onClick={handleUploadClick}
               disabled={isUploading}
-              className="p-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              className="p-2 text-primary bg-primary/10 border border-primary/20 rounded-md hover:bg-primary/20 hover:border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
               title={isUploading ? `${t.materialsPanel.uploadingProgress} ${uploadProgress.toFixed(0)}%` : t.materialsPanel.uploadTooltip}
             >
               {isUploading ? (
@@ -1263,15 +1263,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       
       <div className="materials-panel-content">
         {/* 素材类型筛选标签 */}
-        <div className="flex space-x-1 mb-4 p-1 bg-gray-100 rounded-lg">
+        <div className="flex space-x-1 mb-4 p-1 bg-muted rounded-md">
           {(['all', 'video', 'audio', 'image', 'subtitle'] as const).map((type) => (
             <button
               key={type}
               onClick={() => handleTypeFilter(type)}
               className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 selectedMaterialType === type
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-card text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {type === 'all' ? t.materialsPanel.filterAll : 
@@ -1296,29 +1296,29 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         >
           {/* 拖拽覆盖层 */}
           {isDragOver && (
-            <div className="absolute inset-0 bg-blue-50 bg-opacity-90 border-2 border-dashed border-blue-300 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+            <div className="absolute inset-0 bg-primary/10 bg-opacity-90 border-2 border-dashed border-primary/30 rounded-md flex items-center justify-center z-10 pointer-events-none">
               <div className="text-center">
-                <svg className="w-12 h-12 text-blue-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 text-primary mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <p className="text-blue-600 font-medium text-lg">拖放文件到此处上传</p>
-                <p className="text-blue-500 text-sm mt-1">支持视频、音频和图片文件</p>
+                <p className="text-primary font-medium text-lg">拖放文件到此处上传</p>
+                <p className="text-primary text-sm mt-1">支持视频、音频和图片文件</p>
               </div>
             </div>
           )}
 
           {materials.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{t.materialsPanel.noMaterials}</h3>
-              <p className="text-sm text-gray-500 text-center max-w-sm">
+              <h3 className="text-lg font-medium text-foreground mb-2">{t.materialsPanel.noMaterials}</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
                 {t.materialsPanel.emptyDescription}
               </p>
-              <p className="text-sm text-gray-400 text-center max-w-sm mt-2">
+              <p className="text-sm text-muted-foreground text-center max-w-sm mt-2">
                 或者直接拖拽文件到此处上传
               </p>
             </div>
@@ -1332,7 +1332,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading' && material.uploadStatus !== 'waiting'}
                   onDragStart={(e) => handleDragStart(e, material)}
                   onDragEnd={(e) => handleDragEnd(e, material)}
-                  className={`group bg-white border border-gray-200 rounded-md overflow-hidden hover:shadow-md transition-all ${
+                  className={`group bg-card border border-border rounded-md overflow-hidden transition-all ${
                     material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading' || material.uploadStatus === 'waiting'
                       ? 'opacity-60 cursor-not-allowed' 
                       : 'cursor-grab active:cursor-grabbing'
@@ -1342,7 +1342,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   onClick={() => handleMaterialClick(material)}
                 >
                   {/* 缩略图区域 */}
-                  <div className="aspect-video bg-gray-100 relative">
+                  <div className="aspect-video bg-muted relative">
                     {material.thumbnailUrl ? (
                       <img 
                         src={material.thumbnailUrl} 
@@ -1367,19 +1367,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         {material.type === 'audio' ? (
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6z" />
                           </svg>
                         ) : material.type === 'image' ? (
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         ) : material.type === 'subtitle' ? (
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
                           </svg>
                         ) : (
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                           </svg>
                         )}
@@ -1389,15 +1389,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {/* 音频播放控制覆盖层 */}
                     {material.type === 'audio' && (
                       <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                        <div className={`w-10 h-10 rounded-full bg-white bg-opacity-90 flex items-center justify-center transition-all duration-200 ${
+                        <div className={`w-10 h-10 rounded-full bg-card bg-opacity-90 flex items-center justify-center transition-all duration-200 ${
                           playingAudio === material.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}>
                           {playingAudio === material.id ? (
-                            <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-foreground" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
                             </svg>
                           ) : (
-                            <svg className="w-5 h-5 text-gray-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-foreground ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M8 5v14l11-7z"/>
                             </svg>
                           )}
@@ -1408,8 +1408,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {/* 字幕下载控制覆盖层 */}
                     {material.type === 'subtitle' && (
                       <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                        <div className="w-10 h-10 rounded-full bg-white bg-opacity-90 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100">
-                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-10 h-10 rounded-full bg-card bg-opacity-90 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100">
+                          <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
@@ -1422,9 +1422,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
                         <span className="text-white text-xs font-medium">{t.materialsPanel.downloadingVideo}</span>
                         {material.downloadProgress !== undefined && (
-                          <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
+                          <div className="w-16 bg-accent rounded-full h-1 mt-1">
                             <div 
-                              className="bg-blue-600 h-1 rounded-full transition-all duration-300" 
+                              className="bg-primary h-1 rounded-full transition-all duration-300" 
                               style={{ width: `${material.downloadProgress}%` }}
                             ></div>
                           </div>
@@ -1458,7 +1458,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
                         <span className="text-white text-xs font-medium">{t.materialsPanel.uploadingMaterial}</span>
                         {material.uploadProgress !== undefined && (
-                          <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
+                          <div className="w-16 bg-accent rounded-full h-1 mt-1">
                             <div 
                               className="bg-white h-1 rounded-full transition-all duration-300" 
                               style={{ width: `${material.uploadProgress}%` }}
@@ -1474,7 +1474,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
                         <span className="text-white text-xs font-medium text-center px-1">生成中...</span>
                         {material.downloadProgress !== undefined && (
-                          <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
+                          <div className="w-16 bg-accent rounded-full h-1 mt-1">
                             <div 
                               className="bg-white h-1 rounded-full transition-all duration-300" 
                               style={{ width: `${material.downloadProgress}%` }}
@@ -1489,15 +1489,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 bg-opacity-90 flex flex-col items-center justify-center">
                         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mb-2"></div>
                         <span className="text-white text-xs font-medium text-center px-1">FLUX生成中...</span>
-                        <div className="w-16 bg-white bg-opacity-30 rounded-full h-1 mt-1">
-                          <div className="bg-white h-1 rounded-full animate-pulse"></div>
+                        <div className="w-16 bg-card bg-opacity-30 rounded-full h-1 mt-1">
+                          <div className="bg-card h-1 rounded-full animate-pulse"></div>
                         </div>
                       </div>
                     )}
 
                     {/* 下载错误状态覆盖层 */}
                     {material.downloadStatus === 'error' && (
-                      <div className="absolute inset-0 bg-red-500 bg-opacity-50 flex flex-col items-center justify-center">
+                      <div className="absolute inset-0 bg-destructive bg-opacity-50 flex flex-col items-center justify-center">
                         <svg className="w-6 h-6 text-white mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
@@ -1510,7 +1510,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         {onRetryDownload && (
                           <button
                             onClick={() => onRetryDownload(material)}
-                            className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                            className="mt-2 px-3 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
                             title={t.materialsPanel.retryDownload}
                           >
                             {t.materialsPanel.retryDownload}
@@ -1522,7 +1522,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {/* 类型标识 */}
                     <div className="absolute top-1 left-1">
                       <span className={`px-1 py-0.5 text-xs font-medium rounded ${
-                        material.type === 'video' ? 'bg-blue-100 text-blue-800' :
+                        material.type === 'video' ? 'bg-primary/10 text-primary' :
                         material.type === 'audio' ? 'bg-green-100 text-green-800' :
                         material.type === 'subtitle' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-purple-100 text-purple-800'
@@ -1548,7 +1548,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                             onAddToTimeline(material);
                           }
                         }}
-                        className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
+                        className="w-6 h-6 bg-primary hover:bg-primary/90 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
                         title={t.materialsPanel.addToTimelineTooltip}
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1559,7 +1559,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       {/* 删除按钮 */}
                       <button
                         onClick={(e) => handleSingleMaterialDelete(material, e)}
-                        className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
+                        className="w-6 h-6 bg-destructive hover:bg-destructive/90 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110"
                         title={t.materialsPanel.deleteMaterialTooltip.replace('{name}', material.name)}
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1636,7 +1636,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           disabled={imageToVideoStatus[material.id] === 'converting'}
                           className={`w-5 h-5 rounded flex items-center justify-center transition-all duration-200 hover:scale-110 ${
                             imageToVideoStatus[material.id] === 'converting'
-                              ? 'bg-blue-500 cursor-not-allowed' 
+                              ? 'bg-primary cursor-not-allowed' 
                               : 'bg-orange-500 hover:bg-orange-600'
                           } text-white`}
                           title={
@@ -1669,8 +1669,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
                     {/* 拖拽指示器 - 移到左下角 */}
                     <div className="absolute bottom-1 left-1">
-                      <div className="w-4 h-4 bg-white bg-opacity-80 rounded flex items-center justify-center">
-                        <svg className="w-3 h-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-4 h-4 bg-card bg-opacity-80 rounded flex items-center justify-center">
+                        <svg className="w-3 h-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                         </svg>
                       </div>
@@ -1678,10 +1678,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   </div>
                   
                   {/* 操作按钮横条 */}
-                  <div className="border-b border-gray-100 bg-gray-50 px-1.5 py-0.5 flex items-center justify-center space-x-1">
+                  <div className="border-b border-border bg-muted px-1.5 py-0.5 flex items-center justify-center space-x-1">
                     <button
                       onClick={(e) => handlePreviewMaterial(material, e)}
-                      className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-all duration-200 group"
+                      className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-all duration-200 group"
                       title={t.materialsPanel.previewMaterial}
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1693,10 +1693,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {/* 剪切素材按钮 - 仅对视频素材显示 */}
                     {material.type === 'video' && (
                       <>
-                        <div className="w-px h-3 bg-gray-200"></div>
+                        <div className="w-px h-3 bg-border"></div>
                         <button
                           onClick={(e) => handleCutMaterial(material, e)}
-                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded transition-all duration-200 group"
+                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-muted-foreground hover:text-orange-600 hover:bg-orange-50 rounded transition-all duration-200 group"
                           title="剪切素材"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1705,10 +1705,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         </button>
                         
                         {/* 去除水印按钮 */}
-                        <div className="w-px h-3 bg-gray-200"></div>
+                        <div className="w-px h-3 bg-border"></div>
                         <button
                           onClick={(e) => handleWatermarkRemoval(material, e)}
-                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-all duration-200 group"
+                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-all duration-200 group"
                           title="去除水印"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1719,15 +1719,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </>
                     )}
                     
-                    <div className="w-px h-3 bg-gray-200"></div>
+                    <div className="w-px h-3 bg-border"></div>
                     
                     <button
                       onClick={(e) => handleDownloadMaterial(material, e)}
                       disabled={downloadingMaterials.has(material.id)}
                       className={`flex-1 flex items-center justify-center px-1.5 py-0.5 rounded transition-all duration-200 group ${
                         downloadingMaterials.has(material.id)
-                          ? 'text-blue-600 bg-blue-50 cursor-not-allowed'
-                          : 'text-gray-600 hover:text-green-600 hover:bg-green-50'
+                          ? 'text-primary bg-primary/10 cursor-not-allowed'
+                          : 'text-muted-foreground hover:text-green-600 hover:bg-green-50'
                       }`}
                       title={downloadingMaterials.has(material.id) ? '下载中...' : t.materialsPanel.downloadMaterial}
                     >
@@ -1745,12 +1745,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
                   {/* 素材信息 */}
                   <div className="p-1.5">
-                    <h4 className="text-xs font-medium text-gray-900 truncate mb-1" title={material.name}>{material.name}</h4>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
+                    <h4 className="text-xs font-medium text-foreground truncate mb-1" title={material.name}>{material.name}</h4>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
                       {material.width && material.height && (
                         <span className="text-xs">{material.width}×{material.height}</span>
                       )}
-                      <span className="text-blue-600 text-xs">{material.format?.toUpperCase()}</span>
+                      <span className="text-primary text-xs">{material.format?.toUpperCase()}</span>
                     </div>
                   </div>
 
@@ -1788,13 +1788,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 {/* Dropdown Menu */}
                 {isDropdownOpen && (
                   <div 
-                    className="absolute bottom-full left-0 mb-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 animate-in slide-in-from-bottom-2 duration-200"
+                    className="absolute bottom-full left-0 mb-1 w-48 bg-card border border-border rounded-md z-50 animate-in slide-in-from-bottom-2 duration-200"
                     onMouseLeave={handleDropdownMouseLeave}
                   >
                     <div className="py-1">
                       <button
                         onClick={() => handleDropdownOptionClick('video')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-primary hover:text-primary hover:bg-primary/10 transition-colors"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1860,7 +1860,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               </button>
 
             </div>
-            <div className="text-gray-500">
+            <div className="text-muted-foreground">
               {materials.length}{t.materialsPanel.materialsCount}
             </div>
           </div>
@@ -1881,12 +1881,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       {imageToVideoPopover.visible && imageToVideoPopover.material && (
         <div
           ref={popoverRef}
-          className="fixed z-[1200] bg-white rounded-xl shadow-xl border border-gray-200 py-1 w-44 animate-in fade-in zoom-in-95 duration-150"
+          className="fixed z-[1200] bg-card rounded-md border border-border py-1 w-44 animate-in fade-in zoom-in-95 duration-150"
           style={{ left: imageToVideoPopover.position.x, top: imageToVideoPopover.position.y }}
         >
           <button
             onClick={handleChooseEffectConversion}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
           >
             <svg className="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2m0 2a2 2 0 012 2m-2-2a2 2 0 00-2 2M7 20v2m0-2a2 2 0 01-2-2m2 2a2 2 0 002-2M3 8h2M3 16h2m14-8h2m-2 8h2M7 8h10a2 2 0 012 2v4a2 2 0 01-2 2H7a2 2 0 01-2-2v-4a2 2 0 012-2z" />
@@ -1895,7 +1895,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           </button>
           <button
             onClick={handleChooseAiVideoGeneration}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
           >
             <svg className="w-4 h-4 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
@@ -1908,11 +1908,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       {/* 图片转视频效果选择弹窗 */}
       {showImageToVideoModal && selectedImageForConversion && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4">
-          <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col">
+          <div className="bg-card rounded-md w-full max-w-6xl max-h-[90vh] flex flex-col">
             {/* 弹窗头部 */}
-            <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+            <div className="px-6 py-4 border-b border-border flex-shrink-0">
               <h3 className="text-lg font-semibold">选择视频效果和设置聚焦区域</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 将图片 "{selectedImageForConversion.name}" 转换为视频
               </p>
             </div>
@@ -1920,45 +1920,45 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             {/* 弹窗主体内容 */}
             <div className="flex-1 flex overflow-hidden">
               {/* 左侧：效果选择面板 */}
-              <div className="w-1/2 p-6 border-r border-gray-200 flex flex-col">
-                <h4 className="text-md font-medium text-gray-800 mb-4">选择视频效果</h4>
+              <div className="w-1/2 p-6 border-r border-border flex flex-col">
+                <h4 className="text-md font-medium text-foreground mb-4">选择视频效果</h4>
                 <div className="flex-1 space-y-3 overflow-y-auto pr-2">
                   {/* 静态效果 */}
                   <button
                     onClick={() => setSelectedEffect('static')}
-                    className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                    className={`w-full p-3 text-left border rounded-md transition-colors ${
                       selectedEffect === 'static' 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                        ? 'border-primary bg-primary/10' 
+                        : 'border-border hover:border-primary/30 hover:bg-primary/10'
                     }`}
                   >
                     <div className="font-medium">静态视频</div>
-                    <div className="text-sm text-gray-500">直接将图片转换为静态视频</div>
+                    <div className="text-sm text-muted-foreground">直接将图片转换为静态视频</div>
                   </button>
 
                   {/* Ken Burns效果 */}
                   <div className="space-y-2">
                     <button
                       onClick={() => setSelectedEffect('ken_burns_zoom_in')}
-                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                      className={`w-full p-3 text-left border rounded-md transition-colors ${
                         selectedEffect === 'ken_burns_zoom_in'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/30 hover:bg-primary/10'
                       }`}
                     >
                       <div className="font-medium">Ken Burns - 放大</div>
-                      <div className="text-sm text-gray-500">逐渐放大到设置的聚焦位置（稳定渐变效果）</div>
+                      <div className="text-sm text-muted-foreground">逐渐放大到设置的聚焦位置（稳定渐变效果）</div>
                     </button>
                     <button
                       onClick={() => setSelectedEffect('ken_burns_zoom_out')}
-                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                      className={`w-full p-3 text-left border rounded-md transition-colors ${
                         selectedEffect === 'ken_burns_zoom_out'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/30 hover:bg-primary/10'
                       }`}
                     >
                       <div className="font-medium">Ken Burns - 缩小</div>
-                      <div className="text-sm text-gray-500">从放大状态缩小到正常大小（稳定渐变效果）</div>
+                      <div className="text-sm text-muted-foreground">从放大状态缩小到正常大小（稳定渐变效果）</div>
                     </button>
                   </div>
 
@@ -1966,25 +1966,25 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <div className="space-y-2">
                     <button
                       onClick={() => setSelectedEffect('pan_left_to_right')}
-                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                      className={`w-full p-3 text-left border rounded-md transition-colors ${
                         selectedEffect === 'pan_left_to_right'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/30 hover:bg-primary/10'
                       }`}
                     >
                       <div className="font-medium">平移 - 从左到右</div>
-                      <div className="text-sm text-gray-500">水平从左向右平移</div>
+                      <div className="text-sm text-muted-foreground">水平从左向右平移</div>
                     </button>
                     <button
                       onClick={() => setSelectedEffect('pan_right_to_left')}
-                      className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                      className={`w-full p-3 text-left border rounded-md transition-colors ${
                         selectedEffect === 'pan_right_to_left'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/30 hover:bg-primary/10'
                       }`}
                     >
                       <div className="font-medium">平移 - 从右到左</div>
-                      <div className="text-sm text-gray-500">水平从右向左平移</div>
+                      <div className="text-sm text-muted-foreground">水平从右向左平移</div>
                     </button>
                   </div>
                 </div>
@@ -1992,9 +1992,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
               {/* 右侧：图片预览和聚焦点设置面板 */}
               <div className="w-1/2 p-6 flex flex-col">
-                <h4 className="text-md font-medium text-gray-800 mb-4">设置聚焦区域</h4>
+                <h4 className="text-md font-medium text-foreground mb-4">设置聚焦区域</h4>
                 <div className="flex-1 flex flex-col">
-                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 flex-1 flex flex-col">
+                  <div className="border border-border rounded-md p-4 bg-muted flex-1 flex flex-col">
                     <div className="relative flex-1 flex items-center justify-center">
                       <img
                         ref={imagePreviewRef}
@@ -2007,7 +2007,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       {/* 聚焦点标记 */}
                       {focusPoint && imagePreviewRef.current && (
                         <div
-                          className="absolute w-4 h-4 bg-red-500 border-2 border-white rounded-full transform -translate-x-2 -translate-y-2 shadow-lg"
+                          className="absolute w-4 h-4 bg-destructive border-2 border-white rounded-full transform -translate-x-2 -translate-y-2"
                           style={{
                             left: `${focusPoint.x * 100}%`,
                             top: `${focusPoint.y * 100}%`,
@@ -2015,7 +2015,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         />
                       )}
                     </div>
-                    <div className="mt-3 text-sm text-gray-600 flex-shrink-0">
+                    <div className="mt-3 text-sm text-muted-foreground flex-shrink-0">
                       <p>点击图片设置聚焦位置</p>
                       {focusPoint && (
                         <p className="mt-1">
@@ -2030,9 +2030,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   
                   {/* 效果说明 */}
                   {selectedEffect && (
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex-shrink-0">
-                      <h5 className="text-sm font-medium text-blue-800 mb-2">效果说明</h5>
-                      <p className="text-sm text-blue-700">
+                    <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-md flex-shrink-0">
+                      <h5 className="text-sm font-medium text-primary mb-2">效果说明</h5>
+                      <p className="text-sm text-primary">
                         {getEffectDescription(selectedEffect)}
                       </p>
                     </div>
@@ -2042,7 +2042,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
 
             {/* 弹窗底部按钮 */}
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3 flex-shrink-0">
+            <div className="px-6 py-4 border-t border-border flex justify-end space-x-3 flex-shrink-0">
               <button
                 onClick={() => {
                   setShowImageToVideoModal(false);
@@ -2050,7 +2050,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   setSelectedEffect('');
                   setFocusPoint(null);
                 }}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-4 py-2 text-muted-foreground border border-border rounded-md hover:bg-accent"
               >
                 取消
               </button>
@@ -2059,8 +2059,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 disabled={!selectedEffect || !focusPoint}
                 className={`px-6 py-2 rounded-md font-medium ${
                   selectedEffect && focusPoint
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    ? 'bg-primary text-white hover:bg-primary/90'
+                    : 'bg-accent text-muted-foreground cursor-not-allowed'
                 }`}
               >
                 转换视频

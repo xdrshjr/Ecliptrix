@@ -209,25 +209,25 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
       aria-labelledby="modal-title"
     >
       <div
-        className={`bg-white rounded-2xl shadow-2xl border border-gray-100 ${hasVideoMaterials ? 'max-w-6xl' : 'max-w-2xl'} w-full max-h-[90vh] flex flex-col transform transition-all duration-300 ${
+        className={`bg-card rounded-md border border-border ${hasVideoMaterials ? 'max-w-6xl' : 'max-w-2xl'} w-full max-h-[90vh] flex flex-col transform transition-all duration-300 ${
           isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0 rounded-t-2xl">
+        <div className="px-6 py-5 border-b border-border bg-primary/10 flex-shrink-0 rounded-t-md">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
               <div>
-                <h3 id="modal-title" className="text-xl font-semibold text-gray-900">
+                <h3 id="modal-title" className="text-xl font-semibold text-foreground">
                   生成脚本
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   将对话内容转换为视频脚本
                 </p>
               </div>
@@ -235,9 +235,9 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
             <button
               onClick={handleClose}
               disabled={isGenerating}
-              className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -247,9 +247,9 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - 参数设置 */}
-          <div className={`${hasVideoMaterials ? 'w-1/2 border-r border-gray-200' : 'w-full'} p-6 overflow-y-auto`}>
-            <h4 className="text-md font-semibold text-gray-800 mb-4 flex items-center">
-              <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className={`${hasVideoMaterials ? 'w-1/2 border-r border-border' : 'w-full'} p-6 overflow-y-auto`}>
+            <h4 className="text-md font-semibold text-foreground mb-4 flex items-center">
+              <svg className="w-5 h-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
               参数设置
@@ -258,7 +258,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
             <div className="space-y-6">
               {/* Language Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">脚本语言</label>
+                <label className="block text-sm font-medium text-foreground mb-3">脚本语言</label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
                     { value: 'chinese', label: '中文' },
@@ -268,10 +268,10 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                     <button
                       key={option.value}
                       onClick={() => setParameters({ ...parameters, language: option.value as any })}
-                      className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                      className={`px-4 py-2 rounded-md border text-sm font-medium transition-all duration-200 ${
                         parameters.language === option.value
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-card text-foreground hover:border-border'
                       }`}
                     >
                       {option.label}
@@ -282,7 +282,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
               {/* Segment Count */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
+                <label className="block text-sm font-medium text-foreground mb-3">
                   脚本段落数量: {parameters.segmentCount}
                 </label>
                 <input
@@ -291,9 +291,9 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                   max="10"
                   value={parameters.segmentCount}
                   onChange={(e) => setParameters({ ...parameters, segmentCount: parseInt(e.target.value) })}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb"
+                  className="w-full h-2 bg-accent rounded-md appearance-none cursor-pointer slider-thumb"
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>3段</span>
                   <span>10段</span>
                 </div>
@@ -301,7 +301,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
               {/* Analysis Depth */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">分析深度</label>
+                <label className="block text-sm font-medium text-foreground mb-3">分析深度</label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
                     { value: 'basic', label: '基础', desc: '快速生成' },
@@ -311,10 +311,10 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                     <button
                       key={option.value}
                       onClick={() => setParameters({ ...parameters, analysisDepth: option.value as any })}
-                      className={`px-4 py-3 rounded-lg border text-sm transition-all duration-200 ${
+                      className={`px-4 py-3 rounded-md border text-sm transition-all duration-200 ${
                         parameters.analysisDepth === option.value
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-card text-foreground hover:border-border'
                       }`}
                     >
                       <div className="font-medium">{option.label}</div>
@@ -326,7 +326,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
               {/* Additional Options */}
               <div className="space-y-4">
-                <label className="block text-sm font-medium text-gray-700">附加选项</label>
+                <label className="block text-sm font-medium text-foreground">附加选项</label>
                 
                 <div className="space-y-3">
                   <label className="flex items-center space-x-3 cursor-pointer">
@@ -334,11 +334,11 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       type="checkbox"
                       checked={parameters.includeVisualElements}
                       onChange={(e) => setParameters({ ...parameters, includeVisualElements: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                      className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
                     />
                     <div>
-                      <div className="text-sm font-medium text-gray-900">包含视觉元素分析</div>
-                      <div className="text-xs text-gray-500">分析视频中的场景、物体、人物等视觉信息</div>
+                      <div className="text-sm font-medium text-foreground">包含视觉元素分析</div>
+                      <div className="text-xs text-muted-foreground">分析视频中的场景、物体、人物等视觉信息</div>
                     </div>
                   </label>
 
@@ -347,11 +347,11 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       type="checkbox"
                       checked={parameters.includeAudioAnalysis}
                       onChange={(e) => setParameters({ ...parameters, includeAudioAnalysis: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                      className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
                     />
                     <div>
-                      <div className="text-sm font-medium text-gray-900">包含音频分析</div>
-                      <div className="text-xs text-gray-500">分析视频中的语音、音乐、音效等音频信息</div>
+                      <div className="text-sm font-medium text-foreground">包含音频分析</div>
+                      <div className="text-xs text-muted-foreground">分析视频中的语音、音乐、音效等音频信息</div>
                     </div>
                   </label>
                 </div>
@@ -361,11 +361,11 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
           {/* Right Panel - 视频理解（仅在有视频素材时显示） */}
           {hasVideoMaterials && (
-            <div className="w-1/2 p-6 overflow-y-auto bg-gray-50">
+            <div className="w-1/2 p-6 overflow-y-auto bg-muted">
               {/* 视频理解标题和开关 */}
               <div className="flex items-center justify-between mb-4">
-                <h4 className="text-md font-semibold text-gray-800 flex items-center">
-                  <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <h4 className="text-md font-semibold text-foreground flex items-center">
+                  <svg className="w-5 h-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
                   视频理解
@@ -382,12 +382,12 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       newState: !enableVideoUnderstanding
                     });
                   }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    enableVideoUnderstanding ? 'bg-blue-600' : 'bg-gray-300'
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                    enableVideoUnderstanding ? 'bg-primary' : 'bg-muted-foreground/30'
                   }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                    className={`inline-block h-4 w-4 transform rounded-full bg-card transition-transform duration-200 ${
                       enableVideoUnderstanding ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
@@ -395,7 +395,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               </div>
 
               {/* 说明文本 */}
-              <div className="text-sm text-gray-600 mb-4">
+              <div className="text-sm text-muted-foreground mb-4">
                 <p>
                   {enableVideoUnderstanding
                     ? '已启用视频理解，选择视频后将自动分析并生成脚本'
@@ -406,14 +406,14 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               {/* 分析模式选择器 - 仅当启用视频理解且有未分析视频时显示 */}
               {enableVideoUnderstanding && allVideoMaterials.length - analyzedVideoCount > 0 && (
                 <div className="mb-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-2">分析模式</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-2">分析模式</label>
                   <div className="flex space-x-2">
                     <button
                       onClick={() => setAnalysisMode('quick')}
-                      className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                      className={`flex-1 px-3 py-2 rounded-md border text-sm font-medium transition-all duration-200 ${
                         analysisMode === 'quick'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-card text-muted-foreground hover:border-border'
                       }`}
                     >
                       <div className="font-medium">快速分析</div>
@@ -421,10 +421,10 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                     </button>
                     <button
                       onClick={() => setAnalysisMode('professional')}
-                      className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                      className={`flex-1 px-3 py-2 rounded-md border text-sm font-medium transition-all duration-200 ${
                         analysisMode === 'professional'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-card text-muted-foreground hover:border-border'
                       }`}
                     >
                       <div className="font-medium">专业分析</div>
@@ -438,16 +438,16 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               {enableVideoUnderstanding && (
                 <div>
                   {/* 显示视频素材信息 */}
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md">
                     <div className="flex items-start space-x-2">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <div className="text-sm">
-                        <p className="text-blue-800 font-medium">
+                        <p className="text-primary font-medium">
                           选择视频素材参与脚本生成
                         </p>
-                        <p className="text-blue-700 mt-1">
+                        <p className="text-primary mt-1">
                           共 <span className="font-semibold">{allVideoMaterials.length}</span> 个视频，其中{' '}
                           <span className="font-semibold">{analyzedVideoCount}</span> 个已解析，{' '}
                           <span className="font-semibold">{allVideoMaterials.length - analyzedVideoCount}</span> 个待解析
@@ -462,31 +462,31 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                   </div>
 
                   {videoMaterials.length === 0 ? (
-                    <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                      <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="text-center py-12 bg-card rounded-md border-2 border-dashed border-border">
+                      <svg className="mx-auto h-12 w-12 text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      <p className="text-gray-500 text-sm">暂无可用的视频素材</p>
-                      <p className="text-gray-400 text-xs mt-1">请先上传或搜索视频素材</p>
+                      <p className="text-muted-foreground text-sm">暂无可用的视频素材</p>
+                      <p className="text-muted-foreground text-xs mt-1">请先上传或搜索视频素材</p>
                     </div>
                   ) : (
                     <>
                       {/* 全选/取消全选栏 */}
                       <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-muted-foreground">
                           已选 <span className="font-semibold">{selectedVideos.size}</span> / {videoMaterials.length} 个视频
                         </span>
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={handleSelectAll}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                            className="text-xs text-primary hover:text-primary/80 font-medium"
                           >
                             全选
                           </button>
-                          <span className="text-gray-300">|</span>
+                          <span className="text-muted-foreground">|</span>
                           <button
                             onClick={handleDeselectAll}
-                            className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                            className="text-xs text-muted-foreground hover:text-foreground font-medium"
                           >
                             取消全选
                           </button>
@@ -499,14 +499,14 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                           return (
                             <div
                               key={video.id}
-                              className={`relative group cursor-pointer rounded-lg border-2 transition-all duration-200 bg-white ${
+                              className={`relative group cursor-pointer rounded-md border-2 transition-all duration-200 bg-card ${
                                 selectedVideos.has(video.id)
-                                  ? 'border-blue-500 bg-blue-50 shadow-md'
-                                  : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-border hover:border-border'
                               }`}
                               onClick={() => handleVideoSelect(video.id)}
                             >
-                              <div className="aspect-video bg-gray-100 rounded-t-lg overflow-hidden relative">
+                              <div className="aspect-video bg-muted rounded-t-md overflow-hidden relative">
                                 {video.thumbnailUrl ? (
                                   <img
                                     src={video.thumbnailUrl}
@@ -515,7 +515,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
-                                    <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="w-8 h-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                     </svg>
                                   </div>
@@ -524,21 +524,21 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                                 <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${
                                   analyzed
                                     ? 'bg-green-100 text-green-700'
-                                    : 'bg-gray-100 text-gray-500'
+                                    : 'bg-muted text-muted-foreground'
                                 }`}>
                                   {analyzed ? '已解析' : '待解析'}
                                 </span>
                               </div>
 
                               <div className="p-3">
-                                <p className="text-sm font-medium text-gray-900 truncate">{video.name}</p>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-sm font-medium text-foreground truncate">{video.name}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
                                   {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
                                 </p>
                               </div>
 
                               {selectedVideos.has(video.id) && (
-                                <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                                <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
                                   <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                   </svg>
@@ -555,9 +555,9 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
               {/* Chat Content Preview */}
               {!enableVideoUnderstanding && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h5 className="text-sm font-medium text-gray-700 mb-2">对话内容预览：</h5>
-                  <div className="text-sm text-gray-600 max-h-64 overflow-y-auto p-3 bg-gray-50 rounded border border-gray-200">
+                <div className="bg-card rounded-md border border-border p-4">
+                  <h5 className="text-sm font-medium text-foreground mb-2">对话内容预览：</h5>
+                  <div className="text-sm text-muted-foreground max-h-64 overflow-y-auto p-3 bg-muted rounded-md border border-border">
                     {chatContent}
                   </div>
                 </div>
@@ -567,8 +567,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-shrink-0 rounded-b-2xl">
-          <div className="text-sm text-gray-600">
+        <div className="px-6 py-4 bg-muted border-t border-border flex items-center justify-between flex-shrink-0 rounded-b-md">
+          <div className="text-sm text-muted-foreground">
             {enableVideoUnderstanding && selectedVideos.size > 0
               ? `将使用 ${selectedVideos.size} 个视频生成脚本${selectedUnanalyzedCount > 0 ? `（${selectedUnanalyzedCount} 个需先分析）` : ''}`
               : '将根据对话内容生成脚本'}
@@ -578,7 +578,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
             <button
               onClick={handleClose}
               disabled={isGenerating}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              className="px-4 py-2 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
               取消
             </button>
@@ -586,7 +586,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
             <button
               onClick={handleGenerate}
               disabled={!canGenerate || isGenerating}
-              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center space-x-2"
+              className="px-6 py-2 text-sm font-medium text-primary-foreground bg-primary border border-transparent rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center space-x-2"
             >
               {isGenerating && (
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
