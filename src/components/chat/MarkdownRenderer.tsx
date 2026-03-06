@@ -39,7 +39,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
                 <div className="relative group my-4">
                   {/* 语言标签 */}
                   {language && (
-                    <div className="absolute top-0 left-0 px-3 py-1 text-xs font-medium text-gray-400 bg-gray-800 rounded-tl-lg rounded-br-lg z-10">
+                    <div className="absolute top-0 left-0 px-3 py-1 text-xs font-medium text-muted-foreground bg-card rounded-tl-lg rounded-br-lg z-10">
                       {language}
                     </div>
                   )}
@@ -66,9 +66,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
             return (
               <code 
                 className={`px-1.5 py-0.5 rounded text-sm font-mono ${
-                  isUser 
-                    ? 'bg-blue-400 bg-opacity-30 text-blue-100' 
-                    : 'bg-gray-200 text-gray-800'
+                  isUser
+                    ? 'bg-primary/20 text-primary-foreground/90'
+                    : 'bg-muted text-foreground'
                 }`}
                 {...rest}
               >
@@ -80,21 +80,21 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           // 标题渲染
           h1: ({ children }) => (
             <h1 className={`text-xl font-bold mb-3 mt-4 first:mt-0 ${
-              isUser ? 'text-blue-100' : 'text-gray-900'
+              isUser ? 'text-primary-foreground/90' : 'text-foreground'
             }`}>
               {children}
             </h1>
           ),
           h2: ({ children }) => (
             <h2 className={`text-lg font-semibold mb-2 mt-3 first:mt-0 ${
-              isUser ? 'text-blue-100' : 'text-gray-900'
+              isUser ? 'text-primary-foreground/90' : 'text-foreground'
             }`}>
               {children}
             </h2>
           ),
           h3: ({ children }) => (
             <h3 className={`text-base font-medium mb-2 mt-3 first:mt-0 ${
-              isUser ? 'text-blue-100' : 'text-gray-900'
+              isUser ? 'text-primary-foreground/90' : 'text-foreground'
             }`}>
               {children}
             </h3>
@@ -130,10 +130,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className={`underline hover:no-underline transition-all ${
-                isUser 
-                  ? 'text-blue-200 hover:text-blue-100' 
-                  : 'text-blue-600 hover:text-blue-800'
+              className={`underline hover:no-underline transition-colors ${
+                isUser
+                  ? 'text-primary-foreground/70 hover:text-primary-foreground'
+                  : 'text-primary hover:text-primary'
               }`}
             >
               {children}
@@ -143,14 +143,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           // 强调文本
           strong: ({ children }) => (
             <strong className={`font-semibold ${
-              isUser ? 'text-blue-100' : 'text-gray-900'
+              isUser ? 'text-primary-foreground/90' : 'text-foreground'
             }`}>
               {children}
             </strong>
           ),
           em: ({ children }) => (
             <em className={`italic ${
-              isUser ? 'text-blue-100' : 'text-gray-800'
+              isUser ? 'text-primary-foreground/90' : 'text-foreground'
             }`}>
               {children}
             </em>
@@ -159,9 +159,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           // 引用块
           blockquote: ({ children }) => (
             <blockquote className={`border-l-4 pl-4 py-2 my-3 italic ${
-              isUser 
-                ? 'border-blue-300 bg-blue-400 bg-opacity-20' 
-                : 'border-gray-300 bg-gray-50'
+              isUser
+                ? 'border-primary-foreground/30 bg-primary/15'
+                : 'border-border bg-muted'
             }`}>
               {children}
             </blockquote>
@@ -171,7 +171,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           table: ({ children }) => (
             <div className="overflow-x-auto my-4">
               <table className={`min-w-full border-collapse border ${
-                isUser ? 'border-blue-300' : 'border-gray-300'
+                isUser ? 'border-primary-foreground/30' : 'border-border'
               }`}>
                 {children}
               </table>
@@ -179,16 +179,16 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           ),
           th: ({ children }) => (
             <th className={`border px-3 py-2 font-semibold text-left ${
-              isUser 
-                ? 'border-blue-300 bg-blue-400 bg-opacity-30 text-blue-100' 
-                : 'border-gray-300 bg-gray-100 text-gray-900'
+              isUser
+                ? 'border-primary-foreground/30 bg-primary/20 text-primary-foreground/90'
+                : 'border-border bg-accent text-foreground'
             }`}>
               {children}
             </th>
           ),
           td: ({ children }) => (
             <td className={`border px-3 py-2 ${
-              isUser ? 'border-blue-300' : 'border-gray-300'
+              isUser ? 'border-primary-foreground/30' : 'border-border'
             }`}>
               {children}
             </td>
@@ -197,7 +197,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           // 水平分割线
           hr: () => (
             <hr className={`my-4 border-t ${
-              isUser ? 'border-blue-300' : 'border-gray-300'
+              isUser ? 'border-primary-foreground/30' : 'border-border'
             }`} />
           ),
         }}

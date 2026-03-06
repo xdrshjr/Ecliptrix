@@ -97,7 +97,7 @@ const getDefaultInputJson = (nodeType: string): string => {
  * - Edit input JSON
  * - Run single node test
  * - View output JSON
- * - Apple-style clean design with gray-black color scheme
+ * - Figma-style clean design with theme-aware colors
  */
 const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
   nodeId,
@@ -191,26 +191,26 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
   };
 
   return (
-    <div className="mb-6 bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200/80 rounded-xl overflow-hidden">
+    <div className="mb-6 bg-muted border border-border rounded-md overflow-hidden">
       {/* Header - Collapsible */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-100/60 transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-accent transition-colors"
       >
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center shadow-sm">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
+            <svg className="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <div className="text-left">
-            <h3 className="text-sm font-semibold text-gray-900">Test & Debug</h3>
-            <p className="text-xs text-gray-500">Test this node independently</p>
+            <h3 className="text-sm font-semibold text-foreground">Test & Debug</h3>
+            <p className="text-xs text-muted-foreground">Test this node independently</p>
           </div>
         </div>
         <svg 
-          className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
           fill="none" 
           stroke="currentColor" 
           viewBox="0 0 24 24"
@@ -224,7 +224,7 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
         <div className="px-4 pb-4 space-y-4">
           {/* Input JSON Editor */}
           <div className="space-y-2">
-            <label className="block text-xs font-medium text-gray-700">
+            <label className="block text-xs font-medium text-foreground">
               Input JSON
             </label>
             <textarea
@@ -232,7 +232,7 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder='{\n  "key": "value"\n}'
               rows={6}
-              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400/50 focus:border-gray-400 transition-all resize-none text-xs font-mono text-gray-800"
+              className="w-full px-3 py-2 bg-card border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors resize-none text-xs font-mono text-foreground"
               disabled={isLoading}
             />
           </div>
@@ -241,7 +241,7 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
           <button
             onClick={handleTest}
             disabled={isLoading}
-            className="w-full px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-br from-gray-700 to-gray-900 rounded-lg hover:from-gray-800 hover:to-black transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            className="w-full px-4 py-2.5 text-sm font-medium text-primary-foreground bg-primary hover:bg-[var(--primary-hover)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
             {isLoading ? (
               <>
@@ -261,14 +261,14 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
 
           {/* Error Display */}
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
               <div className="flex items-start space-x-2">
-                <svg className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="flex-1">
-                  <p className="text-xs font-medium text-red-800">Test Failed</p>
-                  <p className="text-xs text-red-700 mt-1">{error}</p>
+                  <p className="text-xs font-medium text-destructive">Test Failed</p>
+                  <p className="text-xs text-destructive mt-1">{error}</p>
                 </div>
               </div>
             </div>
@@ -278,28 +278,28 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
           {outputJson && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-medium text-gray-700">
+                <label className="block text-xs font-medium text-foreground">
                   Output JSON
                 </label>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(outputJson);
                   }}
-                  className="text-xs text-gray-700 hover:text-black font-medium transition-colors"
+                  className="text-xs text-foreground hover:text-foreground font-medium transition-colors"
                 >
                   Copy
                 </button>
               </div>
               <div className="relative">
-                <pre className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs font-mono text-gray-800 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+                <pre className="w-full px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs font-mono text-foreground max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
                   {outputJson}
                 </pre>
                 <div className="absolute top-2 right-2">
                   <div className="inline-flex items-center px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-md">
-                    <svg className="w-3 h-3 text-green-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3 text-green-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span className="text-xs font-medium text-green-700">Success</span>
+                    <span className="text-xs font-medium text-green-500">Success</span>
                   </div>
                 </div>
               </div>
@@ -307,12 +307,12 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
           )}
 
           {/* Info Box */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+          <div className="bg-muted border border-border rounded-lg p-3">
             <div className="flex items-start space-x-2">
-              <svg className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-xs text-gray-700">
+              <p className="text-xs text-foreground">
                 Test your node independently before running the full workflow. Edit the input JSON to simulate different scenarios.
               </p>
             </div>

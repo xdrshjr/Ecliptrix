@@ -219,41 +219,41 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-white to-gray-50/50">
+      <div className="flex-1 flex items-center justify-center bg-background">
         <div className="text-center max-w-md mx-auto px-6">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-lg">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-20 h-20 bg-primary rounded-md mx-auto mb-6 flex items-center justify-center">
+            <svg className="w-10 h-10 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-3">
+          <h2 className="text-2xl font-semibold text-foreground mb-3">
             {t.aiChat.welcomePage.title}
           </h2>
-          <p className="text-gray-600 mb-6 leading-relaxed">
+          <p className="text-muted-foreground mb-6 leading-relaxed">
             {t.aiChat.welcomePage.subtitle}
           </p>
           <div className="grid grid-cols-1 gap-3 text-sm">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-4 text-left border border-blue-200/50 shadow-sm transition-all hover:shadow-md">
+            <div className="bg-primary/10 rounded-md p-4 text-left border border-primary/30 transition-colors">
               <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
+                  <svg className="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-blue-900">{t.aiChat.welcomePage.creativeAssistantTitle}</h3>
+                <h3 className="font-semibold text-foreground">{t.aiChat.welcomePage.creativeAssistantTitle}</h3>
               </div>
-              <p className="text-blue-700 leading-relaxed">{t.aiChat.welcomePage.creativeAssistantDesc}</p>
+              <p className="text-primary leading-relaxed">{t.aiChat.welcomePage.creativeAssistantDesc}</p>
             </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-2xl p-4 text-left border border-green-200/50 shadow-sm transition-all hover:shadow-md">
+            <div className="bg-green-500/10 rounded-md p-4 text-left border border-green-500/30 transition-colors">
               <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-sm">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-10 h-10 bg-green-600 rounded-md flex items-center justify-center">
+                  <svg className="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-green-900">{t.aiChat.welcomePage.knowledgeAssistantTitle}</h3>
+                <h3 className="font-semibold text-foreground">{t.aiChat.welcomePage.knowledgeAssistantTitle}</h3>
               </div>
-              <p className="text-green-700 leading-relaxed">{t.aiChat.welcomePage.knowledgeAssistantDesc}</p>
+              <p className="text-green-500 leading-relaxed">{t.aiChat.welcomePage.knowledgeAssistantDesc}</p>
             </div>
           </div>
         </div>
@@ -262,16 +262,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-white to-gray-50/30 min-h-0">
+    <div className="flex flex-col h-full bg-card min-h-0">
       {/* Chat Header - Apple style with backdrop blur, aligned with ConversationList header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200/80 bg-white/80 backdrop-blur-sm h-[74px]">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-border bg-card h-[74px]">
         <div className="flex items-center justify-between h-full">
           <div className="flex items-center space-x-3">
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-lg font-semibold text-gray-900">{conversation.title}</h2>
+                <h2 className="text-lg font-semibold text-foreground">{conversation.title}</h2>
                 {conversation.workflowName && (
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-lg flex items-center space-x-1">
+                  <span className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-medium rounded-lg flex items-center space-x-1">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
@@ -279,15 +279,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 {conversation.messages.length} 条消息 • {conversation.updatedAt.toLocaleTimeString()}
               </p>
             </div>
           </div>
           {isLoading && (
-            <div className="flex items-center space-x-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full shadow-sm">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-blue-700 font-medium">回复中</span>
+            <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-full">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+              <span className="text-sm text-primary font-medium">回复中</span>
             </div>
           )}
         </div>
@@ -302,13 +302,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {conversation.messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-sm">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-20 h-20 bg-muted rounded-md mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{t.aiChat.emptyConversation.title}</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{t.aiChat.emptyConversation.subtitle}</p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">{t.aiChat.emptyConversation.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{t.aiChat.emptyConversation.subtitle}</p>
             </div>
           </div>
         ) : (
@@ -324,7 +324,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Input Area - Apple style with backdrop blur */}
-      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200/80 bg-white/80 backdrop-blur-sm">
+      <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card">
         <form onSubmit={handleSubmit} className="flex items-stretch space-x-3">
           <div className="flex-1 relative flex items-stretch">
             <textarea
@@ -335,7 +335,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               onFocus={handleFocus}
               onBlur={handleBlur}
               placeholder="输入消息... (Shift+Enter 换行)"
-              className="w-full px-4 py-3 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-32 bg-gray-50 min-h-[48px] transition-all shadow-sm text-sm"
+              className="w-full px-4 py-3 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent max-h-32 bg-muted min-h-[48px] transition-colors text-sm"
               rows={1}
               disabled={isLoading}
               style={{ height: '48px', overflow: 'hidden' }}
@@ -346,7 +346,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             type="button"
             onClick={handleClearChat}
             disabled={!conversation || conversation.messages.length === 0 || isLoading}
-            className="bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 rounded-2xl transition-all flex items-center justify-center shrink-0 shadow-sm hover:shadow-md self-stretch min-h-[48px]"
+            className="bg-card border border-border hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-foreground rounded-md transition-colors flex items-center justify-center shrink-0 self-stretch min-h-[48px]"
             title="清空聊天记录"
             style={{ width: '48px' }}
           >
@@ -358,7 +358,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <button
             type="submit"
             disabled={!inputMessage.trim() || isLoading}
-            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl transition-all flex items-center justify-center shrink-0 shadow-md hover:shadow-lg self-stretch min-h-[48px]"
+            className="bg-primary hover:bg-[var(--primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0 self-stretch min-h-[48px]"
             title="发送消息"
             style={{ width: '48px' }}
           >
@@ -374,7 +374,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </button>
         </form>
-        <div className="mt-2 text-xs text-gray-500 text-center">
+        <div className="mt-2 text-xs text-muted-foreground text-center">
           {isLoading ? 'AI 正在回复中...' : '按 Enter 发送，Shift + Enter 换行'}
         </div>
       </div>

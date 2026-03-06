@@ -36,7 +36,7 @@ const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
         ),
         gradientColors: isConfigured 
           ? 'bg-gradient-to-r from-teal-500 to-cyan-600' 
-          : 'bg-gradient-to-r from-gray-400 to-gray-500',
+          : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
         inputPortLabel: 'Input',
@@ -45,22 +45,22 @@ const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
         renderContent: () => (
           isConfigured ? (
             <div className="text-xs space-y-1">
-              <div className="text-gray-600 font-medium text-xs">Content:</div>
-              <div className="text-gray-700 text-xs bg-gray-50 p-2 rounded border border-gray-200 max-h-20 overflow-y-auto break-words whitespace-pre-wrap">
+              <div className="text-muted-foreground font-medium text-xs">Content:</div>
+              <div className="text-foreground text-xs bg-muted p-2 rounded border border-border max-h-20 overflow-y-auto break-words whitespace-pre-wrap">
                 {displayContent.length > 100 
                   ? `${displayContent.substring(0, 100)}...` 
                   : displayContent}
               </div>
               {displayContent.length > 100 && (
-                <div className="text-xs text-gray-400 italic">
+                <div className="text-xs text-muted-foreground italic">
                   Double click for full content
                 </div>
               )}
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-gray-400 italic">No content</div>
-              <div className="text-xs text-gray-500 mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">No content</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
             </div>
           )
         ),

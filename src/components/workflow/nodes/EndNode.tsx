@@ -28,13 +28,13 @@ const EndNode: React.FC<BaseNodeProps> = React.memo((props) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
           </svg>
         ),
-        gradientColors: 'bg-gradient-to-r from-red-500 to-rose-600',
+        gradientColors: 'bg-red-600',
         hasInputPort: true,
         hasOutputPort: false,
         inputPortLabel: 'Input',
         isConfigured: true,
         renderContent: () => (
-          <div className="text-xs text-gray-500 text-center py-1">
+          <div className="text-xs text-muted-foreground text-center py-1">
             Workflow End Point
           </div>
         ),

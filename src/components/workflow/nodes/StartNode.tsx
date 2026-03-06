@@ -34,7 +34,7 @@ const StartNode: React.FC<BaseNodeProps> = React.memo((props) => {
         outputPortLabel: 'Output',
         isConfigured: true,
         renderContent: () => (
-          <div className="text-xs text-gray-500 text-center py-1">
+          <div className="text-xs text-muted-foreground text-center py-1">
             Workflow Start Point
           </div>
         ),

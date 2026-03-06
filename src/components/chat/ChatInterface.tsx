@@ -580,9 +580,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // 聊天界面渲染
 
   return (
-    <div className="flex h-full bg-gradient-to-br from-gray-50 to-gray-100/30 min-h-0 relative">
+    <div className="flex h-full bg-background min-h-0 relative">
       {/* Left Sidebar - Conversation List (15% width) */}
-      <div style={{ width: '15%', minWidth: '200px' }} className="bg-white/80 backdrop-blur-sm border-r border-gray-200/80 flex flex-col">
+      <div style={{ width: '15%', minWidth: '200px' }} className="bg-card border-r border-border flex flex-col">
         <ConversationList
           conversations={chatContent.conversations}
           activeConversationId={chatContent.activeConversationId}

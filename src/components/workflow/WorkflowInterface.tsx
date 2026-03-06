@@ -853,14 +853,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   // Show loading state while initializing
   if (!content) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gray-50">
+      <div className="h-full w-full flex items-center justify-center bg-muted">
         <div className="text-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-gray-600 to-gray-800 rounded-2xl mx-auto mb-4 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-16 h-16 bg-secondary rounded-md mx-auto mb-4 flex items-center justify-center animate-pulse">
+            <svg className="w-8 h-8 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
             </svg>
           </div>
-          <p className="text-sm text-gray-600">Loading workflow...</p>
+          <p className="text-sm text-muted-foreground">Loading workflow...</p>
         </div>
       </div>
     );
@@ -895,7 +895,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         {activeWorkflow ? (
           <div className="h-full w-full flex flex-col">
             {/* Tab Header */}
-            <div className="bg-white border-b border-gray-200">
+            <div className="bg-card border-b border-border">
               {/* Tabs Navigation */}
               <div className="flex items-center px-6 pt-4 space-x-1">
                 <button
@@ -903,10 +903,10 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                     console.log('[WorkflowInterface] Switching to Chat tab');
                     setActiveRightTab('chat');
                   }}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
                     activeRightTab === 'chat'
-                      ? 'bg-white text-blue-600 border-t border-x border-gray-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'bg-card text-primary border-t border-x border-border'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                   }`}
                 >
                   <div className="flex items-center space-x-2">
@@ -916,16 +916,16 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                     <span>聊天界面</span>
                   </div>
                 </button>
-                
+
                 <button
                   onClick={() => {
                     console.log('[WorkflowInterface] Switching to Workflow tab');
                     setActiveRightTab('workflow');
                   }}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
                     activeRightTab === 'workflow'
-                      ? 'bg-white text-blue-600 border-t border-x border-gray-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'bg-card text-primary border-t border-x border-border'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                   }`}
                 >
                   <div className="flex items-center space-x-2">
@@ -939,10 +939,10 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
 
               {/* Workflow Info and Actions (only shown in workflow tab) */}
               {activeRightTab === 'workflow' && (
-                <div className="px-6 py-4 border-t border-gray-200">
+                <div className="px-6 py-4 border-t border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <h2 className="text-xl font-semibold text-gray-900">
+                      <h2 className="text-xl font-semibold text-foreground">
                         {activeWorkflow.name}
                       </h2>
                       {activeWorkflow.data.description && (
@@ -950,11 +950,11 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                           <button
                             onClick={() => setIsDescriptionTooltipOpen(!isDescriptionTooltipOpen)}
                             onBlur={() => setTimeout(() => setIsDescriptionTooltipOpen(false), 200)}
-                            className="p-1 hover:bg-gray-100 rounded-full transition-colors group"
+                            className="p-1 hover:bg-accent rounded-full transition-colors group"
                             title="View description"
                           >
                             <svg 
-                              className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" 
+                              className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" 
                               fill="none" 
                               stroke="currentColor" 
                               viewBox="0 0 24 24"
@@ -970,23 +970,23 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                           
                           {/* Description Tooltip */}
                           {isDescriptionTooltipOpen && (
-                            <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-white rounded-lg shadow-xl border border-gray-200 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-card rounded-md shadow-lg border border-border p-4">
                               <div className="flex items-start justify-between mb-2">
-                                <h3 className="text-sm font-semibold text-gray-900">Description</h3>
+                                <h3 className="text-sm font-semibold text-foreground">Description</h3>
                                 <button
                                   onClick={() => setIsDescriptionTooltipOpen(false)}
-                                  className="p-0.5 hover:bg-gray-100 rounded transition-colors"
+                                  className="p-0.5 hover:bg-accent rounded transition-colors"
                                 >
-                                  <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                   </svg>
                                 </button>
                               </div>
-                              <p className="text-sm text-gray-600 leading-relaxed">
+                              <p className="text-sm text-muted-foreground leading-relaxed">
                                 {activeWorkflow.data.description}
                               </p>
                               {/* Arrow pointer */}
-                              <div className="absolute -top-2 left-6 w-4 h-4 bg-white border-l border-t border-gray-200 transform rotate-45"></div>
+                              <div className="absolute -top-2 left-6 w-4 h-4 bg-card border-l border-t border-border rotate-45"></div>
                             </div>
                           )}
                         </div>
@@ -995,7 +995,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                 
                 <div className="flex items-center space-x-2">
                   <button
-                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-card border border-border text-foreground rounded-lg hover:bg-accent transition-colors text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleSaveWorkflow}
                     disabled={isSaving}
                   >
@@ -1019,7 +1019,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                   
                   {!executionState.isRunning ? (
                     <button
-                      className="px-4 py-2 bg-gradient-to-r from-gray-600 to-gray-800 text-white rounded-lg hover:from-gray-700 hover:to-gray-900 transition-all shadow-md hover:shadow-lg text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-[var(--primary-hover)] transition-colors text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={() => handleRunWorkflow()}
                       disabled={!activeWorkflow}
                     >
@@ -1031,7 +1031,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                     </button>
                   ) : (
                     <button
-                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-md hover:shadow-lg text-sm font-medium flex items-center space-x-2"
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium flex items-center space-x-2"
                       onClick={handleAbortWorkflow}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1092,7 +1092,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                   </div>
                   
                   {/* Log Panel Area - Flexible height */}
-                  <div className="border-t border-gray-200 flex-shrink-0">
+                  <div className="border-t border-border flex-shrink-0">
                     <WorkflowLogPanel
                       logs={executionState.logs}
                       nodeStates={executionState.nodeStates}
@@ -1105,17 +1105,17 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
             </div>
           </div>
         ) : (
-          <div className="h-full w-full flex items-center justify-center bg-gray-50">
+          <div className="h-full w-full flex items-center justify-center bg-muted">
             <div className="text-center max-w-md px-6">
-              <div className="w-20 h-20 bg-gray-200 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-20 h-20 bg-secondary rounded-md mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 No Workflow Selected
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Select a workflow from the sidebar to start editing
               </p>
             </div>

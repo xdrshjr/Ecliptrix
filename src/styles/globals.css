@@ -513,6 +513,55 @@ html, body {
   white-space: nowrap;
 }
 
+/* ReactFlow Figma-style overrides */
+.react-flow__background {
+  background-color: var(--background) !important;
+}
+
+.react-flow__edge-path {
+  stroke: var(--border) !important;
+  stroke-width: 1.5px;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--primary) !important;
+  stroke-width: 2px;
+}
+
+.react-flow__controls {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.react-flow__controls-button {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  fill: var(--muted-foreground);
+}
+
+.react-flow__controls-button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.react-flow__handle {
+  background: var(--muted-foreground) !important;
+  border: 2px solid var(--card) !important;
+}
+
+.react-flow__handle.connected {
+  background: var(--primary) !important;
+}
+
+.react-flow__minimap {
+  background: var(--card) !important;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 /* Chat LLM Config Panel Animations */
 @keyframes slide-in-right {
   from {

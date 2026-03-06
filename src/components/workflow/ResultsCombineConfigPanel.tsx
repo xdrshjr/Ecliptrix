@@ -126,26 +126,26 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[35%] bg-white/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col animate-slide-in-right">
+    <div className="fixed inset-y-0 right-0 w-[35%] bg-card z-50 flex flex-col animate-slide-in-right">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200/80">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-10 h-10 rounded-md bg-primary flex items-center justify-center">
+            <svg className="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Results Combine Configuration</h2>
-            <p className="text-xs text-gray-500">Node ID: {nodeId}</p>
+            <h2 className="text-lg font-semibold text-foreground">Results Combine Configuration</h2>
+            <p className="text-xs text-muted-foreground">Node ID: {nodeId}</p>
           </div>
         </div>
         <button
           onClick={handleCancel}
-          className="w-8 h-8 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+          className="w-8 h-8 rounded-lg hover:bg-accent transition-colors flex items-center justify-center"
           aria-label="Close panel"
         >
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -162,12 +162,12 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
         />
 
         {/* Format Configuration */}
-        <div className="space-y-4 p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200/80 rounded-xl">
+        <div className="space-y-4 p-4 bg-primary/10 border border-primary/30 rounded-md">
           <div className="flex items-center space-x-2">
-            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
             </svg>
-            <h3 className="text-sm font-semibold text-gray-900">Data Format</h3>
+            <h3 className="text-sm font-semibold text-foreground">Data Format</h3>
           </div>
           
           <FormatSelector
@@ -189,7 +189,7 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
         
         {/* System Prompt */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-900">
+          <label className="block text-sm font-medium text-foreground">
             Transformation System Prompt
           </label>
           <textarea
@@ -197,16 +197,16 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder="Enter system prompt for transforming each input item to the standard format..."
             rows={6}
-            className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all resize-none text-sm text-gray-900 placeholder-gray-400"
+            className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors resize-none text-sm text-foreground placeholder-muted-foreground"
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Define how the LLM should transform each input item into the standardized output format
           </p>
         </div>
 
         {/* Output Schema */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-900">
+          <label className="block text-sm font-medium text-foreground">
             Output Schema (JSON)
           </label>
           <textarea
@@ -214,36 +214,36 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
             onChange={(e) => handleSchemaChange(e.target.value)}
             placeholder={'{\n  "field1": "string",\n  "field2": "number"\n}'}
             rows={8}
-            className={`w-full px-4 py-3 bg-gray-50/50 border rounded-xl focus:outline-none focus:ring-2 transition-all resize-none text-sm font-mono text-gray-900 placeholder-gray-400 ${
-              schemaError 
-                ? 'border-red-300 focus:ring-red-500/50' 
-                : 'border-gray-200 focus:ring-blue-500/50'
+            className={`w-full px-4 py-3 bg-muted border rounded-md focus:outline-none focus:ring-2 transition-colors resize-none text-sm font-mono text-foreground placeholder-muted-foreground ${
+              schemaError
+                ? 'border-destructive/40 focus:ring-destructive/50'
+                : 'border-border focus:ring-ring'
             }`}
           />
           {schemaError && (
-            <div className="flex items-start space-x-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start space-x-2 p-2 bg-destructive/10 border border-destructive/30 rounded-lg">
               <svg className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-xs text-red-700">{schemaError}</p>
             </div>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Define the expected JSON structure for each standardized output item (optional but recommended)
           </p>
         </div>
 
         {/* Model Selection */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-900">
+          <label className="block text-sm font-medium text-foreground">
             Model
           </label>
           {isLoadingModels ? (
             <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : loadError ? (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-md">
               <div className="flex items-center space-x-2">
                 <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -261,7 +261,7 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
             <select
               value={selectedModelId}
               onChange={(e) => setSelectedModelId(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all text-sm text-gray-900 cursor-pointer"
+              className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-sm text-foreground cursor-pointer"
             >
               {availableModels.length === 0 ? (
                 <option value="">No models available</option>
@@ -274,7 +274,7 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
               )}
             </select>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Select the LLM model to use for transforming each input item
           </p>
         </div>
@@ -282,10 +282,10 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
         {/* Temperature */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-900">
+            <label className="block text-sm font-medium text-foreground">
               Temperature
             </label>
-            <span className="text-sm font-mono text-blue-600">{temperature.toFixed(2)}</span>
+            <span className="text-sm font-mono text-primary">{temperature.toFixed(2)}</span>
           </div>
           <input
             type="range"
@@ -294,13 +294,13 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
             step="0.1"
             value={temperature}
             onChange={(e) => setTemperature(parseFloat(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>0.0 (Precise)</span>
             <span>2.0 (Creative)</span>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Controls randomness: lower values make output more focused and deterministic
           </p>
         </div>
@@ -308,10 +308,10 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
         {/* Max Tokens */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-900">
+            <label className="block text-sm font-medium text-foreground">
               Max Tokens
             </label>
-            <span className="text-sm font-mono text-blue-600">{maxTokens}</span>
+            <span className="text-sm font-mono text-primary">{maxTokens}</span>
           </div>
           <input
             type="range"
@@ -320,31 +320,31 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
             step="100"
             value={maxTokens}
             onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>100</span>
             <span>8000</span>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Maximum length of the generated response for each transformation
           </p>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-gray-200/80 bg-gray-50/30">
+      <div className="px-6 py-4 border-t border-border bg-muted">
         <div className="flex items-center justify-end space-x-3">
           <button
             onClick={handleCancel}
-            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-accent transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isLoadingModels || !!loadError || !selectedModelId || !!schemaError}
-            className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 text-sm font-medium text-primary-foreground bg-primary hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save Configuration
           </button>

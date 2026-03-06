@@ -84,15 +84,15 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
               </div>
               
               {/* Input Format */}
-              <div className="flex items-center justify-between pt-1 border-t border-gray-200">
-                <span className="text-gray-600 font-medium">Format:</span>
-                <span className="text-gray-900 text-xs capitalize">
+              <div className="flex items-center justify-between pt-1 border-t border-border">
+                <span className="text-muted-foreground font-medium">Format:</span>
+                <span className="text-foreground text-xs capitalize">
                   {config?.inputFormat || 'auto'}
                 </span>
               </div>
               
               {/* Export Info */}
-              <div className="pt-1 border-t border-gray-200">
+              <div className="pt-1 border-t border-border">
                 <div className="text-center">
                   <div className="inline-flex items-center px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                     <svg className="w-3 h-3 text-blue-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,16 +105,16 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
               
               {/* Video URLs Preview */}
               {videoCount > 0 && (
-                <div className="pt-1 border-t border-gray-200">
-                  <div className="text-gray-600 font-medium mb-0.5">Video URLs:</div>
-                  <div className="text-gray-700 text-xs bg-gray-50 p-1.5 rounded max-h-16 overflow-y-auto">
+                <div className="pt-1 border-t border-border">
+                  <div className="text-muted-foreground font-medium mb-0.5">Video URLs:</div>
+                  <div className="text-foreground text-xs bg-muted p-1.5 rounded max-h-16 overflow-y-auto">
                     {videoUrlsArray.slice(0, 3).map((url, index) => (
                       <div key={index} className="truncate" title={url}>
                         {index + 1}. {url.substring(0, 40)}...
                       </div>
                     ))}
                     {videoCount > 3 && (
-                      <div className="text-gray-500 italic mt-0.5">
+                      <div className="text-muted-foreground italic mt-0.5">
                         +{videoCount - 3} more...
                       </div>
                     )}
@@ -124,9 +124,9 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
               
               {/* Last Execution Info */}
               {config?.lastExecutionTime && (
-                <div className="pt-1 border-t border-gray-200">
+                <div className="pt-1 border-t border-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600 font-medium">Status:</span>
+                    <span className="text-muted-foreground font-medium">Status:</span>
                     <span className={`text-xs font-semibold ${
                       config.lastExecutionSuccess ? 'text-green-600' : 'text-red-600'
                     }`}>
@@ -138,8 +138,8 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-gray-400 italic">Not configured</div>
-              <div className="text-xs text-gray-500 mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">Not configured</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
               <div className="mt-2 flex items-center justify-center">
                 <div className="inline-flex items-center px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                   <svg className="w-3 h-3 text-blue-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

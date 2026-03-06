@@ -43,9 +43,9 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
           </svg>
         ),
-        gradientColors: isConfigured 
-          ? 'bg-gradient-to-r from-gray-500 to-gray-600' 
-          : 'bg-gradient-to-r from-gray-400 to-gray-500',
+        gradientColors: isConfigured
+          ? 'bg-secondary'
+          : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
         inputPortLabel: 'Input',
@@ -56,22 +56,22 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
             <div className="text-xs space-y-1.5">
               {/* Model Information */}
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 font-medium">Model:</span>
-                <span className="text-gray-900 text-xs">{config?.model || 'Not set'}</span>
+                <span className="text-muted-foreground font-medium">Model:</span>
+                <span className="text-foreground text-xs">{config?.model || 'Not set'}</span>
               </div>
               
               {/* Temperature */}
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 font-medium">Temp:</span>
-                <span className="text-gray-900 text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
+                <span className="text-muted-foreground font-medium">Temp:</span>
+                <span className="text-foreground text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
               </div>
               
               {/* Element Type Badge */}
-              <div className="pt-1 border-t border-gray-200">
+              <div className="pt-1 border-t border-border">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600 font-medium">Type:</span>
-                  <div className="inline-flex items-center px-2 py-0.5 bg-gray-100 border border-gray-300 rounded">
-                    <span className="text-xs font-semibold text-gray-700 capitalize">{elementType}</span>
+                  <span className="text-muted-foreground font-medium">Type:</span>
+                  <div className="inline-flex items-center px-2 py-0.5 bg-accent border border-border rounded">
+                    <span className="text-xs font-semibold text-foreground capitalize">{elementType}</span>
                   </div>
                 </div>
               </div>
@@ -79,28 +79,28 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {/* Object Schema Info */}
               {elementType === 'object' && hasObjectSchema && (
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600 font-medium">Fields:</span>
-                  <span className="text-gray-900 text-xs">{config?.objectSchema?.length || 0} field(s)</span>
+                  <span className="text-muted-foreground font-medium">Fields:</span>
+                  <span className="text-foreground text-xs">{config?.objectSchema?.length || 0} field(s)</span>
                 </div>
               )}
               
               {/* Output Format Badge */}
-              <div className="pt-1 border-t border-gray-200">
+              <div className="pt-1 border-t border-border">
                 <div className="flex items-center justify-center">
-                  <div className="inline-flex items-center px-2 py-1 bg-gray-100 border border-gray-300 rounded-md">
-                    <svg className="w-3 h-3 text-gray-700 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="inline-flex items-center px-2 py-1 bg-accent border border-border rounded-md">
+                    <svg className="w-3 h-3 text-foreground mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                     </svg>
-                    <span className="text-xs font-semibold text-gray-700">Array[{elementType}]</span>
+                    <span className="text-xs font-semibold text-foreground">Array[{elementType}]</span>
                   </div>
                 </div>
               </div>
               
               {/* System Prompt Preview */}
               {config?.systemPrompt && (
-                <div className="pt-1 border-t border-gray-200">
-                  <div className="text-gray-600 font-medium mb-0.5">Conversion Prompt:</div>
-                  <div className="text-gray-700 text-xs bg-gray-50 p-1.5 rounded max-h-16 overflow-y-auto line-clamp-3">
+                <div className="pt-1 border-t border-border">
+                  <div className="text-muted-foreground font-medium mb-0.5">Conversion Prompt:</div>
+                  <div className="text-foreground text-xs bg-muted p-1.5 rounded max-h-16 overflow-y-auto line-clamp-3">
                     {config.systemPrompt.substring(0, 80)}
                     {config.systemPrompt.length > 80 && '...'}
                   </div>
@@ -109,14 +109,14 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-gray-400 italic">Not configured</div>
-              <div className="text-xs text-gray-500 mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">Not configured</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
               <div className="mt-2 flex items-center justify-center">
-                <div className="inline-flex items-center px-2 py-1 bg-gray-50 border border-gray-200 rounded-md">
-                  <svg className="w-3 h-3 text-gray-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="inline-flex items-center px-2 py-1 bg-muted border border-border rounded-md">
+                  <svg className="w-3 h-3 text-muted-foreground mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                   </svg>
-                  <span className="text-xs font-medium text-gray-500">Outputs Array</span>
+                  <span className="text-xs font-medium text-muted-foreground">Outputs Array</span>
                 </div>
               </div>
             </div>

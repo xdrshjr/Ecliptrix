@@ -36,9 +36,9 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
         ),
-        gradientColors: isConfigured 
-          ? 'bg-gradient-to-r from-gray-600 to-gray-800' 
-          : 'bg-gradient-to-r from-gray-400 to-gray-500',
+        gradientColors: isConfigured
+          ? 'bg-secondary'
+          : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
         inputPortLabel: 'Keywords',
@@ -48,15 +48,15 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
           isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div>
-                <div className="text-gray-600 font-medium mb-0.5">Keywords:</div>
-                <div className="text-gray-700 text-xs bg-indigo-50/50 p-1.5 rounded border border-indigo-200 max-h-16 overflow-y-auto">
+                <div className="text-muted-foreground font-medium mb-0.5">Keywords:</div>
+                <div className="text-foreground text-xs bg-indigo-50/50 p-1.5 rounded border border-indigo-200 max-h-16 overflow-y-auto">
                   {displayKeywords.length > 60 
                     ? `${displayKeywords.substring(0, 60)}...` 
                     : displayKeywords}
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 font-medium">Count:</span>
+                <span className="text-muted-foreground font-medium">Count:</span>
                 <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-semibold">
                   {videoCount}
                 </span>
@@ -64,8 +64,8 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-gray-400 italic">Not configured</div>
-              <div className="text-xs text-gray-500 mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">Not configured</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
             </div>
           )
         ),

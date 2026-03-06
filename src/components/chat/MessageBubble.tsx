@@ -68,16 +68,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
     return (
       <div className="flex justify-start">
         <div className="max-w-[95%] animate-fadeIn">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100/60 rounded-2xl px-5 py-4 border border-blue-200/60 shadow-sm">
+          <div className="bg-primary/10 rounded-md px-5 py-4 border border-primary/30">
             <div className="flex items-center space-x-2.5 mb-2">
               <div className="flex space-x-1.5">
-                <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
-                <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1s' }}></span>
-                <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1s' }}></span>
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1s' }}></span>
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1s' }}></span>
               </div>
-              <span className="text-sm font-semibold text-blue-900">正在分析意图</span>
+              <span className="text-sm font-semibold text-foreground">正在分析意图</span>
             </div>
-            <p className="text-xs text-blue-700 leading-relaxed">检测您的问题是否需要调用工作流...</p>
+            <p className="text-xs text-primary leading-relaxed">检测您的问题是否需要调用工作流...</p>
           </div>
         </div>
       </div>
@@ -93,21 +93,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
       return (
         <div className="flex justify-start">
           <div className="max-w-[95%] animate-fadeIn">
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 rounded-2xl px-5 py-4 border border-emerald-200/60 shadow-sm">
+            <div className="bg-green-500/10 rounded-md px-5 py-4 border border-green-500/30">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  <span className="text-sm font-semibold text-emerald-900">
+                  <span className="text-sm font-semibold text-foreground">
                     将调用工作流: {intention.workflow_name}
                   </span>
                 </div>
-                <span className="text-xs text-emerald-700 bg-emerald-200/50 px-2.5 py-1 rounded-full font-medium">
+                <span className="text-xs text-green-500 bg-green-500/20 px-2.5 py-1 rounded-full font-medium">
                   {Math.round((intention.confidence || 0) * 100)}%
                 </span>
               </div>
-              <p className="text-xs text-emerald-700 leading-relaxed">{intention.reasoning}</p>
+              <p className="text-xs text-green-500 leading-relaxed">{intention.reasoning}</p>
             </div>
           </div>
         </div>
@@ -117,8 +117,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
       return (
         <div className="flex justify-start">
           <div className="max-w-[95%] animate-fadeIn opacity-75">
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/60 rounded-2xl px-5 py-3 border border-gray-200/60 shadow-sm">
-              <p className="text-xs text-gray-600 leading-relaxed">
+            <div className="bg-muted rounded-md px-5 py-3 border border-border">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 <span className="font-medium">普通对话</span> · {intention.reasoning}
               </p>
             </div>
@@ -148,10 +148,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
         {/* Message Content */}
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           <div 
-            className={`relative px-5 py-3 rounded-2xl max-w-full group shadow-sm transition-all ${
-              isUser 
-                ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-md' 
-                : 'bg-white border border-gray-200/50 text-gray-900 rounded-bl-md'
+            className={`relative px-5 py-3 rounded-md max-w-full group transition-colors ${
+              isUser
+                ? 'bg-primary text-primary-foreground rounded-br-sm'
+                : 'bg-card border border-border text-foreground rounded-bl-sm'
             }`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -162,11 +162,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
               <button
                 onClick={handleCopyMessage}
                 disabled={isCopying || message.isStreaming}
-                className={`w-7 h-7 rounded-full shadow-md transition-all duration-200 flex items-center justify-center ${
-                  isUser 
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white border-2 border-white' 
-                    : 'bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-800 border-2 border-gray-200'
-                } ${isCopying ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-110'}`}
+                className={`w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center ${
+                  isUser
+                    ? 'bg-primary text-primary-foreground border-2 border-card'
+                    : 'bg-card hover:bg-accent text-muted-foreground hover:text-foreground border-2 border-border'
+                } ${isCopying ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 title={showCopySuccess ? '已复制!' : '复制消息'}
                 aria-label="复制消息内容"
               >
@@ -191,7 +191,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                 <button
                   onClick={handleConvertToScript}
                   disabled={message.isStreaming}
-                  className="w-7 h-7 rounded-full shadow-md transition-all duration-200 flex items-center justify-center bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-2 border-white cursor-pointer hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground border-2 border-card cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   title="转换视频脚本"
                   aria-label="将此消息内容转换为视频脚本"
                 >
@@ -215,7 +215,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
           </div>
           
           {/* Timestamp */}
-          <div className={`mt-1.5 text-xs text-gray-500 flex items-center space-x-2 ${isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}>
+          <div className={`mt-1.5 text-xs text-muted-foreground flex items-center space-x-2 ${isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}>
             <span>
               {message.timestamp.toLocaleTimeString([], { 
                 hour: '2-digit', 
@@ -223,7 +223,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
               })}
             </span>
             {message.isStreaming && (
-              <div className="flex items-center space-x-1 text-blue-500">
+              <div className="flex items-center space-x-1 text-primary">
                 <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>

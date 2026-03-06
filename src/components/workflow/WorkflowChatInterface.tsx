@@ -336,26 +336,26 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
   }, [executionState.logs]);
 
   return (
-    <div className="h-full w-full flex flex-col bg-gradient-to-br from-gray-50 to-gray-100/30">
+    <div className="h-full w-full flex flex-col bg-background">
       {/* Chat Header - Apple style */}
-      <div className="px-6 py-4 bg-white/80 backdrop-blur-sm border-b border-gray-200/80">
+      <div className="px-6 py-4 bg-card border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
+            <div className="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">工作流助手</h2>
-              <p className="text-xs text-gray-500">与工作流实时交互</p>
+              <h2 className="text-lg font-semibold text-foreground">工作流助手</h2>
+              <p className="text-xs text-muted-foreground">与工作流实时交互</p>
             </div>
           </div>
           
           {executionState.isRunning && (
-            <div className="flex items-center space-x-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full shadow-sm">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-blue-700 font-medium">执行中</span>
+            <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-full">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+              <span className="text-sm text-primary font-medium">执行中</span>
             </div>
           )}
         </div>
@@ -366,15 +366,15 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
         {messages.length === 0 && !executionState.isRunning ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-md">
-              <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-sm">
-                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-20 h-20 bg-secondary rounded-md mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 开始对话
               </h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 发送消息以启动工作流，我会实时显示执行过程和结果
               </p>
             </div>
@@ -386,11 +386,11 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
               if (message.type === 'user') {
                 return (
                   <div key={message.id} className="flex justify-end">
-                    <div className="max-w-[70%] rounded-2xl px-5 py-3 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md">
+                    <div className="max-w-[70%] rounded-md px-5 py-3 bg-primary text-primary-foreground">
                       <div className="text-sm leading-relaxed whitespace-pre-wrap">
                         {message.content}
                       </div>
-                      <div className="text-xs mt-2 text-blue-100 opacity-90">
+                      <div className="text-xs mt-2 text-primary-foreground/80 opacity-90">
                         {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -423,22 +423,22 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
             {/* 最终结果消息 */}
             <div className="flex justify-start">
               <div className="max-w-[85%] w-full">
-                <div className="rounded-2xl overflow-hidden bg-white border-2 border-green-200 shadow-lg">
+                <div className="rounded-md overflow-hidden bg-card border-2 border-green-500/30">
                   {/* 最终结果标题 */}
-                  <div className="px-5 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-200">
+                  <div className="px-5 py-3 bg-green-500/10 border-b border-green-500/30">
                     <div className="flex items-center space-x-2">
                       <div className="w-6 h-6 bg-green-500 rounded-lg flex items-center justify-center">
                         <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
-                      <span className="text-sm font-semibold text-green-900">最终结果</span>
+                      <span className="text-sm font-semibold text-foreground">最终结果</span>
                     </div>
                   </div>
                   
                   {/* 最终结果内容 */}
-                  <div className="px-5 py-4 bg-white">
-                    <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  <div className="px-5 py-4 bg-card">
+                    <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                       {message.content}
                     </div>
                     
@@ -448,14 +448,14 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                         <button
                           onClick={message.actionButton.onClick}
                           className={`
-                            px-6 py-3 rounded-xl font-medium text-white shadow-md hover:shadow-lg 
-                            transition-all duration-200 transform hover:scale-105
+                            px-6 py-3 rounded-md font-medium text-primary-foreground
+                            transition-colors duration-200
                             flex items-center space-x-2
-                            ${message.actionButton.variant === 'success' 
-                              ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
+                            ${message.actionButton.variant === 'success'
+                              ? 'bg-green-500 hover:bg-green-600'
                               : message.actionButton.variant === 'info'
-                              ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
-                              : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
+                              ? 'bg-primary hover:bg-[var(--primary-hover)]'
+                              : 'bg-primary hover:bg-[var(--primary-hover)]'
                             }
                           `}
                         >
@@ -487,7 +487,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                       const materials = nodeState.output.materials;
                       
                       return (
-                        <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="mt-4 pt-4 border-t border-border">
                           <button
                             onClick={() => {
                               console.log('[WorkflowChatInterface] Navigating to Video Editing with materials:', {
@@ -497,14 +497,14 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                                 onNavigateToVideoEditing(materials);
                               }
                             }}
-                            className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 transform hover:scale-[1.02] flex items-center justify-center space-x-2"
+                            className="w-full px-6 py-3 bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground rounded-md font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                             </svg>
                             <span>导出剪辑 ({materials.length} 个视频素材)</span>
                           </button>
-                          <p className="text-xs text-gray-500 text-center mt-2">
+                          <p className="text-xs text-muted-foreground text-center mt-2">
                             点击将视频素材导入到 Video Editing 任务的素材管理面板
                           </p>
                         </div>
@@ -513,8 +513,8 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                   </div>
                           
                           {/* 时间戳 */}
-                          <div className="px-5 py-2 bg-gray-50 border-t border-gray-100">
-                            <div className="text-xs text-gray-500">
+                          <div className="px-5 py-2 bg-muted border-t border-border">
+                            <div className="text-xs text-muted-foreground">
                               {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
                                 hour: '2-digit',
                                 minute: '2-digit',
@@ -552,13 +552,13 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
       </div>
 
       {/* Input Area - Fixed at bottom, Apple style */}
-      <div className="px-6 py-4 bg-white/80 backdrop-blur-sm border-t border-gray-200/80">
+      <div className="px-6 py-4 bg-card border-t border-border">
         {/* Action Buttons Row - Aligned with chat input */}
         <div className="flex items-center justify-start space-x-2 mb-3">
           <button
             onClick={handleClearChatHistoryClick}
             disabled={executionState.isRunning || messages.length === 0}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md flex items-center space-x-2 text-sm font-medium"
+            className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 text-sm font-medium"
             title="清空聊天记录"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -570,7 +570,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
           <button
             onClick={handleClearContextClick}
             disabled={executionState.isRunning}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md flex items-center space-x-2 text-sm font-medium"
+            className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 text-sm font-medium"
             title="清空上下文，保留聊天记录"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -597,7 +597,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                 console.log('[WorkflowChatInterface] Input blurred, textarea will collapse to minimum');
               }}
               placeholder="输入消息以启动工作流... (Shift+Enter 换行)"
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm transition-all shadow-sm"
+              className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none text-sm transition-colors"
               rows={1}
               style={{
                 minHeight: '48px',
@@ -611,7 +611,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
             <button
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || executionState.isRunning}
-              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg flex items-center space-x-2 font-medium"
+              className="px-6 py-3 bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 font-medium"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -621,7 +621,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
           ) : (
             <button
               onClick={onAbortWorkflow}
-              className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-2xl hover:from-red-600 hover:to-red-700 transition-all shadow-md hover:shadow-lg flex items-center space-x-2 font-medium"
+              className="px-6 py-3 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md transition-colors flex items-center space-x-2 font-medium"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -632,7 +632,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
           )}
         </div>
         
-        <div className="mt-2 text-xs text-gray-500 text-center">
+        <div className="mt-2 text-xs text-muted-foreground text-center">
           {executionState.isRunning ? '工作流正在执行中...' : '按 Enter 发送，Shift + Enter 换行'}
         </div>
       </div>

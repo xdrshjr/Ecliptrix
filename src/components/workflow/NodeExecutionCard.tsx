@@ -13,7 +13,7 @@ interface NodeExecutionCardProps {
 /**
  * Node Execution Card Component
  * Displays individual node execution status, timing, input/output
- * Apple light theme: clean, elegant card design
+ * Figma-style: clean, theme-aware card design
  */
 const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
   nodeName,
@@ -31,11 +31,11 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           ),
-          color: 'text-gray-400',
-          bgColor: 'bg-gray-50',
-          borderColor: 'border-gray-200',
+          color: 'text-muted-foreground',
+          bgColor: 'bg-muted',
+          borderColor: 'border-border',
           label: '等待中',
-          labelColor: 'text-gray-600 bg-gray-100',
+          labelColor: 'text-muted-foreground bg-accent',
         };
       case 'executing':
         return {
@@ -44,11 +44,11 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           ),
-          color: 'text-blue-500',
-          bgColor: 'bg-blue-50/50',
-          borderColor: 'border-blue-300',
+          color: 'text-primary',
+          bgColor: 'bg-primary/10',
+          borderColor: 'border-primary/30',
           label: '执行中',
-          labelColor: 'text-blue-700 bg-blue-100',
+          labelColor: 'text-primary bg-primary/15',
         };
       case 'completed':
         return {
@@ -58,10 +58,10 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
             </svg>
           ),
           color: 'text-green-500',
-          bgColor: 'bg-green-50/50',
-          borderColor: 'border-green-300',
+          bgColor: 'bg-green-500/10',
+          borderColor: 'border-green-500/30',
           label: '已完成',
-          labelColor: 'text-green-700 bg-green-100',
+          labelColor: 'text-green-500 bg-green-500/15',
         };
       case 'error':
         return {
@@ -71,10 +71,10 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
             </svg>
           ),
           color: 'text-red-500',
-          bgColor: 'bg-red-50/50',
-          borderColor: 'border-red-300',
+          bgColor: 'bg-destructive/10',
+          borderColor: 'border-destructive/30',
           label: '失败',
-          labelColor: 'text-red-700 bg-red-100',
+          labelColor: 'text-destructive bg-destructive/15',
         };
     }
   };
@@ -122,22 +122,22 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
   return (
     <div
       className={`
-        rounded-xl border-2 ${config.borderColor} ${config.bgColor}
-        p-4 transition-all duration-300 hover:shadow-md
+        rounded-md border ${config.borderColor} ${config.bgColor}
+        p-4 transition-colors duration-300
       `}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-3">
           {/* 执行顺序 */}
-          <div className="w-8 h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center">
-            <span className="text-sm font-bold text-gray-700">{order}</span>
+          <div className="w-8 h-8 rounded-full bg-card border border-border flex items-center justify-center">
+            <span className="text-sm font-bold text-foreground">{order}</span>
           </div>
           
           {/* 节点名称 */}
           <div>
-            <h4 className="text-sm font-semibold text-gray-900">{nodeName}</h4>
-            <p className="text-xs text-gray-500 font-mono">{nodeId}</p>
+            <h4 className="text-sm font-semibold text-foreground">{nodeName}</h4>
+            <p className="text-xs text-muted-foreground font-mono">{nodeId}</p>
           </div>
         </div>
         
@@ -157,11 +157,11 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
       {/* 执行时间 */}
       {executionTime && (
         <div className="mb-3 flex items-center space-x-2">
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-xs text-gray-600">
-            执行时间: <span className="font-medium text-gray-800">{executionTime}</span>
+          <span className="text-xs text-muted-foreground">
+            执行时间: <span className="font-medium text-foreground">{executionTime}</span>
           </span>
         </div>
       )}
@@ -170,19 +170,19 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
       {state.llmSystemPrompt && (
         <div className="mb-3">
           <div className="flex items-center space-x-2 mb-1.5">
-            <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="text-xs font-semibold text-purple-700">系统提示词</span>
+            <span className="text-xs font-semibold text-primary">系统提示词</span>
             {state.llmModel && (
-              <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+              <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">
                 {state.llmModel}
               </span>
             )}
           </div>
-          <div className="bg-purple-50/50 rounded-lg p-3 border border-purple-200">
-            <pre className="text-xs text-purple-900 whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
+          <div className="bg-primary/10 rounded-lg p-3 border border-primary/30">
+            <pre className="text-xs text-foreground whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
               {state.llmSystemPrompt}
             </pre>
           </div>
@@ -193,13 +193,13 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
       {state.llmUserPrompt && (
         <div className="mb-3">
           <div className="flex items-center space-x-2 mb-1.5">
-            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span className="text-xs font-semibold text-gray-700">Prompt（用户输入）</span>
+            <span className="text-xs font-semibold text-foreground">Prompt（用户输入）</span>
           </div>
-          <div className="bg-white/80 rounded-lg p-3 border border-blue-200">
-            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
+          <div className="bg-card rounded-lg p-3 border border-primary/30">
+            <pre className="text-xs text-foreground whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
               {state.llmUserPrompt}
             </pre>
           </div>
@@ -213,10 +213,10 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
             <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-xs font-semibold text-gray-700">模型回复</span>
+            <span className="text-xs font-semibold text-foreground">模型回复</span>
           </div>
-          <div className="bg-green-50/50 rounded-lg p-3 border border-green-200">
-            <pre className="text-xs text-green-900 whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
+          <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/30">
+            <pre className="text-xs text-foreground whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
               {state.llmResponse}
             </pre>
           </div>
@@ -227,13 +227,13 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
       {state.input && !state.llmUserPrompt && (
         <div className="mb-3">
           <div className="flex items-center space-x-2 mb-1.5">
-            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
-            <span className="text-xs font-semibold text-gray-700">输入</span>
+            <span className="text-xs font-semibold text-foreground">输入</span>
           </div>
-          <div className="bg-white/80 rounded-lg p-3 border border-gray-200">
-            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
+          <div className="bg-card rounded-lg p-3 border border-border">
+            <pre className="text-xs text-foreground whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
               {formatData(state.input)}
             </pre>
           </div>
@@ -247,10 +247,10 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
             <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
             </svg>
-            <span className="text-xs font-semibold text-gray-700">输出</span>
+            <span className="text-xs font-semibold text-foreground">输出</span>
           </div>
-          <div className="bg-white/80 rounded-lg p-3 border border-gray-200">
-            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
+          <div className="bg-card rounded-lg p-3 border border-border">
+            <pre className="text-xs text-foreground whitespace-pre-wrap font-mono overflow-x-auto max-h-32 overflow-y-auto">
               {formatData(state.output)}
             </pre>
           </div>
@@ -264,10 +264,10 @@ const NodeExecutionCard: React.FC<NodeExecutionCardProps> = ({
             <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-xs font-semibold text-red-700">错误</span>
+            <span className="text-xs font-semibold text-destructive">错误</span>
           </div>
-          <div className="bg-white/80 rounded-lg p-3 border border-red-200">
-            <p className="text-xs text-red-700 whitespace-pre-wrap">
+          <div className="bg-card rounded-lg p-3 border border-destructive/30">
+            <p className="text-xs text-destructive whitespace-pre-wrap">
               {state.error}
             </p>
           </div>

@@ -43,7 +43,7 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
         ),
         gradientColors: isConfigured 
           ? 'bg-gradient-to-r from-blue-500 to-blue-600' 
-          : 'bg-gradient-to-r from-gray-400 to-gray-500',
+          : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
         inputPortLabel: 'Array Input',
@@ -54,20 +54,20 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
             <div className="text-xs space-y-1.5">
               {/* Model Information */}
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 font-medium">Model:</span>
-                <span className="text-gray-900 text-xs">{config?.model || 'Not set'}</span>
+                <span className="text-muted-foreground font-medium">Model:</span>
+                <span className="text-foreground text-xs">{config?.model || 'Not set'}</span>
               </div>
               
               {/* Temperature */}
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 font-medium">Temp:</span>
-                <span className="text-gray-900 text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
+                <span className="text-muted-foreground font-medium">Temp:</span>
+                <span className="text-foreground text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
               </div>
               
               {/* Array Input Badge */}
-              <div className="pt-1 border-t border-gray-200">
+              <div className="pt-1 border-t border-border">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600 font-medium">Input Type:</span>
+                  <span className="text-muted-foreground font-medium">Input Type:</span>
                   <div className="inline-flex items-center px-2 py-0.5 bg-blue-100 border border-blue-300 rounded">
                     <svg className="w-3 h-3 text-blue-700 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -80,7 +80,7 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {/* Output Schema Info */}
               {hasOutputSchema && (
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600 font-medium">Schema:</span>
+                  <span className="text-muted-foreground font-medium">Schema:</span>
                   <span className="text-green-700 text-xs flex items-center">
                     <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -91,7 +91,7 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
               )}
               
               {/* Output Format Badge */}
-              <div className="pt-1 border-t border-gray-200">
+              <div className="pt-1 border-t border-border">
                 <div className="flex items-center justify-center">
                   <div className="inline-flex items-center px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                     <svg className="w-3 h-3 text-blue-700 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -104,9 +104,9 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
               
               {/* System Prompt Preview */}
               {config?.systemPrompt && (
-                <div className="pt-1 border-t border-gray-200">
-                  <div className="text-gray-600 font-medium mb-0.5">Transform Prompt:</div>
-                  <div className="text-gray-700 text-xs bg-gray-50 p-1.5 rounded max-h-16 overflow-y-auto line-clamp-3">
+                <div className="pt-1 border-t border-border">
+                  <div className="text-muted-foreground font-medium mb-0.5">Transform Prompt:</div>
+                  <div className="text-foreground text-xs bg-muted p-1.5 rounded max-h-16 overflow-y-auto line-clamp-3">
                     {config.systemPrompt.substring(0, 80)}
                     {config.systemPrompt.length > 80 && '...'}
                   </div>
@@ -115,8 +115,8 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-gray-400 italic">Not configured</div>
-              <div className="text-xs text-gray-500 mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">Not configured</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
               <div className="mt-2 flex items-center justify-center">
                 <div className="inline-flex items-center px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                   <svg className="w-3 h-3 text-blue-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

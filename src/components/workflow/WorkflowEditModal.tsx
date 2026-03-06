@@ -188,36 +188,36 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
     <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
       {/* Backdrop - covers only the right panel, leaving sidebar visible */}
       <div 
-        className="absolute inset-0 bg-black bg-opacity-25 backdrop-blur-sm transition-opacity pointer-events-auto"
+        className="absolute inset-0 bg-black/50 transition-opacity pointer-events-auto"
         onClick={handleCancel}
       />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+      <div className="relative bg-card rounded-md w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pointer-events-auto">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-200">
+        <div className="px-6 py-5 border-b border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-md bg-primary flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">
+                <h2 className="text-xl font-semibold text-foreground">
                   Edit Workflow
                 </h2>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-muted-foreground mt-0.5">
                   Modify workflow details and view nodes
                 </p>
               </div>
             </div>
             <button
               onClick={handleCancel}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-accent rounded-md transition-colors"
               aria-label="Close modal"
             >
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -229,7 +229,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
           <div className="space-y-6">
             {/* Workflow Name */}
             <div>
-              <label htmlFor="workflow-name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="workflow-name" className="block text-sm font-medium text-foreground mb-2">
                 Workflow Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -237,7 +237,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                 type="text"
                 value={editedName}
                 onChange={(e) => setEditedName(e.target.value)}
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-400"
+                className="w-full px-4 py-2.5 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-foreground placeholder-muted-foreground"
                 placeholder="Enter workflow name"
               />
               {!editedName.trim() && (
@@ -249,7 +249,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
 
             {/* Workflow Description */}
             <div>
-              <label htmlFor="workflow-description" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="workflow-description" className="block text-sm font-medium text-foreground mb-2">
                 Description
               </label>
               <textarea
@@ -257,7 +257,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                 value={editedDescription}
                 onChange={(e) => setEditedDescription(e.target.value)}
                 rows={3}
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-400 resize-none"
+                className="w-full px-4 py-2.5 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-foreground placeholder-muted-foreground resize-none"
                 placeholder="Enter workflow description (optional)"
               />
             </div>
@@ -265,56 +265,56 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
             {/* Nodes List */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-foreground">
                   Workflow Nodes
                 </label>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">
                   {nodes.length} {nodes.length === 1 ? 'node' : 'nodes'}
                 </span>
               </div>
               
               {nodes.length === 0 ? (
-                <div className="bg-gray-50 rounded-lg p-6 text-center">
-                  <div className="w-12 h-12 bg-gray-200 rounded-xl mx-auto mb-3 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-muted rounded-md p-6 text-center">
+                  <div className="w-12 h-12 bg-secondary rounded-md mx-auto mb-3 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                     </svg>
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     No nodes in this workflow yet
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Add nodes in the workflow canvas
                   </p>
                 </div>
               ) : (
-                <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200 max-h-80 overflow-y-auto">
+                <div className="bg-muted rounded-md border border-border divide-y divide-border max-h-80 overflow-y-auto">
                   {nodes.map((node, index) => (
                     <div 
                       key={node.id}
-                      className="px-4 py-3 hover:bg-gray-100 transition-colors"
+                      className="px-4 py-3 hover:bg-accent transition-colors"
                     >
                       <div className="flex items-center space-x-3">
                         <div className="flex-shrink-0">
-                          <div className="w-8 h-8 bg-white border border-gray-300 rounded-lg flex items-center justify-center text-blue-600">
+                          <div className="w-8 h-8 bg-card border border-border rounded-md flex items-center justify-center text-primary">
                             {getNodeTypeIcon(node.type)}
                           </div>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2">
-                            <p className="text-sm font-medium text-gray-900 truncate">
+                            <p className="text-sm font-medium text-foreground truncate">
                               {node.data.label}
                             </p>
-                            <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-200 flex-shrink-0">
+                            <span className="text-xs text-muted-foreground bg-card px-2 py-0.5 rounded border border-border flex-shrink-0">
                               {getNodeTypeDisplayName(node.type)}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             ID: {node.id}
                           </p>
                         </div>
                         <div className="flex-shrink-0">
-                          <span className="text-xs text-gray-400 font-mono">
+                          <span className="text-xs text-muted-foreground font-mono">
                             #{index + 1}
                           </span>
                         </div>
@@ -328,9 +328,9 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <div className="px-6 py-4 border-t border-border bg-muted">
           <div className="flex items-center justify-between">
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-muted-foreground">
               {hasChanges ? (
                 <span className="flex items-center space-x-1">
                   <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
@@ -343,14 +343,14 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
             <div className="flex items-center space-x-3">
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || !hasChanges || !editedName.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-[var(--primary-hover)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring"
               >
                 {isSaving ? (
                   <span className="flex items-center space-x-2">

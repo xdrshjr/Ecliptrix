@@ -160,26 +160,26 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[35%] bg-white/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col animate-slide-in-right">
+    <div className="fixed inset-y-0 right-0 w-[35%] bg-card z-50 flex flex-col animate-slide-in-right">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200/80">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-500 to-gray-700 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-10 h-10 rounded-md bg-secondary flex items-center justify-center">
+            <svg className="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">To Array Configuration</h2>
-            <p className="text-xs text-gray-500">Node ID: {nodeId}</p>
+            <h2 className="text-lg font-semibold text-foreground">To Array Configuration</h2>
+            <p className="text-xs text-muted-foreground">Node ID: {nodeId}</p>
           </div>
         </div>
         <button
           onClick={handleCancel}
-          className="w-8 h-8 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+          className="w-8 h-8 rounded-lg hover:bg-accent transition-colors flex items-center justify-center"
           aria-label="Close panel"
         >
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -196,12 +196,12 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
         />
 
         {/* Format Configuration */}
-        <div className="space-y-4 p-4 bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200/80 rounded-xl">
+        <div className="space-y-4 p-4 bg-muted border border-border rounded-md">
           <div className="flex items-center space-x-2">
-            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
             </svg>
-            <h3 className="text-sm font-semibold text-gray-900">Data Format</h3>
+            <h3 className="text-sm font-semibold text-foreground">Data Format</h3>
           </div>
           
           <FormatSelector
@@ -214,38 +214,38 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
 
           {/* Output Format (Fixed to Array) */}
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-foreground">
               Output Format
             </label>
-            <div className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-xl flex items-center justify-between">
+            <div className="w-full px-4 py-3 bg-accent border border-border rounded-md flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                 </svg>
-                <span className="text-sm font-semibold text-gray-700">Array</span>
+                <span className="text-sm font-semibold text-foreground">Array</span>
               </div>
-              <div className="inline-flex items-center px-2 py-1 bg-gray-600 rounded-md">
-                <span className="text-xs font-medium text-white">Fixed</span>
+              <div className="inline-flex items-center px-2 py-1 bg-secondary rounded-md">
+                <span className="text-xs font-medium text-foreground">Fixed</span>
               </div>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               This node always outputs data in array format.
             </p>
           </div>
         </div>
 
         {/* Array Element Schema Configuration */}
-        <div className="space-y-4 p-4 bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-200/80 rounded-xl">
+        <div className="space-y-4 p-4 bg-muted border border-border rounded-md">
           <div className="flex items-center space-x-2">
-            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <h3 className="text-sm font-semibold text-gray-900">Array Element Schema</h3>
+            <h3 className="text-sm font-semibold text-foreground">Array Element Schema</h3>
           </div>
 
           {/* Element Type Selector */}
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-foreground">
               Element Data Type
             </label>
             <div className="grid grid-cols-4 gap-2">
@@ -253,31 +253,31 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
                 <button
                   key={type}
                   onClick={() => setElementType(type)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                     elementType === type
-                      ? 'bg-gray-600 text-white shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      ? 'bg-secondary text-foreground'
+                      : 'bg-card text-foreground border border-border hover:bg-accent'
                   }`}
                 >
                   {type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Select the data type for elements in the output array
             </p>
           </div>
 
           {/* Object Schema Builder - Only shown when type is 'object' */}
           {elementType === 'object' && (
-            <div className="space-y-3 pt-3 border-t border-gray-200">
+            <div className="space-y-3 pt-3 border-t border-border">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-foreground">
                   Object Fields
                 </label>
                 <button
                   onClick={addSchemaField}
-                  className="px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-1"
+                  className="px-3 py-1.5 bg-secondary text-foreground text-xs font-medium rounded-lg hover:bg-accent transition-colors flex items-center space-x-1"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -287,16 +287,16 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
               </div>
 
               {objectSchema.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 text-sm italic">
+                <div className="text-center py-8 text-muted-foreground text-sm italic">
                   No fields defined. Click &quot;Add Field&quot; to start building your schema.
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {objectSchema.map((field, index) => (
-                    <div key={index} className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+                    <div key={index} className="p-3 bg-card border border-border rounded-lg space-y-2">
                       {/* Field Header */}
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-700">Field {index + 1}</span>
+                        <span className="text-xs font-semibold text-foreground">Field {index + 1}</span>
                         <button
                           onClick={() => removeSchemaField(index)}
                           className="text-red-500 hover:text-red-700 transition-colors"
@@ -315,7 +315,7 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
                           value={field.name}
                           onChange={(e) => updateSchemaField(index, { name: e.target.value })}
                           placeholder="Field name"
-                          className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500/50"
+                          className="w-full px-3 py-2 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                       </div>
 
@@ -324,21 +324,21 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
                         <select
                           value={field.type}
                           onChange={(e) => updateSchemaField(index, { type: e.target.value as ArrayElementType })}
-                          className="px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500/50"
+                          className="px-3 py-2 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                         >
                           <option value="string">String</option>
                           <option value="number">Number</option>
                           <option value="boolean">Boolean</option>
                           <option value="object">Object</option>
                         </select>
-                        <label className="flex items-center space-x-2 px-3 py-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                        <label className="flex items-center space-x-2 px-3 py-2 border border-border rounded-lg cursor-pointer hover:bg-accent">
                           <input
                             type="checkbox"
                             checked={field.required ?? true}
                             onChange={(e) => updateSchemaField(index, { required: e.target.checked })}
-                            className="rounded border-gray-300"
+                            className="rounded border-border"
                           />
-                          <span className="text-xs text-gray-700">Required</span>
+                          <span className="text-xs text-foreground">Required</span>
                         </label>
                       </div>
 
@@ -349,18 +349,18 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
                           value={field.description || ''}
                           onChange={(e) => updateSchemaField(index, { description: e.target.value })}
                           placeholder="Field description (optional)"
-                          className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500/50"
+                          className="w-full px-3 py-2 text-xs border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                       </div>
 
                       {/* Nested Object Fields */}
                       {field.type === 'object' && (
-                        <div className="mt-2 pl-4 border-l-2 border-gray-300 space-y-2">
+                        <div className="mt-2 pl-4 border-l-2 border-border space-y-2">
                           <div className="flex items-center justify-between">
-                            <label className="text-xs font-medium text-gray-600">Nested Fields</label>
+                            <label className="text-xs font-medium text-muted-foreground">Nested Fields</label>
                             <button
                               onClick={() => addNestedField(index)}
-                              className="px-2 py-1 bg-gray-500 text-white text-xs rounded hover:bg-gray-600 transition-colors"
+                              className="px-2 py-1 bg-secondary text-foreground text-xs rounded hover:bg-accent transition-colors"
                             >
                               + Add Nested
                             </button>
@@ -368,9 +368,9 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
 
                           {field.objectSchema && field.objectSchema.length > 0 ? (
                             field.objectSchema.map((nestedField, nestedIndex) => (
-                              <div key={nestedIndex} className="p-2 bg-gray-50 border border-gray-200 rounded space-y-2">
+                              <div key={nestedIndex} className="p-2 bg-muted border border-border rounded space-y-2">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs font-medium text-gray-600">Nested {nestedIndex + 1}</span>
+                                  <span className="text-xs font-medium text-muted-foreground">Nested {nestedIndex + 1}</span>
                                   <button
                                     onClick={() => removeNestedField(index, nestedIndex)}
                                     className="text-red-500 hover:text-red-700"
@@ -386,32 +386,32 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
                                   value={nestedField.name}
                                   onChange={(e) => updateNestedField(index, nestedIndex, { name: e.target.value })}
                                   placeholder="Nested field name"
-                                  className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                  className="w-full px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
                                 />
                                 <div className="grid grid-cols-2 gap-2">
                                   <select
                                     value={nestedField.type}
                                     onChange={(e) => updateNestedField(index, nestedIndex, { type: e.target.value as ArrayElementType })}
-                                    className="px-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                    className="px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
                                   >
                                     <option value="string">String</option>
                                     <option value="number">Number</option>
                                     <option value="boolean">Boolean</option>
                                   </select>
-                                  <label className="flex items-center space-x-1 px-2 py-1.5 border border-gray-200 rounded cursor-pointer hover:bg-white">
+                                  <label className="flex items-center space-x-1 px-2 py-1.5 border border-border rounded cursor-pointer hover:bg-card">
                                     <input
                                       type="checkbox"
                                       checked={nestedField.required ?? true}
                                       onChange={(e) => updateNestedField(index, nestedIndex, { required: e.target.checked })}
-                                      className="rounded border-gray-300"
+                                      className="rounded border-border"
                                     />
-                                    <span className="text-xs text-gray-700">Required</span>
+                                    <span className="text-xs text-foreground">Required</span>
                                   </label>
                                 </div>
                               </div>
                             ))
                           ) : (
-                            <p className="text-xs text-gray-500 italic">No nested fields</p>
+                            <p className="text-xs text-muted-foreground italic">No nested fields</p>
                           )}
                         </div>
                       )}
@@ -425,7 +425,7 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
         
         {/* Conversion Prompt */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-900">
+          <label className="block text-sm font-medium text-foreground">
             Conversion Prompt
           </label>
           <textarea
@@ -433,24 +433,24 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder="Enter the system prompt for data conversion..."
             rows={6}
-            className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500/50 focus:border-transparent transition-all resize-none text-sm text-gray-900 placeholder-gray-400"
+            className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors resize-none text-sm text-foreground placeholder-muted-foreground"
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Define how the LLM should convert input data to array format
           </p>
         </div>
 
         {/* Model Selection */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-900">
+          <label className="block text-sm font-medium text-foreground">
             LLM Model
           </label>
           {isLoadingModels ? (
             <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : loadError ? (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-md">
               <div className="flex items-center space-x-2">
                 <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -468,7 +468,7 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
             <select
               value={selectedModelId}
               onChange={(e) => setSelectedModelId(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-500/50 focus:border-transparent transition-all text-sm text-gray-900 cursor-pointer"
+              className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-sm text-foreground cursor-pointer"
             >
               {availableModels.length === 0 ? (
                 <option value="">No models available</option>
@@ -481,7 +481,7 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
               )}
             </select>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Select the LLM model to use for data conversion
           </p>
         </div>
@@ -489,10 +489,10 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
         {/* Temperature */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-900">
+            <label className="block text-sm font-medium text-foreground">
               Temperature
             </label>
-            <span className="text-sm font-mono text-gray-600">{temperature.toFixed(2)}</span>
+            <span className="text-sm font-mono text-muted-foreground">{temperature.toFixed(2)}</span>
           </div>
           <input
             type="range"
@@ -501,13 +501,13 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
             step="0.1"
             value={temperature}
             onChange={(e) => setTemperature(parseFloat(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-600"
+            className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>0.0 (Precise)</span>
             <span>2.0 (Creative)</span>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Lower values recommended for data conversion (0.0-0.5)
           </p>
         </div>
@@ -515,10 +515,10 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
         {/* Max Tokens */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-900">
+            <label className="block text-sm font-medium text-foreground">
               Max Tokens
             </label>
-            <span className="text-sm font-mono text-gray-600">{maxTokens}</span>
+            <span className="text-sm font-mono text-muted-foreground">{maxTokens}</span>
           </div>
           <input
             type="range"
@@ -527,31 +527,31 @@ const ToArrayConfigPanel: React.FC<ToArrayConfigPanelProps> = ({
             step="100"
             value={maxTokens}
             onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-600"
+            className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>100</span>
             <span>8000</span>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Maximum length of the generated array output
           </p>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-gray-200/80 bg-gray-50/30">
+      <div className="px-6 py-4 border-t border-border bg-muted">
         <div className="flex items-center justify-end space-x-3">
           <button
             onClick={handleCancel}
-            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-accent transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isLoadingModels || !!loadError || !selectedModelId}
-            className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-gray-600 to-gray-700 rounded-lg hover:from-gray-700 hover:to-gray-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 text-sm font-medium text-primary-foreground bg-secondary hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save Configuration
           </button>

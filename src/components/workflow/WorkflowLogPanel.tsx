@@ -85,8 +85,8 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
         const inputStr = JSON.stringify(details.input, null, 2);
         return (
           <div className="mt-1 text-xs">
-            <span className="font-semibold text-gray-700">Input: </span>
-            <pre className="inline-block text-gray-600 whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
+            <span className="font-semibold text-foreground">Input:</span>
+            <pre className="inline-block text-muted-foreground whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
               {inputStr}
             </pre>
           </div>
@@ -96,8 +96,8 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
         const outputStr = JSON.stringify(details.output, null, 2);
         return (
           <div className="mt-1 text-xs">
-            <span className="font-semibold text-gray-700">Output: </span>
-            <pre className="inline-block text-gray-600 whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
+            <span className="font-semibold text-foreground">Output:</span>
+            <pre className="inline-block text-muted-foreground whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
               {outputStr}
             </pre>
           </div>
@@ -109,17 +109,17 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
       if (detailsStr.length > 200) {
         return (
           <details className="mt-1 group">
-            <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800 font-medium transition-colors select-none">
+            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground font-medium transition-colors select-none">
               View details
             </summary>
-            <pre className="mt-2 text-xs bg-white/80 p-3 rounded-lg border border-gray-200 overflow-x-auto max-h-40 overflow-y-auto font-mono break-words max-w-full">
+            <pre className="mt-2 text-xs bg-card p-3 rounded-md border border-border overflow-x-auto max-h-40 overflow-y-auto font-mono break-words max-w-full">
               {detailsStr}
             </pre>
           </details>
         );
       }
       return (
-        <pre className="mt-1 text-xs text-gray-600 whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
+        <pre className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
           {detailsStr}
         </pre>
       );
@@ -129,20 +129,20 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
   };
 
   return (
-    <div 
-      className="flex flex-col bg-white transition-all duration-300 ease-in-out"
+    <div
+      className="flex flex-col bg-card transition-colors duration-300 ease-in-out"
       style={{ height: isExpanded ? '320px' : 'auto' }}
     >
       {/* Header - Apple style light */}
-      <div className="px-4 py-3 bg-gray-50/80 backdrop-blur-sm border-b border-gray-200 flex items-center justify-between">
+      <div className="px-4 py-3 bg-muted border-b border-border flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+            className="p-1 hover:bg-accent rounded-md transition-colors"
             title={isExpanded ? "Collapse" : "Expand"}
           >
             <svg 
-              className={`w-4 h-4 text-gray-600 transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} 
+              className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
@@ -151,22 +151,22 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
             </svg>
           </button>
           
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <h3 className="text-sm font-semibold text-gray-800">Execution Logs</h3>
+          <h3 className="text-sm font-semibold text-foreground">Execution Logs</h3>
         </div>
         
         <div className="flex items-center space-x-3">
           {isRunning && (
-            <div className="flex items-center space-x-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-blue-700 font-medium">Running</span>
+            <div className="flex items-center space-x-2 px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+              <span className="text-xs text-primary font-medium">Running</span>
             </div>
           )}
           {currentNodeId && (
-            <div className="text-xs text-gray-500">
-              Current: <span className="text-gray-800 font-medium">{nodeStates[currentNodeId]?.nodeId}</span>
+            <div className="text-xs text-muted-foreground">
+              Current: <span className="text-foreground font-medium">{nodeStates[currentNodeId]?.nodeId}</span>
             </div>
           )}
         </div>
@@ -174,15 +174,15 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
 
       {/* Logs Content - Collapsible */}
       {isExpanded && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 font-sans text-xs bg-gray-50/30">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 font-sans text-xs bg-muted">
           {logs.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
-                <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 mx-auto mb-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-sm text-gray-600 font-medium">No logs yet</p>
-                <p className="text-xs mt-1 text-gray-500">Click Run to start workflow execution</p>
+                <p className="text-sm text-muted-foreground font-medium">No logs yet</p>
+                <p className="text-xs mt-1 text-muted-foreground">Click Run to start workflow execution</p>
               </div>
             </div>
           ) : (
@@ -190,11 +190,11 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
               <div
                 key={log.id}
                 className={`
-                  p-3 rounded-xl border backdrop-blur-sm transition-all duration-200 hover:shadow-sm
+                  p-3 rounded-md border transition-colors duration-200
                   ${log.level === 'error' ? 'bg-red-50/80 border-red-200' : ''}
                   ${log.level === 'warning' ? 'bg-orange-50/80 border-orange-200' : ''}
                   ${log.level === 'success' ? 'bg-green-50/80 border-green-200' : ''}
-                  ${log.level === 'info' ? 'bg-white/80 border-gray-200' : ''}
+                  ${log.level === 'info' ? 'bg-card border-border' : ''}
                 `}
               >
                 <div className="flex items-start space-x-2 min-w-0">
@@ -204,17 +204,17 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
                   
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-baseline space-x-2 flex-wrap">
-                      <span className="text-gray-500 text-xs font-mono">
+                      <span className="text-muted-foreground text-xs font-mono">
                         {formatTime(log.timestamp)}
                       </span>
                       {log.nodeName && (
-                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-md text-xs font-medium">
+                        <span className="px-2 py-0.5 bg-primary/15 text-primary rounded-md text-xs font-medium">
                           {log.nodeName}
                         </span>
                       )}
                     </div>
                     
-                    <div className="mt-1 text-sm text-gray-800 leading-relaxed break-words">
+                    <div className="mt-1 text-sm text-foreground leading-relaxed break-words">
                       {log.message}
                     </div>
                     
@@ -234,7 +234,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
 
       {/* Footer Stats - Apple style */}
       {logs.length > 0 && isExpanded && (
-        <div className="px-4 py-2 bg-gray-50/80 backdrop-blur-sm border-t border-gray-200 text-xs text-gray-600">
+        <div className="px-4 py-2 bg-muted border-t border-border text-xs text-muted-foreground">
           <div className="flex items-center justify-between">
             <span className="font-medium">Total logs: {logs.length}</span>
             <div className="flex items-center space-x-4">

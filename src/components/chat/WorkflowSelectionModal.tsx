@@ -94,29 +94,29 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm transition-all"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-colors"
       onClick={handleBackdropClick}
     >
       {/* Modal Container */}
-      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+      <div className="relative w-full max-w-4xl mx-4 bg-card rounded-md shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         {/* Header */}
-        <div className="px-8 py-6 bg-gradient-to-br from-gray-50 to-white border-b border-gray-200">
+        <div className="px-8 py-6 bg-card border-b border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-md">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-12 h-12 bg-primary rounded-md flex items-center justify-center">
+                <svg className="w-6 h-6 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-gray-900">选择工作流</h2>
-                <p className="text-sm text-gray-500 mt-0.5">选择一个工作流来开始新的对话</p>
+                <h2 className="text-2xl font-semibold text-foreground">选择工作流</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">选择一个工作流来开始新的对话</p>
               </div>
             </div>
             
             <button
               onClick={onClose}
-              className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
+              className="p-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Close"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -131,23 +131,23 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
           {isLoading ? (
             // Loading State
             <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 animate-pulse">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-primary rounded-md flex items-center justify-center mb-4 animate-pulse">
+                <svg className="w-8 h-8 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                 </svg>
               </div>
-              <p className="text-sm text-gray-600">加载工作流中...</p>
+              <p className="text-sm text-muted-foreground">加载工作流中...</p>
             </div>
           ) : error ? (
             // Error State
             <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-destructive/15 rounded-md flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-gray-900 mb-2">加载失败</p>
-              <p className="text-sm text-gray-600 text-center max-w-md">{error}</p>
+              <p className="text-sm font-medium text-foreground mb-2">加载失败</p>
+              <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
               <button
                 onClick={() => {
                   setError(null);
@@ -155,7 +155,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                   setIsLoading(true);
                   setTimeout(() => setIsLoading(false), 100);
                 }}
-                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors text-sm font-medium"
+                className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-[var(--primary-hover)] transition-colors text-sm font-medium"
               >
                 重试
               </button>
@@ -163,13 +163,13 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
           ) : workflows.length === 0 ? (
             // Empty State
             <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-accent rounded-md flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-gray-900 mb-2">暂无工作流</p>
-              <p className="text-sm text-gray-600 text-center max-w-md">
+              <p className="text-sm font-medium text-foreground mb-2">暂无工作流</p>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
                 请先在"工作流"任务中创建工作流，然后再开始新的对话
               </p>
             </div>
@@ -180,19 +180,19 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                 <button
                   key={workflow.workflow_id}
                   onClick={() => handleSelectWorkflow(workflow)}
-                  className="group relative p-5 bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-2xl hover:border-blue-300 hover:shadow-lg transition-all duration-200 text-left"
+                  className="group relative p-5 bg-card border border-border rounded-md hover:border-primary/40 transition-colors duration-200 text-left"
                 >
                   {/* Workflow Icon */}
                   <div className="flex items-start justify-between mb-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-12 h-12 bg-primary/15 rounded-md flex items-center justify-center transition-transform">
+                      <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
                     
                     {/* Active Badge */}
                     {workflow.is_active && (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-lg">
+                      <span className="px-2 py-1 bg-green-500/15 text-green-500 text-xs font-medium rounded-lg">
                         活跃
                       </span>
                     )}
@@ -200,18 +200,18 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                   
                   {/* Workflow Info */}
                   <div className="space-y-2">
-                    <h3 className="text-base font-semibold text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                    <h3 className="text-base font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors">
                       {workflow.workflow_name}
                     </h3>
                     
                     {workflow.workflow_description && (
-                      <p className="text-sm text-gray-600 line-clamp-2">
+                      <p className="text-sm text-muted-foreground line-clamp-2">
                         {workflow.workflow_description}
                       </p>
                     )}
                     
                     {/* Workflow Stats */}
-                    <div className="flex items-center space-x-3 text-xs text-gray-500 pt-2">
+                    <div className="flex items-center space-x-3 text-xs text-muted-foreground pt-2">
                       <div className="flex items-center space-x-1">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
@@ -229,7 +229,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                   </div>
                   
                   {/* Hover Indicator */}
-                  <div className="absolute inset-0 rounded-2xl ring-2 ring-blue-500 ring-opacity-0 group-hover:ring-opacity-100 transition-all pointer-events-none" />
+                  <div className="absolute inset-0 rounded-md ring-2 ring-ring ring-opacity-0 group-hover:ring-opacity-100 transition-colors pointer-events-none" />
                 </button>
               ))}
             </div>
@@ -237,16 +237,16 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="px-8 py-4 bg-muted border-t border-border">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               {!isLoading && !error && workflows.length > 0 && (
                 `共 ${workflows.length} 个工作流可用`
               )}
             </p>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all text-sm font-medium"
+              className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent transition-colors text-sm font-medium"
             >
               取消
             </button>

@@ -991,7 +991,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   }, [isPanMode, isDraggingCanvas, draggingNode]);
 
   return (
-    <div className="h-full w-full bg-gray-50 relative overflow-hidden select-none">
+    <div className="h-full w-full bg-muted relative overflow-hidden select-none">
       {/* Canvas */}
       <div
         ref={canvasRef}
@@ -1018,8 +1018,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           className="absolute inset-0 opacity-20 pointer-events-none"
           style={{
             backgroundImage: `
-              linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-              linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
+              linear-gradient(to right, var(--border) 1px, transparent 1px),
+              linear-gradient(to bottom, var(--border) 1px, transparent 1px)
             `,
             backgroundSize: `${20 * scale}px ${20 * scale}px`,
             backgroundPosition: `${canvasOffset.x * scale}px ${canvasOffset.y * scale}px`
@@ -1050,7 +1050,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                   {/* Visible connection line */}
                   <path
                     d={path}
-                    stroke={isSelected ? "#ef4444" : "#6366f1"}
+                    stroke={isSelected ? "var(--destructive)" : "var(--primary)"}
                     strokeWidth={isSelected ? "3" : "2"}
                     fill="none"
                     strokeLinecap="round"
@@ -1073,8 +1073,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                         cx={midX}
                         cy={midY}
                         r="12"
-                        fill="white"
-                        stroke="#ef4444"
+                        fill="var(--card)"
+                        stroke="var(--destructive)"
                         strokeWidth="2"
                         className="pointer-events-auto cursor-pointer"
                         onClick={(e) => {
@@ -1095,7 +1095,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                           y1={midY - 5}
                           x2={midX + 5}
                           y2={midY + 5}
-                          stroke="#ef4444"
+                          stroke="var(--destructive)"
                           strokeWidth="2"
                           strokeLinecap="round"
                         />
@@ -1104,7 +1104,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                           y1={midY - 5}
                           x2={midX - 5}
                           y2={midY + 5}
-                          stroke="#ef4444"
+                          stroke="var(--destructive)"
                           strokeWidth="2"
                           strokeLinecap="round"
                         />
@@ -1126,7 +1126,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 tempConnectionEnd.x,
                 tempConnectionEnd.y
               )}
-              stroke="#94a3b8"
+              stroke="var(--muted-foreground)"
               strokeWidth="2"
               fill="none"
               strokeDasharray="5,5"
@@ -1296,7 +1296,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         {/* Context Menu */}
         {contextMenu.visible && (
           <div
-            className="absolute bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 min-w-[180px]"
+            className="absolute bg-card rounded-md shadow-lg border border-border py-2 z-50 min-w-[180px]"
             style={{
               left: `${contextMenu.x}px`,
               top: `${contextMenu.y}px`,
@@ -1305,125 +1305,125 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           >
             <button
               onClick={handleAddStartNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="text-sm text-gray-700">Add Start Node</span>
+              <span className="text-sm text-foreground">Add Start Node</span>
             </button>
             
             <button
               onClick={handleAddEndNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
               </svg>
-              <span className="text-sm text-gray-700">Add End Node</span>
+              <span className="text-sm text-foreground">Add End Node</span>
             </button>
             
-            <div className="h-px bg-gray-200 my-1" />
+            <div className="h-px bg-border my-1" />
             
             <button
               onClick={handleAddChatLLMNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
-              <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
-              <span className="text-sm text-gray-700">Add Chat LLM</span>
+              <span className="text-sm text-foreground">Add Chat LLM</span>
             </button>
             
             <button
               onClick={handleAddTextInputNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              <span className="text-sm text-gray-700">Add Text Input</span>
+              <span className="text-sm text-foreground">Add Text Input</span>
             </button>
             
-            <div className="h-px bg-gray-200 my-1" />
+            <div className="h-px bg-border my-1" />
             
             <button
               onClick={handleAddPexelsVideoSearchNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              <span className="text-sm text-gray-700">Add Pexels Video Search</span>
+              <span className="text-sm text-foreground">Add Pexels Video Search</span>
             </button>
             
             <button
               onClick={handleAddTavilySearchNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span className="text-sm text-gray-700">Add Tavily Search</span>
+              <span className="text-sm text-foreground">Add Tavily Search</span>
             </button>
             
-            <div className="h-px bg-gray-200 my-1" />
+            <div className="h-px bg-border my-1" />
             
             <button
               onClick={handleAddVolcanoTTSNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
-              <span className="text-sm text-gray-700">Add Volcano TTS</span>
+              <span className="text-sm text-foreground">Add Volcano TTS</span>
             </button>
             
-            <div className="h-px bg-gray-200 my-1" />
+            <div className="h-px bg-border my-1" />
             
             <button
               onClick={handleAddToArrayNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
-              <span className="text-sm text-gray-700">Add To Array</span>
+              <span className="text-sm text-foreground">Add To Array</span>
             </button>
             
             <button
               onClick={handleAddResultsCombineNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
-              <span className="text-sm text-gray-700">Add Results Combine</span>
+              <span className="text-sm text-foreground">Add Results Combine</span>
             </button>
             
-            <div className="h-px bg-gray-200 my-1" />
+            <div className="h-px bg-border my-1" />
             
             <button
               onClick={handleAddAIVideoGenerateNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
-              <svg className="w-4 h-4 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="text-sm text-gray-700">Add AI Video Generate</span>
+              <span className="text-sm text-foreground">Add AI Video Generate</span>
             </button>
             
             <button
               onClick={handleAddVideoExportNode}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
             >
               <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              <span className="text-sm text-gray-700">Add Video Export</span>
+              <span className="text-sm text-foreground">Add Video Export</span>
             </button>
           </div>
         )}
@@ -1431,16 +1431,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         {/* Instructions Overlay (when no nodes) */}
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg p-8 max-w-md text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-gray-600 to-gray-800 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-card rounded-md p-8 max-w-md text-center">
+              <div className="w-16 h-16 bg-secondary rounded-md mx-auto mb-4 flex items-center justify-center">
+                <svg className="w-8 h-8 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 Start Building Your Workflow
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Right-click anywhere on the canvas to add your first node
               </p>
             </div>
@@ -1449,14 +1449,14 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       </div>
 
       {/* Toolbar */}
-      <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg border border-gray-200 p-2 flex items-center space-x-2">
+      <div className="absolute top-4 right-4 bg-card rounded-md border border-border p-2 flex items-center space-x-2">
         <button
           onClick={() => {
             const newScale = Math.max(0.5, scale - 0.1);
             console.log('[WorkflowCanvas] Zoom out:', { newScale });
             setScale(newScale);
           }}
-          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          className="p-2 hover:bg-accent rounded transition-colors"
           title="Zoom Out"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1464,7 +1464,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           </svg>
         </button>
         
-        <span className="text-xs text-gray-600 min-w-[50px] text-center">
+        <span className="text-xs text-muted-foreground min-w-[50px] text-center">
           {Math.round(scale * 100)}%
         </span>
         
@@ -1474,7 +1474,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             console.log('[WorkflowCanvas] Zoom in:', { newScale });
             setScale(newScale);
           }}
-          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          className="p-2 hover:bg-accent rounded transition-colors"
           title="Zoom In"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1482,14 +1482,14 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           </svg>
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="w-px h-6 bg-border mx-1" />
 
         <button
           onClick={handleTogglePanMode}
-          className={`p-2 rounded transition-all ${
-            isPanMode 
-              ? 'bg-blue-100 text-blue-600 hover:bg-blue-200' 
-              : 'hover:bg-gray-100 text-gray-700'
+          className={`p-2 rounded transition-colors ${
+            isPanMode
+              ? 'bg-primary/15 text-primary hover:bg-primary/25'
+              : 'hover:bg-accent text-foreground'
           }`}
           title={isPanMode ? "Exit Pan Mode (Switch to Node Drag Mode)" : "Enter Pan Mode (Drag Canvas)"}
         >
@@ -1498,7 +1498,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           </svg>
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="w-px h-6 bg-border mx-1" />
 
         <button
           onClick={() => {
@@ -1506,7 +1506,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             setScale(1);
             setCanvasOffset({ x: 0, y: 0 });
           }}
-          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          className="p-2 hover:bg-accent rounded transition-colors"
           title="Reset View"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1516,7 +1516,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       </div>
 
       {/* Info Bar */}
-      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg border border-gray-200 px-4 py-2 text-xs text-gray-600">
+      <div className="absolute bottom-4 left-4 bg-card rounded-md border border-border px-4 py-2 text-xs text-muted-foreground">
         <div className="flex items-center space-x-4">
           <span>Nodes: {nodes.length}</span>
           <span>•</span>
@@ -1524,7 +1524,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           {selectedNodeId && (
             <>
               <span>•</span>
-              <span className="text-blue-600 font-medium">Node Selected</span>
+              <span className="text-primary font-medium">Node Selected</span>
             </>
           )}
           {selectedConnectionId && (
