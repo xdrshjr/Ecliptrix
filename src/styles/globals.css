@@ -4,99 +4,141 @@
 
 @layer base {
   :root {
-    --background: oklch(0.9777 0.0041 301.4256);
-    --foreground: oklch(0.3651 0.0325 287.0807);
-    --card: oklch(1.0000 0 0);
-    --card-foreground: oklch(0.3651 0.0325 287.0807);
-    --popover: oklch(1.0000 0 0);
-    --popover-foreground: oklch(0.3651 0.0325 287.0807);
-    --primary: oklch(0.6104 0.0767 299.7335);
-    --primary-foreground: oklch(0.9777 0.0041 301.4256);
-    --secondary: oklch(0.8957 0.0265 300.2416);
-    --secondary-foreground: oklch(0.3651 0.0325 287.0807);
-    --muted: oklch(0.8906 0.0139 299.7754);
-    --muted-foreground: oklch(0.5288 0.0375 290.7895);
-    --accent: oklch(0.7889 0.0802 359.9375);
-    --accent-foreground: oklch(0.3394 0.0441 1.7583);
-    --destructive: oklch(0.6332 0.1578 22.6734);
-    --destructive-foreground: oklch(0.9777 0.0041 301.4256);
-    --border: oklch(0.8447 0.0226 300.1421);
-    --input: oklch(0.9329 0.0124 301.2783);
-    --ring: oklch(0.6104 0.0767 299.7335);
-    --chart-1: oklch(0.6104 0.0767 299.7335);
-    --chart-2: oklch(0.7889 0.0802 359.9375);
-    --chart-3: oklch(0.7321 0.0749 169.8670);
-    --chart-4: oklch(0.8540 0.0882 76.8292);
-    --chart-5: oklch(0.7857 0.0645 258.0839);
-    --sidebar: oklch(0.9554 0.0082 301.3541);
-    --sidebar-foreground: oklch(0.3651 0.0325 287.0807);
-    --sidebar-primary: oklch(0.6104 0.0767 299.7335);
-    --sidebar-primary-foreground: oklch(0.9777 0.0041 301.4256);
-    --sidebar-accent: oklch(0.7889 0.0802 359.9375);
-    --sidebar-accent-foreground: oklch(0.3394 0.0441 1.7583);
-    --sidebar-border: oklch(0.8719 0.0198 302.1690);
-    --sidebar-ring: oklch(0.6104 0.0767 299.7335);
-    --font-sans: Geist, sans-serif;
+    --background: #1E1E1E;
+    --foreground: #E0E0E0;
+    --card: #252525;
+    --card-foreground: #E0E0E0;
+    --popover: #2C2C2C;
+    --popover-foreground: #E0E0E0;
+    --primary: #0D99FF;
+    --primary-foreground: #FFFFFF;
+    --secondary: #333333;
+    --secondary-foreground: #B3B3B3;
+    --muted: #2A2A2A;
+    --muted-foreground: #8C8C8C;
+    --accent: #383838;
+    --accent-foreground: #E0E0E0;
+    --destructive: #F24822;
+    --destructive-foreground: #FFFFFF;
+    --border: #3A3A3A;
+    --input: #2C2C2C;
+    --ring: #0D99FF;
+    --primary-hover: #0B85E0;
+    --chart-1: #0D99FF;
+    --chart-2: #F24822;
+    --chart-3: #14B8A6;
+    --chart-4: #F59E0B;
+    --chart-5: #8B5CF6;
+    --sidebar: #2C2C2C;
+    --sidebar-foreground: #E0E0E0;
+    --sidebar-primary: #0D99FF;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #383838;
+    --sidebar-accent-foreground: #E0E0E0;
+    --sidebar-border: #3A3A3A;
+    --sidebar-ring: #0D99FF;
+    --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
     --font-serif: "Lora", Georgia, serif;
     --font-mono: "Fira Code", "Courier New", monospace;
-    --radius: 0.5rem;
-    --shadow-2xs: 1px 2px 5px 1px hsl(0 0% 0% / 0.03);
-    --shadow-xs: 1px 2px 5px 1px hsl(0 0% 0% / 0.03);
-    --shadow-sm: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 1px 2px 0px hsl(0 0% 0% / 0.06);
-    --shadow: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 1px 2px 0px hsl(0 0% 0% / 0.06);
-    --shadow-md: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 2px 4px 0px hsl(0 0% 0% / 0.06);
-    --shadow-lg: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 4px 6px 0px hsl(0 0% 0% / 0.06);
-    --shadow-xl: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 8px 10px 0px hsl(0 0% 0% / 0.06);
-    --shadow-2xl: 1px 2px 5px 1px hsl(0 0% 0% / 0.15);
+    --radius: 6px;
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow: none;
+    --shadow-md: none;
+    --shadow-lg: 0 2px 8px rgba(0,0,0,0.15);
+    --shadow-xl: 0 4px 16px rgba(0,0,0,0.2);
+    --shadow-2xl: 0 8px 24px rgba(0,0,0,0.25);
     --tracking-normal: 0em;
     --spacing: 0.25rem;
   }
 
   .dark {
-    --background: oklch(0.2166 0.0215 292.8474);
-    --foreground: oklch(0.9053 0.0245 293.5570);
-    --card: oklch(0.2544 0.0301 292.7315);
-    --card-foreground: oklch(0.9053 0.0245 293.5570);
-    --popover: oklch(0.2544 0.0301 292.7315);
-    --popover-foreground: oklch(0.9053 0.0245 293.5570);
-    --primary: oklch(0.7058 0.0777 302.0489);
-    --primary-foreground: oklch(0.2166 0.0215 292.8474);
-    --secondary: oklch(0.4604 0.0472 295.5578);
-    --secondary-foreground: oklch(0.9053 0.0245 293.5570);
-    --muted: oklch(0.2560 0.0320 294.8380);
-    --muted-foreground: oklch(0.6974 0.0282 300.0614);
-    --accent: oklch(0.3181 0.0321 308.6149);
-    --accent-foreground: oklch(0.8391 0.0692 2.6681);
-    --destructive: oklch(0.6875 0.1420 21.4566);
-    --destructive-foreground: oklch(0.2166 0.0215 292.8474);
-    --border: oklch(0.3063 0.0359 293.3367);
-    --input: oklch(0.2847 0.0346 291.2726);
-    --ring: oklch(0.7058 0.0777 302.0489);
-    --chart-1: oklch(0.7058 0.0777 302.0489);
-    --chart-2: oklch(0.8391 0.0692 2.6681);
-    --chart-3: oklch(0.7321 0.0749 169.8670);
-    --chart-4: oklch(0.8540 0.0882 76.8292);
-    --chart-5: oklch(0.7857 0.0645 258.0839);
-    --sidebar: oklch(0.1985 0.0200 293.6639);
-    --sidebar-foreground: oklch(0.9053 0.0245 293.5570);
-    --sidebar-primary: oklch(0.7058 0.0777 302.0489);
-    --sidebar-primary-foreground: oklch(0.2166 0.0215 292.8474);
-    --sidebar-accent: oklch(0.3181 0.0321 308.6149);
-    --sidebar-accent-foreground: oklch(0.8391 0.0692 2.6681);
-    --sidebar-border: oklch(0.2847 0.0346 291.2726);
-    --sidebar-ring: oklch(0.7058 0.0777 302.0489);
-    --font-sans: Geist, sans-serif;
-    --font-serif: "Lora", Georgia, serif;
-    --font-mono: "Fira Code", "Courier New", monospace;
-    --radius: 0.5rem;
-    --shadow-2xs: 1px 2px 5px 1px hsl(0 0% 0% / 0.03);
-    --shadow-xs: 1px 2px 5px 1px hsl(0 0% 0% / 0.03);
-    --shadow-sm: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 1px 2px 0px hsl(0 0% 0% / 0.06);
-    --shadow: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 1px 2px 0px hsl(0 0% 0% / 0.06);
-    --shadow-md: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 2px 4px 0px hsl(0 0% 0% / 0.06);
-    --shadow-lg: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 4px 6px 0px hsl(0 0% 0% / 0.06);
-    --shadow-xl: 1px 2px 5px 1px hsl(0 0% 0% / 0.06), 1px 8px 10px 0px hsl(0 0% 0% / 0.06);
-    --shadow-2xl: 1px 2px 5px 1px hsl(0 0% 0% / 0.15);
+    --background: #1E1E1E;
+    --foreground: #E0E0E0;
+    --card: #252525;
+    --card-foreground: #E0E0E0;
+    --popover: #2C2C2C;
+    --popover-foreground: #E0E0E0;
+    --primary: #0D99FF;
+    --primary-foreground: #FFFFFF;
+    --primary-hover: #0B85E0;
+    --secondary: #333333;
+    --secondary-foreground: #B3B3B3;
+    --muted: #2A2A2A;
+    --muted-foreground: #8C8C8C;
+    --accent: #383838;
+    --accent-foreground: #E0E0E0;
+    --destructive: #F24822;
+    --destructive-foreground: #FFFFFF;
+    --border: #3A3A3A;
+    --input: #2C2C2C;
+    --ring: #0D99FF;
+    --chart-1: #0D99FF;
+    --chart-2: #F24822;
+    --chart-3: #14B8A6;
+    --chart-4: #F59E0B;
+    --chart-5: #8B5CF6;
+    --sidebar: #2C2C2C;
+    --sidebar-foreground: #E0E0E0;
+    --sidebar-primary: #0D99FF;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #383838;
+    --sidebar-accent-foreground: #E0E0E0;
+    --sidebar-border: #3A3A3A;
+    --sidebar-ring: #0D99FF;
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow: none;
+    --shadow-md: none;
+    --shadow-lg: 0 2px 8px rgba(0,0,0,0.15);
+    --shadow-xl: 0 4px 16px rgba(0,0,0,0.2);
+    --shadow-2xl: 0 8px 24px rgba(0,0,0,0.25);
+  }
+
+  .light {
+    --background: #F5F5F5;
+    --foreground: #333333;
+    --card: #FFFFFF;
+    --card-foreground: #333333;
+    --popover: #FFFFFF;
+    --popover-foreground: #333333;
+    --primary: #0C8CE9;
+    --primary-foreground: #FFFFFF;
+    --secondary: #EBEBEB;
+    --secondary-foreground: #666666;
+    --muted: #F0F0F0;
+    --muted-foreground: #999999;
+    --accent: #E8E8E8;
+    --accent-foreground: #333333;
+    --destructive: #F24822;
+    --destructive-foreground: #FFFFFF;
+    --border: #E0E0E0;
+    --input: #F0F0F0;
+    --ring: #0C8CE9;
+    --primary-hover: #0A7AD0;
+    --chart-1: #0C8CE9;
+    --chart-2: #F24822;
+    --chart-3: #14B8A6;
+    --chart-4: #F59E0B;
+    --chart-5: #8B5CF6;
+    --sidebar: #F7F7F7;
+    --sidebar-foreground: #333333;
+    --sidebar-primary: #0C8CE9;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #E8E8E8;
+    --sidebar-accent-foreground: #333333;
+    --sidebar-border: #E0E0E0;
+    --sidebar-ring: #0C8CE9;
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow: none;
+    --shadow-md: none;
+    --shadow-lg: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-xl: 0 4px 16px rgba(0,0,0,0.1);
+    --shadow-2xl: 0 8px 24px rgba(0,0,0,0.12);
   }
 }
 
@@ -159,17 +201,19 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-/* Apple-inspired scrollbar */
+/* Figma-style scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -177,26 +221,27 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
+  background: var(--border);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--muted-foreground);
 }
 
-/* Smooth transitions */
-* {
-  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+/* Targeted transitions for interactive elements only */
+button, a, input, select, textarea,
+[role="button"], [role="tab"], [role="menuitem"] {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 /* Focus styles */
 *:focus-visible {
   outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
 }
 
-/* 禁止整个应用的滚动 */
 html, body {
   overflow: hidden !important;
   height: 100% !important;
@@ -204,34 +249,29 @@ html, body {
   width: 100% !important;
 }
 
-/* 确保主应用容器不产生滚动 */
 #__next {
   height: 100% !important;
   overflow: hidden !important;
 }
 
-/* Vertical Taskbar Styles - Apple Light Design */
+/* Vertical Taskbar Styles */
 .vertical-taskbar {
   position: relative;
   width: 48px;
   height: 100%;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 100;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   flex-shrink: 0;
   cursor: pointer;
 }
 
 .vertical-taskbar:hover {
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: var(--accent);
 }
 
 .vertical-taskbar.expanded {
@@ -242,7 +282,7 @@ html, body {
   filter: blur(4px);
   opacity: 0.6;
   pointer-events: none;
-  transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+  transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -258,7 +298,7 @@ html, body {
 
 .section-divider {
   height: 1px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--border);
   margin: 8px 0;
 }
 
@@ -266,14 +306,14 @@ html, body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 8px;
-  border-radius: 8px;
+  padding: 8px;
+  border-radius: 4px;
   border: none;
   background: transparent;
-  color: #374151;
+  color: var(--foreground);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  font-size: 14px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  font-size: 13px;
   font-weight: 500;
   width: 100%;
   text-align: left;
@@ -281,24 +321,24 @@ html, body {
 }
 
 .taskbar-button:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: #1f2937;
+  background: var(--accent);
+  color: var(--foreground);
 }
 
 .taskbar-button.active,
 .taskbar-button.new-task-button.active {
-  background: #3b82f6;
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .new-task-button {
-  background: #3b82f6;
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .new-task-button:hover {
-  background: #2563eb;
-  color: white;
+  background: var(--primary-hover);
+  color: var(--primary-foreground);
 }
 
 .button-icon {
@@ -309,7 +349,7 @@ html, body {
 }
 
 .button-text {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -342,22 +382,22 @@ html, body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 6px;
-  border-radius: 8px;
+  padding: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  color: #6b7280;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  color: var(--muted-foreground);
   position: relative;
 }
 
 .taskbar-tab:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: #374151;
+  background: var(--accent);
+  color: var(--foreground);
 }
 
 .taskbar-tab.active {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background: var(--accent);
+  color: var(--primary);
 }
 
 .tab-icon {
@@ -372,7 +412,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   flex: 1;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   min-width: 0;
 }
@@ -388,7 +428,7 @@ html, body {
 }
 
 .tab-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -408,13 +448,13 @@ html, body {
   color: currentColor;
   cursor: pointer;
   opacity: 0.6;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.15s ease, background-color 0.15s ease;
   flex-shrink: 0;
 }
 
 .tab-close:hover {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--accent);
 }
 
 .task-menu {
@@ -422,12 +462,10 @@ html, body {
   top: 100%;
   left: 0;
   margin-top: 4px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
   z-index: 1001;
   overflow: hidden;
 }
@@ -443,29 +481,29 @@ html, body {
 }
 
 .menu-content {
-  padding: 8px;
+  padding: 4px;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
   border: none;
   background: transparent;
-  color: #374151;
+  color: var(--foreground);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  font-size: 14px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  font-size: 13px;
   font-weight: 500;
   width: 100%;
   text-align: left;
 }
 
 .menu-item:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: #1f2937;
+  background: var(--accent);
+  color: var(--foreground);
 }
 
 .menu-item-icon {
@@ -496,7 +534,7 @@ html, body {
 }
 
 /* ==========================================
-   Landing Page Styles - Apple Minimalist Design
+   Landing Page Styles
    ========================================== */
 
 .landing-page {
@@ -505,7 +543,7 @@ html, body {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  background-color: #f5f5f7;
+  background-color: var(--background);
 }
 
 .landing-background {
@@ -526,8 +564,7 @@ html, body {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  filter: blur(0px) brightness(1.1);
-  opacity: 0.15;
+  opacity: 0.08;
 }
 
 .landing-background-overlay {
@@ -536,12 +573,7 @@ html, body {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(245, 245, 247, 0.98) 50%,
-    rgba(255, 255, 255, 0.95) 100%
-  );
+  background: var(--background);
 }
 
 .landing-content {
@@ -572,18 +604,14 @@ html, body {
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  color: #1d1d1f;
+  color: var(--foreground);
   margin-bottom: 16px;
-  background: linear-gradient(135deg, #1d1d1f 0%, #4a4a4a 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .landing-subtitle {
   font-size: 28px;
   font-weight: 600;
-  color: #6e6e73;
+  color: var(--muted-foreground);
   margin-bottom: 24px;
   letter-spacing: -0.01em;
 }
@@ -591,7 +619,7 @@ html, body {
 .landing-description {
   font-size: 18px;
   line-height: 1.6;
-  color: #86868b;
+  color: var(--muted-foreground);
   margin-bottom: 48px;
   max-width: 680px;
   margin-left: auto;
@@ -601,7 +629,7 @@ html, body {
 /* CTA Buttons */
 .landing-cta-group {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
 }
@@ -610,43 +638,39 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 16px 32px;
-  font-size: 16px;
+  padding: 12px 24px;
+  font-size: 14px;
   font-weight: 600;
-  color: white;
-  background: linear-gradient(135deg, #0071e3 0%, #005bb5 100%);
+  color: var(--primary-foreground);
+  background: var(--primary);
   border: none;
-  border-radius: 980px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3);
+  transition: background-color 0.15s ease;
 }
 
 .landing-cta-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 113, 227, 0.4);
-  background: linear-gradient(135deg, #005bb5 0%, #0071e3 100%);
+  background: var(--primary-hover);
 }
 
 .landing-cta-secondary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 16px 32px;
-  font-size: 16px;
+  padding: 12px 24px;
+  font-size: 14px;
   font-weight: 600;
-  color: #0071e3;
-  background: rgba(0, 113, 227, 0.08);
-  border: 1px solid rgba(0, 113, 227, 0.2);
-  border-radius: 980px;
+  color: var(--primary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .landing-cta-secondary:hover {
-  background: rgba(0, 113, 227, 0.15);
-  border-color: rgba(0, 113, 227, 0.3);
-  transform: translateY(-2px);
+  background: var(--accent);
+  border-color: var(--primary);
 }
 
 /* Features Section */
@@ -658,52 +682,46 @@ html, body {
 .landing-features-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 24px;
+  gap: 16px;
   margin-top: 48px;
 }
 
 .landing-feature-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  border-radius: 16px;
-  padding: 32px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--card);
+  border-radius: 6px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .landing-feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
-  border-color: rgba(0, 113, 227, 0.2);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--accent);
+  border-color: var(--primary);
 }
 
 .landing-feature-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .landing-feature-title {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1d1d1f;
-  margin-bottom: 12px;
-  letter-spacing: -0.01em;
+  color: var(--foreground);
+  margin-bottom: 8px;
 }
 
 .landing-feature-description {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #6e6e73;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
 }
 
 /* Stats Section */
@@ -728,17 +746,13 @@ html, body {
 .landing-stat-value {
   font-size: 56px;
   font-weight: 700;
-  color: #1d1d1f;
+  color: var(--primary);
   margin-bottom: 8px;
-  background: linear-gradient(135deg, #0071e3 0%, #005bb5 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .landing-stat-label {
-  font-size: 17px;
-  color: #6e6e73;
+  font-size: 14px;
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
