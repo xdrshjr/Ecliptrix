@@ -562,6 +562,21 @@ html, body {
   border-radius: 6px;
 }
 
+/* shadcn/ui global overrides */
+[data-radix-popper-content-wrapper] {
+  --radius: 6px;
+}
+
+[role="tooltip"] {
+  background: var(--popover) !important;
+  color: var(--popover-foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  padding: 4px 8px !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
 /* Chat LLM Config Panel Animations */
 @keyframes slide-in-right {
   from {

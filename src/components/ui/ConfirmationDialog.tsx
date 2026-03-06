@@ -63,24 +63,24 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const getIconColor = () => {
     switch (type) {
       case 'danger':
-        return 'text-red-600';
+        return 'text-destructive';
       case 'warning':
-        return 'text-amber-600';
+        return 'text-yellow-500';
       default:
-        return 'text-blue-600';
+        return 'text-primary';
     }
   };
 
   const getDefaultConfirmButtonClass = () => {
     if (confirmButtonClass) return confirmButtonClass;
-    
+
     switch (type) {
       case 'danger':
-        return 'bg-red-600 hover:bg-red-700 focus:ring-red-500';
+        return 'bg-destructive text-destructive-foreground hover:opacity-90';
       case 'warning':
-        return 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500';
+        return 'bg-yellow-600 text-white hover:opacity-90';
       default:
-        return 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500';
+        return 'bg-primary text-primary-foreground hover:opacity-90';
     }
   };
 
@@ -114,14 +114,14 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   return (
     <div 
       className={`fixed inset-0 z-[200] flex items-center justify-center p-4 transition-all duration-200 ${
-        isAnimating ? 'bg-black bg-opacity-50' : 'bg-black bg-opacity-0'
+        isAnimating ? 'bg-black/60' : 'bg-black/0'
       }`}
       onClick={handleBackdropClick}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       <div 
-        className={`bg-white rounded-xl shadow-2xl border border-gray-200 max-w-md w-full transform transition-all duration-200 ${
+        className={`bg-card rounded-md shadow-xl border border-border max-w-md w-full transform transition-all duration-200 ${
           isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
         role="dialog"
@@ -137,13 +137,13 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <div className="flex-1">
             <h3 
               id="dialog-title" 
-              className="text-lg font-semibold text-gray-900 mb-2"
+              className="text-sm font-semibold text-foreground mb-2"
             >
               {title}
             </h3>
             <p 
               id="dialog-description" 
-              className="text-sm text-gray-600 leading-relaxed"
+              className="text-sm text-muted-foreground leading-relaxed"
             >
               {message}
             </p>
@@ -151,16 +151,16 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 px-6 py-4 bg-gray-50 rounded-b-xl">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border rounded-b-md">
           <button
             onClick={handleCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+            className="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-accent focus:outline-none transition-colors"
           >
             {cancelText}
           </button>
           <button
             onClick={handleConfirm}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${getDefaultConfirmButtonClass()}`}
+            className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors ${getDefaultConfirmButtonClass()}`}
           >
             {confirmText}
           </button>

@@ -24,7 +24,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${inter.variable} dark h-full`}>
+    <html lang="en" className={`${inter.variable} dark h-full`} style={{ colorScheme: 'dark' }} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('ecliptrix-theme');if(t==='light'){document.documentElement.classList.replace('dark','light');document.documentElement.style.colorScheme='light'}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body
         className="h-full bg-background text-foreground antialiased overflow-hidden font-sans"
         suppressHydrationWarning={true}
