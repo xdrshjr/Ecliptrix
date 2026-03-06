@@ -59,7 +59,7 @@ const UserManagement: React.FC = () => {
     try {
       setLoading(true);
       console.log('[UserManagement] Fetching users...');
-      
+
       const response = await fetch('/api/admin/users/list');
       const data = await response.json();
 
@@ -161,7 +161,7 @@ const UserManagement: React.FC = () => {
         await fetchUsers(); // Refresh the user list
       } else {
         console.error('[UserManagement] Failed to create user:', data.message);
-        
+
         // Handle specific error messages
         if (data.message?.includes('用户名') || data.message?.includes('Username')) {
           notification.showError(t.adminSettings.usernameExists);
@@ -244,7 +244,7 @@ const UserManagement: React.FC = () => {
     return t.adminSettings.regularUsers;
   };
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -260,29 +260,29 @@ const UserManagement: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="inline-block w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="mt-4 text-sm text-gray-600">{t.adminSettings.loading}</p>
+          <div className="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="mt-4 text-sm text-muted-foreground">{t.adminSettings.loading}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-background">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-8 py-6">
+      <div className="bg-card border-b border-border px-8 py-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-2xl font-semibold text-gray-900">
+            <h2 className="text-2xl font-semibold text-foreground">
               {t.adminSettings.registeredUsers}
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {t.adminSettings.userManagementDesc}
             </p>
           </div>
           <button
             onClick={fetchUsers}
-            className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 rounded-md transition-colors"
           >
             <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -293,17 +293,17 @@ const UserManagement: React.FC = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-blue-50 rounded-lg p-4">
-            <div className="text-sm text-blue-600 font-medium">{t.adminSettings.totalUsers}</div>
-            <div className="text-2xl font-bold text-blue-700 mt-1">{stats.total}</div>
+          <div className="bg-primary/10 rounded-md p-4">
+            <div className="text-sm text-primary font-medium">{t.adminSettings.totalUsers}</div>
+            <div className="text-2xl font-bold text-primary mt-1">{stats.total}</div>
           </div>
-          <div className="bg-purple-50 rounded-lg p-4">
-            <div className="text-sm text-purple-600 font-medium">{t.adminSettings.adminUsers}</div>
-            <div className="text-2xl font-bold text-purple-700 mt-1">{stats.admin}</div>
+          <div className="bg-primary/10 rounded-md p-4">
+            <div className="text-sm text-primary font-medium">{t.adminSettings.adminUsers}</div>
+            <div className="text-2xl font-bold text-primary mt-1">{stats.admin}</div>
           </div>
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="text-sm text-green-600 font-medium">{t.adminSettings.active}</div>
-            <div className="text-2xl font-bold text-green-700 mt-1">{stats.active}</div>
+          <div className="bg-green-500/10 rounded-md p-4">
+            <div className="text-sm text-green-500 font-medium">{t.adminSettings.active}</div>
+            <div className="text-2xl font-bold text-green-500 mt-1">{stats.active}</div>
           </div>
         </div>
 
@@ -315,15 +315,15 @@ const UserManagement: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t.adminSettings.searchPlaceholder}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 bg-input text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
             />
-            <svg className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3 top-2.5 w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
           <button
             onClick={openCreateModal}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium flex items-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -336,91 +336,91 @@ const UserManagement: React.FC = () => {
       {/* Users Table */}
       <div className="flex-1 overflow-auto px-8 py-6">
         {filteredUsers.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-            <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-card rounded-md border border-border p-12 text-center">
+            <svg className="w-16 h-16 mx-auto text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            <p className="text-gray-600 text-lg">{t.adminSettings.noUsers}</p>
+            <p className="text-muted-foreground text-lg">{t.adminSettings.noUsers}</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="bg-card rounded-md border border-border overflow-hidden">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.adminSettings.username}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.profile.email}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.adminSettings.role}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.adminSettings.status}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.adminSettings.createdAt}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.adminSettings.lastLogin}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {t.adminSettings.actions}
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={user.id} className="hover:bg-accent transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                            <span className="text-sm font-medium text-white">
+                          <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
+                            <span className="text-sm font-medium text-primary-foreground">
                               {user.username.charAt(0).toUpperCase()}
                             </span>
                           </div>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                          <div className="text-sm font-medium text-foreground">{user.username}</div>
                           {user.full_name && (
-                            <div className="text-sm text-gray-500">{user.full_name}</div>
+                            <div className="text-sm text-muted-foreground">{user.full_name}</div>
                           )}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.email || '-'}</div>
+                      <div className="text-sm text-muted-foreground">{user.email || '-'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded ${
                         user.is_admin
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         {getUserRole(user)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded ${
                         user.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                          ? 'bg-green-500/10 text-green-500'
+                          : 'bg-destructive/10 text-destructive'
                       }`}>
                         {user.is_active ? t.adminSettings.active : t.adminSettings.inactive}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                       {formatDate(user.created_at)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                       {formatDate(user.last_login_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button
                         onClick={() => openDeleteModal(user)}
-                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                         title={t.adminSettings.deleteUser}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -438,17 +438,17 @@ const UserManagement: React.FC = () => {
 
       {/* Create User Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4">
+          <div className="bg-card rounded-md shadow-sm max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-semibold text-gray-900">{t.adminSettings.createUserTitle}</h3>
-                <p className="text-sm text-gray-500 mt-1">{t.adminSettings.createUserDesc}</p>
+                <h3 className="text-xl font-semibold text-foreground">{t.adminSettings.createUserTitle}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{t.adminSettings.createUserDesc}</p>
               </div>
               <button
                 onClick={closeCreateModal}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-muted-foreground hover:text-foreground transition-colors"
                 disabled={isCreating}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -461,67 +461,67 @@ const UserManagement: React.FC = () => {
             <div className="px-6 py-4 space-y-4">
               {/* Username */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t.adminSettings.username} <span className="text-red-500">*</span>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  {t.adminSettings.username} <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   placeholder={t.adminSettings.usernamePlaceholder}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formErrors.username ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full px-3 py-2 bg-input text-foreground border rounded-md focus:outline-none focus:ring-2 focus:ring-ring ${
+                    formErrors.username ? 'border-destructive' : 'border-border'
                   }`}
                   disabled={isCreating}
                 />
                 {formErrors.username && (
-                  <p className="text-red-500 text-sm mt-1">{formErrors.username}</p>
+                  <p className="text-destructive text-sm mt-1">{formErrors.username}</p>
                 )}
               </div>
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t.profile.email} <span className="text-red-500">*</span>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  {t.profile.email} <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder={t.profile.emailPlaceholder}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formErrors.email ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full px-3 py-2 bg-input text-foreground border rounded-md focus:outline-none focus:ring-2 focus:ring-ring ${
+                    formErrors.email ? 'border-destructive' : 'border-border'
                   }`}
                   disabled={isCreating}
                 />
                 {formErrors.email && (
-                  <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
+                  <p className="text-destructive text-sm mt-1">{formErrors.email}</p>
                 )}
               </div>
 
               {/* Password */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t.adminSettings.password} <span className="text-red-500">*</span>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  {t.adminSettings.password} <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder={t.adminSettings.passwordPlaceholder}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formErrors.password ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full px-3 py-2 bg-input text-foreground border rounded-md focus:outline-none focus:ring-2 focus:ring-ring ${
+                    formErrors.password ? 'border-destructive' : 'border-border'
                   }`}
                   disabled={isCreating}
                 />
                 {formErrors.password && (
-                  <p className="text-red-500 text-sm mt-1">{formErrors.password}</p>
+                  <p className="text-destructive text-sm mt-1">{formErrors.password}</p>
                 )}
               </div>
 
               {/* Full Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   {t.adminSettings.fullName}
                 </label>
                 <input
@@ -529,14 +529,14 @@ const UserManagement: React.FC = () => {
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   placeholder={t.adminSettings.fullNamePlaceholder}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-input text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={isCreating}
                 />
               </div>
 
               {/* Avatar URL */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   {t.adminSettings.avatarUrl}
                 </label>
                 <input
@@ -544,20 +544,20 @@ const UserManagement: React.FC = () => {
                   value={formData.avatar_url}
                   onChange={(e) => setFormData({ ...formData, avatar_url: e.target.value })}
                   placeholder={t.adminSettings.avatarUrlPlaceholder}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-input text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={isCreating}
                 />
               </div>
 
               {/* User Role */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   {t.adminSettings.userRole}
                 </label>
                 <select
                   value={formData.user_role}
                   onChange={(e) => setFormData({ ...formData, user_role: e.target.value as 'admin' | 'regular' | 'premium' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-input text-foreground border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={isCreating}
                 >
                   <option value="regular">{t.adminSettings.userRoleRegular}</option>
@@ -574,12 +574,12 @@ const UserManagement: React.FC = () => {
                     id="is_admin"
                     checked={formData.is_admin}
                     onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
-                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="mt-1 w-4 h-4 text-primary border-border rounded focus:ring-ring"
                     disabled={isCreating}
                   />
                   <label htmlFor="is_admin" className="ml-2">
-                    <div className="text-sm font-medium text-gray-700">{t.adminSettings.isAdmin}</div>
-                    <div className="text-xs text-gray-500">{t.adminSettings.isAdminDesc}</div>
+                    <div className="text-sm font-medium text-foreground">{t.adminSettings.isAdmin}</div>
+                    <div className="text-xs text-muted-foreground">{t.adminSettings.isAdminDesc}</div>
                   </label>
                 </div>
 
@@ -590,29 +590,29 @@ const UserManagement: React.FC = () => {
                     id="is_active"
                     checked={formData.is_active}
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="mt-1 w-4 h-4 text-primary border-border rounded focus:ring-ring"
                     disabled={isCreating}
                   />
                   <label htmlFor="is_active" className="ml-2">
-                    <div className="text-sm font-medium text-gray-700">{t.adminSettings.isActive}</div>
-                    <div className="text-xs text-gray-500">{t.adminSettings.isActiveDesc}</div>
+                    <div className="text-sm font-medium text-foreground">{t.adminSettings.isActive}</div>
+                    <div className="text-xs text-muted-foreground">{t.adminSettings.isActiveDesc}</div>
                   </label>
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+            <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex justify-end gap-3">
               <button
                 onClick={closeCreateModal}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent transition-colors"
                 disabled={isCreating}
               >
                 {t.adminSettings.cancel}
               </button>
               <button
                 onClick={handleCreateUser}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isCreating}
               >
                 {isCreating ? t.adminSettings.creating : t.adminSettings.createUser}
@@ -624,40 +624,40 @@ const UserManagement: React.FC = () => {
 
       {/* Delete Confirmation Modal - Apple Light Style */}
       {isDeleteModalOpen && userToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4">
+          <div className="bg-card rounded-md shadow-sm w-full max-w-md overflow-hidden">
             {/* Modal Header */}
             <div className="px-6 pt-6 pb-4 text-center">
-              <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-red-100 mb-4">
-                <svg className="h-7 w-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-destructive/10 mb-4">
+                <svg className="h-7 w-7 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-foreground mb-2">
                 {t.adminSettings.deleteConfirmTitle}
               </h3>
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 {t.adminSettings.deleteConfirmMessage}
               </p>
             </div>
 
             {/* User Info */}
             <div className="px-6 pb-4">
-              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+              <div className="bg-background rounded-md p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-500">
+                  <span className="text-sm font-medium text-muted-foreground">
                     {t.adminSettings.deleteConfirmUsername}:
                   </span>
-                  <span className="text-sm font-semibold text-gray-900">
+                  <span className="text-sm font-semibold text-foreground">
                     {userToDelete.username}
                   </span>
                 </div>
                 {userToDelete.email && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">
+                    <span className="text-sm font-medium text-muted-foreground">
                       {t.adminSettings.deleteConfirmEmail}:
                     </span>
-                    <span className="text-sm font-semibold text-gray-900">
+                    <span className="text-sm font-semibold text-foreground">
                       {userToDelete.email}
                     </span>
                   </div>
@@ -669,14 +669,14 @@ const UserManagement: React.FC = () => {
             <div className="px-6 pb-6 flex gap-3">
               <button
                 onClick={closeDeleteModal}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-foreground bg-muted hover:bg-accent rounded-md transition-colors"
                 disabled={isDeleting}
               >
                 {t.adminSettings.cancelDelete}
               </button>
               <button
                 onClick={handleDeleteUser}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isDeleting}
               >
                 {isDeleting ? t.adminSettings.deleting : t.adminSettings.confirmDelete}
@@ -690,4 +690,3 @@ const UserManagement: React.FC = () => {
 };
 
 export default UserManagement;
-

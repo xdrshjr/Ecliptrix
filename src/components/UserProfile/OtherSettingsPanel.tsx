@@ -92,8 +92,8 @@ const OtherSettingsPanel: React.FC = () => {
   }) => (
     <button
       onClick={() => !disabled && onChange(!enabled)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-        enabled ? 'bg-blue-600' : 'bg-gray-200'
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+        enabled ? 'bg-primary' : 'bg-muted'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       disabled={disabled}
     >
@@ -110,26 +110,26 @@ const OtherSettingsPanel: React.FC = () => {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          <h2 className="text-xl font-semibold text-foreground mb-2">
             {t.profile.otherSettings}
           </h2>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             {t.profile.otherSettingsDescription}
           </p>
         </div>
 
         {/* Notification Settings */}
         <div className="mb-8">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
+          <h3 className="text-lg font-medium text-foreground mb-4">
             {t.profile.notifications}
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-foreground">
                   {t.profile.emailNotifications}
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {t.profile.emailNotificationsDesc}
                 </p>
               </div>
@@ -140,10 +140,10 @@ const OtherSettingsPanel: React.FC = () => {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-foreground">
                   {t.profile.pushNotifications}
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {t.profile.pushNotificationsDesc}
                 </p>
               </div>
@@ -154,10 +154,10 @@ const OtherSettingsPanel: React.FC = () => {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-foreground">
                   {t.profile.marketingEmails}
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {t.profile.marketingEmailsDesc}
                 </p>
               </div>
@@ -171,16 +171,16 @@ const OtherSettingsPanel: React.FC = () => {
 
         {/* Privacy Settings */}
         <div className="mb-8">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
+          <h3 className="text-lg font-medium text-foreground mb-4">
             {t.profile.privacy}
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-foreground">
                   {t.profile.profileVisible}
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {t.profile.profileVisibleDesc}
                 </p>
               </div>
@@ -191,10 +191,10 @@ const OtherSettingsPanel: React.FC = () => {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-foreground">
                   {t.profile.activityVisible}
                 </label>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   {t.profile.activityVisibleDesc}
                 </p>
               </div>
@@ -208,31 +208,31 @@ const OtherSettingsPanel: React.FC = () => {
 
         {/* Preferences */}
         <div className="mb-8">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
+          <h3 className="text-lg font-medium text-foreground mb-4">
             {t.profile.preferences}
           </h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 {t.profile.language}
               </label>
               <select
                 value={settings.preferences.language}
                 onChange={(e) => handleLanguageChange(e.target.value as 'en' | 'zh-CN')}
-                className="block w-48 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="block w-48 px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring text-sm"
               >
                 <option value="en">{t.header.english}</option>
                 <option value="zh-CN">{t.header.chinese}</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 {t.profile.theme}
               </label>
               <select
                 value={settings.preferences.theme}
                 onChange={(e) => handleThemeChange(e.target.value as 'light' | 'dark' | 'auto')}
-                className="block w-48 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="block w-48 px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring text-sm"
               >
                 <option value="light">{t.profile.lightTheme}</option>
                 <option value="dark">{t.profile.darkTheme}</option>
@@ -243,11 +243,11 @@ const OtherSettingsPanel: React.FC = () => {
         </div>
 
         {/* Save Button */}
-        <div className="pt-6 border-t border-gray-200">
+        <div className="pt-6 border-t border-border">
           <button
             onClick={handleSave}
             disabled={isLoading}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? t.profile.saving : t.profile.saveSettings}
           </button>

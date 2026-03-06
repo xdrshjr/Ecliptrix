@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 
@@ -18,23 +18,6 @@ const LandingPage: React.FC<LandingPageProps> = ({
   onLoginRequired 
 }) => {
   const { t } = useLocale();
-  const [backgroundImage, setBackgroundImage] = useState<string>('');
-
-  // Load Unsplash background image
-  useEffect(() => {
-    console.log('[LandingPage] Component mounted, loading background image:', {
-      timestamp: new Date().toISOString()
-    });
-
-    // Using Unsplash Source API for random gradient/abstract backgrounds
-    const unsplashUrl = 'https://source.unsplash.com/random/1920x1080/?gradient,abstract,minimal';
-    setBackgroundImage(unsplashUrl);
-
-    console.log('[LandingPage] Background image URL set:', {
-      url: unsplashUrl,
-      timestamp: new Date().toISOString()
-    });
-  }, []);
 
   const handleGetStarted = (taskType: TaskType) => {
     console.log('[LandingPage] Get started clicked:', {
@@ -82,7 +65,6 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.videoEditing,
       description: 'Professional video editing with AI-powered tools and intuitive timeline interface',
-      color: 'from-blue-500 to-cyan-500',
       type: 'video' as TaskType
     },
     {
@@ -93,7 +75,6 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.workflow,
       description: 'Build powerful AI workflows with visual node-based editor',
-      color: 'from-purple-500 to-pink-500',
       type: 'workflow' as TaskType
     },
     {
@@ -104,7 +85,6 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.aiChat,
       description: 'Intelligent AI conversations for content creation and assistance',
-      color: 'from-green-500 to-emerald-500',
       type: 'chat' as TaskType
     },
     {
@@ -115,24 +95,12 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.brainstorming,
       description: 'Generate creative ideas and concepts for your projects',
-      color: 'from-orange-500 to-red-500',
       type: 'brainstorm' as TaskType
     }
   ];
 
   return (
     <div className="landing-page">
-      {/* Background Image with Overlay */}
-      <div className="landing-background">
-        {backgroundImage && (
-          <div 
-            className="landing-background-image"
-            style={{ backgroundImage: `url(${backgroundImage})` }}
-          />
-        )}
-        <div className="landing-background-overlay" />
-      </div>
-
       {/* Main Content */}
       <div className="landing-content">
         {/* Hero Section */}
@@ -183,7 +151,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
                 className="landing-feature-card"
                 onClick={() => handleGetStarted(feature.type)}
               >
-                <div className={`landing-feature-icon bg-gradient-to-br ${feature.color}`}>
+                <div className="landing-feature-icon bg-primary/10 text-primary">
                   {feature.icon}
                 </div>
                 <h3 className="landing-feature-title">{feature.title}</h3>

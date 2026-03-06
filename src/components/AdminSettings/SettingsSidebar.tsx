@@ -43,32 +43,32 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeItem, onSelectI
   ];
 
   return (
-    <div className="w-full h-full bg-white border-r border-gray-200 overflow-y-auto">
+    <div className="w-full h-full bg-card border-r border-border overflow-y-auto">
       <div className="p-6">
         <nav className="space-y-1">
           {menuItems.map((item) => (
             <button
               key={item.id}
               onClick={() => onSelectItem(item.id)}
-              className={`w-full text-left px-4 py-3 rounded-lg transition-all duration-200 ${
+              className={`w-full text-left px-4 py-3 rounded-md transition-colors duration-150 ${
                 activeItem === item.id
-                  ? 'bg-blue-50 text-blue-700 shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-foreground hover:bg-accent'
               }`}
             >
               <div className="flex items-start space-x-3">
                 <div className={`mt-0.5 ${
-                  activeItem === item.id ? 'text-blue-600' : 'text-gray-400'
+                  activeItem === item.id ? 'text-primary' : 'text-muted-foreground'
                 }`}>
                   {item.icon}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className={`text-sm font-medium ${
-                    activeItem === item.id ? 'text-blue-700' : 'text-gray-900'
+                    activeItem === item.id ? 'text-primary' : 'text-foreground'
                   }`}>
                     {item.label}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
+                  <div className="text-xs text-muted-foreground mt-0.5">
                     {item.description}
                   </div>
                 </div>

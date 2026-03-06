@@ -107,21 +107,21 @@ const UserInfoPanel: React.FC = () => {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          <h2 className="text-xl font-semibold text-foreground mb-2">
             {t.profile.userInfo}
           </h2>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             {t.profile.userInfoDescription}
           </p>
         </div>
 
         {/* Avatar Section */}
         <div className="mb-8">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
+          <label className="block text-sm font-medium text-foreground mb-3">
             {t.profile.avatar}
           </label>
           <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center">
               {formData.avatarUrl ? (
                 <img
                   src={formData.avatarUrl}
@@ -129,7 +129,7 @@ const UserInfoPanel: React.FC = () => {
                   className="w-full h-full rounded-full object-cover"
                 />
               ) : (
-                <span className="text-xl font-medium text-white">
+                <span className="text-xl font-medium text-primary-foreground">
                   {formData.username.charAt(0).toUpperCase()}
                 </span>
               )}
@@ -140,9 +140,9 @@ const UserInfoPanel: React.FC = () => {
                 value={formData.avatarUrl}
                 onChange={(e) => handleInputChange('avatarUrl', e.target.value)}
                 placeholder={t.profile.avatarUrlPlaceholder}
-                className="block w-80 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="block w-80 px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring text-sm"
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {t.profile.avatarUrlHelper}
               </p>
             </div>
@@ -153,42 +153,42 @@ const UserInfoPanel: React.FC = () => {
         <div className="space-y-6">
           {/* Username */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               {t.profile.username}
             </label>
             <input
               type="text"
               value={formData.username}
               onChange={(e) => handleInputChange('username', e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring"
               placeholder={t.profile.usernamePlaceholder}
             />
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               {t.profile.email}
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => handleInputChange('email', e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring"
               placeholder={t.profile.emailPlaceholder}
             />
           </div>
 
           {/* Full Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               {t.profile.fullName}
             </label>
             <input
               type="text"
               value={formData.fullName}
               onChange={(e) => handleInputChange('fullName', e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring"
               placeholder={t.profile.fullNamePlaceholder}
             />
           </div>
@@ -196,18 +196,18 @@ const UserInfoPanel: React.FC = () => {
 
         {/* Action Buttons */}
         {hasChanges && (
-          <div className="mt-8 flex items-center space-x-4 pt-6 border-t border-gray-200">
+          <div className="mt-8 flex items-center space-x-4 pt-6 border-t border-border">
             <button
               onClick={handleSave}
               disabled={isLoading}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isLoading ? t.profile.saving : t.profile.save}
             </button>
             <button
               onClick={handleReset}
               disabled={isLoading}
-              className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 border border-border text-foreground text-sm font-medium rounded-md hover:bg-accent focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {t.profile.cancel}
             </button>

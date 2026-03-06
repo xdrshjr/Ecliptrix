@@ -34,7 +34,7 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="h-full w-full bg-gray-50 flex overflow-hidden">
+    <div className="h-full w-full bg-background flex overflow-hidden">
       {/* Left Sidebar - 20% */}
       <UserProfileSidebar
         activeSection={activeSection}
@@ -43,7 +43,7 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({ onClose }) => {
       />
 
       {/* Right Panel - 80% */}
-      <div className="flex-1 bg-white overflow-auto">
+      <div className="flex-1 bg-background overflow-auto">
         {renderActivePanel()}
       </div>
     </div>

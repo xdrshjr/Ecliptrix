@@ -42,22 +42,22 @@ const UserProfileSidebar: React.FC<UserProfileSidebarProps> = ({
   ];
 
   return (
-    <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
+    <div className="w-64 bg-card border-r border-border flex flex-col">
       {/* Header with close button */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">{t.profile.title}</h2>
+          <h2 className="text-lg font-semibold text-foreground">{t.profile.title}</h2>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+            className="p-1.5 hover:bg-accent rounded-md transition-colors"
             aria-label={t.common.close}
           >
-            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-1">{t.profile.subtitle}</p>
+        <p className="text-xs text-muted-foreground mt-1">{t.profile.subtitle}</p>
       </div>
 
       {/* Navigation */}
@@ -66,14 +66,14 @@ const UserProfileSidebar: React.FC<UserProfileSidebarProps> = ({
           <button
             key={item.id}
             onClick={() => onSectionChange(item.id)}
-            className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+            className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-md transition-colors ${
               activeSection === item.id
-                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                ? 'bg-primary/10 text-primary'
+                : 'text-foreground hover:bg-accent'
             }`}
           >
             <span className={`mr-3 ${
-              activeSection === item.id ? 'text-blue-600' : 'text-gray-400'
+              activeSection === item.id ? 'text-primary' : 'text-muted-foreground'
             }`}>
               {item.icon}
             </span>
