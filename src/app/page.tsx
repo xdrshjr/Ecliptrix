@@ -40,14 +40,14 @@ export default function HomePage() {
   // 检查是否显示着陆页（无任务时显示）
   const showLandingPage = tabs.length === 0 && !isSettingsOpen && !isProfileOpen;
   
-  // 检查当前是否为视频编辑任务
-  const isVideoEditingTask = activeTask?.type === 'video';
+  // 检查当前是否有活跃任务（活跃任务时隐藏Footer以最大化工作区域）
+  const hasActiveTask = !!activeTask;
 
   console.log('[HomePage] Rendering with layout:', {
     showLandingPage,
     activeTask: activeTask?.type,
     tabsCount: tabs.length,
-    isVideoEditingTask,
+    hasActiveTask,
     isSettingsOpen,
     isProfileOpen,
     timestamp: new Date().toISOString()
@@ -143,8 +143,8 @@ export default function HomePage() {
                 tabs={tabs}
                 onSelectTab={selectTab}
               />
-              {/* 条件渲染Footer：视频编辑任务时隐藏，其他任务时显示 */}
-              {!isVideoEditingTask && <Footer />}
+              {/* 条件渲染Footer：有活跃任务时隐藏，仅无任务时显示 */}
+              {!hasActiveTask && <Footer />}
             </>
           )}
         </div>
