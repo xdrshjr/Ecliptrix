@@ -496,32 +496,14 @@ const Track: React.FC<TrackProps> = ({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* 背景网格线 */}
-        <div className="absolute inset-0 pointer-events-none">
-          {(() => {
-            // 计算容器实际宽度对应的时间长度
-            const containerWidth = Math.max(totalDuration * pixelsPerSecond, 800);
-            const maxTimeForGrid = Math.ceil(containerWidth / pixelsPerSecond);
-            
-            console.log(`[Track] 生成背景网格线`, {
-              trackId: track.id,
-              totalDuration: totalDuration.toFixed(2),
-              containerWidth: containerWidth.toFixed(2),
-              pixelsPerSecond: pixelsPerSecond.toFixed(2),
-              maxTimeForGrid,
-              gridLinesCount: maxTimeForGrid,
-              timestamp: new Date().toISOString()
-            });
-            
-            return [...Array(maxTimeForGrid)].map((_, i) => (
-              <div
-                key={i}
-                className="absolute top-0 bottom-0 border-l border-border"
-                style={{ left: `${i * pixelsPerSecond}px` }}
-              />
-            ));
-          })()}
-        </div>
+        {/* 背景网格线 - 使用CSS渐变填充整个轨道宽度 */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `repeating-linear-gradient(to right, var(--border) 0px, var(--border) 1px, transparent 1px, transparent ${pixelsPerSecond}px)`,
+            backgroundSize: `${pixelsPerSecond}px 100%`,
+          }}
+        />
 
         {/* 渲染轨道上的所有项目 */}
         {track.items.map((item) => (
