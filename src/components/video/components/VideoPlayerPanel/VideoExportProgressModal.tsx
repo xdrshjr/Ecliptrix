@@ -116,7 +116,8 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                   cx="32"
                   cy="32"
                   r="28"
-                  stroke="#f3f4f6"
+                  stroke="currentColor"
+                  className="text-accent"
                   strokeWidth="4"
                   fill="none"
                 />
@@ -124,13 +125,13 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                   cx="32"
                   cy="32"
                   r="28"
-                  stroke="#3b82f6"
+                  stroke="currentColor"
+                  className="text-primary transition-all duration-500 ease-out"
                   strokeWidth="4"
                   fill="none"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 28}`}
                   strokeDashoffset={`${2 * Math.PI * 28 * (1 - progress / 100)}`}
-                  className="transition-all duration-500 ease-out"
                 />
               </svg>
               
@@ -138,7 +139,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
                <div className="absolute inset-0 flex items-center justify-center">
                  {progress >= 100 ? (
                    <svg 
-                     className="w-6 h-6 text-green-500 animate-bounce" 
+                     className="w-6 h-6 text-primary animate-bounce"
                      fill="currentColor" 
                      viewBox="0 0 24 24"
                    >
@@ -193,7 +194,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
         <div className="px-6 pb-4">
           <div className="w-full bg-accent rounded-full h-2 overflow-hidden">
             <div 
-              className="h-2 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
+              className="h-2 bg-primary rounded-full transition-all duration-500 ease-out"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
@@ -216,7 +217,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
             )}
             
             {progress >= 100 && (
-              <div className="flex items-center justify-center space-x-1 text-green-600">
+              <div className="flex items-center justify-center space-x-1 text-primary">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                 </svg>

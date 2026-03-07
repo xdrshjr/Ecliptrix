@@ -420,9 +420,9 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="w-10 h-10 bg-muted hover:bg-muted rounded-md flex items-center justify-center transition-all duration-200 hover:scale-105"
+            className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
           >
-            <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -529,7 +529,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                 <div className="flex items-center space-x-3 mb-4">
                   <button
                     onClick={handleSetStartTime}
-                    className="px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 border border-green-200"
+                    className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 border border-primary/20"
                   >
                     设为开始 ({formatTime(currentTime)})
                   </button>
@@ -542,7 +542,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                   <button
                     onClick={handleCreateClip}
                     disabled={startTime >= endTime}
-                    className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:bg-accent disabled:cursor-not-allowed text-white text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 disabled:hover:scale-100 hover:shadow-lg"
+                    className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:bg-accent disabled:cursor-not-allowed text-primary-foreground text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 disabled:hover:scale-100 hover:shadow-lg"
                   >
                     创建切片
                   </button>
@@ -699,7 +699,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                       className={`px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${
                         clips.length === 0
                           ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                          : 'bg-primary hover:bg-primary/90 text-white hover:scale-105 hover:shadow-lg'
+                          : 'bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 hover:shadow-lg'
                       }`}
                       title={clips.length === 0 ? '没有可导出的切片' : `导出 ${clips.length} 个切片到素材管理面板`}
                     >

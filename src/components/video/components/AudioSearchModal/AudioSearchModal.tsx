@@ -166,10 +166,10 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
           <button
             onClick={handleClose}
             disabled={isAddingAudios}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="关闭"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -271,7 +271,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
 
             {/* 错误信息 */}
             {validationError && (
-              <div className="text-red-600 text-sm bg-red-50 p-2 rounded">
+              <div className="text-destructive text-sm bg-destructive/10 p-2 rounded">
                 {validationError}
               </div>
             )}
@@ -336,7 +336,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                           {audio.type && <span>{audio.type.toUpperCase()}</span>}
                           {audio.channels && <span>{audio.channels} 声道</span>}
                           {sortBy === 'downloads' && audio.downloads !== undefined && (
-                            <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded flex items-center gap-1">
+                            <span className="bg-primary/10 text-primary px-2 py-1 rounded flex items-center gap-1">
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                               </svg>
@@ -368,7 +368,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                       <div className="flex-shrink-0">
                         {selectedResults.has(index) && (
                           <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="w-3 h-3 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
                           </div>
@@ -508,7 +508,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
               <button
                 onClick={handleClose}
                 disabled={isAddingAudios}
-                className="px-4 py-2 text-secondary-foreground bg-secondary rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 取消
               </button>

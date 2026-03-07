@@ -83,7 +83,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
           </div>
           <button
             onClick={handleClose}
-            className="w-8 h-8 rounded-full bg-muted hover:bg-accent flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
             title="关闭"
           >
             <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">

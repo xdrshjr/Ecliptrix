@@ -1592,8 +1592,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       <div className="script-panel-header relative">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center">
-              <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-6 h-6 bg-primary/10 rounded-md flex items-center justify-center">
+              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
@@ -1612,7 +1612,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <button
                     onClick={handleGenerateScript}
                     disabled={isGenerating}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     title={t.scriptPanel.header.generateScript}
                   >
                     {isGenerating ? (
@@ -1632,7 +1632,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <button
                   onClick={handleBatchConvertToSpeech}
                   disabled={isBatchConverting || segments.length === 0}
-                  className="p-2 text-green-600 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  className="p-2 text-chart-2 bg-chart-2/10 border border-chart-2/30 rounded-md hover:bg-chart-2/20 hover:border-chart-2/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="统一转换所有语音"
                 >
                   {isBatchConverting ? (
@@ -1654,7 +1654,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <button
                     onClick={onGenerateAIVideoScript}
                     disabled={isGeneratingAIVideoScript}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     title={t.scriptPanel.aiVideoScript.aiGenerate}
                   >
                     {isGeneratingAIVideoScript ? (
@@ -1676,7 +1676,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       const title = t.scriptPanel.aiVideoScript.segmentTitle.replace('{index}', String(aiVideoScriptSegments.length + 1));
                       onUpdateAIVideoScriptSegments([...aiVideoScriptSegments, createAIVideoSegment(title)]);
                     }}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors duration-200"
+                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 transition-colors"
                     title={t.scriptPanel.aiVideoScript.addSegment}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1761,7 +1761,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <button
                   onClick={() => handleConvertToSpeech(segment)}
                   disabled={convertingSegments.has(segment.id) || isBatchConverting}
-                  className="p-1.5 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  className="p-1.5 text-primary bg-primary/10 border border-primary/30 rounded hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title={t.scriptPanel.actions.convertSpeech}
                 >
                   {convertingSegments.has(segment.id) ? (
@@ -1780,7 +1780,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <button
                   onClick={() => handleOpenVideoSearch(segment.id)}
                   disabled={!completedSegments.has(segment.id)}
-                  className={`p-1.5 border rounded transition-colors duration-200 ${
+                  className={`p-1.5 border rounded transition-colors ${
                     completedSegments.has(segment.id)
                       ? 'text-primary bg-primary/10 border-primary/30 hover:bg-primary/20 hover:border-primary/40'
                       : 'text-muted-foreground bg-muted border-border cursor-not-allowed opacity-50'
@@ -1801,12 +1801,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                     !hasAvailableAnalyzedVideos(segment.id) ||
                     videoAIMatch.matchState.isMatching
                   }
-                  className={`p-1.5 border rounded transition-colors duration-200 ${
+                  className={`p-1.5 border rounded transition-colors ${
                     completedSegments.has(segment.id) && 
                     getVideoAnalysisResult &&
                     hasAvailableAnalyzedVideos(segment.id) &&
                     !videoAIMatch.matchState.isMatching
-                      ? 'text-purple-600 bg-purple-50 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+                      ? 'text-primary bg-primary/10 border-primary/30 hover:bg-primary/20 hover:border-primary/40'
                       : 'text-muted-foreground bg-muted border-border cursor-not-allowed opacity-50'
                   }`}
                   title={
@@ -1836,7 +1836,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 {/* 删除段落按钮 */}
                 <button
                   onClick={() => handleDeleteSegment(segment.id, segment.title)}
-                  className="p-1.5 text-destructive bg-destructive/10 border border-red-200 rounded hover:bg-red-100 hover:border-red-300 transition-colors duration-200"
+                  className="p-1.5 text-destructive bg-destructive/10 border border-red-200 rounded hover:bg-red-100 hover:border-red-300 transition-colors"
                   title="删除段落"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1856,7 +1856,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 </div>
                 <div className="w-full bg-accent rounded-full h-1.5">
                   <div 
-                    className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                    className="bg-primary h-1.5 rounded-full transition-all duration-300"
                     style={{ width: `${ttsProgress[segment.id]}%` }}
                   ></div>
                 </div>
@@ -1868,7 +1868,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               {segment.sentences.map((sentence, sentenceIndex) => (
                 <div 
                   key={sentence.id}
-                  className="script-sentence p-2 rounded border border-border hover:border-border transition-colors duration-150"
+                  className="script-sentence p-2 rounded border border-border hover:border-border transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-2 flex-1">
@@ -1888,13 +1888,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           <div className="flex items-center space-x-2 mt-2">
                             <button
                               onClick={handleSaveEdit}
-                              className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary/90 transition-colors duration-150"
+                              className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
                             >
                               {t.scriptPanel.editing.save}
                             </button>
                             <button
                               onClick={handleCancelEdit}
-                              className="px-2 py-1 text-xs bg-muted-foreground text-white rounded hover:bg-muted-foreground/80 transition-colors duration-150"
+                              className="px-2 py-1 text-xs bg-muted-foreground text-primary-foreground rounded hover:bg-muted-foreground/80 transition-colors"
                             >
                               {t.scriptPanel.editing.cancel}
                             </button>
@@ -1947,7 +1947,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       <div className="flex items-center space-x-1 ml-2">
                         <button
                           onClick={() => handleStartEdit(sentence)}
-                          className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors duration-150"
+                          className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
                           title={t.scriptPanel.actions.editSentence}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1956,7 +1956,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                         </button>
                         <button
                           onClick={() => handleDeleteSentence(segment.id, sentence.id)}
-                          className="p-1 text-destructive hover:text-destructive hover:bg-destructive/10 rounded transition-colors duration-150"
+                          className="p-1 text-destructive hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
                           title={t.scriptPanel.actions.deleteSentence}
                           disabled={segment.sentences.length <= 1}
                         >
@@ -1974,7 +1974,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               <div className="mt-3 pt-2">
                 <button
                   onClick={() => handleAddSentence(segment.id)}
-                  className="w-full py-1.5 text-sm text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors duration-150 flex items-center justify-center space-x-2"
+                  className="w-full py-1.5 text-sm text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors flex items-center justify-center space-x-2"
                   title={t.scriptPanel.actions.addSentence}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2157,7 +2157,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                                   <div className="text-white text-sm font-medium">视频加载失败</div>
                                   <div className="text-muted-foreground text-xs mt-1">请检查网络连接或视频URL</div>
                                   <button 
-                                    className="mt-2 px-3 py-1 bg-primary hover:bg-primary/90 text-white text-xs rounded transition-colors"
+                                    className="mt-2 px-3 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs rounded transition-colors"
                                     onClick={() => {
                                       // 重置加载状态，触发重新加载
                                       setVideoLoadingStates(prev => {

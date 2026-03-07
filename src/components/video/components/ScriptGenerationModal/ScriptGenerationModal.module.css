@@ -69,9 +69,9 @@
 .closeButton {
   width: 32px;
   height: 32px;
-  background-color: transparent;
+  background-color: var(--muted);
   border: none;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;

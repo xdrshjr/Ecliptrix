@@ -105,9 +105,9 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   const getCategoryColor = (category: string) => {
     const colors = {
       '通用场景': 'bg-blue-500',
-      '趣味方言': 'bg-green-500',
-      '角色扮演': 'bg-purple-500',
-      '播报解说': 'bg-orange-500',
+      '趣味方言': 'bg-chart-2',
+      '角色扮演': 'bg-chart-3',
+      '播报解说': 'bg-chart-4',
       '有声阅读': 'bg-indigo-500'
     };
     return colors[category as keyof typeof colors] || 'bg-muted-foreground';
@@ -156,7 +156,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
           });
           setIsOpen(newIsOpen);
         }}
-        className="flex items-center space-x-2 px-3 py-2 bg-card border border-border rounded-md hover:border-border transition-colors duration-200 w-full text-left"
+        className="flex items-center space-x-2 px-3 py-2 bg-card border border-border rounded-md hover:border-border transition-colors w-full text-left"
       >
         <div className="flex items-center space-x-2 flex-1">
           <div className={`w-3 h-3 rounded-full ${
@@ -197,7 +197,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                 <button
                   key={voice.id}
                   onClick={() => handleVoiceSelect(voice.id)}
-                  className={`w-full text-left px-3 py-2 rounded-md hover:bg-accent transition-colors duration-150 ${
+                  className={`w-full text-left px-3 py-2 rounded-md hover:bg-accent transition-colors ${
                     selectedVoiceId === voice.id ? 'bg-primary/10 text-primary' : 'text-foreground'
                   }`}
                 >

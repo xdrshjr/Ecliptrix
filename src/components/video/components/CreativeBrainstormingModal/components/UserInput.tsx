@@ -48,7 +48,7 @@ const UserInput: React.FC<UserInputProps> = ({
           onClick={onSend}
           disabled={disabled || !value.trim()}
           className={`
-            px-4 py-3 rounded-md font-medium text-sm transition-all duration-200 flex-shrink-0
+            px-4 py-3 rounded-md font-medium text-sm transition-colors flex-shrink-0
             ${!disabled && value.trim()
               ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
               : 'bg-accent text-muted-foreground cursor-not-allowed'

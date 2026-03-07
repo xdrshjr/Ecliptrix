@@ -192,8 +192,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         </svg>
       ),
       label: t.timeline.toolbar.organizeMaterials,
-      disabled: false,
-      className: 'text-orange-600 hover:text-orange-700 hover:bg-orange-50' // 明显的颜色
+      disabled: false
     }
   ];
 

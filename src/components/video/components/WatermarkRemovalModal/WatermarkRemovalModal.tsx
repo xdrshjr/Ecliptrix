@@ -501,10 +501,10 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
           {!isProcessing && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-accent rounded-md transition-colors"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
               title="关闭"
             >
-              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -706,7 +706,7 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
                 disabled={!watermarkArea || isProcessing}
                 className={`w-full px-4 py-3 rounded-md font-medium transition-colors ${
                   watermarkArea && !isProcessing
-                    ? 'bg-destructive hover:bg-destructive/90 text-white'
+                    ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
                     : 'bg-accent text-muted-foreground cursor-not-allowed'
                 }`}
               >

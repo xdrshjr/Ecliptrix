@@ -84,7 +84,8 @@ const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
                   cx="32"
                   cy="32"
                   r="28"
-                  stroke="#f3f4f6"
+                  stroke="currentColor"
+                  className="text-accent"
                   strokeWidth="4"
                   fill="none"
                 />
@@ -92,24 +93,24 @@ const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
                   cx="32"
                   cy="32"
                   r="28"
-                  stroke="#10b981"
+                  stroke="currentColor"
+                  className="text-primary transition-all duration-500 ease-out"
                   strokeWidth="4"
                   fill="none"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 28}`}
                   strokeDashoffset={`${2 * Math.PI * 28 * (1 - progress / 100)}`}
-                  className="transition-all duration-500 ease-out"
                 />
               </svg>
               
               {/* 中心图标 */}
               <div className="absolute inset-0 flex items-center justify-center">
                 {progress >= 100 ? (
-                  <svg className="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-primary" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                   </svg>
                 ) : (
-                  <svg className="w-6 h-6 text-emerald-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-primary animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
                 )}
@@ -131,7 +132,7 @@ const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
             {getProgressStage()}
           </p>
           
-          <p className="text-2xl font-bold text-emerald-600 mb-4">
+          <p className="text-2xl font-bold text-primary mb-4">
             {Math.round(progress)}%
           </p>
         </div>
@@ -140,7 +141,7 @@ const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
         <div className="px-6 pb-4">
           <div className="w-full bg-accent rounded-full h-2 overflow-hidden">
             <div 
-              className="h-2 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-500 ease-out"
+              className="h-2 bg-primary rounded-full transition-all duration-500 ease-out"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
@@ -163,7 +164,7 @@ const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
             )}
             
             {progress >= 100 && (
-              <div className="flex items-center justify-center space-x-1 text-emerald-600">
+              <div className="flex items-center justify-center space-x-1 text-primary">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                 </svg>

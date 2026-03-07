@@ -70,7 +70,7 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
       {!showPicker ? (
         <button
           onClick={() => setShowPicker(true)}
-          className="w-full h-20 border-2 border-dashed border-border rounded-md flex flex-col items-center justify-center text-muted-foreground hover:border-purple-400 hover:text-purple-500 transition-colors"
+          className="w-full h-20 border-2 border-dashed border-border rounded-md flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
         >
           <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -85,7 +85,7 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
               onClick={() => setPickerMode('materials')}
               className={`flex-1 text-xs py-1 rounded ${
                 pickerMode === 'materials'
-                  ? 'bg-purple-100 text-purple-700'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent'
               }`}
             >
@@ -95,7 +95,7 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
               onClick={() => setPickerMode('url')}
               className={`flex-1 text-xs py-1 rounded ${
                 pickerMode === 'url'
-                  ? 'bg-purple-100 text-purple-700'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent'
               }`}
             >
@@ -118,7 +118,7 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
                         onSelect(m.url || m.thumbnailUrl || '', m.name);
                         setShowPicker(false);
                       }}
-                      className="aspect-square rounded overflow-hidden border border-border hover:border-purple-400 transition-colors"
+                      className="aspect-square rounded overflow-hidden border border-border hover:border-primary transition-colors"
                     >
                       <img
                         src={m.thumbnailUrl || m.url}
@@ -138,13 +138,13 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
                 onChange={e => setUrlInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleUrlSubmit()}
                 placeholder="https://..."
-                className="flex-1 text-xs px-2 py-1.5 border border-border rounded focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="flex-1 text-xs px-2 py-1.5 border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
                 autoFocus
               />
               <button
                 onClick={handleUrlSubmit}
                 disabled={!urlInput.trim()}
-                className="px-2 py-1.5 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                className="px-2 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 OK
               </button>

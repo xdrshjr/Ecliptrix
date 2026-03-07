@@ -82,8 +82,8 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
         {/* Header */}
         <div className="px-6 py-5 border-b border-border">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-              <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 bg-primary/10 rounded-md flex items-center justify-center">
+              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6" />
               </svg>
@@ -113,7 +113,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
             </div>
             <div className="w-full bg-accent rounded-full h-3">
               <div 
-                className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full transition-all duration-300 ease-out"
+                className="bg-primary h-3 rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${getProgressPercentage()}%` }}
               />
             </div>
@@ -121,10 +121,10 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
 
           {/* Current Video Info */}
           {progress.currentVideoName && progress.currentStep === 'video-analysis' && (
-            <div className="bg-purple-50 rounded-md p-4 mb-4">
+            <div className="bg-primary/5 rounded-md p-4 mb-4">
               <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-purple-700 font-medium">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                <span className="text-sm text-primary font-medium">
                   正在分析: {progress.currentVideoName}
                 </span>
               </div>
@@ -135,19 +135,19 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
           {progress.currentStep === 'video-analysis' && (
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="text-center">
-                <div className="text-lg font-semibold text-green-600">
+                <div className="text-lg font-semibold text-primary">
                   {progress.analyzedVideos}
                 </div>
                 <div className="text-xs text-muted-foreground">已完成</div>
               </div>
               <div className="text-center">
-                <div className="text-lg font-semibold text-blue-600">
+                <div className="text-lg font-semibold text-muted-foreground">
                   {progress.totalVideos - progress.analyzedVideos - progress.failedVideos}
                 </div>
                 <div className="text-xs text-muted-foreground">处理中</div>
               </div>
               <div className="text-center">
-                <div className="text-lg font-semibold text-red-600">
+                <div className="text-lg font-semibold text-destructive">
                   {progress.failedVideos}
                 </div>
                 <div className="text-xs text-muted-foreground">失败</div>
@@ -162,7 +162,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
                 <svg className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div className="text-sm text-red-700">
+                <div className="text-sm text-destructive">
                   <div className="font-medium">处理过程中遇到问题</div>
                   <div className="mt-1">{progress.errorMessage}</div>
                 </div>
@@ -176,7 +176,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"
+                  className="w-2 h-2 bg-primary rounded-full animate-pulse"
                   style={{
                     animationDelay: `${i * 0.2}s`,
                     animationDuration: '1s',
@@ -193,7 +193,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
             <div className="flex justify-end">
               <button
                 onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors duration-200"
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors"
               >
                 取消
               </button>

@@ -120,7 +120,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                   onClick={handleClearContent}
                   onMouseEnter={() => handleButtonHover('clear', true)}
                   onMouseLeave={() => handleButtonHover('clear', false)}
-                  className="flex items-center justify-center w-10 h-10 text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent hover:border-border hover:text-foreground transition-all duration-200 group"
+                  className="flex items-center justify-center w-10 h-10 text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent hover:border-border hover:text-foreground transition-colors group"
                   title="清空文档编辑器中的所有内容"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,7 +135,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
                 disabled={!inputMessage.trim() || isLoading}
                 onMouseEnter={() => handleButtonHover('send', true)}
                 onMouseLeave={() => handleButtonHover('send', false)}
-                className="flex items-center justify-center w-10 h-10 bg-primary hover:bg-primary/90 disabled:bg-accent disabled:cursor-not-allowed text-white rounded-md transition-all duration-200 group"
+                className="flex items-center justify-center w-10 h-10 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors group"
                 title={isLoading ? "发送中..." : "发送消息"}
               >
                 {isLoading ? (

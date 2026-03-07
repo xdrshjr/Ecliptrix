@@ -99,7 +99,7 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
                     }
                   `}>
                     {isSelected && (
-                      <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-2.5 h-2.5 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -135,7 +135,7 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
               value={config.customCreativeInput}
               onChange={(e) => handleCustomCreativeInputChange(e.target.value)}
               placeholder={translations.configPanel.customCreativePlaceholder}
-              className="w-full p-3 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200"
+              className="w-full p-3 bg-card border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200"
               rows={4}
               disabled={isDiscussing}
             />
@@ -148,13 +148,7 @@ const ConfigurationPanel: React.FC<ConfigurationPanelProps> = ({
         <button
           onClick={onStartBrainstorming}
           disabled={!isConfigValid || isDiscussing}
-          className={`
-            w-full py-3 px-4 rounded-md font-medium text-sm transition-all duration-200
-            ${isConfigValid && !isDiscussing
-              ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
-              : 'bg-accent text-muted-foreground cursor-not-allowed'
-            }
-          `}
+          className="w-full py-3 px-4 rounded-md font-medium text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isDiscussing ? translations.configPanel.startButtonDiscussing : translations.configPanel.startButton}
         </button>

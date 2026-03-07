@@ -191,10 +191,10 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
             <button
               onClick={handleClose}
               disabled={isAddingImages}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors p-2 rounded-md hover:bg-accent"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="关闭"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -323,7 +323,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                   <button
                     onClick={handleAddSelectedImages}
                     disabled={selectedResults.size === 0 || isAddingImages}
-                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                   >
                     {isAddingImages ? (
                       <div className="flex items-center space-x-2">
@@ -384,7 +384,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                   e.stopPropagation();
                                   handleAddToMaterials(image);
                                 }}
-                                className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                                className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
                                 title="添加到素材"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -451,9 +451,9 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
               </div>
               <button
                 onClick={() => setPreviewModalOpen(false)}
-                className="text-muted-foreground hover:text-foreground p-2 rounded-md hover:bg-accent"
+                className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -484,7 +484,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                   handleAddToMaterials(previewImage);
                   setPreviewModalOpen(false);
                 }}
-                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
               >
                 添加到素材
               </button>

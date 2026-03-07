@@ -215,11 +215,11 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
         return (
           <React.Fragment key={stepNumber}>
             <div
-              className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-all duration-200 ${
+              className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors ${
                 isActive
-                  ? 'bg-primary/100 text-white'
+                  ? 'bg-primary text-primary-foreground'
                   : isCompleted
-                  ? 'bg-green-500 text-white'
+                  ? 'bg-primary text-primary-foreground'
                   : 'bg-accent text-muted-foreground'
               }`}
             >
@@ -234,7 +234,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
             {stepNumber < totalSteps && (
               <div
                 className={`w-12 h-0.5 mx-2 transition-colors duration-200 ${
-                  stepNumber < currentStep ? 'bg-green-500' : 'bg-accent'
+                  stepNumber < currentStep ? 'bg-primary' : 'bg-accent'
                 }`}
               />
             )}
@@ -257,7 +257,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
       <div className="space-y-4">
         {/* 快速生成选项 */}
         <div 
-          className={`relative p-4 rounded-md border-2 cursor-pointer transition-all duration-200 ${
+          className={`relative p-4 rounded-md border-2 cursor-pointer transition-colors ${
             selectedMode === 'quick' 
               ? 'border-primary bg-primary/10' 
               : 'border-border hover:border-border hover:bg-muted'
@@ -274,7 +274,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
             </div>
             <div className="flex-1">
               <div className="flex items-center space-x-2 mb-2">
-                <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <h4 className="font-semibold text-foreground">快速生成</h4>
@@ -296,7 +296,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
 
         {/* 专业（慢速）生成选项 */}
         <div 
-          className={`relative p-4 rounded-md border-2 cursor-pointer transition-all duration-200 ${
+          className={`relative p-4 rounded-md border-2 cursor-pointer transition-colors ${
             selectedMode === 'professional' 
               ? 'border-primary bg-primary/10' 
               : 'border-border hover:border-border hover:bg-muted'
@@ -313,7 +313,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
             </div>
             <div className="flex-1">
               <div className="flex items-center space-x-2 mb-2">
-                <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
                 <h4 className="font-semibold text-foreground">专业（慢速）生成</h4>
@@ -384,7 +384,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
           {videoMaterials.map((video) => (
             <div
               key={video.id}
-              className={`relative group cursor-pointer rounded-md border-2 transition-all duration-200 ${
+              className={`relative group cursor-pointer rounded-md border-2 transition-colors ${
                 selectedVideos.has(video.id)
                   ? 'border-primary bg-primary/10'
                   : 'border-border bg-card hover:border-border'
@@ -416,8 +416,8 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               </div>
 
               {selectedVideos.has(video.id) && (
-                <div className="absolute top-2 right-2 w-6 h-6 bg-primary/100 rounded-full flex items-center justify-center">
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                  <svg className="w-4 h-4 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
                 </div>
@@ -452,7 +452,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
           value={referenceText}
           onChange={(e) => setReferenceText(e.target.value)}
           placeholder="请输入参考文本，例如：视频的主题、风格要求、目标受众等..."
-          className="w-full h-32 px-4 py-3 border border-border rounded-md resize-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200"
+          className="w-full h-32 px-4 py-3 border border-border rounded-md resize-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
           maxLength={1000}
         />
         <div className="flex justify-between items-center text-xs text-muted-foreground">
@@ -502,7 +502,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               <button
                 key={option.value}
                 onClick={() => setParameters({ ...parameters, language: option.value as any })}
-                className={`px-4 py-2 rounded-md border text-sm font-medium transition-all duration-200 ${
+                className={`px-4 py-2 rounded-md border text-sm font-medium transition-colors ${
                   parameters.language === option.value
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-card text-foreground hover:border-border'
@@ -545,7 +545,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               <button
                 key={option.value}
                 onClick={() => setParameters({ ...parameters, analysisDepth: option.value as any })}
-                className={`px-4 py-3 rounded-md border text-sm transition-all duration-200 ${
+                className={`px-4 py-3 rounded-md border text-sm transition-colors ${
                   parameters.analysisDepth === option.value
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-card text-foreground hover:border-border'
@@ -638,11 +638,11 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-border bg-gradient-to-r from-purple-50 to-primary/10">
+        <div className="px-6 py-5 border-b border-border bg-gradient-to-r from-muted to-card">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 bg-primary/10 rounded-md flex items-center justify-center">
+                <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6" />
                 </svg>
@@ -659,7 +659,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
             <button
               onClick={handleClose}
               disabled={isGenerating}
-              className="w-8 h-8 rounded-full bg-muted hover:bg-accent flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -684,7 +684,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
             <button
               onClick={handlePrevStep}
               disabled={currentStep === 1 || isGenerating}
-              className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               上一步
             </button>
@@ -693,7 +693,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               <button
                 onClick={handleClose}
                 disabled={isGenerating}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 取消
               </button>
@@ -701,7 +701,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               <button
                 onClick={currentStep === totalSteps ? handleGenerate : handleNextStep}
                 disabled={!canProceedToNext() || isGenerating}
-                className="px-6 py-2 text-sm font-medium text-white bg-primary border border-transparent rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center space-x-2"
+                className="px-6 py-2 text-sm font-medium text-primary-foreground bg-primary border border-transparent rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
               >
                 {isGenerating && (
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">

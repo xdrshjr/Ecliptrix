@@ -94,7 +94,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
             </div>
             <button
               onClick={handleClose}
-              className="w-10 h-10 rounded-md bg-muted hover:bg-accent transition-colors flex items-center justify-center"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent transition-colors flex items-center justify-center"
               aria-label="Close"
             >
               <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,9 +136,9 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
                 <button
                   key={preset.value}
                   onClick={() => setSize(preset.value)}
-                  className={`py-2.5 px-2 rounded-md text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
+                  className={`py-2.5 px-2 rounded-md text-xs font-medium border transition-colors flex items-center justify-center gap-1.5 ${
                     size === preset.value
-                      ? 'bg-pink-500 text-white border-pink-500'
+                      ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-card text-foreground border-border hover:border-border'
                   }`}
                 >
@@ -159,9 +159,9 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
                 <button
                   key={n}
                   onClick={() => setCount(n)}
-                  className={`flex-1 py-2.5 rounded-md text-sm font-medium border transition-all ${
+                  className={`flex-1 py-2.5 rounded-md text-sm font-medium border transition-colors ${
                     count === n
-                      ? 'bg-pink-500 text-white border-pink-500'
+                      ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-card text-foreground border-border hover:border-border'
                   }`}
                 >
@@ -221,11 +221,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
           <button
             onClick={handleSubmit}
             disabled={!prompt.trim() || submitted}
-            className={`px-6 py-2.5 text-sm font-medium text-white rounded-md transition-all ${
-              prompt.trim() && !submitted
-                ? 'bg-pink-500 hover:bg-pink-600'
-                : 'bg-muted-foreground/30 cursor-not-allowed'
-            }`}
+            className="px-6 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitted ? '生成中...' : '开始生成'}
           </button>

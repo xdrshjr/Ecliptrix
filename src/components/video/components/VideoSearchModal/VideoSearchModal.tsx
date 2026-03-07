@@ -273,7 +273,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           </div>
           <button
             onClick={handleClose}
-            className="w-8 h-8 rounded-full bg-muted hover:bg-accent flex items-center justify-center transition-colors duration-200"
+            className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors duration-200"
           >
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -406,8 +406,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
               disabled={currentSearching || !searchQuery.trim()}
               className={`px-6 py-3 rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 font-medium ${
                 activeLibrary === 'official'
-                  ? 'bg-primary text-white hover:bg-primary'
-                  : 'bg-destructive text-white hover:bg-destructive/90'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
               }`}
             >
               {currentSearching ? (
@@ -645,7 +645,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                               onClick={(e) => handleAddToComposition(video, e)}
                               className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
                                 isSelected
-                                  ? 'bg-primary text-white'
+                                  ? 'bg-primary text-primary-foreground'
                                   : 'bg-primary/10 text-primary hover:bg-primary/10 border border-primary/20'
                               }`}
                             >
@@ -700,7 +700,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                               onClick={(e) => handleAddToComposition(video, e)}
                               className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center space-x-1 ${
                                 isSelected
-                                  ? 'bg-destructive text-white'
+                                  ? 'bg-destructive text-destructive-foreground'
                                   : 'bg-destructive/10 text-destructive hover:bg-destructive/10 border border-destructive/20'
                               }`}
                             >
@@ -765,7 +765,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             onClick={() => goToPage(page)}
                             className={`w-8 h-8 text-sm rounded-md transition-colors duration-200 ${
                               currentPage === page
-                                ? `${activeLibrary === 'official' ? 'bg-primary text-white' : 'bg-destructive text-white'}`
+                                ? `${activeLibrary === 'official' ? 'bg-primary text-primary-foreground' : 'bg-destructive text-destructive-foreground'}`
                                 : `text-foreground hover:bg-muted ${
                                     activeLibrary === 'official' ? 'hover:text-primary' : 'hover:text-destructive'
                                   }`
@@ -910,15 +910,15 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           <div className="flex items-center justify-end space-x-3">
             <button
               onClick={handleReselect}
-              className="px-6 py-2.5 bg-muted text-foreground rounded-md hover:bg-accent transition-colors duration-200 font-medium"
+              className="px-6 py-2.5 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors duration-200"
             >
               重新选择
             </button>
             <button
               onClick={handleConfirmAdd}
               disabled={currentSelectedResults.size === 0}
-              className={`px-6 py-2.5 text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium flex items-center space-x-2 ${
-                activeLibrary === 'official' ? 'bg-primary hover:bg-primary' : 'bg-destructive hover:bg-destructive/90'
+              className={`px-6 py-2.5 rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium flex items-center space-x-2 ${
+                activeLibrary === 'official' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
               }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

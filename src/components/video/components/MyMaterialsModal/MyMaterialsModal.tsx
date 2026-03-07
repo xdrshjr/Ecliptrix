@@ -215,10 +215,10 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="text-muted-foreground hover:text-foreground transition-colors p-2"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
               aria-label="Close"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -232,7 +232,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
               <button
                 key={type}
                 onClick={() => handleFilterChange(type)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   filterType === type
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-muted-foreground hover:bg-accent'
@@ -262,7 +262,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
           ) : error ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <svg className="w-12 h-12 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 text-destructive mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <p className="text-foreground font-medium mt-4">{t.materialsPanel.loadError}</p>
@@ -309,7 +309,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
                     <div
                       key={material.id}
                       onClick={() => handleMaterialClick(material)}
-                      className={`relative rounded-md overflow-hidden cursor-pointer transition-all border-2 ${
+                      className={`relative rounded-md overflow-hidden cursor-pointer transition-colors border-2 ${
                         isSelected
                           ? 'border-primary scale-[1.02]'
                           : 'border-border hover:border-primary/30'
@@ -366,7 +366,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
                             : 'bg-card border-border'
                         }`}>
                           {isSelected && (
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                             </svg>
                           )}
@@ -376,8 +376,8 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
                         <div className="absolute top-2 left-2">
                           <span className={`px-2 py-1 text-xs font-medium rounded ${
                             material.type === 'video' ? 'bg-primary/10 text-primary' :
-                            material.type === 'audio' ? 'bg-green-100 text-green-800' :
-                            material.type === 'image' ? 'bg-purple-100 text-purple-800' :
+                            material.type === 'audio' ? 'bg-accent text-accent-foreground' :
+                            material.type === 'image' ? 'bg-secondary text-secondary-foreground' :
                             'bg-muted text-foreground'
                           }`}>
                             {material.type === 'video' ? t.materialsPanel.typeVideo :

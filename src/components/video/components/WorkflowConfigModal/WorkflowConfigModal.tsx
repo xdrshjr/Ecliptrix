@@ -403,7 +403,7 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="w-10 h-10 rounded-md bg-muted hover:bg-accent transition-colors flex items-center justify-center"
+              className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
               aria-label="Close"
             >
               <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -483,7 +483,7 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
                             )}
                             {isEnabled && (
                               <div className="mt-2">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-800">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary">
                                   {t.workflowConfigModal.enabledLabel}
                                 </span>
                               </div>
@@ -607,7 +607,7 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary rounded-md hover:from-primary/90 hover:to-primary/80 transition-all hover:shadow-lg"
+            className="px-6 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors"
           >
             {t.workflowConfigModal.saveButton}
           </button>
