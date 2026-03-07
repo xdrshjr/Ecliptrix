@@ -732,6 +732,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
 
   return {
     materials: filteredMaterials,
+    allMaterials: materials,
     selectedMaterialType,
     selectedMaterials,
     isUploading,

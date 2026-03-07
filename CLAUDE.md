@@ -58,7 +58,7 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 1. **Backend proxy** (most routes): Read `process.env.BACKEND_URL` and forward requests to the FastAPI backend. Example: `video-search/route.ts` proxies to `${BACKEND_URL}/api/video/search`.
 2. **Direct LLM call** (chat routes): Read `process.env.LLM_API_URL` and `LLM_API_KEY` to call OpenAI-compatible APIs directly, bypassing the backend. Example: `chat/route.ts`.
 
-`BACKEND_URL` is server-side only (no `NEXT_PUBLIC_` prefix). Most backend routes are mounted under `/api` prefix, except `flux_router`, `ai_video_generate_router`, `video_export_router`, and `intent_detection_router` which mount at root.
+`BACKEND_URL` is server-side only (no `NEXT_PUBLIC_` prefix). Most backend routes are mounted under `/api` prefix, except `ai_video_generate_router`, `video_export_router`, and `intent_detection_router` which mount at root.
 
 ### Frontend Structure
 
@@ -75,7 +75,7 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 
 ### Backend Structure
 
-- **Entry point**: `app/main.py` — registers 22 routers, CORS middleware, exception handlers, static file mounts
+- **Entry point**: `app/main.py` — registers 23 routers, CORS middleware, exception handlers, static file mounts
 - **Configuration**: `app/config.py` — manual `get_settings()` function that reads `.env` via python-dotenv then YAML from `config/`. Note: `llm_api_key` and `llm_api_url` are required with no defaults — app won't start without them.
 - **Database**: `app/database.py` — async SQLAlchemy engine (pool_size=10, max_overflow=20) with auto-create tables and admin user seeding on startup
 - **Pattern**: Router → Service → (LLM/DB/External API). Each feature has a router in `app/routers/`, a service in `app/services/`, and models in `app/models/`
@@ -121,8 +121,7 @@ The backend integrates with numerous external services, each requiring its own A
 | Pexels | `PEXELS_API_KEY` | Video search |
 | Unsplash | `UNSPLASH_ACCESS_KEYS` | Image search |
 | Tavily | `TAVILY_API_KEYS` | Web search |
-| RunningHub | `RUNNING_HUB_API_KEY` | FLUX image generation (async task-based with polling) |
-| ByteDance ARK | `ARK_API_KEY` | AI video generation |
+| ByteDance ARK | `ARK_API_KEY` | AI video generation + AI image generation (Seedream) |
 | Volcano TTS | `VOLCANO_TTS_*` | Text-to-speech (100+ voices) |
 | Alibaba Cloud OSS | `OSS_*` | Optional cloud storage (enabled via `OSS_ENABLED=true`) |
 | Freesound | `FREESOUND_API_KEY` | Audio search |
@@ -149,7 +148,7 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-03-04
+- **Last Updated:** 2026-03-06
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.

@@ -83,10 +83,9 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     // 2. 更新Video Editing任务的content，添加待导入的时间轴数据
     const currentContent = videoTask.content as VideoEditingTaskContent | null;
     const updatedContent: VideoEditingTaskContent = {
+      ...currentContent,
       markdownContent: currentContent?.markdownContent || '',
       lastModified: new Date(),
-      scriptSegments: currentContent?.scriptSegments || [],
-      materials: currentContent?.materials || [],
       pendingTimelineData: timelineData
     };
 
@@ -142,11 +141,9 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     // 2. 设置待导入的素材（不直接合并，等任务加载完成后再导入）
     const currentContent = videoTask.content as VideoEditingTaskContent | null;
     const updatedContent: VideoEditingTaskContent = {
+      ...currentContent,
       markdownContent: currentContent?.markdownContent || '',
       lastModified: new Date(),
-      scriptSegments: currentContent?.scriptSegments || [],
-      materials: currentContent?.materials || [],
-      pendingTimelineData: currentContent?.pendingTimelineData,
       pendingMaterials: materials  // 设置待导入的素材
     };
 
@@ -234,6 +231,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <VideoEditingInterface
+          key={activeTask.id}
           taskId={activeTask.id}
           content={activeTask.content as VideoEditingTaskContent | null}
           onUpdateContent={handleUpdateVideoEditingContent}
@@ -247,6 +245,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <WorkflowInterface
+          key={activeTask.id}
           taskId={activeTask.id}
           content={activeTask.content as WorkflowTaskContent | null}
           onUpdateContent={handleUpdateWorkflowContent}
@@ -261,6 +260,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <ChatInterface
+          key={activeTask.id}
           taskId={activeTask.id}
           content={activeTask.content as ChatTaskContent | null}
           onUpdateContent={handleUpdateChatContent}

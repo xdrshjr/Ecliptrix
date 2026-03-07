@@ -214,7 +214,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     };
 
     // Only update if state actually changed to avoid infinite loops
-    const hasStateChanged = 
+    const hasStateChanged =
       content.uiState?.timelineCurrentTime !== timelineCurrentTime ||
       content.uiState?.isPolishModalOpen !== isPolishModalOpen ||
       content.uiState?.isScriptGenerationModalOpen !== isScriptGenerationModalOpen ||
@@ -487,8 +487,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const videoPlayback = useVideoPlayback(taskId, handleVideoTimeUpdate, timelineCurrentTime, currentEffectiveVolume);
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content);
-  const materialManagement = useMaterialManagement(taskId);
-  
+  const materialManagement = useMaterialManagement(taskId, content?.materials || []);
+
+  // Persist materials back to content whenever they change.
+  // materialManagement.allMaterials gets a new array reference only when
+  // setMaterials is called inside the hook, so this effect fires only on
+  // actual material mutations (add/remove/update upload status/URL/thumbnail).
+  useEffect(() => {
+    if (!content) return;
+    // Skip if the reference is the same array we already persisted
+    if (content.materials === materialManagement.allMaterials) return;
+    onUpdateContent({
+      ...content,
+      materials: materialManagement.allMaterials,
+    });
+  }, [materialManagement.allMaterials]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 添加视频解析功能 - 需要在 convertToScript 之前初始化
   const videoAnalysis = useVideoAnalysis(taskId);
   

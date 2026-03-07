@@ -136,6 +136,7 @@ export interface UseScriptGenerationReturn {
 
 export interface UseMaterialManagementReturn {
   materials: MaterialItem[];
+  allMaterials: MaterialItem[];
   selectedMaterialType: MaterialType | 'all';
   selectedMaterials: Set<string>;
   isUploading: boolean;

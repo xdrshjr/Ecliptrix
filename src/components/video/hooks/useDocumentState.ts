@@ -70,14 +70,15 @@ export const useDocumentState = (
     
     // 更新任务内容
     const updatedContent: VideoEditingTaskContent = {
+      ...(content || { markdownContent: '', lastModified: new Date() }),
       markdownContent: value,
       lastModified: new Date(),
-      scriptSegments: content?.scriptSegments
+      scriptSegments: content?.scriptSegments,
     };
-    
+
     onUpdateContent(updatedContent);
     setLastSaved(updatedContent.lastModified);
-    
+
     // 短暂延迟后重置修改状态
     setTimeout(() => {
       setIsContentModified(false);
@@ -88,7 +89,7 @@ export const useDocumentState = (
       lastModified: updatedContent.lastModified.toISOString(),
       hasScriptSegments: !!updatedContent.scriptSegments?.length
     });
-  }, [markdownValue.length, onUpdateContent, content?.scriptSegments, logger]);
+  }, [markdownValue.length, onUpdateContent, content, logger]);
 
   // 清空markdown内容
   const clearContent = useCallback(() => {
@@ -108,14 +109,15 @@ export const useDocumentState = (
     
     // 更新任务内容
     const updatedContent: VideoEditingTaskContent = {
+      ...(content || { markdownContent: '', lastModified: new Date() }),
       markdownContent: clearedContent,
       lastModified: new Date(),
-      scriptSegments: content?.scriptSegments
+      scriptSegments: content?.scriptSegments,
     };
-    
+
     onUpdateContent(updatedContent);
     setLastSaved(updatedContent.lastModified);
-    
+
     // 短暂延迟后重置修改状态
     setTimeout(() => {
       setIsContentModified(false);
@@ -127,7 +129,7 @@ export const useDocumentState = (
       contentCleared: true,
       lastModified: updatedContent.lastModified.toISOString()
     });
-  }, [markdownValue, onUpdateContent, content?.scriptSegments, logger]);
+  }, [markdownValue, onUpdateContent, content, logger]);
 
   // 当外部content变化时同步本地状态
   useEffect(() => {

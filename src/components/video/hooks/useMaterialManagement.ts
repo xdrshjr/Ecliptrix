@@ -90,12 +90,13 @@ async function extractVideoThumbnail(videoUrl: string): Promise<string | null> {
  * 管理素材库操作，支持并发上传队列
  *
  * @param taskId - 任务ID，用于日志记录
+ * @param initialMaterials - 从持久化content恢复的初始素材列表
  * @returns 素材管理相关的状态和方法
  */
-export const useMaterialManagement = (taskId: string): UseMaterialManagementReturn => {
+export const useMaterialManagement = (taskId: string, initialMaterials: MaterialItem[] = []): UseMaterialManagementReturn => {
   // 获取当前用户信息
   const { user } = useAuth();
-  
+
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
@@ -103,7 +104,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
   }), [taskId]);
 
   // 素材管理状态
-  const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  const [materials, setMaterials] = useState<MaterialItem[]>(initialMaterials);
   const [selectedMaterialType, setSelectedMaterialType] = useState<MaterialType | 'all'>('all');
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
@@ -956,6 +957,7 @@ export const useMaterialManagement = (taskId: string): UseMaterialManagementRetu
 
   return {
     materials: filteredMaterials,
+    allMaterials: materials,
     selectedMaterialType,
     selectedMaterials,
     isUploading,
