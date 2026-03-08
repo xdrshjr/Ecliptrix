@@ -71,7 +71,15 @@ export function serializeMaterial(m: MaterialItem) {
     description: m.description,
     tags: m.tags,
     thumbnailUrl: m.thumbnailUrl,
-    hasSentenceSegments: !!m.sentenceSegments,
+    sentenceSegments: m.sentenceSegments ? {
+      segment_id: m.sentenceSegments.segment_id,
+      total_duration: m.sentenceSegments.total_duration,
+      sentences: m.sentenceSegments.sentences.map(s => ({
+        text: s.text,
+        start_time: s.start_time,
+        end_time: s.end_time,
+      })),
+    } : undefined,
     analysisStatus: m.analysisResult?.status,
     analysis: m.analysisResult?.analysis,
   };

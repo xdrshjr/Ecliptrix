@@ -1570,9 +1570,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     
                     {/* 右下角区域 - 时长和功能按钮 */}
                     <div className="absolute bottom-1 right-1 flex items-center space-x-1">
-                      {/* AI视频解析按钮 - 仅对视频素材显示 */}
-                      {material.type === 'video' && (() => {
-                        const analysisStatus = getVideoAnalysisStatus ? getVideoAnalysisStatus(material.url || '') : 'idle';
+                      {/* AI素材解析按钮 - 对视频和图片素材显示 */}
+                      {(material.type === 'video' || material.type === 'image') && (() => {
+                        const analysisStatus = material.analysisResult
+                          ? (material.analysisResult.status === 'pending' ? 'analyzing'
+                            : material.analysisResult.status === 'completed' ? 'completed'
+                            : material.analysisResult.status === 'error' ? 'idle'
+                            : 'idle')
+                          : (getVideoAnalysisStatus ? getVideoAnalysisStatus(material.url || '') : 'idle');
                         const isWaiting = analysisStatus === 'waiting';
                         const isAnalyzing = analysisStatus === 'analyzing';
                         const isCompleted = analysisStatus === 'completed';

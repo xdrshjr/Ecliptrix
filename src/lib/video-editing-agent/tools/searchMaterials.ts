@@ -31,7 +31,8 @@ export function createSearchMaterialsTool(context: ToolContext): AgentTool<typeo
       const matches = context.materials.filter(m =>
         (m.name.toLowerCase().includes(query) ||
          m.analysisResult?.analysis?.toLowerCase().includes(query) ||
-         m.description?.toLowerCase().includes(query)) &&
+         m.description?.toLowerCase().includes(query) ||
+         m.sentenceSegments?.sentences.some(s => s.text.toLowerCase().includes(query))) &&
         (!typeFilter || m.type === typeFilter)
       );
 

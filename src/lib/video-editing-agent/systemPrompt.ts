@@ -54,6 +54,11 @@ export function formatMaterialsSummary(materials: MaterialItem[]): string {
       } else if (m.analysisResult?.status === 'pending') {
         info += ` | (解析中...)`;
       }
+      if (m.sentenceSegments?.sentences.length) {
+        const fullText = m.sentenceSegments.sentences.map(s => s.text).join('');
+        const displayText = fullText.length > 100 ? fullText.substring(0, 100) + '...' : fullText;
+        info += ` | 原始文本: "${displayText}"`;
+      }
       lines.push(info);
     }
   }

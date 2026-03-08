@@ -487,7 +487,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           : m
       ));
 
-      logger.info('视频自动解析完成', { materialId: material.id, analysisLength: analysisText.length });
+      logger.info('素材自动解析完成', { materialId: material.id, analysisLength: analysisText.length });
     } catch (error) {
       if (!isMountedRef.current) return;
 
@@ -498,7 +498,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           : m
       ));
 
-      logger.warn('视频自动解析失败', { materialId: material.id, error: errMsg });
+      logger.warn('素材自动解析失败', { materialId: material.id, error: errMsg });
     }
   }, [logger]);
 
@@ -623,8 +623,8 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
                 : m
             ));
 
-            // 视频上传成功后自动触发快速解析
-            if (uploadedMaterial.type === 'video' && uploadedMaterial.thumbnailUrl) {
+            // 素材上传成功后自动触发快速解析
+            if ((uploadedMaterial.type === 'video' || uploadedMaterial.type === 'image') && uploadedMaterial.thumbnailUrl) {
               triggerAutoAnalysis(uploadedMaterial);
             }
 

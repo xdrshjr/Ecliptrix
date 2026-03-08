@@ -384,6 +384,18 @@ class VideoAnalysisService:
                 logger.info(f"Thumbnail downloaded successfully: {thumbnail_path}")
                 return thumbnail_path
             
+            # Check if it's a backend storage API URL
+            elif thumbnail_url.startswith('/api/storage/files/'):
+                relative_path = thumbnail_url[len('/api/storage/files/'):]
+                local_path = os.path.realpath(os.path.join(settings.storage.root, relative_path))
+                if not local_path.startswith(os.path.realpath(settings.storage.root)):
+                    raise ValueError(f"Path traversal detected: {thumbnail_url}")
+                if os.path.exists(local_path):
+                    logger.info(f"Resolved storage API URL to local path: {local_path}")
+                    return local_path
+                else:
+                    raise FileNotFoundError(f"Resolved local file does not exist: {local_path}")
+
             # Otherwise, treat it as a local file path
             else:
                 # Check if file exists
