@@ -140,6 +140,39 @@ export interface Translations {
     deleteUser: string;
     deleteConfirmTitle: string;
     deleteConfirmMessage: string;
+    modelSettings: string;
+    modelSettingsDesc: string;
+    modelChat: string;
+    modelFast: string;
+    modelVideoCut: string;
+    modelVision: string;
+    modelPreset: string;
+    modelCustom: string;
+    modelProvider: string;
+    modelName: string;
+    modelApiUrl: string;
+    modelApiKey: string;
+    modelApiKeyPlaceholder: string;
+    modelTemperature: string;
+    modelMaxTokens: string;
+    modelTestConnection: string;
+    modelTesting: string;
+    modelTestSuccess: string;
+    modelTestFailed: string;
+    modelSave: string;
+    modelSaving: string;
+    modelSaveSuccess: string;
+    modelSaveError: string;
+    modelUsingEnv: string;
+    modelUsingDb: string;
+    modelDomestic: string;
+    modelInternational: string;
+    modelResetToDefault: string;
+    modelParameters: string;
+    modelSelectProvider: string;
+    modelSelectModel: string;
+    modelApiUrlPlaceholder: string;
+    modelNamePlaceholder: string;
     deleteConfirmUsername: string;
     deleteConfirmEmail: string;
     confirmDelete: string;
@@ -919,6 +952,12 @@ export interface Translations {
     startChatTitle: string;
     startChatDesc: string;
     viewWorkflowsTooltip: string;
+    agentToggleLabel: string;
+    agentInputPlaceholder: string;
+    agentWorkingPlaceholder: string;
+    agentUndoButton: string;
+    agentUndoneLabel: string;
+    agentOperations: string;
   };
   workflowConfigModal: {
     title: string;
@@ -1102,6 +1141,39 @@ export const translations: Record<string, Translations> = {
       deleteUser: 'Delete User',
       deleteConfirmTitle: 'Delete User',
       deleteConfirmMessage: 'Are you sure you want to delete this user? This action cannot be undone.',
+      modelSettings: 'Model Settings',
+      modelSettingsDesc: 'Configure AI models for each function',
+      modelChat: 'Chat',
+      modelFast: 'Fast LLM',
+      modelVideoCut: 'Video Cut',
+      modelVision: 'Vision',
+      modelPreset: 'Preset Model',
+      modelCustom: 'Custom Model',
+      modelProvider: 'Provider',
+      modelName: 'Model Name',
+      modelApiUrl: 'API URL',
+      modelApiKey: 'API Key',
+      modelApiKeyPlaceholder: 'Enter API Key',
+      modelTemperature: 'Temperature',
+      modelMaxTokens: 'Max Tokens',
+      modelTestConnection: 'Test Connection',
+      modelTesting: 'Testing...',
+      modelTestSuccess: 'Connection successful',
+      modelTestFailed: 'Connection failed',
+      modelSave: 'Save',
+      modelSaving: 'Saving...',
+      modelSaveSuccess: 'Model settings saved',
+      modelSaveError: 'Failed to save model settings',
+      modelUsingEnv: 'Using default config',
+      modelUsingDb: 'Custom config active',
+      modelDomestic: 'Domestic',
+      modelInternational: 'International',
+      modelResetToDefault: 'Reset to Default',
+      modelParameters: 'Parameters',
+      modelSelectProvider: 'Select provider',
+      modelSelectModel: 'Select model',
+      modelApiUrlPlaceholder: 'https://api.example.com/v1',
+      modelNamePlaceholder: 'Enter model name',
       deleteConfirmUsername: 'Username',
       deleteConfirmEmail: 'Email',
       confirmDelete: 'Delete',
@@ -1896,6 +1968,12 @@ export const translations: Record<string, Translations> = {
       startChatTitle: 'Start chatting with AI',
       startChatDesc: 'Enter your question or requirement, AI will help you',
       viewWorkflowsTooltip: 'View Workflows',
+      agentToggleLabel: 'Agent',
+      agentInputPlaceholder: 'Tell the agent what to edit...',
+      agentWorkingPlaceholder: 'Agent is working...',
+      agentUndoButton: 'Undo',
+      agentUndoneLabel: 'Operations undone',
+      agentOperations: 'operations',
     },
     workflowConfigModal: {
       title: 'Workflow Configuration',
@@ -2077,6 +2155,39 @@ export const translations: Record<string, Translations> = {
       deleteUser: '删除用户',
       deleteConfirmTitle: '删除用户',
       deleteConfirmMessage: '确定要删除此用户吗？此操作无法撤销。',
+      modelSettings: '模型设置',
+      modelSettingsDesc: '为每个功能配置AI模型',
+      modelChat: '主聊天',
+      modelFast: '快速LLM',
+      modelVideoCut: '视频剪辑',
+      modelVision: '视觉',
+      modelPreset: '预设模型',
+      modelCustom: '自定义模型',
+      modelProvider: '供应商',
+      modelName: '模型名称',
+      modelApiUrl: 'API 地址',
+      modelApiKey: 'API 密钥',
+      modelApiKeyPlaceholder: '输入API密钥',
+      modelTemperature: '温度',
+      modelMaxTokens: '最大Token数',
+      modelTestConnection: '测试连接',
+      modelTesting: '测试中...',
+      modelTestSuccess: '连接成功',
+      modelTestFailed: '连接失败',
+      modelSave: '保存',
+      modelSaving: '保存中...',
+      modelSaveSuccess: '模型设置已保存',
+      modelSaveError: '保存模型设置失败',
+      modelUsingEnv: '使用默认配置',
+      modelUsingDb: '已自定义配置',
+      modelDomestic: '国内',
+      modelInternational: '国际',
+      modelResetToDefault: '恢复默认',
+      modelParameters: '参数',
+      modelSelectProvider: '选择供应商',
+      modelSelectModel: '选择模型',
+      modelApiUrlPlaceholder: 'https://api.example.com/v1',
+      modelNamePlaceholder: '输入模型名称',
       deleteConfirmUsername: '用户名',
       deleteConfirmEmail: '邮箱',
       confirmDelete: '删除',
@@ -2871,6 +2982,12 @@ export const translations: Record<string, Translations> = {
       startChatTitle: '开始与 AI 对话',
       startChatDesc: '输入你的问题或需求，AI 将为你提供帮助',
       viewWorkflowsTooltip: '查看工作流',
+      agentToggleLabel: 'Agent',
+      agentInputPlaceholder: '告诉 Agent 你要编辑什么...',
+      agentWorkingPlaceholder: 'Agent 正在执行...',
+      agentUndoButton: '撤销',
+      agentUndoneLabel: '操作已撤销',
+      agentOperations: '个操作',
     },
     workflowConfigModal: {
       title: '工作流配置',

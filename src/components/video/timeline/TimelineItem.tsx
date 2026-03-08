@@ -584,6 +584,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       className="timeline-item"
+      data-clip-id={item.id}
       title={`${item.name} (${item.startTime.toFixed(1)}s - ${(item.startTime + item.duration).toFixed(1)}s)`}
     >
       {renderItemContent()}

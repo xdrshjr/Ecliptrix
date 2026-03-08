@@ -90,6 +90,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
 
+    # Initialize model settings SQLite database
+    try:
+        from app.services.model_settings_service import model_settings_service
+        await model_settings_service.init_db()
+        logger.info("Model settings database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize model settings database: {str(e)}", exc_info=True)
+
     logger.info("Application startup completed")
 
     yield
@@ -361,6 +369,10 @@ app.include_router(ark_video_router.router, prefix="/api")
 # Import and include Ark Image router
 from app.routers import ark_image_router
 app.include_router(ark_image_router.router, prefix="/api")
+
+# Import and include Model Settings router
+from app.routers import model_settings_router
+app.include_router(model_settings_router.router, prefix="/api")
 
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"

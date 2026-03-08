@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
 
-// 获取环境变量配置
-const getConfig = () => {
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+
+// 获取模型配置（优先从后端模型设置获取，回退到环境变量）
+const getConfig = async () => {
+  // Try to get settings from backend model settings
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/model-settings/resolve/chat`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.api_key) {
+        return {
+          apiUrl: data.api_url,
+          apiKey: data.api_key,
+          model: data.model_name,
+          temperature: data.temperature ?? 0.7,
+          maxTokens: data.max_tokens ?? 2000,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('[Chat API] Failed to fetch model settings from backend, falling back to env vars');
+  }
+
+  // Fallback to env vars
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
@@ -11,7 +36,7 @@ const getConfig = () => {
     throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
   }
 
-  return { apiUrl, apiKey, model };
+  return { apiUrl, apiKey, model, temperature: 0.7, maxTokens: 2000 };
 };
 
 // 转换消息格式
@@ -51,7 +76,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = getConfig();
+    const config = await getConfig();
     logRequest(messages, config);
 
     // 准备请求数据
@@ -59,8 +84,8 @@ export async function POST(request: NextRequest) {
       model: config.model,
       messages: formatMessages(messages),
       stream: true,
-      temperature: 0.7,
-      max_tokens: 2000,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
     };
 
     console.log(`[Chat API] Calling LLM API: ${config.apiUrl}/chat/completions`);

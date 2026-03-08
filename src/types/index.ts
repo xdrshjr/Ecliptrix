@@ -42,7 +42,47 @@ export interface ChatMessage {
     status?: string;
     intention?: any;
   };
+  // Agent mode fields
+  isAgentMessage?: boolean;
+  agentToolCalls?: AgentToolCallRecord[];
+  timelineSnapshot?: TimelineState;
+  pendingOperations?: AgentTimelineOperation[];
+  isUndone?: boolean;
 }
+
+export interface AgentToolCallRecord {
+  id: string;
+  name: string;
+  params: Record<string, unknown>;
+  status: 'executing' | 'completed' | 'error';
+  result?: unknown;
+}
+
+export interface AgentClipData {
+  id: string;
+  trackId: string;
+  startTime: number;
+  duration: number;
+  materialId: string;
+  clipStart: number;
+  clipEnd: number;
+  originalDuration: number;
+  volume: number;
+}
+
+export interface AgentMaterialData {
+  id: string;
+  name: string;
+  type: string;
+  thumbnailUrl?: string;
+}
+
+export type AgentTimelineOperation =
+  | { type: 'add_clip'; clip: AgentClipData; material: AgentMaterialData }
+  | { type: 'trim_clip'; clipId: string; clipStart: number; clipEnd: number; duration: number }
+  | { type: 'delete_clip'; clipId: string; trackId: string }
+  | { type: 'move_clip'; clipId: string; fromTrackId: string; toTrackId: string; newStartTime: number }
+  | { type: 'resize_clip'; clipId: string; newDuration: number };
 
 export interface Conversation {
   id: string;
@@ -391,6 +431,7 @@ export interface VideoEditingTaskContent {
     };
     // Chat UI state
     isChatLoading?: boolean;
+    agentMode?: boolean;
     hasAutoChatInitialized?: boolean;
     // Workflow configurations
     workflowConfigs?: Record<string, {

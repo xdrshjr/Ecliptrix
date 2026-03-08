@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Conversation } from '@/types';
+import { Conversation, ChatMessage } from '@/types';
 import MessageBubble from '@/components/chat/MessageBubble';
+import AgentMessageBubble from './AgentMessageBubble';
 import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoChatWindowProps {
@@ -14,6 +15,11 @@ interface VideoChatWindowProps {
   onPolishClick?: () => void;
   onViewWorkflowsClick?: () => void;
   onConvertMessageToScript?: (content: string) => void;
+  // Agent mode props
+  agentMode: boolean;
+  onAgentModeChange: (enabled: boolean) => void;
+  agentIsExecuting: boolean;
+  onAgentUndo?: (message: ChatMessage) => void;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -25,6 +31,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onPolishClick,
   onViewWorkflowsClick,
   onConvertMessageToScript,
+  agentMode,
+  onAgentModeChange,
+  agentIsExecuting,
+  onAgentUndo,
 }) => {
   const { t } = useLocale();
   const [inputMessage, setInputMessage] = useState('');
@@ -33,93 +43,62 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
-  console.log('[VideoChatWindow] 渲染组件', {
-    hasConversation: !!conversation,
-    messageCount: conversation?.messages.length || 0,
-    isLoading,
-    hasCreativeBrainstormingButton: !!onCreativeBrainstormingClick,
-    hasPolishButton: !!onPolishClick,
-    hasViewWorkflowsButton: !!onViewWorkflowsClick,
-    hasConvertMessageToScriptButton: !!onConvertMessageToScript,
-    timestamp: new Date().toISOString()
-  });
-
-  // 检查用户是否在消息底部附近
   const isNearBottom = () => {
     if (!messagesContainerRef.current) return true;
     const container = messagesContainerRef.current;
-    const threshold = 100; // 100px threshold
+    const threshold = 100;
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
   };
 
-  // 滚动到底部
   const scrollToBottom = (force = false) => {
     if (!shouldAutoScroll && !force) return;
-    
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      console.log('[VideoChatWindow] 自动滚动到底部');
     }
   };
 
-  // 处理用户滚动事件
   const handleScroll = () => {
     if (!messagesContainerRef.current) return;
-    
-    const nearBottom = isNearBottom();
-    setShouldAutoScroll(nearBottom);
+    setShouldAutoScroll(isNearBottom());
   };
 
-  // 检查是否有正在流式传输的消息
   const hasStreamingMessage = conversation?.messages.some(msg => msg.isStreaming) || false;
 
-  // Initialize textarea height on mount
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = '32px';
-      console.log('[VideoChatWindow] Textarea初始化默认高度');
     }
   }, []);
 
-  // 新消息时自动滚动到底部
   useEffect(() => {
-    const timer = setTimeout(() => {
-      scrollToBottom();
-    }, 100);
-    
+    const timer = setTimeout(() => scrollToBottom(), 100);
     return () => clearTimeout(timer);
   }, [conversation?.messages, shouldAutoScroll]);
 
-  // 流式传输时实时滚动到底部
   useEffect(() => {
     if (!hasStreamingMessage) return;
-
     const intervalId = setInterval(() => {
-      if (shouldAutoScroll) {
-        scrollToBottom();
-      }
-    }, 100); // 每100ms检查一次
-
+      if (shouldAutoScroll) scrollToBottom();
+    }, 100);
     return () => clearInterval(intervalId);
   }, [hasStreamingMessage, shouldAutoScroll]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputMessage.trim() && !isLoading) {
-      console.log('[VideoChatWindow] 发送消息', { 
+    if (inputMessage.trim() && !isLoading && !agentIsExecuting) {
+      console.log('[VideoChatWindow] 发送消息', {
         messageLength: inputMessage.length,
-        timestamp: new Date().toISOString() 
+        agentMode,
+        timestamp: new Date().toISOString()
       });
       onSendMessage(inputMessage.trim());
       setInputMessage('');
-      
-      // Reset textarea to initial single-row height
+
       if (textareaRef.current) {
         textareaRef.current.style.height = '32px';
         textareaRef.current.style.overflow = 'hidden';
       }
-      
-      // 发送消息后强制滚动到底部
+
       setShouldAutoScroll(true);
       setTimeout(() => scrollToBottom(true), 100);
     }
@@ -135,17 +114,15 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setInputMessage(newValue);
-    
-    // Auto-resize textarea based on content
+
     const textarea = e.target;
     textarea.style.height = 'auto';
-    
+
     const minHeight = 32;
     const maxHeight = 80;
     const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
     textarea.style.height = newHeight + 'px';
-    
-    // Enable scrolling when content exceeds max height
+
     if (textarea.scrollHeight > maxHeight) {
       textarea.style.overflow = 'auto';
     } else {
@@ -155,26 +132,17 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   const handleFocus = () => {
     if (!textareaRef.current) return;
-    
     const textarea = textareaRef.current;
     textarea.style.height = 'auto';
-    
     const minHeight = 32;
     const maxHeight = 80;
     const contentHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
-    
     textarea.style.height = contentHeight + 'px';
-    
-    if (textarea.scrollHeight > maxHeight) {
-      textarea.style.overflow = 'auto';
-    } else {
-      textarea.style.overflow = 'hidden';
-    }
+    textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
   };
 
   const handleBlur = () => {
     if (!textareaRef.current) return;
-    
     if (!inputMessage.trim()) {
       textareaRef.current.style.height = '32px';
       textareaRef.current.style.overflow = 'hidden';
@@ -182,57 +150,24 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   };
 
   const handleClearChat = () => {
-    if (!conversation || conversation.messages.length === 0) {
-      console.log('[VideoChatWindow] 没有消息可清除');
-      return;
-    }
-
+    if (!conversation || conversation.messages.length === 0) return;
     const confirmed = window.confirm(t.videoChatWindow.clearChatConfirm);
-    
     if (confirmed) {
-      console.log(`[VideoChatWindow] 清空 ${conversation.messages.length} 条消息`, {
-        timestamp: new Date().toISOString()
-      });
       onClearMessages();
     }
   };
 
-  const handleCreativeBrainstormingClick = () => {
-    console.log('[VideoChatWindow] 用户点击创意构思按钮', {
-      hasConversation: !!conversation,
-      messageCount: conversation?.messages.length || 0,
-      timestamp: new Date().toISOString()
-    });
-    onCreativeBrainstormingClick?.();
-  };
-
-  const handlePolishClick = () => {
-    console.log('[VideoChatWindow] 用户点击智能润色按钮', {
-      hasConversation: !!conversation,
-      messageCount: conversation?.messages.length || 0,
-      timestamp: new Date().toISOString()
-    });
-    onPolishClick?.();
-  };
-
-  const handleViewWorkflowsClick = () => {
-    console.log('[VideoChatWindow] 用户点击查看工作流按钮', {
-      hasConversation: !!conversation,
-      messageCount: conversation?.messages.length || 0,
-      timestamp: new Date().toISOString()
-    });
-    onViewWorkflowsClick?.();
-  };
-
   const handleConvertMessageToScript = (content: string) => {
-    console.log('[VideoChatWindow] 用户点击转换消息为视频脚本', {
-      hasConversation: !!conversation,
-      messageCount: conversation?.messages.length || 0,
-      contentLength: content.length,
-      timestamp: new Date().toISOString()
-    });
     onConvertMessageToScript?.(content);
   };
+
+  // Determine placeholder text
+  const inputDisabled = isLoading || agentIsExecuting;
+  const placeholderText = agentIsExecuting
+    ? t.videoChatWindow.agentWorkingPlaceholder
+    : agentMode
+      ? t.videoChatWindow.agentInputPlaceholder
+      : t.videoChatWindow.inputPlaceholder;
 
   if (!conversation) {
     return (
@@ -282,7 +217,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   return (
     <div className="flex flex-col h-full bg-background min-h-0">
       {/* Messages Area */}
-      <div 
+      <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0"
         onScroll={handleScroll}
@@ -303,11 +238,19 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           </div>
         ) : (
           conversation.messages.map((message) => (
-            <MessageBubble 
-              key={message.id} 
-              message={message}
-              onConvertToScript={handleConvertMessageToScript}
-            />
+            message.isAgentMessage ? (
+              <AgentMessageBubble
+                key={message.id}
+                message={message}
+                onUndo={onAgentUndo}
+              />
+            ) : (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                onConvertToScript={handleConvertMessageToScript}
+              />
+            )
           ))
         )}
         <div ref={messagesEndRef} />
@@ -315,56 +258,78 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
       {/* Action Buttons Bar - Above Input Area */}
       <div className="flex-shrink-0 px-6 py-3 border-t border-border bg-muted">
-        <div className="flex items-center space-x-2 justify-start">
-          {/* 查看工作流按钮 */}
-          {onViewWorkflowsClick && (
-            <button
-              onClick={handleViewWorkflowsClick}
-              disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-              title={t.videoChatWindow.viewWorkflowsTooltip}
-              aria-label={t.videoChatWindow.viewWorkflowsTooltip}
-            >
-              <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </button>
-          )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {/* 查看工作流按钮 */}
+            {onViewWorkflowsClick && (
+              <button
+                onClick={() => onViewWorkflowsClick?.()}
+                disabled={isLoading}
+                className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                title={t.videoChatWindow.viewWorkflowsTooltip}
+                aria-label={t.videoChatWindow.viewWorkflowsTooltip}
+              >
+                <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </button>
+            )}
 
-          {/* 创意构思按钮 */}
-          {onCreativeBrainstormingClick && (
-            <button
-              onClick={handleCreativeBrainstormingClick}
-              disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-              title={t.videoChatWindow.creativeBrainstormingTooltip}
-              aria-label={t.videoChatWindow.creativeBrainstormingTooltip}
-            >
-              <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            </button>
-          )}
+            {/* 创意构思按钮 */}
+            {onCreativeBrainstormingClick && (
+              <button
+                onClick={() => onCreativeBrainstormingClick?.()}
+                disabled={isLoading}
+                className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                title={t.videoChatWindow.creativeBrainstormingTooltip}
+                aria-label={t.videoChatWindow.creativeBrainstormingTooltip}
+              >
+                <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </button>
+            )}
 
-          {/* 智能润色按钮 */}
-          {onPolishClick && (
-            <button
-              onClick={handlePolishClick}
-              disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-              title={t.videoChatWindow.polishContentTooltip}
-              aria-label={t.videoChatWindow.polishContentTooltip}
-            >
-              <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-          )}
+            {/* 智能润色按钮 */}
+            {onPolishClick && (
+              <button
+                onClick={() => onPolishClick?.()}
+                disabled={isLoading}
+                className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                title={t.videoChatWindow.polishContentTooltip}
+                aria-label={t.videoChatWindow.polishContentTooltip}
+              >
+                <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            )}
+          </div>
 
+          {/* Agent Toggle */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{t.videoChatWindow.agentToggleLabel}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={agentMode}
+              disabled={agentIsExecuting}
+              onClick={() => onAgentModeChange(!agentMode)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${
+                agentMode ? 'bg-primary' : 'bg-border'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                  agentMode ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Input Area - Apple style with backdrop blur */}
+      {/* Input Area */}
       <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card">
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1 relative flex items-center">
@@ -375,10 +340,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onKeyDown={handleKeyDown}
               onFocus={handleFocus}
               onBlur={handleBlur}
-              placeholder={t.videoChatWindow.inputPlaceholder}
+              placeholder={placeholderText}
               className="w-full px-3 py-2 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-24 bg-muted min-h-[32px] transition-all text-sm"
               rows={1}
-              disabled={isLoading}
+              disabled={inputDisabled}
               style={{ height: '32px', overflow: 'hidden' }}
             />
           </div>
@@ -386,7 +351,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           <button
             type="button"
             onClick={handleClearChat}
-            disabled={!conversation || conversation.messages.length === 0 || isLoading}
+            disabled={!conversation || conversation.messages.length === 0 || inputDisabled}
             className="bg-card border border-border hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
             title={t.videoChatWindow.clearChatTooltip}
             style={{ width: '32px', height: '32px' }}
@@ -398,12 +363,12 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           {/* Send Button */}
           <button
             type="submit"
-            disabled={!inputMessage.trim() || isLoading}
+            disabled={!inputMessage.trim() || inputDisabled}
             className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
             title={t.videoChatWindow.sendMessageTooltip}
             style={{ width: '32px', height: '32px' }}
           >
-            {isLoading ? (
+            {inputDisabled ? (
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -421,4 +386,3 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 };
 
 export default VideoChatWindow;
-

@@ -2323,4 +2323,63 @@
   .video-cut-clip-card {
     padding: 12px;
   }
-} 
+}
+
+/* ============================================
+   Agent Timeline Operation Animations
+   ============================================ */
+
+/* Add clip: slide in from top + green border flash */
+@keyframes agent-clip-add {
+  0% { transform: translateY(-8px); opacity: 0; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.8); }
+  40% { transform: translateY(0); opacity: 1; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.8); }
+  60% { box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3); }
+  80% { box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.8); }
+  100% { box-shadow: none; }
+}
+
+.agent-clip-added {
+  animation: agent-clip-add 600ms ease-out;
+}
+
+/* Delete clip: fade out */
+@keyframes agent-clip-delete {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
+}
+
+.agent-clip-deleting {
+  animation: agent-clip-delete 400ms ease-in forwards;
+}
+
+/* Move clip: smooth slide (handled by CSS transition on startTime) */
+.agent-clip-moving {
+  transition: transform 400ms ease-in-out, left 400ms ease-in-out;
+}
+
+/* Trim clip: edge flash + smooth resize */
+@keyframes agent-clip-trim {
+  0% { box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.8); }
+  50% { box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.2); }
+  100% { box-shadow: none; }
+}
+
+.agent-clip-trimmed {
+  animation: agent-clip-trim 500ms ease-out;
+  transition: width 400ms ease-in-out;
+}
+
+/* Resize clip: smooth stretch */
+.agent-clip-resized {
+  animation: agent-clip-trim 500ms ease-out;
+  transition: width 400ms ease-in-out;
+}
+
+/* Agent timeline lock overlay */
+.agent-timeline-lock-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.05);
+  z-index: 50;
+  cursor: not-allowed;
+}
