@@ -1015,15 +1015,41 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     try {
       // 检查当前状态，如果已完成则打开结果弹窗，否则开始解析
       const currentStatus = videoAnalysis.getAnalysisStatus(material.url);
-      
+
       if (currentStatus === 'completed') {
-        // 已完成解析，打开结果弹窗
+        // hook中已完成解析，打开结果弹窗
         console.log(`[VideoEditingInterface] 视频已完成解析，打开结果弹窗`, {
           taskId,
           materialId: material.id,
           videoUrl: material.url
         });
         videoAnalysis.openAnalysisModal(material.url);
+      } else if (material.analysisResult?.status === 'completed' && material.analysisResult.analysis) {
+        // 素材上已有持久化的解析结果（自动解析），同步到hook状态后打开弹窗
+        console.log(`[VideoEditingInterface] 素材已有持久化解析结果，同步并打开弹窗`, {
+          taskId,
+          materialId: material.id,
+          videoUrl: material.url
+        });
+        const syntheticResult = {
+          success: true,
+          video_url: material.url,
+          total_frames_extracted: 1,
+          video_duration: material.duration || 0,
+          frame_analyses: [{
+            frame_number: 0,
+            timestamp: 0,
+            analysis: material.analysisResult.analysis,
+          }],
+          processing_time: 0,
+          timestamp: material.analysisResult.timestamp || new Date().toISOString(),
+        };
+        videoAnalysis.setAnalysisStatus(material.url, 'completed', syntheticResult);
+        // setAnalysisStatus是同步更新state，但openAnalysisModal在同一render读不到新state
+        // 所以用setTimeout让React完成state更新后再打开弹窗
+        setTimeout(() => {
+          videoAnalysis.openAnalysisModal(material.url);
+        }, 0);
       } else if (currentStatus === 'idle') {
         // 开始新的解析（带队列管理）
         const effectiveFrameInterval = frameInterval || 5;
