@@ -173,6 +173,12 @@ export interface Translations {
     modelSelectModel: string;
     modelApiUrlPlaceholder: string;
     modelNamePlaceholder: string;
+    modelFetchModels: string;
+    modelFetchingModels: string;
+    modelFetchModelsError: string;
+    modelNoModelsFound: string;
+    modelFetchModelsHint: string;
+    modelOrInputManually: string;
     deleteConfirmUsername: string;
     deleteConfirmEmail: string;
     confirmDelete: string;
@@ -1174,6 +1180,12 @@ export const translations: Record<string, Translations> = {
       modelSelectModel: 'Select model',
       modelApiUrlPlaceholder: 'https://api.example.com/v1',
       modelNamePlaceholder: 'Enter model name',
+      modelFetchModels: 'Fetch Models',
+      modelFetchingModels: 'Fetching...',
+      modelFetchModelsError: 'Failed to fetch models',
+      modelNoModelsFound: 'No models found',
+      modelFetchModelsHint: 'Enter API Key and click Fetch Models',
+      modelOrInputManually: 'or input manually',
       deleteConfirmUsername: 'Username',
       deleteConfirmEmail: 'Email',
       confirmDelete: 'Delete',
@@ -2188,6 +2200,12 @@ export const translations: Record<string, Translations> = {
       modelSelectModel: '选择模型',
       modelApiUrlPlaceholder: 'https://api.example.com/v1',
       modelNamePlaceholder: '输入模型名称',
+      modelFetchModels: '获取模型列表',
+      modelFetchingModels: '获取中...',
+      modelFetchModelsError: '获取模型列表失败',
+      modelNoModelsFound: '未找到模型',
+      modelFetchModelsHint: '输入API密钥后点击获取模型列表',
+      modelOrInputManually: '或手动输入',
       deleteConfirmUsername: '用户名',
       deleteConfirmEmail: '邮箱',
       confirmDelete: '删除',

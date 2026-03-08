@@ -12,11 +12,14 @@ import httpx
 from app.models.model_settings_models import (
     ModelFunctionType,
     PresetModel,
+    ProviderInfo,
     ModelSettingRequest,
     ModelSettingResponse,
     TestConnectionRequest,
     TestConnectionResponse,
     ResolvedConfigResponse,
+    FetchModelsRequest,
+    FetchModelsResponse,
 )
 from app.config import get_settings
 from app.logger import get_logger
@@ -27,33 +30,24 @@ logger = get_logger(__name__)
 DB_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data')
 DB_PATH = os.path.join(DB_DIR, 'model_settings.db')
 
-# Preset models
-PRESET_MODELS: List[PresetModel] = [
-    PresetModel(id="deepseek-v3", name="DeepSeek V3", provider="DeepSeek",
-                default_api_url="https://api.deepseek.com/v1", region="domestic"),
-    PresetModel(id="deepseek-r1", name="DeepSeek R1", provider="DeepSeek",
-                default_api_url="https://api.deepseek.com/v1", region="domestic"),
-    PresetModel(id="qwen-max", name="Qwen Max", provider="Alibaba",
-                default_api_url="https://dashscope.aliyuncs.com/compatible-mode/v1", region="domestic"),
-    PresetModel(id="qwen-plus", name="Qwen Plus", provider="Alibaba",
-                default_api_url="https://dashscope.aliyuncs.com/compatible-mode/v1", region="domestic"),
-    PresetModel(id="qwen-vl-max", name="Qwen VL Max", provider="Alibaba",
-                default_api_url="https://dashscope.aliyuncs.com/compatible-mode/v1", region="domestic"),
-    PresetModel(id="glm-4", name="GLM-4", provider="Zhipu AI",
-                default_api_url="https://open.bigmodel.cn/api/paas/v4", region="domestic"),
-    PresetModel(id="gpt-4o", name="GPT-4o", provider="OpenAI",
-                default_api_url="https://api.openai.com/v1", region="international"),
-    PresetModel(id="gpt-4o-mini", name="GPT-4o Mini", provider="OpenAI",
-                default_api_url="https://api.openai.com/v1", region="international"),
-    PresetModel(id="claude-sonnet-4-20250514", name="Claude Sonnet 4", provider="Anthropic",
-                default_api_url="https://api.anthropic.com/v1", region="international"),
-    PresetModel(id="claude-opus-4-20250514", name="Claude Opus 4", provider="Anthropic",
-                default_api_url="https://api.anthropic.com/v1", region="international"),
-    PresetModel(id="gemini-2.0-flash", name="Gemini 2.0 Flash", provider="Google",
-                default_api_url="https://generativelanguage.googleapis.com/v1beta/openai", region="international"),
-    PresetModel(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider="Google",
-                default_api_url="https://generativelanguage.googleapis.com/v1beta/openai", region="international"),
+# Known providers with default API URLs
+PROVIDERS: List[ProviderInfo] = [
+    ProviderInfo(id="deepseek", name="DeepSeek",
+                 default_api_url="https://api.deepseek.com/v1", region="domestic"),
+    ProviderInfo(id="alibaba", name="Alibaba",
+                 default_api_url="https://dashscope.aliyuncs.com/compatible-mode/v1", region="domestic"),
+    ProviderInfo(id="zhipu", name="Zhipu AI",
+                 default_api_url="https://open.bigmodel.cn/api/paas/v4", region="domestic"),
+    ProviderInfo(id="openai", name="OpenAI",
+                 default_api_url="https://api.openai.com/v1", region="international"),
+    ProviderInfo(id="anthropic", name="Anthropic",
+                 default_api_url="https://api.anthropic.com/v1", region="international"),
+    ProviderInfo(id="google", name="Google",
+                 default_api_url="https://generativelanguage.googleapis.com/v1beta/openai", region="international"),
 ]
+
+# Keep preset models for backward compat (empty now, models fetched dynamically)
+PRESET_MODELS: List[PresetModel] = []
 
 
 def _mask_api_key(key: str) -> str:
@@ -278,6 +272,72 @@ class ModelSettingsService:
     def get_preset_models(self) -> List[PresetModel]:
         """Return the list of preset models."""
         return PRESET_MODELS
+
+    def get_providers(self) -> List[ProviderInfo]:
+        """Return the list of known providers."""
+        return PROVIDERS
+
+    async def fetch_models(self, request: FetchModelsRequest) -> FetchModelsResponse:
+        """Fetch available models from a provider's /models endpoint."""
+        api_key = request.api_key
+
+        # If no key provided or sentinel, look up saved key
+        if (not api_key or api_key == '__USE_SAVED__') and request.function_type:
+            async with aiosqlite.connect(DB_PATH) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT api_key FROM model_settings WHERE function_type = ?",
+                    (request.function_type,)
+                )
+                row = await cursor.fetchone()
+                api_key = row["api_key"] if row else ""
+            if not api_key:
+                return FetchModelsResponse(success=False, message="No API key available")
+
+        try:
+            url = request.api_url.rstrip('/')
+            if not url.endswith('/models'):
+                url = f"{url}/models"
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+
+            if resp.status_code != 200:
+                detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+                return FetchModelsResponse(success=False, message=f"Error: {detail}")
+
+            data = resp.json()
+            models = []
+            # OpenAI-compatible format: { "data": [{ "id": "model-name", ... }] }
+            if isinstance(data, dict) and "data" in data:
+                for item in data["data"]:
+                    if isinstance(item, dict) and "id" in item:
+                        models.append(item["id"])
+            # Some APIs return a flat list
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "id" in item:
+                        models.append(item["id"])
+                    elif isinstance(item, str):
+                        models.append(item)
+
+            models.sort()
+            return FetchModelsResponse(
+                success=True,
+                message=f"Found {len(models)} models",
+                models=models,
+            )
+
+        except httpx.TimeoutException:
+            return FetchModelsResponse(success=False, message="Request timed out (15s)")
+        except Exception as e:
+            return FetchModelsResponse(success=False, message=f"Failed: {str(e)}")
 
     def _row_to_response(self, row) -> ModelSettingResponse:
         """Convert a database row to a ModelSettingResponse."""

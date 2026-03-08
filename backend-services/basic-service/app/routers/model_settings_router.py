@@ -10,9 +10,12 @@ from app.models.model_settings_models import (
     ModelSettingResponse,
     ModelSettingsListResponse,
     PresetModelsResponse,
+    ProvidersResponse,
     TestConnectionRequest,
     TestConnectionResponse,
     ResolvedConfigResponse,
+    FetchModelsRequest,
+    FetchModelsResponse,
 )
 from app.services.model_settings_service import model_settings_service
 from app.logger import get_logger
@@ -45,6 +48,28 @@ async def get_preset_models():
         message=f"Retrieved {len(presets)} preset models",
         presets=presets,
     )
+
+
+@router.get("/providers", response_model=ProvidersResponse)
+async def get_providers():
+    """Get the list of known providers with default API URLs."""
+    providers = model_settings_service.get_providers()
+    return ProvidersResponse(
+        success=True,
+        message=f"Retrieved {len(providers)} providers",
+        providers=providers,
+    )
+
+
+@router.post("/fetch-models", response_model=FetchModelsResponse)
+async def fetch_models(request: FetchModelsRequest):
+    """Fetch available models from a provider API using the given API key."""
+    try:
+        result = await model_settings_service.fetch_models(request)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/resolve/{function_type}", response_model=ResolvedConfigResponse)

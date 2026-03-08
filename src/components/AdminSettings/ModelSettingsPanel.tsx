@@ -6,10 +6,9 @@ import { useNotification } from '@/contexts/NotificationContext';
 
 type FunctionType = 'chat' | 'fast' | 'video_cut' | 'vision';
 
-interface PresetModel {
+interface ProviderInfo {
   id: string;
   name: string;
-  provider: string;
   default_api_url: string;
   region: string;
 }
@@ -34,7 +33,6 @@ interface FormState {
   api_url: string;
   api_key: string;
   temperature: number;
-  max_tokens: number;
   api_key_changed: boolean;
 }
 
@@ -53,7 +51,6 @@ const DEFAULT_FORM: FormState = {
   api_url: '',
   api_key: '',
   temperature: 0.7,
-  max_tokens: 2000,
   api_key_changed: false,
 };
 
@@ -75,7 +72,7 @@ const ModelSettingsPanel: React.FC = () => {
   const { showSuccess, showError } = useNotification();
 
   const [activeTab, setActiveTab] = useState<FunctionType>('chat');
-  const [presets, setPresets] = useState<PresetModel[]>([]);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [savedSettings, setSavedSettings] = useState<Record<string, ModelSetting>>({});
   const [forms, setForms] = useState<Record<FunctionType, FormState>>({
     chat: { ...DEFAULT_FORM },
@@ -88,6 +85,11 @@ const ModelSettingsPanel: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // Dynamic model list fetched from provider API
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelInputMode, setModelInputMode] = useState<'select' | 'manual'>('select');
 
   // Use ref for forms inside fetchData to avoid stale closure
   const formsRef = useRef(forms);
@@ -103,15 +105,15 @@ const ModelSettingsPanel: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsRes, presetsRes] = await Promise.all([
+      const [settingsRes, providersRes] = await Promise.all([
         fetch('/api/model-settings'),
-        fetch('/api/model-settings/presets'),
+        fetch('/api/model-settings/providers'),
       ]);
       const settingsData = await settingsRes.json();
-      const presetsData = await presetsRes.json();
+      const providersData = await providersRes.json();
 
-      if (presetsData.success) {
-        setPresets(presetsData.presets);
+      if (providersData.success) {
+        setProviders(providersData.providers);
       }
 
       if (settingsData.success) {
@@ -133,7 +135,6 @@ const ModelSettingsPanel: React.FC = () => {
             api_url: s.api_url,
             api_key: '',
             temperature: s.temperature,
-            max_tokens: s.max_tokens,
             api_key_changed: false,
           };
         }
@@ -163,14 +164,56 @@ const ModelSettingsPanel: React.FC = () => {
     setTestResult(null);
   };
 
-  const handlePresetSelect = (modelId: string) => {
-    const preset = presets.find(p => p.id === modelId);
-    if (preset) {
+  const handleProviderSelect = (providerName: string) => {
+    const provider = providers.find(p => p.name === providerName);
+    if (provider) {
       updateForm({
-        model_name: preset.id,
-        api_url: preset.default_api_url,
-        provider: preset.provider,
+        provider: provider.name,
+        api_url: provider.default_api_url,
+        model_name: '',
       });
+    } else {
+      updateForm({ provider: '', api_url: '', model_name: '' });
+    }
+    setFetchedModels([]);
+    setModelInputMode('select');
+  };
+
+  const handleFetchModels = async () => {
+    const form = forms[activeTab];
+    if (!form.api_url) return;
+
+    const apiKey = form.api_key_changed ? form.api_key : '';
+    if (!apiKey && !currentSaved?.api_key_set) {
+      showError('API Key is required');
+      return;
+    }
+
+    setFetchingModels(true);
+    setFetchedModels([]);
+    try {
+      const res = await fetch('/api/model-settings/fetch-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_url: form.api_url,
+          api_key: apiKey || '__USE_SAVED__',
+          function_type: activeTab,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.models.length > 0) {
+        setFetchedModels(data.models);
+        setModelInputMode('select');
+      } else {
+        showError(data.message || t.adminSettings.modelFetchModelsError);
+        setModelInputMode('manual');
+      }
+    } catch {
+      showError(t.adminSettings.modelFetchModelsError);
+      setModelInputMode('manual');
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -180,6 +223,8 @@ const ModelSettingsPanel: React.FC = () => {
     } else {
       updateForm({ is_custom: false, api_key: '', api_key_changed: false });
     }
+    setFetchedModels([]);
+    setModelInputMode('select');
   };
 
   const handleSave = async () => {
@@ -205,7 +250,7 @@ const ModelSettingsPanel: React.FC = () => {
           api_url: form.api_url,
           api_key: apiKeyToSend,
           temperature: form.temperature,
-          max_tokens: form.max_tokens,
+          max_tokens: 128000,
         }),
       });
       const data = await res.json();
@@ -234,6 +279,7 @@ const ModelSettingsPanel: React.FC = () => {
           return next;
         });
         setTestResult(null);
+        setFetchedModels([]);
       }
     } catch {
       showError(t.adminSettings.modelSaveError);
@@ -272,15 +318,9 @@ const ModelSettingsPanel: React.FC = () => {
     }
   };
 
-  // Group presets by region
-  const domesticPresets = presets.filter(p => p.region === 'domestic');
-  const internationalPresets = presets.filter(p => p.region === 'international');
-
-  // Get unique providers from presets
-  const providers = Array.from(new Set(presets.map(p => p.provider)));
-  const filteredPresets = currentForm.provider
-    ? presets.filter(p => p.provider === currentForm.provider)
-    : presets;
+  // Group providers by region
+  const domesticProviders = providers.filter(p => p.region === 'domestic');
+  const internationalProviders = providers.filter(p => p.region === 'international');
 
   /* ── Shared API Key input ── */
   const renderApiKeyInput = () => (
@@ -311,6 +351,72 @@ const ModelSettingsPanel: React.FC = () => {
       </div>
     </div>
   );
+
+  /* ── Model name: dropdown from fetched list or manual input ── */
+  const renderModelSelector = () => (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-sm font-medium text-foreground">
+          {t.adminSettings.modelName}
+        </label>
+        {fetchedModels.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setModelInputMode(prev => prev === 'select' ? 'manual' : 'select')}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {modelInputMode === 'select' ? t.adminSettings.modelOrInputManually : t.adminSettings.modelSelectModel}
+          </button>
+        )}
+      </div>
+      {modelInputMode === 'select' && fetchedModels.length > 0 ? (
+        <select
+          value={currentForm.model_name}
+          onChange={(e) => updateForm({ model_name: e.target.value })}
+          className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
+        >
+          <option value="">{t.adminSettings.modelSelectModel}</option>
+          {fetchedModels.map(model => (
+            <option key={model} value={model}>{model}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={currentForm.model_name}
+          onChange={(e) => updateForm({ model_name: e.target.value })}
+          placeholder={t.adminSettings.modelNamePlaceholder}
+          className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
+        />
+      )}
+    </div>
+  );
+
+  /* ── Fetch Models button ── */
+  const renderFetchModelsButton = () => {
+    const hasApiKey = ***REMOVED*** ? !!currentForm.api_key : !!currentSaved?.api_key_set;
+    return (
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleFetchModels}
+          disabled={fetchingModels || !currentForm.api_url || !hasApiKey}
+          className="px-3 py-1.5 text-sm font-medium border border-border rounded-md text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {fetchingModels ? t.adminSettings.modelFetchingModels : t.adminSettings.modelFetchModels}
+        </button>
+        {fetchedModels.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {fetchedModels.length} models
+          </span>
+        )}
+        {!hasApiKey && currentForm.api_url && (
+          <span className="text-xs text-muted-foreground">
+            {t.adminSettings.modelFetchModelsHint}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   /* ── Shared Test Connection button + result ── */
   const renderTestConnection = () => (
@@ -369,7 +475,7 @@ const ModelSettingsPanel: React.FC = () => {
             {FUNCTION_TABS.map(tab => (
               <button
                 key={tab}
-                onClick={() => { setActiveTab(tab); setTestResult(null); setShowApiKey(false); }}
+                onClick={() => { setActiveTab(tab); setTestResult(null); setShowApiKey(false); setFetchedModels([]); }}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
                   activeTab === tab
                     ? 'text-primary'
@@ -417,7 +523,7 @@ const ModelSettingsPanel: React.FC = () => {
             </label>
           </div>
 
-          {/* Preset Model Selection */}
+          {/* Preset Provider Selection */}
           {!currentForm.is_custom && (
             <div className="space-y-4 mb-6 p-4 rounded-lg border border-border bg-card">
               <div>
@@ -426,52 +532,48 @@ const ModelSettingsPanel: React.FC = () => {
                 </label>
                 <select
                   value={currentForm.provider}
-                  onChange={(e) => {
-                    updateForm({ provider: e.target.value, model_name: '', api_url: '' });
-                  }}
+                  onChange={(e) => handleProviderSelect(e.target.value)}
                   className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
                 >
                   <option value="">{t.adminSettings.modelSelectProvider}</option>
-                  {providers.map(provider => (
-                    <option key={provider} value={provider}>{provider}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  {t.adminSettings.modelName}
-                </label>
-                <select
-                  value={currentForm.model_name}
-                  onChange={(e) => handlePresetSelect(e.target.value)}
-                  className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
-                  disabled={!currentForm.provider}
-                >
-                  <option value="">{t.adminSettings.modelSelectModel}</option>
-                  {currentForm.provider ? (
-                    filteredPresets.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))
-                  ) : (
-                    <>
-                      <optgroup label={t.adminSettings.modelDomestic}>
-                        {domesticPresets.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.provider})</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label={t.adminSettings.modelInternational}>
-                        {internationalPresets.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.provider})</option>
-                        ))}
-                      </optgroup>
-                    </>
+                  {domesticProviders.length > 0 && (
+                    <optgroup label={t.adminSettings.modelDomestic}>
+                      {domesticProviders.map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {internationalProviders.length > 0 && (
+                    <optgroup label={t.adminSettings.modelInternational}>
+                      {internationalProviders.map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </optgroup>
                   )}
                 </select>
               </div>
 
-              {renderApiKeyInput()}
-              {renderTestConnection()}
+              {currentForm.provider && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      {t.adminSettings.modelApiUrl}
+                    </label>
+                    <input
+                      type="text"
+                      value={currentForm.api_url}
+                      onChange={(e) => updateForm({ api_url: e.target.value })}
+                      placeholder={t.adminSettings.modelApiUrlPlaceholder}
+                      className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
+                    />
+                  </div>
+
+                  {renderApiKeyInput()}
+                  {renderFetchModelsButton()}
+                  {renderModelSelector()}
+                  {renderTestConnection()}
+                </>
+              )}
             </div>
           )}
 
@@ -492,20 +594,8 @@ const ModelSettingsPanel: React.FC = () => {
               </div>
 
               {renderApiKeyInput()}
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  {t.adminSettings.modelName}
-                </label>
-                <input
-                  type="text"
-                  value={currentForm.model_name}
-                  onChange={(e) => updateForm({ model_name: e.target.value })}
-                  placeholder={t.adminSettings.modelNamePlaceholder}
-                  className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
-                />
-              </div>
-
+              {renderFetchModelsButton()}
+              {renderModelSelector()}
               {renderTestConnection()}
             </div>
           )}
@@ -541,19 +631,6 @@ const ModelSettingsPanel: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm text-foreground mb-2">
-                  {t.adminSettings.modelMaxTokens}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={128000}
-                  value={currentForm.max_tokens}
-                  onChange={(e) => updateForm({ max_tokens: parseInt(e.target.value) || 2000 })}
-                  className="block w-32 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-ring"
-                />
-              </div>
             </div>
           </div>
 

@@ -26,6 +26,30 @@ class PresetModel(BaseModel):
     region: str  # "domestic" or "international"
 
 
+class ProviderInfo(BaseModel):
+    """A known provider with default API URL."""
+    id: str
+    name: str
+    default_api_url: str
+    region: str  # "domestic" or "international"
+
+
+class FetchModelsRequest(BaseModel):
+    """Request to fetch available models from a provider API."""
+    api_url: str
+    api_key: str
+    function_type: Optional[str] = None  # Used to look up saved API key
+
+
+class FetchModelsResponse(BaseModel):
+    """Response containing fetched model list."""
+    model_config = ConfigDict(protected_namespaces=())
+
+    success: bool
+    message: str
+    models: List[str] = []
+
+
 class ModelSettingRequest(BaseModel):
     """Request to save a model setting."""
     model_config = ConfigDict(protected_namespaces=())
@@ -85,6 +109,13 @@ class PresetModelsResponse(BaseModel):
     success: bool
     message: str
     presets: List[PresetModel]
+
+
+class ProvidersResponse(BaseModel):
+    """Response containing known providers list."""
+    success: bool
+    message: str
+    providers: List[ProviderInfo]
 
 
 class ResolvedConfigResponse(BaseModel):
