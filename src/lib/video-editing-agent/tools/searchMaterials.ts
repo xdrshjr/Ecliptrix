@@ -1,6 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
+import { serializeMaterial } from './index';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keyword to match material names' }),
@@ -28,20 +29,16 @@ export function createSearchMaterialsTool(context: ToolContext): AgentTool<typeo
       const typeFilter = params.type;
 
       const matches = context.materials.filter(m =>
-        m.name.toLowerCase().includes(query) &&
+        (m.name.toLowerCase().includes(query) ||
+         m.analysisResult?.analysis?.toLowerCase().includes(query) ||
+         m.description?.toLowerCase().includes(query)) &&
         (!typeFilter || m.type === typeFilter)
       );
 
       const result = {
         success: true,
         count: matches.length,
-        materials: matches.map(m => ({
-          id: m.id,
-          name: m.name,
-          type: m.type,
-          duration: m.duration,
-          thumbnailUrl: m.thumbnailUrl,
-        })),
+        materials: matches.map(m => serializeMaterial(m)),
       };
 
       return {

@@ -30,6 +30,26 @@ def _parse_size(size: str) -> tuple[int, int]:
     return int(parts[0]), int(parts[1])
 
 
+def _build_prompt(mode: str, user_prompt: str) -> str:
+    if mode == "character":
+        return (
+            f"Character reference sheet of: {user_prompt}. "
+            "Multiple views arranged in a grid: front view, side view, back view, "
+            "three-quarter view, and facial close-up. "
+            "Consistent character design across all views, clean white background, "
+            "professional character turnaround sheet style."
+        )
+    elif mode == "scene":
+        return (
+            f"Scene reference sheet of: {user_prompt}. "
+            "Multiple views arranged in a grid: panoramic wide shot, medium shot, "
+            "detail close-up, and top-down bird's eye view. "
+            "Consistent scene design and lighting across all views, "
+            "professional environment concept art sheet style."
+        )
+    return user_prompt
+
+
 async def generate_images(request: ArkImageGenerateRequest) -> List[ArkImageResult]:
     """
     Generate images using the Ark Seedream API.
@@ -44,22 +64,29 @@ async def generate_images(request: ArkImageGenerateRequest) -> List[ArkImageResu
         )
 
     width, height = _parse_size(request.size)
+    final_prompt = _build_prompt(request.mode, request.prompt)
 
     payload = {
         "model": ARK_IMAGE_MODEL,
-        "prompt": request.prompt,
+        "prompt": final_prompt,
         "size": request.size,
         "n": request.count,
         "response_format": "url",
         "watermark": request.watermark,
     }
 
+    if request.reference_image:
+        payload["image_urls"] = [request.reference_image]
+
+    if request.mode in ("character", "scene"):
+        payload["n"] = 1
+
     headers = {
         "Authorization": f"Bearer {settings.ark_api_key}",
         "Content-Type": "application/json",
     }
 
-    logger.info(f"Ark image generation: prompt='{request.prompt[:50]}...', size={request.size}, count={request.count}")
+    logger.info(f"Ark image generation: prompt='{final_prompt[:50]}...', size={request.size}, count={request.count}")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(ARK_IMAGE_API, json=payload, headers=headers)

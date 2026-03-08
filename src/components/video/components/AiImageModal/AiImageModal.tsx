@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
-import { ArkImageGenerateParams, ArkImageSize } from '@/lib/api/arkImage';
+import React, { useState, useEffect } from 'react';
+import { ArkImageGenerateParams, ArkImageMode } from '@/lib/api/arkImage';
+import BasicGenerationTab, { BasicGenerationState } from './BasicGenerationTab';
+import CharacterModelingTab, { CharacterModelingState } from './CharacterModelingTab';
+import SceneModelingTab, { SceneModelingState } from './SceneModelingTab';
 
 interface AiImageModalProps {
   isOpen: boolean;
@@ -9,56 +12,53 @@ interface AiImageModalProps {
   onConfirm: (params: ArkImageGenerateParams) => void;
 }
 
-const SIZE_PRESETS = [
-  { value: '1024x1024', label: '1K 方形', icon: 'square' },
-  { value: '2048x2048', label: '2K 方形', icon: 'square' },
-  { value: '1280x720', label: '16:9 横屏', icon: 'landscape' },
-  { value: '720x1280', label: '9:16 竖屏', icon: 'portrait' },
-  { value: '1024x576', label: '16:9 宽屏', icon: 'landscape' },
-  { value: '576x1024', label: '9:16 竖屏宽', icon: 'portrait' },
-] as const;
-
-const sizeIcon = (icon: string, active: boolean) => {
-  const cls = active ? 'text-white' : 'text-muted-foreground';
-  switch (icon) {
-    case 'square':
-      return (
-        <svg className={`w-4 h-4 ${cls}`} viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="4" width="16" height="16" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    case 'landscape':
-      return (
-        <svg className={`w-4 h-4 ${cls}`} viewBox="0 0 24 24" fill="none">
-          <rect x="1" y="5" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    case 'portrait':
-      return (
-        <svg className={`w-4 h-4 ${cls}`} viewBox="0 0 24 24" fill="none">
-          <rect x="5" y="1" width="14" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    default:
-      return null;
-  }
-};
+const TABS: { key: ArkImageMode; label: string }[] = [
+  { key: 'basic', label: '基础生成' },
+  { key: 'character', label: '人物建模' },
+  { key: 'scene', label: '场景建模' },
+];
 
 const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm }) => {
-  const [prompt, setPrompt] = useState('');
-  const [size, setSize] = useState<ArkImageSize>('2048x2048');
-  const [count, setCount] = useState(1);
-  const [watermark, setWatermark] = useState(true);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [activeTab, setActiveTab] = useState<ArkImageMode>('basic');
   const [submitted, setSubmitted] = useState(false);
 
+  const [basicState, setBasicState] = useState<BasicGenerationState>({
+    prompt: '',
+    size: '2048x2048',
+    count: 1,
+    watermark: true,
+    referenceImage: null,
+  });
+
+  const [characterState, setCharacterState] = useState<CharacterModelingState>({
+    prompt: '',
+    watermark: true,
+    referenceImage: null,
+    selectedTemplateId: null,
+  });
+
+  const [sceneState, setSceneState] = useState<SceneModelingState>({
+    prompt: '',
+    watermark: true,
+    referenceImage: null,
+    selectedTemplateId: null,
+  });
+
+  // Reset form state whenever the modal opens, so previous submitted/state
+  // does not leak across open/close cycles (parent may close without calling handleClose).
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   const resetForm = () => {
-    setPrompt('');
-    setSize('2048x2048');
-    setCount(1);
-    setWatermark(true);
-    setShowAdvanced(false);
+    setActiveTab('basic');
     setSubmitted(false);
+    setBasicState({ prompt: '', size: '2048x2048', count: 1, watermark: true, referenceImage: null });
+    setCharacterState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
+    setSceneState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
   };
 
   const handleClose = () => {
@@ -66,15 +66,55 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
     onClose();
   };
 
+  const getCurrentPrompt = (): string => {
+    switch (activeTab) {
+      case 'basic': return basicState.prompt;
+      case 'character': return characterState.prompt;
+      case 'scene': return sceneState.prompt;
+    }
+  };
+
   const handleSubmit = () => {
-    if (!prompt.trim() || submitted) return;
+    const prompt = getCurrentPrompt().trim();
+    if (!prompt || submitted) return;
     setSubmitted(true);
-    onConfirm({
-      prompt: prompt.trim(),
-      size,
-      count,
-      watermark,
-    });
+
+    let params: ArkImageGenerateParams;
+
+    switch (activeTab) {
+      case 'basic':
+        params = {
+          prompt,
+          size: basicState.size,
+          count: basicState.count,
+          watermark: basicState.watermark,
+          mode: 'basic',
+          reference_image: basicState.referenceImage || undefined,
+        };
+        break;
+      case 'character':
+        params = {
+          prompt,
+          size: '2048x2048',
+          count: 1,
+          watermark: characterState.watermark,
+          mode: 'character',
+          reference_image: characterState.referenceImage || undefined,
+        };
+        break;
+      case 'scene':
+        params = {
+          prompt,
+          size: '2048x2048',
+          count: 1,
+          watermark: sceneState.watermark,
+          mode: 'scene',
+          reference_image: sceneState.referenceImage || undefined,
+        };
+        break;
+    }
+
+    onConfirm(params);
   };
 
   if (!isOpen) return null;
@@ -102,112 +142,36 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
               </svg>
             </button>
           </div>
+
+          {/* Tab Bar */}
+          <div className="flex gap-1 mt-4 bg-background/50 rounded-md p-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
+                  activeTab === tab.key
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
-          {/* Prompt */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              提示词 <span className="text-destructive">*</span>
-            </label>
-            <div className="relative">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value.slice(0, 500))}
-                rows={4}
-                autoFocus
-                placeholder="描述你想要生成的图片内容，例如：日落时分的海边灯塔，油画风格，温暖的光线..."
-                className="w-full border border-border rounded-md px-4 py-3 text-sm text-foreground bg-card resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-              />
-              <span className="absolute bottom-2.5 right-3 text-xs text-muted-foreground">
-                {prompt.length}/500
-              </span>
-            </div>
-          </div>
-
-          {/* Size */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              图片尺寸
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {SIZE_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  onClick={() => setSize(preset.value)}
-                  className={`py-2.5 px-2 rounded-md text-xs font-medium border transition-colors flex items-center justify-center gap-1.5 ${
-                    size === preset.value
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-card text-foreground border-border hover:border-border'
-                  }`}
-                >
-                  {sizeIcon(preset.icon, size === preset.value)}
-                  <span>{preset.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Count */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              生成数量
-            </label>
-            <div className="flex gap-3">
-              {([1, 2, 3, 4] as const).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setCount(n)}
-                  className={`flex-1 py-2.5 rounded-md text-sm font-medium border transition-colors ${
-                    count === n
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-card text-foreground border-border hover:border-border'
-                  }`}
-                >
-                  {n} 张
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Advanced Options */}
-          <div>
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-pink-500 transition-colors"
-            >
-              <svg
-                className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <span>高级选项</span>
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-4 space-y-4 pl-3 border-l-2 border-pink-100">
-                {/* Watermark */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">添加水印</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">在生成图片上添加平台水印</p>
-                  </div>
-                  <div
-                    onClick={() => setWatermark(!watermark)}
-                    className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer flex items-center ${
-                      watermark ? 'bg-pink-500' : 'bg-muted-foreground/30'
-                    }`}
-                  >
-                    <div className={`absolute w-4 h-4 bg-card rounded-full transition-transform duration-200 ease-in-out ${
-                      watermark ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="flex-1 overflow-y-auto px-8 py-6">
+          {activeTab === 'basic' && (
+            <BasicGenerationTab state={basicState} onChange={setBasicState} />
+          )}
+          {activeTab === 'character' && (
+            <CharacterModelingTab state={characterState} onChange={setCharacterState} />
+          )}
+          {activeTab === 'scene' && (
+            <SceneModelingTab state={sceneState} onChange={setSceneState} />
+          )}
         </div>
 
         {/* Footer */}
@@ -220,7 +184,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!prompt.trim() || submitted}
+            disabled={!getCurrentPrompt().trim() || submitted}
             className="px-6 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitted ? '生成中...' : '开始生成'}

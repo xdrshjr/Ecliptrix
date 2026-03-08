@@ -2,6 +2,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { TimelineState, Track, TimelineItem, MaterialItem } from '@/types';
 import type { ToolContext } from '../types';
 import { createGetTimelineTool } from './getTimeline';
+import { createListMaterialsTool } from './listMaterials';
 import { createSearchMaterialsTool } from './searchMaterials';
 import { createAddToTrackTool } from './addToTrack';
 import { createTrimClipTool } from './trimClip';
@@ -57,12 +58,32 @@ export function generateClipId(): string {
   return `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function serializeMaterial(m: MaterialItem) {
+  return {
+    id: m.id,
+    name: m.name,
+    type: m.type,
+    format: m.format,
+    duration: m.duration,
+    width: m.width,
+    height: m.height,
+    size: m.size,
+    description: m.description,
+    tags: m.tags,
+    thumbnailUrl: m.thumbnailUrl,
+    hasSentenceSegments: !!m.sentenceSegments,
+    analysisStatus: m.analysisResult?.status,
+    analysis: m.analysisResult?.analysis,
+  };
+}
+
 // --- Tool registration ---
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildVideoEditingTools(context: ToolContext): AgentTool<any>[] {
   return [
     createGetTimelineTool(context),
+    createListMaterialsTool(context),
     createSearchMaterialsTool(context),
     createAddToTrackTool(context),
     createTrimClipTool(context),

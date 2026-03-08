@@ -495,6 +495,14 @@ export interface MaterialItem {
   
   // 新增：句子段落信息，用于TTS生成的音频素材
   sentenceSegments?: AudioSentenceSegment; // 句子时间信息（仅TTS生成的音频使用）
+
+  // AI自动解析结果（视频上传后自动触发）
+  analysisResult?: {
+    status: 'pending' | 'completed' | 'error';
+    analysis?: string;       // 解析结果文本
+    timestamp?: string;      // 解析完成时间
+    errorMessage?: string;   // 错误信息
+  };
 }
 
 export interface MaterialsData {

@@ -16,6 +16,8 @@ class ArkImageGenerateRequest(BaseModel):
     ] = Field(default="2048x2048", description="Image dimensions (WxH)")
     count: int = Field(default=1, ge=1, le=4, description="Number of images to generate (1-4)")
     watermark: bool = Field(default=True, description="Whether to add a watermark")
+    mode: Literal["basic", "character", "scene"] = Field(default="basic", description="Generation mode")
+    reference_image: Optional[str] = Field(default=None, description="Base64 data URI for image-to-image / reference image")
 
 
 class ArkImageResult(BaseModel):

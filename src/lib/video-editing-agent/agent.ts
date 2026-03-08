@@ -53,7 +53,7 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   // 6. Create Agent
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(config.timelineState),
+      systemPrompt: buildSystemPrompt(config.timelineState, config.materials),
       model,
       thinkingLevel: 'off',
       tools,

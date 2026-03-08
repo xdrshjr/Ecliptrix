@@ -443,6 +443,65 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     }
   }, [taskId, logger]);
 
+  // 视频上传后自动触发快速解析（fire-and-forget）
+  const triggerAutoAnalysis = useCallback(async (material: MaterialItem) => {
+    // 设置 pending 状态
+    setMaterials(prev => prev.map(m =>
+      m.id === material.id
+        ? { ...m, analysisResult: { status: 'pending' as const } }
+        : m
+    ));
+
+    try {
+      const response = await fetch('/api/video/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_url: material.url || material.serverUrl,
+          use_thumbnail: true,
+          thumbnail_url: material.thumbnailUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`解析请求失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const analysisText = data?.data?.frame_analyses?.[0]?.analysis
+        || data?.frame_analyses?.[0]?.analysis
+        || '';
+
+      if (!isMountedRef.current) return;
+
+      setMaterials(prev => prev.map(m =>
+        m.id === material.id
+          ? {
+              ...m,
+              analysisResult: {
+                status: 'completed' as const,
+                analysis: analysisText,
+                timestamp: new Date().toISOString(),
+              },
+            }
+          : m
+      ));
+
+      logger.info('视频自动解析完成', { materialId: material.id, analysisLength: analysisText.length });
+    } catch (error) {
+      if (!isMountedRef.current) return;
+
+      const errMsg = error instanceof Error ? error.message : String(error);
+      setMaterials(prev => prev.map(m =>
+        m.id === material.id
+          ? { ...m, analysisResult: { status: 'error' as const, errorMessage: errMsg } }
+          : m
+      ));
+
+      logger.warn('视频自动解析失败', { materialId: material.id, error: errMsg });
+    }
+  }, [logger]);
+
   // 提取公共的文件处理逻辑（支持并发上传队列）
   const processFileUpload = useCallback(async (files: FileList) => {
     logger.info('开始处理上传文件（并发队列模式）', {
@@ -558,11 +617,16 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
           if (uploadedMaterial) {
             // 上传成功，替换素材
-            setMaterials(prev => prev.map(m => 
-              m.id === material.id 
+            setMaterials(prev => prev.map(m =>
+              m.id === material.id
                 ? { ...uploadedMaterial, uploadStatus: 'completed' as const, uploadProgress: 100 }
                 : m
             ));
+
+            // 视频上传成功后自动触发快速解析
+            if (uploadedMaterial.type === 'video' && uploadedMaterial.thumbnailUrl) {
+              triggerAutoAnalysis(uploadedMaterial);
+            }
 
             logger.info('文件上传成功', {
               materialId: uploadedMaterial.id,
@@ -639,7 +703,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       setIsUploading(false);
       setUploadProgress(0);
     }
-  }, [taskId, logger, uploadSingleFile]);
+  }, [taskId, logger, uploadSingleFile, triggerAutoAnalysis]);
 
   // 添加或更新素材到列表
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
@@ -888,6 +952,10 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     const createdAt = new Date();
     const timeStr = createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+    // Determine name prefix based on mode
+    const mode = params.mode || 'basic';
+    const namePrefix = mode === 'character' ? 'AI人物建模' : mode === 'scene' ? 'AI场景建模' : 'AI图像';
+
     // Insert placeholder cards for each requested image
     const placeholderIds: string[] = [];
     for (let i = 0; i < params.count; i++) {
@@ -895,7 +963,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       placeholderIds.push(tempId);
       const placeholder: MaterialItem = {
         id: tempId,
-        name: `AI图像_${timeStr}_${i + 1}`,
+        name: `${namePrefix}_${timeStr}_${i + 1}`,
         type: 'image',
         format: 'png',
         size: 0,
@@ -903,7 +971,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
         createdAt,
         downloadStatus: 'generating',
         downloadProgress: 0,
-        metadata: { source: 'ark-ai-image', prompt: params.prompt },
+        metadata: { source: 'ark-ai-image', prompt: params.prompt, mode },
       };
       setMaterials(prev => [placeholder, ...prev]);
     }
@@ -919,7 +987,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
         if (image) {
           const finalMaterial: MaterialItem = {
             id: placeholderId,
-            name: `AI图像_${timeStr}_${i + 1}`,
+            name: `${namePrefix}_${timeStr}_${i + 1}`,
             type: 'image',
             format: 'png',
             size: 0,
@@ -931,7 +999,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
             createdAt,
             downloadStatus: undefined,
             downloadProgress: undefined,
-            metadata: { source: 'ark-ai-image', prompt: params.prompt },
+            metadata: { source: 'ark-ai-image', prompt: params.prompt, mode },
           };
           addOrReplaceMaterial(finalMaterial);
         } else {
