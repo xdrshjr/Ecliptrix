@@ -8,6 +8,11 @@ export interface ToastProps {
   type?: 'success' | 'error' | 'info' | 'warning';
   duration?: number;
   onClose: (id: string) => void;
+  confirmAction?: {
+    onConfirm: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
+  };
 }
 
 const Toast: React.FC<ToastProps> = ({
@@ -15,7 +20,8 @@ const Toast: React.FC<ToastProps> = ({
   message,
   type = 'info',
   duration = 4000,
-  onClose
+  onClose,
+  confirmAction
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -26,16 +32,22 @@ const Toast: React.FC<ToastProps> = ({
       setIsVisible(true);
     }, 10);
 
-    // 自动关闭定时器
-    const closeTimer = setTimeout(() => {
-      handleClose();
-    }, duration);
+    // 确认类型的toast不自动关闭
+    if (!confirmAction) {
+      const closeTimer = setTimeout(() => {
+        handleClose();
+      }, duration);
+
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(closeTimer);
+      };
+    }
 
     return () => {
       clearTimeout(showTimer);
-      clearTimeout(closeTimer);
     };
-  }, [duration]);
+  }, [duration, confirmAction]);
 
   const handleClose = () => {
     setIsLeaving(true);
@@ -116,19 +128,42 @@ const Toast: React.FC<ToastProps> = ({
     >
       {renderIcon()}
       
-      <div className="flex-1 text-sm font-medium leading-relaxed">
-        {message}
+      <div className="flex-1">
+        <div className="text-sm font-medium leading-relaxed">
+          {message}
+        </div>
+        {confirmAction && (
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => {
+                confirmAction.onConfirm();
+                handleClose();
+              }}
+              className="px-3 py-1 text-xs font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors duration-200"
+            >
+              {confirmAction.confirmLabel || '确定'}
+            </button>
+            <button
+              onClick={handleClose}
+              className="px-3 py-1 text-xs font-medium rounded-md bg-accent text-accent-foreground hover:bg-accent/80 transition-colors duration-200"
+            >
+              {confirmAction.cancelLabel || '取消'}
+            </button>
+          </div>
+        )}
       </div>
-      
-      <button
-        onClick={handleClose}
-        className="ml-2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200"
-        aria-label="关闭通知"
-      >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-        </svg>
-      </button>
+
+      {!confirmAction && (
+        <button
+          onClick={handleClose}
+          className="ml-2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200"
+          aria-label="关闭通知"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 };

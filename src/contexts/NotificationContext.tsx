@@ -9,6 +9,7 @@ interface NotificationContextType {
   showError: (message: string, duration?: number) => void;
   showInfo: (message: string, duration?: number) => void;
   showWarning: (message: string, duration?: number) => void;
+  showConfirm: (message: string, onConfirm: () => void, options?: { confirmLabel?: string; cancelLabel?: string }) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -83,12 +84,32 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     showNotification(message, 'warning', duration);
   }, [showNotification]);
 
+  const showConfirm = useCallback((
+    message: string,
+    onConfirm: () => void,
+    options?: { confirmLabel?: string; cancelLabel?: string }
+  ) => {
+    const id = generateId();
+    const newToast: ToastItem = {
+      id,
+      message,
+      type: 'warning',
+      confirmAction: {
+        onConfirm,
+        confirmLabel: options?.confirmLabel,
+        cancelLabel: options?.cancelLabel,
+      },
+    };
+    setToasts(prev => [...prev, newToast]);
+  }, [generateId]);
+
   const contextValue: NotificationContextType = {
     showNotification,
     showSuccess,
     showError,
     showInfo,
-    showWarning
+    showWarning,
+    showConfirm
   };
 
   return (

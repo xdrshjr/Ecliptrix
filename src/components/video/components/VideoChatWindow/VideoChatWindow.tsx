@@ -5,6 +5,7 @@ import { Conversation, ChatMessage } from '@/types';
 import MessageBubble from '@/components/chat/MessageBubble';
 import AgentMessageBubble from './AgentMessageBubble';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface VideoChatWindowProps {
   conversation: Conversation | undefined;
@@ -37,6 +38,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onAgentUndo,
 }) => {
   const { t } = useLocale();
+  const { showConfirm } = useNotification();
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -151,10 +153,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   const handleClearChat = () => {
     if (!conversation || conversation.messages.length === 0) return;
-    const confirmed = window.confirm(t.videoChatWindow.clearChatConfirm);
-    if (confirmed) {
-      onClearMessages();
-    }
+    showConfirm(t.videoChatWindow.clearChatConfirm, onClearMessages);
   };
 
   const handleConvertMessageToScript = (content: string) => {

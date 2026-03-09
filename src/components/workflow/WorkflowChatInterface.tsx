@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { WorkflowExecutionState } from '@/types';
 import ExecutionProcessPanel from './ExecutionProcessPanel';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export interface WorkflowChatMessage {
   id: string;
@@ -51,6 +52,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
   onClearContext,
   onNavigateToVideoEditing,
 }) => {
+  const { showConfirm } = useNotification();
   const [inputValue, setInputValue] = useState('');
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -284,13 +286,10 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
     }
     
     // Confirm before clearing
-    const confirmed = window.confirm('确定要清空所有聊天记录吗？此操作不可撤销。');
-    if (confirmed) {
+    showConfirm('确定要清空所有聊天记录吗？此操作不可撤销。', () => {
       console.log('[WorkflowChatInterface] User confirmed clearing chat history');
       onClearChatHistory();
-    } else {
-      console.log('[WorkflowChatInterface] User cancelled clearing chat history');
-    }
+    });
   };
 
   // Handle clear context button click
@@ -300,13 +299,10 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
     });
     
     // Confirm before clearing
-    const confirmed = window.confirm('确定要清空当前工作流的上下文吗？聊天记录将保留。');
-    if (confirmed) {
+    showConfirm('确定要清空当前工作流的上下文吗？聊天记录将保留。', () => {
       console.log('[WorkflowChatInterface] User confirmed clearing context');
       onClearContext();
-    } else {
-      console.log('[WorkflowChatInterface] User cancelled clearing context');
-    }
+    });
   };
 
   // 构建节点名称映射

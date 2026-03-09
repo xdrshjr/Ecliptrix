@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Conversation } from '@/types';
 import MessageBubble from './MessageBubble';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface ChatWindowProps {
   conversation: Conversation | undefined;
@@ -21,6 +22,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onNavigateToVideoEditing,
 }) => {
   const { t } = useLocale();
+  const { showConfirm } = useNotification();
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -205,16 +207,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return;
     }
 
-    // Show confirmation dialog
-    const confirmed = window.confirm('Are you sure you want to clear all chat history? This action cannot be undone.');
-    
-    if (confirmed) {
+    showConfirm('Are you sure you want to clear all chat history? This action cannot be undone.', () => {
       console.log(`[ChatWindow] User confirmed clearing ${conversation.messages.length} messages`);
       onClearMessages();
       console.log('[ChatWindow] Chat cleared, context cache reset');
-    } else {
-      console.log('[ChatWindow] User cancelled chat clearing');
-    }
+    });
   };
 
   if (!conversation) {

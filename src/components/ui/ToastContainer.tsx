@@ -8,6 +8,11 @@ export interface ToastItem {
   message: string;
   type?: 'success' | 'error' | 'info' | 'warning';
   duration?: number;
+  confirmAction?: {
+    onConfirm: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
+  };
 }
 
 interface ToastContainerProps {
@@ -30,6 +35,7 @@ const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onRemoveToast }
           type={toast.type}
           duration={toast.duration}
           onClose={onRemoveToast}
+          confirmAction={toast.confirmAction}
         />
       ))}
     </div>
