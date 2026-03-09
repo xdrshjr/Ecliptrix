@@ -281,7 +281,7 @@ const Track: React.FC<TrackProps> = ({
   };
 
   return (
-    <div className="track flex border-b border-border last:border-b-0">
+    <div className="track flex border-b border-border last:border-b-0" style={{ minWidth: '100%' }}>
       {/* 轨道控制区域 - 紧凑设计 */}
       <div className="track-controls w-48 bg-muted border-r border-border">
         {/* 轨道标题和控制按钮在同一行 */}
