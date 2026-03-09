@@ -342,7 +342,7 @@ class VideoCache {
 
 // 创建全局单例
 export const videoCache = new VideoCache({
-  maxCacheSize: 5,
+  maxCacheSize: 10,
   preloadTimeout: 30000,
   enableLRU: true,
   logLevel: 'info'

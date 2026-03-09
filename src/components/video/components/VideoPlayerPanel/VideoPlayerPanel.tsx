@@ -132,6 +132,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 新增：跳转状态标记，防止handleTimeUpdate在跳转过程中的干扰
   const isSeekingRef = useRef(false);
+  // 记录已触发预加载的 sequence index，避免重复触发
+  const preloadTriggeredRef = useRef<Set<number>>(new Set());
   // 过渡代数计数器 - 每次 src 切换时递增，让旧的 loadeddata 回调失效
   const transitionIdRef = useRef(0);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
@@ -772,6 +774,25 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     };
   }, []);
 
+  // 视频序列变化时重置预加载记录
+  useEffect(() => {
+    preloadTriggeredRef.current.clear();
+  }, [compositionPlayback?.videoSequences]);
+
+  // 预加载从 startIndex 开始的后续 count 个视频序列
+  const preloadUpcomingSequences = useCallback((startIndex: number, count: number) => {
+    if (!compositionPlayback) return;
+    const sequences = compositionPlayback.videoSequences;
+    for (let i = startIndex; i < Math.min(startIndex + count, sequences.length); i++) {
+      const seq = sequences[i];
+      if (seq.materialId && videoCache.getCacheState(seq.materialId) === 'not-found') {
+        videoCache.preloadVideo(seq.url, seq.materialId).catch(() => {
+          // 预加载失败不影响主流程
+        });
+      }
+    }
+  }, [compositionPlayback, videoCache]);
+
   // 组合播放时的视频切换逻辑
   const handleVideoEnded = useCallback(() => {
     if (playbackMode === 'composition' && compositionPlayback && onNextSequence) {
@@ -872,10 +893,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 hideCanvasBuffer();
               }
             };
-            videoRef.current.addEventListener('loadeddata', handleLoaded, { once: true });
+            videoRef.current.addEventListener('canplay', handleLoaded, { once: true });
             setTimeout(() => {
               if (transitionIdRef.current !== tid) return; // 过期超时，忽略
-              if (videoRef.current) videoRef.current.removeEventListener('loadeddata', handleLoaded);
+              if (videoRef.current) videoRef.current.removeEventListener('canplay', handleLoaded);
               isSeekingRef.current = false;
               hideCanvasBuffer();
             }, 5000);
@@ -889,6 +910,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               sequenceName: nextSequence.name
             });
           });
+
+          // 切换到下一个视频后，预加载再后面的视频
+          preloadUpcomingSequences(nextIndex + 1, 2);
         }
       } else {
         // 所有视频播放完毕
@@ -918,7 +942,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         }
       }
     }
-  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, captureFrameToCanvas, hideCanvasBuffer, logger]);
+  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, captureFrameToCanvas, hideCanvasBuffer, preloadUpcomingSequences, logger]);
 
   // 更新组合播放时间
   const handleTimeUpdate = useCallback(() => {
@@ -1124,6 +1148,20 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           });
         });
       }
+
+      // 前瞻性预加载：当前视频播放进度达到70%时，预加载下一个视频
+      if (currentSequence && isCompositionPlaying) {
+        const clipStart = currentSequence.clipStart || 0;
+        const clipEnd = currentSequence.clipEnd || currentSequence.originalDuration || currentSequence.duration;
+        const clipDuration = clipEnd - clipStart;
+        if (clipDuration > 0) {
+          const progress = (videoCurrentTime - clipStart) / clipDuration;
+          if (progress >= 0.7 && !preloadTriggeredRef.current.has(actualSequenceIndex)) {
+            preloadTriggeredRef.current.add(actualSequenceIndex);
+            preloadUpcomingSequences(actualSequenceIndex + 1, 2);
+          }
+        }
+      }
     } else if (playbackMode === 'preview' && currentVideo) {
       // 预览模式下也需要同步时间到timeline
       const videoCurrentTime = currentVideo.currentTime;
@@ -1150,7 +1188,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, normalizeVideoUrl, syncAudioPlayback, logger, getCurrentVideoElement]);
+  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, normalizeVideoUrl, syncAudioPlayback, preloadUpcomingSequences, logger, getCurrentVideoElement]);
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
@@ -1234,7 +1272,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               if (needsSourceChange) {
                 // 捕获当前帧到canvas，防止切换src时黑屏
                 captureFrameToCanvas();
-                // 视频源不同，等待loadeddata后再播放
+                // 视频源不同，等待canplay后再播放
                 isSeekingRef.current = true;
                 const tid = ++transitionIdRef.current;
                 currentVideo.src = targetSequence.url;
@@ -1255,10 +1293,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     hideCanvasBuffer();
                   }
                 };
-                currentVideo.addEventListener('loadeddata', handleLoaded, { once: true });
+                currentVideo.addEventListener('canplay', handleLoaded, { once: true });
                 setTimeout(() => {
                   if (transitionIdRef.current !== tid) return;
-                  currentVideo.removeEventListener('loadeddata', handleLoaded);
+                  currentVideo.removeEventListener('canplay', handleLoaded);
                   isSeekingRef.current = false;
                   hideCanvasBuffer();
                 }, 5000);
@@ -1276,6 +1314,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 });
               }
               setCompositionCurrentTime(startTime);
+
+              // 开始播放时，预加载后续视频并重置预加载记录
+              preloadTriggeredRef.current.clear();
+              preloadUpcomingSequences(targetSequenceIndex + 1, 3);
 
               // 新增：同步播放音频
               await syncAudioPlayback(startTime, true);
@@ -1310,7 +1352,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, logger]);
+  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, logger]);
 
   // 新增：核心组合播放跳转函数，可被timeline和播放器UI调用
   const handleCompositionSeek = useCallback(async (
