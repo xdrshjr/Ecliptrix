@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef, useEffect, useState, RefObject } from 'react';
+import React, { useRef, useEffect, useState, useCallback, RefObject } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface TimelineRulerProps {
   currentTime: number;
@@ -27,10 +28,12 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   onScroll,
   scrollLeft = 0
 }) => {
+  const { t } = useLocale();
   const rulerRef = useRef<HTMLDivElement>(null);
   const controlPanelRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showZoomHint, setShowZoomHint] = useState(false);
 
   // 动态计算控制面板宽度
   const getControlPanelWidth = (): number => {
@@ -217,6 +220,17 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     onZoomChange(1.0);
   };
 
+  // 处理Ctrl+滚轮缩放
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      const newZoom = e.deltaY < 0
+        ? Math.min(5.0, zoomLevel * 1.15)
+        : Math.max(0.1, zoomLevel / 1.15);
+      onZoomChange(newZoom);
+    }
+  }, [zoomLevel, onZoomChange]);
+
   // 处理时间轴图标的鼠标事件
   const handleTimelineIconMouseEnter = () => {
     setShowTooltip(true);
@@ -295,6 +309,25 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
             </svg>
           </button>
+
+          {/* 缩放提示图标 */}
+          <div
+            className="relative"
+            onMouseEnter={() => setShowZoomHint(true)}
+            onMouseLeave={() => setShowZoomHint(false)}
+          >
+            <div className="text-muted-foreground cursor-help p-0.5">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/>
+              </svg>
+            </div>
+            {showZoomHint && (
+              <div className="absolute left-1/2 -translate-x-1/2 top-6 bg-card text-foreground text-xs px-2 py-1 rounded whitespace-nowrap z-50 border border-border">
+                {t.timeline.toolbar.zoomHint}
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-card border-l border-t border-border transform -rotate-45"></div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -303,6 +336,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         ref={scrollRef || rulerRef}
         className="flex-1 relative cursor-pointer overflow-x-hidden overflow-y-hidden"
         onMouseDown={handleMouseDown}
+        onWheel={handleWheel}
         onScroll={(e) => {
           if (onScroll) {
             onScroll(e.currentTarget.scrollLeft);

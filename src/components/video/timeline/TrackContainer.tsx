@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, RefObject, useRef } from 'react';
+import React, { useState, useEffect, useCallback, RefObject, useRef } from 'react';
 import { Track as TrackType, TimelineState, MaterialItem } from '@/types';
 import { SupportedLocale } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -48,6 +48,8 @@ interface TrackContainerProps {
   onScroll?: (scrollLeft: number) => void;
   scrollLeft?: number;
   dragPreview?: DragPreviewState; // 拖拽预览状态
+  onZoomChange?: (zoomLevel: number) => void;
+  zoomLevel?: number;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -71,7 +73,9 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   scrollRef,
   onScroll,
   scrollLeft = 0,
-  dragPreview
+  dragPreview,
+  onZoomChange,
+  zoomLevel: zoomLevelProp
 }) => {
   // 使用LocaleContext获取国际化翻译
   const { t, locale: contextLocale } = useLocale();
@@ -341,8 +345,19 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     };
   }, [dragScrollState.isDragging, dragScrollState.startX, dragScrollState.startScrollLeft, scrollRef, onScroll]);
 
+  // 处理Ctrl+滚轮缩放
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey && onZoomChange && zoomLevelProp !== undefined) {
+      e.preventDefault();
+      const newZoom = e.deltaY < 0
+        ? Math.min(5.0, zoomLevelProp * 1.15)
+        : Math.max(0.1, zoomLevelProp / 1.15);
+      onZoomChange(newZoom);
+    }
+  }, [zoomLevelProp, onZoomChange]);
+
   return (
-    <div 
+    <div
       ref={containerRef}
       className="track-container flex-1 flex flex-col overflow-hidden bg-muted"
     >
@@ -358,6 +373,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
           onScroll={(e) => {
             if (onScroll) {
               onScroll(e.currentTarget.scrollLeft);

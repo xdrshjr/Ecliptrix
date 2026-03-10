@@ -222,6 +222,7 @@ export interface Translations {
         export: string;
         exporting: string;
         exportingProgress: string;
+        zoomHint: string;
       };
     shortcuts: {
       selectShortcut: string;
@@ -1325,6 +1326,7 @@ export const translations: Record<string, Translations> = {
         export: 'Export',
         exporting: 'Exporting',
         exportingProgress: 'Exporting ({progress}%)',
+        zoomHint: 'Hold Ctrl + Scroll to zoom timeline',
       },
       shortcuts: {
         selectShortcut: 'V',
@@ -2345,6 +2347,7 @@ export const translations: Record<string, Translations> = {
         export: '导出',
         exporting: '导出中',
         exportingProgress: '导出中 ({progress}%)',
+        zoomHint: '按住 Ctrl + 滚轮可缩放时间轴',
       },
       shortcuts: {
         selectShortcut: 'V',

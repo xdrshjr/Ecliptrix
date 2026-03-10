@@ -227,7 +227,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   useEffect(() => {
     timelineStateRef.current = timelineState;
   }, [timelineState]);
-  
+
   // 通知父组件时间轴状态变化
   useEffect(() => {
     if (onTimelineStateChange) {
@@ -261,6 +261,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   
   // 用ref存储最新的timelineState，避免addToHistory依赖timelineState导致的函数重新创建
   const timelineStateRef = useRef<TimelineState>(timelineState);
+
+  // 用ref跟踪historyIndex，避免addToHistory闭包中使用stale值
+  const historyIndexRef = useRef(historyIndex);
+  useEffect(() => { historyIndexRef.current = historyIndex; }, [historyIndex]);
+
+  // 用ref标记是否需要在下次render后捕获nextState
+  const needsNextStateCaptureRef = useRef(false);
+
+  // 拖拽前状态快照ref
+  const preDragStateRef = useRef<TimelineState | null>(null);
 
   // 处理外部时间轴状态同步（用于AI混剪等场景）
   useEffect(() => {
@@ -327,21 +337,28 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       hasPayload: !!action.payload,
       hasPreviousState: !!action.previousState,
       hasNextState: !!action.nextState,
-      currentHistoryIndex: historyIndex,
-      historyLength: history.length,
+      currentHistoryIndex: historyIndexRef.current,
       timestamp: new Date().toISOString()
     });
 
     setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
+      const currentIndex = historyIndexRef.current;
+      const newHistory = prev.slice(0, currentIndex + 1);
       newHistory.push({
         ...action,
-        previousState: action.previousState || timelineStateRef.current // 使用ref获取最新状态，避免依赖timelineState
+        previousState: action.previousState || JSON.parse(JSON.stringify(timelineStateRef.current))
       });
-      return newHistory.slice(-50); // 保留最近50个操作
+      const trimmed = newHistory.slice(-50);
+      // Update index ref immediately for potential rapid calls
+      historyIndexRef.current = trimmed.length - 1;
+      return trimmed;
     });
-    setHistoryIndex(prev => prev + 1);
-  }, [historyIndex, history.length]);
+    setHistoryIndex(prev => {
+      return Math.min(prev + 1, 49);
+    });
+    // Mark that we need to capture nextState after the next render
+    needsNextStateCaptureRef.current = true;
+  }, []); // No dependencies needed - uses refs
 
   // 更新最后一个历史记录的nextState
   const updateLastHistoryNextState = useCallback((nextState: TimelineState) => {
@@ -364,6 +381,14 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       return newHistory;
     });
   }, []);
+
+  // 自动捕获nextState：在addToHistory后的下次render自动更新最后一条历史的nextState
+  useEffect(() => {
+    if (needsNextStateCaptureRef.current) {
+      updateLastHistoryNextState(JSON.parse(JSON.stringify(timelineState)));
+      needsNextStateCaptureRef.current = false;
+    }
+  }, [timelineState, updateLastHistoryNextState]);
 
   // 处理从素材面板拖拽的素材
   const handleMaterialDrop = useCallback((material: MaterialItem, targetTrackId?: string) => {
@@ -794,13 +819,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
       return { ...prev, selectedItems: newSelectedItems };
     });
-
-    addToHistory({
-      type: 'SELECT_ITEM',
-      payload: { itemId, isMultiSelect },
-      timestamp: new Date()
-    });
-  }, [timelineState.selectedItems, addToHistory]);
+  }, [timelineState.selectedItems]);
 
   const handleSelectAllTrackItems = useCallback((trackId: string) => {
     console.log(`[TimelinePanel] 全选轨道素材`, {
@@ -840,13 +859,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
       return { ...prev, selectedItems: newSelectedItems };
     });
-
-    addToHistory({
-      type: 'SELECT_ALL_TRACK_ITEMS',
-      payload: { trackId },
-      timestamp: new Date()
-    });
-  }, [timelineState.tracks, addToHistory]);
+  }, [timelineState.tracks]);
 
   // 计算非重叠位置的辅助函数
   const calculateNonOverlappingPosition = useCallback((
@@ -1136,6 +1149,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   // 新增：处理拖拽预览更新
   const handleDragPreview = useCallback((itemId: string, newStartTime: number) => {
+    // Save pre-drag state on first preview call
+    if (preDragStateRef.current === null) {
+      preDragStateRef.current = JSON.parse(JSON.stringify(timelineStateRef.current));
+    }
+
     setTimelineState(prev => {
       // 找到目标素材和所在轨道
       let targetItem: TimelineItem | null = null;
@@ -1299,8 +1317,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     addToHistory({
       type: 'MOVE_ITEM',
       payload: { itemId, newStartTime },
-      timestamp: new Date()
+      timestamp: new Date(),
+      previousState: preDragStateRef.current || undefined
     });
+    // Reset pre-drag state
+    preDragStateRef.current = null;
   }, [dragPreview.willPushMaterials, smartInsertItem, addToHistory]);
 
   const handleMoveItem = useCallback((itemId: string, newStartTime: number, isPreview: boolean = false) => {
@@ -1989,11 +2010,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      // 异步更新历史记录的nextState
-      setTimeout(() => {
-        updateLastHistoryNextState(newState);
-      }, 0);
-
       return newState;
     });
 
@@ -2033,14 +2049,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      // 异步更新历史记录的nextState
-      setTimeout(() => {
-        updateLastHistoryNextState(newState);
-      }, 0);
-
       return newState;
     });
-  }, [timelineState.selectedItems, addToHistory, updateLastHistoryNextState]);
+  }, [timelineState.selectedItems, addToHistory]);
 
   // 整理轨道中素材 - 去除间隙，使素材紧密相邻
   const handleOrganizeMaterials = useCallback(() => {
@@ -2080,7 +2091,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           description: '整理轨道中素材，去除间隙'
         },
         timestamp: new Date(),
-        previousState: prev
+        previousState: JSON.parse(JSON.stringify(prev))
       });
       const newState = {
         ...prev,
@@ -2153,15 +2164,14 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      // 异步显示成功提示和更新历史记录，避免在渲染过程中更新其他组件
+      // 异步显示成功提示，避免在渲染过程中更新其他组件
       setTimeout(() => {
         showSuccess(t.timeline.messages.organizeMaterialsSuccess);
-        updateLastHistoryNextState(newState);
       }, 0);
 
       return newState;
     });
-  }, [addToHistory, updateLastHistoryNextState, showSuccess, showError, t.timeline.messages.organizeMaterialsSuccess, t.timeline.messages.organizeMaterialsNoItems]);
+  }, [addToHistory, showSuccess, showError, t.timeline.messages.organizeMaterialsSuccess, t.timeline.messages.organizeMaterialsNoItems]);
 
   // 高级功能处理函数
   const handleAddEffect = useCallback(() => {
@@ -2620,6 +2630,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onScroll={handleTrackScroll}
         scrollLeft={timelineState.scrollLeft}
         dragPreview={dragPreview}
+        onZoomChange={handleZoomChange}
+        zoomLevel={timelineState.zoomLevel}
       />
 
       {/* 字幕编辑模态框 */}
