@@ -1633,42 +1633,29 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       totalVideoDuration: sortedVideoMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2)
     });
 
-    // 首先添加音频素材到音频轨道
-    if (sortedAudioMaterials.length > 0) {
+    // 合并音频和视频素材为一个数组，不指定targetTrackId，让handleMaterialDrop根据素材类型自动选择轨道
+    // 这样避免了两次setMaterialsToAddToTimeline之间的状态覆盖问题
+    const allMaterials = [...sortedAudioMaterials, ...sortedVideoMaterials];
+
+    if (allMaterials.length > 0) {
       setMaterialsToAddToTimeline({
-        materials: sortedAudioMaterials,
-        targetTrackId: 'audio-track-1', // 指定添加到第一个音频轨道
+        materials: allMaterials,
+        // 不指定targetTrackId，让每个素材根据类型自动路由到对应轨道（音频→audio-track, 视频→video-track）
         timestamp: Date.now()
       });
 
-      console.log(`[VideoEditingInterface] 音频素材添加请求已发送`, {
-        materialsCount: sortedAudioMaterials.length,
-        targetTrackId: 'audio-track-1',
+      console.log(`[VideoEditingInterface] 素材添加请求已发送（音频+视频合并）`, {
+        totalCount: allMaterials.length,
+        audioCount: sortedAudioMaterials.length,
+        videoCount: sortedVideoMaterials.length,
         timestamp: Date.now()
       });
-    }
-
-    // 延迟添加视频素材到视频轨道，确保音频添加完成后再添加视频
-    if (sortedVideoMaterials.length > 0) {
-      setTimeout(() => {
-        setMaterialsToAddToTimeline({
-          materials: sortedVideoMaterials,
-          targetTrackId: 'video-track-1', // 指定添加到视频轨道（不是图片轨道）
-          timestamp: Date.now()
-        });
-
-        console.log(`[VideoEditingInterface] 视频素材添加请求已发送`, {
-          materialsCount: sortedVideoMaterials.length,
-          targetTrackId: 'video-track-1',
-          timestamp: Date.now()
-        });
-      }, 200); // 200ms延迟，确保音频处理完成
     }
 
     console.log(`[VideoEditingInterface] AI自动混剪请求完成`, {
       audioMaterialsCount: sortedAudioMaterials.length,
       videoMaterialsCount: sortedVideoMaterials.length,
-      totalMaterialsProcessed: sortedAudioMaterials.length + sortedVideoMaterials.length,
+      totalMaterialsProcessed: allMaterials.length,
       timestamp: Date.now()
     });
   }, [taskId, materialManagement.materials]);
