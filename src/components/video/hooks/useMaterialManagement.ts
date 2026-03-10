@@ -724,7 +724,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
       newMaterials.forEach(newMaterial => {
         const existingIndex = updatedMaterials.findIndex(material => material.id === newMaterial.id);
-        
+
         if (existingIndex !== -1) {
           updatedMaterials[existingIndex] = newMaterial;
           updatedCount++;
@@ -733,19 +733,33 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           addedCount++;
         }
       });
-      
+
       logger.info('素材列表更新完成', {
         previousCount: prev.length,
         newCount: updatedMaterials.length,
         addedCount,
         updatedCount
       });
-      
+
       return updatedMaterials;
     });
 
+    // 对搜索添加的素材自动触发解析（与上传后自动解析逻辑一致）
+    newMaterials.forEach(material => {
+      const isVideoOrImage = material.type === 'video' || material.type === 'image';
+      const hasUrl = material.url || material.serverUrl;
+      const hasThumbnail = material.thumbnailUrl;
+      const notDownloading = material.downloadStatus !== 'downloading';
+      const notAnalyzed = !material.analysisResult;
+
+      if (isVideoOrImage && hasUrl && hasThumbnail && notDownloading && notAnalyzed) {
+        logger.info('搜索添加的素材自动触发解析', { materialId: material.id, materialName: material.name });
+        triggerAutoAnalysis(material);
+      }
+    });
+
     return newMaterials.length > 0;
-  }, [logger]);
+  }, [logger, triggerAutoAnalysis]);
 
   // 添加或替换单个素材
   const addOrReplaceMaterial = useCallback((newMaterial: MaterialItem) => {
