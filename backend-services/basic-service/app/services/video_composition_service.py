@@ -533,6 +533,7 @@ class VideoCompositionService:
         normalize_cmd.extend([
             '-vf', vf_params,
             '-r', str(video_info['target_fps']),
+            '-an',  # Strip audio - video audio handled separately via _extract_video_audio_tracks
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-profile:v', 'high',
@@ -1101,14 +1102,17 @@ class VideoCompositionService:
             # Update progress
             self.compositions[composition_id]["progress"] = 0.9
             
-            # Handle audio if present
-            if request.audio_items:
+            # Extract embedded audio from video tracks
+            video_audio_paths = self._extract_video_audio_tracks(request, temp_dir, ffmpeg_path)
+
+            # Handle audio if present (independent audio tracks or video embedded audio)
+            if request.audio_items or video_audio_paths:
                 logger.info("Processing audio tracks...")
                 try:
                     # Create audio mix from audio items using actual video duration
                     audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
-                    
-                    processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path, actual_total_duration)
+
+                    processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path, actual_total_duration, extra_audio_paths=video_audio_paths)
                     
                     if processed_audio_path:
                         logger.info("Adding mixed audio to video...")
@@ -1396,34 +1400,119 @@ class VideoCompositionService:
                 raise FileNotFoundError(f"Audio file not found: {url}")
             return url
 
-    def _process_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str, actual_total_duration: float) -> Optional[str]:
+    def _extract_video_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str) -> list:
+        """
+        Extract embedded audio from video items that have audio streams.
+        Returns a list of dicts matching processed_audio_paths format:
+        [{'path': str, 'start_time': float, 'name': str, 'track_id': str}]
+        """
+        video_audio_paths = []
+
+        for i, video_item in enumerate(request.video_items):
+            try:
+                local_path = self._convert_url_to_local_path(video_item.url)
+
+                # Use ffprobe to check if the video has an audio stream
+                ffprobe_path = os.path.join(os.path.dirname(ffmpeg_path), 'ffprobe') if os.path.dirname(ffmpeg_path) else 'ffprobe'
+                probe_cmd = [
+                    ffprobe_path,
+                    '-v', 'error',
+                    '-select_streams', 'a',
+                    '-show_entries', 'stream=codec_type',
+                    '-of', 'csv=p=0',
+                    local_path
+                ]
+                probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+
+                if probe_result.returncode != 0 or not probe_result.stdout.strip():
+                    logger.info(f"Video {i+1} ({video_item.name}) has no audio stream, skipping")
+                    continue
+
+                logger.info(f"Video {i+1} ({video_item.name}) has audio stream, extracting with volume={video_item.volume}")
+
+                # Get clipping parameters
+                clip_start = getattr(video_item, 'clip_start', None) or 0.0
+                clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
+                clip_duration = clip_end - clip_start
+
+                # Volume: model stores 0-2 (already a multiplier)
+                vol = video_item.volume if video_item.volume is not None else 1.0
+
+                extracted_path = os.path.join(temp_dir, f"video_audio_{i}.wav")
+
+                extract_cmd = [ffmpeg_path, '-y']
+                if clip_start > 0:
+                    extract_cmd.extend(['-ss', str(clip_start)])
+                extract_cmd.extend([
+                    '-i', local_path,
+                    '-t', str(clip_duration),
+                    '-vn',
+                    '-af', f'volume={vol}',
+                    '-ar', '44100',
+                    '-ac', '2',
+                    extracted_path
+                ])
+
+                logger.info(f"Extracting video audio: {' '.join(extract_cmd)}")
+                result = subprocess.run(extract_cmd, capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    logger.warning(f"Failed to extract audio from video {i+1}: {result.stderr}")
+                    continue
+
+                video_audio_paths.append({
+                    'path': extracted_path,
+                    'start_time': video_item.start_time,
+                    'name': f'{video_item.name} (embedded audio)',
+                    'track_id': video_item.track_id
+                })
+
+                logger.info(f"Successfully extracted audio from video {i+1}: {video_item.name}")
+
+            except Exception as e:
+                logger.warning(f"Failed to extract audio from video item {video_item.name}: {str(e)}")
+                continue
+
+        logger.info(f"Extracted {len(video_audio_paths)} audio tracks from {len(request.video_items)} video items")
+        return video_audio_paths
+
+    def _process_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str, actual_total_duration: float, extra_audio_paths: Optional[list] = None) -> Optional[str]:
         """
         Process multiple audio tracks and create a mixed audio file.
         Returns the path to the mixed audio file, or None if processing failed.
         """
-        if not request.audio_items:
+        has_audio_items = bool(request.audio_items)
+        has_extra_audio = bool(extra_audio_paths)
+
+        if not has_audio_items and not has_extra_audio:
             logger.info("No audio items to process")
             return None
-        
-        logger.info(f"Processing {len(request.audio_items)} audio tracks", {
-            'audio_items': [
-                {
-                    'id': item.id,
-                    'name': item.name,
-                    'url': item.url,
-                    'start_time': item.start_time,
-                    'duration': item.duration,
-                    'volume': item.volume
-                }
-                for item in request.audio_items
-            ]
-        })
+
+        if has_audio_items:
+            logger.info(f"Processing {len(request.audio_items)} audio tracks", {
+                'audio_items': [
+                    {
+                        'id': item.id,
+                        'name': item.name,
+                        'url': item.url,
+                        'start_time': item.start_time,
+                        'duration': item.duration,
+                        'volume': item.volume
+                    }
+                    for item in request.audio_items
+                ]
+            })
+        if has_extra_audio:
+            logger.info(f"Also processing {len(extra_audio_paths)} extra audio tracks (from video embedded audio)")
         
         audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
         
         try:
-            if len(request.audio_items) == 1:
-                # Single audio item - process it directly
+            total_audio_count = len(request.audio_items) if has_audio_items else 0
+            total_audio_count += len(extra_audio_paths) if has_extra_audio else 0
+
+            if total_audio_count == 1 and has_audio_items and len(request.audio_items) == 1 and not has_extra_audio:
+                # Single audio item with no video embedded audio - process it directly
                 audio_item = request.audio_items[0]
                 local_audio_path = self._convert_url_to_local_path(audio_item.url)
                 
@@ -1540,8 +1629,8 @@ class VideoCompositionService:
                         return None
                     
             else:
-                # Multiple audio items - create proper parallel mix
-                logger.info(f"Mixing {len(request.audio_items)} audio tracks with independent volume control")
+                # Multiple audio sources - create proper parallel mix
+                logger.info(f"Mixing {total_audio_count} audio tracks with independent volume control")
                 
                 # Pre-process each audio item individually to apply volume and clipping
                 processed_audio_paths = []
@@ -1608,10 +1697,15 @@ class VideoCompositionService:
                         logger.error(f"Failed to pre-process audio item {audio_item.name}: {str(e)}")
                         continue
                 
+                # Merge extra audio paths (from video embedded audio)
+                if has_extra_audio:
+                    processed_audio_paths.extend(extra_audio_paths)
+                    logger.info(f"Merged {len(extra_audio_paths)} video embedded audio tracks into mix")
+
                 if not processed_audio_paths:
                     logger.error("No audio tracks were successfully pre-processed")
                     return None
-                
+
                 # Now create the final mix using all processed audio files
                 logger.info(f"Creating final mix with {len(processed_audio_paths)} processed audio tracks")
                 
@@ -1646,7 +1740,7 @@ class VideoCompositionService:
                 
                 # Create the mix filter with longest duration to ensure all audio is preserved
                 input_labels = [f'[delayed{i}]' for i in range(len(processed_audio_paths))]
-                mix_filter = f"{';'.join(filter_parts)};{' '.join(input_labels)}amix=inputs={len(processed_audio_paths)}:duration=longest:dropout_transition=3,atrim=duration={actual_total_duration}[out]"
+                mix_filter = f"{';'.join(filter_parts)};{' '.join(input_labels)}amix=inputs={len(processed_audio_paths)}:duration=longest:dropout_transition=3:normalize=0,atrim=duration={actual_total_duration}[out]"
                 
                 mix_cmd.extend([
                     '-filter_complex', mix_filter,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Track as TrackType, TimelineItem as TimelineItemType, MaterialItem } from '@/types';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import TimelineItem from './TimelineItem';
@@ -61,6 +61,7 @@ const Track: React.FC<TrackProps> = ({
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const volumeButtonRef = useRef<HTMLButtonElement>(null);
   
   // 获取国际化翻译
   const t = getTranslations(locale);
@@ -305,6 +306,7 @@ const Track: React.FC<TrackProps> = ({
             {(track.type === 'audio' || track.type === 'video') && (
               <div className="relative group">
                 <button
+                  ref={volumeButtonRef}
                   onClick={handleVolumeClick}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     showVolumeSlider
@@ -346,6 +348,7 @@ const Track: React.FC<TrackProps> = ({
                   onVolumeChange={handleVolumeChange}
                   isVisible={showVolumeSlider}
                   onClose={handleVolumeSliderClose}
+                  buttonRef={volumeButtonRef}
                 />
               </div>
             )}

@@ -35,6 +35,17 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const [showTooltip, setShowTooltip] = useState(false);
   const [showZoomHint, setShowZoomHint] = useState(false);
 
+  // 使用ref跟踪最新值，避免拖拽过程中的闭包陈旧问题
+  const scrollLeftRef = useRef(scrollLeft);
+  const pixelsPerSecondRef = useRef(pixelsPerSecond);
+  const totalDurationRef = useRef(totalDuration);
+  const onTimeChangeRef = useRef(onTimeChange);
+
+  useEffect(() => { scrollLeftRef.current = scrollLeft; }, [scrollLeft]);
+  useEffect(() => { pixelsPerSecondRef.current = pixelsPerSecond; }, [pixelsPerSecond]);
+  useEffect(() => { totalDurationRef.current = totalDuration; }, [totalDuration]);
+  useEffect(() => { onTimeChangeRef.current = onTimeChange; }, [onTimeChange]);
+
   // 动态计算控制面板宽度
   const getControlPanelWidth = (): number => {
     if (controlPanelRef.current) {
@@ -60,105 +71,50 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     return `${minutes}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
   };
 
-  // 处理播放头拖拽
-  const handleMouseDown = (e: React.MouseEvent) => {
-    console.log(`[TimelineRuler] 开始拖拽播放头`, {
-      currentTime: currentTime.toFixed(2),
-      mouseX: e.clientX,
-      scrollLeft: scrollLeft.toFixed(2),
-      timestamp: new Date().toISOString()
-    });
-
-    e.preventDefault();
-    isDragging.current = true;
-    
-    // 使用正确的ref - 与事件监听器绑定的同一个元素
+  // 计算时间轴点击位置对应的时间值
+  const calculateTimeFromMouseEvent = (e: MouseEvent | React.MouseEvent): number | null => {
     const targetElement = scrollRef?.current || rulerRef.current;
     const rect = targetElement?.getBoundingClientRect();
-    
-    if (rect) {
-      // 计算相对于时间轴的实际位置，需要加上滚动偏移
-      const x = e.clientX - rect.left + scrollLeft;
-      const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
-      
-      console.log(`[TimelineRuler] 播放头点击定位`, {
-        mouseX: e.clientX,
-        rectLeft: rect.left.toFixed(2),
-        scrollLeft: scrollLeft.toFixed(2),
-        relativeX: (e.clientX - rect.left).toFixed(2),
-        adjustedX: x.toFixed(2),
-        calculatedTime: time.toFixed(2),
-        pixelsPerSecond: pixelsPerSecond.toFixed(2),
-        totalDuration: totalDuration.toFixed(2),
-        timestamp: new Date().toISOString()
-      });
-      
-      onTimeChange(time);
-    } else {
-      console.error(`[TimelineRuler] 无法获取时间轴元素的边界信息`, {
-        hasScrollRef: !!scrollRef?.current,
-        hasRulerRef: !!rulerRef.current,
-        timestamp: new Date().toISOString()
-      });
-    }
+    if (!rect) return null;
+
+    const x = e.clientX - rect.left + scrollLeftRef.current;
+    return Math.max(0, Math.min(totalDurationRef.current, x / pixelsPerSecondRef.current));
   };
 
-  // 处理鼠标移动和释放
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging.current) {
-        // 使用正确的ref - 与事件监听器绑定的同一个元素
-        const targetElement = scrollRef?.current || rulerRef.current;
-        const rect = targetElement?.getBoundingClientRect();
-        
-        if (rect) {
-          // 计算相对于时间轴的实际位置，需要加上滚动偏移
-          const x = e.clientX - rect.left + scrollLeft;
-          const time = Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
-          
-          console.log(`[TimelineRuler] 拖拽播放头移动`, {
-            newTime: time.toFixed(2),
-            mouseX: e.clientX,
-            rectLeft: rect.left.toFixed(2),
-            scrollLeft: scrollLeft.toFixed(2),
-            relativeX: (e.clientX - rect.left).toFixed(2),
-            adjustedX: x.toFixed(2),
-            pixelsPerSecond: pixelsPerSecond.toFixed(2),
-            totalDuration: totalDuration.toFixed(2),
-            timestamp: new Date().toISOString()
-          });
-          
-          onTimeChange(time);
-        } else {
-          console.error(`[TimelineRuler] 拖拽时无法获取时间轴元素的边界信息`, {
-            hasScrollRef: !!scrollRef?.current,
-            hasRulerRef: !!rulerRef.current,
-            timestamp: new Date().toISOString()
-          });
-        }
+  // 处理播放头拖拽 - 同步绑定document事件，避免isDragging卡住
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+
+    const time = calculateTimeFromMouseEvent(e);
+    if (time !== null) {
+      console.log(`[TimelineRuler] 播放头点击定位`, {
+        mouseX: e.clientX,
+        scrollLeft: scrollLeftRef.current.toFixed(2),
+        calculatedTime: time.toFixed(2),
+        timestamp: new Date().toISOString()
+      });
+      onTimeChangeRef.current(time);
+    }
+
+    // 同步绑定document级别的mousemove/mouseup，确保mouseup一定能被捕获
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDragging.current) return;
+      const moveTime = calculateTimeFromMouseEvent(moveEvent);
+      if (moveTime !== null) {
+        onTimeChangeRef.current(moveTime);
       }
     };
 
     const handleMouseUp = () => {
-      if (isDragging.current) {
-        console.log(`[TimelineRuler] 完成播放头拖拽`, {
-          finalTime: currentTime.toFixed(2),
-          timestamp: new Date().toISOString()
-        });
-        isDragging.current = false;
-      }
+      isDragging.current = false;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
 
-    if (isDragging.current) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [currentTime, totalDuration, pixelsPerSecond, onTimeChange, scrollRef, scrollLeft]);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   // 生成时间刻度
   const generateTimeMarks = () => {

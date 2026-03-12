@@ -282,7 +282,7 @@ export const useVideoExport = ({
                 start_time: item.startTime,
                 duration: item.duration, // Keep timeline duration for positioning
                 track_id: track.id,
-                volume: (track.volume || 100) / 100, // 将轨道音量从百分比转换为小数（0-2.0）
+                volume: (item.volume ?? 1) * ((track.volume || 100) / 100), // 结合项目音量和轨道音量
                 opacity: item.opacity || 1.0,
                 // 新增：剪辑信息，用于后端视频裁剪
                 clip_start: clipStart,
@@ -322,7 +322,7 @@ export const useVideoExport = ({
                 start_time: item.startTime,
                 duration: item.duration,
                 track_id: track.id,
-                volume: (track.volume || 100) / 100, // 将轨道音量从百分比转换为小数（0-2.0）
+                volume: (item.volume ?? 1) * ((track.volume || 100) / 100), // 结合项目音量和轨道音量
                 // 新增：剪辑信息，用于后端音频裁剪
                 clip_start: item.clipStart || 0,
                 clip_end: item.clipEnd || (item.originalDuration || item.duration)

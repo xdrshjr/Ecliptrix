@@ -426,13 +426,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
-    console.log(`[VideoEditingInterface] 视频时间更新同步到timeline`, {
-      currentTime: currentTime.toFixed(2),
-      previousTimelineTime: timelineCurrentTime.toFixed(2),
-      timestamp: new Date().toISOString()
-    });
     setTimelineCurrentTime(currentTime);
-  }, [timelineCurrentTime]);
+  }, []);
 
   // 新增：计算当前时间点的有效音量
   const calculateEffectiveVolume = useCallback((timelineState: TimelineState | null, currentTime: number): number => {
@@ -1203,7 +1198,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       // 预览模式，同步到普通播放器
       videoPlayback.handleTimeSeek(time);
     }
-  }, [timelineCurrentTime, timelineComposition, videoPlayback]);
+  }, [timelineComposition, videoPlayback]);
 
   // 处理时间轴状态变化，用于导出功能
   const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {

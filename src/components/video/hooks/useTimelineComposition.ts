@@ -114,7 +114,7 @@ export const useTimelineComposition = (
                 clipEnd,
                 originalDuration,
                 // 新增：音量控制，结合轨道音量和项目音量
-                volume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 1)) // 限制在[0,1]范围
+                volume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 2)) // 限制在[0,2]范围
               };
               allVideoItems.push(videoSequence);
               
@@ -193,7 +193,7 @@ export const useTimelineComposition = (
                 duration: item.duration,
                 materialId: item.materialId,
                 trackId: item.trackId,
-                volume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 1)), // 结合轨道音量和项目音量，限制在[0,1]范围
+                volume: Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 2)), // 结合轨道音量和项目音量，限制在[0,2]范围
                 // 传递裁剪信息
                 clipStart,
                 clipEnd,

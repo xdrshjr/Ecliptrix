@@ -777,7 +777,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       });
       onCurrentTimeChange(time);
     }
-  }, [timelineState.currentTime, onCurrentTimeChange]);
+  }, [onCurrentTimeChange]);
 
   const handleZoomChange = useCallback((zoomLevel: number) => {
     console.log(`[TimelinePanel] 缩放变更`, {
@@ -2453,57 +2453,47 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     handleCloseSubtitleEditModal();
   }, [editingTrackId, handleCloseSubtitleEditModal]);
 
-  // 处理水平滚动同步
+  // 处理水平滚动同步 - 使用requestAnimationFrame替代setTimeout获得更精确的同步
   const handleRulerScroll = useCallback((scrollLeft: number) => {
     if (isScrollingSyncRef.current) return;
-    
-    console.log(`[TimelinePanel] 时间刻度尺滚动同步`, {
-      scrollLeft,
-      timestamp: new Date().toISOString()
-    });
 
     isScrollingSyncRef.current = true;
-    
+
     // 同步轨道容器滚动
     if (trackScrollRef.current) {
       trackScrollRef.current.scrollLeft = scrollLeft;
     }
-    
+
     // 更新状态
     setTimelineState(prev => ({
       ...prev,
       scrollLeft
     }));
-    
-    setTimeout(() => {
+
+    requestAnimationFrame(() => {
       isScrollingSyncRef.current = false;
-    }, 10);
+    });
   }, []);
 
   const handleTrackScroll = useCallback((scrollLeft: number) => {
     if (isScrollingSyncRef.current) return;
-    
-    console.log(`[TimelinePanel] 轨道容器滚动同步`, {
-      scrollLeft,
-      timestamp: new Date().toISOString()
-    });
 
     isScrollingSyncRef.current = true;
-    
+
     // 同步时间刻度尺滚动
     if (rulerScrollRef.current) {
       rulerScrollRef.current.scrollLeft = scrollLeft;
     }
-    
+
     // 更新状态
     setTimelineState(prev => ({
       ...prev,
       scrollLeft
     }));
-    
-    setTimeout(() => {
+
+    requestAnimationFrame(() => {
       isScrollingSyncRef.current = false;
-    }, 10);
+    });
   }, []);
 
   // 优化：使用 useMemo 缓存字幕数组，避免不必要的重新渲染导致样式重置
