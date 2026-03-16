@@ -147,6 +147,14 @@ export interface Translations {
     modelFast: string;
     modelVideoCut: string;
     modelVision: string;
+    modelCoding: string;
+    // Coding Plan
+    codingPlan: string;
+    codingPlanDesc: string;
+    codingPlanProviders: string;
+    codingPlanProvidersDesc: string;
+    codingPlanAssignment: string;
+    codingPlanAssignmentDesc: string;
     modelPreset: string;
     modelCustom: string;
     modelProvider: string;
@@ -1249,6 +1257,14 @@ export const translations: Record<string, Translations> = {
       modelFast: 'Fast LLM',
       modelVideoCut: 'Video Cut',
       modelVision: 'Vision',
+      modelCoding: 'Coding',
+      // Coding Plan
+      codingPlan: 'Coding Plan',
+      codingPlanDesc: 'Configure coding assistant models (Kimi, Codex, Claude, GLM)',
+      codingPlanProviders: 'Coding Providers',
+      codingPlanProvidersDesc: 'Add API credentials for coding assistant services',
+      codingPlanAssignment: 'Active Coding Model',
+      codingPlanAssignmentDesc: 'Select which coding model to use',
       modelPreset: 'Preset Model',
       modelCustom: 'Custom Model',
       modelProvider: 'Provider',
@@ -2364,6 +2380,14 @@ export const translations: Record<string, Translations> = {
       modelFast: '快速LLM',
       modelVideoCut: '视频剪辑',
       modelVision: '视觉',
+      modelCoding: '编程',
+      // Coding Plan
+      codingPlan: '编程计划',
+      codingPlanDesc: '配置编程助手模型 (Kimi, Codex, Claude, GLM)',
+      codingPlanProviders: '编程供应商',
+      codingPlanProvidersDesc: '添加编程助手服务的 API 凭证',
+      codingPlanAssignment: '当前编程模型',
+      codingPlanAssignmentDesc: '选择要使用的编程模型',
       modelPreset: '预设模型',
       modelCustom: '自定义模型',
       modelProvider: '供应商',

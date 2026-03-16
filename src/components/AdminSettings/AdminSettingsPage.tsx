@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import UserManagement from './UserManagement';
 import ModelSettingsPanel from './ModelSettingsPanel';
+import CodingPlanPanel from './CodingPlanPanel';
 
 interface AdminSettingsPageProps {
   onClose: () => void;
@@ -20,6 +21,8 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
         return <UserManagement />;
       case 'modelSettings':
         return <ModelSettingsPanel />;
+      case 'codingPlan':
+        return <CodingPlanPanel />;
       case 'systemSettings':
         return (
           <div className="flex items-center justify-center h-full bg-background">

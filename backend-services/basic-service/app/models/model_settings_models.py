@@ -17,6 +17,7 @@ class ModelFunctionType(str, Enum):
     FAST = "fast"
     VIDEO_CUT = "video_cut"
     VISION = "vision"
+    CODING = "coding"
 
 
 class ProviderInfo(BaseModel):
@@ -104,6 +105,7 @@ class FetchModelsRequest(BaseModel):
     api_url: str
     api_key: str
     provider_id: Optional[int] = None  # If set, look up saved API key
+    provider_type: Optional[str] = None  # For providers with no /models endpoint
 
 
 class FetchModelsResponse(BaseModel):
@@ -125,6 +127,7 @@ class TestConnectionRequest(BaseModel):
     api_key: str = ""
     model_name: str
     provider_id: Optional[int] = None  # Look up saved API key from providers table
+    provider_type: Optional[str] = None  # For API format detection (e.g. kimi_coding uses Anthropic format)
 
 
 class TestConnectionResponse(BaseModel):

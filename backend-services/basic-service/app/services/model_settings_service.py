@@ -51,7 +51,27 @@ PROVIDERS: List[ProviderInfo] = [
                  default_api_url="https://api.anthropic.com/v1", region="international"),
     ProviderInfo(id="google", name="Google",
                  default_api_url="https://generativelanguage.googleapis.com/v1beta/openai", region="international"),
+    # Coding Plan providers
+    ProviderInfo(id="kimi_coding", name="Kimi Coding",
+                 default_api_url="https://api.kimi.com/coding", region="international"),
+    ProviderInfo(id="codex", name="Codex (OpenAI)",
+                 default_api_url="https://api.openai.com/v1", region="international"),
+    ProviderInfo(id="claude_coding", name="Claude (Anthropic)",
+                 default_api_url="https://api.anthropic.com", region="international"),
+    ProviderInfo(id="glm_coding", name="GLM (Zhipu)",
+                 default_api_url="https://open.bigmodel.cn/api/paas/v4", region="domestic"),
 ]
+
+# Provider types that use Anthropic Messages API format instead of OpenAI
+ANTHROPIC_FORMAT_TYPES = {"kimi_coding", "claude_coding", "anthropic"}
+
+# Hardcoded model lists for providers without a /models endpoint
+CODING_PROVIDER_MODELS = {
+    "kimi_coding": ["kimi-k2.5"],
+    "claude_coding": ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
+    "codex": ["codex-mini-latest"],
+    "glm_coding": ["glm-4-plus", "glm-4"],
+}
 
 
 def _mask_api_key(key: str) -> str:
@@ -322,11 +342,17 @@ class ModelSettingsService:
         """Fetch available models using a saved provider's credentials."""
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT api_url, api_key FROM model_providers WHERE id = ?", (provider_id,))
+            cursor = await db.execute("SELECT api_url, api_key, provider_type FROM model_providers WHERE id = ?", (provider_id,))
             row = await cursor.fetchone()
 
         if not row:
             return FetchModelsResponse(success=False, message="Provider not found")
+
+        # Return hardcoded models for providers without /models endpoint
+        provider_type = row["provider_type"]
+        if provider_type in CODING_PROVIDER_MODELS:
+            models = CODING_PROVIDER_MODELS[provider_type]
+            return FetchModelsResponse(success=True, message=f"Found {len(models)} models", models=models)
 
         return await self._fetch_models_from_api(row["api_url"], row["api_key"])
 
@@ -334,13 +360,14 @@ class ModelSettingsService:
         """Fetch available models with ad-hoc or saved credentials."""
         api_key = request.api_key
         api_url = request.api_url
+        provider_type = request.provider_type or ""
 
         # If provider_id given, look up saved credentials
         if request.provider_id:
             async with self._connect() as db:
                 db.row_factory = aiosqlite.Row
                 cursor = await db.execute(
-                    "SELECT api_url, api_key FROM model_providers WHERE id = ?",
+                    "SELECT api_url, api_key, provider_type FROM model_providers WHERE id = ?",
                     (request.provider_id,)
                 )
                 row = await cursor.fetchone()
@@ -348,6 +375,13 @@ class ModelSettingsService:
                     api_key = row["api_key"]
                     if not api_url:
                         api_url = row["api_url"]
+                    if not provider_type:
+                        provider_type = row["provider_type"]
+
+        # Return hardcoded models for providers without /models endpoint
+        if provider_type in CODING_PROVIDER_MODELS:
+            models = CODING_PROVIDER_MODELS[provider_type]
+            return FetchModelsResponse(success=True, message=f"Found {len(models)} models", models=models)
 
         if not api_key:
             return FetchModelsResponse(success=False, message="No API key available")
@@ -403,8 +437,21 @@ class ModelSettingsService:
 
     # ── Connection Testing ──
 
+    async def _resolve_provider_type(self, request_provider_type: str = None, provider_id: int = None) -> str:
+        """Resolve provider_type from request or DB lookup."""
+        if request_provider_type:
+            return request_provider_type
+        if provider_id:
+            async with self._connect() as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute("SELECT provider_type FROM model_providers WHERE id = ?", (provider_id,))
+                row = await cursor.fetchone()
+                if row:
+                    return row["provider_type"]
+        return ""
+
     async def test_connection(self, request: TestConnectionRequest) -> TestConnectionResponse:
-        """Test a model connection by sending a minimal chat completion request."""
+        """Test a model connection by sending a minimal request (OpenAI or Anthropic format)."""
         api_key = (request.api_key or "").strip()
 
         # If no usable key provided and provider_id given, look up saved key
@@ -416,6 +463,13 @@ class ModelSettingsService:
         if not api_key:
             return TestConnectionResponse(success=False, message="No API key provided")
 
+        # Determine provider_type for API format detection
+        provider_type = await self._resolve_provider_type(request.provider_type, request.provider_id)
+
+        if provider_type in ANTHROPIC_FORMAT_TYPES:
+            return await self._test_anthropic_connection(request.api_url, api_key, request.model_name, provider_type)
+
+        # Default: OpenAI-compatible format
         start = time.time()
         try:
             url = request.api_url.rstrip('/')
@@ -447,6 +501,52 @@ class ModelSettingsService:
         except httpx.TimeoutException:
             latency = int((time.time() - start) * 1000)
             return TestConnectionResponse(success=False, message="Connection timed out (15s)", latency_ms=latency)
+        except Exception as e:
+            latency = int((time.time() - start) * 1000)
+            return TestConnectionResponse(success=False, message=f"Connection failed: {str(e)}", latency_ms=latency)
+
+    async def _test_anthropic_connection(self, api_url: str, api_key: str, model_name: str,
+                                          provider_type: str) -> TestConnectionResponse:
+        """Test connection using Anthropic Messages API format (for Kimi Coding, Claude, etc.)."""
+        start = time.time()
+        try:
+            url = api_url.rstrip('/')
+            if url.endswith('/v1/messages'):
+                pass  # already correct
+            elif url.endswith('/v1'):
+                url = f"{url}/messages"
+            else:
+                url = f"{url}/v1/messages"
+
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            }
+            # Kimi Coding endpoint checks User-Agent
+            if provider_type == "kimi_coding":
+                headers["User-Agent"] = "claude-code/1.0"
+
+            payload = {
+                "model": model_name,
+                "max_tokens": 5,
+                "messages": [{"role": "user", "content": "hi"}],
+            }
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+
+            latency = int((time.time() - start) * 1000)
+
+            if resp.status_code == 200:
+                return TestConnectionResponse(success=True, message="Connection successful", latency_ms=latency)
+            else:
+                detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+                return TestConnectionResponse(success=False, message=f"Error: {detail}", latency_ms=latency)
+
+        except httpx.TimeoutException:
+            latency = int((time.time() - start) * 1000)
+            return TestConnectionResponse(success=False, message="Connection timed out (30s)", latency_ms=latency)
         except Exception as e:
             latency = int((time.time() - start) * 1000)
             return TestConnectionResponse(success=False, message=f"Connection failed: {str(e)}", latency_ms=latency)
@@ -498,6 +598,11 @@ class ModelSettingsService:
                 settings.vl_llm_api_url or settings.llm_api_url,
                 settings.vl_llm_api_key or settings.llm_api_key,
                 settings.vl_llm_model,
+            ),
+            ModelFunctionType.CODING: (
+                os.getenv("CODING_LLM_API_URL", settings.llm_api_url),
+                os.getenv("CODING_LLM_API_KEY", settings.llm_api_key),
+                os.getenv("CODING_LLM_MODEL", "kimi-k2.5"),
             ),
         }
         api_url, api_key, model_name = env_map.get(
