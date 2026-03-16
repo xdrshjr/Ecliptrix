@@ -41,7 +41,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database on application startup (auto-create tables + seed admin user)."""
+    """Initialize database on application startup (auto-create tables + sync root user)."""
     from app.models.db_models import Base, User
     import bcrypt
     from sqlalchemy import select
@@ -50,30 +50,69 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created/verified")
 
-    # Check and create initial admin user
+    # Sync root user from .env configuration
+    root_username = settings.auth.root_username
+    root_password = ***REMOVED***
+
     async with async_session_factory() as session:
-        stmt = select(User).where(User.is_admin == True)
+        # Step 1: Find all users with is_root=True
+        stmt = select(User).where(User.is_root == True)
         result = await session.execute(stmt)
-        admin = result.scalar_one_or_none()
+        root_users = result.scalars().all()
 
-        if not admin:
-            password_hash = bcrypt.hashpw(
-                settings.auth.admin_password.encode('utf-8'),
-                bcrypt.gensalt()
-            ).decode('utf-8')
+        # Step 2: Handle multiple is_root users (abnormal state) — keep first, demote rest
+        if len(root_users) > 1:
+            logger.warning(f"Found {len(root_users)} root users, keeping first and demoting others")
+            for extra_root in root_users[1:]:
+                extra_root.is_root = False
+            root_users = [root_users[0]]
 
-            admin_user = User(
-                username=settings.auth.admin_username,
-                email=f"{settings.auth.admin_username}@local.dev",
-                password_hash=password_hash,
-                is_admin=True,
-                is_active=True,
-                user_role="admin",
-                full_name="Administrator"
-            )
-            session.add(admin_user)
-            await session.commit()
-            logger.info("Initial admin user created")
+        password_hash = bcrypt.hashpw(
+            root_password.encode('utf-8'),
+            bcrypt.gensalt()
+        ).decode('utf-8')
+
+        if root_users:
+            # Step 3a: Root user exists — sync username, password, and flags
+            root_user = root_users[0]
+            if root_user.username != root_username:
+                logger.info(f"Syncing root username: {root_user.username} -> {root_username}")
+                root_user.username = root_username
+            root_user.password_hash = password_hash
+            root_user.is_admin = True
+            root_user.is_active = True
+            root_user.user_role = "admin"
+            logger.info("Root user synced from .env configuration")
+        else:
+            # Step 3b: No root user exists — check if username is already taken
+            existing_stmt = select(User).where(User.username == root_username)
+            existing_result = await session.execute(existing_stmt)
+            existing_user = existing_result.scalar_one_or_none()
+
+            if existing_user:
+                # Promote existing user to root
+                existing_user.is_root = True
+                existing_user.is_admin = True
+                existing_user.is_active = True
+                existing_user.user_role = "admin"
+                existing_user.password_hash = password_hash
+                logger.info(f"Existing user '{root_username}' promoted to root")
+            else:
+                # Create new root user
+                root_user = User(
+                    username=root_username,
+                    email=f"{root_username}@local.dev",
+                    password_hash=password_hash,
+                    is_root=True,
+                    is_admin=True,
+                    is_active=True,
+                    user_role="admin",
+                    full_name="Root Administrator"
+                )
+                session.add(root_user)
+                logger.info(f"Root user '{root_username}' created")
+
+        await session.commit()
 
 
 async def close_db() -> None:

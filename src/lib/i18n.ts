@@ -115,6 +115,7 @@ export interface Translations {
     usernamePlaceholder: string;
     usernameRequired: string;
     usernameMinLength: string;
+    usernameInvalidChars: string;
     password: string;
     passwordPlaceholder: string;
     passwordRequired: string;
@@ -179,6 +180,25 @@ export interface Translations {
     modelNoModelsFound: string;
     modelFetchModelsHint: string;
     modelOrInputManually: string;
+    // Two-layer model settings
+    modelProviders: string;
+    modelProvidersDesc: string;
+    modelAddProvider: string;
+    modelEditProvider: string;
+    modelDeleteProvider: string;
+    modelDeleteProviderConfirm: string;
+    modelProviderName: string;
+    modelProviderNamePlaceholder: string;
+    modelProviderType: string;
+    modelProviderSaved: string;
+    modelProviderDeleted: string;
+    modelProviderCreateError: string;
+    modelAssignments: string;
+    modelAssignmentsDesc: string;
+    modelNoProviders: string;
+    modelProviderInUse: string;
+    modelAssignmentSaved: string;
+    modelAssignmentDeleted: string;
     deleteConfirmUsername: string;
     deleteConfirmEmail: string;
     confirmDelete: string;
@@ -186,6 +206,80 @@ export interface Translations {
     deleting: string;
     deleteSuccess: string;
     deleteError: string;
+    // Role labels
+    roleRoot: string;
+    roleAdmin: string;
+    rolePremium: string;
+    roleRegular: string;
+    // User management extras
+    superAdmin: string;
+    resetPassword: string;
+    resetPasswordTitle: string;
+    resetPasswordDesc: string;
+    resetPasswordSuccess: string;
+    resetPasswordError: string;
+    enableUser: string;
+    disableUser: string;
+    forceLogout: string;
+    forceLogoutSuccess: string;
+    forceLogoutError: string;
+    onlineUsers: string;
+    disabledUsers: string;
+    sessionInvalid: string;
+    inviteCode: string;
+    inviteCodePlaceholder: string;
+    loginHistory: string;
+    loginTime: string;
+    ipAddress: string;
+    deviceInfo: string;
+    loginResult: string;
+    loginSuccess: string;
+    loginFailed: string;
+    failureReason: string;
+    // Enhanced user management UI
+    confirmPassword: string;
+    passwordMismatch: string;
+    emailPlaceholder: string;
+    emailInvalid: string;
+    editUser: string;
+    editUserTitle: string;
+    editUserDesc: string;
+    editSuccess: string;
+    editError: string;
+    saving: string;
+    save: string;
+    allRoles: string;
+    allStatus: string;
+    enabled: string;
+    disabled: string;
+    disableConfirmTitle: string;
+    disableConfirmMessage: string;
+    disableConfirmOnline: string;
+    forceLogoutConfirmTitle: string;
+    forceLogoutConfirmMessage: string;
+    deleteTypeUsername: string;
+    toggleStatusSuccess: string;
+    toggleStatusError: string;
+    autoGenerate: string;
+    manualSet: string;
+    generatePassword: string;
+    generatedPassword: string;
+    copyPassword: string;
+    copied: string;
+    resetPasswordWarning: string;
+    newPassword: string;
+    newPasswordPlaceholder: string;
+    confirmNewPassword: string;
+    noLoginHistory: string;
+    loginHistoryFor: string;
+    close: string;
+    previous: string;
+    next: string;
+    pageOf: string;
+    totalRecords: string;
+    perPage: string;
+    refresh: string;
+    user: string;
   };
   tasks: {
     workflow: string;
@@ -1123,6 +1217,7 @@ export const translations: Record<string, Translations> = {
       usernamePlaceholder: 'Enter username (3-50 characters)',
       usernameRequired: 'Username is required',
       usernameMinLength: 'Username must be at least 3 characters',
+      usernameInvalidChars: 'Username can only contain letters, numbers, and underscores',
       password: 'Password',
       passwordPlaceholder: 'Enter password (minimum 6 characters)',
       passwordRequired: 'Password is required',
@@ -1147,7 +1242,7 @@ export const translations: Record<string, Translations> = {
       emailExists: 'Email already exists',
       deleteUser: 'Delete User',
       deleteConfirmTitle: 'Delete User',
-      deleteConfirmMessage: 'Are you sure you want to delete this user? This action cannot be undone.',
+      deleteConfirmMessage: 'Are you sure you want to delete user {username}? This action cannot be undone.',
       modelSettings: 'Model Settings',
       modelSettingsDesc: 'Configure AI models for each function',
       modelChat: 'Chat',
@@ -1187,6 +1282,25 @@ export const translations: Record<string, Translations> = {
       modelNoModelsFound: 'No models found',
       modelFetchModelsHint: 'Enter API Key and click Fetch Models',
       modelOrInputManually: 'or input manually',
+      // Two-layer model settings
+      modelProviders: 'Provider Management',
+      modelProvidersDesc: 'Configure API credentials for AI model providers',
+      modelAddProvider: 'Add Provider',
+      modelEditProvider: 'Edit Provider',
+      modelDeleteProvider: 'Delete Provider',
+      modelDeleteProviderConfirm: 'Are you sure you want to delete this provider? Associated feature assignments will also be removed.',
+      modelProviderName: 'Provider Name',
+      modelProviderNamePlaceholder: 'e.g. My DeepSeek Account',
+      modelProviderType: 'Provider Type',
+      modelProviderSaved: 'Provider saved',
+      modelProviderDeleted: 'Provider deleted',
+      modelProviderCreateError: 'Failed to save provider',
+      modelAssignments: 'Feature Model Assignment',
+      modelAssignmentsDesc: 'Select which model to use for each feature',
+      modelNoProviders: 'No providers configured yet. Please add one first.',
+      modelProviderInUse: 'This provider is used by the following features',
+      modelAssignmentSaved: 'Assignment saved',
+      modelAssignmentDeleted: 'Assignment deleted',
       deleteConfirmUsername: 'Username',
       deleteConfirmEmail: 'Email',
       confirmDelete: 'Delete',
@@ -1194,6 +1308,80 @@ export const translations: Record<string, Translations> = {
       deleting: 'Deleting...',
       deleteSuccess: 'User deleted successfully',
       deleteError: 'Failed to delete user',
+      // Role labels
+      roleRoot: 'Super Admin',
+      roleAdmin: 'Admin',
+      rolePremium: 'Premium',
+      roleRegular: 'User',
+      // User management extras
+      superAdmin: 'Super Admin',
+      resetPassword: 'Reset Password',
+      resetPasswordTitle: 'Reset Password',
+      resetPasswordDesc: 'Enter a new password for this user. Leave empty to generate a random password.',
+      resetPasswordSuccess: 'Password has been reset',
+      resetPasswordError: 'Failed to reset password',
+      enableUser: 'Enable',
+      disableUser: 'Disable',
+      forceLogout: 'Force Logout',
+      forceLogoutSuccess: 'User has been logged out',
+      forceLogoutError: 'Failed to force logout',
+      onlineUsers: 'Online Users',
+      disabledUsers: 'Disabled Users',
+      sessionInvalid: 'Your session has expired. Please log in again.',
+      inviteCode: 'Invite Code',
+      inviteCodePlaceholder: 'Enter invite code',
+      loginHistory: 'Login History',
+      loginTime: 'Login Time',
+      ipAddress: 'IP Address',
+      deviceInfo: 'Device',
+      loginResult: 'Result',
+      loginSuccess: 'Success',
+      loginFailed: 'Failed',
+      failureReason: 'Reason',
+      // Enhanced user management UI
+      confirmPassword: 'Confirm Password',
+      passwordMismatch: 'Passwords do not match',
+      emailPlaceholder: 'Enter email (optional)',
+      emailInvalid: 'Invalid email format',
+      editUser: 'Edit User',
+      editUserTitle: 'Edit User',
+      editUserDesc: 'Modify user profile information',
+      editSuccess: 'User updated successfully',
+      editError: 'Failed to update user',
+      saving: 'Saving...',
+      save: 'Save',
+      allRoles: 'All Roles',
+      allStatus: 'All Status',
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+      disableConfirmTitle: 'Disable User',
+      disableConfirmMessage: 'Are you sure you want to disable user {username}? They will not be able to log in.',
+      disableConfirmOnline: 'This user is currently online and will be logged out immediately.',
+      forceLogoutConfirmTitle: 'Force Logout',
+      forceLogoutConfirmMessage: 'Are you sure you want to force logout user {username}?',
+      deleteTypeUsername: 'Type the username to confirm:',
+      toggleStatusSuccess: 'User status updated',
+      toggleStatusError: 'Failed to update user status',
+      autoGenerate: 'Auto Generate',
+      manualSet: 'Manual Set',
+      generatePassword: 'Generate Password',
+      generatedPassword: 'Generated Password',
+      copyPassword: 'Copy',
+      copied: 'Copied!',
+      resetPasswordWarning: 'The user will be forced to log out and must use the new password to log in again.',
+      newPassword: 'New Password',
+      newPasswordPlaceholder: 'Enter new password (min 6 characters)',
+      confirmNewPassword: 'Confirm New Password',
+      noLoginHistory: 'No login history found',
+      loginHistoryFor: 'Login History for {username}',
+      close: 'Close',
+      previous: 'Previous',
+      next: 'Next',
+      pageOf: 'Page {current} of {total}',
+      totalRecords: '{count} records total',
+      perPage: 'per page',
+      refresh: 'Refresh',
+      user: 'User',
     },
     tasks: {
       workflow: 'WorkFlow',
@@ -2144,6 +2332,7 @@ export const translations: Record<string, Translations> = {
       usernamePlaceholder: '输入用户名（3-50个字符）',
       usernameRequired: '用户名为必填项',
       usernameMinLength: '用户名至少需要3个字符',
+      usernameInvalidChars: '用户名只能包含字母、数字和下划线',
       password: '密码',
       passwordPlaceholder: '输入密码（至少6个字符）',
       passwordRequired: '密码为必填项',
@@ -2168,7 +2357,7 @@ export const translations: Record<string, Translations> = {
       emailExists: '邮箱已存在',
       deleteUser: '删除用户',
       deleteConfirmTitle: '删除用户',
-      deleteConfirmMessage: '确定要删除此用户吗？此操作无法撤销。',
+      deleteConfirmMessage: '确定要删除用户 {username} 吗？此操作无法撤销。',
       modelSettings: '模型设置',
       modelSettingsDesc: '为每个功能配置AI模型',
       modelChat: '主聊天',
@@ -2208,6 +2397,25 @@ export const translations: Record<string, Translations> = {
       modelNoModelsFound: '未找到模型',
       modelFetchModelsHint: '输入API密钥后点击获取模型列表',
       modelOrInputManually: '或手动输入',
+      // Two-layer model settings
+      modelProviders: '供应商管理',
+      modelProvidersDesc: '配置 AI 模型供应商的 API 凭证',
+      modelAddProvider: '添加供应商',
+      modelEditProvider: '编辑供应商',
+      modelDeleteProvider: '删除供应商',
+      modelDeleteProviderConfirm: '确定删除此供应商？关联的功能配置也会被移除。',
+      modelProviderName: '供应商名称',
+      modelProviderNamePlaceholder: '例如：我的 DeepSeek 账号',
+      modelProviderType: '供应商类型',
+      modelProviderSaved: '供应商已保存',
+      modelProviderDeleted: '供应商已删除',
+      modelProviderCreateError: '保存供应商失败',
+      modelAssignments: '功能模型分配',
+      modelAssignmentsDesc: '为不同功能选择要使用的模型',
+      modelNoProviders: '尚未配置供应商，请先添加',
+      modelProviderInUse: '此供应商正被以下功能使用',
+      modelAssignmentSaved: '分配已保存',
+      modelAssignmentDeleted: '分配已删除',
       deleteConfirmUsername: '用户名',
       deleteConfirmEmail: '邮箱',
       confirmDelete: '删除',
@@ -2215,6 +2423,80 @@ export const translations: Record<string, Translations> = {
       deleting: '删除中...',
       deleteSuccess: '用户删除成功',
       deleteError: '用户删除失败',
+      // Role labels
+      roleRoot: '超级管理员',
+      roleAdmin: '管理员',
+      rolePremium: '高级用户',
+      roleRegular: '普通用户',
+      // User management extras
+      superAdmin: '超级管理员',
+      resetPassword: '重置密码',
+      resetPasswordTitle: '重置密码',
+      resetPasswordDesc: '输入新密码。留空将生成随机密码。',
+      resetPasswordSuccess: '密码已重置',
+      resetPasswordError: '重置密码失败',
+      enableUser: '启用',
+      disableUser: '禁用',
+      forceLogout: '强制下线',
+      forceLogoutSuccess: '用户已下线',
+      forceLogoutError: '强制下线失败',
+      onlineUsers: '在线用户',
+      disabledUsers: '已禁用用户',
+      sessionInvalid: '您的会话已失效，请重新登录',
+      inviteCode: '邀请码',
+      inviteCodePlaceholder: '输入邀请码',
+      loginHistory: '登录历史',
+      loginTime: '登录时间',
+      ipAddress: 'IP地址',
+      deviceInfo: '设备信息',
+      loginResult: '结果',
+      loginSuccess: '成功',
+      loginFailed: '失败',
+      failureReason: '原因',
+      // Enhanced user management UI
+      confirmPassword: '确认密码',
+      passwordMismatch: '两次输入的密码不一致',
+      emailPlaceholder: '输入邮箱（可选）',
+      emailInvalid: '邮箱格式不正确',
+      editUser: '编辑用户',
+      editUserTitle: '编辑用户',
+      editUserDesc: '修改用户资料信息',
+      editSuccess: '用户更新成功',
+      editError: '更新用户失败',
+      saving: '保存中...',
+      save: '保存',
+      allRoles: '全部角色',
+      allStatus: '全部状态',
+      enabled: '已启用',
+      disabled: '已禁用',
+      disableConfirmTitle: '禁用用户',
+      disableConfirmMessage: '确定要禁用用户 {username} 吗？该用户将无法登录。',
+      disableConfirmOnline: '该用户当前在线，禁用后将被立即下线。',
+      forceLogoutConfirmTitle: '强制下线',
+      forceLogoutConfirmMessage: '确定要强制下线用户 {username} 吗？',
+      deleteTypeUsername: '请输入用户名以确认：',
+      toggleStatusSuccess: '用户状态已更新',
+      toggleStatusError: '更新用户状态失败',
+      autoGenerate: '自动生成',
+      manualSet: '手动设置',
+      generatePassword: '生成密码',
+      generatedPassword: '生成的密码',
+      copyPassword: '复制',
+      copied: '已复制！',
+      resetPasswordWarning: '用户将被强制登出，需要使用新密码重新登录。',
+      newPassword: '新密码',
+      newPasswordPlaceholder: '输入新密码（至少6位）',
+      confirmNewPassword: '确认新密码',
+      noLoginHistory: '暂无登录历史',
+      loginHistoryFor: '{username} 的登录历史',
+      close: '关闭',
+      previous: '上一页',
+      next: '下一页',
+      pageOf: '第 {current}/{total} 页',
+      totalRecords: '共 {count} 条',
+      perPage: '每页',
+      refresh: '刷新',
+      user: '用户',
     },
     tasks: {
       workflow: '工作流',

@@ -3,6 +3,7 @@ Session management service for single-device login functionality.
 Uses SQLAlchemy async operations on the User model.
 """
 
+import hmac
 import secrets
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -143,7 +144,8 @@ class SessionService:
             stmt = select(
                 User.active_session_token,
                 User.session_created_at,
-                User.is_active
+                User.is_active,
+                User.is_root
             ).where(User.id == user_uuid)
             result = await db.execute(stmt)
             row = result.one_or_none()
@@ -178,7 +180,7 @@ class SessionService:
                     "reason": "无活跃会话"
                 }
 
-            if row.active_session_token != session_token:
+            if not hmac.compare_digest(row.active_session_token, session_token):
                 logger.warning("Session validation failed: token mismatch", {
                     "user_id": user_id,
                     "session_created_at": row.session_created_at.isoformat() if row.session_created_at else None,
@@ -198,7 +200,8 @@ class SessionService:
             return {
                 "success": True,
                 "valid": True,
-                "message": "会话有效"
+                "message": "会话有效",
+                "is_root": row.is_root
             }
 
         except Exception as e:

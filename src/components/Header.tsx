@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
+import RoleBadge, { resolveUserRole } from '@/components/ui/RoleBadge';
 
 function useTheme() {
   const [isDark, setIsDark] = useState(true);
@@ -40,7 +41,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSettingsClick, onHomeClick }) => {
   const { locale, setLocale, t } = useLocale();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, canManageUsers } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -204,12 +205,12 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
             </svg>
           </button>
           
-          {/* Settings button - only visible for admin users */}
-          {isAuthenticated && user?.userRole === 'admin' && onSettingsClick && (
+          {/* Settings button - only visible for users who can manage */}
+          {isAuthenticated && canManageUsers && onSettingsClick && (
             <button 
               onClick={onSettingsClick}
               className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
-              title="管理员设置"
+              title={t.adminSettings.title}
             >
               <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -235,8 +236,11 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
                 {isUserDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-popover rounded-md shadow-lg border border-border py-1 z-50">
                     <div className="px-3 py-2 border-b border-border">
-                      <p className="text-sm font-medium text-foreground">{user?.username}</p>
-                      <p className="text-xs text-muted-foreground">{user?.email}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-foreground">{user?.username}</p>
+                        {user && <RoleBadge role={resolveUserRole(user)} size="sm" />}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{user?.email}</p>
                     </div>
                     <button
                       onClick={() => {

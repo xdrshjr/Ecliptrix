@@ -215,7 +215,8 @@ async def validate_session(
                 success=True,
                 message=validation_result.get("message", "验证完成"),
                 valid=is_valid,
-                reason=reason
+                reason=reason,
+                is_root=validation_result.get("is_root") if is_valid else None
             )
         else:
             logger.warning("Session validation failed", {

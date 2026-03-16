@@ -3,7 +3,7 @@ SQLAlchemy ORM models for database tables.
 """
 
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON, func
+from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase
 
@@ -23,6 +23,7 @@ class User(Base):
     avatar_url = Column(String(500), nullable=True)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    is_root = Column(Boolean, default=False, nullable=False)
     user_role = Column(String(20), default="regular")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -46,3 +47,16 @@ class AgentWorkflow(Base):
     is_template = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LoginHistory(Base):
+    """Login history table for tracking authentication attempts."""
+    __tablename__ = "login_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    login_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ip_address = Column(String(50), nullable=True)
+    device_info = Column(Text, nullable=True)
+    login_result = Column(String(20), nullable=False)  # "success" | "failed"
+    failure_reason = Column(String(100), nullable=True)  # e.g. "invalid_password", "account_disabled"

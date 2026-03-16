@@ -207,8 +207,11 @@ class DatabaseConfig(BaseModel):
 
 class AuthConfig(BaseModel):
     """Authentication configuration."""
-    admin_username: str = Field(default="admin", description="Admin username")
-    admin_password: str = Field(default="admin", description="Admin password")
+    admin_username: str = Field(default="admin", description="Admin username (deprecated, use root_username)")
+    admin_password: str = Field(default="admin", description="Admin password (deprecated, use root_password)")
+    root_username: str = Field(default="admin", description="Root user username (falls back to admin_username)")
+    root_password: str = Field(default="", description="Root user password (falls back to admin_password)")
+    invite_code: str = Field(default="", description="Invite code for self-registration (empty = registration closed)")
 
 
 class Settings(BaseModel):
@@ -396,9 +399,19 @@ def get_settings() -> Settings:
     )
 
     # Create Authentication configuration
+    # ROOT_* takes priority over ADMIN_* for backward compatibility
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin")
+    root_username = os.getenv("ROOT_USERNAME", "") or admin_username
+    root_password = os.getenv("ROOT_PASSWORD", "") or admin_password
+    invite_code = os.getenv("INVITE_CODE", "")
+
     auth_config = AuthConfig(
-        admin_username=os.getenv("ADMIN_USERNAME", "admin"),
-        admin_password=os.getenv("ADMIN_PASSWORD", "admin")
+        admin_username=admin_username,
+        admin_password=admin_password,
+        root_username=root_username,
+        root_password=root_password,
+        invite_code=invite_code
     )
 
     # Create OSS configuration
@@ -445,4 +458,11 @@ def get_settings() -> Settings:
 
 
 # Global settings instance
-settings = get_settings() 
+settings = get_settings()
+
+# Startup validation: ROOT_PASSWORD (or ADMIN_PASSWORD fallback) must be explicitly set
+if not ***REMOVED***:
+    raise RuntimeError(
+        "ROOT_PASSWORD (or ADMIN_PASSWORD) is not set. "
+        "Please set ROOT_PASSWORD in your .env file. The application cannot start without it."
+    )

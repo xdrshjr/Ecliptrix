@@ -7,3 +7,5 @@ export type { ToastProps } from './Toast';
 export type { ToastItem } from './ToastContainer';
 export type { ConfirmationDialogProps } from './ConfirmationDialog';
 export type { MobileWarningDialogProps } from './MobileWarningDialog';
+export { default as RoleBadge, resolveUserRole } from './RoleBadge';
+export type { RoleBadgeRole } from './RoleBadge';

@@ -1,5 +1,9 @@
 """
 Pydantic models for Model Settings feature.
+
+Two-layer architecture:
+  Layer 1 — Provider Credentials: configure providers once (name, type, API URL, API key)
+  Layer 2 — Feature Model Assignment: each feature picks a provider + model from the pool
 """
 
 from enum import Enum
@@ -15,30 +19,91 @@ class ModelFunctionType(str, Enum):
     VISION = "vision"
 
 
-class PresetModel(BaseModel):
-    """A preset model definition."""
-    model_config = ConfigDict(protected_namespaces=())
-
-    id: str
-    name: str
-    provider: str
-    default_api_url: str
-    region: str  # "domestic" or "international"
-
-
 class ProviderInfo(BaseModel):
-    """A known provider with default API URL."""
+    """A known provider type with default API URL (static reference data)."""
     id: str
     name: str
     default_api_url: str
     region: str  # "domestic" or "international"
 
 
-class FetchModelsRequest(BaseModel):
-    """Request to fetch available models from a provider API."""
+# ── Provider CRUD models ──
+
+class ModelProviderCreate(BaseModel):
+    """Request to create a provider credential."""
+    name: str                    # User-chosen display name
+    provider_type: str           # 'deepseek', 'openai', 'anthropic', etc.
     api_url: str
     api_key: str
-    function_type: Optional[str] = None  # Used to look up saved API key
+
+class ModelProviderUpdate(BaseModel):
+    """Request to update a provider credential."""
+    name: Optional[str] = None
+    provider_type: Optional[str] = None
+    api_url: Optional[str] = None
+    api_key: Optional[str] = None   # '__KEEP__' to preserve existing key
+
+
+class ModelProviderResponse(BaseModel):
+    """Provider response (API key masked for security)."""
+    id: int
+    name: str
+    provider_type: str
+    api_url: str
+    api_key_masked: str
+    api_key_set: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ModelProviderListResponse(BaseModel):
+    """Response containing all saved providers."""
+    success: bool
+    message: str
+    providers: List[ModelProviderResponse]
+
+
+# ── Assignment CRUD models ──
+
+class ModelAssignmentRequest(BaseModel):
+    """Request to assign a model to a feature."""
+    model_config = ConfigDict(protected_namespaces=())
+
+    function_type: ModelFunctionType
+    provider_id: int
+    model_name: str
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=128000, ge=1, le=128000)
+
+
+class ModelAssignmentResponse(BaseModel):
+    """Response for a model assignment (includes joined provider info)."""
+    model_config = ConfigDict(protected_namespaces=())
+
+    function_type: ModelFunctionType
+    provider_id: int
+    provider_name: str
+    provider_type: str
+    model_name: str
+    temperature: float
+    max_tokens: int
+    updated_at: Optional[str] = None
+
+
+class ModelAssignmentListResponse(BaseModel):
+    """Response containing all feature assignments."""
+    success: bool
+    message: str
+    assignments: List[ModelAssignmentResponse]
+
+
+# ── Model fetching ──
+
+class FetchModelsRequest(BaseModel):
+    """Request to fetch available models with ad-hoc credentials."""
+    api_url: str
+    api_key: str
+    provider_id: Optional[int] = None  # If set, look up saved API key
 
 
 class FetchModelsResponse(BaseModel):
@@ -50,35 +115,7 @@ class FetchModelsResponse(BaseModel):
     models: List[str] = []
 
 
-class ModelSettingRequest(BaseModel):
-    """Request to save a model setting."""
-    model_config = ConfigDict(protected_namespaces=())
-
-    function_type: ModelFunctionType
-    is_custom: bool = False
-    provider: Optional[str] = None
-    model_name: str
-    api_url: str
-    api_key: str
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=2000, ge=1, le=128000)
-
-
-class ModelSettingResponse(BaseModel):
-    """Response with a model setting (API key masked)."""
-    model_config = ConfigDict(protected_namespaces=())
-
-    function_type: ModelFunctionType
-    is_custom: bool
-    provider: Optional[str] = None
-    model_name: str
-    api_url: str
-    api_key_masked: str
-    api_key_set: bool
-    temperature: float
-    max_tokens: int
-    updated_at: Optional[str] = None
-
+# ── Connection testing ──
 
 class TestConnectionRequest(BaseModel):
     """Request to test a model connection."""
@@ -87,7 +124,7 @@ class TestConnectionRequest(BaseModel):
     api_url: str
     api_key: str = ""
     model_name: str
-    function_type: Optional[str] = None  # Used to look up saved API key when api_key is empty
+    provider_id: Optional[int] = None  # Look up saved API key from providers table
 
 
 class TestConnectionResponse(BaseModel):
@@ -97,29 +134,22 @@ class TestConnectionResponse(BaseModel):
     latency_ms: Optional[int] = None
 
 
-class ModelSettingsListResponse(BaseModel):
-    """Response containing all model settings."""
-    success: bool
-    message: str
-    settings: List[ModelSettingResponse]
-
-
-class PresetModelsResponse(BaseModel):
-    """Response containing preset models list."""
-    success: bool
-    message: str
-    presets: List[PresetModel]
-
+# ── Known providers list ──
 
 class ProvidersResponse(BaseModel):
-    """Response containing known providers list."""
+    """Response containing known provider types (static reference)."""
     success: bool
     message: str
     providers: List[ProviderInfo]
 
 
+# ── Config resolution ──
+
 class ResolvedConfigResponse(BaseModel):
-    """Resolved effective config for a function type (internal use)."""
+    """Resolved effective config for a function type.
+
+    Shape MUST remain unchanged — downstream consumers (chat/route.ts etc.) depend on it.
+    """
     model_config = ConfigDict(protected_namespaces=())
 
     success: bool

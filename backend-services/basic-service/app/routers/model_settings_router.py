@@ -1,15 +1,21 @@
 """
 API routes for model settings management.
+
+Two-layer architecture:
+  - Provider CRUD: manage provider credentials
+  - Assignment CRUD: assign models to features
+  - Config resolution: get effective config (DB or env fallback)
 """
 
 from fastapi import APIRouter, HTTPException, status
 
 from app.models.model_settings_models import (
     ModelFunctionType,
-    ModelSettingRequest,
-    ModelSettingResponse,
-    ModelSettingsListResponse,
-    PresetModelsResponse,
+    ModelProviderCreate,
+    ModelProviderUpdate,
+    ModelProviderListResponse,
+    ModelAssignmentRequest,
+    ModelAssignmentListResponse,
     ProvidersResponse,
     TestConnectionRequest,
     TestConnectionResponse,
@@ -24,46 +30,95 @@ router = APIRouter(prefix="/model-settings", tags=["Model Settings"])
 logger = get_logger(__name__)
 
 
-@router.get("/", response_model=ModelSettingsListResponse)
-async def get_all_settings():
-    """Get all saved model settings."""
-    try:
-        settings = await model_settings_service.get_all_settings()
-        return ModelSettingsListResponse(
-            success=True,
-            message=f"Retrieved {len(settings)} model settings",
-            settings=settings,
-        )
-    except Exception as e:
-        logger.error(f"Error getting model settings: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# ── Provider Management ──
 
-
-@router.get("/presets", response_model=PresetModelsResponse)
-async def get_preset_models():
-    """Get the list of preset models."""
-    presets = model_settings_service.get_preset_models()
-    return PresetModelsResponse(
-        success=True,
-        message=f"Retrieved {len(presets)} preset models",
-        presets=presets,
-    )
-
-
-@router.get("/providers", response_model=ProvidersResponse)
-async def get_providers():
-    """Get the list of known providers with default API URLs."""
+@router.get("/providers/known", response_model=ProvidersResponse)
+async def get_known_providers():
+    """Get the list of known provider types with default API URLs (static reference)."""
     providers = model_settings_service.get_providers()
     return ProvidersResponse(
         success=True,
-        message=f"Retrieved {len(providers)} providers",
+        message=f"Retrieved {len(providers)} known providers",
         providers=providers,
     )
 
 
+@router.get("/providers/saved", response_model=ModelProviderListResponse)
+async def get_saved_providers():
+    """Get all saved provider credentials (API keys masked)."""
+    try:
+        providers = await model_settings_service.get_all_providers()
+        return ModelProviderListResponse(
+            success=True,
+            message=f"Retrieved {len(providers)} saved providers",
+            providers=providers,
+        )
+    except Exception as e:
+        logger.error(f"Error getting saved providers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/providers")
+async def create_provider(request: ModelProviderCreate):
+    """Create a new provider credential."""
+    try:
+        provider = await model_settings_service.create_provider(request)
+        return {"success": True, "message": "Provider created", "provider": provider}
+    except Exception as e:
+        logger.error(f"Error creating provider: {e}")
+        if "UNIQUE constraint" in str(e):
+            raise HTTPException(status_code=400, detail="A provider with this name already exists")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/providers/{provider_id}")
+async def update_provider(provider_id: int, request: ModelProviderUpdate):
+    """Update a provider credential. Use '__KEEP__' for api_key to preserve existing."""
+    try:
+        provider = await model_settings_service.update_provider(provider_id, request)
+        if not provider:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        return {"success": True, "message": "Provider updated", "provider": provider}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating provider: {e}")
+        if "UNIQUE constraint" in str(e):
+            raise HTTPException(status_code=400, detail="A provider with this name already exists")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/providers/{provider_id}")
+async def delete_provider(provider_id: int):
+    """Delete a provider and cascade-delete its feature assignments."""
+    try:
+        deleted = await model_settings_service.delete_provider(provider_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        return {"success": True, "message": "Provider deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting provider: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Model Fetching ──
+
+@router.post("/providers/{provider_id}/fetch-models", response_model=FetchModelsResponse)
+async def fetch_models_for_provider(provider_id: int):
+    """Fetch available models using a saved provider's credentials."""
+    try:
+        result = await model_settings_service.fetch_models_for_provider(provider_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching models for provider {provider_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/fetch-models", response_model=FetchModelsResponse)
 async def fetch_models(request: FetchModelsRequest):
-    """Fetch available models from a provider API using the given API key."""
+    """Fetch available models with ad-hoc or provider-referenced credentials."""
     try:
         result = await model_settings_service.fetch_models(request)
         return result
@@ -72,9 +127,58 @@ async def fetch_models(request: FetchModelsRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Feature Assignments ──
+
+@router.get("/assignments", response_model=ModelAssignmentListResponse)
+async def get_all_assignments():
+    """Get all feature model assignments."""
+    try:
+        assignments = await model_settings_service.get_all_assignments()
+        return ModelAssignmentListResponse(
+            success=True,
+            message=f"Retrieved {len(assignments)} assignments",
+            assignments=assignments,
+        )
+    except Exception as e:
+        logger.error(f"Error getting assignments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/assignments")
+async def save_assignment(request: ModelAssignmentRequest):
+    """Save or update a feature model assignment."""
+    try:
+        result = await model_settings_service.save_assignment(request)
+        if not result:
+            raise HTTPException(status_code=400, detail="Provider not found")
+        return {"success": True, "message": "Assignment saved", "assignment": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving assignment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/assignments/{function_type}")
+async def delete_assignment(function_type: ModelFunctionType):
+    """Delete a feature assignment (revert to environment variable defaults)."""
+    try:
+        deleted = await model_settings_service.delete_assignment(function_type)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"No assignment for {function_type.value}")
+        return {"success": True, "message": f"Assignment for {function_type.value} deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting assignment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Config Resolution (UNCHANGED — critical integration point) ──
+
 @router.get("/resolve/{function_type}", response_model=ResolvedConfigResponse)
 async def resolve_config(function_type: ModelFunctionType):
-    """Get the effective configuration for a function type (DB or env fallback)."""
+    """Get the effective configuration for a function type (DB assignment or env fallback)."""
     try:
         config = await model_settings_service.get_effective_config(function_type)
         return config
@@ -83,52 +187,7 @@ async def resolve_config(function_type: ModelFunctionType):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{function_type}", response_model=ModelSettingResponse)
-async def get_setting(function_type: ModelFunctionType):
-    """Get a single model setting by function type."""
-    try:
-        setting = await model_settings_service.get_setting(function_type)
-        if not setting:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No setting found for {function_type.value}",
-            )
-        return setting
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting setting for {function_type}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.put("/", response_model=ModelSettingResponse)
-async def save_setting(request: ModelSettingRequest):
-    """Save or update a model setting."""
-    try:
-        result = await model_settings_service.save_setting(request)
-        return result
-    except Exception as e:
-        logger.error(f"Error saving model setting: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.delete("/{function_type}")
-async def delete_setting(function_type: ModelFunctionType):
-    """Delete a model setting (revert to environment variable defaults)."""
-    try:
-        deleted = await model_settings_service.delete_setting(function_type)
-        if not deleted:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No setting found for {function_type.value}",
-            )
-        return {"success": True, "message": f"Setting for {function_type.value} deleted"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting setting for {function_type}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+# ── Connection Testing (UNCHANGED) ──
 
 @router.post("/test-connection", response_model=TestConnectionResponse)
 async def test_connection(request: TestConnectionRequest):

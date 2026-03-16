@@ -4,6 +4,7 @@ Uses SQLAlchemy async operations on the User model.
 """
 
 import bcrypt
+import hmac
 from typing import Optional, Dict, Any
 from datetime import datetime
 from uuid import UUID as PyUUID
@@ -11,7 +12,8 @@ from uuid import UUID as PyUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
-from app.models.db_models import User
+from app.models.db_models import User, LoginHistory
+from app.config import settings
 from app.logger import get_logger
 from app.models.auth_models import UserLogin, UserInfo, UserRegistration
 from app.services.session_service import session_service
@@ -54,11 +56,42 @@ class AuthService:
             avatar_url=user.avatar_url,
             is_active=user.is_active,
             is_admin=user.is_admin,
+            is_root=user.is_root,
             user_role=user.user_role or "regular",
             created_at=user.created_at,
             updated_at=user.updated_at,
             last_login_at=user.last_login_at
         )
+
+    async def _record_login_history(
+        self,
+        db: AsyncSession,
+        user_id,
+        ip_address: Optional[str],
+        device_info: Optional[str],
+        login_result: str,
+        failure_reason: Optional[str] = None
+    ) -> None:
+        """Record a login attempt in the login_history table.
+
+        Uses an independent database session so that the record is always
+        persisted, even when the caller's transaction is later rolled back
+        (e.g. HTTPException on failed login causes get_db_session to rollback).
+        """
+        try:
+            from app.database import async_session_factory
+            async with async_session_factory() as independent_session:
+                record = LoginHistory(
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    device_info=device_info,
+                    login_result=login_result,
+                    failure_reason=failure_reason
+                )
+                independent_session.add(record)
+                await independent_session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to record login history: {str(e)}")
 
     async def authenticate_user(
         self,
@@ -100,6 +133,7 @@ class AuthService:
                     "username": login_data.username,
                     "query_result": "no_user_found"
                 })
+                # Cannot record login history without a user_id
                 return {
                     "success": False,
                     "message": "用户名或密码错误",
@@ -110,15 +144,31 @@ class AuthService:
                 "username": login_data.username,
                 "user_id": str(user.id),
                 "is_admin": user.is_admin,
+                "is_root": user.is_root,
                 "user_role": user.user_role
             })
 
-            # Verify password
-            if not self._verify_password(login_data.password, user.password_hash):
+            # Verify password — root user always authenticates against .env value (single source of truth)
+            if user.is_root:
+                # For root user, compare input password directly against .env ROOT_PASSWORD
+                # using constant-time comparison to prevent timing attacks.
+                password_valid = hmac.compare_digest(
+                    login_data.password.encode('utf-8'),
+                    ***REMOVED***.encode('utf-8')
+                )
+            else:
+                password_valid = self._verify_password(login_data.password, user.password_hash)
+
+            if not password_valid:
                 logger.warning("Password verification failed", {
                     "username": login_data.username,
                     "user_id": str(user.id)
                 })
+                await self._record_login_history(
+                    db=db, user_id=user.id, ip_address=ip_address,
+                    device_info=device_info, login_result="failed",
+                    failure_reason="invalid_password"
+                )
                 return {
                     "success": False,
                     "message": "用户名或密码错误",
@@ -166,6 +216,12 @@ class AuthService:
             # Refresh user object to avoid MissingGreenlet on lazy-loaded attributes
             await db.refresh(user)
 
+            # Record successful login history
+            await self._record_login_history(
+                db=db, user_id=user.id, ip_address=ip_address,
+                device_info=device_info, login_result="success"
+            )
+
             # Create user info object
             user_info = UserInfo(
                 id=str(user.id),
@@ -175,6 +231,7 @@ class AuthService:
                 avatar_url=user.avatar_url,
                 is_active=user.is_active,
                 is_admin=user.is_admin,
+                is_root=user.is_root,
                 user_role=user.user_role or "regular",
                 created_at=user.created_at,
                 updated_at=user.updated_at,
@@ -185,6 +242,7 @@ class AuthService:
                 "username": login_data.username,
                 "user_id": str(user.id),
                 "is_admin": user_info.is_admin,
+                "is_root": user_info.is_root,
                 "user_role": user_info.user_role,
                 "has_session_token": session_token is not None,
                 "login_time": datetime.now().isoformat()
@@ -213,7 +271,7 @@ class AuthService:
         registration_data: UserRegistration
     ) -> Dict[str, Any]:
         """
-        Register a new user.
+        Register a new user with invite code validation.
 
         Args:
             db: AsyncSession for database operations
@@ -228,6 +286,26 @@ class AuthService:
                 "email": registration_data.email,
                 "timestamp": datetime.now().isoformat()
             })
+
+            # Validate invite code
+            configured_invite_code = settings.auth.invite_code
+            if not configured_invite_code:
+                logger.warning("Registration rejected: invite code not configured (registration closed)")
+                return {
+                    "success": False,
+                    "message": "注册功能已关闭",
+                    "error_code": "REGISTRATION_CLOSED"
+                }
+
+            if registration_data.invite_code != configured_invite_code:
+                logger.warning("Registration rejected: invalid invite code", {
+                    "username": registration_data.username,
+                })
+                return {
+                    "success": False,
+                    "message": "邀请码无效",
+                    "error_code": "INVALID_INVITE_CODE"
+                }
 
             # Check if username already exists
             username_stmt = select(User.id).where(User.username == registration_data.username)

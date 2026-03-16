@@ -48,6 +48,8 @@ class UserProfile(BaseModel):
     avatar_url: Optional[str] = Field(None, description="头像URL")
     is_active: bool = Field(True, description="是否激活")
     is_admin: bool = Field(False, description="是否为管理员")
+    is_root: bool = Field(False, description="是否为超级管理员")
+    user_role: str = Field("regular", description="用户角色：admin, regular, premium")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
     last_login_at: Optional[datetime] = Field(None, description="最后登录时间")
@@ -160,8 +162,8 @@ class UserListResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     """管理员创建用户请求模型"""
     username: str = Field(..., min_length=3, max_length=50, description="用户名，3-50字符")
-    email: EmailStr = Field(..., description="邮箱地址")
-    password: str = Field(..., min_length=6, description="密码，至少6个字符")
+    email: Optional[EmailStr] = Field(None, description="邮箱地址")
+    password: str = Field(..., min_length=6, max_length=100, description="密码，6-100字符")
     full_name: Optional[str] = Field(None, max_length=255, description="全名，最多255字符")
     avatar_url: Optional[str] = Field(None, max_length=500, description="头像URL，最多500字符")
     is_active: bool = Field(True, description="是否激活")
@@ -230,4 +232,14 @@ class UserCreateResponse(BaseModel):
                     "last_login_at": None
                 }
             }
-        } 
+        }
+
+
+class ResetPasswordRequest(BaseModel):
+    """密码重置请求模型"""
+    new_password: Optional[str] = Field(
+        None,
+        min_length=6,
+        max_length=100,
+        description="新密码（可选），不提供时自动生成12位随机密码"
+    )

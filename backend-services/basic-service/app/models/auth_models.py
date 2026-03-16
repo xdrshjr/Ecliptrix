@@ -26,6 +26,7 @@ class UserInfo(BaseModel):
     avatar_url: Optional[str] = Field(None, description="Avatar URL")
     is_active: bool = Field(True, description="Whether user is active")
     is_admin: bool = Field(False, description="Whether user is admin")
+    is_root: bool = Field(False, description="Whether user is root (super admin)")
     user_role: UserRole = Field("regular", description="User role: admin, regular, or premium")
     created_at: datetime = Field(..., description="Creation time")
     updated_at: datetime = Field(..., description="Last update time")
@@ -51,8 +52,9 @@ class UserRegistration(BaseModel):
     """User registration request model."""
     username: str = Field(..., description="Username", min_length=3, max_length=50)
     email: EmailStr = Field(..., description="Email address")
-    password: str = Field(..., description="Password", min_length=6)
+    password: str = Field(..., description="Password", min_length=6, max_length=100)
     full_name: Optional[str] = Field(None, description="Full name", max_length=255)
+    invite_code: str = Field(..., description="Invite code for registration")
 
 
 class UserRegistrationResponse(BaseResponse):
@@ -87,4 +89,5 @@ class SessionValidationRequest(BaseModel):
 class SessionValidationResponse(BaseResponse):
     """Session validation response model."""
     valid: bool = Field(..., description="Whether session is valid")
-    reason: Optional[str] = Field(None, description="Reason if session is invalid") 
+    reason: Optional[str] = Field(None, description="Reason if session is invalid")
+    is_root: Optional[bool] = Field(None, description="Whether user is root (included when valid=True)")

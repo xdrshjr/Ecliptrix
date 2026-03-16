@@ -10,53 +10,35 @@ export async function DELETE(
     const { userId } = await params;
     console.log('[API] DELETE /api/admin/users/delete/[userId] - Deleting user:', userId);
 
-    // Call the backend API to delete user
+    // Forward Authorization header to backend
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const authHeader = request.headers.get('authorization');
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const response = await fetch(`${BACKEND_URL}/api/user/delete/${userId}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('[API] Failed to delete user:', {
-        status: response.status,
-        userId,
-        detail: data.detail,
-        error: data
-      });
-      
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: data.detail || 'Failed to delete user',
-        },
-        { status: response.status }
-      );
+      console.error('[API] Failed to delete user:', data);
+      return NextResponse.json(data, { status: response.status });
     }
 
-    console.log('[API] User deleted successfully:', {
-      userId,
-      timestamp: data.timestamp
-    });
-    
-    return NextResponse.json({
-      success: true,
-      message: data.message || 'User deleted successfully',
-      timestamp: data.timestamp
-    });
+    console.log('[API] User deleted successfully:', userId);
+    return NextResponse.json(data);
 
   } catch (error) {
     console.error('[API] Error deleting user:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Internal server error',
-      },
+      { success: false, message: 'Internal server error' },
       { status: 500 }
     );
   }
 }
-
