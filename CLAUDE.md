@@ -142,13 +142,14 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 - **Git commit style**: Messages prefixed with `[add]`, `[modify]`, `[update]`, `[refactor]`, `[fix]`.
 - **Environment files**: Frontend uses `.env.local`, backend uses `.env` in its own directory. Templates are `env.template` in each location.
 - **Auth**: bcrypt password hashing, session token stored in `User.active_session_token` column (single-device login enforcement), no JWT expiry — token validated by DB lookup.
+- **Gitignore is minimal**: The `.gitignore` only covers `/node_modules/`, `static/uploads/`, `venv/`, and `backend-services/basic-service/data/`. Notably missing: `__pycache__/`, `*.pyc`, `.next/`, `.idea/`, `.env*`. When staging files, be careful not to include `__pycache__/`, `.pyc` files, `tsconfig.tsbuildinfo`, `.next/`, or `.idea/` — they frequently show up as modified.
 
 ## Project Index
 
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-03-10
+- **Last Updated:** 2026-03-18
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
