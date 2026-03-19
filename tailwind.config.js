@@ -90,7 +90,7 @@ module.exports = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "'Inter'", "-apple-system", "system-ui", "sans-serif"],
+        sans: ["'Inter'", "-apple-system", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Georgia", "serif"],
         mono: ["var(--font-mono)", "Consolas", "monospace"],
       },

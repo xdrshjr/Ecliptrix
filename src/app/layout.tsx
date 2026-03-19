@@ -1,16 +1,9 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { LocaleProvider } from '@/contexts/LocaleContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { GlobalMobileDetection } from '@/components/GlobalMobileDetection'
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-})
 
 export const metadata: Metadata = {
   title: 'Ecliptrix - Where light and shadow collide',
@@ -24,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${inter.variable} dark h-full`} style={{ colorScheme: 'dark' }} suppressHydrationWarning>
+    <html lang="en" className="dark h-full" style={{ colorScheme: 'dark' }} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
