@@ -1,32 +1,18 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback, RefObject } from 'react';
+import React, { useRef, useState, useCallback, RefObject } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useTimelineStore } from './store';
+import { useShallow } from 'zustand/react/shallow';
 
 interface TimelineRulerProps {
-  currentTime: number;
-  totalDuration: number;
-  pixelsPerSecond: number;
-  onTimeChange: (time: number) => void;
-  zoomLevel: number;
-  onZoomChange: (zoomLevel: number) => void;
-  isPlaying: boolean;
   scrollRef?: RefObject<HTMLDivElement | null>;
   onScroll?: (scrollLeft: number) => void;
-  scrollLeft?: number;
 }
 
 const TimelineRuler: React.FC<TimelineRulerProps> = ({
-  currentTime,
-  totalDuration,
-  pixelsPerSecond,
-  onTimeChange,
-  zoomLevel,
-  onZoomChange,
-  isPlaying,
   scrollRef,
   onScroll,
-  scrollLeft = 0
 }) => {
   const { t } = useLocale();
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -35,33 +21,31 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const [showTooltip, setShowTooltip] = useState(false);
   const [showZoomHint, setShowZoomHint] = useState(false);
 
+  // Read from store
+  const { currentTime, totalDuration, zoomLevel, scrollLeft, isPlaying } = useTimelineStore(
+    useShallow((state) => ({
+      currentTime: state.currentTime,
+      totalDuration: state.totalDuration,
+      zoomLevel: state.zoomLevel,
+      scrollLeft: state.scrollLeft,
+      isPlaying: state.isPlaying,
+    })),
+  );
+
+  const setCurrentTime = useTimelineStore((state) => state.setCurrentTime);
+  const setZoomLevel = useTimelineStore((state) => state.setZoomLevel);
+
+  const pixelsPerSecond = zoomLevel * 50;
+
   // 使用ref跟踪最新值，避免拖拽过程中的闭包陈旧问题
   const scrollLeftRef = useRef(scrollLeft);
   const pixelsPerSecondRef = useRef(pixelsPerSecond);
   const totalDurationRef = useRef(totalDuration);
-  const onTimeChangeRef = useRef(onTimeChange);
 
-  useEffect(() => { scrollLeftRef.current = scrollLeft; }, [scrollLeft]);
-  useEffect(() => { pixelsPerSecondRef.current = pixelsPerSecond; }, [pixelsPerSecond]);
-  useEffect(() => { totalDurationRef.current = totalDuration; }, [totalDuration]);
-  useEffect(() => { onTimeChangeRef.current = onTimeChange; }, [onTimeChange]);
-
-  // 动态计算控制面板宽度
-  const getControlPanelWidth = (): number => {
-    if (controlPanelRef.current) {
-      const width = controlPanelRef.current.getBoundingClientRect().width;
-      console.log(`[TimelineRuler] 动态获取控制面板宽度`, {
-        width: width.toFixed(2),
-        timestamp: new Date().toISOString()
-      });
-      return width;
-    }
-    // 回退到默认值，但记录警告
-    console.warn(`[TimelineRuler] 无法获取控制面板宽度，使用默认值192px`, {
-      timestamp: new Date().toISOString()
-    });
-    return 192;
-  };
+  // Keep refs in sync
+  scrollLeftRef.current = scrollLeft;
+  pixelsPerSecondRef.current = pixelsPerSecond;
+  totalDurationRef.current = totalDuration;
 
   // 格式化时间显示
   const formatTime = (seconds: number): string => {
@@ -81,28 +65,21 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     return Math.max(0, Math.min(totalDurationRef.current, x / pixelsPerSecondRef.current));
   };
 
-  // 处理播放头拖拽 - 同步绑定document事件，避免isDragging卡住
+  // 处理播放头拖拽
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
 
     const time = calculateTimeFromMouseEvent(e);
     if (time !== null) {
-      console.log(`[TimelineRuler] 播放头点击定位`, {
-        mouseX: e.clientX,
-        scrollLeft: scrollLeftRef.current.toFixed(2),
-        calculatedTime: time.toFixed(2),
-        timestamp: new Date().toISOString()
-      });
-      onTimeChangeRef.current(time);
+      setCurrentTime(time);
     }
 
-    // 同步绑定document级别的mousemove/mouseup，确保mouseup一定能被捕获
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDragging.current) return;
       const moveTime = calculateTimeFromMouseEvent(moveEvent);
       if (moveTime !== null) {
-        onTimeChangeRef.current(moveTime);
+        setCurrentTime(moveTime);
       }
     };
 
@@ -120,11 +97,11 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const generateTimeMarks = () => {
     const marks = [];
     const interval = zoomLevel < 0.5 ? 10 : zoomLevel < 1 ? 5 : zoomLevel < 2 ? 1 : 0.5;
-    
+
     for (let time = 0; time <= totalDuration; time += interval) {
       const left = time * pixelsPerSecond;
       const isMajor = time % (interval * 5) === 0;
-      
+
       marks.push(
         <div key={time} className="absolute flex flex-col items-center">
           <div
@@ -142,38 +119,23 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         </div>
       );
     }
-    
+
     return marks;
   };
 
   // 处理缩放控制
   const handleZoomIn = () => {
     const newZoom = Math.min(5.0, zoomLevel * 1.5);
-    console.log(`[TimelineRuler] 放大时间轴`, {
-      oldZoom: zoomLevel.toFixed(2),
-      newZoom: newZoom.toFixed(2),
-      timestamp: new Date().toISOString()
-    });
-    onZoomChange(newZoom);
+    setZoomLevel(newZoom);
   };
 
   const handleZoomOut = () => {
     const newZoom = Math.max(0.1, zoomLevel / 1.5);
-    console.log(`[TimelineRuler] 缩小时间轴`, {
-      oldZoom: zoomLevel.toFixed(2),
-      newZoom: newZoom.toFixed(2),
-      timestamp: new Date().toISOString()
-    });
-    onZoomChange(newZoom);
+    setZoomLevel(newZoom);
   };
 
   const handleZoomReset = () => {
-    console.log(`[TimelineRuler] 重置时间轴缩放`, {
-      oldZoom: zoomLevel.toFixed(2),
-      newZoom: '1.00',
-      timestamp: new Date().toISOString()
-    });
-    onZoomChange(1.0);
+    setZoomLevel(1.0);
   };
 
   // 处理Ctrl+滚轮缩放
@@ -183,45 +145,30 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       const newZoom = e.deltaY < 0
         ? Math.min(5.0, zoomLevel * 1.15)
         : Math.max(0.1, zoomLevel / 1.15);
-      onZoomChange(newZoom);
+      setZoomLevel(newZoom);
     }
-  }, [zoomLevel, onZoomChange]);
-
-  // 处理时间轴图标的鼠标事件
-  const handleTimelineIconMouseEnter = () => {
-    setShowTooltip(true);
-    console.log(`[TimelineRuler] 显示时间轴图标提示`, {
-      timestamp: new Date().toISOString()
-    });
-  };
-
-  const handleTimelineIconMouseLeave = () => {
-    setShowTooltip(false);
-    console.log(`[TimelineRuler] 隐藏时间轴图标提示`, {
-      timestamp: new Date().toISOString()
-    });
-  };
+  }, [zoomLevel, setZoomLevel]);
 
   return (
     <div className="timeline-ruler h-8 bg-muted border-b border-border flex relative select-none">
       {/* 左侧控制区域 */}
-      <div 
+      <div
         ref={controlPanelRef}
         className="w-48 bg-muted border-r border-border flex items-center justify-between px-3"
       >
         <div className="flex items-center space-x-2">
-          {/* 时间轴图标，替换原来的文字 */}
-          <div 
+          {/* 时间轴图标 */}
+          <div
             className="relative flex items-center space-x-2"
-            onMouseEnter={handleTimelineIconMouseEnter}
-            onMouseLeave={handleTimelineIconMouseLeave}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
           >
             <div className="text-muted-foreground cursor-help">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
               </svg>
             </div>
-            
+
             {/* 工具提示 */}
             {showTooltip && (
               <div className="absolute left-0 top-6 bg-card text-foreground text-xs px-2 py-1 rounded whitespace-nowrap z-50">
@@ -230,12 +177,12 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               </div>
             )}
           </div>
-          
+
           <span className="text-xs text-muted-foreground font-mono">
             {formatTime(currentTime)}
           </span>
         </div>
-        
+
         {/* 缩放控制 */}
         <div className="flex items-center space-x-1">
           <button
@@ -247,7 +194,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               <path d="M19 13H5v-2h14v2z"/>
             </svg>
           </button>
-          
+
           <button
             onClick={handleZoomReset}
             className="px-2 py-0.5 text-xs bg-card border border-border rounded hover:bg-muted transition-colors"
@@ -255,7 +202,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           >
             {Math.round(zoomLevel * 100)}%
           </button>
-          
+
           <button
             onClick={handleZoomIn}
             className="p-1 rounded hover:bg-accent transition-colors"
@@ -288,7 +235,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       </div>
 
       {/* 时间刻度区域 */}
-      <div 
+      <div
         ref={scrollRef || rulerRef}
         className="flex-1 relative cursor-pointer overflow-x-hidden overflow-y-hidden"
         onMouseDown={handleMouseDown}
@@ -300,9 +247,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         }}
       >
         {/* 滚动内容容器 */}
-        <div 
+        <div
           className="relative bg-card"
-          style={{ 
+          style={{
             minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`,
             height: '100%'
           }}
@@ -315,19 +262,19 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           {/* 播放头 */}
           <div
             className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
-            style={{ 
+            style={{
               left: `${currentTime * pixelsPerSecond}px`,
               boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
             }}
           >
             {/* 播放头顶部手柄 */}
-            <div 
+            <div
               className="absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t cursor-ew-resize"
               style={{ pointerEvents: 'auto' }}
             />
-            
+
             {/* 播放头底部手柄 */}
-            <div 
+            <div
               className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-ew-resize"
               style={{ pointerEvents: 'auto' }}
             />
@@ -346,19 +293,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           {/* 时间网格线延伸到刻度尺 */}
           <div className="absolute inset-0 pointer-events-none">
             {(() => {
-              // 计算容器实际宽度对应的时间长度
               const containerWidth = Math.max(totalDuration * pixelsPerSecond, 800);
               const maxTimeForGrid = Math.ceil(containerWidth / pixelsPerSecond);
-              
-              console.log(`[TimelineRuler] 生成背景网格线`, {
-                totalDuration: totalDuration.toFixed(2),
-                containerWidth: containerWidth.toFixed(2),
-                pixelsPerSecond: pixelsPerSecond.toFixed(2),
-                maxTimeForGrid,
-                gridLinesCount: maxTimeForGrid,
-                timestamp: new Date().toISOString()
-              });
-              
+
               return [...Array(maxTimeForGrid)].map((_, i) => (
                 <div
                   key={i}
@@ -374,4 +311,4 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   );
 };
 
-export default TimelineRuler; 
+export default TimelineRuler;

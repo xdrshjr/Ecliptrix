@@ -1,4 +1,9 @@
 /**
+ * @deprecated This service has been fully superseded by VideoCacheAdapter in
+ * src/components/video/timeline/infrastructure/VideoCacheAdapter.ts
+ * as part of the DDD refactor. No active importers remain — this file can be
+ * safely deleted after verifying the build passes. Do NOT add new functionality here.
+ *
  * VideoCache 服务
  * 管理视频预加载和缓存，实现无缝播放切换
  */

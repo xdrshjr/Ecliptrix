@@ -1,75 +1,62 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { TimelineToolType } from '@/types';
-import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
+import React, { useRef, useCallback } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
+import { useTimelineStore, removeItemsAction } from './store';
+import type { TimelineToolType } from './store';
+import { useShallow } from 'zustand/react/shallow';
 
 interface TimelineToolbarProps {
-  activeTool: TimelineToolType;
-  onToolChange: (tool: TimelineToolType) => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
+  onExportJSON: () => void;
+  onImportJSON: (file: File) => void;
   onOrganizeMaterials: () => void;
-  selectedItemsCount: number;
   onCut: () => void;
   onCopy: () => void;
-  onDelete: () => void;
   onAddEffect: () => void;
   onAddTransition: () => void;
   onAddSubtitle: () => void;
-  onExportJSON: () => void; // 新增：导出JSON功能
-  onImportJSON: (file: File) => void; // 新增：导入JSON功能
-  isExtractingSubtitles?: boolean; // 字幕提取状态
-  isExportingJSON?: boolean; // 新增：JSON导出状态
-  isImportingJSON?: boolean; // 新增：JSON导入状态
-  locale?: SupportedLocale; // 可选的locale参数，默认使用defaultLocale
 }
 
 const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
-  activeTool,
-  onToolChange,
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
+  onExportJSON,
+  onImportJSON,
   onOrganizeMaterials,
-  selectedItemsCount,
   onCut,
   onCopy,
-  onDelete,
   onAddEffect,
   onAddTransition,
   onAddSubtitle,
-  onExportJSON,
-  onImportJSON,
-  isExtractingSubtitles = false,
-  isExportingJSON = false,
-  isImportingJSON = false,
-  locale = defaultLocale
 }) => {
-  // 获取国际化翻译
-  const t = getTranslations(locale);
-  
-  // 文件输入引用
+  const { t } = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  console.log(`[TimelineToolbar] 工具栏渲染`, {
-    activeTool,
-    selectedItemsCount,
-    canUndo,
-    canRedo,
-    isImportingJSON,
-    locale,
-    timestamp: new Date().toISOString()
-  });
+  // Read from store
+  const { activeTool, canUndo, canRedo, isExporting, isImporting, isExtractingSubtitles, selectedItemsCount } = useTimelineStore(
+    useShallow((state) => ({
+      activeTool: state.activeTool,
+      canUndo: state.canUndo,
+      canRedo: state.canRedo,
+      isExporting: state.isExporting,
+      isImporting: state.isImporting,
+      isExtractingSubtitles: state.isExtractingSubtitles,
+      selectedItemsCount: state.selectedItems.length,
+    })),
+  );
+
+  // Store actions
+  const undo = useTimelineStore((state) => state.undo);
+  const redo = useTimelineStore((state) => state.redo);
+  const setActiveTool = useTimelineStore((state) => state.setActiveTool);
+
+  const handleDelete = useCallback(() => {
+    const state = useTimelineStore.getState();
+    if (state.selectedItems.length > 0) {
+      removeItemsAction(() => useTimelineStore.getState(), state.selectedItems);
+    }
+  }, []);
 
   // 处理导入文件选择
   const handleImportClick = () => {
-    console.log(`[TimelineToolbar] 点击导入项目文件按钮`, {
-      timestamp: new Date().toISOString()
-    });
     fileInputRef.current?.click();
   };
 
@@ -77,26 +64,15 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      console.log(`[TimelineToolbar] 选择导入文件`, {
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        timestamp: new Date().toISOString()
-      });
-      
       // 验证文件类型
       if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
-        console.error(`[TimelineToolbar] 文件类型不支持`, {
-          fileName: file.name,
-          fileType: file.type
-        });
         alert('请选择JSON格式的项目文件');
         return;
       }
-      
+
       onImportJSON(file);
     }
-    
+
     // 清除文件输入，允许重复选择同一文件
     event.target.value = '';
   };
@@ -113,8 +89,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     ),
     label: '导入项目文件',
     shortcut: '',
-    disabled: isImportingJSON,
-    loading: isImportingJSON
+    disabled: isImporting,
+    loading: isImporting
   };
 
   // 基础编辑按钮配置
@@ -145,7 +121,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'delete',
-      action: onDelete,
+      action: handleDelete,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -161,7 +137,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const historyButtons = [
     {
       id: 'undo',
-      action: onUndo,
+      action: undo,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
@@ -173,7 +149,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'redo',
-      action: onRedo,
+      action: redo,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/>
@@ -201,7 +177,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     {
       id: 'export-json',
       action: onExportJSON,
-      icon: isExportingJSON ? (
+      icon: isExporting ? (
         <div className="relative w-4 h-4">
           <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
             <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
@@ -213,9 +189,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
         </svg>
       ),
-      label: isExportingJSON ? '导出中...' : '导出为JSON',
+      label: isExporting ? '导出中...' : '导出为JSON',
       shortcut: 'Ctrl+E',
-      disabled: isExportingJSON
+      disabled: isExporting
     },
     {
       id: 'effects',
@@ -259,20 +235,11 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     }
   ];
 
-  // 渲染图标按钮（仅图标，带悬停提示）
+  // 渲染图标按钮
   const renderIconButton = (button: any, isActive = false) => (
     <div key={button.id} className="relative group">
       <button
         onClick={() => {
-          console.log(`[TimelineToolbar] 点击工具按钮`, {
-            buttonId: button.id,
-            buttonLabel: button.label,
-            isDisabled: button.disabled,
-            isActive,
-            selectedItemsCount,
-            timestamp: new Date().toISOString()
-          });
-          
           if (!button.disabled) {
             button.action();
           }
@@ -293,8 +260,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         <span className={button.disabled ? 'opacity-50' : ''}>
           {button.icon}
         </span>
-        
-        {/* 悬停提示 - 使用CSS hover，确保显示 */}
+
+        {/* 悬停提示 */}
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
           <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
             {button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
@@ -317,22 +284,22 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         onChange={handleFileChange}
         className="hidden"
       />
-      
+
       {/* 左侧基础编辑工具 */}
       <div className="flex items-center space-x-1">
         {/* 导入项目文件按钮 */}
         <div className="flex items-center space-x-1">
           {renderIconButton(importButton)}
         </div>
-        
+
         <div className="w-px h-4 bg-border mx-1" />
-        
+
         <div className="flex items-center space-x-1">
           {basicEditButtons.map(button => renderIconButton(button))}
         </div>
-        
+
         <div className="w-px h-4 bg-border mx-2" />
-        
+
         <div className="flex items-center space-x-1">
           {historyButtons.map(button => renderIconButton(button))}
         </div>
@@ -350,11 +317,11 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
             </span>
           </div>
         )}
-        
+
         <div className="hidden md:flex items-center space-x-1 text-xs">
-          <span>{t.timeline.status.currentTool.replace('{tool}', 
-            activeTool === 'select' ? t.timeline.toolbar.select : 
-            activeTool === 'cut' ? t.timeline.toolbar.cut : 
+          <span>{t.timeline.status.currentTool.replace('{tool}',
+            activeTool === 'select' ? t.timeline.toolbar.select :
+            activeTool === 'cut' ? t.timeline.toolbar.cut :
             t.timeline.toolbar.select
           )}</span>
         </div>
@@ -368,4 +335,4 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   );
 };
 
-export default TimelineToolbar; 
+export default TimelineToolbar;

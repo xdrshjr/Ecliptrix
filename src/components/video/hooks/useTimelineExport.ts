@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
-import { TimelineExportService, TimelineExportResponse } from '../services/timelineExportService';
+import { TimelineRepository } from '../timeline/infrastructure';
+import type { TimelineData, MaterialData } from '../timeline/domain/types';
 import { VideoEditingLogger } from '../utils';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -14,19 +15,24 @@ export interface UseTimelineExportReturn {
 /**
  * useTimelineExport Hook
  * 管理时间轴导出为JSON的功能
- * 
+ *
+ * Simplified: export/import logic has been moved to TimelineRepository
+ * in the infrastructure layer. This hook now delegates to that adapter
+ * and manages only the React-specific UI state (loading, errors, notifications).
+ *
  * @param taskId - 任务ID，用于日志记录
  * @returns 时间轴导出相关的状态和方法
  */
 export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
-  // 初始化日志器和服务
+  // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
     component: 'useTimelineExport'
   }), [taskId]);
 
-  const exportService = useMemo(() => new TimelineExportService(taskId), [taskId]);
-  
+  // Infrastructure adapter for timeline persistence
+  const repository = useMemo(() => new TimelineRepository(), []);
+
   // 通知系统
   const { showSuccess, showError } = useNotification();
 
@@ -51,8 +57,7 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
       logger.info('开始导出时间轴JSON', {
         trackCount: timelineState.tracks.length,
         materialCount: materials.length,
-        totalDuration: timelineState.totalDuration,
-        selectedItemsCount: timelineState.selectedItems.length
+        totalDuration: timelineState.totalDuration
       });
 
       // 验证输入数据
@@ -64,47 +69,87 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
         throw new Error('无效的素材数据');
       }
 
-      // 调用导出服务
-      const result: TimelineExportResponse = await exportService.exportTimelineToJSON(
-        taskId,
-        timelineState,
-        materials
+      // Convert to domain-compatible shapes
+      const timelineData: TimelineData = {
+        currentTime: timelineState.currentTime,
+        totalDuration: timelineState.totalDuration,
+        zoomLevel: timelineState.zoomLevel,
+        playbackRate: timelineState.playbackRate,
+        isPlaying: timelineState.isPlaying,
+        snapToGrid: timelineState.snapToGrid,
+        gridSize: timelineState.gridSize,
+        scrollLeft: timelineState.scrollLeft,
+        tracks: timelineState.tracks.map(track => ({
+          id: track.id,
+          name: track.name,
+          type: track.type as 'video' | 'audio' | 'subtitle',
+          height: track.height,
+          isLocked: track.isLocked,
+          isMuted: track.isMuted,
+          isVisible: track.isVisible,
+          volume: track.volume,
+          order: track.order,
+          items: track.items.map(item => ({
+            id: item.id,
+            name: item.name,
+            type: item.type as 'video' | 'audio' | 'subtitle',
+            startTime: item.startTime,
+            duration: item.duration,
+            trackId: item.trackId,
+            color: item.color,
+            materialId: item.materialId,
+            clipStart: item.clipStart,
+            clipEnd: item.clipEnd,
+            originalDuration: item.originalDuration,
+            thumbnailUrl: item.thumbnailUrl,
+            waveformData: item.waveformData,
+            text: item.text,
+            volume: item.volume,
+            opacity: item.opacity,
+            isSelected: item.isSelected,
+            originalMaterialType: item.originalMaterialType,
+            subtitleStyle: item.subtitleStyle,
+            imagePosition: item.imagePosition,
+          })),
+        })),
+      };
+
+      const materialData: MaterialData[] = materials.map(m => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        duration: m.duration,
+        thumbnailUrl: m.thumbnailUrl,
+        url: m.url,
+      }));
+
+      // Use TimelineRepository to export
+      const { blob, filename } = await repository.exportToJSON(
+        timelineData,
+        materialData,
+        {
+          exportedAt: new Date().toISOString(),
+          version: '1.0.0',
+          taskId,
+        }
       );
 
-      if (!result.success) {
-        throw new Error(result.message || '导出失败');
-      }
+      // Download the blob
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
-      // 如果返回了数据，直接下载到本地
-      if (result.data) {
-        exportService.downloadJSONFile(result.data, result.fileName);
-        
-        showSuccess(`时间轴数据已成功导出为JSON文件: ${result.fileName || '未知文件名'}`, 5000);
+      showSuccess(`时间轴数据已成功导出为JSON文件: ${filename}`, 5000);
 
-        logger.info('时间轴JSON导出成功', {
-          fileName: result.fileName,
-          trackCount: result.data.tracks.length,
-          materialCount: result.data.materials.length,
-          totalDuration: result.data.metadata.totalDuration
-        });
-      } else if (result.downloadUrl) {
-        // 如果返回了下载链接，创建下载
-        const link = document.createElement('a');
-        link.href = result.downloadUrl;
-        link.download = result.fileName || `timeline-export-${taskId}-${Date.now()}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        showSuccess(`时间轴数据已成功导出，文件正在下载...`, 5000);
-
-        logger.info('时间轴JSON导出成功（下载链接）', {
-          downloadUrl: result.downloadUrl,
-          fileName: result.fileName
-        });
-      } else {
-        throw new Error('服务器未返回有效的导出数据或下载链接');
-      }
+      logger.info('时间轴JSON导出成功', {
+        fileName: filename,
+        trackCount: timelineState.tracks.length
+      });
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
@@ -122,7 +167,7 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
     } finally {
       setIsExporting(false);
     }
-  }, [taskId, exportService, logger, showSuccess, showError]);
+  }, [taskId, repository, logger, showSuccess, showError]);
 
   return {
     isExporting,

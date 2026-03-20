@@ -1,3 +1,9 @@
+/**
+ * @deprecated This service has been superseded by TimelineRepository in
+ * src/components/video/timeline/infrastructure/TimelineRepository.ts
+ * as part of the DDD refactor. This file is kept temporarily for backward
+ * compatibility while consumers are migrated. Do NOT add new functionality here.
+ */
 import { TimelineState, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../utils';
 

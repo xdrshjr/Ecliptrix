@@ -1,0 +1,118 @@
+/**
+ * Domain Layer — Public API
+ *
+ * This barrel file re-exports all domain layer constructs so that
+ * consumers can import from a single location:
+ *
+ *   import { TimelineAggregate, Track, TimelineItem, TimePosition, ... }
+ *     from '@/components/video/timeline/domain';
+ */
+
+// ---------------------------------------------------------------------------
+// Value Objects
+// ---------------------------------------------------------------------------
+
+export { TimePosition } from './value-objects/TimePosition';
+export { Duration } from './value-objects/Duration';
+export { Volume } from './value-objects/Volume';
+export { ZoomLevel } from './value-objects/ZoomLevel';
+export { TrackTypeUtils } from './value-objects/TrackType';
+
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+
+export { TimelineItem } from './entities/TimelineItem';
+export { Track, TrackLockedError } from './entities/Track';
+
+// ---------------------------------------------------------------------------
+// Aggregates
+// ---------------------------------------------------------------------------
+
+export { TimelineAggregate } from './aggregates/TimelineAggregate';
+
+// ---------------------------------------------------------------------------
+// Domain Services
+// ---------------------------------------------------------------------------
+
+export { TrackSelectionService } from './services/TrackSelectionService';
+export { ItemPlacementService } from './services/ItemPlacementService';
+export { DragCalculationService } from './services/DragCalculationService';
+export { HistoryService } from './services/HistoryService';
+export { DurationCalculationService } from './services/DurationCalculationService';
+
+// Service-related types
+export type { ResizeResult, InteractionType } from './services/DragCalculationService';
+export type { TimelineAction } from './services/HistoryService';
+
+// ---------------------------------------------------------------------------
+// State Machines
+// ---------------------------------------------------------------------------
+
+export {
+  dragMachine,
+  createDragActor,
+  isDragging,
+  isResizing,
+  isActive,
+  isCommitted,
+  getDragPreview,
+  materialDropMachine,
+  createMaterialDropActor,
+  isDragOver,
+  isDropped,
+} from './machines';
+
+export type {
+  DragContext,
+  DragSnapshot,
+  InteractionType as DragInteractionType,
+  PointerDownEvent,
+  PointerMoveEvent,
+  PointerUpEvent,
+  EscapeEvent,
+  PreviewAppliedEvent,
+  CommitCompleteEvent,
+  DragEvent,
+  MaterialDropContext,
+  MaterialDropSnapshot,
+  DragEnterEvent,
+  DragOverUpdateEvent,
+  DragLeaveEvent,
+  DropEvent,
+  ItemCreatedEvent,
+  MaterialDropEvent,
+} from './machines';
+
+// ---------------------------------------------------------------------------
+// Ports (interfaces for Infrastructure adapters)
+// ---------------------------------------------------------------------------
+
+export type {
+  CacheState,
+  ExportMetadata,
+  ITimelineRepository,
+  IVideoCachePort,
+  ICompositionPort,
+  VideoSequenceItem,
+  AudioSequenceItem,
+} from './ports';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type {
+  TrackType,
+  TimelineItemData,
+  TrackData,
+  TimelineData,
+  TimelineSnapshot,
+  MaterialData,
+  CreateItemProps,
+  CreateTrackProps,
+  SubtitleStyle,
+  ImagePosition,
+  AudioSentenceSegment,
+  MaterialType,
+} from './types';

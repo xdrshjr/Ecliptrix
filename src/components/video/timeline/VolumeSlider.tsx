@@ -2,29 +2,37 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useTimelineStore } from './store';
 
-interface VolumeSliderProps {
-  volume: number; // 0-200
-  onVolumeChange: (volume: number) => void;
-  isVisible: boolean;
-  onClose: () => void;
-  buttonRef: React.RefObject<HTMLButtonElement | null>;
-}
+/**
+ * VolumeSlider — Track volume control popover.
+ *
+ * Reads visibility / position / trackId from `useTimelineStore.showVolumeSlider`.
+ * Calls `store.setTrackVolume` on change and `store.hideVolumeSlider` on close.
+ *
+ * No props required — everything comes from the store.
+ */
 
-const VolumeSlider: React.FC<VolumeSliderProps> = ({
-  volume,
-  onVolumeChange,
-  isVisible,
-  onClose,
-  buttonRef
-}) => {
+const VolumeSlider: React.FC = () => {
+  const showVolumeSlider = useTimelineStore(s => s.showVolumeSlider);
+  const tracks = useTimelineStore(s => s.tracks);
+  const setTrackVolume = useTimelineStore(s => s.setTrackVolume);
+  const hideVolumeSlider = useTimelineStore(s => s.hideVolumeSlider);
+
   const sliderRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
   const [mounted, setMounted] = useState(false);
-  const [displayVolume, setDisplayVolume] = useState(volume);
+  const [displayVolume, setDisplayVolume] = useState(100);
   const isDraggingRef = useRef(false);
-  const localVolumeRef = useRef(volume);
+  const localVolumeRef = useRef(100);
+
+  // Derive track volume from store
+  const trackId = showVolumeSlider?.trackId ?? null;
+  const position = showVolumeSlider?.position ?? { x: 0, y: 0 };
+  const isVisible = showVolumeSlider !== null;
+
+  const trackData = tracks.find(t => t.id === trackId);
+  const volume = trackData?.volume ?? 100;
 
   useEffect(() => {
     setMounted(true);
@@ -49,11 +57,7 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
         return;
       }
 
-      if (buttonRef.current && buttonRef.current.contains(target)) {
-        return;
-      }
-
-      onClose();
+      hideVolumeSlider();
     };
 
     if (isVisible) {
@@ -62,18 +66,7 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
         document.removeEventListener('mousedown', handleClickOutside, true);
       };
     }
-  }, [isVisible, onClose, buttonRef]);
-
-  // Position based on buttonRef
-  useEffect(() => {
-    if (isVisible && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10
-      });
-    }
-  }, [isVisible, buttonRef]);
+  }, [isVisible, hideVolumeSlider]);
 
   const calculateVolume = useCallback((clientX: number) => {
     if (!trackRef.current) return localVolumeRef.current;
@@ -103,14 +96,16 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
 
     const handleMouseUp = () => {
       isDraggingRef.current = false;
-      onVolumeChange(localVolumeRef.current);
+      if (trackId) {
+        setTrackVolume(trackId, localVolumeRef.current);
+      }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [calculateVolume, updateVolume, onVolumeChange]);
+  }, [calculateVolume, updateVolume, setTrackVolume, trackId]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     e.stopPropagation();
@@ -129,14 +124,16 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
 
     const handleTouchEnd = () => {
       isDraggingRef.current = false;
-      onVolumeChange(localVolumeRef.current);
+      if (trackId) {
+        setTrackVolume(trackId, localVolumeRef.current);
+      }
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
 
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [calculateVolume, updateVolume, onVolumeChange]);
+  }, [calculateVolume, updateVolume, setTrackVolume, trackId]);
 
   if (!mounted || !isVisible) return null;
 
@@ -161,7 +158,7 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
   };
 
   // Gradient: green up to 100%, yellow for boost range
-  const gradientPercent = displayVolume / 2; // 0-200 → 0%-100% of slider track
+  const gradientPercent = displayVolume / 2; // 0-200 -> 0%-100% of slider track
   const mark100Percent = 50; // 100% volume = 50% of slider width
 
   const trackBackground = displayVolume <= 100
