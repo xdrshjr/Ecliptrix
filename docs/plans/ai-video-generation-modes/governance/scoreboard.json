@@ -1,0 +1,421 @@
+{
+  "version": "1.0",
+  "created_at": "2026-03-20T17:01:08.835331+00:00",
+  "agents": {
+    "google-dev-01": {
+      "role": "DEV",
+      "tokens": 140,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T17:01:15.185636+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes",
+          "timestamp": "2026-03-20T17:30:48.038442+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 115,
+          "reason": "D3: All tests pass",
+          "timestamp": "2026-03-20T17:30:48.134759+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 120,
+          "reason": "D4: Spec fully matched (11/11 requirements)",
+          "timestamp": "2026-03-20T17:30:48.234736+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 20,
+          "balance_after": 140,
+          "reason": "D10: Proactive excellence - thorough API discovery, base64 pivot, robust polling, clean result tracking",
+          "timestamp": "2026-03-20T17:30:48.333547+00:00"
+        }
+      ]
+    },
+    "google-dev-02": {
+      "role": "DEV",
+      "tokens": 120,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T17:01:15.282574+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes (router 400 fix)",
+          "timestamp": "2026-03-20T17:39:42.315473+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 115,
+          "reason": "D3: All tests pass (10/10 unit tests)",
+          "timestamp": "2026-03-20T17:39:42.413964+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 120,
+          "reason": "D4: Spec fully matched (11/11 requirements)",
+          "timestamp": "2026-03-20T17:39:42.511352+00:00"
+        }
+      ]
+    },
+    "google-dev-03": {
+      "role": "DEV",
+      "tokens": 120,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T17:01:15.380929+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes (i18n)",
+          "timestamp": "2026-03-20T17:47:15.893076+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 115,
+          "reason": "D3: All tests pass (TypeScript clean)",
+          "timestamp": "2026-03-20T17:47:15.990912+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 120,
+          "reason": "D4: Spec fully matched (10/10 requirements)",
+          "timestamp": "2026-03-20T17:47:16.091247+00:00"
+        }
+      ]
+    },
+    "google-dev-04": {
+      "role": "DEV",
+      "tokens": 120,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T17:01:15.480609+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes (unused prop)",
+          "timestamp": "2026-03-20T17:53:28.241306+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 115,
+          "reason": "D3: All tests pass (TypeScript clean, 8/8 TODO items)",
+          "timestamp": "2026-03-20T17:53:28.339227+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 120,
+          "reason": "D4: Spec fully matched (8/8 requirements)",
+          "timestamp": "2026-03-20T17:53:28.437107+00:00"
+        }
+      ]
+    },
+    "google-reviewer-01": {
+      "role": "REV",
+      "tokens": 180,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T17:01:15.580319+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 110,
+          "reason": "R1: No issues leaked to tester",
+          "timestamp": "2026-03-20T17:30:48.431935+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 120,
+          "reason": "R2: Found valid issues (5 dead code artifacts)",
+          "timestamp": "2026-03-20T17:30:48.536359+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 125,
+          "reason": "R3: Efficient and accurate review",
+          "timestamp": "2026-03-20T17:30:48.635799+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 130,
+          "reason": "R8: Identified proactive excellence (4 examples)",
+          "timestamp": "2026-03-20T17:30:48.734410+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 140,
+          "reason": "R2: Found valid issue - router returning 500 instead of 400 for validation errors",
+          "timestamp": "2026-03-20T17:39:42.608336+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 150,
+          "reason": "R1: No issues leaked to tester in Phase 2",
+          "timestamp": "2026-03-20T17:39:42.706732+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 160,
+          "reason": "R1: No blocking issues leaked to tester in Phase 3a",
+          "timestamp": "2026-03-20T17:47:16.188869+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 170,
+          "reason": "R2: Found valid i18n issue and fixed it",
+          "timestamp": "2026-03-20T17:47:16.289114+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 180,
+          "reason": "R1: No issues leaked to tester in Phase 3b",
+          "timestamp": "2026-03-20T17:53:28.537018+00:00"
+        }
+      ]
+    },
+    "google-tester-01": {
+      "role": "TEST",
+      "tokens": 150,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T17:01:15.693857+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 110,
+          "reason": "T1: Full spec traceability (100% - 11/11 requirements)",
+          "timestamp": "2026-03-20T17:30:48.833220+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 115,
+          "reason": "T3: High-quality test design and completeness audit",
+          "timestamp": "2026-03-20T17:30:48.929956+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 125,
+          "reason": "T1: Full spec traceability (100% - 11/11 requirements)",
+          "timestamp": "2026-03-20T17:39:42.805470+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 130,
+          "reason": "T3: High-quality test design - 10 unit tests covering all mode combinations",
+          "timestamp": "2026-03-20T17:39:42.904656+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 140,
+          "reason": "T1: Full spec traceability (100% - 10/10)",
+          "timestamp": "2026-03-20T17:47:16.386524+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 150,
+          "reason": "T1: Full spec traceability Phase 3b (100% - 8/8)",
+          "timestamp": "2026-03-20T17:53:28.635452+00:00"
+        }
+      ]
+    }
+  },
+  "eliminated": [],
+  "phase_reports": [
+    {
+      "phase": 1,
+      "timestamp": "2026-03-20T17:30:49.027395+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens": 140,
+          "delta": 40
+        },
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens": 130,
+          "delta": 30
+        },
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens": 115,
+          "delta": 15
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-04",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "timestamp": "2026-03-20T17:39:43.002491+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens": 150,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens": 140,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens": 130,
+          "delta": 15
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-04",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "timestamp": "2026-03-20T17:53:28.735441+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens": 180,
+          "delta": 30
+        },
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens": 150,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens": 140,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-04",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 20
+        }
+      ]
+    }
+  ]
+}

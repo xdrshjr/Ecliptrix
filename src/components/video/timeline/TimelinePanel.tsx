@@ -93,6 +93,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const lastExternalUpdateIdRef = useRef<string | null>(null);
   const lastProcessedMaterialsTimestampRef = useRef<number | undefined>(undefined);
 
+  // Refs for stable callback access in mount-only effects (avoids stale closure)
+  const onTimelineStateChangeRef = useRef(onTimelineStateChange);
+  onTimelineStateChangeRef.current = onTimelineStateChange;
+  const onTimelineCompositionChangeRef = useRef(onTimelineCompositionChange);
+  onTimelineCompositionChangeRef.current = onTimelineCompositionChange;
+
   // ---------------------------------------------------------------------------
   // Store selectors
   // ---------------------------------------------------------------------------
@@ -127,6 +133,25 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           defaultTrack('subtitle-track-1', t.timeline.track.subtitleTrack, 'subtitle', 4, 100, 50),
         ],
       } as any);
+
+      // Immediately sync initial state to parent so React state is seeded.
+      // The subscription useEffect below runs AFTER this one, so it would
+      // miss the initTimeline change — we must notify explicitly here.
+      const freshState = useTimelineStore.getState();
+      const ts: TimelineState = {
+        currentTime: freshState.currentTime,
+        totalDuration: freshState.totalDuration,
+        zoomLevel: freshState.zoomLevel,
+        selectedItems: freshState.selectedItems ?? [],
+        tracks: freshState.tracks as Track[],
+        playbackRate: freshState.playbackRate,
+        isPlaying: freshState.isPlaying,
+        snapToGrid: freshState.snapToGrid,
+        gridSize: freshState.gridSize,
+        scrollLeft: freshState.scrollLeft,
+      };
+      onTimelineStateChangeRef.current?.(ts);
+      onTimelineCompositionChangeRef.current?.(ts);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

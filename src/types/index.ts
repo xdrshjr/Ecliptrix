@@ -386,10 +386,20 @@ export interface AIVideoScriptSegment {
   id: string;
   title: string;
   scriptText: string;
+  /** Video duration in seconds (4-12) */
+  duration?: number;
+  /** Generation mode: description (reference images) or keyframe (first/last frame) */
+  generationMode?: 'description' | 'keyframe';
+  // Mode A (描述生成) — reference images
   characterImageUrl?: string;
   characterImageName?: string;
   sceneImageUrl?: string;
   sceneImageName?: string;
+  // Mode B (关键帧生成) — keyframe images
+  firstFrameUrl?: string;
+  firstFrameName?: string;
+  lastFrameUrl?: string;
+  lastFrameName?: string;
   generationStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
   generationProgress?: number;
   arkTaskId?: string;

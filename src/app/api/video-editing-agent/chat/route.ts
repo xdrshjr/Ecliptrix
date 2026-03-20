@@ -38,20 +38,45 @@ const getConfig = async () => {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as AgentChatRequest;
+    // Parse body as text first, then JSON — to get useful error logging if parsing fails
+    const rawText = await request.text();
+    let body: AgentChatRequest;
+    try {
+      body = JSON.parse(rawText) as AgentChatRequest;
+    } catch (parseError) {
+      console.error('[VideoEditingAgent] JSON parse failed. Raw body length:', rawText.length, 'Preview:', rawText.slice(0, 500));
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
     const { messages, timelineState, materials } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
     }
 
-    if (!timelineState || !Array.isArray(timelineState.tracks)) {
-      return NextResponse.json({ error: 'Valid timelineState with tracks is required' }, { status: 400 });
-    }
+    // Tolerate null/undefined timelineState and materials — new editor sessions
+    // may not have a timeline yet. Provide sensible defaults instead of rejecting.
+    const effectiveTimelineState = timelineState && Array.isArray(timelineState.tracks)
+      ? timelineState
+      : {
+          tracks: [
+            { id: 'video-track-1', name: 'Video Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0, items: [] },
+            { id: 'image-track-1', name: 'Image Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1, items: [] },
+            { id: 'audio-track-1', name: 'Audio Track 1', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 200, order: 2, items: [] },
+            { id: 'audio-track-2', name: 'Audio Track 2', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 10, order: 3, items: [] },
+            { id: 'subtitle-track-1', name: 'Subtitle Track', type: 'subtitle' as const, height: 50, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 4, items: [] },
+          ],
+          currentTime: 0,
+          totalDuration: 0,
+          zoomLevel: 1,
+          selectedItems: [],
+          playbackRate: 1,
+          isPlaying: false,
+          snapToGrid: true,
+          gridSize: 0.5,
+          scrollLeft: 0,
+        };
 
-    if (!materials || !Array.isArray(materials)) {
-      return NextResponse.json({ error: 'Materials array is required' }, { status: 400 });
-    }
+    const effectiveMaterials = Array.isArray(materials) ? materials : [];
 
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage || lastMessage.role !== 'user' || !lastMessage.content) {
@@ -100,8 +125,8 @@ export async function POST(request: NextRequest) {
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
             llmModel: config.model,
-            timelineState,
-            materials,
+            timelineState: effectiveTimelineState,
+            materials: effectiveMaterials,
             conversationHistory: messages,
           });
 

@@ -223,7 +223,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
           const connectorState = idx > 0 ? getConnectorState(prevNode, node) : 'default';
 
           return (
-            <React.Fragment key={node.id}>
+            <div key={node.id}>
               {/* Connector line between nodes (skip before first) */}
               {idx > 0 && <TimelineConnector state={connectorState} height={16} />}
 
@@ -240,7 +240,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
                   onUndoSingle={onUndoSingle}
                 />
               )}
-            </React.Fragment>
+            </div>
           );
         })}
       </AnimatePresence>

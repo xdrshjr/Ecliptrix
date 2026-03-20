@@ -209,8 +209,14 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     """
     Submit a video generation task to the Ark platform.
 
+    Supports two generation modes:
+    - "description": Uses image_url/image_urls as reference images (first_frame/last_frame roles).
+      Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
+    - "keyframe": Uses first_frame_url (required) and last_frame_url (optional).
+      Ratio is always forced to "adaptive". image_url/image_urls are ignored.
+
     Returns the ark_task_id string.
-    Raises ValueError if ARK_API_KEY is not configured.
+    Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
     Raises httpx.HTTPStatusError or httpx.RequestError on network/API failure.
     """
     if not settings.ark_api_key:
@@ -218,28 +224,63 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
             "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
         )
 
-    # Merge all image URLs (image_urls takes priority, image_url kept for backward compatibility)
-    all_images = list(request.image_urls or [])
-    if request.image_url and request.image_url not in all_images:
-        all_images.insert(0, request.image_url)
-
-    # Build content list
+    # Build content list — always starts with the text prompt
     content: list = [{"type": "text", "text": request.prompt}]
-    # Ark API requires role for each image: first_frame for first, last_frame for second
-    image_roles = ["first_frame", "last_frame"]
-    for i, img_url in enumerate(all_images[:2]):
+
+    if request.mode == "keyframe":
+        # --- Keyframe mode ---
+        # first_frame_url is required; last_frame_url is optional.
+        # image_url / image_urls are intentionally ignored in this mode.
+        if not request.first_frame_url:
+            raise ValueError(
+                "first_frame_url is required when mode is 'keyframe'. "
+                "Provide a URL or base64 data URI for the first frame image."
+            )
+
         content.append({
             "type": "image_url",
-            "image_url": {"url": img_url},
-            "role": image_roles[i],
+            "image_url": {"url": request.first_frame_url},
+            "role": "first_frame",
         })
+
+        if request.last_frame_url:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": request.last_frame_url},
+                "role": "last_frame",
+            })
+
+        # Keyframe mode always uses adaptive ratio (API requirement when images are present)
+        ratio = "adaptive"
+        image_count = 1 + (1 if request.last_frame_url else 0)
+
+    else:
+        # --- Description mode (default) ---
+        # Preserves existing behavior: merge image_urls and image_url, assign first_frame/last_frame roles.
+        # first_frame_url / last_frame_url are intentionally ignored in this mode.
+        all_images = list(request.image_urls or [])
+        if request.image_url and request.image_url not in all_images:
+            all_images.insert(0, request.image_url)
+
+        # Ark API requires role for each image: first_frame for first, last_frame for second
+        image_roles = ["first_frame", "last_frame"]
+        for i, img_url in enumerate(all_images[:2]):
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": img_url},
+                "role": image_roles[i],
+            })
+
+        # When images are present, ratio must be "adaptive" (API requirement)
+        ratio = "adaptive" if all_images else request.aspect_ratio
+        image_count = len(all_images[:2])
 
     # duration, ratio, resolution are top-level payload fields (not prompt flags)
     payload: dict = {
         "model": ARK_MODEL,
         "content": content,
         "duration": request.duration,
-        "ratio": "adaptive" if all_images else request.aspect_ratio,
+        "ratio": ratio,
         "resolution": request.resolution,
     }
 
@@ -248,7 +289,10 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
         "Content-Type": "application/json",
     }
 
-    logger.info(f"Ark video task request: model={ARK_MODEL}, images={len(all_images)}, duration={request.duration}")
+    logger.info(
+        f"Ark video task request: model={ARK_MODEL}, mode={request.mode}, "
+        f"images={image_count}, ratio={ratio}, duration={request.duration}"
+    )
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(ARK_API_BASE, json=payload, headers=headers)
@@ -262,7 +306,7 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     if not ark_task_id:
         raise ValueError(f"Ark API response missing task ID: {data}")
 
-    logger.info(f"Ark video task created: {ark_task_id}")
+    logger.info(f"Ark video task created: {ark_task_id} (mode={request.mode})")
     return ark_task_id
 
 

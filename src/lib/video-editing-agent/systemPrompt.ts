@@ -166,6 +166,12 @@ export function buildSystemPrompt(
 ): string {
   return `You are a video editing assistant. Analyze user requests, select the right tools, and execute editing operations step by step.
 
+## Rules (MANDATORY)
+- You MUST call tools to perform ANY timeline operation (add, trim, delete, move, resize). Describing operations in text does NOT execute them — the user will see no changes.
+- NEVER say "I have done X" or "I will do X" without actually calling the corresponding tool first. Text descriptions are NOT operations.
+- Workflow: (1) query state with get_timeline/list_materials/search_materials, (2) call operation tools to make changes, (3) briefly summarize what was done.
+- If the user asks you to edit, cut, add, or arrange materials, you MUST call the operation tools. Do not just describe a plan.
+
 ## Tools
 ${formatToolOverview()}
 
@@ -177,7 +183,7 @@ ${formatCompactSummary(timelineState, materials)}
 - When the user's intent is clear and specific (e.g. "trim the first clip by 5s"), operate directly using clip/track info from previous tool results or conversation context.
 - When the request is ambiguous or you need IDs, query first with get_timeline or search_materials before operating.
 - search_materials matches against names, AI-generated content descriptions, and transcript text.
-- After completing operations, briefly summarize what you did.`.trim();
+- After completing operations, briefly summarize what you did. Do not repeat the full operation details — the user can see tool results.`.trim();
 }
 
 // ============================================================================

@@ -104,10 +104,17 @@ export function useAIVideoScriptGeneration(
     const segment = segmentsRef.current.find(s => s.id === segmentId);
     if (!segment || !segment.scriptText.trim()) return;
 
-    // Collect all reference images
-    const imageUrls: string[] = [];
-    if (segment.characterImageUrl) imageUrls.push(segment.characterImageUrl);
-    if (segment.sceneImageUrl) imageUrls.push(segment.sceneImageUrl);
+    const mode = segment.generationMode || 'description';
+
+    // 关键帧模式下，首帧图片为必填
+    if (mode === 'keyframe' && !segment.firstFrameUrl) {
+      updateSegment(segmentId, {
+        generationStatus: 'failed',
+        generationProgress: 0,
+        generationError: '请先上传首帧图片',
+      });
+      return;
+    }
 
     updateSegment(segmentId, {
       generationStatus: 'generating',
@@ -118,22 +125,49 @@ export function useAIVideoScriptGeneration(
     });
 
     try {
-      const result = await createArkVideoTask({
-        prompt: segment.scriptText,
-        duration: 5,
-        camera_fixed: false,
-        watermark: false,
-        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
-        aspect_ratio: '16:9',
-        resolution: '720p',
-      });
+      // 根据模式构建不同的 API 请求参数
+      if (mode === 'keyframe') {
+        const result = await createArkVideoTask({
+          prompt: segment.scriptText,
+          duration: segment.duration || 5,
+          camera_fixed: false,
+          watermark: false,
+          mode: 'keyframe',
+          first_frame_url: segment.firstFrameUrl,
+          last_frame_url: segment.lastFrameUrl,
+          resolution: '720p',
+        });
 
-      updateSegment(segmentId, {
-        arkTaskId: result.ark_task_id,
-        generationProgress: 10,
-      });
+        updateSegment(segmentId, {
+          arkTaskId: result.ark_task_id,
+          generationProgress: 10,
+        });
 
-      startPolling(segmentId, result.ark_task_id);
+        startPolling(segmentId, result.ark_task_id);
+      } else {
+        // 描述生成模式 — 收集参考图片
+        const imageUrls: string[] = [];
+        if (segment.characterImageUrl) imageUrls.push(segment.characterImageUrl);
+        if (segment.sceneImageUrl) imageUrls.push(segment.sceneImageUrl);
+
+        const result = await createArkVideoTask({
+          prompt: segment.scriptText,
+          duration: segment.duration || 5,
+          camera_fixed: false,
+          watermark: false,
+          mode: 'description',
+          image_urls: imageUrls.length > 0 ? imageUrls : undefined,
+          aspect_ratio: '16:9',
+          resolution: '720p',
+        });
+
+        updateSegment(segmentId, {
+          arkTaskId: result.ark_task_id,
+          generationProgress: 10,
+        });
+
+        startPolling(segmentId, result.ark_task_id);
+      }
     } catch (error) {
       updateSegment(segmentId, {
         generationStatus: 'failed',

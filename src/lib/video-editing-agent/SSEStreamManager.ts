@@ -112,10 +112,10 @@ export class SSEStreamManager {
 
   constructor(config: SSEStreamManagerConfig) {
     this.config = {
-      timeout: 120_000,
-      heartbeatTimeout: 30_000,
-      maxRetries: 2,
       ...config,
+      timeout: config.timeout ?? 120_000,
+      heartbeatTimeout: config.heartbeatTimeout ?? 30_000,
+      maxRetries: config.maxRetries ?? 2,
     };
   }
 
@@ -191,8 +191,10 @@ export class SSEStreamManager {
         this.config.onComplete();
         return;
       } catch (rawError: unknown) {
+        console.error('[SSEStreamManager] connectAndRead caught error:', rawError);
         // If cancelled by user, don't classify / retry.
         if (this._isCancelled) {
+          console.log('[SSEStreamManager] cancelled, exiting');
           return;
         }
 
@@ -252,6 +254,7 @@ export class SSEStreamManager {
 
   private async doFetchAndRead(): Promise<void> {
     const { url, body, headers } = this.config;
+    console.log('[SSEStreamManager] doFetchAndRead starting:', url);
 
     const requestHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -269,6 +272,8 @@ export class SSEStreamManager {
       body: JSON.stringify(body),
       signal: this.controller!.signal,
     });
+
+    console.log('[SSEStreamManager] fetch response:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
@@ -293,6 +298,7 @@ export class SSEStreamManager {
         const { done, value } = await reader.read();
 
         if (done) {
+          console.log('[SSEStreamManager] reader done (stream ended normally)');
           // Flush anything remaining in the buffer
           this.flushBuffer();
           return; // normal end
@@ -302,6 +308,7 @@ export class SSEStreamManager {
         this.resetHeartbeat();
 
         const chunk = decoder.decode(value, { stream: true });
+        console.log('[SSEStreamManager] chunk received, length:', chunk.length, 'preview:', chunk.slice(0, 120));
         const events = this.parseSSEBuffer(chunk);
 
         for (const event of events) {
@@ -332,7 +339,9 @@ export class SSEStreamManager {
           this.trackEvent(event);
 
           // Check for stream-end signals
+          console.log('[SSEStreamManager] event:', event.type, event);
           if (this.isStreamEndEvent(event)) {
+            console.log('[SSEStreamManager] stream-end event detected, completing');
             // Deliver the event, then signal normal completion
             this.config.onEvent(event);
             return;

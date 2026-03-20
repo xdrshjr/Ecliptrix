@@ -153,7 +153,7 @@ export interface UseMaterialManagementReturn {
   confirmationDialog: ConfirmationDialogState;
   handleCloseConfirmationDialog: () => void;
   // AI视频生成
-  handleAiVideoGenerate: (params: { prompt: string; duration: 5 | 10; camera_fixed: boolean; watermark: boolean; image_url?: string }) => Promise<void>;
+  handleAiVideoGenerate: (params: { prompt: string; duration: number; camera_fixed: boolean; watermark: boolean; image_url?: string }) => Promise<void>;
   // AI图像生成
   handleAiImageGenerate: (params: { prompt: string; size: ArkImageSize; count: number; watermark: boolean }) => Promise<void>;
 }

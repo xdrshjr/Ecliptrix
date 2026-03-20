@@ -29,8 +29,22 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
       if (!trackId) {
         trackId = getDefaultTrackForType(context.timelineState, material.type) ?? undefined;
         if (!trackId) {
-          const err = { success: false, error: `No available ${material.type} track found` };
-          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+          // Auto-create a track when none exists for this material type
+          const trackType = material.type === 'image' ? 'video' : material.type;
+          const autoTrack = {
+            id: `${trackType}-track-auto-${Date.now()}`,
+            name: `${trackType.charAt(0).toUpperCase() + trackType.slice(1)} Track`,
+            type: trackType as 'video' | 'audio' | 'subtitle',
+            height: trackType === 'audio' ? 60 : 80,
+            isLocked: false,
+            isMuted: false,
+            isVisible: true,
+            volume: trackType === 'audio' ? 200 : 100,
+            order: context.timelineState.tracks.length,
+            items: [] as any[],
+          };
+          context.timelineState.tracks.push(autoTrack as any);
+          trackId = autoTrack.id;
         }
       }
 

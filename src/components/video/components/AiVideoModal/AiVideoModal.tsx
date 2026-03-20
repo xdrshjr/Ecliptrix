@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
+import { MaterialItem } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
+import ImagePickerSlot from '../AIVideoScriptTab/ImagePickerSlot';
 
 interface AiVideoModalProps {
   isOpen: boolean;
@@ -9,50 +12,60 @@ interface AiVideoModalProps {
   onConfirm: (params: ArkVideoGenerateParams) => void;
   initialImageUrl?: string;
   initialImageName?: string;
+  materials?: MaterialItem[];
 }
 
-function isValidUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+type GenerationMode = 'description' | 'keyframe';
 
-function isDataUri(value: string): boolean {
-  return value.startsWith('data:image/');
-}
-
-const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm, initialImageUrl, initialImageName }) => {
+const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm, initialImageUrl, materials }) => {
+  const { t } = useLocale();
+  const [mode, setMode] = useState<GenerationMode>('description');
   const [prompt, setPrompt] = useState('');
-  const [duration, setDuration] = useState<5 | 10>(5);
-  const [imageUrl, setImageUrl] = useState('');
+  const [duration, setDuration] = useState<number>(5);
   const [cameraFixed, setCameraFixed] = useState(false);
   const [watermark, setWatermark] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [imageUrlError, setImageUrlError] = useState('');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('720p');
 
-  // Pre-fill image URL when modal opens with initialImageUrl
+  // Mode A (description) state
+  const [characterImageUrl, setCharacterImageUrl] = useState('');
+  const [characterImageName, setCharacterImageName] = useState('');
+  const [sceneImageUrl, setSceneImageUrl] = useState('');
+  const [sceneImageName, setSceneImageName] = useState('');
+
+  // Mode B (keyframe) state
+  const [firstFrameUrl, setFirstFrameUrl] = useState('');
+  const [firstFrameName, setFirstFrameName] = useState('');
+  const [lastFrameUrl, setLastFrameUrl] = useState('');
+  const [lastFrameName, setLastFrameName] = useState('');
+
+  // Pre-fill from MaterialsPanel: set keyframe mode + fill firstFrameUrl
   useEffect(() => {
     if (isOpen && initialImageUrl) {
-      setImageUrl(initialImageUrl);
-      setImageUrlError('');
+      setMode('keyframe');
+      setFirstFrameUrl(initialImageUrl);
+      setFirstFrameName('');
     }
   }, [isOpen, initialImageUrl]);
 
   const resetForm = () => {
+    setMode('description');
     setPrompt('');
     setDuration(5);
-    setImageUrl('');
     setCameraFixed(false);
     setWatermark(false);
     setShowAdvanced(false);
-    setImageUrlError('');
     setAspectRatio('16:9');
     setResolution('720p');
+    setCharacterImageUrl('');
+    setCharacterImageName('');
+    setSceneImageUrl('');
+    setSceneImageName('');
+    setFirstFrameUrl('');
+    setFirstFrameName('');
+    setLastFrameUrl('');
+    setLastFrameName('');
   };
 
   const handleClose = () => {
@@ -60,31 +73,54 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     onClose();
   };
 
-  const handleImageUrlChange = (value: string) => {
-    setImageUrl(value);
-    if (value && !isValidUrl(value) && !isDataUri(value)) {
-      setImageUrlError('请输入有效的 HTTP/HTTPS 链接');
-    } else {
-      setImageUrlError('');
-    }
+  const handleModeSwitch = (newMode: GenerationMode) => {
+    if (newMode === mode) return;
+    setMode(newMode);
+    // Clear image fields when switching modes
+    setCharacterImageUrl('');
+    setCharacterImageName('');
+    setSceneImageUrl('');
+    setSceneImageName('');
+    setFirstFrameUrl('');
+    setFirstFrameName('');
+    setLastFrameUrl('');
+    setLastFrameName('');
   };
 
   const handleSubmit = () => {
     if (!prompt.trim()) return;
-    if (imageUrl && !isValidUrl(imageUrl) && !isDataUri(imageUrl)) {
-      setImageUrlError('请输入有效的 HTTP/HTTPS 链接');
-      return;
+
+    if (mode === 'keyframe') {
+      if (!firstFrameUrl.trim()) return;
+
+      onConfirm({
+        prompt: prompt.trim(),
+        mode: 'keyframe',
+        first_frame_url: firstFrameUrl.trim(),
+        last_frame_url: lastFrameUrl.trim() || undefined,
+        duration,
+        resolution,
+        camera_fixed: cameraFixed,
+        watermark,
+      });
+    } else {
+      const imageUrls = [characterImageUrl.trim(), sceneImageUrl.trim()].filter(Boolean);
+
+      onConfirm({
+        prompt: prompt.trim(),
+        mode: 'description',
+        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
+        duration,
+        aspect_ratio: aspectRatio,
+        resolution,
+        camera_fixed: cameraFixed,
+        watermark,
+      });
     }
-    onConfirm({
-      prompt: prompt.trim(),
-      duration,
-      camera_fixed: cameraFixed,
-      watermark,
-      image_url: imageUrl.trim() || undefined,
-      aspect_ratio: aspectRatio,
-      resolution,
-    });
   };
+
+  const isKeyframeMissingFirstFrame = mode === 'keyframe' && !firstFrameUrl.trim();
+  const isSubmitDisabled = !prompt.trim() || isKeyframeMissingFirstFrame;
 
   if (!isOpen) return null;
 
@@ -115,6 +151,30 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+          {/* Mode SegmentedControl — same style as AIVideoScriptTab */}
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <button
+              onClick={() => handleModeSwitch('description')}
+              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                mode === 'description'
+                  ? 'bg-purple-500 text-white dark:bg-purple-600'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
+              }`}
+            >
+              {t.scriptPanel.aiVideoScript.modeDescription}
+            </button>
+            <button
+              onClick={() => handleModeSwitch('keyframe')}
+              className={`flex-1 py-2 text-sm font-medium transition-colors border-l border-border ${
+                mode === 'keyframe'
+                  ? 'bg-purple-500 text-white dark:bg-purple-600'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
+              }`}
+            >
+              {t.scriptPanel.aiVideoScript.modeKeyframe}
+            </button>
+          </div>
+
           {/* Prompt */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
@@ -141,7 +201,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
               视频时长
             </label>
             <div className="flex gap-3">
-              {([5, 10] as const).map((d) => (
+              {[5, 7, 10, 12].map((d) => (
                 <button
                   key={d}
                   onClick={() => setDuration(d)}
@@ -157,105 +217,88 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
             </div>
           </div>
 
-          {/* Aspect Ratio */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              视频比例
-            </label>
-            <div className="flex gap-3">
-              {([
-                { value: '16:9' as const, label: '16:9', desc: '横屏', icon: (
-                  <rect x="1" y="4" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                )},
-                { value: '9:16' as const, label: '9:16', desc: '竖屏', icon: (
-                  <rect x="7" y="1" width="10" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                )},
-                { value: '1:1' as const, label: '1:1', desc: '方形', icon: (
-                  <rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                )},
-              ]).map(({ value, label, desc, icon }) => (
-                <button
-                  key={value}
-                  onClick={() => setAspectRatio(value)}
-                  className={`flex-1 py-2.5 px-2 rounded-md text-sm font-medium border transition-all flex flex-col items-center gap-1 ${
-                    aspectRatio === value
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-card text-foreground border-border hover:border-border'
-                  }`}
-                >
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                    {icon}
-                  </svg>
-                  <span>{label}</span>
-                  <span className={`text-xs ${aspectRatio === value ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Reference Image URL */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              参考图片 {imageUrl && isDataUri(imageUrl) ? '' : 'URL '}<span className="text-muted-foreground text-xs font-normal">（可选）</span>
-            </label>
-            {/* Image preview when pre-filled from materials panel */}
-            {imageUrl && isDataUri(imageUrl) ? (
-              <div className="flex items-center gap-3 p-3 bg-muted rounded-md border border-border">
-                <img
-                  src={imageUrl}
-                  alt={initialImageName || '参考图片'}
-                  className="w-16 h-16 object-cover rounded-md border border-border"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{initialImageName || '参考图片'}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">已从素材库选取</p>
-                </div>
-                <button
-                  onClick={() => { setImageUrl(''); setImageUrlError(''); }}
-                  className="w-7 h-7 rounded-md bg-accent hover:bg-accent/80 transition-colors flex items-center justify-center flex-shrink-0"
-                  title="移除图片"
-                >
-                  <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                    <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                  </div>
-                  <input
-                    type="text"
-                    value={imageUrl}
-                    onChange={(e) => handleImageUrlChange(e.target.value)}
-                    placeholder="https://example.com/image.jpg"
-                    className={`w-full border rounded-md pl-9 pr-4 py-3 text-sm text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ${
-                      imageUrlError ? 'border-red-400' : 'border-border'
+          {/* Aspect Ratio — hidden in keyframe mode (forced to adaptive) */}
+          {mode === 'description' && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                视频比例
+              </label>
+              <div className="flex gap-3">
+                {([
+                  { value: '16:9' as const, label: '16:9', desc: '横屏', icon: (
+                    <rect x="1" y="4" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  )},
+                  { value: '9:16' as const, label: '9:16', desc: '竖屏', icon: (
+                    <rect x="7" y="1" width="10" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  )},
+                  { value: '1:1' as const, label: '1:1', desc: '方形', icon: (
+                    <rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  )},
+                ]).map(({ value, label, desc, icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setAspectRatio(value)}
+                    className={`flex-1 py-2.5 px-2 rounded-md text-sm font-medium border transition-all flex flex-col items-center gap-1 ${
+                      aspectRatio === value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card text-foreground border-border hover:border-border'
                     }`}
-                  />
-                </div>
-                {/* Show thumbnail preview for HTTP URLs */}
-                {imageUrl && isValidUrl(imageUrl) && (
-                  <div className="mt-2 flex items-center gap-3 p-2 bg-muted rounded-md">
-                    <img
-                      src={imageUrl}
-                      alt="预览"
-                      className="w-12 h-12 object-cover rounded-md border border-border"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                    <p className="text-xs text-muted-foreground truncate flex-1">{initialImageName || imageUrl}</p>
-                  </div>
-                )}
-              </>
-            )}
-            {imageUrlError && (
-              <p className="mt-1.5 text-xs text-red-500">{imageUrlError}</p>
-            )}
-          </div>
+                  >
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      {icon}
+                    </svg>
+                    <span>{label}</span>
+                    <span className={`text-xs ${aspectRatio === value ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Image inputs — conditional on mode, using ImagePickerSlot */}
+          {mode === 'description' ? (
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <ImagePickerSlot
+                  label={`${t.scriptPanel.aiVideoScript.characterImage || '角色形象'}`}
+                  imageUrl={characterImageUrl || undefined}
+                  imageName={characterImageName || undefined}
+                  onSelect={(url, name) => { setCharacterImageUrl(url); setCharacterImageName(name); }}
+                  onRemove={() => { setCharacterImageUrl(''); setCharacterImageName(''); }}
+                  materials={materials}
+                />
+                <ImagePickerSlot
+                  label={`${t.scriptPanel.aiVideoScript.sceneImage || '场景形象'}`}
+                  imageUrl={sceneImageUrl || undefined}
+                  imageName={sceneImageName || undefined}
+                  onSelect={(url, name) => { setSceneImageUrl(url); setSceneImageName(name); }}
+                  onRemove={() => { setSceneImageUrl(''); setSceneImageName(''); }}
+                  materials={materials}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <ImagePickerSlot
+                  label={`${t.scriptPanel.aiVideoScript.firstFrameImage || '首帧图片'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`}
+                  imageUrl={firstFrameUrl || undefined}
+                  imageName={firstFrameName || undefined}
+                  onSelect={(url, name) => { setFirstFrameUrl(url); setFirstFrameName(name); }}
+                  onRemove={() => { setFirstFrameUrl(''); setFirstFrameName(''); }}
+                  materials={materials}
+                />
+                <ImagePickerSlot
+                  label={`${t.scriptPanel.aiVideoScript.lastFrameImage || '尾帧图片'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`}
+                  imageUrl={lastFrameUrl || undefined}
+                  imageName={lastFrameName || undefined}
+                  onSelect={(url, name) => { setLastFrameUrl(url); setLastFrameName(name); }}
+                  onRemove={() => { setLastFrameUrl(''); setLastFrameName(''); }}
+                  materials={materials}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Advanced Options */}
           <div>
@@ -344,7 +387,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!prompt.trim() || !!imageUrlError}
+            disabled={isSubmitDisabled}
             className="px-6 py-2.5 text-sm font-medium text-primary-foreground rounded-md bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             开始生成

@@ -31,6 +31,9 @@ async def generate_video(request: ArkVideoGenerateRequest) -> ArkVideoGenerateRe
             message="Video generation task created",
             ark_task_id=ark_task_id,
         )
+    except ValueError as e:
+        logger.warning(f"Ark video task validation failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to create Ark video task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create video task: {str(e)}")

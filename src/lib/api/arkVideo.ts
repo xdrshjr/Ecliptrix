@@ -1,12 +1,18 @@
 export interface ArkVideoGenerateParams {
   prompt: string;
-  duration: 5 | 10;
+  duration: number;
   camera_fixed: boolean;
   watermark: boolean;
   image_url?: string;
   image_urls?: string[];
   aspect_ratio?: '16:9' | '9:16' | '1:1';
   resolution?: '480p' | '720p' | '1080p';
+  /** Generation mode: "description" uses reference images, "keyframe" uses first/last frame images */
+  mode?: 'description' | 'keyframe';
+  /** First frame image URL (required when mode="keyframe") */
+  first_frame_url?: string;
+  /** Last frame image URL (optional, only used when mode="keyframe") */
+  last_frame_url?: string;
 }
 
 export interface ArkVideoGenerateResult {

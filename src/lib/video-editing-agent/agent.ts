@@ -73,6 +73,11 @@ export function subscribeAgentEvents(
   toolContext: ToolContext,
   send: (data: SSEEvent) => void
 ): () => void {
+  // Track whether text_delta events were sent for the current assistant message.
+  // Non-streaming models (e.g., Kimi) skip text_delta and only provide final
+  // content in the message_end event. This flag enables a fallback path.
+  let textDeltaSent = false;
+
   return agent.subscribe((event: AgentEvent) => {
     switch (event.type) {
       case 'agent_start':
@@ -92,16 +97,40 @@ export function subscribeAgentEvents(
         break;
 
       case 'message_start':
+        textDeltaSent = false;
         send({ type: 'message_start' });
         break;
 
-      case 'message_end':
+      case 'message_end': {
+        // Fallback for non-streaming models (e.g., Kimi): if no text_delta
+        // events were emitted during streaming, extract text content from
+        // the final message and send it as a text_delta before message_end.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const msg = event.message as any;
+        if (
+          !textDeltaSent &&
+          msg &&
+          msg.role === 'assistant' &&
+          Array.isArray(msg.content)
+        ) {
+          const fullText = msg.content
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .filter((c: any) => c.type === 'text')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((c: any) => c.text)
+            .join('');
+          if (fullText) {
+            send({ type: 'text_delta', content: fullText });
+          }
+        }
         send({ type: 'message_end' });
         break;
+      }
 
       case 'message_update': {
         const evt = event.assistantMessageEvent;
         if (evt.type === 'text_delta') {
+          textDeltaSent = true;
           send({ type: 'text_delta', content: evt.delta });
         }
         break;

@@ -85,10 +85,28 @@ export class OperationApplier {
     operation: AgentTimelineOperation,
     toolCallId: string,
   ): Promise<void> {
-    const current = this.config.getTimelineState();
+    let current = this.config.getTimelineState();
     if (!current) {
-      console.warn('[OperationApplier] Cannot apply: no timeline state');
-      return;
+      console.warn('[OperationApplier] No timeline state — initializing default');
+      current = {
+        currentTime: 0,
+        totalDuration: 0,
+        zoomLevel: 1,
+        selectedItems: [],
+        tracks: [
+          { id: 'video-track-1', name: 'Video Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0, items: [] },
+          { id: 'image-track-1', name: 'Image Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1, items: [] },
+          { id: 'audio-track-1', name: 'Audio Track 1', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 200, order: 2, items: [] },
+          { id: 'audio-track-2', name: 'Audio Track 2', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 10, order: 3, items: [] },
+          { id: 'subtitle-track-1', name: 'Subtitle Track', type: 'subtitle' as const, height: 50, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 4, items: [] },
+        ],
+        playbackRate: 1,
+        isPlaying: false,
+        snapToGrid: true,
+        gridSize: 0.5,
+        scrollLeft: 0,
+      };
+      this.config.setTimelineState(current);
     }
 
     // 1. Capture pre-snapshot (full state clone for accurate undo)
@@ -205,8 +223,26 @@ export class OperationApplier {
 
     switch (operation.type) {
       case 'add_clip': {
-        const track = state.tracks.find(t => t.id === operation.clip.trackId);
-        if (track) {
+        let track = state.tracks.find(t => t.id === operation.clip.trackId);
+        if (!track) {
+          // Auto-create track to match server-side auto-creation in addToTrack tool
+          const matType = operation.material.type || 'video';
+          const trackType = (matType === 'image' ? 'video' : matType) as 'video' | 'audio' | 'subtitle';
+          track = {
+            id: operation.clip.trackId,
+            name: `${trackType.charAt(0).toUpperCase() + trackType.slice(1)} Track`,
+            type: trackType,
+            height: trackType === 'audio' ? 60 : 80,
+            isLocked: false,
+            isMuted: false,
+            isVisible: true,
+            volume: trackType === 'audio' ? 200 : 100,
+            order: state.tracks.length,
+            items: [],
+          };
+          state.tracks.push(track);
+        }
+        {
           const { clip, material } = operation;
           const matType = material.type || track.type;
           const colorMap: Record<string, string> = {
