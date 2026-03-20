@@ -4,7 +4,7 @@ import type { ToolContext } from '../types';
 import { serializeMaterial } from './index';
 
 const parameters = Type.Object({
-  query: Type.String({ description: 'Search keyword to match material names' }),
+  query: Type.String({ description: 'Search keyword — matches against material names, AI content descriptions, text descriptions, and transcript text' }),
   type: Type.Optional(
     Type.Union([
       Type.Literal('video'),
@@ -21,7 +21,7 @@ export function createSearchMaterialsTool(context: ToolContext): AgentTool<typeo
     name: 'search_materials',
     label: 'Search Materials',
     description:
-      'Search the material library for videos, images, or audio files. Returns matching materials that can be added to the timeline.',
+      'Search the material library by keyword. Matches against material names, AI-generated content descriptions, text descriptions, and transcript text. Returns matching materials with their IDs, metadata, and analysis results.',
     parameters,
 
     execute: async (_toolCallId, params: Params) => {

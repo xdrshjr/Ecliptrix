@@ -63,13 +63,24 @@ export async function POST(request: NextRequest) {
 
     console.log(`[VideoEditingAgent] Starting agent for: "${lastUserMessage.slice(0, 100)}"`);
 
+    // Read Last-Event-ID header for SSE resumption support
+    const lastEventIdHeader = request.headers.get('Last-Event-ID');
+    const lastEventId = lastEventIdHeader !== null ? parseInt(lastEventIdHeader, 10) : -1;
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        // Incremental event ID counter for SSE deduplication / resumption.
+        // If the client reconnects with Last-Event-ID, we still emit all
+        // events (the server-side Agent re-runs), but the client can use
+        // the IDs to skip already-processed events.
+        let eventIdCounter = 0;
+
         const send = (data: SSEEvent | string) => {
           try {
+            const currentId = eventIdCounter++;
             const payload = typeof data === 'string' ? data : JSON.stringify(data);
-            controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+            controller.enqueue(encoder.encode(`id: ${currentId}\ndata: ${payload}\n\n`));
           } catch {
             // Controller may be closed
           }
@@ -77,6 +88,11 @@ export async function POST(request: NextRequest) {
 
         // Send stream-start comment to prevent proxy buffering
         controller.enqueue(encoder.encode(`: stream-start\n\n`));
+
+        // Log if this is a reconnection attempt
+        if (lastEventId >= 0) {
+          console.log(`[VideoEditingAgent] Reconnection detected — client last event ID: ${lastEventId}`);
+        }
 
         try {
           // Create agent

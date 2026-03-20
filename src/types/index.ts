@@ -54,7 +54,7 @@ export interface AgentToolCallRecord {
   id: string;
   name: string;
   params: Record<string, unknown>;
-  status: 'executing' | 'completed' | 'error';
+  status: 'executing' | 'completed' | 'error' | 'undone';
   result?: unknown;
 }
 

@@ -19,7 +19,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Conversation, ChatMessage } from '@/types';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
-import { TimelineChatPanel } from './timeline';
+import { TimelineChatPanel, WelcomeGuide } from './timeline';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -43,6 +43,8 @@ interface VideoChatWindowProps {
   onUndoAll?: (messageId: string) => void;
   onUndoSingle?: (messageId: string, toolCallId: string) => void;
   onCancel?: () => void;
+  /** Whether the project has any imported materials (used by WelcomeGuide). */
+  hasMaterials?: boolean;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -62,6 +64,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onUndoAll,
   onUndoSingle,
   onCancel,
+  hasMaterials = false,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
@@ -182,6 +185,16 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   // ----- Derived state -----
 
+  // ----- WelcomeGuide suggestion handler -----
+  const handleSuggestionClick = useCallback(
+    (text: string) => {
+      setInputMessage(text);
+      // Focus the textarea so the user can review and send
+      textareaRef.current?.focus();
+    },
+    [],
+  );
+
   const inputDisabled = isLoading || agentIsExecuting;
   const placeholderText = agentIsExecuting
     ? t.videoChatWindow.agentWorkingPlaceholder
@@ -242,19 +255,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     <div className="flex flex-col h-full bg-background min-h-0">
       {/* Messages Area — now rendered by TimelineChatPanel */}
       {conversation.messages.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div className="text-center">
-            <div className="w-20 h-20 bg-muted rounded-md mx-auto mb-4 flex items-center justify-center">
-              <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">{t.videoChatWindow.startChatTitle}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {t.videoChatWindow.startChatDesc}
-            </p>
-          </div>
-        </div>
+        <WelcomeGuide
+          hasMaterials={hasMaterials}
+          onSuggestionClick={handleSuggestionClick}
+        />
       ) : (
         <TimelineChatPanel
           messages={conversation.messages}
@@ -262,7 +266,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           onUndoAll={handleUndoAll}
           onUndoSingle={handleUndoSingle}
           onCancel={handleCancel}
-          onConvertToScript={handleConvertMessageToScript}
         />
       )}
 

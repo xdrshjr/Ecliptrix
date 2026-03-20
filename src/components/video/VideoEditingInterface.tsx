@@ -2788,6 +2788,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onUndoAll={agent.undoAllOperations}
           onUndoSingle={agent.undoSingleOperation}
           onCancel={agent.cancelExecution}
+          hasMaterials={materialManagement.materials.length > 0}
         />
       </div>
 

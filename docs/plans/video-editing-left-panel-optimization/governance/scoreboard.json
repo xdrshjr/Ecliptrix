@@ -1,0 +1,475 @@
+{
+  "version": "1.0",
+  "created_at": "2026-03-20T10:38:43.750470+00:00",
+  "agents": {
+    "google-dev-01": {
+      "role": "DEV",
+      "tokens": 150,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:43.845469+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "balance_after": 115,
+          "reason": "D1: Code passes review with no modifications (TODO 01)",
+          "timestamp": "2026-03-20T10:53:17.643940+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 125,
+          "reason": "D3: All tests pass (TODO 01)",
+          "timestamp": "2026-03-20T10:53:19.082080+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 130,
+          "reason": "D4: Full spec match — all 9 requirements verified (TODO 01)",
+          "timestamp": "2026-03-20T10:53:19.631930+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 20,
+          "balance_after": 150,
+          "reason": "D10: Proactive excellence — defensive null handling, extensible material types, track lock annotations, comprehensive JSDoc, improved tool descriptions (TODO 01)",
+          "timestamp": "2026-03-20T10:53:20.969129+00:00"
+        }
+      ]
+    },
+    "google-dev-02": {
+      "role": "DEV",
+      "tokens": 105,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:43.939534+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes — 2 bugs fixed by reviewer (TODO 02)",
+          "timestamp": "2026-03-20T10:53:22.324989+00:00"
+        }
+      ]
+    },
+    "google-dev-03": {
+      "role": "DEV",
+      "tokens": 120,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:44.032605+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes (TODO 03)",
+          "timestamp": "2026-03-20T11:32:40.726868+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 115,
+          "reason": "D3: All tests pass (TODO 03)",
+          "timestamp": "2026-03-20T11:32:42.053800+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 120,
+          "reason": "D4: All 8 spec requirements matched (TODO 03)",
+          "timestamp": "2026-03-20T11:32:42.963447+00:00"
+        }
+      ]
+    },
+    "google-dev-04": {
+      "role": "DEV",
+      "tokens": 105,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:44.129062+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with fixes — 1 HIGH + 3 MEDIUM fixed (TODO 04)",
+          "timestamp": "2026-03-20T11:32:44.720629+00:00"
+        }
+      ]
+    },
+    "google-dev-05": {
+      "role": "DEV",
+      "tokens": 120,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:44.224255+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 105,
+          "reason": "D2: Code passes review with minor fixes (TODO 05)",
+          "timestamp": "2026-03-20T11:52:51.548362+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 115,
+          "reason": "D3: All tests pass (TODO 05)",
+          "timestamp": "2026-03-20T11:52:52.714601+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 120,
+          "reason": "D4: Full spec match — 14/14 requirements verified (TODO 05)",
+          "timestamp": "2026-03-20T11:52:53.794649+00:00"
+        }
+      ]
+    },
+    "google-reviewer-01": {
+      "role": "REV",
+      "tokens": 80,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:44.318172+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 110,
+          "reason": "R2: Found 2 valid bugs in dev-02 code — non-functional exponential backoff and dropped agent_end event (TODO 02)",
+          "timestamp": "2026-03-20T10:53:24.447969+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 115,
+          "reason": "R8: Correctly identified D10 proactive excellence in google-dev-01 (TODO 01)",
+          "timestamp": "2026-03-20T10:53:25.136452+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -15,
+          "balance_after": 100,
+          "reason": "R4: Missed event deduplication issue on reconnect found by tester — spec criterion #6 violated (TODO 02)",
+          "timestamp": "2026-03-20T10:53:26.929518+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -15,
+          "balance_after": 85,
+          "reason": "R4: Missed HTTP status not forwarded to classifyError — 4xx errors incorrectly retried (TODO 02)",
+          "timestamp": "2026-03-20T10:53:28.042801+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 95,
+          "reason": "R2: Found 1 HIGH + 3 MEDIUM valid issues in dev-04 code (TODO 04)",
+          "timestamp": "2026-03-20T11:32:45.633251+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 100,
+          "reason": "R8: Identified proactive excellence in both dev-03 and dev-04 (Phase 2)",
+          "timestamp": "2026-03-20T11:32:47.443683+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -15,
+          "balance_after": 85,
+          "reason": "R4: Missed Set iteration build-blocking error under es5 target — found by tester (TODO 04)",
+          "timestamp": "2026-03-20T11:32:48.768143+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -15,
+          "balance_after": 70,
+          "reason": "R4: Missed unused prop onConvertToScript — found by tester (TODO 04)",
+          "timestamp": "2026-03-20T11:32:49.748706+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -15,
+          "balance_after": 55,
+          "reason": "R4: Missed old components not deprecated per TODO 3.12 — found by tester (TODO 03/04)",
+          "timestamp": "2026-03-20T11:32:51.598565+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 65,
+          "reason": "R1: No issues leaked to tester — clean phase (Phase 3, TODO 05)",
+          "timestamp": "2026-03-20T11:52:55.119939+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 75,
+          "reason": "R2: Found 1 critical + 2 medium valid issues in dev-05 code (TODO 05)",
+          "timestamp": "2026-03-20T11:52:56.578323+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 80,
+          "reason": "R8: Identified proactive excellence in dev-05 (Phase 3)",
+          "timestamp": "2026-03-20T11:52:57.754232+00:00"
+        }
+      ]
+    },
+    "google-tester-01": {
+      "role": "TEST",
+      "tokens": 175,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "balance_after": 100,
+          "reason": "Initial allocation",
+          "timestamp": "2026-03-20T10:38:44.414194+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 20,
+          "balance_after": 120,
+          "reason": "T2: Found 2 issues reviewer missed — event dedup incomplete and httpStatus not forwarded (TODO 02)",
+          "timestamp": "2026-03-20T10:53:29.771849+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 130,
+          "reason": "T1: Full spec traceability 100% — all 9 requirements verified for TODO 01",
+          "timestamp": "2026-03-20T10:53:31.125049+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 140,
+          "reason": "T1: Full spec traceability 100% — all 8 requirements verified for TODO 03",
+          "timestamp": "2026-03-20T11:32:52.469671+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 150,
+          "reason": "T2: Found build-blocking Set iteration issue reviewer missed (TODO 04)",
+          "timestamp": "2026-03-20T11:32:53.798116+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 160,
+          "reason": "T7: Found old components not deprecated — reviewer missed (TODO 03/04)",
+          "timestamp": "2026-03-20T11:32:54.984635+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "balance_after": 170,
+          "reason": "T1: Full spec traceability 100% — 14/14 requirements verified for TODO 05",
+          "timestamp": "2026-03-20T11:52:59.141020+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "balance_after": 175,
+          "reason": "T3: High-quality thorough test design (Phase 3, TODO 05)",
+          "timestamp": "2026-03-20T11:53:00.819412+00:00"
+        }
+      ]
+    }
+  },
+  "eliminated": [],
+  "phase_reports": [
+    {
+      "phase": 1,
+      "timestamp": "2026-03-20T10:53:36.806476+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens": 150,
+          "delta": 50
+        },
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens": 130,
+          "delta": 30
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens": 105,
+          "delta": 5
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-04",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-05",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens": 85,
+          "delta": -15
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "timestamp": "2026-03-20T11:32:59.920851+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens": 160,
+          "delta": 30
+        },
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens": 150,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens": 105,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-04",
+          "role": "DEV",
+          "tokens": 105,
+          "delta": 5
+        },
+        {
+          "agent_id": "google-dev-05",
+          "role": "DEV",
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens": 55,
+          "delta": -30
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "timestamp": "2026-03-20T11:53:08.398160+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens": 175,
+          "delta": 15
+        },
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens": 150,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-05",
+          "role": "DEV",
+          "tokens": 120,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens": 105,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-04",
+          "role": "DEV",
+          "tokens": 105,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens": 80,
+          "delta": 25
+        }
+      ]
+    }
+  ]
+}

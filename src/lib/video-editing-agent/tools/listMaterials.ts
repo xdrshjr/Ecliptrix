@@ -20,7 +20,7 @@ export function createListMaterialsTool(context: ToolContext): AgentTool<typeof 
     name: 'list_materials',
     label: 'List Materials',
     description:
-      'List all materials in the material library. Optionally filter by type. Use this to see what materials are available before adding them to the timeline.',
+      'List all materials in the library with their IDs, metadata, dimensions, duration, and AI analysis results. Optionally filter by type. Use to get material IDs needed by add_to_track.',
     parameters,
 
     execute: async (_toolCallId, params: Params) => {

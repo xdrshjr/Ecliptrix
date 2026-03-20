@@ -11,6 +11,7 @@ interface AgentMessageBubbleProps {
   onUndo?: (message: ChatMessage) => void;
 }
 
+/** @deprecated Use timeline/AgentResponseNode instead. */
 const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, onUndo }) => {
   const { t } = useLocale();
   const toolCalls = message.agentToolCalls || [];

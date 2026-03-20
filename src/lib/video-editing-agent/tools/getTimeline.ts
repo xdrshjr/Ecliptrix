@@ -11,7 +11,7 @@ export function createGetTimelineTool(context: ToolContext): AgentTool<typeof pa
     name: 'get_timeline',
     label: 'Get Timeline',
     description:
-      'Get the current timeline state including all tracks, clips, and their properties. Use this to understand what is currently on the timeline before making changes.',
+      'Get the current timeline state including all tracks, clips, and their properties (IDs, timing, volume). Returns the clip and track IDs needed by other tools (trim_clip, delete_clip, move_clip, resize_clip, add_to_track).',
     parameters,
 
     execute: async (_toolCallId: string, _params: Params) => {

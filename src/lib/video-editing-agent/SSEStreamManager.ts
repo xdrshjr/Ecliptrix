@@ -1,0 +1,619 @@
+/**
+ * SSEStreamManager — standalone SSE stream connection manager with heartbeat
+ * detection, total timeout, auto-retry with exponential backoff, and proper
+ * SSE spec parsing.
+ *
+ * Designed as a framework-agnostic class so it can be instantiated by any
+ * consumer (React hook, test harness, etc.). Phase 2's `useAgentExecution`
+ * hook (google-dev-04) will own one instance per request.
+ *
+ * ## Usage
+ *
+ * ```ts
+ * const manager = new SSEStreamManager({
+ *   url: '/api/video-editing-agent/chat',
+ *   body: { messages, timelineState, materials },
+ *   onEvent: (event) => { ... },
+ *   onError: (error) => { ... },
+ *   onComplete: () => { ... },
+ * });
+ *
+ * await manager.start();  // resolves when stream ends (or max retries exhausted)
+ * manager.cancel();       // abort from outside at any time
+ * ```
+ *
+ * @module SSEStreamManager
+ */
+
+import type { SSEEvent } from './types';
+import {
+  type StreamError,
+  type StreamErrorContext,
+  StreamErrorType,
+  classifyError,
+  getRetryDelay,
+  shouldRetry,
+} from './errorRecovery';
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+export interface SSEStreamManagerConfig {
+  /** The URL to POST to. */
+  url: string;
+  /** JSON-serialisable request body. */
+  body: unknown;
+  /** Additional request headers (Content-Type is set automatically). */
+  headers?: Record<string, string>;
+  /** Total timeout in ms (default 120 000 = 2 min). */
+  timeout?: number;
+  /** Heartbeat timeout — max ms between data chunks (default 30 000). */
+  heartbeatTimeout?: number;
+  /** Maximum automatic retries (default 2). */
+  maxRetries?: number;
+
+  // -- Callbacks --
+
+  /** Called for every parsed SSE event. */
+  onEvent: (event: SSEEvent) => void;
+  /** Called when a non-recoverable error occurs or retries are exhausted. */
+  onError: (error: StreamError) => void;
+  /** Called when the stream completes normally ([DONE] or agent_end). */
+  onComplete: () => void;
+  /** Called before each automatic retry. Return `false` to abort retry. */
+  onRetry?: (attempt: number, reason: string) => boolean | void;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/** Type-safe wrapper for timer IDs that works in both Node and browser. */
+type TimerId = ReturnType<typeof setTimeout>;
+
+/** Delay helper that respects AbortSignal. */
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const id = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(id);
+      reject(new DOMException('Aborted', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SSEStreamManager
+// ---------------------------------------------------------------------------
+
+export class SSEStreamManager {
+  // -- Config (immutable after construction) --
+  private readonly config: Required<
+    Pick<SSEStreamManagerConfig, 'url' | 'body' | 'timeout' | 'heartbeatTimeout' | 'maxRetries'>
+  > & SSEStreamManagerConfig;
+
+  // -- Runtime state --
+  private controller: AbortController | null = null;
+  private heartbeatTimer: TimerId | null = null;
+  private totalTimer: TimerId | null = null;
+  private retryCount = 0;
+  private buffer = '';
+  private lastReceivedEventId = -1;
+  private completedToolCallIds: string[] = [];
+  private pendingToolCallIds: string[] = [];
+  private lastEvent: SSEEvent | null = null;
+  private _isRunning = false;
+  private _isCancelled = false;
+
+  constructor(config: SSEStreamManagerConfig) {
+    this.config = {
+      timeout: 120_000,
+      heartbeatTimeout: 30_000,
+      maxRetries: 2,
+      ...config,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  /** Whether the manager is currently connected / reading. */
+  get isRunning(): boolean {
+    return this._isRunning;
+  }
+
+  /** Whether `cancel()` has been called. */
+  get isCancelled(): boolean {
+    return this._isCancelled;
+  }
+
+  /** Current retry attempt count. */
+  get currentRetryCount(): number {
+    return this.retryCount;
+  }
+
+  /**
+   * Initiate the SSE connection. Resolves when the stream completes normally,
+   * the user cancels, or all retries are exhausted.
+   *
+   * Safe to call only once per instance. For a fresh request, create a new
+   * `SSEStreamManager`.
+   */
+  async start(): Promise<void> {
+    if (this._isRunning) {
+      console.warn('[SSEStreamManager] start() called while already running — ignoring.');
+      return;
+    }
+    this._isRunning = true;
+    this._isCancelled = false;
+    this.retryCount = 0;
+
+    try {
+      await this.connectAndRead();
+    } finally {
+      this._isRunning = false;
+      this.cleanup();
+    }
+  }
+
+  /**
+   * Abort the current connection and prevent retries.
+   * Safe to call at any time, including before `start()`.
+   */
+  cancel(): void {
+    this._isCancelled = true;
+    this.controller?.abort();
+    this.cleanup();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Connection loop (handles retries)
+  // ---------------------------------------------------------------------------
+
+  private async connectAndRead(): Promise<void> {
+    // Start the total timeout — covers the entire lifecycle including retries.
+    this.startTotalTimeout();
+
+    while (true) {
+      // Reset per-attempt state
+      this.buffer = '';
+      this.controller = new AbortController();
+
+      try {
+        await this.doFetchAndRead();
+        // If doFetchAndRead resolved without throwing, the stream ended normally.
+        this.config.onComplete();
+        return;
+      } catch (rawError: unknown) {
+        // If cancelled by user, don't classify / retry.
+        if (this._isCancelled) {
+          return;
+        }
+
+        const httpStatus = (rawError as Error & { httpStatus?: number })?.httpStatus;
+        const streamError = classifyError({
+          error: rawError,
+          httpStatus,
+          disconnectReason: this.inferDisconnectReason(rawError),
+          context: this.buildErrorContext(),
+        });
+
+        // Attempt retry if appropriate
+        if (shouldRetry(streamError, this.retryCount, this.config.maxRetries)) {
+          const shouldProceed = this.config.onRetry?.(
+            this.retryCount + 1,
+            streamError.userMessage,
+          );
+          if (shouldProceed === false) {
+            // Caller vetoed the retry
+            this.config.onError(streamError);
+            return;
+          }
+
+          this.retryCount++;
+          const delayMs = getRetryDelay(this.retryCount - 1);
+
+          console.log(
+            `[SSEStreamManager] Retry ${this.retryCount}/${this.config.maxRetries} ` +
+            `in ${delayMs}ms (reason: ${streamError.type})`,
+          );
+
+          // Create a fresh controller for the delay so the backoff actually
+          // waits — the previous controller's signal is already aborted (that
+          // is why we are in this catch block).
+          const delayController = new AbortController();
+          this.controller = delayController;
+          try {
+            await delay(delayMs, delayController.signal);
+          } catch {
+            // Aborted during delay (e.g. user cancel) — exit
+            if (this._isCancelled) return;
+          }
+
+          continue; // next iteration of the retry loop
+        }
+
+        // Not recoverable or retries exhausted
+        this.config.onError(streamError);
+        return;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Single fetch + read cycle
+  // ---------------------------------------------------------------------------
+
+  private async doFetchAndRead(): Promise<void> {
+    const { url, body, headers } = this.config;
+
+    const requestHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...headers,
+    };
+
+    // On retry, send Last-Event-ID so the server can skip already-delivered events
+    if (this.lastReceivedEventId >= 0) {
+      requestHeaders['Last-Event-ID'] = String(this.lastReceivedEventId);
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify(body),
+      signal: this.controller!.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      const err = new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+      // Attach status for classifyError
+      (err as Error & { httpStatus?: number }).httpStatus = response.status;
+      throw err;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response body is not readable (no ReadableStream)');
+    }
+
+    // Start heartbeat monitoring
+    this.resetHeartbeat();
+
+    const decoder = new TextDecoder('utf-8');
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          // Flush anything remaining in the buffer
+          this.flushBuffer();
+          return; // normal end
+        }
+
+        // Reset heartbeat on every data receipt
+        this.resetHeartbeat();
+
+        const chunk = decoder.decode(value, { stream: true });
+        const events = this.parseSSEBuffer(chunk);
+
+        for (const event of events) {
+          // Client-side dedup on reconnect: skip events already processed
+          // before the disconnect. On first connection (retryCount === 0),
+          // process everything normally.
+          const eventWithId = event as SSEEvent & { _eventId?: number };
+          if (
+            this.retryCount > 0 &&
+            eventWithId._eventId !== undefined &&
+            eventWithId._eventId <= this.lastReceivedEventId
+          ) {
+            // Already processed before disconnect — skip but don't
+            // re-track (IDs and tool-call state are already recorded).
+            continue;
+          }
+
+          // Also skip tool_call events whose ID is already completed
+          if (
+            this.retryCount > 0 &&
+            event.type === 'tool_call' &&
+            this.completedToolCallIds.includes(event.toolCallId)
+          ) {
+            continue;
+          }
+
+          // Track event IDs for dedup / resumption
+          this.trackEvent(event);
+
+          // Check for stream-end signals
+          if (this.isStreamEndEvent(event)) {
+            // Deliver the event, then signal normal completion
+            this.config.onEvent(event);
+            return;
+          }
+
+          this.config.onEvent(event);
+        }
+      }
+    } finally {
+      // Release the reader lock so the connection can be cleaned up
+      try { reader.releaseLock(); } catch { /* already released */ }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // SSE Buffer Parsing (SSE spec compliant)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Parse incoming chunk data according to the SSE specification.
+   *
+   * SSE format:
+   * ```
+   * id: 42
+   * data: {"type":"text_delta","content":"hello"}
+   *
+   * id: 43
+   * data: [DONE]
+   *
+   * ```
+   *
+   * - Lines starting with `data: ` carry payload.
+   * - Lines starting with `id: ` set the last event ID.
+   * - An empty line (`\n\n`) marks the end of an event.
+   * - Lines starting with `:` are comments (ignored).
+   * - Incomplete trailing data is kept in the buffer for the next chunk.
+   */
+  parseSSEBuffer(chunk: string): SSEEvent[] {
+    this.buffer += chunk;
+    const events: SSEEvent[] = [];
+
+    // Split on newlines — SSE uses \n as line delimiter
+    const lines = this.buffer.split('\n');
+
+    // The last element may be an incomplete line; keep it in the buffer
+    this.buffer = lines.pop() ?? '';
+
+    let currentData = '';
+    let currentId: number | null = null;
+
+    for (const line of lines) {
+      // Comment line (SSE spec: lines starting with ':')
+      if (line.startsWith(':')) {
+        continue;
+      }
+
+      // id field
+      if (line.startsWith('id: ')) {
+        const idStr = line.slice(4).trim();
+        const parsed = parseInt(idStr, 10);
+        if (!isNaN(parsed)) {
+          currentId = parsed;
+        }
+        continue;
+      }
+
+      // data field
+      if (line.startsWith('data: ')) {
+        currentData = line.slice(6);
+        continue;
+      }
+
+      // Empty line = event boundary
+      if (line.trim() === '' && currentData) {
+        const event = this.parseEventData(currentData, currentId);
+        if (event !== null) {
+          events.push(event);
+        }
+        currentData = '';
+        currentId = null;
+      }
+    }
+
+    return events;
+  }
+
+  /**
+   * Flush any remaining data in the buffer (called when stream ends).
+   * This handles the edge case where the last event lacks a trailing newline.
+   */
+  private flushBuffer(): void {
+    if (!this.buffer.trim()) return;
+
+    // Try to extract a final event from the remaining buffer
+    const lines = this.buffer.split('\n');
+    let currentData = '';
+    let currentId: number | null = null;
+
+    for (const line of lines) {
+      if (line.startsWith(':')) continue;
+      if (line.startsWith('id: ')) {
+        const idStr = line.slice(4).trim();
+        const parsed = parseInt(idStr, 10);
+        if (!isNaN(parsed)) currentId = parsed;
+        continue;
+      }
+      if (line.startsWith('data: ')) {
+        currentData = line.slice(6);
+        continue;
+      }
+    }
+
+    if (currentData) {
+      const event = this.parseEventData(currentData, currentId);
+      if (event !== null) {
+        this.trackEvent(event);
+        // Always deliver the event (including stream-end); the caller
+        // (connectAndRead) will invoke onComplete separately.
+        this.config.onEvent(event);
+      }
+    }
+
+    this.buffer = '';
+  }
+
+  /**
+   * Parse a single SSE `data:` value into an SSEEvent.
+   * Returns `null` for unparseable data (logs a warning).
+   */
+  private parseEventData(data: string, eventId: number | null): (SSEEvent & { _eventId?: number }) | null {
+    // [DONE] signal — treated as stream_end
+    if (data === '[DONE]') {
+      return { type: 'agent_end', _eventId: eventId ?? undefined } as SSEEvent & { _eventId?: number };
+    }
+
+    try {
+      const parsed = JSON.parse(data) as SSEEvent;
+      // Attach the event ID if the server sent one
+      if (eventId !== null) {
+        (parsed as SSEEvent & { _eventId?: number })._eventId = eventId;
+      }
+      return parsed;
+    } catch (e) {
+      console.warn('[SSEStreamManager] Failed to parse SSE data:', data, e);
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Event tracking (for dedup and retry context)
+  // ---------------------------------------------------------------------------
+
+  private trackEvent(event: SSEEvent & { _eventId?: number }): void {
+    // Update last received event ID
+    if (event._eventId !== undefined && event._eventId > this.lastReceivedEventId) {
+      this.lastReceivedEventId = event._eventId;
+    }
+
+    this.lastEvent = event;
+
+    // Track tool call lifecycle for retry context
+    if (event.type === 'tool_call') {
+      const id = event.toolCallId;
+      if (!this.pendingToolCallIds.includes(id)) {
+        this.pendingToolCallIds.push(id);
+      }
+    } else if (event.type === 'tool_result') {
+      const id = event.toolCallId;
+      // Move from pending to completed
+      this.pendingToolCallIds = this.pendingToolCallIds.filter(tid => tid !== id);
+      if (!this.completedToolCallIds.includes(id)) {
+        this.completedToolCallIds.push(id);
+      }
+    }
+  }
+
+  private isStreamEndEvent(event: SSEEvent): boolean {
+    return event.type === 'agent_end';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Heartbeat detection
+  // ---------------------------------------------------------------------------
+
+  private resetHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearTimeout(this.heartbeatTimer);
+    }
+    this.heartbeatTimer = setTimeout(() => {
+      console.warn('[SSEStreamManager] Heartbeat timeout — no data for', this.config.heartbeatTimeout, 'ms');
+      this.handleDisconnect('heartbeat_timeout');
+    }, this.config.heartbeatTimeout);
+  }
+
+  private clearHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearTimeout(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Total timeout
+  // ---------------------------------------------------------------------------
+
+  private startTotalTimeout(): void {
+    this.clearTotalTimeout();
+    this.totalTimer = setTimeout(() => {
+      console.warn('[SSEStreamManager] Total timeout — exceeded', this.config.timeout, 'ms');
+      this.handleDisconnect('total_timeout');
+    }, this.config.timeout);
+  }
+
+  private clearTotalTimeout(): void {
+    if (this.totalTimer !== null) {
+      clearTimeout(this.totalTimer);
+      this.totalTimer = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Disconnect handler
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Called when a heartbeat or total timeout fires. Aborts the current
+   * fetch so the read loop throws and enters the retry path.
+   */
+  private handleDisconnect(reason: string): void {
+    if (this._isCancelled) return;
+
+    if (reason === 'total_timeout') {
+      // Total timeout is not recoverable — cancel everything
+      this._isCancelled = true;
+      this.controller?.abort();
+      this.cleanup();
+      this.config.onError(
+        classifyError({
+          error: new Error('Total execution timeout'),
+          disconnectReason: 'total_timeout',
+          context: this.buildErrorContext(),
+        }),
+      );
+      return;
+    }
+
+    // For heartbeat timeout, abort the current connection to trigger retry
+    this.controller?.abort();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cleanup
+  // ---------------------------------------------------------------------------
+
+  private cleanup(): void {
+    this.clearHeartbeat();
+    this.clearTotalTimeout();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Context builders
+  // ---------------------------------------------------------------------------
+
+  private buildErrorContext(): StreamErrorContext {
+    return {
+      lastEventId: this.lastReceivedEventId >= 0 ? this.lastReceivedEventId : undefined,
+      lastEvent: this.lastEvent ?? undefined,
+      completedToolCallIds: [...this.completedToolCallIds],
+      pendingToolCallIds: [...this.pendingToolCallIds],
+      retryCount: this.retryCount,
+    };
+  }
+
+  private inferDisconnectReason(error: unknown): string | undefined {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      // Could be heartbeat or cancel; if we're not cancelled, it was heartbeat
+      if (!this._isCancelled) {
+        return 'heartbeat_timeout';
+      }
+      return 'cancelled';
+    }
+    return undefined;
+  }
+}

@@ -38,6 +38,7 @@ function formatResult(result: unknown): string {
   return String(result);
 }
 
+/** @deprecated Use timeline/AgentExecutionNode instead. */
 const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({ toolCall }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;

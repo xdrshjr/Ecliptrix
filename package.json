@@ -26,6 +26,7 @@
     "@uiw/react-markdown-editor": "^6.1.4",
     "@uiw/react-md-editor": "^4.0.8",
     "@xstate/react": "^6.1.0",
+    "framer-motion": "^12.38.0",
     "next": "^15.4.5",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
