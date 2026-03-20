@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
-import { MaterialItem, ScriptSegment } from '@/types';
+import { MaterialItem, ScriptSegment, ChatMessage } from '@/types';
 import { VideoEditingLogger } from '../utils/logger';
 import { useNotification } from '@/contexts/NotificationContext';
-import { 
-  VideoUnderstandingScriptMode, 
-  ScriptGenerationParameters, 
+import {
+  VideoUnderstandingScriptMode,
+  ScriptGenerationParameters,
   UseVideoUnderstandingScriptReturn,
   VideoUnderstandingScriptProgress
 } from '../types/videoEditingTypes';
@@ -218,7 +218,9 @@ export const useVideoUnderstandingScript = (
     selectedVideos: MaterialItem[],
     referenceText: string,
     parameters: ScriptGenerationParameters,
-    mode: VideoUnderstandingScriptMode
+    mode: VideoUnderstandingScriptMode,
+    chatMessages?: ChatMessage[],
+    customPrompt?: string,
   ) => {
     setIsGenerating(true);
     setGenerationError(null);
@@ -260,7 +262,9 @@ export const useVideoUnderstandingScript = (
           selectedVideos: videosWithAnalysis,
           referenceText,
           parameters,
-          taskId
+          taskId,
+          chatMessages,
+          customPrompt,
         }),
       });
 

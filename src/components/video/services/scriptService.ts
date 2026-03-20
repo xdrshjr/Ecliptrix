@@ -16,6 +16,7 @@ export interface ScriptService {
     taskId: string;
     config: ScriptGenerationConfig;
     chatMessages?: ChatMessage[];
+    customPrompt?: string;
   }): Promise<ScriptGenerationResult>;
   
   validateScriptSegments(segments: ScriptSegment[]): ValidationResult;
@@ -220,19 +221,22 @@ export class ScriptServiceImpl implements ScriptService {
     taskId: string;
     config: ScriptGenerationConfig;
     chatMessages?: ChatMessage[];
+    customPrompt?: string;
   }): Promise<ScriptGenerationResult> {
-    const { markdownContent, taskId, config, chatMessages } = params;
+    const { markdownContent, taskId, config, chatMessages, customPrompt } = params;
 
-    // 参数验证 - 优先使用聊天消息，如果没有则使用markdown内容
+    // 参数验证 - 至少需要一个有效输入源
     const hasChatMessages = chatMessages && chatMessages.length > 0;
     const hasMarkdownContent = markdownContent.trim().length > 0;
-    
-    if (!hasChatMessages && !hasMarkdownContent) {
-      const error = 'Either chat messages or markdown content is required';
-      this.logger.error('脚本生成参数验证失败（带配置）', new Error(error), { 
+    const hasCustomPrompt = typeof customPrompt === 'string' && customPrompt.trim().length > 0;
+
+    if (!hasChatMessages && !hasMarkdownContent && !hasCustomPrompt) {
+      const error = 'At least one input source is required: chat messages, markdown content, or custom prompt';
+      this.logger.error('脚本生成参数验证失败（带配置）', new Error(error), {
         reason: 'no_content_available',
         hasChatMessages,
         hasMarkdownContent,
+        hasCustomPrompt,
         markdownLength: markdownContent.length,
         chatMessageCount: chatMessages?.length || 0,
         config
@@ -266,7 +270,8 @@ export class ScriptServiceImpl implements ScriptService {
           markdownContent: markdownContent,
           taskId: taskId,
           scriptConfig: config,
-          chatMessages: chatMessages, // 新增：传递聊天消息
+          chatMessages: chatMessages,
+          customPrompt: customPrompt,
         }),
       });
 

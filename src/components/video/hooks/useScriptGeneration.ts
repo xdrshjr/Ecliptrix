@@ -122,20 +122,22 @@ export const useScriptGeneration = (
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   // 处理脚本生成（带配置）
-  const handleGenerateScriptWithConfig = useCallback(async (config: ScriptGenerationConfig, chatMessages?: ChatMessage[]) => {
+  const handleGenerateScriptWithConfig = useCallback(async (config: ScriptGenerationConfig, chatMessages?: ChatMessage[], customPrompt?: string) => {
     // 优先使用聊天消息，如果没有聊天消息则使用markdown内容
     const hasChatMessages = chatMessages && chatMessages.length > 0;
     const hasMarkdownContent = markdownContent.trim().length > 0;
-    
-    if (!hasChatMessages && !hasMarkdownContent) {
+    const hasCustomPrompt = typeof customPrompt === 'string' && customPrompt.trim().length > 0;
+
+    if (!hasChatMessages && !hasMarkdownContent && !hasCustomPrompt) {
       logger.warn('脚本生成被跳过', {
         reason: 'no_content_available',
         hasChatMessages,
         hasMarkdownContent,
+        hasCustomPrompt,
         markdownLength: markdownContent.length,
         config
       });
-      alert('无法生成脚本：请先在聊天面板中输入内容，或在文档中添加内容');
+      alert('无法生成脚本：请先在聊天面板中输入内容，在文档中添加内容，或填写自定义提示词');
       return;
     }
     
@@ -158,6 +160,8 @@ export const useScriptGeneration = (
         config,
         markdownLength: markdownContent.length,
         chatMessageCount: chatMessages?.length || 0,
+        hasCustomPrompt,
+        customPromptLength: customPrompt?.length || 0,
         usesChatMessages: hasChatMessages,
         usesMarkdownContent: !hasChatMessages && hasMarkdownContent,
         timestamp: new Date().toISOString()
@@ -171,12 +175,13 @@ export const useScriptGeneration = (
         });
       }, 500);
 
-      // 使用脚本服务生成脚本（带配置和聊天消息）
+      // 使用脚本服务生成脚本（带配置、聊天消息和自定义提示词）
       const result = await scriptService.generateScriptWithConfig({
         markdownContent: markdownContent,
         taskId: taskId,
         config: config,
-        chatMessages: chatMessages
+        chatMessages: chatMessages,
+        customPrompt: customPrompt,
       });
 
       clearInterval(progressInterval);

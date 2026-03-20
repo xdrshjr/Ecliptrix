@@ -693,6 +693,30 @@ export interface Translations {
       aiGenerating: string;
     };
   };
+  videoScript: {
+    tab: {
+      aiVideo: string;
+      normal: string;
+    };
+    chatToggle: {
+      label: string;
+      count: string;
+      empty: string;
+    };
+    customPrompt: {
+      placeholder: string;
+      polish: string;
+      polishing: string;
+      undo: string;
+    };
+    generate: {
+      aiVideo: string;
+      normal: string;
+    };
+    validation: {
+      empty: string;
+    };
+  };
   documentPanel: {
     title: string;
     creativeBrainstorming: string;
@@ -1803,6 +1827,30 @@ export const translations: Record<string, Translations> = {
          aiGenerating: 'Generating...',
        },
      },
+   videoScript: {
+     tab: {
+       aiVideo: 'AI Video Script',
+       normal: 'Normal Script',
+     },
+     chatToggle: {
+       label: 'Include chat content',
+       count: '{count} messages in current chat',
+       empty: 'No chat content available',
+     },
+     customPrompt: {
+       placeholder: 'Enter your generation requirements...',
+       polish: 'Polish',
+       polishing: 'Polishing...',
+       undo: 'Undo',
+     },
+     generate: {
+       aiVideo: 'Generate AI Video Script',
+       normal: 'Generate Script',
+     },
+     validation: {
+       empty: 'Please select at least one input source',
+     },
+   },
    documentPanel: {
      title: 'Documentation',
      creativeBrainstorming: 'Brainstorming',
@@ -2926,6 +2974,30 @@ export const translations: Record<string, Translations> = {
          aiGenerating: '生成中...',
        },
      },
+   videoScript: {
+     tab: {
+       aiVideo: 'AI视频脚本',
+       normal: '普通脚本',
+     },
+     chatToggle: {
+       label: '包含对话内容',
+       count: '当前对话 {count} 条消息',
+       empty: '暂无对话内容',
+     },
+     customPrompt: {
+       placeholder: '输入你的生成需求描述...',
+       polish: '优化',
+       polishing: '优化中...',
+       undo: '撤销',
+     },
+     generate: {
+       aiVideo: '生成AI视频脚本',
+       normal: '生成脚本',
+     },
+     validation: {
+       empty: '请至少选择一种输入来源',
+     },
+   },
    documentPanel: {
      title: '文档编辑',
      creativeBrainstorming: '创意构思',

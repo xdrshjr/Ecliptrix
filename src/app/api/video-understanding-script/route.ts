@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ChatMessage } from '@/types';
+import { truncateChatMessages, serializeChatMessages } from '@/lib/utils/chatMessageUtils';
 
 // 获取后端服务配置
 const getBackendConfig = () => {
@@ -22,14 +24,68 @@ const logResponse = (success: boolean, taskId: string, error?: string, segmentCo
   }
 };
 
+/**
+ * Enrich the referenceText field by merging in chat messages and a custom
+ * prompt.  The backend already understands referenceText — we just pack more
+ * context into it so the backend does not need any changes.
+ *
+ * Output format:
+ *   {originalReferenceText}
+ *
+ *   【对话参考】
+ *   {serialized chat messages}
+ *
+ *   【用户需求】
+ *   {customPrompt}
+ *
+ * Sections are only appended when the corresponding input is non-empty.
+ */
+function enrichReferenceText(
+  originalRef: string | undefined,
+  chatMessages: ChatMessage[] | undefined,
+  customPrompt: string | undefined,
+): string {
+  const parts: string[] = [];
+
+  // 1. Original reference text
+  if (originalRef && originalRef.trim()) {
+    parts.push(originalRef.trim());
+  }
+
+  // 2. Serialized chat messages
+  if (chatMessages && chatMessages.length > 0) {
+    const truncated = truncateChatMessages(chatMessages);
+    const serialized = serializeChatMessages(truncated);
+    if (serialized) {
+      parts.push(`【对话参考】\n${serialized}`);
+    }
+  }
+
+  // 3. Custom prompt
+  if (customPrompt && customPrompt.trim()) {
+    parts.push(`【用户需求】\n${customPrompt.trim()}`);
+  }
+
+  return parts.join('\n\n');
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { taskId, selectedVideos, referenceText, parameters } = body as { 
-      taskId: string; 
+    const {
+      taskId,
+      selectedVideos,
+      referenceText,
+      parameters,
+      chatMessages,
+      customPrompt,
+    } = body as {
+      taskId: string;
       selectedVideos: any[];
       referenceText: string;
       parameters: any;
+      chatMessages?: ChatMessage[];
+      customPrompt?: string;
     };
 
     // 验证请求参数
@@ -57,14 +113,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Enrich referenceText with chat messages and custom prompt
+    const enrichedReferenceText = enrichReferenceText(referenceText, chatMessages, customPrompt);
+
     const config = getBackendConfig();
-    logRequest(taskId, selectedVideos.length, referenceText?.length || 0);
+    logRequest(taskId, selectedVideos.length, enrichedReferenceText.length);
 
     // 准备发送给Python后端的请求数据
     const requestData = {
       taskId: taskId,
       selectedVideos: selectedVideos,
-      referenceText: referenceText || '',
+      referenceText: enrichedReferenceText,
       parameters: parameters
     };
 
@@ -88,7 +147,7 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error(`[Video Understanding Script API] Backend error: ${response.status} - ${errorText} for task: ${taskId}`);
       logResponse(false, taskId, `Backend error: ${response.status}`);
-      
+
       // 尝试解析错误响应
       let errorData;
       try {
@@ -96,11 +155,11 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         errorData = { message: errorText };
       }
-      
+
       return NextResponse.json(
-        { 
+        {
           error: `Backend service error: ${response.status}`,
-          details: errorData 
+          details: errorData
         },
         { status: response.status }
       );
@@ -117,11 +176,11 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       console.error('[Video Understanding Script API] Backend returned failure:', result.error || result.message);
       logResponse(false, taskId, result.error || result.message);
-      
+
       return NextResponse.json(
-        { 
+        {
           error: result.error || result.message || 'Video understanding script generation failed',
-          details: result.details 
+          details: result.details
         },
         { status: 400 }
       );
@@ -139,7 +198,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Video Understanding Script API] Request processing error:', error);
-    
+
     // 检查是否是JSON解析错误
     if (error instanceof SyntaxError && error.message.includes('JSON')) {
       return NextResponse.json(
@@ -147,10 +206,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     );
   }
-} 
+}

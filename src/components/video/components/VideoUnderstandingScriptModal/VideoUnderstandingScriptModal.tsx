@@ -1,28 +1,46 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { MaterialItem, ScriptSegment } from '@/types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { MaterialItem, ScriptSegment, AIVideoScriptSegment, Conversation, ChatMessage, ScriptGenerationConfig } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useNotification } from '@/contexts/NotificationContext';
-import { 
-  VideoUnderstandingScriptMode, 
-  ScriptGenerationParameters 
+import {
+  VideoUnderstandingScriptMode,
+  ScriptGenerationParameters
 } from '../../types/videoEditingTypes';
+import {
+  useEnhancedScriptGeneration,
+  ScriptTab,
+} from '../../hooks/useEnhancedScriptGeneration';
 
 interface VideoUnderstandingScriptModalProps {
   isOpen: boolean;
   onClose: () => void;
   materials: MaterialItem[];
   taskId: string;
+  /** Fallback for the video-understanding path (normal tab + videos selected) */
   onGenerateScript: (
-    selectedVideos: MaterialItem[], 
-    referenceText: string, 
+    selectedVideos: MaterialItem[],
+    referenceText: string,
     parameters: ScriptGenerationParameters,
-    mode: VideoUnderstandingScriptMode
+    mode: VideoUnderstandingScriptMode,
+    chatMessages?: ChatMessage[],
+    customPrompt?: string,
   ) => void;
   isGenerating?: boolean;
+  /** All conversations from task content */
+  conversations: Conversation[];
+  /** Active conversation ID */
+  activeConversationId: string | null;
+  /** Script generation config (language, segmentCount, etc.) */
+  scriptConfig?: ScriptGenerationConfig;
+  /** Callback when normal script segments are generated */
+  onScriptGenerated?: (segments: ScriptSegment[]) => void;
+  /** Callback when AI video script segments are generated */
+  onAIVideoScriptGenerated?: (segments: AIVideoScriptSegment[]) => void;
 }
+
+const CUSTOM_PROMPT_MAX_LENGTH = 500;
 
 const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps> = ({
   isOpen,
@@ -30,14 +48,18 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
   materials,
   taskId,
   onGenerateScript,
-  isGenerating = false
+  isGenerating: isGeneratingProp = false,
+  conversations,
+  activeConversationId,
+  scriptConfig,
+  onScriptGenerated,
+  onAIVideoScriptGenerated,
 }) => {
   const { t } = useLocale();
-  const { showSuccess, showError } = useNotification();
-  const logger = new VideoEditingLogger({
+  const logger = useMemo(() => new VideoEditingLogger({
     taskId,
     component: 'VideoUnderstandingScriptModal'
-  });
+  }), [taskId]);
 
   // Modal animation state
   const [isVisible, setIsVisible] = useState(false);
@@ -66,6 +88,33 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
     includeAudioAnalysis: true
   });
 
+  // Compute selected video items for the hook
+  const videoMaterialsForHook = materials.filter(material => material.type === 'video');
+  const selectedVideoItems = Array.from(selectedVideos)
+    .map(id => videoMaterialsForHook.find(v => v.id === id))
+    .filter(Boolean) as MaterialItem[];
+
+  // --- Enhanced script generation hook (replaces local tab/chat/prompt/polish state) ---
+  const enhanced = useEnhancedScriptGeneration({
+    taskId,
+    selectedVideos: selectedVideoItems,
+    scriptParameters: parameters,
+    scriptConfig,
+    referenceText,
+    mode: {
+      type: selectedMode,
+      ...(selectedMode === 'professional' && { frameInterval }),
+    },
+    conversations,
+    activeConversationId,
+    onScriptGenerated,
+    onAIVideoScriptGenerated,
+    onVideoUnderstandingGenerate: onGenerateScript,
+  });
+
+  // Combine generating states: hook's own + parent prop
+  const isGenerating = enhanced.isGenerating || isGeneratingProp;
+
   // Animation effects
   useEffect(() => {
     if (isOpen) {
@@ -92,27 +141,41 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
         includeVisualElements: true,
         includeAudioAnalysis: true
       });
+      // Reset enhanced hook state (tab, chat toggle, prompt, polish)
+      enhanced.resetState();
 
       logger.info('视频理解生成脚本弹窗打开', {
         availableVideoCount: materials.filter(m => m.type === 'video').length,
-        totalMaterials: materials.length
+        totalMaterials: materials.length,
+        hasChatMessages: enhanced.hasChatMessages,
+        chatMessageCount: enhanced.chatMessageCount
       });
     }
   }, [isOpen]);
 
   if (!isVisible) return null;
 
-  const videoMaterials = materials.filter(material => material.type === 'video');
-  const selectedVideoItems = Array.from(selectedVideos)
-    .map(id => videoMaterials.find(v => v.id === id))
-    .filter(Boolean) as MaterialItem[];
+  const videoMaterials = videoMaterialsForHook;
+
+  // --- Derived validation (delegated to hook's canGenerate) ---
+  const hasVideoInput = selectedVideos.size > 0;
+  const hasChatInput = enhanced.includeChatMessages && enhanced.hasChatMessages;
+  const hasPromptInput = enhanced.customPrompt.trim().length > 0;
+
+  // Step 2 can now proceed even without videos (if other inputs are available)
+  const canProceedFromStep1 = true; // Mode selection is always valid
+  const canProceedFromStep2 = true; // Video selection is now optional
+  const canProceedFromStep3 = true; // Reference text is optional
 
   const handleClose = () => {
     logger.userAction('关闭视频理解生成脚本弹窗', 'closeButton', {
       currentStep,
       selectedVideoCount: selectedVideos.size,
       hasReferenceText: referenceText.length > 0,
-      selectedMode
+      selectedMode,
+      activeTab: enhanced.activeTab,
+      includeChatMessages: enhanced.includeChatMessages,
+      customPromptLength: enhanced.customPrompt.length
     });
     onClose();
   };
@@ -143,7 +206,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
     if (currentStep < totalSteps) {
       const nextStep = currentStep + 1;
       setCurrentStep(nextStep);
-      
+
       logger.userAction('进入下一步', 'stepNavigation', {
         fromStep: currentStep,
         toStep: nextStep,
@@ -157,7 +220,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
     if (currentStep > 1) {
       const prevStep = currentStep - 1;
       setCurrentStep(prevStep);
-      
+
       logger.userAction('返回上一步', 'stepNavigation', {
         fromStep: currentStep,
         toStep: prevStep
@@ -165,24 +228,18 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
     }
   };
 
-  const handleGenerate = () => {
-    const selectedVideoItems = Array.from(selectedVideos)
-      .map(id => videoMaterials.find(v => v.id === id))
-      .filter(Boolean) as MaterialItem[];
-
-    const mode: VideoUnderstandingScriptMode = {
-      type: selectedMode,
-      ...(selectedMode === 'professional' && { frameInterval }),
-    };
-
+  const handleGenerate = async () => {
     logger.userAction('开始生成脚本', 'generateScript', {
       selectedVideoCount: selectedVideoItems.length,
       referenceTextLength: referenceText.length,
       parameters,
-      mode
+      activeTab: enhanced.activeTab,
+      includeChatMessages: enhanced.includeChatMessages,
+      customPromptLength: enhanced.customPrompt.length,
+      chatMessageCount: enhanced.chatMessageCount,
     });
 
-    onGenerateScript(selectedVideoItems, referenceText, parameters, mode);
+    await enhanced.generate();
   };
 
   const handleFrameIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,10 +247,40 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
     setFrameInterval(value);
   };
 
-  const canProceedFromStep1 = true; // Mode selection is always valid
-  const canProceedFromStep2 = selectedVideos.size > 0;
-  const canProceedFromStep3 = true; // Reference text is optional
-  const canGenerate = selectedVideos.size > 0;
+  // --- Tab switch handler (delegates to hook) ---
+  const handleTabChange = (tab: ScriptTab) => {
+    enhanced.setActiveTab(tab);
+    logger.userAction('切换脚本类型Tab', 'tabSwitch', {
+      fromTab: enhanced.activeTab,
+      toTab: tab
+    });
+  };
+
+  // --- Chat toggle handler (delegates to hook) ---
+  const handleChatToggle = () => {
+    if (!enhanced.hasChatMessages) return;
+    const newValue = !enhanced.includeChatMessages;
+    enhanced.setIncludeChatMessages(newValue);
+    logger.userAction('切换对话内容开关', 'chatToggle', {
+      enabled: newValue,
+      chatMessageCount: enhanced.chatMessageCount
+    });
+  };
+
+  // --- Custom prompt handler (delegates to hook) ---
+  const handleCustomPromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    enhanced.handleCustomPromptChange(e.target.value);
+  };
+
+  // --- Polish handler (delegates to hook — real API call) ---
+  const handlePolish = async () => {
+    await enhanced.polishPrompt();
+  };
+
+  // --- Undo handler (delegates to hook) ---
+  const handleUndoPolish = () => {
+    enhanced.undoPolish();
+  };
 
   const getStepTitle = (step: number) => {
     switch (step) {
@@ -211,7 +298,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
         const stepNumber = index + 1;
         const isActive = stepNumber === currentStep;
         const isCompleted = stepNumber < currentStep;
-        
+
         return (
           <React.Fragment key={stepNumber}>
             <div
@@ -244,6 +331,126 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
     </div>
   );
 
+  // --- Tab component at top of modal ---
+  const renderTabs = () => (
+    <div className="flex border-b border-border">
+      <button
+        onClick={() => handleTabChange('ai-video')}
+        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
+          enhanced.activeTab === 'ai-video'
+            ? 'text-primary'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        {t.videoScript.tab.aiVideo}
+        {enhanced.activeTab === 'ai-video' && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+        )}
+      </button>
+      <button
+        onClick={() => handleTabChange('normal')}
+        className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
+          enhanced.activeTab === 'normal'
+            ? 'text-primary'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        {t.videoScript.tab.normal}
+        {enhanced.activeTab === 'normal' && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+        )}
+      </button>
+    </div>
+  );
+
+  // --- Chat content toggle section ---
+  const renderChatToggle = () => (
+    <div className="rounded-md border border-border p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <span className="text-sm font-medium text-foreground">
+            {t.videoScript.chatToggle.label}
+          </span>
+        </div>
+        {/* Custom toggle switch (no shadcn Switch component available) */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enhanced.includeChatMessages}
+          disabled={!enhanced.hasChatMessages}
+          onClick={handleChatToggle}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+            enhanced.includeChatMessages ? 'bg-primary' : 'bg-muted-foreground/30'
+          } ${!enhanced.hasChatMessages ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+              enhanced.includeChatMessages ? 'translate-x-4' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        {enhanced.hasChatMessages
+          ? t.videoScript.chatToggle.count.replace('{count}', String(enhanced.chatMessageCount))
+          : t.videoScript.chatToggle.empty
+        }
+      </p>
+    </div>
+  );
+
+  // --- Custom prompt textarea with polish and undo ---
+  const renderCustomPrompt = () => (
+    <div className="rounded-md border border-border p-4 space-y-2">
+      <div className="relative">
+        <textarea
+          value={enhanced.customPrompt}
+          onChange={handleCustomPromptChange}
+          placeholder={t.videoScript.customPrompt.placeholder}
+          maxLength={CUSTOM_PROMPT_MAX_LENGTH}
+          rows={3}
+          className="w-full px-3 py-2 pr-20 border border-border rounded-md resize-none text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors min-h-[72px] max-h-[144px] overflow-y-auto"
+        />
+        {/* Polish (optimize) button positioned at top-right of textarea */}
+        <button
+          onClick={handlePolish}
+          disabled={enhanced.customPrompt.trim().length === 0 || enhanced.isPolishing}
+          className="absolute top-2 right-2 inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-medium rounded-md transition-colors bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          title={enhanced.isPolishing ? t.videoScript.customPrompt.polishing : t.videoScript.customPrompt.polish}
+        >
+          {enhanced.isPolishing ? (
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+          )}
+          <span>{enhanced.isPolishing ? t.videoScript.customPrompt.polishing : t.videoScript.customPrompt.polish}</span>
+        </button>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">
+          {enhanced.customPrompt.length}/{CUSTOM_PROMPT_MAX_LENGTH}
+        </span>
+        {/* Undo button: visible only after polish, hidden on manual edit */}
+        {enhanced.canUndo && (
+          <button
+            onClick={handleUndoPolish}
+            className="inline-flex items-center space-x-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" />
+            </svg>
+            <span>{t.videoScript.customPrompt.undo}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   // Step 1: Mode Selection
   const renderStep1 = () => (
     <div className="space-y-6">
@@ -256,10 +463,10 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
 
       <div className="space-y-4">
         {/* 快速生成选项 */}
-        <div 
+        <div
           className={`relative p-4 rounded-md border-2 cursor-pointer transition-colors ${
-            selectedMode === 'quick' 
-              ? 'border-primary bg-primary/10' 
+            selectedMode === 'quick'
+              ? 'border-primary bg-primary/10'
               : 'border-border hover:border-border hover:bg-muted'
           }`}
           onClick={() => setSelectedMode('quick')}
@@ -295,10 +502,10 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
         </div>
 
         {/* 专业（慢速）生成选项 */}
-        <div 
+        <div
           className={`relative p-4 rounded-md border-2 cursor-pointer transition-colors ${
-            selectedMode === 'professional' 
-              ? 'border-primary bg-primary/10' 
+            selectedMode === 'professional'
+              ? 'border-primary bg-primary/10'
               : 'border-border hover:border-border hover:bg-muted'
           }`}
           onClick={() => setSelectedMode('professional')}
@@ -321,7 +528,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                 按指定时间间隔提取多帧进行深度AI分析，生成高质量脚本内容。适合专业制作或对效果要求较高的场景。
               </p>
-              
+
               {/* 帧间隔设置 */}
               {selectedMode === 'professional' && (
                 <div className="bg-card rounded-md p-3 border border-border">
@@ -345,7 +552,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
                   </p>
                 </div>
               )}
-              
+
               <div className="mt-2 flex items-center space-x-1 text-xs text-muted-foreground">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -367,7 +574,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
       <div className="text-center">
         <h3 className="text-lg font-semibold text-foreground mb-2">选择要分析的视频</h3>
         <p className="text-sm text-muted-foreground">
-          从素材库中选择一个或多个视频，AI将分析视频内容并生成对应的脚本
+          从素材库中选择一个或多个视频，AI将分析视频内容并生成对应的脚本（可选）
         </p>
       </div>
 
@@ -406,7 +613,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
                   </div>
                 )}
               </div>
-              
+
               <div className="p-3">
                 <p className="text-sm font-medium text-foreground truncate">{video.name}</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -434,6 +641,12 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
           </p>
         </div>
       )}
+
+      {/* Chat content toggle and custom prompt — placed within step 2 after video selection */}
+      <div className="space-y-4 border-t border-border pt-4">
+        {renderChatToggle()}
+        {renderCustomPrompt()}
+      </div>
     </div>
   );
 
@@ -462,18 +675,48 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
       </div>
 
       <div className="bg-muted rounded-md p-4">
-        <h4 className="text-sm font-medium text-foreground mb-2">已选择的视频：</h4>
+        <h4 className="text-sm font-medium text-foreground mb-2">
+          {selectedVideoItems.length > 0 ? '已选择的视频：' : '输入来源：'}
+        </h4>
         <div className="space-y-2">
-          {selectedVideoItems.map((video) => (
-            <div key={video.id} className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-accent rounded flex items-center justify-center">
-                <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
+          {selectedVideoItems.length > 0 ? (
+            selectedVideoItems.map((video) => (
+              <div key={video.id} className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-accent rounded flex items-center justify-center">
+                  <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <span className="text-sm text-foreground truncate">{video.name}</span>
               </div>
-              <span className="text-sm text-foreground truncate">{video.name}</span>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {hasChatInput && hasPromptInput
+                ? '对话内容 + 自定义提示词'
+                : hasChatInput
+                ? '对话内容'
+                : hasPromptInput
+                ? '自定义提示词'
+                : '未选择输入来源'
+              }
+            </p>
+          )}
+          {/* Show additional input sources alongside videos */}
+          {selectedVideoItems.length > 0 && (hasChatInput || hasPromptInput) && (
+            <div className="pt-2 border-t border-border mt-2">
+              {hasChatInput && (
+                <p className="text-xs text-muted-foreground">
+                  + {t.videoScript.chatToggle.count.replace('{count}', String(enhanced.chatMessageCount))}
+                </p>
+              )}
+              {hasPromptInput && (
+                <p className="text-xs text-muted-foreground">
+                  + 自定义提示词 ({enhanced.customPrompt.length} 字)
+                </p>
+              )}
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
@@ -561,7 +804,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
         {/* Additional Options */}
         <div className="space-y-4">
           <label className="block text-sm font-medium text-foreground">附加选项</label>
-          
+
           <div className="space-y-3">
             <label className="flex items-center space-x-3 cursor-pointer">
               <input
@@ -606,7 +849,10 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
 
   const getNextButtonText = () => {
     if (currentStep === totalSteps) {
-      return isGenerating ? '生成中...' : '开始生成脚本';
+      if (isGenerating) return '生成中...';
+      return enhanced.activeTab === 'ai-video'
+        ? t.videoScript.generate.aiVideo
+        : t.videoScript.generate.normal;
     }
     return '下一步';
   };
@@ -616,13 +862,13 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
       case 1: return canProceedFromStep1;
       case 2: return canProceedFromStep2;
       case 3: return canProceedFromStep3;
-      case 4: return canGenerate;
+      case 4: return enhanced.canGenerate;
       default: return false;
     }
   };
 
   return (
-    <div 
+    <div
       className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ${
         isAnimating ? 'bg-black bg-opacity-40' : 'bg-black bg-opacity-0'
       }`}
@@ -631,7 +877,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div 
+      <div
         className={`bg-card rounded-md border border-border max-w-2xl w-full max-h-[90vh] overflow-hidden transform transition-all duration-300 ${
           isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
@@ -668,6 +914,9 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
           </div>
         </div>
 
+        {/* Tab Selector */}
+        {renderTabs()}
+
         {/* Progress Indicator */}
         <div className="px-6 py-4 bg-muted">
           {renderStepIndicator()}
@@ -697,7 +946,7 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
               >
                 取消
               </button>
-              
+
               <button
                 onClick={currentStep === totalSteps ? handleGenerate : handleNextStep}
                 disabled={!canProceedToNext() || isGenerating}
@@ -719,4 +968,4 @@ const VideoUnderstandingScriptModal: React.FC<VideoUnderstandingScriptModalProps
   );
 };
 
-export default VideoUnderstandingScriptModal; 
+export default VideoUnderstandingScriptModal;

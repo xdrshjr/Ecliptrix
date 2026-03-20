@@ -19,7 +19,10 @@ import {
   useTimelineComposition,
   useVideoAnalysis
 } from './hooks';
+import { useAgentExecution } from './hooks/useAgentExecution';
 import { useConvertToScript } from './hooks/useConvertToScript';
+import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
+import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -47,7 +50,7 @@ import { createAIVideoSegment } from './components/AIVideoScriptTab';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
-import { Conversation, ChatMessage, WorkflowExecutionState, WorkflowNode, WorkflowConnection, AgentToolCallRecord, AgentTimelineOperation } from '@/types';
+import { Conversation, ChatMessage, WorkflowExecutionState, WorkflowNode, WorkflowConnection } from '@/types';
 import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
@@ -166,7 +169,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 因为组件挂载时不可能有活跃的 HTTP 请求
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
   const [agentMode, setAgentMode] = useState<boolean>(content?.uiState?.agentMode ?? true);
-  const [agentIsExecuting, setAgentIsExecuting] = useState<boolean>(false);
   const hasAutoChatInitialized = useRef(content?.uiState?.hasAutoChatInitialized ?? false);
 
   console.log('[VideoEditingInterface] Restoring UI state:', {
@@ -507,6 +509,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const videoAnalysis = useVideoAnalysis(taskId);
   
   const convertToScript = useConvertToScript(taskId, scriptGeneration.handleScriptGenerated, videoAnalysis.getAnalysisResult);
+
+  // Video understanding script modal (enhanced generation with conversations support)
+  const videoUnderstandingScript = useVideoUnderstandingScript(
+    taskId,
+    scriptGeneration.handleScriptGenerated,
+    videoAnalysis.getAnalysisResult
+  );
 
   // 监听脚本生成状态变化，自动记录开始时间和清除时间
   useEffect(() => {
@@ -2229,418 +2238,27 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     console.log('[VideoEditingInterface] 聊天记录已清空');
   }, [content, onUpdateContent]);
 
-  // --- Agent Mode: Apply timeline operation ---
-  const applyAgentOperationToTimeline = useCallback((operation: AgentTimelineOperation) => {
-    setCurrentTimelineState(prev => {
-      if (!prev) return prev;
-      const state = JSON.parse(JSON.stringify(prev)) as TimelineState;
-
-      switch (operation.type) {
-        case 'add_clip': {
-          const track = state.tracks.find(t => t.id === operation.clip.trackId);
-          if (track) {
-            const { clip, material } = operation;
-            const matType = material.type || track.type;
-            const colorMap: Record<string, string> = { video: '#3b82f6', audio: '#10b981', image: '#8b5cf6' };
-            track.items.push({
-              id: clip.id,
-              name: material.name || '',
-              type: track.type,
-              startTime: clip.startTime || 0,
-              duration: clip.duration || 0,
-              trackId: clip.trackId,
-              color: colorMap[matType] || '#6b7280',
-              materialId: clip.materialId || '',
-              clipStart: clip.clipStart || 0,
-              clipEnd: clip.clipEnd || 0,
-              originalDuration: clip.originalDuration || 0,
-              volume: isNaN(clip.volume) ? 1.0 : clip.volume,
-              thumbnailUrl: material.thumbnailUrl || '',
-            });
-          }
-          break;
-        }
-        case 'trim_clip': {
-          for (const track of state.tracks) {
-            const clip = track.items.find(i => i.id === operation.clipId);
-            if (clip) {
-              clip.clipStart = operation.clipStart;
-              clip.clipEnd = operation.clipEnd;
-              clip.duration = operation.duration;
-              break;
-            }
-          }
-          break;
-        }
-        case 'delete_clip': {
-          const track = state.tracks.find(t => t.id === operation.trackId);
-          if (track) {
-            track.items = track.items.filter(i => i.id !== operation.clipId);
-          }
-          break;
-        }
-        case 'move_clip': {
-          const fromTrack = state.tracks.find(t => t.id === operation.fromTrackId);
-          if (fromTrack) {
-            const idx = fromTrack.items.findIndex(i => i.id === operation.clipId);
-            if (idx !== -1) {
-              const [clip] = fromTrack.items.splice(idx, 1);
-              clip.startTime = operation.newStartTime;
-              clip.trackId = operation.toTrackId;
-              const toTrack = state.tracks.find(t => t.id === operation.toTrackId);
-              if (toTrack) toTrack.items.push(clip);
-            }
-          }
-          break;
-        }
-        case 'resize_clip': {
-          for (const track of state.tracks) {
-            const clip = track.items.find(i => i.id === operation.clipId);
-            if (clip) {
-              clip.duration = operation.newDuration;
-              break;
-            }
-          }
-          break;
-        }
-      }
-
-      // Recalculate total duration
-      let maxEnd = 0;
-      for (const track of state.tracks) {
-        for (const item of track.items) {
-          const end = item.startTime + item.duration;
-          if (end > maxEnd) maxEnd = end;
-        }
-      }
-      state.totalDuration = Math.max(maxEnd, state.totalDuration);
-
-      return state;
-    });
-
-    // Trigger external timeline update so TimelinePanel picks it up
-    setExternalTimelineUpdateId(`agent-op-${Date.now()}`);
-  }, []);
-
-  // --- Agent Mode: Trigger clip animation ---
-  const triggerClipAnimation = useCallback((operation: AgentTimelineOperation) => {
-    let clipId = '';
-    let animClass = '';
-
-    switch (operation.type) {
-      case 'add_clip':
-        clipId = operation.clip.id;
-        animClass = 'agent-clip-added';
-        break;
-      case 'trim_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-trimmed';
-        break;
-      case 'delete_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-deleting';
-        break;
-      case 'move_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-moving';
-        break;
-      case 'resize_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-resized';
-        break;
-    }
-
-    if (clipId && animClass) {
-      // Use requestAnimationFrame to ensure DOM has updated
-      requestAnimationFrame(() => {
-        const el = document.querySelector(`[data-clip-id="${clipId}"]`);
-        if (el) {
-          el.classList.add(animClass);
-          setTimeout(() => el.classList.remove(animClass), 700);
-        }
-      });
-    }
-  }, []);
-
-  // --- Agent Mode: Undo handler ---
-  const handleAgentUndo = useCallback((agentMessage: ChatMessage) => {
-    if (!agentMessage.timelineSnapshot) return;
-
-    console.log('[VideoEditingInterface] Agent undo: restoring timeline snapshot');
-
-    // Restore timeline to snapshot
-    setCurrentTimelineState(agentMessage.timelineSnapshot);
-    setExternalTimelineUpdateId(`agent-undo-${Date.now()}`);
-
-    // Mark message as undone
-    const activeConversationId = content?.activeConversationId;
-    if (!activeConversationId) return;
-
-    const conversations = content?.conversations || [];
-    const activeConversation = conversations.find(c => c.id === activeConversationId);
-    if (!activeConversation) return;
-
-    const updatedMessages = activeConversation.messages.map(msg =>
-      msg.id === agentMessage.id
-        ? { ...msg, isUndone: true, pendingOperations: [] }
-        : msg
-    );
-    updateConversationMessages(activeConversationId, updatedMessages);
-  }, [content, updateConversationMessages]);
-
-  // --- Agent Mode: Send agent message ---
-  const handleSendAgentMessage = useCallback(async (message: string) => {
-    const activeConversationId = content?.activeConversationId;
-    if (!activeConversationId || agentIsExecuting) return;
-
-    const conversations = content?.conversations || [];
-    const activeConversation = conversations.find(c => c.id === activeConversationId);
-    if (!activeConversation) return;
-
-    // 1. Save timeline snapshot for undo
-    const timelineSnapshot: TimelineState | undefined = currentTimelineState
-      ? JSON.parse(JSON.stringify(currentTimelineState))
-      : undefined;
-
-    setAgentIsExecuting(true);
-
-    try {
-      // 2. Add user message
-      const userMessage: ChatMessage = {
-        id: `msg-${Date.now()}-user`,
-        role: 'user',
-        content: message,
-        timestamp: new Date(),
-      };
-      const messagesWithUser = [...activeConversation.messages, userMessage];
-
-      // 3. Create agent reply placeholder
-      const agentMessageId = `msg-${Date.now()}-agent`;
-      const agentMessage: ChatMessage = {
-        id: agentMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-        isStreaming: true,
-        isAgentMessage: true,
-        agentToolCalls: [],
-        timelineSnapshot,
-        pendingOperations: [],
-      };
-
-      const messagesWithAgent = [...messagesWithUser, agentMessage];
-      updateConversationMessages(activeConversationId, messagesWithAgent);
-
-      console.log('[VideoEditingInterface] Sending agent message', {
-        messageLength: message.length,
-        hasTimelineState: !!currentTimelineState,
-        materialsCount: materialManagement.materials.length,
-      });
-
-      // 4. Send SSE request
-      const response = await fetch('/api/video-editing-agent/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: messagesWithUser,
-          timelineState: currentTimelineState,
-          materials: materialManagement.materials,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No reader available');
-
-      // 5. Process SSE stream
-      let accumulatedContent = '';
-      const toolCalls: AgentToolCallRecord[] = [];
-      const pendingOperations: AgentTimelineOperation[] = [];
-      let streamDone = false;
-      let sseBuffer = '';
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          // Flush remaining buffer before exiting
-          if (sseBuffer.trim() && sseBuffer.startsWith('data: ')) {
-            const remaining = sseBuffer.slice(6);
-            if (remaining === '[DONE]') {
-              streamDone = true;
-            } else {
-              try {
-                const event = JSON.parse(remaining);
-                if (event.type === 'agent_end') {
-                  streamDone = true;
-                }
-              } catch { /* incomplete data, ignore */ }
-            }
-          }
-          break;
-        }
-
-        sseBuffer += decoder.decode(value, { stream: true });
-        const parts = sseBuffer.split('\n');
-        sseBuffer = parts.pop() || ''; // keep incomplete line in buffer
-
-        for (const line of parts) {
-          if (!line.trim()) continue;
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-
-          if (data === '[DONE]') {
-            streamDone = true;
-            break;
-          }
-
-          try {
-            const event = JSON.parse(data);
-
-            switch (event.type) {
-              case 'text_delta': {
-                accumulatedContent += event.content;
-                const updated = [...messagesWithUser, {
-                  ...agentMessage,
-                  content: accumulatedContent,
-                  agentToolCalls: [...toolCalls],
-                  pendingOperations: [...pendingOperations],
-                }];
-                updateConversationMessages(activeConversationId, updated);
-                break;
-              }
-
-              case 'tool_call': {
-                const tc: AgentToolCallRecord = {
-                  id: event.toolCallId,
-                  name: event.toolName,
-                  params: event.params || {},
-                  status: 'executing',
-                };
-                toolCalls.push(tc);
-                const updated = [...messagesWithUser, {
-                  ...agentMessage,
-                  content: accumulatedContent,
-                  agentToolCalls: [...toolCalls],
-                  pendingOperations: [...pendingOperations],
-                }];
-                updateConversationMessages(activeConversationId, updated);
-                break;
-              }
-
-              case 'tool_result': {
-                // Update tool call status
-                const tcIdx = toolCalls.findIndex(tc => tc.id === event.toolCallId);
-                if (tcIdx !== -1) {
-                  const isError = event.result && typeof event.result === 'object' && (event.result as Record<string, unknown>).success === false;
-                  toolCalls[tcIdx] = {
-                    ...toolCalls[tcIdx],
-                    status: isError ? 'error' : 'completed',
-                    result: event.result,
-                  };
-                }
-
-                // Apply operation to timeline if present
-                if (event.operation) {
-                  const op = event.operation as AgentTimelineOperation;
-                  pendingOperations.push(op);
-
-                  // For delete operations, trigger animation then brief delay for visual feedback
-                  if (op.type === 'delete_clip') {
-                    triggerClipAnimation(op);
-                    // Brief non-blocking delay to let animation start, then proceed
-                    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)));
-                  }
-
-                  applyAgentOperationToTimeline(op);
-
-                  // For non-delete operations, animate after application
-                  if (op.type !== 'delete_clip') {
-                    triggerClipAnimation(op);
-                  }
-                }
-
-                const updated = [...messagesWithUser, {
-                  ...agentMessage,
-                  content: accumulatedContent,
-                  agentToolCalls: [...toolCalls],
-                  pendingOperations: [...pendingOperations],
-                }];
-                updateConversationMessages(activeConversationId, updated);
-                break;
-              }
-
-              case 'error': {
-                accumulatedContent += `\n\nError: ${event.message}`;
-                const updated = [...messagesWithUser, {
-                  ...agentMessage,
-                  content: accumulatedContent,
-                  agentToolCalls: [...toolCalls],
-                  pendingOperations: [...pendingOperations],
-                  isStreaming: false,
-                }];
-                updateConversationMessages(activeConversationId, updated);
-                break;
-              }
-
-              case 'agent_end': {
-                // Will be handled after stream ends
-                break;
-              }
-            }
-          } catch (e) {
-            console.error('[VideoEditingInterface] Error parsing agent SSE:', e, data);
-          }
-        }
-
-        if (streamDone) break;
-      }
-
-      // 6. Finalize message (safety: always set isStreaming=false even on network drops)
-      const finalMessages = [...messagesWithUser, {
-        ...agentMessage,
-        content: accumulatedContent,
-        agentToolCalls: [...toolCalls],
-        pendingOperations: [...pendingOperations],
-        isStreaming: false,
-      }];
-      updateConversationMessages(activeConversationId, finalMessages);
-
-      console.log('[VideoEditingInterface] Agent message completed', {
-        contentLength: accumulatedContent.length,
-        toolCallsCount: toolCalls.length,
-        operationsCount: pendingOperations.length,
-      });
-
-    } catch (error) {
-      console.error('[VideoEditingInterface] Agent message failed:', error);
-      showError(`Agent error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-
-      // Safety: ensure any streaming agent message is finalized on error
-      const convs = content?.conversations || [];
-      const conv = convs.find(c => c.id === content?.activeConversationId);
-      if (conv) {
-        const hasStale = conv.messages.some(m => m.isAgentMessage && m.isStreaming);
-        if (hasStale) {
-          const cleaned = conv.messages.map(m =>
-            m.isAgentMessage && m.isStreaming ? { ...m, isStreaming: false } : m
-          );
-          updateConversationMessages(content!.activeConversationId!, cleaned);
-        }
-      }
-    } finally {
-      setAgentIsExecuting(false);
-    }
-  }, [content, agentIsExecuting, currentTimelineState, materialManagement.materials, updateConversationMessages, showError, applyAgentOperationToTimeline, triggerClipAnimation]);
+  // --- Agent Execution Hook (replaces inline agent logic) ---
+  const agent = useAgentExecution({
+    conversations: content?.conversations || [],
+    updateConversationMessages,
+    activeConversationId: content?.activeConversationId,
+    timelineState: currentTimelineState,
+    setTimelineState: setCurrentTimelineState,
+    materials: materialManagement.materials,
+    onTimelineUpdate: (id) => setExternalTimelineUpdateId(id),
+    onNotification: (type, message) => {
+      if (type === 'error') showError(message);
+      else showSuccess(message);
+    },
+    agentMode,
+    setAgentMode,
+  });
 
   // --- Unified send handler: routes to agent or regular based on agentMode ---
   const handleSendChatMessage = useCallback(async (message: string) => {
-    if (agentMode) {
-      return handleSendAgentMessage(message);
+    if (agent.agentMode) {
+      return agent.sendAgentMessage(message);
     }
 
     // Original non-agent chat logic below
@@ -3142,7 +2760,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     } finally {
       setIsChatLoading(false);
     }
-  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, workflowConfigs, agentMode, handleSendAgentMessage]);
+  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, workflowConfigs, agent.agentMode, agent.sendAgentMessage]);
 
   // 获取当前活动的聊天对话
   const activeConversation = content?.conversations?.find(
@@ -3162,10 +2780,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onPolishClick={handlePolishClick}
           onViewWorkflowsClick={handleViewWorkflowsClick}
           onConvertMessageToScript={handleConvertMessageToScript}
-          agentMode={agentMode}
-          onAgentModeChange={setAgentMode}
-          agentIsExecuting={agentIsExecuting}
-          onAgentUndo={handleAgentUndo}
+          agentMode={agent.agentMode}
+          onAgentModeChange={agent.setAgentMode}
+          agentIsExecuting={agent.agentIsExecuting}
+          executionState={agent.executionState}
+          onAgentUndo={undefined}
+          onUndoAll={agent.undoAllOperations}
+          onUndoSingle={agent.undoSingleOperation}
+          onCancel={agent.cancelExecution}
         />
       </div>
 
@@ -3235,7 +2857,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
         {/* 下方时间轴面板 - 在右侧区域的下方，全宽度 */}
         <div className="video-editing-timeline-section border-t border-border bg-muted relative">
-          {agentIsExecuting && (
+          {agent.agentIsExecuting && (
             <div className="agent-timeline-lock-overlay" />
           )}
           <TimelinePanel
@@ -3315,6 +2937,20 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={convertToScript.isGenerating}
         progress={convertToScript.progress}
         onCancel={convertToScript.closeModal}
+      />
+
+      {/* 视频理解生成脚本弹窗 (enhanced with conversations support) */}
+      <VideoUnderstandingScriptModal
+        isOpen={videoUnderstandingScript.isModalOpen}
+        onClose={videoUnderstandingScript.closeModal}
+        materials={materialManagement.materials}
+        taskId={taskId}
+        onGenerateScript={videoUnderstandingScript.generateScript}
+        isGenerating={videoUnderstandingScript.isGenerating}
+        conversations={content?.conversations || []}
+        activeConversationId={content?.activeConversationId ?? null}
+        onScriptGenerated={scriptGeneration.handleScriptGenerated}
+        onAIVideoScriptGenerated={handleUpdateAIVideoScriptSegments}
       />
 
       <CreativeBrainstormingModal

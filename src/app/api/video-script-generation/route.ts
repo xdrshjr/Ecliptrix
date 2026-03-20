@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScriptSegment, ScriptGenerationConfig, ChatMessage } from '@/types';
+import { truncateChatMessages } from '@/lib/utils/chatMessageUtils';
 
 // 获取环境变量配置
 const getConfig = () => {
@@ -14,8 +15,9 @@ const getConfig = () => {
   return { apiUrl, apiKey, model };
 };
 
+
 // 构建脚本生成的提示词
-const buildScriptPrompt = (markdownContent: string, chatMessages?: ChatMessage[], scriptConfig?: ScriptGenerationConfig) => {
+const buildScriptPrompt = (markdownContent: string, chatMessages?: ChatMessage[], scriptConfig?: ScriptGenerationConfig, customPrompt?: string) => {
   // 设置默认配置
   const config = scriptConfig || {
     language: 'chinese',
@@ -55,25 +57,31 @@ const buildScriptPrompt = (markdownContent: string, chatMessages?: ChatMessage[]
   // 自定义要求
   const customInstructions = config.customRequirements ? `\nAdditional requirements: ${config.customRequirements}` : '';
 
-  // 构建内容源部分
-  let contentSection = '';
-  
-  // 优先使用聊天消息
+  // --- Assemble content sections from all available input sources (not mutually exclusive) ---
+  const sections: string[] = [];
+
+  // 1. Markdown content
+  if (markdownContent && markdownContent.trim()) {
+    sections.push(`Markdown Content:\n${markdownContent}\n\nPlease analyze the markdown content above and generate a professional video script.`);
+  }
+
+  // 2. Chat messages (with 8000-char cap to avoid LLM context overflow)
   if (chatMessages && chatMessages.length > 0) {
-    const chatContent = chatMessages
+    let chatContent = chatMessages
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
       .join('\n\n');
-    
-    contentSection = `Chat Conversation:
-${chatContent}
-
-Please analyze the chat conversation above, extract the key points and important information discussed, and generate a professional video script based on these discussion points.`;
-  } else if (markdownContent && markdownContent.trim()) {
-    contentSection = `Markdown Content:
-${markdownContent}
-
-Please analyze the markdown content above and generate a professional video script.`;
+    if (chatContent.length > 8000) {
+      chatContent = chatContent.slice(-8000);
+    }
+    sections.push(`Chat Conversation:\n${chatContent}\n\nPlease analyze the chat conversation above, extract the key points and important information discussed, and generate a professional video script based on these discussion points.`);
   }
+
+  // 3. Custom prompt (always included when present, never dropped)
+  if (customPrompt && customPrompt.trim()) {
+    sections.push(`User Requirements:\n${customPrompt.trim()}\n\nIncorporate the user requirements above into the generated script.`);
+  }
+
+  const contentSection = sections.join('\n\n---\n\n');
 
   return `You are an expert video script writer. Based on the following content, generate a professional video script.
 
@@ -103,7 +111,7 @@ Return the result as a JSON object with this exact structure:
           "endTime": 3
         },
         {
-          "id": "sentence-1-2", 
+          "id": "sentence-1-2",
           "text": "Second sentence of the segment.",
           "startTime": 3,
           "endTime": 8
@@ -113,7 +121,7 @@ Return the result as a JSON object with this exact structure:
   ]
 }
 
-Important: 
+Important:
 - Return ONLY the JSON object, no additional text or explanation
 - Ensure all IDs are unique
 - Make sure sentence timings add up to the segment duration
@@ -126,20 +134,20 @@ const logRequest = (markdownContent: string, taskId: string, config: any, chatMe
   console.log(`[Video Script Generation API] ${new Date().toISOString()} - Incoming script generation request`);
   console.log(`[Video Script Generation API] Task ID: ${taskId}`);
   console.log(`[Video Script Generation API] Model: ${config.model}`);
-  
+
   // 记录内容源
   if (chatMessages && chatMessages.length > 0) {
     console.log(`[Video Script Generation API] Content Source: Chat Messages`);
     console.log(`[Video Script Generation API] Chat messages count: ${chatMessages.length}`);
-    console.log(`[Video Script Generation API] Chat messages preview:`, 
+    console.log(`[Video Script Generation API] Chat messages preview:`,
       chatMessages.slice(0, 2).map(msg => `${msg.role}: ${msg.content.slice(0, 100)}...`).join(' | ')
     );
   } else {
     console.log(`[Video Script Generation API] Content Source: Markdown Content`);
-    console.log(`[Video Script Generation API] Markdown content length: ${markdownContent.length} characters`);
-    console.log(`[Video Script Generation API] Markdown preview: ${markdownContent.slice(0, 200)}...`);
+    console.log(`[Video Script Generation API] Markdown content length: ${markdownContent?.length || 0} characters`);
+    console.log(`[Video Script Generation API] Markdown preview: ${(markdownContent || '').slice(0, 200)}...`);
   }
-  
+
   if (scriptConfig) {
     console.log(`[Video Script Generation API] Script Configuration:`);
     console.log(`[Video Script Generation API] - Language: ${scriptConfig.language}`);
@@ -161,21 +169,34 @@ const logResponse = (success: boolean, taskId: string, segmentCount?: number, er
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { markdownContent, taskId, scriptConfig, chatMessages } = body as { 
-      markdownContent: string; 
-      taskId: string; 
+    const {
+      markdownContent: rawMarkdownContent,
+      taskId,
+      scriptConfig,
+      chatMessages: rawChatMessages,
+      customPrompt,
+    } = body as {
+      markdownContent?: string;
+      taskId: string;
       scriptConfig?: ScriptGenerationConfig;
       chatMessages?: ChatMessage[];
+      customPrompt?: string;
     };
 
-    // 验证请求参数 - 至少需要聊天消息或markdown内容之一
+    // Apply truncation to chat messages if present
+    const chatMessages = rawChatMessages
+      ? truncateChatMessages(rawChatMessages)
+      : undefined;
+
+    // 验证请求参数 - 至少需要一个有效输入源
     const hasChatMessages = chatMessages && Array.isArray(chatMessages) && chatMessages.length > 0;
-    const hasMarkdownContent = markdownContent && typeof markdownContent === 'string' && markdownContent.trim().length > 0;
-    
-    if (!hasChatMessages && !hasMarkdownContent) {
-      console.error('[Video Script Generation API] Invalid request: either chatMessages or markdownContent is required');
+    const hasMarkdownContent = rawMarkdownContent && typeof rawMarkdownContent === 'string' && rawMarkdownContent.trim().length > 0;
+    const hasCustomPrompt = typeof customPrompt === 'string' && customPrompt.trim().length > 0;
+
+    if (!hasChatMessages && !hasMarkdownContent && !hasCustomPrompt) {
+      console.error('[Video Script Generation API] Invalid request: at least one input source is required (chatMessages, markdownContent, or customPrompt)');
       return NextResponse.json(
-        { error: 'Either chat messages or markdown content is required' },
+        { error: 'At least one input source is required: chatMessages, markdownContent, or customPrompt' },
         { status: 400 }
       );
     }
@@ -187,6 +208,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Pass through raw markdownContent only — buildScriptPrompt now handles
+    // all three sources (markdownContent, chatMessages, customPrompt) via the
+    // sections[] pattern, so we no longer pre-assemble or duplicate content here.
+    const markdownContent: string = hasMarkdownContent ? rawMarkdownContent! : '';
 
     const config = getConfig();
     logRequest(markdownContent, taskId, config, chatMessages, scriptConfig);
@@ -201,7 +227,7 @@ export async function POST(request: NextRequest) {
         },
         {
           role: 'user',
-          content: buildScriptPrompt(markdownContent, chatMessages, scriptConfig)
+          content: buildScriptPrompt(markdownContent, chatMessages, scriptConfig, customPrompt)
         }
       ],
       temperature: 0.7,
@@ -224,7 +250,7 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error(`[Video Script Generation API] LLM API error: ${response.status} - ${errorText} for task: ${taskId}`);
       logResponse(false, taskId, undefined, `LLM API error: ${response.status}`);
-      
+
       return NextResponse.json(
         { error: `LLM API error: ${response.status}` },
         { status: response.status }
@@ -237,7 +263,7 @@ export async function POST(request: NextRequest) {
     if (!content) {
       console.error(`[Video Script Generation API] No content in LLM response for task: ${taskId}`);
       logResponse(false, taskId, undefined, 'No content in LLM response');
-      
+
       return NextResponse.json(
         { error: 'No content received from LLM' },
         { status: 500 }
@@ -257,7 +283,7 @@ export async function POST(request: NextRequest) {
       console.error(`[Video Script Generation API] Failed to parse LLM response as JSON for task: ${taskId}:`, parseError);
       console.error(`[Video Script Generation API] Raw content: ${content}`);
       logResponse(false, taskId, undefined, 'Failed to parse JSON response');
-      
+
       return NextResponse.json(
         { error: 'Failed to parse script data from LLM response' },
         { status: 500 }
@@ -268,7 +294,7 @@ export async function POST(request: NextRequest) {
     if (!scriptData.segments || !Array.isArray(scriptData.segments)) {
       console.error(`[Video Script Generation API] Invalid script format for task: ${taskId} - missing segments array`);
       logResponse(false, taskId, undefined, 'Invalid script format');
-      
+
       return NextResponse.json(
         { error: 'Invalid script format received' },
         { status: 500 }
@@ -281,7 +307,7 @@ export async function POST(request: NextRequest) {
       if (!segment.id || !segment.title || !segment.sentences || !Array.isArray(segment.sentences)) {
         console.error(`[Video Script Generation API] Invalid segment format at index ${i} for task: ${taskId}`);
         logResponse(false, taskId, undefined, `Invalid segment format at index ${i}`);
-        
+
         return NextResponse.json(
           { error: `Invalid segment format at index ${i}` },
           { status: 500 }
@@ -294,7 +320,7 @@ export async function POST(request: NextRequest) {
         if (!sentence.id || !sentence.text) {
           console.error(`[Video Script Generation API] Invalid sentence format at segment ${i}, sentence ${j} for task: ${taskId}`);
           logResponse(false, taskId, undefined, `Invalid sentence format at segment ${i}, sentence ${j}`);
-          
+
           return NextResponse.json(
             { error: `Invalid sentence format at segment ${i}, sentence ${j}` },
             { status: 500 }
@@ -305,7 +331,7 @@ export async function POST(request: NextRequest) {
 
     const segmentCount = scriptData.segments.length;
     const totalSentences = scriptData.segments.reduce((sum: number, seg: any) => sum + seg.sentences.length, 0);
-    
+
     console.log(`[Video Script Generation API] Successfully generated script for task: ${taskId} - ${segmentCount} segments, ${totalSentences} sentences`);
     logResponse(true, taskId, segmentCount);
 
@@ -324,10 +350,10 @@ export async function POST(request: NextRequest) {
     console.error('[Video Script Generation API] Request processing error:', error);
     const taskId = 'unknown';
     logResponse(false, taskId, undefined, String(error));
-    
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     );
   }
-} 
+}

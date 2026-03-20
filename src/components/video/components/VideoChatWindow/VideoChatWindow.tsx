@@ -1,9 +1,25 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+/**
+ * VideoChatWindow — the main chat panel for the video editing interface.
+ *
+ * Refactored to use TimelineChatPanel for message rendering instead of
+ * the old AgentMessageBubble / MessageBubble flat list. The input area,
+ * action buttons bar, and agent mode toggle remain unchanged.
+ *
+ * ## Changes from previous version
+ * - Replaced flat message list with TimelineChatPanel (timeline/index.ts)
+ * - Added executionState, onUndoAll, onUndoSingle, onCancel props
+ * - Kept backward compatibility: onAgentUndo still works (bridges to onUndoAll)
+ * - Auto-scroll logic moved into TimelineChatPanel; removed from here
+ *
+ * @module VideoChatWindow
+ */
+
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Conversation, ChatMessage } from '@/types';
-import MessageBubble from '@/components/chat/MessageBubble';
-import AgentMessageBubble from './AgentMessageBubble';
+import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
+import { TimelineChatPanel } from './timeline';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -20,7 +36,13 @@ interface VideoChatWindowProps {
   agentMode: boolean;
   onAgentModeChange: (enabled: boolean) => void;
   agentIsExecuting: boolean;
+  /** @deprecated Use onUndoAll instead. Kept for backward compatibility. */
   onAgentUndo?: (message: ChatMessage) => void;
+  // New timeline UI props (provided by useAgentExecution / google-dev-04)
+  executionState?: AgentExecutionState | null;
+  onUndoAll?: (messageId: string) => void;
+  onUndoSingle?: (messageId: string, toolCallId: string) => void;
+  onCancel?: () => void;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -36,35 +58,17 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onAgentModeChange,
   agentIsExecuting,
   onAgentUndo,
+  executionState = null,
+  onUndoAll,
+  onUndoSingle,
+  onCancel,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
   const [inputMessage, setInputMessage] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
-  const isNearBottom = () => {
-    if (!messagesContainerRef.current) return true;
-    const container = messagesContainerRef.current;
-    const threshold = 100;
-    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-  };
-
-  const scrollToBottom = (force = false) => {
-    if (!shouldAutoScroll && !force) return;
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleScroll = () => {
-    if (!messagesContainerRef.current) return;
-    setShouldAutoScroll(isNearBottom());
-  };
-
-  const hasStreamingMessage = conversation?.messages.some(msg => msg.isStreaming) || false;
+  // ----- Textarea height management -----
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -72,48 +76,38 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     }
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => scrollToBottom(), 100);
-    return () => clearTimeout(timer);
-  }, [conversation?.messages, shouldAutoScroll]);
-
-  useEffect(() => {
-    if (!hasStreamingMessage) return;
-    const intervalId = setInterval(() => {
-      if (shouldAutoScroll) scrollToBottom();
-    }, 100);
-    return () => clearInterval(intervalId);
-  }, [hasStreamingMessage, shouldAutoScroll]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputMessage.trim() && !isLoading && !agentIsExecuting) {
-      console.log('[VideoChatWindow] 发送消息', {
-        messageLength: inputMessage.length,
-        agentMode,
-        timestamp: new Date().toISOString()
-      });
-      onSendMessage(inputMessage.trim());
-      setInputMessage('');
-
-      if (textareaRef.current) {
-        textareaRef.current.style.height = '32px';
-        textareaRef.current.style.overflow = 'hidden';
-      }
-
-      setShouldAutoScroll(true);
-      setTimeout(() => scrollToBottom(true), 100);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
       e.preventDefault();
-      handleSubmit(e);
-    }
-  };
+      if (inputMessage.trim() && !isLoading && !agentIsExecuting) {
+        console.log('[VideoChatWindow] Sending message', {
+          messageLength: inputMessage.length,
+          agentMode,
+          timestamp: new Date().toISOString(),
+        });
+        onSendMessage(inputMessage.trim());
+        setInputMessage('');
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = '32px';
+          textareaRef.current.style.overflow = 'hidden';
+        }
+      }
+    },
+    [inputMessage, isLoading, agentIsExecuting, agentMode, onSendMessage],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
+    },
+    [handleSubmit],
+  );
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setInputMessage(newValue);
 
@@ -124,15 +118,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     const maxHeight = 80;
     const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
     textarea.style.height = newHeight + 'px';
+    textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
 
-    if (textarea.scrollHeight > maxHeight) {
-      textarea.style.overflow = 'auto';
-    } else {
-      textarea.style.overflow = 'hidden';
-    }
-  };
-
-  const handleFocus = () => {
+  const handleFocus = useCallback(() => {
     if (!textareaRef.current) return;
     const textarea = textareaRef.current;
     textarea.style.height = 'auto';
@@ -141,32 +130,66 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     const contentHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
     textarea.style.height = contentHeight + 'px';
     textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
-  };
+  }, []);
 
-  const handleBlur = () => {
+  const handleBlur = useCallback(() => {
     if (!textareaRef.current) return;
     if (!inputMessage.trim()) {
       textareaRef.current.style.height = '32px';
       textareaRef.current.style.overflow = 'hidden';
     }
-  };
+  }, [inputMessage]);
 
-  const handleClearChat = () => {
+  const handleClearChat = useCallback(() => {
     if (!conversation || conversation.messages.length === 0) return;
     showConfirm(t.videoChatWindow.clearChatConfirm, onClearMessages);
-  };
+  }, [conversation, showConfirm, t.videoChatWindow.clearChatConfirm, onClearMessages]);
 
-  const handleConvertMessageToScript = (content: string) => {
-    onConvertMessageToScript?.(content);
-  };
+  // ----- Bridge: onUndoAll -----
+  // If the new onUndoAll is not provided, fall back to the legacy onAgentUndo
+  const handleUndoAll = useCallback(
+    (messageId: string) => {
+      if (onUndoAll) {
+        onUndoAll(messageId);
+        return;
+      }
+      // Legacy bridge: find the message and call onAgentUndo
+      if (onAgentUndo && conversation) {
+        const msg = conversation.messages.find((m) => m.id === messageId);
+        if (msg) onAgentUndo(msg);
+      }
+    },
+    [onUndoAll, onAgentUndo, conversation],
+  );
 
-  // Determine placeholder text
+  const handleUndoSingle = useCallback(
+    (messageId: string, toolCallId: string) => {
+      onUndoSingle?.(messageId, toolCallId);
+    },
+    [onUndoSingle],
+  );
+
+  const handleCancel = useCallback(() => {
+    onCancel?.();
+  }, [onCancel]);
+
+  const handleConvertMessageToScript = useCallback(
+    (content: string) => {
+      onConvertMessageToScript?.(content);
+    },
+    [onConvertMessageToScript],
+  );
+
+  // ----- Derived state -----
+
   const inputDisabled = isLoading || agentIsExecuting;
   const placeholderText = agentIsExecuting
     ? t.videoChatWindow.agentWorkingPlaceholder
     : agentMode
       ? t.videoChatWindow.agentInputPlaceholder
       : t.videoChatWindow.inputPlaceholder;
+
+  // ----- Empty state (no conversation at all) -----
 
   if (!conversation) {
     return (
@@ -213,58 +236,46 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     );
   }
 
+  // ----- Main render -----
+
   return (
     <div className="flex flex-col h-full bg-background min-h-0">
-      {/* Messages Area */}
-      <div
-        ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0"
-        onScroll={handleScroll}
-      >
-        {conversation.messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="w-20 h-20 bg-muted rounded-md mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">{t.videoChatWindow.startChatTitle}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {t.videoChatWindow.startChatDesc}
-              </p>
+      {/* Messages Area — now rendered by TimelineChatPanel */}
+      {conversation.messages.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center min-h-0">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-muted rounded-md mx-auto mb-4 flex items-center justify-center">
+              <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
             </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">{t.videoChatWindow.startChatTitle}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {t.videoChatWindow.startChatDesc}
+            </p>
           </div>
-        ) : (
-          conversation.messages.map((message) => (
-            message.isAgentMessage ? (
-              <AgentMessageBubble
-                key={message.id}
-                message={message}
-                onUndo={onAgentUndo}
-              />
-            ) : (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                onConvertToScript={handleConvertMessageToScript}
-              />
-            )
-          ))
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+        </div>
+      ) : (
+        <TimelineChatPanel
+          messages={conversation.messages}
+          executionState={executionState}
+          onUndoAll={handleUndoAll}
+          onUndoSingle={handleUndoSingle}
+          onCancel={handleCancel}
+          onConvertToScript={handleConvertMessageToScript}
+        />
+      )}
 
       {/* Action Buttons Bar - Above Input Area */}
-      <div className="flex-shrink-0 px-6 py-3 border-t border-border bg-muted">
+      <div className="flex-shrink-0 px-6 py-3 border-t border-border bg-muted dark:bg-zinc-900">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            {/* 查看工作流按钮 */}
+            {/* View Workflows button */}
             {onViewWorkflowsClick && (
               <button
                 onClick={() => onViewWorkflowsClick?.()}
                 disabled={isLoading}
-                className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center w-9 h-9 bg-card dark:bg-zinc-800 hover:bg-accent dark:hover:bg-zinc-700 border border-border dark:border-zinc-700 hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
                 title={t.videoChatWindow.viewWorkflowsTooltip}
                 aria-label={t.videoChatWindow.viewWorkflowsTooltip}
               >
@@ -274,12 +285,12 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               </button>
             )}
 
-            {/* 创意构思按钮 */}
+            {/* Creative Brainstorming button */}
             {onCreativeBrainstormingClick && (
               <button
                 onClick={() => onCreativeBrainstormingClick?.()}
                 disabled={isLoading}
-                className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center w-9 h-9 bg-card dark:bg-zinc-800 hover:bg-accent dark:hover:bg-zinc-700 border border-border dark:border-zinc-700 hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
                 title={t.videoChatWindow.creativeBrainstormingTooltip}
                 aria-label={t.videoChatWindow.creativeBrainstormingTooltip}
               >
@@ -289,12 +300,12 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               </button>
             )}
 
-            {/* 智能润色按钮 */}
+            {/* Polish Content button */}
             {onPolishClick && (
               <button
                 onClick={() => onPolishClick?.()}
                 disabled={isLoading}
-                className="flex items-center justify-center w-9 h-9 bg-card hover:bg-accent border border-border hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center w-9 h-9 bg-card dark:bg-zinc-800 hover:bg-accent dark:hover:bg-zinc-700 border border-border dark:border-zinc-700 hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
                 title={t.videoChatWindow.polishContentTooltip}
                 aria-label={t.videoChatWindow.polishContentTooltip}
               >
@@ -307,7 +318,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
           {/* Agent Toggle */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">{t.videoChatWindow.agentToggleLabel}</span>
+            <span className="text-xs font-medium text-muted-foreground dark:text-zinc-400">{t.videoChatWindow.agentToggleLabel}</span>
             <button
               type="button"
               role="switch"
@@ -315,7 +326,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               disabled={agentIsExecuting}
               onClick={() => onAgentModeChange(!agentMode)}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${
-                agentMode ? 'bg-primary' : 'bg-border'
+                agentMode ? 'bg-primary' : 'bg-border dark:bg-zinc-600'
               }`}
             >
               <span
@@ -329,7 +340,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card">
+      <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card dark:bg-zinc-900">
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1 relative flex items-center">
             <textarea
@@ -340,7 +351,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onFocus={handleFocus}
               onBlur={handleBlur}
               placeholder={placeholderText}
-              className="w-full px-3 py-2 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-24 bg-muted min-h-[32px] transition-all text-sm"
+              className="w-full px-3 py-2 border border-border dark:border-zinc-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-24 bg-muted dark:bg-zinc-800 min-h-[32px] transition-all text-sm text-foreground dark:text-zinc-200"
               rows={1}
               disabled={inputDisabled}
               style={{ height: '32px', overflow: 'hidden' }}
@@ -351,7 +362,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             type="button"
             onClick={handleClearChat}
             disabled={!conversation || conversation.messages.length === 0 || inputDisabled}
-            className="bg-card border border-border hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
+            className="bg-card dark:bg-zinc-800 border border-border dark:border-zinc-600 hover:bg-accent dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-foreground dark:text-zinc-300 rounded-md transition-colors flex items-center justify-center shrink-0"
             title={t.videoChatWindow.clearChatTooltip}
             style={{ width: '32px', height: '32px' }}
           >

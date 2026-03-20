@@ -535,7 +535,9 @@ export interface UseVideoUnderstandingScriptReturn {
     selectedVideos: MaterialItem[],
     referenceText: string,
     parameters: ScriptGenerationParameters,
-    mode: VideoUnderstandingScriptMode
+    mode: VideoUnderstandingScriptMode,
+    chatMessages?: ChatMessage[],
+    customPrompt?: string,
   ) => Promise<void>;
 }
 

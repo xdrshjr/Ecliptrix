@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScriptGenerationConfig, ChatMessage } from '@/types';
+import { truncateChatMessages } from '@/lib/utils/chatMessageUtils';
 
 const getConfig = () => {
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
@@ -13,7 +14,33 @@ const getConfig = () => {
   return { apiUrl, apiKey, model };
 };
 
-const buildAIVideoScriptPrompt = (chatMessages?: ChatMessage[], scriptConfig?: ScriptGenerationConfig) => {
+/**
+ * VideoInfo type for selected videos passed from the frontend.
+ * Kept lightweight — only the fields the prompt needs.
+ */
+interface VideoInfo {
+  id?: string;
+  title?: string;
+  url?: string;
+  duration?: number;
+}
+
+/**
+ * Build the user prompt for AI video script generation.
+ *
+ * Input sources (all optional, but at least one must be present — validated
+ * before this function is called):
+ *   - chatMessages: conversation history
+ *   - customPrompt: user-supplied free-text requirements
+ *   - videoAnalysisContext: pre-computed video analysis result text
+ *   - scriptConfig: generation parameters (language, consistency, segment count)
+ */
+const buildAIVideoScriptPrompt = (
+  chatMessages?: ChatMessage[],
+  scriptConfig?: ScriptGenerationConfig,
+  customPrompt?: string,
+  videoAnalysisContext?: string,
+) => {
   const config = scriptConfig || {
     language: 'chinese',
     consistency: 'moderate',
@@ -49,20 +76,40 @@ const buildAIVideoScriptPrompt = (chatMessages?: ChatMessage[], scriptConfig?: S
 
   const customInstructions = config.customRequirements ? `\nAdditional requirements: ${config.customRequirements}` : '';
 
-  let contentSection = '';
+  // --- Assemble content sections from all available input sources ---
+
+  const sections: string[] = [];
+
+  // 1. Video analysis context (highest priority context)
+  if (videoAnalysisContext && videoAnalysisContext.trim()) {
+    // Truncate to 3000 chars per spec
+    const trimmed = videoAnalysisContext.trim().length > 3000
+      ? videoAnalysisContext.trim().slice(0, 3000) + '…'
+      : videoAnalysisContext.trim();
+    sections.push(`Video Analysis Context:\n${trimmed}\n\nUse the video analysis above as reference material for creating the scenes.`);
+  }
+
+  // 2. Chat messages
   if (chatMessages && chatMessages.length > 0) {
-    // Limit to last 30 messages and cap total content at 8000 chars to stay within LLM context
-    const recentMessages = chatMessages.slice(-30);
-    let chatContent = recentMessages
+    // Cap total serialized content at 8000 chars to stay within LLM context.
+    // Note: messages are already truncated to 50 by truncateChatMessages() before reaching here.
+    let chatContent = chatMessages
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
       .join('\n\n');
     if (chatContent.length > 8000) {
       chatContent = chatContent.slice(-8000);
     }
-    contentSection = `Chat Conversation:\n${chatContent}\n\nAnalyze the chat conversation above and create AI video generation scenes based on the key points discussed.`;
+    sections.push(`Chat Conversation:\n${chatContent}\n\nAnalyze the chat conversation above and create AI video generation scenes based on the key points discussed.`);
   }
 
-  return `You are an expert AI video script writer. Based on the following conversation content, create a series of video scene descriptions optimized for AI video generation.
+  // 3. Custom prompt (appended as explicit user requirements)
+  if (customPrompt && customPrompt.trim()) {
+    sections.push(`User Requirements:\n${customPrompt.trim()}\n\nIncorporate the user requirements above into the generated scenes.`);
+  }
+
+  const contentSection = sections.join('\n\n---\n\n');
+
+  return `You are an expert AI video script writer. Based on the following content, create a series of video scene descriptions optimized for AI video generation.
 
 ${contentSection}
 
@@ -93,23 +140,37 @@ Important:
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { taskId, scriptConfig, chatMessages } = body as {
+    const {
+      taskId,
+      scriptConfig,
+      chatMessages: rawChatMessages,
+      customPrompt,
+      videoAnalysisContext,
+      selectedVideos,
+    } = body as {
       taskId: string;
       scriptConfig?: ScriptGenerationConfig;
       chatMessages?: ChatMessage[];
+      customPrompt?: string;
+      videoAnalysisContext?: string;
+      selectedVideos?: VideoInfo[];
     };
 
-    const hasChatMessages = chatMessages && Array.isArray(chatMessages) && chatMessages.length > 0;
-    if (!hasChatMessages) {
-      return NextResponse.json(
-        { error: 'Chat messages are required for AI video script generation' },
-        { status: 400 }
-      );
-    }
+    // --- Input validation ---
 
-    if (chatMessages.length > 100) {
+    // Apply truncation to chat messages if present
+    const chatMessages = rawChatMessages
+      ? truncateChatMessages(rawChatMessages)
+      : undefined;
+
+    const hasChatMessages = chatMessages && Array.isArray(chatMessages) && chatMessages.length > 0;
+    const hasCustomPrompt = typeof customPrompt === 'string' && customPrompt.trim().length > 0;
+    const hasVideoAnalysis = typeof videoAnalysisContext === 'string' && videoAnalysisContext.trim().length > 0;
+
+    // At least one input source must be non-empty
+    if (!hasChatMessages && !hasCustomPrompt && !hasVideoAnalysis) {
       return NextResponse.json(
-        { error: 'Too many messages. Maximum 100 allowed.' },
+        { error: 'At least one input source is required: chatMessages, customPrompt, or videoAnalysisContext' },
         { status: 400 }
       );
     }
@@ -123,7 +184,13 @@ export async function POST(request: NextRequest) {
 
     const config = getConfig();
 
-    console.log(`[AI Video Script Generation API] ${new Date().toISOString()} - Request for task: ${taskId}, messages: ${chatMessages.length}`);
+    const inputSources: string[] = [];
+    if (hasChatMessages) inputSources.push(`chatMessages(${chatMessages!.length})`);
+    if (hasCustomPrompt) inputSources.push('customPrompt');
+    if (hasVideoAnalysis) inputSources.push('videoAnalysisContext');
+    if (selectedVideos && selectedVideos.length > 0) inputSources.push(`selectedVideos(${selectedVideos.length})`);
+
+    console.log(`[AI Video Script Generation API] ${new Date().toISOString()} - Request for task: ${taskId}, sources: [${inputSources.join(', ')}]`);
 
     const requestData = {
       model: config.model,
@@ -134,7 +201,7 @@ export async function POST(request: NextRequest) {
         },
         {
           role: 'user',
-          content: buildAIVideoScriptPrompt(chatMessages, scriptConfig)
+          content: buildAIVideoScriptPrompt(chatMessages, scriptConfig, customPrompt, videoAnalysisContext)
         }
       ],
       temperature: 0.7,
