@@ -149,7 +149,7 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-03-18
+- **Last Updated:** 2026-03-20
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
