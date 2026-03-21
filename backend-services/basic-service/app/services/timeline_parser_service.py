@@ -3,8 +3,6 @@ Timeline Parser Service for converting simplified AI editing responses to full t
 Handles the conversion from simplified JSON structure to complete timeline JSON.
 """
 
-import json
-import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from app.logger import get_logger

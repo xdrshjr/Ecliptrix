@@ -3,8 +3,6 @@ Video Analysis Storage Service for persisting and retrieving video analysis resu
 This service provides a simple in-memory cache for video analysis data.
 """
 
-import json
-from datetime import datetime
 from typing import Dict, Optional
 from app.logger import get_logger
 from app.models.video_analysis import VideoAnalysisResponse

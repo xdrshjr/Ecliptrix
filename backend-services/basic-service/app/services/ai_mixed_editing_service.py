@@ -8,7 +8,7 @@ import httpx
 from typing import Dict, Any, List
 from app.config import settings
 from app.logger import get_logger
-from app.models.ai_mixed_editing_models import MaterialItemModel, SimplifiedTimelineModel, VideoAnalysisMetadata, VideoFrameAnalysis
+from app.models.ai_mixed_editing_models import MaterialItemModel, SimplifiedTimelineModel, VideoAnalysisMetadata
 from app.services.timeline_parser_service import TimelineParserService
 from app.services.video_analysis_storage_service import video_analysis_storage
 

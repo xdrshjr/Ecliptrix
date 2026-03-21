@@ -127,21 +127,6 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
           </div>
         </div>
 
-        {/* Navigation - 暂时隐藏默认导航项 */}
-        {/* 
-        <nav className="hidden md:flex items-center space-x-8">
-          <button className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
-            Dashboard
-          </button>
-          <button className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
-            Projects
-          </button>
-          <button className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
-            Library
-          </button>
-        </nav>
-        */}
-
         {/* User Actions */}
         <div className="flex items-center space-x-3">
           {/* Language Selector */}

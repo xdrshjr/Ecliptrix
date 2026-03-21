@@ -110,15 +110,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       const portRect = portElement.getBoundingClientRect();
       const portCenterX = portRect.left + portRect.width / 2 - canvasRect.left;
       const portCenterY = portRect.top + portRect.height / 2 - canvasRect.top;
-      
-      // Log port position for debugging
-      // console.log('[WorkflowCanvas] Port position from DOM:', { 
-      //   nodeId, 
-      //   portId, 
-      //   x: portCenterX, 
-      //   y: portCenterY 
-      // });
-      
+
       return {
         x: portCenterX,
         y: portCenterY,

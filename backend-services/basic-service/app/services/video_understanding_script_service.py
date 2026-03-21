@@ -6,7 +6,7 @@ Handles LLM API calls with video understanding prompts and structured responses.
 import json
 import httpx
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from datetime import datetime
 from app.config import settings
 from app.logger import get_logger
@@ -15,8 +15,7 @@ from app.models.video_understanding_script_models import (
     VideoAnalysisResult,
     ScriptSegment,
     ScriptSentence,
-    VideoItem,
-    LLMScriptGenerationRequest
+    VideoItem
 )
 from app.services.video_analysis_storage_service import video_analysis_storage
 

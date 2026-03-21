@@ -14,7 +14,6 @@ from typing import Optional, Union, List, Tuple
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from queue import Queue
 
 from app.logger import get_logger
 from app.config import settings

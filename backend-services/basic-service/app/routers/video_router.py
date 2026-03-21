@@ -6,17 +6,14 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 from pathlib import Path
 from app.models import (
-    VideoSearchRequest, 
+    VideoSearchRequest,
     VideoSearchResponse,
     VideoCompositionRequest,
     VideoCompositionResponse,
-    VideoDownloadRequest,
-    VideoDownloadResponse,
     SubtitleAddRequest,
     SubtitleAddResponse,
     VideoAnalysisRequest,
     VideoAnalysisResponse,
-    VideoAnalysisStatusResponse,
     BatchVideoAnalysisRequest,
     BatchVideoAnalysisResponse,
     ImageToVideoRequest,

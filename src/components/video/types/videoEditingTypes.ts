@@ -1,4 +1,4 @@
-import { VideoEditingTaskContent, ScriptSegment, MaterialItem, MaterialType, TimelineState, TimelineItem, ScriptGenerationConfig, ChatMessage } from '@/types';
+import { ScriptSegment, MaterialItem, MaterialType, TimelineState, ScriptGenerationConfig, ChatMessage } from '@/types';
 import { ArkImageSize } from '@/lib/api/arkImage';
 
 // Video playback types
@@ -403,97 +403,6 @@ export interface UseAudioSearchReturn {
   setSortBy: (sortBy: SortBy) => void;
   setValidationError: (error: string | null) => void;
   taskId: string;
-} 
-
-// AI Image Generation Types
-export interface AIImageGenerationRequest {
-  positive_prompt: string;
-  negative_prompt?: string;
-  width?: number;
-  height?: number;
-  steps?: number;
-  seed?: number;
-  cfg?: number;
-  guidance?: number;
-  checkpoint?: string;
-}
-
-export interface AIImageGenerationResponse {
-  prompt_id: string;
-  status: string;
-  message: string;
-  estimated_time?: number;
-}
-
-export interface ImageInfo {
-  filename: string;
-  subfolder?: string;
-  type?: string;
-  url?: string;
-  size_bytes?: number;
-}
-
-export interface AIImageGenerationStatus {
-  prompt_id: string;
-  status: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
-  progress?: number;
-  images: ImageInfo[];
-  error_message?: string;
-  created_at?: string;
-  completed_at?: string;
-}
-
-// Digital Human Generation Types
-export interface DigitalHumanGenerationRequest {
-  positive_prompt: string;
-  negative_prompt?: string;
-  width?: number;
-  height?: number;
-  steps?: number;
-  seed?: number;
-  cfg?: number;
-  shift?: number;
-  reference_video_filename: string;
-  audio_filename: string;
-}
-
-export interface DigitalHumanGenerationResponse {
-  prompt_id: string;
-  status: string;
-  message: string;
-  estimated_time?: number;
-}
-
-export interface VideoInfo {
-  filename: string;
-  subfolder: string;
-  type: string;
-  url?: string;
-  size_bytes?: number;
-  duration?: number;
-}
-
-export interface DigitalHumanGenerationStatus {
-  prompt_id: string;
-  status: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
-  progress?: number;
-  videos: VideoInfo[];
-  error_message?: string;
-  created_at?: string;
-  completed_at?: string;
-}
-
-// AI Video Generation Types
-export interface AIVideoGenerationRequest {
-  positive_prompt: string;
-  negative_prompt?: string;
-  width?: number;
-  height?: number;
-  duration_seconds?: number;
-  steps?: number;
-  seed?: number;
-  enable_lora?: boolean;
-  aspect_ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
 }
 
 // 新增：视频理解脚本生成模式类型
@@ -541,21 +450,4 @@ export interface UseVideoUnderstandingScriptReturn {
   ) => Promise<void>;
 }
 
-export interface AIVideoGenerationResponse {
-  prompt_id: string;
-  status: string;
-  message: string;
-  estimated_time?: number;
-}
-
-export interface AIVideoGenerationStatus {
-  prompt_id: string;
-  status: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
-  progress?: number;
-  videos: VideoInfo[];
-  error_message?: string;
-  created_at?: string;
-  completed_at?: string;
-  request_parameters?: AIVideoGenerationRequest;
-}
 

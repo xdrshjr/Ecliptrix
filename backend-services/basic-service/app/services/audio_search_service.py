@@ -4,8 +4,7 @@ Audio search service for Freesound API integration.
 
 import os
 import requests
-from typing import List, Optional, Dict, Any
-from urllib.parse import urlencode
+from typing import Optional, Dict, Any
 
 from app.models.audio_search_models import AudioSearchResponse, AudioInfo
 from app.logger import get_logger

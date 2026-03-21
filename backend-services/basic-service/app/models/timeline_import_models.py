@@ -3,14 +3,12 @@ Timeline Import related Pydantic models for request/response validation.
 """
 
 from pydantic import BaseModel, Field, ConfigDict, validator
-from typing import List, Optional, Any, Dict, Union
-from datetime import datetime
+from typing import List, Optional, Any, Dict
 
 from .timeline_export_models import (
     TimelineExportDataModel,
     ExportMetadataModel,
     TimelineStateModel,
-    TrackModel,
     MaterialModel
 )
 

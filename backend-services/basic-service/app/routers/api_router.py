@@ -3,8 +3,7 @@ Main API routes for the Basic Service application.
 """
 
 import time
-from datetime import datetime, timedelta
-from typing import Dict, Any
+from datetime import timedelta
 from fastapi import APIRouter, HTTPException, status
 from app.models import BaseResponse, HealthCheckResponse
 from app.config import settings

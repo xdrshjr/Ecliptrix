@@ -4,7 +4,6 @@ Based on the reference video_composer.py with adaptations for FastAPI service ar
 """
 
 import os
-import json
 import uuid
 import time
 import shutil
@@ -14,13 +13,12 @@ import threading
 import asyncio
 import yaml
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
-from pydub import AudioSegment
 
 from app.logger import get_logger
 from app.config import settings
@@ -29,10 +27,7 @@ from app.models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
     VideoCompositionItem,
-    AudioCompositionItem,
     SubtitleCompositionItem,
-    ImageCompositionItem,
-    ImagePosition,
     AspectRatio,
     SubtitleAddRequest,
     VideoProcessingError,

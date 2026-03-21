@@ -2,9 +2,8 @@
 Image search data models for Unsplash API integration.
 """
 
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, validator
-from enum import Enum
+from typing import List, Optional
+from pydantic import BaseModel, Field, ConfigDict
 
 from .base_models import BaseResponse
 

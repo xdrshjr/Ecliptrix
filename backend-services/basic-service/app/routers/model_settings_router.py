@@ -7,7 +7,7 @@ Two-layer architecture:
   - Config resolution: get effective config (DB or env fallback)
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException
 
 from app.models.model_settings_models import (
     ModelFunctionType,

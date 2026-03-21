@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.auth_models import (
     UserLogin,
     UserLoginResponse,
-    UserLoginErrorResponse,
     UserRegistration,
     UserRegistrationResponse,
     SessionValidationRequest,

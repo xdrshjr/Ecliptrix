@@ -2,7 +2,7 @@
 Intent Detection Models
 用于检测用户意图并判断是否需要调用工作流
 """
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 

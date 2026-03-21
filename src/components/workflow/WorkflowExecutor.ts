@@ -1115,8 +1115,6 @@ export class WorkflowExecutor {
           });
           
           // Continue processing other items instead of failing completely
-          // You could optionally include the failed item with an error marker
-          // transformedResults.push({ error: itemError.message, originalItem: item });
         }
       }
 

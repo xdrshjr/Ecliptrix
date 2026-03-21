@@ -6,13 +6,12 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional
 
 from app.models.timeline_export_models import (
     TimelineExportRequest,
     TimelineExportResponse,
-    TimelineExportDataModel,
-    TimelineExportErrorResponse
+    TimelineExportDataModel
 )
 from app.logger import get_logger
 

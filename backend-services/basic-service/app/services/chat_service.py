@@ -5,7 +5,7 @@ Handles LLM API calls with streaming support.
 
 import json
 import httpx
-from typing import AsyncGenerator, Dict, Any, List
+from typing import AsyncGenerator, Dict, List
 from app.config import settings
 from app.logger import get_logger
 

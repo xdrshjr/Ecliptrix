@@ -8,7 +8,7 @@ import json
 import base64
 import time
 import subprocess
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 import requests
 from fastapi import HTTPException

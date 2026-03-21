@@ -5,7 +5,7 @@ Simplified queue decorator for applying queuing mechanism to API endpoints.
 import asyncio
 import functools
 import uuid
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional
 
 from app.logger import get_logger
 from app.services.queue_manager import queue_manager

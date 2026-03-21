@@ -2,9 +2,8 @@
 Audio search data models for Freesound API integration.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict, validator
-from enum import Enum
 
 from .base_models import BaseResponse
 

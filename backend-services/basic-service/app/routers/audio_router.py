@@ -6,13 +6,9 @@ import os
 import glob
 from typing import Union
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
-from fastapi.responses import JSONResponse, FileResponse
-
 from app.models.audio_models import (
-    AudioTranscriptionRequest,
     AudioTranscriptionResponse,
     AudioTranscriptionErrorResponse,
-    AudioTranscriptionStatus,
     BatchAudioTranscriptionRequest,
     BatchAudioTranscriptionResponse,
     BatchAudioTranscriptionErrorResponse

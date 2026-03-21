@@ -395,34 +395,3 @@ export async function downloadAudioFile(fileName: string): Promise<Blob> {
     throw error;
   }
 }
-
-/**
- * Check TTS service health
- */
-export async function checkTTSHealth(): Promise<any> {
-  try {
-    console.log('[TTS API] 检查TTS服务健康状态');
-
-    const response = await fetch('/api/tts/health', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const result = await response.json();
-
-    console.log('[TTS API] TTS健康检查响应', {
-      status_code: response.status,
-      service_status: result.status,
-      config_valid: result.config_valid
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[TTS API] TTS健康检查失败', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
-  }
-} 

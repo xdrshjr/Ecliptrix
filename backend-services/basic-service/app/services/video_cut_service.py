@@ -4,9 +4,8 @@ Video cutting service for extracting video clips and uploading to storage.
 
 import os
 import time
-import tempfile
 import subprocess
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 from pathlib import Path
 
 from app.logger import get_logger

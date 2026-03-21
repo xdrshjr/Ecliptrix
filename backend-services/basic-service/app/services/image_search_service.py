@@ -4,8 +4,7 @@ Image search service for Unsplash API integration.
 
 import os
 import requests
-from typing import List, Optional, Dict, Any
-from urllib.parse import urlencode
+from typing import Optional, Dict, Any
 
 from app.models.image_search_models import ImageSearchResponse, ImageInfo
 from app.logger import get_logger

@@ -2,7 +2,7 @@
 Video search data models for PEXELS API integration.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field, ConfigDict, validator
 from enum import Enum
 

@@ -2,7 +2,7 @@
 File upload related data models for the Basic Service application.
 """
 
-from typing import Optional, Any
+from typing import Optional
 from pydantic import BaseModel, Field
 from app.models import BaseResponse
 

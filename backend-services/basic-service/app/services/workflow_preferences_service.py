@@ -2,8 +2,7 @@
 Workflow preferences service for managing user workflow UI state.
 """
 
-import json
-from typing import Dict, Optional
+from typing import Dict
 from datetime import datetime
 
 from app.logger import get_logger

@@ -3,8 +3,7 @@ Timeline Export related Pydantic models for request/response validation.
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Any, Dict, Union
-from datetime import datetime
+from typing import List, Optional, Any, Dict
 
 
 class TimelineItemModel(BaseModel):

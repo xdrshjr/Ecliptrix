@@ -6,9 +6,7 @@ import os
 import time
 import requests
 import tempfile
-import shutil
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
 
 from app.config import settings
 from app.logger import get_logger

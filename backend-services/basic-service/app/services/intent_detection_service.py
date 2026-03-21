@@ -5,7 +5,7 @@ Intent Detection Service
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List
 import httpx
 from app.models.intent_detection_models import (
     IntentDetectionRequest,

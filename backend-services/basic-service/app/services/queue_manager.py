@@ -4,17 +4,16 @@ Universal queue manager for handling concurrent request limitations.
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Callable, Any
+from datetime import datetime
+from typing import Dict, Optional, Callable, Any
 from collections import deque
 
 from app.logger import get_logger
 from app.models.queue_models import (
-    QueueTask, 
-    QueueInfo, 
+    QueueTask,
+    QueueInfo,
     TaskStatus,
-    QueueStatusResponse,
-    TaskStatusResponse
+    QueueStatusResponse
 )
 
 logger = get_logger(__name__)

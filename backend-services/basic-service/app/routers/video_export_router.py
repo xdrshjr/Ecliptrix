@@ -11,7 +11,6 @@ from app.logger import get_logger
 from app.config import get_settings
 import json
 import os
-import asyncio
 import httpx
 
 logger = get_logger(__name__)

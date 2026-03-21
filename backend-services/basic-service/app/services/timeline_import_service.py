@@ -5,24 +5,20 @@ Timeline Import Service for handling timeline data import functionality.
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
-from pathlib import Path
+from typing import Dict, Any, List
 
 from app.models.timeline_import_models import (
     TimelineImportRequest,
     TimelineImportResponse,
     TimelineImportValidationResult,
     ProcessedImportData,
-    ImportFileUploadRequest,
-    TimelineImportErrorResponse
+    ImportFileUploadRequest
 )
 from app.models.timeline_export_models import (
     TimelineExportDataModel,
     ExportMetadataModel,
     TimelineStateModel,
-    TrackModel,
-    MaterialModel,
-    TimelineItemModel
+    MaterialModel
 )
 from app.logger import get_logger
 

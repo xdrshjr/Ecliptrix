@@ -182,15 +182,3 @@ export function formatSubtitleTime(timeMs: number): string {
   
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${Math.floor(milliseconds / 10).toString().padStart(2, '0')}`;
 }
-
-/**
- * Convert subtitles to SRT format
- * 将字幕转换为SRT格式
- */
-export function convertSubtitlesToSRT(subtitles: SubtitleItem[]): string {
-  return subtitles.map((subtitle, index) => {
-    const startTime = formatSubtitleTime(subtitle.start_time);
-    const endTime = formatSubtitleTime(subtitle.end_time);
-    return `${index + 1}\n${startTime} --> ${endTime}\n${subtitle.text}\n`;
-  }).join('\n');
-} 

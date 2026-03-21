@@ -46,42 +46,4 @@ export async function fetchLLMModels(): Promise<LLMModel[]> {
   }
 }
 
-/**
- * Fetch a specific LLM model by ID
- * @param modelId Model ID to fetch
- * @returns Promise<LLMModel> The LLM model information
- * @throws Error if the request fails
- */
-export async function fetchLLMModelById(modelId: string): Promise<LLMModel> {
-  console.log('[LLM API] Fetching LLM model by ID:', modelId);
-  
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/llm/models/${modelId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[LLM API] Failed to fetch model:', {
-        modelId,
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
-      });
-      throw new Error(`Failed to fetch LLM model: ${response.statusText}`);
-    }
-
-    const data: LLMModel = await response.json();
-    
-    console.log('[LLM API] Successfully fetched model:', data.display_name);
-
-    return data;
-  } catch (error) {
-    console.error('[LLM API] Error fetching LLM model:', error);
-    throw error;
-  }
-}
 

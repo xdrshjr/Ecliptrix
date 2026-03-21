@@ -2,9 +2,8 @@
 Batch Text-to-Speech service for concurrent processing of multiple segments.
 """
 
-import asyncio
 import time
-from typing import List, Dict, Any, Optional
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.config import settings
@@ -12,8 +11,7 @@ from app.logger import get_logger
 from app.models import (
     BatchTTSRequest,
     BatchTTSResponse,
-    BatchTTSSegmentResult,
-    VoiceType
+    BatchTTSSegmentResult
 )
 from app.services.tts_service import TTSService
 

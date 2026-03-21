@@ -22,10 +22,7 @@
   "dependencies": {
     "@mariozechner/pi-agent-core": "^0.57.0",
     "@mariozechner/pi-ai": "^0.57.0",
-    "@mdxeditor/editor": "^3.40.1",
-    "@uiw/react-markdown-editor": "^6.1.4",
     "@uiw/react-md-editor": "^4.0.8",
-    "@xstate/react": "^6.1.0",
     "framer-motion": "^12.38.0",
     "next": "^15.4.5",
     "react": "^19.1.1",

@@ -2,7 +2,7 @@
 Text-to-Speech (TTS) models for Volcano TTS API integration.
 """
 
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List
 from enum import Enum
 from pydantic import BaseModel, Field, validator
 

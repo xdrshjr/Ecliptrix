@@ -23,7 +23,6 @@ export interface AppState {
 }
 
 export type TaskType = Task['type'];
-export type TaskStatus = Task['status'];
 
 // Chat related types
 export interface ChatMessage {

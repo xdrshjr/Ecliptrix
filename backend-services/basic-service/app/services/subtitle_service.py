@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import List, Optional, Tuple
 import cv2
 
 from app.logger import get_logger

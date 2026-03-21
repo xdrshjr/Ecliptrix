@@ -1210,8 +1210,6 @@ async function executeResultsCombineNode(config: any, input: any): Promise<any> 
       console.error(`[API] Failed to transform item ${i + 1}:`, itemError.message);
       
       // Continue processing other items instead of failing completely
-      // Optionally include the failed item with error marker
-      // transformedResults.push({ error: itemError.message, originalItem: item });
     }
   }
 
