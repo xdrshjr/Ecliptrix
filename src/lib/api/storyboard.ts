@@ -159,7 +159,11 @@ export async function batchGenerateVideos(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       pack_id: packId,
-      segments,
+      segments: segments.map(s => ({
+        frame_index: s.frameIndex,
+        description: s.description,
+        duration: s.duration,
+      })),
     }),
   });
 
