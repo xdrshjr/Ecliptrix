@@ -700,6 +700,8 @@ export interface Translations {
       firstFrameMissing: string;
       invalidImageUrl: string;
       durationLabel: string;
+      expandScript: string;
+      expandingScript: string;
     };
   };
   videoScript: {
@@ -1843,6 +1845,8 @@ export const translations: Record<string, Translations> = {
          firstFrameMissing: 'Please upload a first frame image first',
          invalidImageUrl: 'Please enter a valid HTTP/HTTPS URL',
          durationLabel: 'Duration:',
+         expandScript: 'AI Expand',
+         expandingScript: 'Expanding...',
        },
      },
    videoScript: {
@@ -2999,6 +3003,8 @@ export const translations: Record<string, Translations> = {
          firstFrameMissing: '请先上传首帧图片',
          invalidImageUrl: '请输入有效的 HTTP/HTTPS 链接',
          durationLabel: '时长:',
+         expandScript: 'AI 扩写',
+         expandingScript: '扩写中...',
        },
      },
    videoScript: {

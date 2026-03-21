@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { AIVideoScriptSegment, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAIVideoScriptGeneration } from '../../hooks/useAIVideoScriptGeneration';
@@ -30,9 +30,11 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
   onUpdateSegments,
   onAddMaterial,
   materials = [],
+  taskId,
 }) => {
   const { t } = useLocale();
   const { generateVideo, cancelGeneration } = useAIVideoScriptGeneration(segments, onUpdateSegments, onAddMaterial);
+  const [expandingSegmentId, setExpandingSegmentId] = useState<string | null>(null);
 
   const handleAddSegment = useCallback(() => {
     const title = t.scriptPanel.aiVideoScript.segmentTitle.replace('{index}', String(segments.length + 1));
@@ -47,6 +49,44 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
   const handleUpdateSegment = useCallback((segmentId: string, updates: Partial<AIVideoScriptSegment>) => {
     onUpdateSegments(segments.map(s => s.id === segmentId ? { ...s, ...updates } : s));
   }, [segments, onUpdateSegments]);
+
+  const handleExpandScript = useCallback(async (segmentId: string) => {
+    const segmentIndex = segments.findIndex(s => s.id === segmentId);
+    const segment = segments[segmentIndex];
+    if (!segment || !segment.scriptText.trim()) return;
+
+    setExpandingSegmentId(segmentId);
+    try {
+      const otherSegments = segments
+        .map((s, i) => ({
+          index: i,
+          title: s.title,
+          scriptText: s.scriptText.length > 200 ? s.scriptText.slice(0, 200) : s.scriptText,
+        }))
+        .filter((_, i) => i !== segmentIndex);
+
+      const response = await fetch('/api/ai-video-script-expand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: taskId || 'unknown',
+          segmentIndex,
+          segmentTitle: segment.title,
+          segmentText: segment.scriptText,
+          otherSegments,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success && data.expandedText) {
+        handleUpdateSegment(segmentId, { scriptText: data.expandedText });
+      }
+    } catch (error) {
+      console.error('Failed to expand script:', error);
+    } finally {
+      setExpandingSegmentId(null);
+    }
+  }, [segments, taskId, handleUpdateSegment]);
 
   // Empty state
   if (segments.length === 0) {
@@ -96,12 +136,40 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
             </button>
           </div>
 
+          {/* AI expand button */}
+          <div className="flex justify-end mb-1">
+            <button
+              onClick={() => handleExpandScript(segment.id)}
+              disabled={!segment.scriptText.trim() || expandingSegmentId === segment.id || segment.generationStatus === 'generating'}
+              className="flex items-center space-x-1 px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:text-purple-300 dark:hover:bg-purple-900/20 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={t.scriptPanel.aiVideoScript.expandScript}
+            >
+              {expandingSegmentId === segment.id ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>{t.scriptPanel.aiVideoScript.expandingScript}</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  <span>{t.scriptPanel.aiVideoScript.expandScript}</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Script textarea */}
           <textarea
             value={segment.scriptText}
             onChange={e => handleUpdateSegment(segment.id, { scriptText: e.target.value })}
+            disabled={expandingSegmentId === segment.id}
             placeholder={t.scriptPanel.aiVideoScript.scriptPlaceholder}
-            className="w-full p-2.5 text-sm border border-border rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent min-h-[96px] max-h-[200px]"
+            className="w-full p-2.5 text-sm border border-border rounded-md resize-y focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent min-h-[96px] max-h-[200px] disabled:opacity-60 disabled:cursor-not-allowed"
             rows={4}
           />
 
