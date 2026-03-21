@@ -457,13 +457,23 @@ async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[di
                 logger.warning(f"Frame index {segment.frame_index} not found in pack {request.pack_id}")
                 return {"frame_index": segment.frame_index, "ark_task_id": None, "error": "Frame not found"}
 
-            frame_image_url = _frame_url(date_str, request.pack_id, frame_info["filename"])
+            # Read frame image as base64 data URI since ARK API needs a reachable URL
+            # and local serving paths (/api/storage/files/...) are not publicly accessible.
+            frame_path = os.path.join(pack_directory, frame_info["filename"])
+            try:
+                async with aiofiles.open(frame_path, "rb") as img_file:
+                    img_bytes = await img_file.read()
+                import base64
+                frame_data_uri = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
+            except Exception as exc:
+                logger.error(f"Failed to read frame image {frame_path}: {exc}")
+                return {"frame_index": segment.frame_index, "ark_task_id": None, "error": f"Cannot read frame image: {exc}"}
 
             try:
                 ark_request = ArkVideoGenerateRequest(
                     prompt=segment.description,
                     mode="description",
-                    image_urls=[frame_image_url],
+                    image_urls=[frame_data_uri],
                     duration=segment.duration,
                 )
                 ark_task_id = await ark_video_service.create_task(ark_request)
