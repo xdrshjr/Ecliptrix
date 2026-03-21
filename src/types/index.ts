@@ -415,6 +415,8 @@ export interface VideoEditingTaskContent {
   lastModified: Date;
   scriptSegments?: ScriptSegment[]; // 文本脚本片段数据
   aiVideoScriptSegments?: AIVideoScriptSegment[]; // AI视频脚本片段数据
+  storyboardScriptSegments?: StoryboardScriptSegment[]; // 分镜脚本片段数据
+  selectedStoryboardPackId?: string; // 当前选中的分镜包ID
   materials?: MaterialItem[]; // 素材数据
   pendingTimelineData?: any; // 待导入的时间轴数据（从Workflow AI Video Generate节点）
   pendingMaterials?: MaterialItem[]; // 待导入的素材数据（从Workflow Video Export节点）
@@ -462,8 +464,60 @@ export interface ScriptGenerationConfig {
   customRequirements?: string;
 }
 
+// ========================
+// Storyboard Generation types
+// ========================
+
+/** Supported storyboard grid sizes (square grids only) */
+export type StoryboardGridSize = '2x2' | '3x3' | '4x4' | '6x6' | '8x8';
+
+/** A single frame within a storyboard pack */
+export interface StoryboardFrame {
+  index: number;
+  filename: string;
+  url: string;           // Accessible image URL
+  row: number;
+  col: number;
+  description?: string;  // VL_LLM generated description (filled later)
+}
+
+/** A storyboard pack containing the original image and its cropped frames */
+export interface StoryboardPack {
+  packId: string;
+  prompt: string;
+  gridSize: StoryboardGridSize;
+  frameCount: number;
+  createdAt: string;
+  originalImageUrl: string;   // Original full grid image URL
+  referenceImageUrl?: string; // Reference image URL (if provided)
+  frames: StoryboardFrame[];
+}
+
+/** Parameters for generating a storyboard */
+export interface StoryboardGenerateParams {
+  prompt: string;
+  gridSize: StoryboardGridSize;
+  referenceImage?: string;    // base64 data URI
+}
+
+/** A storyboard script segment for AI video generation from storyboard frames */
+export interface StoryboardScriptSegment {
+  id: string;
+  frameIndex: number;
+  frameUrl: string;
+  frameThumbnailUrl?: string;
+  description: string;
+  duration: number;            // seconds (4-12)
+  generationStatus: 'idle' | 'generating' | 'succeeded' | 'failed';
+  generationProgress?: number;
+  arkTaskId?: string;
+  generatedVideoUrl?: string;
+  generatedVideoThumbnailUrl?: string;
+  generationError?: string;
+}
+
 // Materials Management related types
-export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle';
+export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle' | 'storyboard_pack';
 
 // 下载状态类型
 export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'completed' | 'error';

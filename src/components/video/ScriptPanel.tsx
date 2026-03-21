@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment, AIVideoScriptSegment } from '@/types';
+import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
 import { 
   convertTextToSpeech, 
   convertBatchTextToSpeech,
@@ -33,6 +33,7 @@ import { VideoAnalysisResponse } from './services/videoAnalysisService';
 import { useLocale } from '@/contexts/LocaleContext';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { AIVideoScriptTab, createAIVideoSegment } from './components/AIVideoScriptTab';
+import { StoryboardScriptTab } from './components/StoryboardScriptTab';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -48,6 +49,8 @@ interface ScriptPanelProps {
   onUpdateAIVideoScriptSegments?: (segments: AIVideoScriptSegment[]) => void;
   onGenerateAIVideoScript?: () => void;
   isGeneratingAIVideoScript?: boolean;
+  storyboardScriptSegments?: StoryboardScriptSegment[];
+  onUpdateStoryboardScriptSegments?: (segments: StoryboardScriptSegment[]) => void;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -64,6 +67,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   onUpdateAIVideoScriptSegments,
   onGenerateAIVideoScript,
   isGeneratingAIVideoScript = false,
+  storyboardScriptSegments = [],
+  onUpdateStoryboardScriptSegments,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -77,7 +82,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const { t } = useLocale();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'narration' | 'aiVideo'>('narration');
+  const [activeTab, setActiveTab] = useState<'narration' | 'aiVideo' | 'storyboard'>('narration');
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -1605,7 +1610,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             )}
           </div>
           <div className="flex items-center space-x-2">
-            {activeTab === 'narration' ? (
+            {activeTab === 'storyboard' ? (
+              /* AI分镜 tab — action buttons are inside the tab content */
+              null
+            ) : activeTab === 'narration' ? (
               <>
                 {/* 生成脚本按钮 */}
                 {onGenerateScript && (
@@ -1708,11 +1716,32 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           >
             {t.scriptPanel.tabs.aiVideoScript}
           </button>
+          <button
+            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              activeTab === 'storyboard' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('storyboard')}
+          >
+            AI分镜
+          </button>
         </div>
       </div>
 
       {/* Tab 内容区域 */}
-      {activeTab === 'aiVideo' ? (
+      {activeTab === 'storyboard' ? (
+        onUpdateStoryboardScriptSegments ? (
+          <StoryboardScriptTab
+            segments={storyboardScriptSegments}
+            onUpdateSegments={onUpdateStoryboardScriptSegments}
+            onAddMaterial={onAddMaterial}
+            taskId={taskId}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <p className="text-sm text-muted-foreground">请选择一个分镜包开始</p>
+          </div>
+        )
+      ) : activeTab === 'aiVideo' ? (
         onUpdateAIVideoScriptSegments ? (
           <AIVideoScriptTab
             segments={aiVideoScriptSegments}

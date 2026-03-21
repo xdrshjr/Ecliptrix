@@ -12,6 +12,10 @@ import WatermarkRemovalModal from '../WatermarkRemovalModal/WatermarkRemovalModa
 import { useNotification } from '@/contexts/NotificationContext';
 import AiVideoModal from '../AiVideoModal/AiVideoModal';
 import AiImageModal from '../AiImageModal/AiImageModal';
+import StoryboardPackCard from './StoryboardPackCard';
+import StoryboardPackView from './StoryboardPackView';
+import { StoryboardPack, StoryboardFrame } from '@/types';
+import { listPacks, deletePack } from '@/lib/api/storyboard';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -26,6 +30,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onAddToTimeline?: (material: MaterialItem) => void; // 新增：添加到时间轴回调
   onCutMaterial?: (material: MaterialItem) => void; // 新增：剪切素材回调
   onWatermarkRemoval?: (material: MaterialItem) => void; // 新增：水印去除回调
+  onSelectPackForScript?: (pack: StoryboardPack) => void; // 分镜包→脚本面板回调
   taskId: string;
   className?: string;
 }
@@ -51,6 +56,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onAddToTimeline, // 新增：添加到时间轴回调
   onCutMaterial, // 新增：剪切素材回调
   onWatermarkRemoval, // 新增：水印去除回调
+  onSelectPackForScript, // 分镜包→脚本面板回调
   taskId,
   className = '',
   // 新增的删除功能
@@ -59,6 +65,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   handleCloseConfirmationDialog,
   handleAiVideoGenerate,
   handleAiImageGenerate,
+  handleStoryboardGenerate,
 }) => {
   const { t } = useLocale();
   const { showSuccess, showError } = useNotification();
@@ -106,6 +113,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   // AI图像生成弹窗状态
   const [isAiImageModalOpen, setIsAiImageModalOpen] = useState(false);
 
+  // 分镜包状态
+  const [storyboardPacks, setStoryboardPacks] = useState<StoryboardPack[]>([]);
+  const [currentStoryboardPack, setCurrentStoryboardPack] = useState<StoryboardPack | null>(null);
+  const [storyboardPackDeleteConfirm, setStoryboardPackDeleteConfirm] = useState<{
+    isOpen: boolean;
+    packId: string | null;
+  }>({ isOpen: false, packId: null });
+
   // 图片转视频弹出菜单状态
   const [imageToVideoPopover, setImageToVideoPopover] = useState<{
     visible: boolean;
@@ -133,6 +148,87 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       buttonStyleUpdate: 'icon-only-with-tooltip',
       emptyStateUpdate: 'removed-search-button'
     });
+  }, []);
+
+  // 加载分镜包列表
+  useEffect(() => {
+    const loadPacks = async () => {
+      try {
+        const packs = await listPacks();
+        setStoryboardPacks(packs);
+        logger.info('分镜包列表加载成功', { count: packs.length });
+      } catch (error) {
+        logger.error('加载分镜包列表失败', error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    loadPacks();
+  }, []);
+
+  // 删除分镜包
+  const handleDeleteStoryboardPack = useCallback((packId: string) => {
+    setStoryboardPackDeleteConfirm({ isOpen: true, packId });
+  }, []);
+
+  const handleConfirmDeleteStoryboardPack = useCallback(async () => {
+    const packId = storyboardPackDeleteConfirm.packId;
+    if (!packId) return;
+    setStoryboardPackDeleteConfirm({ isOpen: false, packId: null });
+    try {
+      await deletePack(packId);
+      setStoryboardPacks(prev => prev.filter(p => p.packId !== packId));
+      // If we are inside this pack, go back to top level
+      if (currentStoryboardPack?.packId === packId) {
+        setCurrentStoryboardPack(null);
+      }
+      showSuccess('分镜包已删除');
+      logger.info('分镜包删除成功', { packId });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`删除分镜包失败: ${msg}`);
+      logger.error('删除分镜包失败', error instanceof Error ? error : new Error(msg));
+    }
+  }, [storyboardPackDeleteConfirm.packId, currentStoryboardPack, showSuccess, showError, logger]);
+
+  // 将所有帧添加为独立素材
+  const handleAddAllFramesToMaterials = useCallback((pack: StoryboardPack) => {
+    const newMaterials: MaterialItem[] = pack.frames.map((frame, idx) => ({
+      id: `storyboard_frame_${pack.packId}_${frame.index}_${Date.now()}`,
+      name: `分镜_${pack.gridSize}_帧${idx + 1}`,
+      type: 'image' as const,
+      format: 'png',
+      size: 0,
+      url: frame.url,
+      thumbnailUrl: frame.url,
+      createdAt: new Date(),
+      metadata: {
+        source: 'storyboard',
+        storyboardPackId: pack.packId,
+        frameIndex: frame.index,
+      },
+    }));
+    const success = addOrReplaceMaterial
+      ? newMaterials.every(m => addOrReplaceMaterial(m))
+      : false;
+    if (success) {
+      showSuccess(`已添加 ${newMaterials.length} 帧到素材`);
+    }
+  }, [addOrReplaceMaterial, showSuccess]);
+
+  // 处理帧点击（预览）— index=-1 表示原始分镜大图
+  const handleFramePreviewClick = useCallback((frame: StoryboardFrame) => {
+    if (!frame.url) return;
+    const isOriginalImage = frame.index === -1;
+    const pseudoMaterial: MaterialItem = {
+      id: isOriginalImage ? 'frame_preview_original' : `frame_preview_${frame.index}`,
+      name: isOriginalImage ? '原始分镜大图' : `帧 #${frame.index + 1}`,
+      type: 'image',
+      format: 'png',
+      size: 0,
+      url: frame.url,
+      thumbnailUrl: frame.url,
+      createdAt: new Date(),
+    };
+    setPreviewModal({ isOpen: true, material: pseudoMaterial });
   }, []);
 
   // 关闭图片转视频弹出菜单（点击外部）
@@ -1264,7 +1360,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <div className="materials-panel-content">
         {/* 素材类型筛选标签 */}
         <div className="flex space-x-1 mb-4 p-1 bg-muted rounded-md">
-          {(['all', 'video', 'audio', 'image', 'subtitle'] as const).map((type) => (
+          {(['all', 'video', 'audio', 'image', 'subtitle', 'storyboard_pack'] as const).map((type) => (
             <button
               key={type}
               onClick={() => handleTypeFilter(type)}
@@ -1274,16 +1370,32 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {type === 'all' ? t.materialsPanel.filterAll : 
+              {type === 'all' ? t.materialsPanel.filterAll :
                type === 'video' ? t.materialsPanel.filterVideo :
-               type === 'audio' ? t.materialsPanel.filterAudio : 
-               type === 'image' ? t.materialsPanel.filterImage : t.materialsPanel.filterSubtitle}
+               type === 'audio' ? t.materialsPanel.filterAudio :
+               type === 'image' ? t.materialsPanel.filterImage :
+               type === 'storyboard_pack' ? '分镜包' : t.materialsPanel.filterSubtitle}
             </button>
           ))}
         </div>
 
-        {/* 素材网格 */}
-        <div 
+        {/* 分镜包内部视图 — 当 currentStoryboardPack 非空时显示 */}
+        {currentStoryboardPack ? (
+          <div className="materials-grid-container">
+            <StoryboardPackView
+              pack={currentStoryboardPack}
+              onBack={() => setCurrentStoryboardPack(null)}
+              onSelectForScript={(pack) => {
+                if (onSelectPackForScript) onSelectPackForScript(pack);
+              }}
+              onDelete={handleDeleteStoryboardPack}
+              onFrameClick={handleFramePreviewClick}
+              onAddAllFramesToMaterials={handleAddAllFramesToMaterials}
+            />
+          </div>
+        ) : (
+        /* 素材网格 */
+        <div
           className={`materials-grid-container relative ${
             isDragOver ? 'drag-over' : ''
           }`}
@@ -1307,7 +1419,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
           )}
 
-          {materials.length === 0 ? (
+          {/* Empty state for storyboard_pack filter with no packs */}
+          {selectedMaterialType === 'storyboard_pack' && storyboardPacks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 px-4">
+              <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">暂无分镜包</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
+                点击AI图像生成创建分镜包
+              </p>
+            </div>
+          ) : materials.length === 0 && storyboardPacks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1324,7 +1449,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
-              {materials
+              {/* 分镜包卡片 — 在 all 或 storyboard_pack 筛选时显示 */}
+              {(selectedMaterialType === 'all' || selectedMaterialType === 'storyboard_pack') &&
+                storyboardPacks.map((pack) => (
+                  <StoryboardPackCard
+                    key={`sp_${pack.packId}`}
+                    pack={pack}
+                    onDoubleClick={(p) => setCurrentStoryboardPack(p)}
+                    onDelete={handleDeleteStoryboardPack}
+                  />
+                ))
+              }
+              {/* 普通素材卡片 — storyboard_pack 筛选时不显示 */}
+              {selectedMaterialType !== 'storyboard_pack' && materials
                 .filter(material => selectedMaterialType === 'all' || material.type === selectedMaterialType)
                 .map((material) => (
                 <div
@@ -1764,6 +1901,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
           )}
         </div>
+        )}
 
         {/* 底部操作栏 */}
         <div className="border-t pt-3 flex-shrink-0">
@@ -1880,6 +2018,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         type={confirmationDialog.type}
         onConfirm={confirmationDialog.onConfirm}
         onCancel={handleCloseConfirmationDialog}
+      />
+
+      {/* 分镜包删除确认对话框 */}
+      <ConfirmationDialog
+        isOpen={storyboardPackDeleteConfirm.isOpen}
+        title="删除分镜包"
+        message="确定要删除此分镜包吗？所有帧和相关数据将被永久删除。"
+        type="danger"
+        onConfirm={handleConfirmDeleteStoryboardPack}
+        onCancel={() => setStoryboardPackDeleteConfirm({ isOpen: false, packId: null })}
       />
 
       {/* 图片转视频方式选择弹出菜单 */}
@@ -2112,6 +2260,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             showError(err.message || 'AI图像生成失败');
           });
         }}
+        onStoryboardGenerate={handleStoryboardGenerate}
       />
     </div>
   );

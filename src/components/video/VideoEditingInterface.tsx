@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -608,6 +608,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     onUpdateContent({
       ...content,
       aiVideoScriptSegments: segments,
+    });
+  }, [content, onUpdateContent]);
+
+  // 分镜脚本片段更新
+  const handleUpdateStoryboardScriptSegments = useCallback((segments: StoryboardScriptSegment[]) => {
+    if (!content) return;
+    onUpdateContent({
+      ...content,
+      storyboardScriptSegments: segments,
     });
   }, [content, onUpdateContent]);
 
@@ -2812,6 +2821,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onUpdateAIVideoScriptSegments={handleUpdateAIVideoScriptSegments}
               onGenerateAIVideoScript={handleAIVideoScriptGenerationClick}
               isGeneratingAIVideoScript={isGeneratingAIVideoScript}
+              storyboardScriptSegments={content?.storyboardScriptSegments || []}
+              onUpdateStoryboardScriptSegments={handleUpdateStoryboardScriptSegments}
             />
           </div>
 

@@ -1,25 +1,31 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArkImageGenerateParams, ArkImageMode } from '@/lib/api/arkImage';
+import { StoryboardGenerateParams, StoryboardPack } from '@/types';
 import BasicGenerationTab, { BasicGenerationState } from './BasicGenerationTab';
 import CharacterModelingTab, { CharacterModelingState } from './CharacterModelingTab';
 import SceneModelingTab, { SceneModelingState } from './SceneModelingTab';
+import StoryboardTab, { StoryboardTabState } from './StoryboardTab';
 
 interface AiImageModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (params: ArkImageGenerateParams) => void;
+  onStoryboardGenerate?: (params: StoryboardGenerateParams) => Promise<StoryboardPack>;
 }
 
-const TABS: { key: ArkImageMode; label: string }[] = [
+type TabKey = ArkImageMode | 'storyboard';
+
+const TABS: { key: TabKey; label: string }[] = [
   { key: 'basic', label: '基础生成' },
   { key: 'character', label: '人物建模' },
   { key: 'scene', label: '场景建模' },
+  { key: 'storyboard', label: '分镜生成' },
 ];
 
-const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm }) => {
-  const [activeTab, setActiveTab] = useState<ArkImageMode>('basic');
+const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm, onStoryboardGenerate }) => {
+  const [activeTab, setActiveTab] = useState<TabKey>('basic');
   const [submitted, setSubmitted] = useState(false);
 
   const [basicState, setBasicState] = useState<BasicGenerationState>({
@@ -44,6 +50,12 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
     selectedTemplateId: null,
   });
 
+  const [storyboardState, setStoryboardState] = useState<StoryboardTabState>({
+    prompt: '',
+    gridSize: '3x3',
+    referenceImage: null,
+  });
+
   // Reset form state whenever the modal opens, so previous submitted/state
   // does not leak across open/close cycles (parent may close without calling handleClose).
   useEffect(() => {
@@ -59,6 +71,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
     setBasicState({ prompt: '', size: '2048x2048', count: 1, watermark: true, referenceImage: null });
     setCharacterState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
     setSceneState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
+    setStoryboardState({ prompt: '', gridSize: '3x3', referenceImage: null });
   };
 
   const handleClose = () => {
@@ -71,10 +84,25 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
       case 'basic': return basicState.prompt;
       case 'character': return characterState.prompt;
       case 'scene': return sceneState.prompt;
+      case 'storyboard': return storyboardState.prompt;
     }
   };
 
+  const handleStoryboardGenerate = useCallback(async (tabState: StoryboardTabState): Promise<StoryboardPack> => {
+    if (!onStoryboardGenerate) {
+      throw new Error('分镜生成功能未配置');
+    }
+    return onStoryboardGenerate({
+      prompt: tabState.prompt,
+      gridSize: tabState.gridSize,
+      referenceImage: tabState.referenceImage || undefined,
+    });
+  }, [onStoryboardGenerate]);
+
   const handleSubmit = () => {
+    // Storyboard tab has its own generate flow; this handler is only for image generation tabs
+    if (activeTab === 'storyboard') return;
+
     const prompt = getCurrentPrompt().trim();
     if (!prompt || submitted) return;
     setSubmitted(true);
@@ -172,24 +200,33 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm 
           {activeTab === 'scene' && (
             <SceneModelingTab state={sceneState} onChange={setSceneState} />
           )}
+          {activeTab === 'storyboard' && (
+            <StoryboardTab
+              state={storyboardState}
+              onChange={setStoryboardState}
+              onGenerate={handleStoryboardGenerate}
+            />
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="px-8 py-4 border-t border-border bg-muted/50 flex justify-end gap-3">
-          <button
-            onClick={handleClose}
-            className="px-6 py-2.5 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!getCurrentPrompt().trim() || submitted}
-            className="px-6 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {submitted ? '生成中...' : '开始生成'}
-          </button>
-        </div>
+        {/* Footer — hidden for storyboard tab which has its own generate button */}
+        {activeTab !== 'storyboard' && (
+          <div className="px-8 py-4 border-t border-border bg-muted/50 flex justify-end gap-3">
+            <button
+              onClick={handleClose}
+              className="px-6 py-2.5 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!getCurrentPrompt().trim() || submitted}
+              className="px-6 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {submitted ? '生成中...' : '开始生成'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

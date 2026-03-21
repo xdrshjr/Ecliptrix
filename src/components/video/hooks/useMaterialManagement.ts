@@ -1,10 +1,11 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { MaterialItem, MaterialType } from '@/types';
+import { MaterialItem, MaterialType, StoryboardGenerateParams, StoryboardPack } from '@/types';
 import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
+import { generateStoryboard } from '@/lib/api/storyboard';
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -1029,6 +1030,34 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     }
   }, [logger, addOrReplaceMaterial]);
 
+  // 分镜包生成
+  const handleStoryboardGenerate = useCallback(async (params: StoryboardGenerateParams): Promise<StoryboardPack> => {
+    const createdAt = new Date();
+    const timeStr = createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const pack = await generateStoryboard(params);
+
+    // Add the storyboard pack as a special MaterialItem
+    const packMaterial: MaterialItem = {
+      id: pack.packId,
+      name: `分镜包_${params.gridSize}_${timeStr}`,
+      type: 'storyboard_pack',
+      format: 'png',
+      size: 0,
+      url: pack.originalImageUrl,
+      thumbnailUrl: pack.originalImageUrl,
+      createdAt,
+      metadata: {
+        source: 'storyboard',
+        storyboardPack: pack,
+      },
+    };
+    setMaterials(prev => [packMaterial, ...prev]);
+    logger.info(`分镜包生成成功: ${pack.packId}, ${pack.frameCount} 帧`);
+
+    return pack;
+  }, [logger]);
+
   // 过滤后的素材列表
   const filteredMaterials = useMemo(() => {
     if (selectedMaterialType === 'all') {
@@ -1056,6 +1085,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleCloseConfirmationDialog,
     handleAiVideoGenerate,
     handleAiImageGenerate,
+    handleStoryboardGenerate,
   };
 };
 

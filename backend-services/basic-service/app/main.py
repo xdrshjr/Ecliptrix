@@ -374,6 +374,10 @@ app.include_router(ark_image_router.router, prefix="/api")
 from app.routers import model_settings_router
 app.include_router(model_settings_router.router, prefix="/api")
 
+# Import and include Storyboard router
+from app.routers import storyboard_router
+app.include_router(storyboard_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)
