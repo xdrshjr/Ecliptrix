@@ -132,7 +132,7 @@ export function useStoryboardScriptGeneration({
                 size: 0,
                 url: statusResult.video_url,
                 serverUrl: statusResult.video_url,
-                thumbnailUrl: statusResult.thumbnail_url || statusResult.video_url,
+                thumbnailUrl: statusResult.thumbnail_url,
                 duration: statusResult.duration || seg?.duration || 5,
                 createdAt: new Date(),
                 metadata: { source: 'storyboard-script' },
