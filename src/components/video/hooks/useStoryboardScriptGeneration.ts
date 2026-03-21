@@ -7,9 +7,9 @@ import {
   getPack,
   describeFrames,
   batchGenerateVideos,
-  getBatchVideoStatus,
   composeVideo,
 } from '@/lib/api/storyboard';
+import { getArkVideoStatus } from '@/lib/api/arkVideo';
 
 const POLL_INTERVAL = 5000;
 
@@ -97,46 +97,28 @@ export function useStoryboardScriptGeneration({
   }, []);
 
   const startPolling = useCallback(
-    (segmentId: string, packId: string, frameIndex: number) => {
+    (segmentId: string, arkTaskId: string) => {
       stopPolling(segmentId);
 
       let simulatedProgress = 10;
 
       const timer = setInterval(async () => {
         try {
-          const result = await getBatchVideoStatus(packId);
+          // Poll individual ARK task status — same proven pattern as useAIVideoScriptGeneration
+          const statusResult = await getArkVideoStatus(arkTaskId);
 
-          // Find status for this specific frame
-          const frameStatus = result.segments.find(
-            (s) => s.frameIndex === frameIndex,
-          );
-
-          if (!frameStatus) {
-            // Still pending — simulate progress
-            simulatedProgress = Math.min(
-              simulatedProgress + Math.random() * 8,
-              90,
-            );
-            updateSegment(segmentId, {
-              generationProgress: Math.round(simulatedProgress),
-            });
-            return;
-          }
-
-          if (
-            frameStatus.status === 'succeeded' &&
-            frameStatus.videoUrl
-          ) {
+          if (statusResult.status === 'succeeded' && statusResult.video_url) {
             stopPolling(segmentId);
             updateSegment(segmentId, {
               generationStatus: 'succeeded',
               generationProgress: 100,
-              generatedVideoUrl: frameStatus.videoUrl,
+              generatedVideoUrl: statusResult.video_url,
+              generatedVideoThumbnailUrl: statusResult.thumbnail_url,
               generationError: undefined,
             });
 
             // Add to materials panel
-            if (onAddMaterial && frameStatus.videoUrl) {
+            if (onAddMaterial) {
               const seg = segmentsRef.current.find(
                 (s) => s.id === segmentId,
               );
@@ -148,25 +130,24 @@ export function useStoryboardScriptGeneration({
                 type: 'video',
                 format: 'mp4',
                 size: 0,
-                url: frameStatus.videoUrl,
-                serverUrl: frameStatus.videoUrl,
-                thumbnailUrl: frameStatus.videoUrl,
-                duration: seg?.duration || 5,
+                url: statusResult.video_url,
+                serverUrl: statusResult.video_url,
+                thumbnailUrl: statusResult.thumbnail_url || statusResult.video_url,
+                duration: statusResult.duration || seg?.duration || 5,
                 createdAt: new Date(),
                 metadata: { source: 'storyboard-script' },
               };
               onAddMaterial(material);
             }
-          } else if (frameStatus.status === 'failed') {
+          } else if (statusResult.status === 'failed') {
             stopPolling(segmentId);
             updateSegment(segmentId, {
               generationStatus: 'failed',
               generationProgress: 0,
-              generationError:
-                frameStatus.error || '视频生成失败',
+              generationError: statusResult.error || '视频生成失败',
             });
           } else {
-            // Running — simulate progress
+            // Still running — simulate progress
             simulatedProgress = Math.min(
               simulatedProgress + Math.random() * 8,
               90,
@@ -329,11 +310,7 @@ export function useStoryboardScriptGeneration({
             arkTaskId: result.taskIds[0],
             generationProgress: 10,
           });
-          startPolling(
-            segmentId,
-            selectedPackId,
-            segment.frameIndex,
-          );
+          startPolling(segmentId, result.taskIds[0]);
         } else {
           updateSegment(segmentId, {
             generationStatus: 'failed',
@@ -405,11 +382,7 @@ export function useStoryboardScriptGeneration({
               arkTaskId: result.taskIds[i],
               generationProgress: 10,
             });
-            startPolling(
-              seg.id,
-              selectedPackId,
-              seg.frameIndex,
-            );
+            startPolling(seg.id, result.taskIds[i]);
           }
         });
       } else {
@@ -538,11 +511,7 @@ export function useStoryboardScriptGeneration({
         segment.arkTaskId
       ) {
         if (!pollTimers.current.has(segment.id)) {
-          startPolling(
-            segment.id,
-            selectedPackId,
-            segment.frameIndex,
-          );
+          startPolling(segment.id, segment.arkTaskId);
         }
       }
     }
