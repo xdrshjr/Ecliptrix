@@ -173,7 +173,13 @@ export async function batchGenerateVideos(
     throw new Error(data.message || '批量视频生成失败');
   }
 
-  return data.data;
+  // Backend returns tasks in top-level `tasks` field, not `data`
+  const tasks = data.tasks || [];
+  return {
+    taskIds: tasks
+      .filter((t: { ark_task_id?: string | null }) => t.ark_task_id)
+      .map((t: { ark_task_id: string }) => t.ark_task_id),
+  };
 }
 
 /**
@@ -195,7 +201,17 @@ export async function getBatchVideoStatus(
     throw new Error(data.message || '获取批量视频状态失败');
   }
 
-  return data.data;
+  // Backend returns statuses in top-level `statuses` field, not `data`
+  const statuses = data.statuses || [];
+  return {
+    status: 'processing' as const,
+    segments: statuses.map((s: { frame_index: number; status: string; video_url?: string; error?: string }) => ({
+      frameIndex: s.frame_index,
+      status: s.status,
+      videoUrl: s.video_url,
+      error: s.error,
+    })),
+  };
 }
 
 /**
@@ -220,5 +236,8 @@ export async function composeVideo(
     throw new Error(data.message || '视频合成失败');
   }
 
-  return data.data;
+  // Backend returns video_url in top-level field, not nested in data
+  return {
+    videoUrl: data.video_url || '',
+  };
 }
