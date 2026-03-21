@@ -375,14 +375,17 @@ export function useStoryboardScriptGeneration({
       );
 
       if (result.taskIds && result.taskIds.length > 0) {
-        // Update task IDs and start polling for each
+        // Update task IDs and start polling for each, staggered to avoid burst requests
         idleSegments.forEach((seg, i) => {
           if (i < result.taskIds.length) {
             updateSegment(seg.id, {
               arkTaskId: result.taskIds[i],
               generationProgress: 10,
             });
-            startPolling(seg.id, result.taskIds[i]);
+            // Stagger polling start: each task offset by 1s to spread load
+            setTimeout(() => {
+              startPolling(seg.id, result.taskIds[i]);
+            }, i * 1000);
           }
         });
       } else {
