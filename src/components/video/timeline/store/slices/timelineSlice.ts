@@ -55,6 +55,8 @@ export interface TimelineSlice {
   resizeItem: (itemId: string, edge: 'start' | 'end', newPosition: number) => void;
   updateItemVolume: (itemId: string, volume: number) => void;
   updateItemSubtitle: (itemId: string, text: string) => void;
+  /** Shift subsequent items on the same track to close gaps after a given item. */
+  consolidateTrackAfterItem: (itemId: string) => void;
 
   // Track operations
   toggleTrackLock: (trackId: string) => void;
@@ -223,6 +225,33 @@ export const createTimelineSlice: StateCreator<
         return;
       }
 
+      state._syncDerivedState();
+    },
+
+    consolidateTrackAfterItem: (itemId: string) => {
+      const state = get();
+      const aggregate = state._aggregate;
+      const found = aggregate.findItem(itemId);
+      if (!found) return;
+
+      const { track, item: anchorItem } = found;
+      // Get all items sorted by startTime
+      const sortedItems = [...track.items].sort(
+        (a, b) => a.startTime.value - b.startTime.value,
+      );
+      const anchorIdx = sortedItems.findIndex(i => i.id === itemId);
+      if (anchorIdx < 0) return;
+
+      // Chain subsequent items end-to-end starting from the anchor's end
+      let nextStart = anchorItem.endTime().value;
+      for (let i = anchorIdx + 1; i < sortedItems.length; i++) {
+        if (sortedItems[i].startTime.value !== nextStart) {
+          sortedItems[i].moveTo(TimePosition.create(nextStart));
+        }
+        nextStart = sortedItems[i].endTime().value;
+      }
+
+      track.sortItems();
       state._syncDerivedState();
     },
 

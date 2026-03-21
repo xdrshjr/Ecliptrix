@@ -55,6 +55,7 @@ export {
   isDragging,
   isResizing,
   isActive,
+  isInteracting,
   isCommitted,
   getDragPreview,
   materialDropMachine,

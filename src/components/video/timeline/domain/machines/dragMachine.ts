@@ -573,6 +573,11 @@ export function isActive(snapshot: DragSnapshot): boolean {
   return !snapshot.matches('idle') && !snapshot.matches('committed');
 }
 
+/** Whether the machine is in any non-idle state (including detecting). */
+export function isInteracting(snapshot: DragSnapshot): boolean {
+  return !snapshot.matches('idle');
+}
+
 /** Whether the machine is in the committed state (awaiting store commit). */
 export function isCommitted(snapshot: DragSnapshot): boolean {
   return snapshot.matches('committed');

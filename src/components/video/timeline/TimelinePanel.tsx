@@ -102,8 +102,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   // Store selectors
   // ---------------------------------------------------------------------------
-  const { isDragging, isResizing } = useTimelineStore(
-    useShallow((state) => ({ isDragging: state.isDragging, isResizing: state.isResizing })),
+  const { isDragging, isResizing, isInteracting } = useTimelineStore(
+    useShallow((state) => ({ isDragging: state.isDragging, isResizing: state.isResizing, isInteracting: state.isInteracting })),
   );
 
   // ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const dragStartXRef = useRef(0);
 
   useEffect(() => {
-    if (!isDragging && !isResizing) return;
+    if (!isInteracting) return;
 
     // Capture the start position from the drag actor context if available
     const actor = useTimelineStore.getState()._dragActor;
@@ -252,7 +252,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDragging, isResizing]);
+  }, [isInteracting]);
 
   // ---------------------------------------------------------------------------
   // Global keyboard shortcuts (Ctrl+Z, Ctrl+Y, Delete, Escape)

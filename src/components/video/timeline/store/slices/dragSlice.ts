@@ -16,6 +16,7 @@ import {
   createDragActor,
   isDragging as isDraggingQuery,
   isResizing as isResizingQuery,
+  isInteracting as isInteractingQuery,
   getDragPreview as getDragPreviewQuery,
   isCommitted as isCommittedQuery,
 } from '../../domain';
@@ -57,6 +58,8 @@ export interface DragSlice {
   // Derived convenience state
   isDragging: boolean;
   isResizing: boolean;
+  /** True when the drag machine is in any non-idle state (including detecting). */
+  isInteracting: boolean;
   dragPreview: DragPreviewData | null;
 
   // Material drag-over state (HTML5 DnD from material panel)
@@ -94,12 +97,14 @@ function ensureDragActor(
   actor.subscribe((snapshot) => {
     const dragging = isDraggingQuery(snapshot);
     const resizing = isResizingQuery(snapshot);
+    const interacting = isInteractingQuery(snapshot);
     const preview = getDragPreviewQuery(snapshot);
     const committed = isCommittedQuery(snapshot);
 
     set({
       isDragging: dragging,
       isResizing: resizing,
+      isInteracting: interacting,
       dragPreview: preview,
     });
 
@@ -117,6 +122,8 @@ function ensureDragActor(
         const edge = interactionType === 'resize-start' ? 'start' : 'end';
         const position = edge === 'start' ? preview.startTime : preview.startTime + preview.duration;
         state.resizeItem(preview.itemId, edge, position);
+        // Auto-consolidate: shift subsequent items to close gaps
+        state.consolidateTrackAfterItem(preview.itemId);
       }
 
       // Signal commit complete to reset the machine
@@ -142,6 +149,7 @@ export const createDragSlice: StateCreator<
   _dragActor: null,
   isDragging: false,
   isResizing: false,
+  isInteracting: false,
   dragPreview: null,
   materialDragOver: null,
 
@@ -203,6 +211,7 @@ export const createDragSlice: StateCreator<
         _dragActor: null,
         isDragging: false,
         isResizing: false,
+        isInteracting: false,
         dragPreview: null,
       } as Partial<TimelineStore>);
     }

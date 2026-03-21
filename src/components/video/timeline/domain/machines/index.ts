@@ -11,6 +11,7 @@ export {
   isDragging,
   isResizing,
   isActive,
+  isInteracting,
   isCommitted,
   getDragPreview,
 } from './dragMachine';
