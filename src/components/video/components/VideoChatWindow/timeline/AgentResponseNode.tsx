@@ -39,8 +39,9 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
   node,
   onUndoAll,
   onUndoSingle,
-  isStreaming = false,
+  isStreaming: isStreamingProp = false,
 }) => {
+  const isStreaming = node.isStreaming ?? isStreamingProp;
   const [showUndoMenu, setShowUndoMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +112,7 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
 
         {/* Markdown content + streaming cursor */}
         <div className={`text-sm leading-relaxed ${node.isUndone ? 'line-through decoration-muted-foreground/50' : ''}`}>
-          <MarkdownRenderer content={node.content} isUser={false} />
+          <MarkdownRenderer content={node.content} isUser={false} isStreaming={isStreaming} />
           <AnimatePresence>
             {isStreaming && (
               <motion.span

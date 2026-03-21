@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
@@ -9,18 +9,105 @@ import remarkGfm from 'remark-gfm';
 interface MarkdownRendererProps {
   content: string;
   isUser?: boolean;
+  /** When true, incomplete markdown at the tail is sanitized before rendering. */
+  isStreaming?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming markdown sanitizer
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize incomplete markdown constructs at the tail of streaming content.
+ * Only inspects the last ~200 characters for performance.
+ *
+ * Handles:
+ * - Unclosed code fences (odd count of ```) → appends closing fence
+ * - Trailing unclosed bold ** or italic * → strips the incomplete marker
+ * - Incomplete links [text](url without closing ) → strips incomplete link
+ * - Trailing incomplete inline code ` → strips it
+ */
+function sanitizeStreamingMarkdown(content: string): string {
+  if (!content) return content;
+
+  let result = content;
+
+  // 1. Unclosed code fences: count occurrences of ``` (on their own line or inline)
+  const fenceMatches = result.match(/```/g);
+  if (fenceMatches && fenceMatches.length % 2 !== 0) {
+    // Odd number of fences — close the open block
+    result += '\n```';
+  }
+
+  // Only inspect the tail for inline constructs (last 200 chars)
+  const tailStart = Math.max(0, result.length - 200);
+  const tail = result.slice(tailStart);
+
+  // 2. Incomplete link: [text](url  without closing )
+  // Match a [ that has a ]( but no closing )
+  const incompleteLinkMatch = tail.match(/\[[^\]]*\]\([^)]*$/);
+  if (incompleteLinkMatch) {
+    result = result.slice(0, tailStart + incompleteLinkMatch.index!);
+  }
+
+  // 3. Incomplete link text: [ without closing ]
+  const incompleteLinkTextMatch = tail.match(/\[[^\]]*$/);
+  if (incompleteLinkTextMatch && !tail.slice(incompleteLinkTextMatch.index!).includes(']')) {
+    result = result.slice(0, tailStart + incompleteLinkTextMatch.index!);
+  }
+
+  // 4. Unclosed bold (**) — check if there's an unmatched ** in the tail
+  const tailForBold = result.slice(Math.max(0, result.length - 200));
+  const boldParts = tailForBold.split('**');
+  if (boldParts.length % 2 === 0) {
+    // Odd number of ** markers (split produces even parts) → unclosed bold
+    const lastBoldIdx = result.lastIndexOf('**');
+    if (lastBoldIdx >= 0) {
+      result = result.slice(0, lastBoldIdx);
+    }
+  }
+
+  // 5. Unclosed italic (*) — only single * not part of **
+  // Check for trailing unmatched single *
+  const tailForItalic = result.slice(Math.max(0, result.length - 100));
+  // Replace ** to avoid false positives, then check for odd *
+  const withoutBold = tailForItalic.replace(/\*\*/g, '');
+  const singleStarCount = (withoutBold.match(/\*/g) || []).length;
+  if (singleStarCount % 2 !== 0) {
+    const lastStarIdx = result.lastIndexOf('*');
+    if (lastStarIdx >= 0 && result[lastStarIdx - 1] !== '*' && result[lastStarIdx + 1] !== '*') {
+      result = result.slice(0, lastStarIdx);
+    }
+  }
+
+  // 6. Unclosed inline code ` (single backtick, not ```)
+  const tailForCode = result.slice(Math.max(0, result.length - 100));
+  const withoutFences = tailForCode.replace(/```/g, '');
+  const backtickCount = (withoutFences.match(/`/g) || []).length;
+  if (backtickCount % 2 !== 0) {
+    const lastBacktickIdx = result.lastIndexOf('`');
+    // Make sure it's not part of a fence
+    if (lastBacktickIdx >= 0 && !(result[lastBacktickIdx - 1] === '`' || result[lastBacktickIdx + 1] === '`')) {
+      result = result.slice(0, lastBacktickIdx);
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 /**
  * Markdown渲染组件
  * 支持代码高亮、表格、列表等GitHub风格的Markdown语法
  */
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = false }) => {
-  console.log('[MarkdownRenderer] 渲染Markdown内容', { 
-    contentLength: content.length, 
-    isUser,
-    preview: content.substring(0, 100) 
-  });
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = false, isStreaming = false }) => {
+  const sanitizedContent = useMemo(
+    () => (isStreaming ? sanitizeStreamingMarkdown(content) : content),
+    [content, isStreaming],
+  );
 
   return (
     <div className={`markdown-content ${isUser ? 'user-markdown' : 'assistant-markdown'}`}>
@@ -32,9 +119,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
             const { inline, className, children, ...rest } = props;
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
-            
+
             if (!inline && language) {
-              console.log('[MarkdownRenderer] 渲染代码块', { language });
               return (
                 <div className="relative group my-4">
                   {/* 语言标签 */}
@@ -61,10 +147,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
                 </div>
               );
             }
-            
+
             // 行内代码
             return (
-              <code 
+              <code
                 className={`px-1.5 py-0.5 rounded text-sm font-mono ${
                   isUser
                     ? 'bg-primary/20 text-primary-foreground/90'
@@ -76,7 +162,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               </code>
             );
           },
-          
+
           // 标题渲染
           h1: ({ children }) => (
             <h1 className={`text-xl font-bold mb-3 mt-4 first:mt-0 ${
@@ -99,14 +185,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               {children}
             </h3>
           ),
-          
+
           // 段落渲染
           p: ({ children }) => (
             <p className="mb-3 last:mb-0 leading-relaxed">
               {children}
             </p>
           ),
-          
+
           // 列表渲染
           ul: ({ children }) => (
             <ul className="list-disc list-inside mb-3 space-y-1">
@@ -123,10 +209,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               {children}
             </li>
           ),
-          
+
           // 链接渲染
           a: ({ href, children }) => (
-            <a 
+            <a
               href={href}
               target="_blank"
               rel="noopener noreferrer"
@@ -139,7 +225,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               {children}
             </a>
           ),
-          
+
           // 强调文本
           strong: ({ children }) => (
             <strong className={`font-semibold ${
@@ -155,7 +241,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               {children}
             </em>
           ),
-          
+
           // 引用块
           blockquote: ({ children }) => (
             <blockquote className={`border-l-4 pl-4 py-2 my-3 italic ${
@@ -166,7 +252,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               {children}
             </blockquote>
           ),
-          
+
           // 表格渲染
           table: ({ children }) => (
             <div className="overflow-x-auto my-4">
@@ -193,7 +279,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
               {children}
             </td>
           ),
-          
+
           // 水平分割线
           hr: () => (
             <hr className={`my-4 border-t ${
@@ -202,10 +288,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isUser = f
           ),
         }}
       >
-        {content}
+        {sanitizedContent}
       </ReactMarkdown>
     </div>
   );
 };
 
-export default MarkdownRenderer; 
+export default React.memo(MarkdownRenderer);

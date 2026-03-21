@@ -135,9 +135,10 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
-  // ----- Auto-scroll logic (ported from VideoChatWindow) -----
+  // ----- Auto-scroll logic (optimized) -----
 
   const isNearBottom = useCallback(() => {
     if (!containerRef.current) return true;
@@ -147,14 +148,19 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
 
   const scrollToBottom = useCallback(
     (force = false) => {
-      if (!shouldAutoScroll && !force) return;
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      if (!shouldAutoScrollRef.current && !force) return;
+      const c = containerRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
     },
-    [shouldAutoScroll],
+    [],
   );
 
   const handleScroll = useCallback(() => {
-    setShouldAutoScroll(isNearBottom());
+    const nearBottom = isNearBottom();
+    if (nearBottom !== shouldAutoScrollRef.current) {
+      shouldAutoScrollRef.current = nearBottom;
+      setShouldAutoScroll(nearBottom);
+    }
   }, [isNearBottom]);
 
   // Scroll when messages change
@@ -163,7 +169,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
     return () => clearTimeout(timer);
   }, [messages, scrollToBottom]);
 
-  // High-frequency scroll during streaming
+  // Scroll during streaming — 150ms interval to avoid excess operations
   const hasStreaming = useMemo(
     () => messages.some((m) => m.isStreaming),
     [messages],
@@ -172,10 +178,10 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
   useEffect(() => {
     if (!hasStreaming && !(executionState?.status === 'executing')) return;
     const id = setInterval(() => {
-      if (shouldAutoScroll) scrollToBottom();
-    }, 100);
+      if (shouldAutoScrollRef.current) scrollToBottom();
+    }, 150);
     return () => clearInterval(id);
-  }, [hasStreaming, executionState?.status, shouldAutoScroll, scrollToBottom]);
+  }, [hasStreaming, executionState?.status, scrollToBottom]);
 
   // ----- Map messages to timeline nodes -----
 
@@ -210,7 +216,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto px-4 py-4 min-h-0"
+      className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-h-0"
       onScroll={handleScroll}
     >
       {/* Inject CSS @keyframes once */}

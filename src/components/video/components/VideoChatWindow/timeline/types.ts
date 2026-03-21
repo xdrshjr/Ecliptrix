@@ -61,6 +61,8 @@ export interface AgentResponseNodeData {
   messageId: string;
   /** Whether single-operation undo is available. */
   canUndo: boolean;
+  /** Whether this response is still being streamed. */
+  isStreaming?: boolean;
 }
 
 // ---------------------------------------------------------------------------

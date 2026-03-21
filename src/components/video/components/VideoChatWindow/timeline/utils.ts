@@ -155,6 +155,7 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
         isUndone: false,
         messageId: message.id,
         canUndo: false,
+        isStreaming: !!message.isStreaming,
       });
     }
     return nodes;
@@ -200,6 +201,7 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
       isUndone: !!message.isUndone,
       messageId: message.id,
       canUndo: operationCount > 0 && !message.isUndone,
+      isStreaming: false,
     });
   }
 
