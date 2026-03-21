@@ -702,6 +702,7 @@ export interface Translations {
       durationLabel: string;
       expandScript: string;
       expandingScript: string;
+      generateScript: string;
     };
   };
   videoScript: {
@@ -1847,6 +1848,7 @@ export const translations: Record<string, Translations> = {
          durationLabel: 'Duration:',
          expandScript: 'AI Expand',
          expandingScript: 'Expanding...',
+         generateScript: 'AI Generate',
        },
      },
    videoScript: {
@@ -3005,6 +3007,7 @@ export const translations: Record<string, Translations> = {
          durationLabel: '时长:',
          expandScript: 'AI 扩写',
          expandingScript: '扩写中...',
+         generateScript: 'AI 生成',
        },
      },
    videoScript: {

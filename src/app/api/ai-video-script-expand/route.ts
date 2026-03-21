@@ -25,6 +25,7 @@ function buildExpandPrompt(
   otherSegments: OtherSegment[],
 ): string {
   const totalCount = otherSegments.length + 1;
+  const hasDraft = segmentText && segmentText.trim().length > 0;
 
   let contextSection = '';
   if (otherSegments.length > 0) {
@@ -35,7 +36,8 @@ function buildExpandPrompt(
     contextSection = `You are working on a multi-scene video project. Below is the context of all other scenes so you understand the full narrative:\n\n${contextLines.join('\n')}\n\n---\n\n`;
   }
 
-  return `${contextSection}Now expand the following scene (Scene ${segmentIndex + 1} of ${totalCount}: "${segmentTitle}") into a rich visual description:
+  if (hasDraft) {
+    return `${contextSection}Now expand the following scene (Scene ${segmentIndex + 1} of ${totalCount}: "${segmentTitle}") into a rich visual description:
 
 Draft: "${segmentText}"
 
@@ -46,6 +48,22 @@ Requirements:
 4. Maintain narrative flow — this is scene ${segmentIndex + 1} of ${totalCount}
 5. Keep the same language as the draft text
 6. Output ONLY the expanded description text, no JSON, no scene title, no additional formatting`;
+  }
+
+  // No draft — generate from scratch based on title and context
+  const languageHint = otherSegments.some(s => /[\u4e00-\u9fff]/.test(s.scriptText))
+    ? 'Write in Chinese.'
+    : 'Write in the same language as the other scenes, or Chinese if no other scenes exist.';
+
+  return `${contextSection}Create a vivid visual description for Scene ${segmentIndex + 1} of ${totalCount}, titled "${segmentTitle}".
+
+Requirements:
+1. Write 2-4 sentences of vivid visual description suitable as a prompt for AI video generation
+2. Describe characters, actions, environment, lighting, camera angles, and mood
+3. Ensure this scene complements but does NOT repeat content from the other scenes listed above
+4. Maintain narrative flow — this is scene ${segmentIndex + 1} of ${totalCount}
+5. ${languageHint}
+6. Output ONLY the scene description text, no JSON, no scene title, no additional formatting`;
 }
 
 export async function POST(request: NextRequest) {
@@ -63,9 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
 
-    if (!segmentText || typeof segmentText !== 'string' || !segmentText.trim()) {
-      return NextResponse.json({ error: 'Segment text is required' }, { status: 400 });
-    }
+    // segmentText can be empty — in that case we generate from scratch
 
     const config = getConfig();
 

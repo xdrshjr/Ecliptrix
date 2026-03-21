@@ -53,7 +53,7 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
   const handleExpandScript = useCallback(async (segmentId: string) => {
     const segmentIndex = segments.findIndex(s => s.id === segmentId);
     const segment = segments[segmentIndex];
-    if (!segment || !segment.scriptText.trim()) return;
+    if (!segment) return;
 
     setExpandingSegmentId(segmentId);
     try {
@@ -140,9 +140,9 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
           <div className="flex justify-end mb-1">
             <button
               onClick={() => handleExpandScript(segment.id)}
-              disabled={!segment.scriptText.trim() || expandingSegmentId === segment.id || segment.generationStatus === 'generating'}
+              disabled={expandingSegmentId === segment.id || segment.generationStatus === 'generating'}
               className="flex items-center space-x-1 px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:text-purple-300 dark:hover:bg-purple-900/20 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={t.scriptPanel.aiVideoScript.expandScript}
+              title={segment.scriptText.trim() ? t.scriptPanel.aiVideoScript.expandScript : t.scriptPanel.aiVideoScript.generateScript}
             >
               {expandingSegmentId === segment.id ? (
                 <>
@@ -157,7 +157,7 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
-                  <span>{t.scriptPanel.aiVideoScript.expandScript}</span>
+                  <span>{segment.scriptText.trim() ? t.scriptPanel.aiVideoScript.expandScript : t.scriptPanel.aiVideoScript.generateScript}</span>
                 </>
               )}
             </button>
