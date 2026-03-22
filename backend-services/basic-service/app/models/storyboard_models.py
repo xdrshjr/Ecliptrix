@@ -22,6 +22,9 @@ class StoryboardGenerateRequest(BaseModel):
     grid_size: Literal["2x2", "3x3", "4x4", "6x6", "8x8"] = Field(
         default="3x3", description="Grid layout specification (rows x cols)"
     )
+    aspect_ratio: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = Field(
+        default="1:1", description="Target aspect ratio for each storyboard cell"
+    )
     reference_image: Optional[str] = Field(
         None, description="Optional reference image as base64 data URI"
     )
@@ -83,6 +86,7 @@ class StoryboardPack(BaseModel):
     pack_id: str = Field(..., description="Unique pack identifier")
     prompt: str = Field(..., description="Original user prompt")
     grid_size: str = Field(..., description="Grid specification (e.g. '3x3')")
+    aspect_ratio: str = Field(default="1:1", description="Aspect ratio of each frame")
     frame_count: int = Field(..., description="Total number of frames")
     created_at: str = Field(..., description="ISO-8601 creation timestamp")
     original_image_url: str = Field(..., description="URL of the original storyboard image")

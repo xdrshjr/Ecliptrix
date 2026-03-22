@@ -53,6 +53,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
   const [storyboardState, setStoryboardState] = useState<StoryboardTabState>({
     prompt: '',
     gridSize: '3x3',
+    aspectRatio: '16:9',
     referenceImage: null,
   });
 
@@ -71,7 +72,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     setBasicState({ prompt: '', size: '2048x2048', count: 1, watermark: true, referenceImage: null });
     setCharacterState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
     setSceneState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
-    setStoryboardState({ prompt: '', gridSize: '3x3', referenceImage: null });
+    setStoryboardState({ prompt: '', gridSize: '3x3', aspectRatio: '16:9', referenceImage: null });
   };
 
   const handleClose = () => {
@@ -95,6 +96,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     return onStoryboardGenerate({
       prompt: tabState.prompt,
       gridSize: tabState.gridSize,
+      aspectRatio: tabState.aspectRatio,
       referenceImage: tabState.referenceImage || undefined,
     });
   }, [onStoryboardGenerate]);

@@ -1,9 +1,43 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { StoryboardGridSize, StoryboardPack } from '@/types';
+import { StoryboardAspectRatio, StoryboardGridSize, StoryboardPack } from '@/types';
 import ImageUploadArea from './ImageUploadArea';
 import GridSizeSelector from './GridSizeSelector';
+
+const ASPECT_RATIO_PRESETS: { value: StoryboardAspectRatio; label: string; icon: 'square' | 'landscape' | 'portrait' }[] = [
+  { value: '1:1', label: '1:1 方形', icon: 'square' },
+  { value: '16:9', label: '16:9 横屏', icon: 'landscape' },
+  { value: '9:16', label: '9:16 竖屏', icon: 'portrait' },
+  { value: '4:3', label: '4:3 横屏', icon: 'landscape' },
+  { value: '3:4', label: '3:4 竖屏', icon: 'portrait' },
+];
+
+const ratioIcon = (icon: string, active: boolean) => {
+  const cls = active ? 'text-white' : 'text-muted-foreground';
+  switch (icon) {
+    case 'square':
+      return (
+        <svg className={`w-3.5 h-3.5 ${cls}`} viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="4" width="16" height="16" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    case 'landscape':
+      return (
+        <svg className={`w-3.5 h-3.5 ${cls}`} viewBox="0 0 24 24" fill="none">
+          <rect x="1" y="5" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    case 'portrait':
+      return (
+        <svg className={`w-3.5 h-3.5 ${cls}`} viewBox="0 0 24 24" fill="none">
+          <rect x="5" y="1" width="14" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 /** Parse NxN grid size string into the total frame count */
 function getFrameCount(gridSize: StoryboardGridSize): number {
@@ -14,6 +48,7 @@ function getFrameCount(gridSize: StoryboardGridSize): number {
 export interface StoryboardTabState {
   prompt: string;
   gridSize: StoryboardGridSize;
+  aspectRatio: StoryboardAspectRatio;
   referenceImage: string | null;
 }
 
@@ -28,7 +63,7 @@ interface StoryboardTabProps {
 const MAX_PROMPT_LENGTH = 2000;
 
 const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenerate }) => {
-  const { prompt, gridSize, referenceImage } = state;
+  const { prompt, gridSize, aspectRatio, referenceImage } = state;
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [resultPack, setResultPack] = useState<StoryboardPack | null>(null);
@@ -70,6 +105,31 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
         disabled={isDisabled}
       />
 
+      {/* Aspect Ratio Selector */}
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-2">画面比例</label>
+        <div className="flex flex-wrap gap-2">
+          {ASPECT_RATIO_PRESETS.map((preset) => {
+            const active = aspectRatio === preset.value;
+            return (
+              <button
+                key={preset.value}
+                onClick={() => onChange({ ...state, aspectRatio: preset.value })}
+                disabled={isDisabled}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                  active
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-card text-foreground border-border hover:bg-accent'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {ratioIcon(preset.icon, active)}
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Prompt */}
       <div>
         <label className="block text-sm font-medium text-foreground mb-2">
@@ -110,7 +170,7 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
             生成分镜
           </button>
           <p className="text-xs text-muted-foreground text-center mt-2">
-            将生成 {gridSize} = {frameCount} 格分镜
+            将生成 {gridSize} = {frameCount} 格分镜，画面比例 {aspectRatio}
           </p>
         </div>
       )}

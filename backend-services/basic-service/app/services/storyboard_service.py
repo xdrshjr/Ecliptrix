@@ -51,6 +51,14 @@ STORYBOARD_MAX_CONCURRENT_DESCRIBE = 3
 STORYBOARD_MAX_CONCURRENT_VIDEO = 3
 STORYBOARD_STORAGE_DIR = "storyboard"
 
+ASPECT_RATIOS = {
+    "1:1": (1, 1),
+    "16:9": (16, 9),
+    "9:16": (9, 16),
+    "4:3": (4, 3),
+    "3:4": (3, 4),
+}
+
 # In-memory cache: pack_id -> { frame_index -> ark_task_id }
 _pack_video_tasks: Dict[str, Dict[int, str]] = {}
 _PACK_CACHE_MAX_SIZE = 100
@@ -113,20 +121,35 @@ def _parse_grid_size(grid_size: str) -> tuple[int, int]:
 # Prompt construction
 # ---------------------------------------------------------------------------
 
-def build_storyboard_prompt(user_prompt: str, rows: int, cols: int) -> str:
+def build_storyboard_prompt(
+    user_prompt: str, rows: int, cols: int, aspect_ratio: str = "1:1"
+) -> str:
     """Build the system prompt instructing Seedream to generate an NxN grid."""
+    ratio_instruction = ""
+    if aspect_ratio != "1:1" and aspect_ratio in ASPECT_RATIOS:
+        w, h = ASPECT_RATIOS[aspect_ratio]
+        orientation = "横屏/landscape" if w > h else "竖屏/portrait"
+        ratio_instruction = (
+            f"- Each cell's content should be composed for a {aspect_ratio} ({orientation}) viewing format, "
+            "with subjects and key elements centered accordingly\n"
+        )
+
     return (
         f"Create a {rows}x{cols} grid storyboard image.\n\n"
         "LAYOUT REQUIREMENTS:\n"
         f"- The image must be divided into exactly {rows} rows and {cols} columns\n"
         "- Each cell must be exactly the same size\n"
         "- There must be thin white separator lines (about 2-3 pixels wide) between each cell\n"
-        "- The cells must fill the entire image with no margins\n\n"
+        "- The cells must fill the entire image with no margins\n"
+        f"{ratio_instruction}\n"
+        "STRICT VISUAL-ONLY REQUIREMENTS:\n"
+        "- Each cell must contain ONLY visual imagery — absolutely NO text, subtitles, captions, watermarks, or any written characters\n"
+        "- Do NOT include any numbers, numerical labels, or index annotations in any cell\n"
+        "- Every cell must be pure visual content with no overlaid text or symbols of any kind\n\n"
         "CONTENT:\n"
         f"{user_prompt}\n\n"
         "Each cell should contain a distinct scene or frame as described above.\n"
         "The overall style should be consistent across all cells.\n"
-        f"Number the cells from left to right, top to bottom (1 to {rows * cols}).\n"
     )
 
 
@@ -134,8 +157,30 @@ def build_storyboard_prompt(user_prompt: str, rows: int, cols: int) -> str:
 # Image cropping
 # ---------------------------------------------------------------------------
 
+def _crop_cell_to_aspect_ratio(cell: Image.Image, aspect_ratio: str) -> Image.Image:
+    """Center-crop a cell image to match the target aspect ratio."""
+    if aspect_ratio == "1:1" or aspect_ratio not in ASPECT_RATIOS:
+        return cell
+    target_w, target_h = ASPECT_RATIOS[aspect_ratio]
+    w, h = cell.size
+    target_ratio = target_w / target_h
+    current_ratio = w / h
+    if current_ratio > target_ratio:
+        # Too wide — crop width
+        new_w = int(h * target_ratio)
+        left = (w - new_w) // 2
+        return cell.crop((left, 0, left + new_w, h))
+    elif current_ratio < target_ratio:
+        # Too tall — crop height
+        new_h = int(w / target_ratio)
+        top = (h - new_h) // 2
+        return cell.crop((0, top, w, top + new_h))
+    return cell
+
+
 def crop_storyboard(
-    image_path: str, rows: int, cols: int, output_dir: str
+    image_path: str, rows: int, cols: int, output_dir: str,
+    aspect_ratio: str = "1:1",
 ) -> List[dict]:
     """Crop a storyboard grid image into individual frame PNGs.
 
@@ -161,6 +206,7 @@ def crop_storyboard(
             lower = (row + 1) * cell_height - padding
 
             cell = img.crop((left, upper, right, lower))
+            cell = _crop_cell_to_aspect_ratio(cell, aspect_ratio)
             filename = f"frame_{index + 1:03d}.png"
             cell.save(os.path.join(output_dir, filename))
 
@@ -189,7 +235,8 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         )
 
     rows, cols = _parse_grid_size(request.grid_size)
-    final_prompt = build_storyboard_prompt(request.prompt, rows, cols)
+    aspect_ratio = getattr(request, "aspect_ratio", "1:1") or "1:1"
+    final_prompt = build_storyboard_prompt(request.prompt, rows, cols, aspect_ratio)
 
     # Prepare ARK request payload
     payload: dict = {
@@ -250,7 +297,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         raise ValueError(f"Failed to download generated image: {exc}") from exc
 
     # Crop into individual frames
-    frame_dicts = crop_storyboard(original_path, rows, cols, pack_directory)
+    frame_dicts = crop_storyboard(original_path, rows, cols, pack_directory, aspect_ratio)
 
     # Build frame metadata with URLs
     original_image_url = _frame_url(today_str, pack_id, "original.png")
@@ -284,6 +331,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         "pack_id": pack_id,
         "prompt": request.prompt,
         "grid_size": request.grid_size,
+        "aspect_ratio": aspect_ratio,
         "frame_count": len(frames),
         "created_at": now_iso,
         "reference_image": saved_reference_url,
@@ -312,6 +360,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         pack_id=pack_id,
         prompt=request.prompt,
         grid_size=request.grid_size,
+        aspect_ratio=aspect_ratio,
         frame_count=len(frames),
         created_at=now_iso,
         original_image_url=original_image_url,
@@ -732,6 +781,7 @@ async def list_packs() -> List[StoryboardPack]:
                     pack_id=meta["pack_id"],
                     prompt=meta.get("prompt", ""),
                     grid_size=meta.get("grid_size", ""),
+                    aspect_ratio=meta.get("aspect_ratio", "1:1"),
                     frame_count=meta.get("frame_count", len(frames)),
                     created_at=meta.get("created_at", ""),
                     original_image_url=meta.get(
@@ -780,6 +830,7 @@ async def get_pack(pack_id: str) -> StoryboardPack:
         pack_id=meta["pack_id"],
         prompt=meta.get("prompt", ""),
         grid_size=meta.get("grid_size", ""),
+        aspect_ratio=meta.get("aspect_ratio", "1:1"),
         frame_count=meta.get("frame_count", len(frames)),
         created_at=meta.get("created_at", ""),
         original_image_url=meta.get(

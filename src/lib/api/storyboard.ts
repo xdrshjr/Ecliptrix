@@ -15,6 +15,7 @@ interface RawPack {
   pack_id: string;
   prompt: string;
   grid_size: string;
+  aspect_ratio?: string;
   frame_count: number;
   created_at: string;
   original_image_url: string;
@@ -40,6 +41,7 @@ function toPack(d: RawPack): StoryboardPack {
     packId: d.pack_id,
     prompt: d.prompt,
     gridSize: d.grid_size as StoryboardPack['gridSize'],
+    aspectRatio: d.aspect_ratio || '1:1',
     frameCount: d.frame_count,
     createdAt: d.created_at,
     originalImageUrl: d.original_image_url,
@@ -59,6 +61,7 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
     body: JSON.stringify({
       prompt: params.prompt,
       grid_size: params.gridSize,
+      aspect_ratio: params.aspectRatio || '1:1',
       reference_image: params.referenceImage,
     }),
   });
@@ -144,7 +147,7 @@ export async function describeFrames(
     throw new Error(data.message || '生成分镜描述失败');
   }
 
-  return data.data || [];
+  return data.descriptions || data.data || [];
 }
 
 /**

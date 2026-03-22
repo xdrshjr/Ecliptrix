@@ -30,6 +30,7 @@ export interface UseStoryboardScriptGenerationReturn {
 
   // Description generation
   isDescribing: boolean;
+  generateAllDescriptions: () => Promise<void>;
   regenerateDescription: (segmentId: string) => Promise<void>;
 
   // Video generation
@@ -214,27 +215,6 @@ export function useStoryboardScriptGeneration({
         );
 
         onUpdateSegments(newSegments);
-
-        // 3. Auto-generate descriptions via VL_LLM
-        try {
-          const descriptions = await describeFrames(packId);
-          // Merge descriptions into segments
-          const withDescriptions = newSegments.map((seg) => {
-            const desc = descriptions.find(
-              (d) => d.index === seg.frameIndex,
-            );
-            return desc
-              ? { ...seg, description: desc.description }
-              : seg;
-          });
-          onUpdateSegments(withDescriptions);
-        } catch (descError) {
-          console.error(
-            '[useStoryboardScriptGeneration] Failed to generate descriptions:',
-            descError,
-          );
-          // Non-fatal: user can still manually input descriptions
-        }
       } catch (error) {
         console.error(
           '[useStoryboardScriptGeneration] Failed to load pack:',
@@ -248,6 +228,27 @@ export function useStoryboardScriptGeneration({
   );
 
   // ── Description generation ──
+
+  const generateAllDescriptions = useCallback(async () => {
+    if (!selectedPackId) return;
+    setIsDescribing(true);
+    try {
+      const descriptions = await describeFrames(selectedPackId);
+      const current = segmentsRef.current;
+      const updated = current.map((seg) => {
+        const desc = descriptions.find((d) => d.index === seg.frameIndex);
+        return desc ? { ...seg, description: desc.description } : seg;
+      });
+      onUpdateSegments(updated);
+    } catch (error) {
+      console.error(
+        '[useStoryboardScriptGeneration] Failed to generate descriptions:',
+        error,
+      );
+    } finally {
+      setIsDescribing(false);
+    }
+  }, [selectedPackId, onUpdateSegments]);
 
   const regenerateDescription = useCallback(
     async (segmentId: string) => {
@@ -543,6 +544,7 @@ export function useStoryboardScriptGeneration({
     selectedPackId,
 
     isDescribing,
+    generateAllDescriptions,
     regenerateDescription,
 
     generateVideo,
