@@ -26,6 +26,7 @@ export interface UseStoryboardScriptGenerationReturn {
   loadPack: (packId: string) => Promise<void>;
   refreshPacks: () => Promise<void>;
   isLoadingPacks: boolean;
+  isLoadingPack: boolean;
   selectedPackId: string | null;
 
   // Description generation
@@ -66,6 +67,7 @@ export function useStoryboardScriptGeneration({
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [isDescribing, setIsDescribing] = useState(false);
+  const [isLoadingPack, setIsLoadingPack] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [composedVideoUrl, setComposedVideoUrl] = useState<string | null>(null);
   const [compositionError, setCompositionError] = useState<string | null>(null);
@@ -194,13 +196,13 @@ export function useStoryboardScriptGeneration({
       setSelectedPackId(packId);
       setComposedVideoUrl(null);
       setCompositionError(null);
-      setIsDescribing(true);
+      setIsLoadingPack(true);
 
       try {
         // 1. Fetch pack data
         const pack = await getPack(packId);
 
-        // 2. Create a segment for each frame
+        // 2. Create a segment for each frame (load existing descriptions but do NOT auto-generate)
         const newSegments: StoryboardScriptSegment[] = pack.frames.map(
           (frame) => ({
             id: `storyboard-seg-${packId}-${frame.index}-${Date.now()}`,
@@ -221,7 +223,7 @@ export function useStoryboardScriptGeneration({
           error,
         );
       } finally {
-        setIsDescribing(false);
+        setIsLoadingPack(false);
       }
     },
     [onUpdateSegments],
@@ -541,6 +543,7 @@ export function useStoryboardScriptGeneration({
     loadPack,
     refreshPacks,
     isLoadingPacks,
+    isLoadingPack,
     selectedPackId,
 
     isDescribing,
