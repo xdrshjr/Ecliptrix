@@ -257,7 +257,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       onOperationApplied: (event) => {
         // Track operation in state manager for pendingOperations
         if (event.operation) {
-          stateManager.addOperation(event.operation as AgentTimelineOperation);
+          stateManager.addOperation(event.operation);
         }
       },
       onError: (errorMsg) => {

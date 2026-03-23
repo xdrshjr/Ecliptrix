@@ -9,9 +9,10 @@
  * @module AgentEventRouter
  */
 
-import type { SSEEvent } from './types';
+import type { SSEEvent, AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
 import type { AgentStateManager } from './AgentStateManager';
 import type { OperationApplier } from './OperationApplier';
+import { useVideoEditingStore } from '@/stores';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -90,6 +91,10 @@ export class AgentEventRouter {
         this.stateManager.finalize();
         break;
 
+      case 'script_delta':
+        this.handleScriptDelta(event.content);
+        break;
+
       // Lifecycle markers (agent_start, turn_start, turn_end, message_start,
       // message_end) — no state-manager action needed. The stream lifecycle
       // is handled by SSEStreamManager and useAgentExecutionState.
@@ -100,7 +105,8 @@ export class AgentEventRouter {
 
   /**
    * Handle tool_result events: update tool status in state manager,
-   * apply any timeline operation, and trigger animation callback.
+   * apply any timeline operation, and route non-timeline operations
+   * to the appropriate store.
    */
   private async handleToolResult(
     event: SSEEvent & { type: 'tool_result' },
@@ -116,10 +122,141 @@ export class AgentEventRouter {
       event.result,
     );
 
-    // Apply timeline operation if the tool produced one
+    // Check if the result contains a batch of timeline operations (e.g. from
+    // compose_storyboard which adds multiple clips in one tool call). The SSE
+    // protocol only carries one operation per tool_result event, but the tool
+    // embeds the full array in result.operations for batch application.
+    const resultObj = event.result as Record<string, unknown> | null;
+    const batchOps = resultObj?.operations;
+    if (Array.isArray(batchOps) && batchOps.length > 0 && this.isTimelineOperation(batchOps[0] as AgentOperation)) {
+      for (let i = 0; i < batchOps.length; i++) {
+        await this.operationApplier.apply(
+          batchOps[i] as import('./types').TimelineOperation,
+          `${event.toolCallId}-batch-${i}`,
+        );
+      }
+      this.onOperationApplied?.(event);
+      return;
+    }
+
+    // Route operation to the appropriate handler
     if (event.operation) {
-      await this.operationApplier.apply(event.operation, event.toolCallId);
+      const op = event.operation;
+
+      if (this.isTimelineOperation(op)) {
+        // Timeline operations go through OperationApplier (existing path)
+        await this.operationApplier.apply(op, event.toolCallId);
+      } else if (this.isMaterialOperation(op)) {
+        // Record pre-state for undo BEFORE applying
+        this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
+        this.handleMaterialOperation(op);
+      } else if (this.isScriptOperation(op)) {
+        this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
+        this.handleScriptOperation(op);
+      } else if (this.isStoryboardOperation(op)) {
+        this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
+        this.handleStoryboardOperation(op);
+      } else if (this.isAsyncTaskOperation(op)) {
+        // Async tasks are not undoable but still recorded
+        this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
+        this.handleAsyncTaskOperation(op);
+      } else {
+        console.warn(
+          `[AgentEventRouter] Unknown operation type: ${(op as { type: string }).type}`,
+        );
+      }
+
       this.onOperationApplied?.(event);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Script delta handler
+  // -------------------------------------------------------------------------
+
+  /**
+   * Handle streaming script_delta events by appending content to the
+   * script store.
+   */
+  private handleScriptDelta(content: string): void {
+    const store = useVideoEditingStore.getState();
+    store.appendScriptContent(content);
+  }
+
+  // -------------------------------------------------------------------------
+  // Operation handlers for non-timeline operations
+  // -------------------------------------------------------------------------
+
+  private handleMaterialOperation(op: MaterialOperation): void {
+    const store = useVideoEditingStore.getState();
+    switch (op.type) {
+      case 'add_material':
+        store.addMaterial(op.material);
+        break;
+      case 'add_materials':
+        store.addMaterials(op.materials);
+        break;
+      case 'remove_material':
+        store.removeMaterial(op.materialId);
+        break;
+    }
+  }
+
+  private handleScriptOperation(op: ScriptOperation): void {
+    const store = useVideoEditingStore.getState();
+    switch (op.type) {
+      case 'set_script':
+        store.setScriptContent(op.content);
+        store.setScriptType(op.scriptType as 'video' | 'understanding' | 'ai_generated');
+        break;
+      case 'append_script':
+        store.appendScriptContent(op.content);
+        break;
+    }
+  }
+
+  private handleStoryboardOperation(op: StoryboardOperation): void {
+    const store = useVideoEditingStore.getState();
+    switch (op.type) {
+      case 'set_storyboards':
+        store.setStoryboards(op.storyboards);
+        break;
+      case 'update_storyboard':
+        store.updateStoryboard(op.storyboardId, op.patch);
+        break;
+    }
+  }
+
+  private handleAsyncTaskOperation(op: AsyncTaskOperation): void {
+    const store = useVideoEditingStore.getState();
+    switch (op.type) {
+      case 'start_async_task':
+        store.addTask(op.task);
+        break;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Type guards
+  // -------------------------------------------------------------------------
+
+  private isTimelineOperation(op: AgentOperation): op is import('./types').TimelineOperation {
+    return ['add_clip', 'trim_clip', 'delete_clip', 'move_clip', 'resize_clip'].includes(op.type);
+  }
+
+  private isMaterialOperation(op: AgentOperation): op is MaterialOperation {
+    return ['add_material', 'add_materials', 'remove_material'].includes(op.type);
+  }
+
+  private isScriptOperation(op: AgentOperation): op is ScriptOperation {
+    return ['set_script', 'append_script'].includes(op.type);
+  }
+
+  private isStoryboardOperation(op: AgentOperation): op is StoryboardOperation {
+    return ['set_storyboards', 'update_storyboard'].includes(op.type);
+  }
+
+  private isAsyncTaskOperation(op: AgentOperation): op is AsyncTaskOperation {
+    return op.type === 'start_async_task';
   }
 }

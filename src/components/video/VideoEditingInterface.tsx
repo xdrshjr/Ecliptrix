@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
+import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment, ScriptSegment } from '@/types';
+import { useVideoEditingStore } from '@/stores';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel } from './timeline';
 import '../../styles/video-editing.css';
@@ -48,12 +49,41 @@ import {
 import ConvertToScriptModal from './components/ConvertToScriptModal';
 import { createAIVideoSegment } from './components/AIVideoScriptTab';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
+import { AsyncTaskPoller } from './components/AsyncTaskPoller';
 import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
 import { Conversation, ChatMessage, WorkflowExecutionState, WorkflowNode, WorkflowConnection } from '@/types';
 import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
+
+/**
+ * Parse agent-generated markdown script into ScriptSegment[] format.
+ * Agent formats scripts as: ## 1. Title\n\nContent\n\n## 2. Title\n\nContent
+ */
+function parseAgentScriptToSegments(text: string): ScriptSegment[] {
+  const parts = text.split(/^## \d+\.\s*/m).filter(Boolean);
+  if (parts.length === 0) {
+    // No numbered headings — treat entire text as one segment
+    const sentences = text.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim().length > 0);
+    if (sentences.length === 0) return [];
+    return [{
+      id: 'agent-segment-0',
+      title: '脚本',
+      sentences: sentences.map((s, j) => ({ id: `agent-s-0-${j}`, text: s.trim() })),
+    }];
+  }
+  return parts.map((part, i) => {
+    const lines = part.trim().split('\n');
+    const title = lines[0]?.trim() || `片段 ${i + 1}`;
+    const body = lines.slice(1).join('\n').trim();
+    const sentences = body
+      .split(/(?<=[。！？.!?])\s*/)
+      .filter(s => s.trim().length > 0)
+      .map((s, j) => ({ id: `agent-s-${i}-${j}`, text: s.trim() }));
+    return { id: `agent-segment-${i}`, title, sentences };
+  });
+}
 
 interface VideoEditingInterfaceProps {
   taskId: string;
@@ -504,6 +534,21 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       materials: materialManagement.allMaterials,
     });
   }, [materialManagement.allMaterials]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync: Zustand scriptStore → content.scriptSegments
+  // When Agent generates a script via SSE operation, it writes to the Zustand store.
+  // Convert the raw text into ScriptSegment[] and update content so ScriptPanel re-renders.
+  const storeScriptContent = useVideoEditingStore(state => state.scriptContent);
+  const storeScriptType = useVideoEditingStore(state => state.scriptType);
+  useEffect(() => {
+    if (!storeScriptContent || !content) return;
+    const segments = parseAgentScriptToSegments(storeScriptContent);
+    if (segments.length === 0) return;
+    onUpdateContent({
+      ...content,
+      scriptSegments: segments,
+    });
+  }, [storeScriptContent, storeScriptType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 添加视频解析功能 - 需要在 convertToScript 之前初始化
   const videoAnalysis = useVideoAnalysis(taskId);
@@ -3020,6 +3065,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       {/* Mobile Warning Dialog - Backup Safety Check (Legacy) */}
       {/* Note: Global mobile detection is now handled at app level, this is kept as fallback */}
+
+      {/* Background async task polling for AI generation tasks */}
+      <AsyncTaskPoller />
     </div>
   );
 };

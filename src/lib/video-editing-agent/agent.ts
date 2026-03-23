@@ -2,18 +2,24 @@ import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model } from '@mariozechner/pi-ai';
 import type { TimelineState } from '@/types';
-import type { ToolContext, TimelineOperation, SSEEvent, VideoEditingAgentConfig } from './types';
+import type { ToolContext, TimelineOperation, AgentOperation, SSEEvent, VideoEditingAgentConfig } from './types';
 import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
-import { buildVideoEditingTools } from './tools';
+import { createToolRegistry, buildAllAgentTools } from './tools';
+import type { ToolRegistry } from './registry';
 
 /**
  * Create a video editing agent instance with all tools and configuration.
- * Returns the agent and the shared tool context (for reading operations after tool execution).
+ * Returns the agent, the shared tool context, and the ToolRegistry.
+ *
+ * Uses ToolRegistry (Method C): all tools from all categories are registered
+ * in the Agent's function-calling schema at init. The system prompt shows
+ * only category summaries; explore_tools provides detailed guidance on demand.
  */
 export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   agent: Agent;
   toolContext: ToolContext;
+  registry: ToolRegistry;
 } {
   // 1. Construct Model for custom OpenAI-compatible endpoint
   const model: Model<'openai-completions'> = {
@@ -36,24 +42,30 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   const toolContext: ToolContext = {
     timelineState: localTimelineState,
     materials: config.materials,
+    apiBaseUrl: config.apiBaseUrl,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
       toolContext.operations.set(toolCallId, operation);
       applyOperationLocally(toolContext.timelineState, operation);
     },
+    recordOperation: (toolCallId: string, operation: AgentOperation) => {
+      toolContext.operations.set(toolCallId, operation);
+    },
   };
 
-  // 4. Build tools
-  const tools = buildVideoEditingTools(toolContext);
+  // 4. Create ToolRegistry and build tools
+  const registry = createToolRegistry(toolContext);
+  const tools = buildAllAgentTools(registry);
 
   // 5. Convert conversation history (exclude last user message — it goes to agent.prompt())
   const history = config.conversationHistory.slice(0, -1);
   const initialMessages = convertToAgentMessages(history);
 
   // 6. Create Agent
+  const categorySummaries = registry.getCategorySummaries();
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(config.timelineState, config.materials),
+      systemPrompt: buildSystemPrompt(config.timelineState, config.materials, categorySummaries),
       model,
       thinkingLevel: 'off',
       tools,
@@ -62,7 +74,7 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     getApiKey: () => config.llmApiKey,
   });
 
-  return { agent, toolContext };
+  return { agent, toolContext, registry };
 }
 
 /**
@@ -121,8 +133,20 @@ export function subscribeAgentEvents(
             .join('');
           if (fullText) {
             send({ type: 'text_delta', content: fullText });
+            textDeltaSent = true;
           }
         }
+
+        // If still no text was sent for this assistant message, the model
+        // returned empty content (likely doesn't support tool use).
+        // Emit an error so the UI can display a meaningful message.
+        if (!textDeltaSent && msg && msg.role === 'assistant') {
+          send({
+            type: 'error',
+            message: 'The model returned an empty response. It may not support tool-use required by the editing agent. Please try a model that supports function calling (e.g., GPT-4, Claude, Qwen).',
+          });
+        }
+
         send({ type: 'message_end' });
         break;
       }

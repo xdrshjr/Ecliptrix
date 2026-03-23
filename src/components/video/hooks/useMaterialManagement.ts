@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
 import { generateStoryboard } from '@/lib/api/storyboard';
+import { useVideoEditingStore } from '@/stores';
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -106,6 +107,20 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
   // 素材管理状态
   const [materials, setMaterials] = useState<MaterialItem[]>(initialMaterials);
+
+  // Sync: merge Zustand store materials into local state.
+  // Agent tools add materials via SSE → AgentEventRouter → Zustand store.
+  // This effect bridges the store → local useState so MaterialsPanel re-renders.
+  const storeMaterials = useVideoEditingStore(state => state.materials);
+  useEffect(() => {
+    setMaterials(prev => {
+      const localIds = new Set(prev.map(m => m.id));
+      const newFromStore = storeMaterials.filter(m => !localIds.has(m.id));
+      if (newFromStore.length === 0) return prev;
+      return [...prev, ...newFromStore];
+    });
+  }, [storeMaterials]);
+
   const [selectedMaterialType, setSelectedMaterialType] = useState<MaterialType | 'all'>('all');
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
@@ -1037,22 +1052,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
     const pack = await generateStoryboard(params);
 
-    // Add the storyboard pack as a special MaterialItem
-    const packMaterial: MaterialItem = {
-      id: pack.packId,
-      name: `分镜包_${params.gridSize}_${timeStr}`,
-      type: 'storyboard_pack',
-      format: 'png',
-      size: 0,
-      url: pack.originalImageUrl,
-      thumbnailUrl: pack.originalImageUrl,
-      createdAt,
-      metadata: {
-        source: 'storyboard',
-        storyboardPack: pack,
-      },
-    };
-    setMaterials(prev => [packMaterial, ...prev]);
+    // 分镜包不再加到 materials[] — 由 MaterialsPanel 的 storyboardPacks[] 单独管理
     logger.info(`分镜包生成成功: ${pack.packId}, ${pack.frameCount} 帧`);
 
     return pack;

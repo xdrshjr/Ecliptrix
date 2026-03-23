@@ -45,7 +45,7 @@ export interface ChatMessage {
   isAgentMessage?: boolean;
   agentToolCalls?: AgentToolCallRecord[];
   timelineSnapshot?: TimelineState;
-  pendingOperations?: AgentTimelineOperation[];
+  pendingOperations?: Array<AgentTimelineOperation | { type: string; [key: string]: unknown }>;
   isUndone?: boolean;
 }
 

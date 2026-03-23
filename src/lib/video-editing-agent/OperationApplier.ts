@@ -19,7 +19,10 @@
  * @module OperationApplier
  */
 
-import type { TimelineState, AgentTimelineOperation } from '@/types';
+import type { TimelineState, AgentTimelineOperation, MaterialItem } from '@/types';
+import type { AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
+import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
+import { useVideoEditingStore } from '@/stores';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +35,18 @@ export interface OperationRecord {
   operation: AgentTimelineOperation;
   /** Deep-cloned snapshot of the full timeline state BEFORE this operation. */
   preSnapshot: TimelineState;
+}
+
+/**
+ * Undo record for non-timeline operations (material, script, storyboard).
+ * Async task operations are NOT undoable.
+ */
+export interface NonTimelineUndoRecord {
+  toolCallId: string;
+  operation: AgentOperation;
+  undoable: boolean;
+  /** Data needed to reverse the operation. */
+  undoData: unknown;
 }
 
 export interface OperationApplierConfig {
@@ -56,6 +71,7 @@ export interface OperationApplierConfig {
 export class OperationApplier {
   private readonly config: OperationApplierConfig;
   private operations: OperationRecord[] = [];
+  private nonTimelineRecords: NonTimelineUndoRecord[] = [];
   /**
    * Full deep-clone of the timeline state captured at construction time.
    * Used by undoAll() to restore the original state regardless of how
@@ -200,9 +216,177 @@ export class OperationApplier {
     return this.fullSnapshot ? deepClone(this.fullSnapshot) : null;
   }
 
+  // -----------------------------------------------------------------------
+  // Non-timeline operation undo support
+  // -----------------------------------------------------------------------
+
+  /**
+   * Record a non-timeline operation for undo support. Call this BEFORE the
+   * operation is applied to the store so we can capture pre-state.
+   */
+  recordNonTimelineOperation(
+    operation: AgentOperation,
+    toolCallId: string,
+  ): void {
+    const store = useVideoEditingStore.getState();
+
+    switch (operation.type) {
+      case 'add_material': {
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: { materialId: (operation as MaterialOperation & { type: 'add_material' }).material.id },
+        });
+        break;
+      }
+      case 'add_materials': {
+        const op = operation as MaterialOperation & { type: 'add_materials' };
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: { materialIds: op.materials.map(m => m.id) },
+        });
+        break;
+      }
+      case 'remove_material': {
+        const op = operation as MaterialOperation & { type: 'remove_material' };
+        const existing = store.materials.find(m => m.id === op.materialId);
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: { material: existing ? deepClone(existing) : null },
+        });
+        break;
+      }
+      case 'set_script': {
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: {
+            previousContent: store.scriptContent,
+            previousType: store.scriptType,
+          },
+        });
+        break;
+      }
+      case 'append_script': {
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: { previousContent: store.scriptContent },
+        });
+        break;
+      }
+      case 'set_storyboards': {
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: { previousStoryboards: deepClone(store.storyboards) },
+        });
+        break;
+      }
+      case 'update_storyboard': {
+        const op = operation as StoryboardOperation & { type: 'update_storyboard' };
+        const existingBoard = store.storyboards.find(s => s.id === op.storyboardId);
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: { previousStoryboard: existingBoard ? deepClone(existingBoard) : null },
+        });
+        break;
+      }
+      case 'start_async_task': {
+        // Async tasks are NOT undoable — the task has already been submitted
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: false,
+          undoData: null,
+        });
+        break;
+      }
+      default:
+        // Timeline operations are handled by the existing apply() path
+        break;
+    }
+  }
+
+  /**
+   * Undo a non-timeline operation by toolCallId.
+   * Returns `true` if found and undone, `false` if not found or not undoable.
+   */
+  undoNonTimelineOperation(toolCallId: string): boolean {
+    const idx = this.nonTimelineRecords.findIndex(r => r.toolCallId === toolCallId);
+    if (idx === -1) return false;
+
+    const record = this.nonTimelineRecords[idx];
+    if (!record.undoable) {
+      console.warn(
+        `[OperationApplier] Operation ${record.operation.type} is not undoable (toolCallId: ${toolCallId})`,
+      );
+      return false;
+    }
+
+    const store = useVideoEditingStore.getState();
+    const data = record.undoData as Record<string, unknown>;
+
+    switch (record.operation.type) {
+      case 'add_material':
+        store.removeMaterial(data.materialId as string);
+        break;
+      case 'add_materials': {
+        const ids = data.materialIds as string[];
+        for (const id of ids) {
+          store.removeMaterial(id);
+        }
+        break;
+      }
+      case 'remove_material': {
+        const mat = data.material as MaterialItem | null;
+        if (mat) store.addMaterial(mat);
+        break;
+      }
+      case 'set_script':
+        store.setScriptContent(data.previousContent as string);
+        store.setScriptType(data.previousType as 'video' | 'understanding' | 'ai_generated');
+        break;
+      case 'append_script':
+        store.setScriptContent(data.previousContent as string);
+        break;
+      case 'set_storyboards':
+        store.setStoryboards(data.previousStoryboards as StoryboardItem[]);
+        break;
+      case 'update_storyboard': {
+        const prev = data.previousStoryboard as StoryboardItem | null;
+        if (prev) {
+          store.updateStoryboard(prev.id, prev);
+        }
+        break;
+      }
+    }
+
+    this.nonTimelineRecords.splice(idx, 1);
+    return true;
+  }
+
+  /**
+   * Get a read-only view of non-timeline undo records.
+   */
+  getNonTimelineHistory(): ReadonlyArray<NonTimelineUndoRecord> {
+    return this.nonTimelineRecords;
+  }
+
   /** Clear operation history (e.g., when execution is cancelled). */
   clear(): void {
     this.operations = [];
+    this.nonTimelineRecords = [];
   }
 
   // -----------------------------------------------------------------------

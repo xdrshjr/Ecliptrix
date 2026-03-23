@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
 
         try {
           // Create agent
+          const origin = new URL(request.url).origin;
           const { agent, toolContext } = createVideoEditingAgent({
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
@@ -128,6 +129,7 @@ export async function POST(request: NextRequest) {
             timelineState: effectiveTimelineState,
             materials: effectiveMaterials,
             conversationHistory: messages,
+            apiBaseUrl: origin,
           });
 
           // Subscribe to events and forward as SSE

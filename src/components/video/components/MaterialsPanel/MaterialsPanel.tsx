@@ -14,6 +14,7 @@ import AiVideoModal from '../AiVideoModal/AiVideoModal';
 import AiImageModal from '../AiImageModal/AiImageModal';
 import StoryboardPackCard from './StoryboardPackCard';
 import StoryboardPackView from './StoryboardPackView';
+import StoryboardPackModal from './StoryboardPackModal';
 import { StoryboardPack, StoryboardFrame } from '@/types';
 import { listPacks, deletePack } from '@/lib/api/storyboard';
 
@@ -116,6 +117,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   // 分镜包状态
   const [storyboardPacks, setStoryboardPacks] = useState<StoryboardPack[]>([]);
   const [currentStoryboardPack, setCurrentStoryboardPack] = useState<StoryboardPack | null>(null);
+  const [storyboardPackModal, setStoryboardPackModal] = useState<{
+    isOpen: boolean;
+    pack: StoryboardPack | null;
+  }>({ isOpen: false, pack: null });
   const [storyboardPackDeleteConfirm, setStoryboardPackDeleteConfirm] = useState<{
     isOpen: boolean;
     packId: string | null;
@@ -151,17 +156,18 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   }, []);
 
   // 加载分镜包列表
+  const refreshStoryboardPacks = useCallback(async () => {
+    try {
+      const packs = await listPacks();
+      setStoryboardPacks(packs);
+      logger.info('分镜包列表加载成功', { count: packs.length });
+    } catch (error) {
+      logger.error('加载分镜包列表失败', error instanceof Error ? error : new Error(String(error)));
+    }
+  }, [logger]);
+
   useEffect(() => {
-    const loadPacks = async () => {
-      try {
-        const packs = await listPacks();
-        setStoryboardPacks(packs);
-        logger.info('分镜包列表加载成功', { count: packs.length });
-      } catch (error) {
-        logger.error('加载分镜包列表失败', error instanceof Error ? error : new Error(String(error)));
-      }
-    };
-    loadPacks();
+    refreshStoryboardPacks();
   }, []);
 
   // 删除分镜包
@@ -1455,14 +1461,15 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                   <StoryboardPackCard
                     key={`sp_${pack.packId}`}
                     pack={pack}
+                    onClick={(p) => setStoryboardPackModal({ isOpen: true, pack: p })}
                     onDoubleClick={(p) => setCurrentStoryboardPack(p)}
                     onDelete={handleDeleteStoryboardPack}
                   />
                 ))
               }
-              {/* 普通素材卡片 — storyboard_pack 筛选时不显示 */}
+              {/* 普通素材卡片 — storyboard_pack 类型由上方的 StoryboardPackCard 渲染 */}
               {selectedMaterialType !== 'storyboard_pack' && materials
-                .filter(material => selectedMaterialType === 'all' || material.type === selectedMaterialType)
+                .filter(material => material.type !== 'storyboard_pack' && (selectedMaterialType === 'all' || material.type === selectedMaterialType))
                 .map((material) => (
                 <div
                   key={material.id}
@@ -2030,6 +2037,23 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onCancel={() => setStoryboardPackDeleteConfirm({ isOpen: false, packId: null })}
       />
 
+      {/* 分镜包预览弹窗 */}
+      <StoryboardPackModal
+        isOpen={storyboardPackModal.isOpen}
+        pack={storyboardPackModal.pack}
+        onClose={() => setStoryboardPackModal({ isOpen: false, pack: null })}
+        onSelectForScript={(pack) => {
+          setStoryboardPackModal({ isOpen: false, pack: null });
+          if (onSelectPackForScript) onSelectPackForScript(pack);
+        }}
+        onDelete={(packId) => {
+          setStoryboardPackModal({ isOpen: false, pack: null });
+          handleDeleteStoryboardPack(packId);
+        }}
+        onFrameClick={handleFramePreviewClick}
+        onAddAllFramesToMaterials={handleAddAllFramesToMaterials}
+      />
+
       {/* 图片转视频方式选择弹出菜单 */}
       {imageToVideoPopover.visible && imageToVideoPopover.material && (
         <div
@@ -2260,7 +2284,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             showError(err.message || 'AI图像生成失败');
           });
         }}
-        onStoryboardGenerate={handleStoryboardGenerate}
+        onStoryboardGenerate={async (params) => {
+          const pack = await handleStoryboardGenerate(params);
+          await refreshStoryboardPacks();
+          return pack;
+        }}
       />
     </div>
   );

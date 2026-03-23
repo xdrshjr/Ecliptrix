@@ -13,6 +13,7 @@
  */
 
 import type { ChatMessage, AgentToolCallRecord, AgentTimelineOperation } from '@/types';
+import type { AgentOperation } from './types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,8 +37,11 @@ export interface AgentStateManagerSnapshot {
   accumulatedContent: string;
   /** All tool calls tracked during this execution. */
   toolCalls: InternalToolCallRecord[];
-  /** All timeline operations applied during this execution. */
-  pendingOperations: AgentTimelineOperation[];
+  /**
+   * All operations applied during this execution. Includes timeline ops
+   * (for backward compat) and new material/script/storyboard/async ops.
+   */
+  pendingOperations: AgentOperation[];
   /** Whether the execution has finalized (stream ended). */
   isFinalized: boolean;
   /** Error message, if any. */
@@ -54,7 +58,7 @@ export class AgentStateManager {
   // -- State fields --
   private accumulatedContent = '';
   private toolCalls: InternalToolCallRecord[] = [];
-  private pendingOperations: AgentTimelineOperation[] = [];
+  private pendingOperations: AgentOperation[] = [];
   private isFinalized = false;
   private errorMessage: string | null = null;
 
@@ -107,8 +111,8 @@ export class AgentStateManager {
     this.scheduleFlush();
   }
 
-  /** Record a timeline operation (tracked separately for undo). */
-  addOperation(operation: AgentTimelineOperation): void {
+  /** Record an agent operation (timeline, material, script, storyboard, or async task). */
+  addOperation(operation: AgentOperation): void {
     this.pendingOperations.push(operation);
     this.scheduleFlush();
   }
@@ -158,7 +162,7 @@ export class AgentStateManager {
   }
 
   /** Get pending operations. */
-  getPendingOperations(): readonly AgentTimelineOperation[] {
+  getPendingOperations(): readonly AgentOperation[] {
     return this.pendingOperations;
   }
 

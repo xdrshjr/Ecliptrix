@@ -1,44 +1,9 @@
 import type { TimelineState, MaterialItem } from '@/types';
+import type { CategorySummary, ToolInfo } from './registry/ToolRegistry';
 
-/**
- * Tool overview entry: tool name and a one-line description.
- * Kept in sync with the actual tool definitions in ./tools/.
- * The descriptions here are intentionally brief — full parameter schemas
- * are provided through the function-calling `tools` parameter (L1).
- */
-interface ToolOverviewEntry {
-  name: string;
-  desc: string;
-}
-
-/**
- * Registry of all tools with their one-line descriptions.
- * This is the single source of truth for the L0 tool overview in the system prompt.
- * When adding or removing tools, update this array accordingly.
- */
-const TOOL_OVERVIEW_ENTRIES: ToolOverviewEntry[] = [
-  { name: 'get_timeline', desc: 'Get full timeline state (tracks, clips, timing, properties)' },
-  { name: 'list_materials', desc: 'List all materials in the library, optionally filtered by type' },
-  { name: 'search_materials', desc: 'Search materials by name, content description, or transcript text' },
-  { name: 'add_to_track', desc: 'Add a material to a timeline track at a specified position' },
-  { name: 'trim_clip', desc: 'Trim a clip by adjusting its source in/out points' },
-  { name: 'delete_clip', desc: 'Remove a clip from the timeline' },
-  { name: 'move_clip', desc: 'Move a clip to a new position or different track' },
-  { name: 'resize_clip', desc: 'Change a clip\'s display duration on the timeline' },
-];
-
-/**
- * Format a one-line-per-tool overview for the system prompt.
- * No parameter schemas — those are provided via function-calling tools definition (L1).
- *
- * Example output:
- *   - get_timeline: Get full timeline state (tracks, clips, timing, properties)
- *   - list_materials: List all materials in the library, optionally filtered by type
- *   ...
- */
-export function formatToolOverview(): string {
-  return TOOL_OVERVIEW_ENTRIES.map(t => `- ${t.name}: ${t.desc}`).join('\n');
-}
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
 /**
  * Map from internal track type to human-readable label.
@@ -50,23 +15,122 @@ const TRACK_TYPE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Always-available tools: one-line descriptions shown in L0 system prompt.
+ * These are the 8 baseline tools that the agent can call without explore_tools.
+ */
+const ALWAYS_AVAILABLE_TOOLS: { name: string; desc: string }[] = [
+  { name: 'get_timeline', desc: '获取完整时间线状态' },
+  { name: 'list_materials', desc: '列出素材库中的所有素材' },
+  { name: 'search_materials', desc: '搜索素材库中的素材（名称/描述/字幕匹配）' },
+  { name: 'add_to_track', desc: '将素材添加到时间线轨道' },
+  { name: 'trim_clip', desc: '修剪片段的源入出点' },
+  { name: 'delete_clip', desc: '删除时间线上的片段' },
+  { name: 'move_clip', desc: '移动片段到新位置或不同轨道' },
+  { name: 'resize_clip', desc: '调整片段在时间线上的显示时长' },
+];
+
+// ---------------------------------------------------------------------------
+// formatToolOverview — tree directory format
+// ---------------------------------------------------------------------------
+
+/**
+ * Format the tool directory as a two-section tree: always-available tools
+ * and advanced tool categories (requiring explore_tools to see details).
+ *
+ * @param categorySummaries - Summaries from ToolRegistry.getCategorySummaries()
+ */
+export function formatToolOverview(categorySummaries: CategorySummary[]): string {
+  const lines: string[] = [];
+
+  // Section 1: Always-available tools
+  lines.push('## 始终可用的工具');
+  for (const tool of ALWAYS_AVAILABLE_TOOLS) {
+    lines.push(`- ${tool.name}: ${tool.desc}`);
+  }
+
+  // Section 2: Advanced categories (on-demand, not alwaysAvailable)
+  const advancedCategories = categorySummaries.filter(c => !c.alwaysAvailable);
+  if (advancedCategories.length > 0) {
+    lines.push('');
+    lines.push('## 高级工具类别（调用 explore_tools 查看详情后可用）');
+    for (const cat of advancedCategories) {
+      lines.push(`- ${cat.id}: ${cat.description}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// formatExploreToolsResult — detailed tool info from explore_tools
+// ---------------------------------------------------------------------------
+
+/**
+ * Format the detailed tool information returned by explore_tools for a
+ * specific category. This is injected into the conversation as a tool result
+ * so the LLM knows exactly how to call each tool.
+ *
+ * @param categoryName - Human-readable category name (e.g. "搜索获取")
+ * @param categoryId - Category ID (e.g. "search_tools")
+ * @param tools - Detailed tool info array from the registry
+ * @param usageHints - Category-specific usage guidance string
+ */
+export function formatExploreToolsResult(
+  categoryName: string,
+  categoryId: string,
+  tools: ToolInfo[],
+  usageHints: string
+): string {
+  const lines: string[] = [];
+
+  lines.push(`## ${categoryId} — ${categoryName}`);
+  lines.push('');
+  lines.push('以下工具现在可用，你可以直接调用：');
+
+  for (const tool of tools) {
+    lines.push('');
+    lines.push(`### ${tool.name}`);
+    lines.push(tool.description);
+
+    // Format parameter schema as a concise one-liner
+    if (tool.parametersSchema && typeof tool.parametersSchema === 'object') {
+      const schema = tool.parametersSchema as Record<string, unknown>;
+      const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
+      const required = (schema.required as string[]) ?? [];
+
+      if (properties) {
+        const paramParts: string[] = [];
+        for (const [key, prop] of Object.entries(properties)) {
+          const isRequired = required.includes(key);
+          const desc = (prop.description as string) ?? '';
+          const suffix = desc ? `, ${desc}` : '';
+          paramParts.push(`${key}(${isRequired ? '必填' : '可选'}${suffix})`);
+        }
+        lines.push(`参数：${paramParts.join(', ')}`);
+      }
+    }
+  }
+
+  if (usageHints) {
+    lines.push('');
+    lines.push('提示：');
+    lines.push(usageHints);
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// formatCompactSummary — project state summary
+// ---------------------------------------------------------------------------
+
+/**
  * Format a compact project summary containing only aggregate statistics.
- * Replaces the old formatTimelineSummary() + formatMaterialsSummary() pair.
  *
  * Design constraints:
- * - Output must stay under ~100 tokens regardless of project scale (even 100+ materials)
+ * - Output must stay under ~100 tokens regardless of project scale
  * - Contains enough information for the Agent to decide whether to call get_timeline/search_materials
  * - Includes track annotations (locked/muted) since they affect which operations are possible
- *
- * Example output for a mid-size project:
- *   Tracks: video(3 clips), audio(2 clips), subtitle(empty)
- *   Duration: 45.2s
- *   Materials: 5 video, 3 audio, 8 image, 0 subtitle
- *
- * Example output for an empty project:
- *   Tracks: none
- *   Duration: 0.0s
- *   Materials: none
  */
 export function formatCompactSummary(
   timelineState: TimelineState,
@@ -85,7 +149,6 @@ export function formatCompactSummary(
       const clipCount = items.length;
       const label = TRACK_TYPE_LABELS[track.type] ?? track.type;
 
-      // Build annotation suffixes for locked/muted states
       const annotations: string[] = [];
       if (track.isLocked) annotations.push('locked');
       if (track.isMuted) annotations.push('muted');
@@ -119,7 +182,6 @@ export function formatCompactSummary(
       counts[m.type] = (counts[m.type] ?? 0) + 1;
     }
 
-    // Use a stable ordering: video, audio, image, subtitle, then anything else
     const typeOrder = ['video', 'audio', 'image', 'subtitle'];
     const orderedParts: string[] = [];
     const seen = new Set<string>();
@@ -129,7 +191,6 @@ export function formatCompactSummary(
       seen.add(t);
     }
 
-    // Append any unexpected types that aren't in the standard order
     for (const t of Object.keys(counts)) {
       if (!seen.has(t)) {
         orderedParts.push(`${counts[t]} ${t}`);
@@ -142,129 +203,55 @@ export function formatCompactSummary(
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// buildSystemPrompt — L0 system prompt
+// ---------------------------------------------------------------------------
+
 /**
  * Build the L0 system prompt for the video editing agent.
  *
- * This is the progressive context system's base level — always injected, always compact.
- * The prompt is structured as:
- *   1. Role (minimal — 2 sentences)
- *   2. Tool overview (one line per tool, no param schemas)
- *   3. Project summary (aggregate stats only)
- *   4. Operation guidelines (how to use tools effectively)
+ * Structure:
+ *   1. Role (2 sentences)
+ *   2. Rules (mandatory behavioral constraints)
+ *   3. Tool directory (always-available + advanced categories)
+ *   4. Project summary (aggregate stats)
+ *   5. Workflow guide (decision tree for tool selection)
+ *   6. Smart result handling (when to auto-add to timeline vs library only)
  *
- * Total token budget: < 500 tokens under any project size.
- * The Agent gets detailed data through L1 (function-calling tool schemas) and
- * L2 (calling get_timeline / list_materials / search_materials at runtime).
+ * Token budget: < 600 tokens under any project size.
  *
- * @param timelineState - Current timeline state (tracks, clips, duration)
+ * @param timelineState - Current timeline state
  * @param materials - All materials in the library
- * @returns The complete system prompt string
+ * @param categorySummaries - Category summaries from ToolRegistry
  */
 export function buildSystemPrompt(
   timelineState: TimelineState,
-  materials: MaterialItem[]
+  materials: MaterialItem[],
+  categorySummaries: CategorySummary[]
 ): string {
-  return `You are a video editing assistant. Analyze user requests, select the right tools, and execute editing operations step by step.
+  return `你是一个全能视频编辑助手。分析用户需求，选择正确的工具，逐步执行编辑操作。
 
-## Rules (MANDATORY)
-- You MUST call tools to perform ANY timeline operation (add, trim, delete, move, resize). Describing operations in text does NOT execute them — the user will see no changes.
-- NEVER say "I have done X" or "I will do X" without actually calling the corresponding tool first. Text descriptions are NOT operations.
-- Workflow: (1) query state with get_timeline/list_materials/search_materials, (2) call operation tools to make changes, (3) briefly summarize what was done.
-- If the user asks you to edit, cut, add, or arrange materials, you MUST call the operation tools. Do not just describe a plan.
+## 规则
+- 你必须调用工具来执行任何操作。仅在文字中描述操作不会产生任何效果。
+- 对于高级功能，先调用 explore_tools 加载对应工具类别，然后使用。
+- 复合任务请自动拆解为多个步骤顺序执行。
+- 搜索/生成的结果会自动添加到素材库。AI生成任务为异步，启动后无需等待。
 
-## Tools
-${formatToolOverview()}
+${formatToolOverview(categorySummaries)}
 
-## Project
+## 项目状态
 ${formatCompactSummary(timelineState, materials)}
 
-## Guidelines
-- For detailed timeline state, call get_timeline. For finding materials, call list_materials or search_materials.
-- When the user's intent is clear and specific (e.g. "trim the first clip by 5s"), operate directly using clip/track info from previous tool results or conversation context.
-- When the request is ambiguous or you need IDs, query first with get_timeline or search_materials before operating.
-- search_materials matches against names, AI-generated content descriptions, and transcript text.
-- After completing operations, briefly summarize what you did. Do not repeat the full operation details — the user can see tool results.`.trim();
-}
+## 操作指南
+- 需要外部素材？→ explore_tools("search_tools") → search_video/search_image/search_audio
+- 需要 AI 创作内容？→ explore_tools("ai_gen_tools") → generate_ai_image/generate_ai_video
+- 需要语音旁白？→ explore_tools("tts_tools") → generate_tts
+- 需要写脚本？→ explore_tools("script_tools") → generate_video_script
+- 需要分镜？→ explore_tools("storyboard_tools") → generate_storyboard
+- 对于复合需求（如"帮我做一个30秒视频"），自动规划并按顺序执行多个步骤。
 
-// ============================================================================
-// Legacy functions — kept for backward compatibility during transition.
-// These are no longer used by buildSystemPrompt() but may be referenced
-// by other modules or tests. Marked deprecated; remove once all consumers
-// have migrated.
-// ============================================================================
-
-/**
- * @deprecated Use formatCompactSummary() instead. This function produces verbose
- * per-clip output that bloats the system prompt. Retained temporarily for
- * backward compatibility.
- */
-export function formatTimelineSummary(timelineState: TimelineState): string {
-  const lines: string[] = [];
-  const totalDuration = timelineState.totalDuration ?? 0;
-  const tracks = timelineState.tracks ?? [];
-  lines.push(`Total duration: ${totalDuration.toFixed(1)}s`);
-  lines.push(`Tracks: ${tracks.length}`);
-
-  for (const track of tracks) {
-    const items = track.items ?? [];
-    const clipCount = items.length;
-    const locked = track.isLocked ? ' [LOCKED]' : '';
-    const muted = track.isMuted ? ' [MUTED]' : '';
-    lines.push(`- ${track.name || track.id} (${track.type})${locked}${muted}: ${clipCount} clip(s)`);
-
-    for (const item of items) {
-      const startTime = item.startTime ?? 0;
-      const duration = item.duration ?? 0;
-      lines.push(
-        `  - "${item.name}" id=${item.id} at ${startTime.toFixed(1)}s, duration=${duration.toFixed(1)}s`
-      );
-    }
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * @deprecated Use formatCompactSummary() instead. This function dumps every
- * material's full attributes including AI analysis text, which can reach
- * 2000+ tokens. Retained temporarily for backward compatibility.
- */
-export function formatMaterialsSummary(materials: MaterialItem[]): string {
-  if (materials.length === 0) return 'No materials available.';
-
-  const lines: string[] = [];
-  lines.push(`Total materials: ${materials.length}`);
-
-  const byType = new Map<string, MaterialItem[]>();
-  for (const m of materials) {
-    const list = byType.get(m.type) || [];
-    list.push(m);
-    byType.set(m.type, list);
-  }
-
-  for (const [type, items] of Array.from(byType.entries())) {
-    lines.push(`\n### ${type} (${items.length})`);
-    for (let i = 0; i < items.length; i++) {
-      const m = items[i];
-      let info = `${i + 1}. "${m.name}" id=${m.id}`;
-      if (m.duration) info += ` ${m.duration.toFixed(1)}s`;
-      if (m.width && m.height) info += ` ${m.width}x${m.height}`;
-      if (m.format) info += ` [${m.format}]`;
-      if (m.description) info += ` - ${m.description}`;
-      if (m.tags?.length) info += ` tags:[${m.tags.join(',')}]`;
-      if (m.analysisResult?.status === 'completed' && m.analysisResult.analysis) {
-        info += ` | AI分析: ${m.analysisResult.analysis}`;
-      } else if (m.analysisResult?.status === 'pending') {
-        info += ` | (解析中...)`;
-      }
-      if (m.sentenceSegments?.sentences.length) {
-        const fullText = m.sentenceSegments.sentences.map(s => s.text).join('');
-        const displayText = fullText.length > 100 ? fullText.substring(0, 100) + '...' : fullText;
-        info += ` | 原始文本: "${displayText}"`;
-      }
-      lines.push(info);
-    }
-  }
-
-  return lines.join('\n');
+## 智能结果处理
+- 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track
+- 用户只说"找一些"/"生成一个"/"搜索" → 仅添加到素材库，不自动上轨
+- 不确定时 → 只入库，让用户自行决定`.trim();
 }

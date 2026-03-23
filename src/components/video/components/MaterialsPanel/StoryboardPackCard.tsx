@@ -5,7 +5,8 @@ import { StoryboardPack } from '@/types';
 
 interface StoryboardPackCardProps {
   pack: StoryboardPack;
-  onDoubleClick: (pack: StoryboardPack) => void;
+  onClick: (pack: StoryboardPack) => void;
+  onDoubleClick?: (pack: StoryboardPack) => void;
   onDelete: (packId: string) => void;
 }
 
@@ -16,6 +17,7 @@ interface StoryboardPackCardProps {
  */
 const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
   pack,
+  onClick,
   onDoubleClick,
   onDelete,
 }) => {
@@ -30,7 +32,8 @@ const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
   return (
     <div
       className="group bg-card border border-border rounded-md overflow-hidden transition-all cursor-pointer hover:border-primary/50"
-      onDoubleClick={() => onDoubleClick(pack)}
+      onClick={() => onClick(pack)}
+      onDoubleClick={() => onDoubleClick?.(pack)}
     >
       {/* Thumbnail area — same aspect-ratio as regular material cards */}
       <div className="aspect-video bg-muted relative">

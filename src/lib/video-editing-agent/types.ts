@@ -1,14 +1,20 @@
 import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage } from '@/types';
+import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
+import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 
 // --- Tool Context ---
 
 export interface ToolContext {
   timelineState: TimelineState;
   materials: MaterialItem[];
+  /** Base URL for internal API calls (e.g. "http://localhost:3010"), derived from the incoming request */
+  apiBaseUrl: string;
   /** Map of toolCallId → operation produced by that tool call */
-  operations: Map<string, TimelineOperation>;
+  operations: Map<string, AgentOperation>;
   /** Called by tools to record an operation and update local state */
   updateTimeline: (toolCallId: string, operation: TimelineOperation) => void;
+  /** Called by tools to record any agent operation (material, script, storyboard, async task) */
+  recordOperation: (toolCallId: string, operation: AgentOperation) => void;
 }
 
 // --- Timeline Operations (produced by tools, applied by frontend) ---
@@ -60,6 +66,39 @@ export type TimelineOperation =
       newDuration: number;
     };
 
+// --- Material Operations ---
+
+export type MaterialOperation =
+  | { type: 'add_material'; material: MaterialItem }
+  | { type: 'add_materials'; materials: MaterialItem[] }
+  | { type: 'remove_material'; materialId: string };
+
+// --- Script Operations ---
+
+export type ScriptOperation =
+  | { type: 'set_script'; content: string; scriptType: string }
+  | { type: 'append_script'; content: string };
+
+// --- Storyboard Operations ---
+
+export type StoryboardOperation =
+  | { type: 'set_storyboards'; storyboards: StoryboardItem[] }
+  | { type: 'update_storyboard'; storyboardId: string; patch: Record<string, unknown> };
+
+// --- Async Task Operations ---
+
+export type AsyncTaskOperation =
+  | { type: 'start_async_task'; task: AsyncTask };
+
+// --- Unified Agent Operation ---
+
+export type AgentOperation =
+  | TimelineOperation
+  | MaterialOperation
+  | ScriptOperation
+  | StoryboardOperation
+  | AsyncTaskOperation;
+
 // --- SSE Events (sent from API route to frontend) ---
 
 export type SSEEvent =
@@ -81,8 +120,9 @@ export type SSEEvent =
       toolCallId: string;
       toolName: string;
       result: unknown;
-      operation: TimelineOperation | null;
+      operation: AgentOperation | null;
     }
+  | { type: 'script_delta'; content: string }
   | { type: 'error'; message: string };
 
 // --- API Route Request ---
@@ -102,6 +142,8 @@ export interface VideoEditingAgentConfig {
   timelineState: TimelineState;
   materials: MaterialItem[];
   conversationHistory: ChatMessage[];
+  /** Base URL for internal API calls, derived from the incoming request origin */
+  apiBaseUrl: string;
 }
 
 // Re-export from central types for convenience

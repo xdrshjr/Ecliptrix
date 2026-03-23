@@ -205,6 +205,22 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
     });
   }
 
+  // 4. Fallback: finalized agent message with no content and no tool calls
+  //    (e.g., model returned empty response). Prevents a blank gap in the UI.
+  if (!isStreaming && !message.content && !hasToolCalls) {
+    nodes.push({
+      kind: 'response',
+      id: `${message.id}-response`,
+      timestamp: message.timestamp,
+      content: 'The model did not return a response.',
+      toolCalls: [],
+      isUndone: false,
+      messageId: message.id,
+      canUndo: false,
+      isStreaming: false,
+    });
+  }
+
   return nodes;
 }
 
