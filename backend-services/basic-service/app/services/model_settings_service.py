@@ -1,18 +1,21 @@
 """
-Service for managing model settings stored in SQLite.
+Service for managing model settings stored in PostgreSQL.
 
 Two-layer architecture:
   - model_providers: provider credentials (name, type, API URL, API key)
-  - model_assignments: feature → provider+model mapping
+  - model_assignments: feature -> provider+model mapping
+
+Migrated from SQLite (aiosqlite) to PostgreSQL (async SQLAlchemy).
 """
 
 import os
 import time
-import aiosqlite
-from contextlib import asynccontextmanager
-from typing import Optional, List, AsyncIterator
+import uuid
+from typing import Optional, List
 
 import httpx
+from sqlalchemy import select, update, delete
+from sqlalchemy.orm import selectinload
 
 from app.models.model_settings_models import (
     ModelFunctionType,
@@ -28,14 +31,12 @@ from app.models.model_settings_models import (
     FetchModelsRequest,
     FetchModelsResponse,
 )
+from app.models.db_models import ModelProvider, ModelAssignment
+from app.database import async_session_factory
 from app.config import get_settings
 from app.logger import get_logger
 
 logger = get_logger(__name__)
-
-# Database path
-DB_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'data')
-DB_PATH = os.path.join(DB_DIR, 'model_settings.db')
 
 # Known providers with default API URLs
 PROVIDERS: List[ProviderInfo] = [
@@ -81,237 +82,162 @@ def _mask_api_key(key: str) -> str:
     return f"{key[:4]}{'*' * (len(key) - 8)}{key[-4:]}"
 
 
+def _parse_uuid(value: str) -> uuid.UUID:
+    """Parse a string to UUID, raising ValueError on invalid format."""
+    return uuid.UUID(str(value))
+
+
 class ModelSettingsService:
-    """Service for managing provider credentials and feature model assignments."""
+    """Service for managing provider credentials and feature model assignments.
 
-    @asynccontextmanager
-    async def _connect(self) -> AsyncIterator[aiosqlite.Connection]:
-        """Get a DB connection with foreign keys enabled."""
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("PRAGMA foreign_keys = ON")
-            yield db
-
-    async def init_db(self):
-        """Initialize SQLite database, create tables, and migrate from old schema if needed."""
-        os.makedirs(DB_DIR, exist_ok=True)
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("PRAGMA foreign_keys = ON")
-
-            # Create new tables
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS model_providers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    provider_type TEXT NOT NULL,
-                    api_url TEXT NOT NULL,
-                    api_key TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS model_assignments (
-                    function_type TEXT PRIMARY KEY,
-                    provider_id INTEGER NOT NULL,
-                    model_name TEXT NOT NULL,
-                    temperature REAL NOT NULL DEFAULT 0.7,
-                    max_tokens INTEGER NOT NULL DEFAULT 128000,
-                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                    FOREIGN KEY (provider_id) REFERENCES model_providers(id) ON DELETE CASCADE
-                )
-            """)
-
-            # Migrate from old schema if needed
-            cursor = await db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='model_settings'"
-            )
-            old_table = await cursor.fetchone()
-
-            if old_table:
-                # Check if migration already done
-                cursor = await db.execute("SELECT COUNT(*) FROM model_providers")
-                count = (await cursor.fetchone())[0]
-
-                if count == 0:
-                    logger.info("Migrating from old model_settings table to new two-layer schema...")
-                    db.row_factory = aiosqlite.Row
-                    cursor = await db.execute("SELECT * FROM model_settings")
-                    rows = await cursor.fetchall()
-                    db.row_factory = None
-
-                    # Deduplicate providers by (provider_type, api_url, api_key)
-                    provider_map = {}  # (provider, api_url, api_key) -> provider_id
-                    for row in rows:
-                        provider_type = row["provider"] or "custom"
-                        api_url = row["api_url"]
-                        api_key = row["api_key"]
-                        dedup_key = (provider_type, api_url, api_key)
-
-                        if dedup_key not in provider_map:
-                            # Generate a display name
-                            func_type = row["function_type"]
-                            provider_name = f"{provider_type} ({func_type})"
-                            # Ensure unique name
-                            existing = await db.execute(
-                                "SELECT id FROM model_providers WHERE name = ?", (provider_name,)
-                            )
-                            if await existing.fetchone():
-                                provider_name = f"{provider_type} ({func_type}_{int(time.time())})"
-
-                            cursor = await db.execute(
-                                """INSERT INTO model_providers (name, provider_type, api_url, api_key)
-                                   VALUES (?, ?, ?, ?)""",
-                                (provider_name, provider_type, api_url, api_key)
-                            )
-                            provider_map[dedup_key] = cursor.lastrowid
-                            logger.info(f"  Migrated provider: {provider_name} (id={cursor.lastrowid})")
-
-                        # Create assignment
-                        provider_id = provider_map[dedup_key]
-                        await db.execute(
-                            """INSERT OR IGNORE INTO model_assignments
-                               (function_type, provider_id, model_name, temperature, max_tokens)
-                               VALUES (?, ?, ?, ?, ?)""",
-                            (row["function_type"], provider_id, row["model_name"],
-                             row["temperature"], row["max_tokens"])
-                        )
-                        logger.info(f"  Migrated assignment: {row['function_type']} -> provider {provider_id}")
-
-                    logger.info(f"Migration complete: {len(provider_map)} providers, {len(rows)} assignments")
-
-                # Drop old table after migration
-                await db.execute("DROP TABLE IF EXISTS model_settings")
-                logger.info("Dropped old model_settings table")
-
-            await db.commit()
-        logger.info(f"Model settings database initialized at {DB_PATH}")
+    Uses async SQLAlchemy with PostgreSQL via async_session_factory.
+    """
 
     # ── Provider CRUD ──
 
     async def create_provider(self, request: ModelProviderCreate) -> ModelProviderResponse:
         """Create a new provider credential."""
-        async with self._connect() as db:
-            cursor = await db.execute(
-                """INSERT INTO model_providers (name, provider_type, api_url, api_key)
-                   VALUES (?, ?, ?, ?)""",
-                (request.name, request.provider_type, request.api_url, request.api_key)
+        async with async_session_factory() as session:
+            provider = ModelProvider(
+                name=request.name,
+                provider_type=request.provider_type,
+                api_url=request.api_url,
+                api_key=request.api_key,
             )
-            await db.commit()
-            provider_id = cursor.lastrowid
+            session.add(provider)
+            await session.commit()
+            await session.refresh(provider)
 
-        logger.info(f"Created provider: {request.name} (id={provider_id})")
-        return await self.get_provider(provider_id)
+        logger.info(f"Created provider: {request.name} (id={provider.id})")
+        return self._provider_to_response(provider)
 
-    async def update_provider(self, provider_id: int, request: ModelProviderUpdate) -> Optional[ModelProviderResponse]:
+    async def update_provider(self, provider_id: str, request: ModelProviderUpdate) -> Optional[ModelProviderResponse]:
         """Update a provider credential. Use '__KEEP__' for api_key to preserve existing."""
-        async with self._connect() as db:
-            # Fetch current values
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM model_providers WHERE id = ?", (provider_id,))
-            row = await cursor.fetchone()
-            db.row_factory = None
+        pid = _parse_uuid(provider_id)
 
-            if not row:
+        async with async_session_factory() as session:
+            stmt = select(ModelProvider).where(ModelProvider.id == pid)
+            result = await session.execute(stmt)
+            provider = result.scalar_one_or_none()
+
+            if not provider:
                 return None
 
-            name = request.name if request.name is not None else row["name"]
-            provider_type = request.provider_type if request.provider_type is not None else row["provider_type"]
-            api_url = request.api_url if request.api_url is not None else row["api_url"]
+            if request.name is not None:
+                provider.name = request.name
+            if request.provider_type is not None:
+                provider.provider_type = request.provider_type
+            if request.api_url is not None:
+                provider.api_url = request.api_url
 
             # Handle __KEEP__ sentinel for API key
-            if request.api_key is None or request.api_key == '__KEEP__':
-                api_key = row["api_key"]
-            else:
-                api_key = request.api_key
+            if request.api_key is not None and request.api_key != '__KEEP__':
+                provider.api_key = request.api_key
 
-            await db.execute(
-                """UPDATE model_providers
-                   SET name = ?, provider_type = ?, api_url = ?, api_key = ?, updated_at = datetime('now')
-                   WHERE id = ?""",
-                (name, provider_type, api_url, api_key, provider_id)
-            )
-            await db.commit()
+            await session.commit()
+            await session.refresh(provider)
 
         logger.info(f"Updated provider id={provider_id}")
-        return await self.get_provider(provider_id)
+        return self._provider_to_response(provider)
 
-    async def delete_provider(self, provider_id: int) -> bool:
+    async def delete_provider(self, provider_id: str) -> bool:
         """Delete a provider and cascade-delete its assignments."""
-        async with self._connect() as db:
-            cursor = await db.execute("DELETE FROM model_providers WHERE id = ?", (provider_id,))
-            await db.commit()
-            deleted = cursor.rowcount > 0
+        pid = _parse_uuid(provider_id)
 
-        if deleted:
-            logger.info(f"Deleted provider id={provider_id} (assignments cascade-deleted)")
-        return deleted
+        async with async_session_factory() as session:
+            stmt = select(ModelProvider).where(ModelProvider.id == pid)
+            result = await session.execute(stmt)
+            provider = result.scalar_one_or_none()
+
+            if not provider:
+                return False
+
+            await session.delete(provider)
+            await session.commit()
+
+        logger.info(f"Deleted provider id={provider_id} (assignments cascade-deleted)")
+        return True
 
     async def get_all_providers(self) -> List[ModelProviderResponse]:
         """Get all saved provider credentials (API keys masked)."""
-        async with self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM model_providers ORDER BY id")
-            rows = await cursor.fetchall()
-            return [self._provider_row_to_response(row) for row in rows]
+        async with async_session_factory() as session:
+            stmt = select(ModelProvider).order_by(ModelProvider.created_at)
+            result = await session.execute(stmt)
+            providers = result.scalars().all()
+            return [self._provider_to_response(p) for p in providers]
 
-    async def get_provider(self, provider_id: int) -> Optional[ModelProviderResponse]:
+    async def get_provider(self, provider_id: str) -> Optional[ModelProviderResponse]:
         """Get a single provider by ID (API key masked)."""
-        async with self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM model_providers WHERE id = ?", (provider_id,))
-            row = await cursor.fetchone()
-            if row:
-                return self._provider_row_to_response(row)
+        pid = _parse_uuid(provider_id)
+
+        async with async_session_factory() as session:
+            stmt = select(ModelProvider).where(ModelProvider.id == pid)
+            result = await session.execute(stmt)
+            provider = result.scalar_one_or_none()
+            if provider:
+                return self._provider_to_response(provider)
             return None
 
-    async def get_provider_api_key(self, provider_id: int) -> Optional[str]:
+    async def get_provider_api_key(self, provider_id: str) -> Optional[str]:
         """Get the raw API key for a provider (internal use only)."""
-        async with self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT api_key FROM model_providers WHERE id = ?", (provider_id,))
-            row = await cursor.fetchone()
-            return row["api_key"] if row else None
+        pid = _parse_uuid(provider_id)
+
+        async with async_session_factory() as session:
+            stmt = select(ModelProvider.api_key).where(ModelProvider.id == pid)
+            result = await session.execute(stmt)
+            row = result.scalar_one_or_none()
+            return row if row else None
 
     # ── Assignment CRUD ──
 
     async def get_all_assignments(self) -> List[ModelAssignmentResponse]:
         """Get all feature model assignments (joined with provider info)."""
-        async with self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("""
-                SELECT a.*, p.name as provider_name, p.provider_type
-                FROM model_assignments a
-                JOIN model_providers p ON a.provider_id = p.id
-                ORDER BY a.function_type
-            """)
-            rows = await cursor.fetchall()
-            return [self._assignment_row_to_response(row) for row in rows]
+        async with async_session_factory() as session:
+            stmt = (
+                select(ModelAssignment)
+                .options(selectinload(ModelAssignment.provider))
+                .order_by(ModelAssignment.function_type)
+            )
+            result = await session.execute(stmt)
+            assignments = result.scalars().all()
+            return [self._assignment_to_response(a) for a in assignments]
 
     async def save_assignment(self, request: ModelAssignmentRequest) -> Optional[ModelAssignmentResponse]:
         """Save or update a feature model assignment (upsert by function_type)."""
-        # Verify provider exists
-        provider = await self.get_provider(request.provider_id)
-        if not provider:
-            return None
+        pid = _parse_uuid(request.provider_id)
 
-        async with self._connect() as db:
-            await db.execute("""
-                INSERT INTO model_assignments (function_type, provider_id, model_name, temperature, max_tokens, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-                ON CONFLICT(function_type) DO UPDATE SET
-                    provider_id = excluded.provider_id,
-                    model_name = excluded.model_name,
-                    temperature = excluded.temperature,
-                    max_tokens = excluded.max_tokens,
-                    updated_at = datetime('now')
-            """, (
-                request.function_type.value,
-                request.provider_id,
-                request.model_name,
-                request.temperature,
-                request.max_tokens,
-            ))
-            await db.commit()
+        # Verify provider exists
+        async with async_session_factory() as session:
+            provider_check = await session.execute(
+                select(ModelProvider.id).where(ModelProvider.id == pid)
+            )
+            if not provider_check.scalar_one_or_none():
+                return None
+
+        async with async_session_factory() as session:
+            # Check if assignment already exists
+            stmt = select(ModelAssignment).where(
+                ModelAssignment.function_type == request.function_type.value
+            )
+            result = await session.execute(stmt)
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                existing.provider_id = pid
+                existing.model_name = request.model_name
+                existing.temperature = request.temperature
+                existing.max_tokens = request.max_tokens
+            else:
+                assignment = ModelAssignment(
+                    function_type=request.function_type.value,
+                    provider_id=pid,
+                    model_name=request.model_name,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
+                session.add(assignment)
+
+            await session.commit()
 
         logger.info(f"Saved assignment: {request.function_type.value} -> provider {request.provider_id}, model {request.model_name}")
 
@@ -324,13 +250,13 @@ class ModelSettingsService:
 
     async def delete_assignment(self, function_type: ModelFunctionType) -> bool:
         """Delete a feature assignment (revert to env var defaults)."""
-        async with self._connect() as db:
-            cursor = await db.execute(
-                "DELETE FROM model_assignments WHERE function_type = ?",
-                (function_type.value,)
+        async with async_session_factory() as session:
+            stmt = delete(ModelAssignment).where(
+                ModelAssignment.function_type == function_type.value
             )
-            await db.commit()
-            deleted = cursor.rowcount > 0
+            result = await session.execute(stmt)
+            await session.commit()
+            deleted = result.rowcount > 0
 
         if deleted:
             logger.info(f"Deleted assignment for {function_type.value}, reverting to env defaults")
@@ -338,23 +264,24 @@ class ModelSettingsService:
 
     # ── Model Fetching ──
 
-    async def fetch_models_for_provider(self, provider_id: int) -> FetchModelsResponse:
+    async def fetch_models_for_provider(self, provider_id: str) -> FetchModelsResponse:
         """Fetch available models using a saved provider's credentials."""
-        async with self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT api_url, api_key, provider_type FROM model_providers WHERE id = ?", (provider_id,))
-            row = await cursor.fetchone()
+        pid = _parse_uuid(provider_id)
 
-        if not row:
+        async with async_session_factory() as session:
+            stmt = select(ModelProvider).where(ModelProvider.id == pid)
+            result = await session.execute(stmt)
+            provider = result.scalar_one_or_none()
+
+        if not provider:
             return FetchModelsResponse(success=False, message="Provider not found")
 
         # Return hardcoded models for providers without /models endpoint
-        provider_type = row["provider_type"]
-        if provider_type in CODING_PROVIDER_MODELS:
-            models = CODING_PROVIDER_MODELS[provider_type]
+        if provider.provider_type in CODING_PROVIDER_MODELS:
+            models = CODING_PROVIDER_MODELS[provider.provider_type]
             return FetchModelsResponse(success=True, message=f"Found {len(models)} models", models=models)
 
-        return await self._fetch_models_from_api(row["api_url"], row["api_key"])
+        return await self._fetch_models_from_api(provider.api_url, provider.api_key)
 
     async def fetch_models(self, request: FetchModelsRequest) -> FetchModelsResponse:
         """Fetch available models with ad-hoc or saved credentials."""
@@ -364,19 +291,17 @@ class ModelSettingsService:
 
         # If provider_id given, look up saved credentials
         if request.provider_id:
-            async with self._connect() as db:
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute(
-                    "SELECT api_url, api_key, provider_type FROM model_providers WHERE id = ?",
-                    (request.provider_id,)
-                )
-                row = await cursor.fetchone()
-                if row:
-                    api_key = row["api_key"]
+            pid = _parse_uuid(request.provider_id)
+            async with async_session_factory() as session:
+                stmt = select(ModelProvider).where(ModelProvider.id == pid)
+                result = await session.execute(stmt)
+                provider = result.scalar_one_or_none()
+                if provider:
+                    api_key = provider.api_key
                     if not api_url:
-                        api_url = row["api_url"]
+                        api_url = provider.api_url
                     if not provider_type:
-                        provider_type = row["provider_type"]
+                        provider_type = provider.provider_type
 
         # Return hardcoded models for providers without /models endpoint
         if provider_type in CODING_PROVIDER_MODELS:
@@ -437,17 +362,18 @@ class ModelSettingsService:
 
     # ── Connection Testing ──
 
-    async def _resolve_provider_type(self, request_provider_type: str = None, provider_id: int = None) -> str:
+    async def _resolve_provider_type(self, request_provider_type: str = None, provider_id: str = None) -> str:
         """Resolve provider_type from request or DB lookup."""
         if request_provider_type:
             return request_provider_type
         if provider_id:
-            async with self._connect() as db:
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute("SELECT provider_type FROM model_providers WHERE id = ?", (provider_id,))
-                row = await cursor.fetchone()
+            pid = _parse_uuid(provider_id)
+            async with async_session_factory() as session:
+                stmt = select(ModelProvider.provider_type).where(ModelProvider.id == pid)
+                result = await session.execute(stmt)
+                row = result.scalar_one_or_none()
                 if row:
-                    return row["provider_type"]
+                    return row
         return ""
 
     async def test_connection(self, request: TestConnectionRequest) -> TestConnectionResponse:
@@ -559,25 +485,25 @@ class ModelSettingsService:
         Response shape is UNCHANGED — downstream consumers depend on it.
         """
         # Try database first: join assignments with providers
-        async with self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("""
-                SELECT a.model_name, a.temperature, a.max_tokens, p.api_url, p.api_key
-                FROM model_assignments a
-                JOIN model_providers p ON a.provider_id = p.id
-                WHERE a.function_type = ?
-            """, (function_type.value,))
-            row = await cursor.fetchone()
+        async with async_session_factory() as session:
+            stmt = (
+                select(ModelAssignment)
+                .options(selectinload(ModelAssignment.provider))
+                .where(ModelAssignment.function_type == function_type.value)
+            )
+            result = await session.execute(stmt)
+            assignment = result.scalar_one_or_none()
 
-        if row:
+        if assignment and assignment.provider:
             return ResolvedConfigResponse(
                 success=True,
                 source="database",
-                api_url=row["api_url"],
-                api_key=row["api_key"],
-                model_name=row["model_name"],
-                temperature=row["temperature"],
-                max_tokens=row["max_tokens"],
+                api_url=assignment.provider.api_url,
+                api_key=***REMOVED***,
+                model_name=assignment.model_name,
+                temperature=assignment.temperature,
+                max_tokens=assignment.max_tokens,
+                provider_type=assignment.provider.provider_type,
             )
 
         # Fallback to env vars
@@ -626,31 +552,31 @@ class ModelSettingsService:
 
     # ── Internal helpers ──
 
-    def _provider_row_to_response(self, row) -> ModelProviderResponse:
-        """Convert a database row to a ModelProviderResponse."""
-        api_key = row["api_key"]
+    def _provider_to_response(self, provider: ModelProvider) -> ModelProviderResponse:
+        """Convert an ORM ModelProvider to a ModelProviderResponse."""
+        api_key = provider.api_key or ""
         return ModelProviderResponse(
-            id=row["id"],
-            name=row["name"],
-            provider_type=row["provider_type"],
-            api_url=row["api_url"],
+            id=str(provider.id),
+            name=provider.name,
+            provider_type=provider.provider_type,
+            api_url=provider.api_url,
             api_key_masked=_mask_api_key(api_key),
             api_key_set=bool(api_key),
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
+            created_at=provider.created_at.isoformat() if provider.created_at else None,
+            updated_at=provider.updated_at.isoformat() if provider.updated_at else None,
         )
 
-    def _assignment_row_to_response(self, row) -> ModelAssignmentResponse:
-        """Convert a joined database row to a ModelAssignmentResponse."""
+    def _assignment_to_response(self, assignment: ModelAssignment) -> ModelAssignmentResponse:
+        """Convert an ORM ModelAssignment (with loaded provider) to a ModelAssignmentResponse."""
         return ModelAssignmentResponse(
-            function_type=ModelFunctionType(row["function_type"]),
-            provider_id=row["provider_id"],
-            provider_name=row["provider_name"],
-            provider_type=row["provider_type"],
-            model_name=row["model_name"],
-            temperature=row["temperature"],
-            max_tokens=row["max_tokens"],
-            updated_at=row["updated_at"],
+            function_type=ModelFunctionType(assignment.function_type),
+            provider_id=str(assignment.provider_id),
+            provider_name=assignment.provider.name if assignment.provider else "Unknown",
+            provider_type=assignment.provider.provider_type if assignment.provider else "unknown",
+            model_name=assignment.model_name,
+            temperature=assignment.temperature,
+            max_tokens=assignment.max_tokens,
+            updated_at=assignment.updated_at.isoformat() if assignment.updated_at else None,
         )
 
 

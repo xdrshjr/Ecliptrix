@@ -47,7 +47,7 @@ class ModelProviderUpdate(BaseModel):
 
 class ModelProviderResponse(BaseModel):
     """Provider response (API key masked for security)."""
-    id: int
+    id: str  # UUID as string
     name: str
     provider_type: str
     api_url: str
@@ -71,7 +71,7 @@ class ModelAssignmentRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     function_type: ModelFunctionType
-    provider_id: int
+    provider_id: str  # UUID as string
     model_name: str
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=128000, ge=1, le=128000)
@@ -82,7 +82,7 @@ class ModelAssignmentResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     function_type: ModelFunctionType
-    provider_id: int
+    provider_id: str  # UUID as string
     provider_name: str
     provider_type: str
     model_name: str
@@ -104,7 +104,7 @@ class FetchModelsRequest(BaseModel):
     """Request to fetch available models with ad-hoc credentials."""
     api_url: str
     api_key: str
-    provider_id: Optional[int] = None  # If set, look up saved API key
+    provider_id: Optional[str] = None  # UUID as string; if set, look up saved API key
     provider_type: Optional[str] = None  # For providers with no /models endpoint
 
 
@@ -126,7 +126,7 @@ class TestConnectionRequest(BaseModel):
     api_url: str
     api_key: str = ""
     model_name: str
-    provider_id: Optional[int] = None  # Look up saved API key from providers table
+    provider_id: Optional[str] = None  # UUID as string; look up saved API key from providers table
     provider_type: Optional[str] = None  # For API format detection (e.g. kimi_coding uses Anthropic format)
 
 
@@ -162,3 +162,4 @@ class ResolvedConfigResponse(BaseModel):
     model_name: str
     temperature: float
     max_tokens: int
+    provider_type: Optional[str] = None  # e.g. 'openai', 'kimi_coding', 'anthropic'

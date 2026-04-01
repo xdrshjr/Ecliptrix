@@ -12,7 +12,7 @@ interface KnownProvider {
 }
 
 interface SavedProvider {
-  id: number;
+  id: string;
   name: string;
   provider_type: string;
   api_url: string;
@@ -29,7 +29,7 @@ interface ProviderWithModels extends SavedProvider {
 
 interface Assignment {
   function_type: string;
-  provider_id: number;
+  provider_id: string;
   provider_name: string;
   provider_type: string;
   model_name: string;
@@ -39,7 +39,7 @@ interface Assignment {
 }
 
 interface ProviderFormState {
-  id: number | null;
+  id: string | null;
   name: string;
   provider_type: string;
   api_url: string;
@@ -48,7 +48,7 @@ interface ProviderFormState {
 }
 
 interface AssignmentFormState {
-  provider_id: number | null;
+  provider_id: string | null;
   model_name: string;
   temperature: number;
   modelInputMode: 'select' | 'manual';
@@ -123,8 +123,8 @@ const CodingPlanPanel: React.FC = () => {
   const [providerForm, setProviderForm] = useState<ProviderFormState | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [savingProvider, setSavingProvider] = useState(false);
-  const [fetchingModels, setFetchingModels] = useState<number | 'new' | null>(null);
-  const [testingProvider, setTestingProvider] = useState<number | 'new' | null>(null);
+  const [fetchingModels, setFetchingModels] = useState<string | 'new' | null>(null);
+  const [testingProvider, setTestingProvider] = useState<string | 'new' | null>(null);
   const [providerTestResult, setProviderTestResult] = useState<TestResult | null>(null);
 
   // ── Assignment Form State ──
@@ -137,10 +137,10 @@ const CodingPlanPanel: React.FC = () => {
   const [newProviderModels, setNewProviderModels] = useState<string[]>([]);
 
   // ── Expanded model lists ──
-  const [expandedProviderModels, setExpandedProviderModels] = useState<number | null>(null);
+  const [expandedProviderModels, setExpandedProviderModels] = useState<string | null>(null);
 
   // ── Delete Confirmation ──
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // ── Data Fetching ──
   const fetchData = useCallback(async () => {
@@ -289,7 +289,7 @@ const CodingPlanPanel: React.FC = () => {
     }
   };
 
-  const handleDeleteProvider = async (providerId: number) => {
+  const handleDeleteProvider = async (providerId: string) => {
     try {
       const res = await fetch(`/api/model-settings/providers/${providerId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -305,7 +305,7 @@ const CodingPlanPanel: React.FC = () => {
     }
   };
 
-  const handleFetchModelsForProvider = async (providerId: number | 'new') => {
+  const handleFetchModelsForProvider = async (providerId: string | 'new') => {
     setFetchingModels(providerId);
     try {
       let res: Response;
@@ -345,7 +345,7 @@ const CodingPlanPanel: React.FC = () => {
     }
   };
 
-  const handleTestProviderConnection = async (providerId: number | 'new', modelName?: string) => {
+  const handleTestProviderConnection = async (providerId: string | 'new', modelName?: string) => {
     setTestingProvider(providerId);
     setProviderTestResult(null);
 
@@ -386,7 +386,7 @@ const CodingPlanPanel: React.FC = () => {
   };
 
   // ── Assignment CRUD ──
-  const handleAssignmentProviderChange = async (providerId: number) => {
+  const handleAssignmentProviderChange = async (providerId: string) => {
     setAssignmentForm(prev => ({ ...prev, provider_id: providerId, model_name: '', modelInputMode: 'select' }));
     const provider = savedProviders.find(p => p.id === providerId);
     if (provider && !provider.modelsFetched) {
@@ -438,7 +438,7 @@ const CodingPlanPanel: React.FC = () => {
   };
 
   // ── Helpers ──
-  const getProviderModels = (providerId: number | null): string[] => {
+  const getProviderModels = (providerId: string | null): string[] => {
     if (!providerId) return [];
     const provider = savedProviders.find(p => p.id === providerId);
     return provider?.models || [];
@@ -700,12 +700,12 @@ const CodingPlanPanel: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setExpandedProviderModels(
-                          expandedProviderModels === (providerForm.id || -1) ? null : (providerForm.id || -1)
+                          expandedProviderModels === (providerForm.id || 'new') ? null : (providerForm.id || 'new')
                         )}
                         className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                       >
                         <svg
-                          className={`w-3 h-3 transition-transform ${expandedProviderModels === (providerForm.id || -1) ? 'rotate-90' : ''}`}
+                          className={`w-3 h-3 transition-transform ${expandedProviderModels === (providerForm.id || 'new') ? 'rotate-90' : ''}`}
                           fill="none" stroke="currentColor" viewBox="0 0 24 24"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -817,8 +817,8 @@ const CodingPlanPanel: React.FC = () => {
                     <select
                       value={assignmentForm.provider_id || ''}
                       onChange={e => {
-                        const id = parseInt(e.target.value);
-                        if (!isNaN(id)) {
+                        const id = e.target.value;
+                        if (id) {
                           handleAssignmentProviderChange(id);
                         } else {
                           setAssignmentForm(prev => ({ ...prev, provider_id: null, model_name: '' }));

@@ -1,12 +1,25 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
-import type { Model } from '@mariozechner/pi-ai';
+import type { Model, KnownApi } from '@mariozechner/pi-ai';
 import type { TimelineState } from '@/types';
 import type { ToolContext, TimelineOperation, AgentOperation, SSEEvent, VideoEditingAgentConfig } from './types';
 import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
+
+/** Map provider_type from backend to pi-ai api/provider values. */
+function resolveModelFormat(providerType?: string): { api: KnownApi; provider: string } {
+  switch (providerType) {
+    case 'kimi_coding':
+      return { api: 'anthropic-messages', provider: 'kimi-coding' };
+    case 'claude_coding':
+    case 'anthropic':
+      return { api: 'anthropic-messages', provider: 'anthropic' };
+    default:
+      return { api: 'openai-completions', provider: 'openai' };
+  }
+}
 
 /**
  * Create a video editing agent instance with all tools and configuration.
@@ -21,12 +34,14 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   toolContext: ToolContext;
   registry: ToolRegistry;
 } {
-  // 1. Construct Model for custom OpenAI-compatible endpoint
-  const model: Model<'openai-completions'> = {
+  // 1. Construct Model — select API format based on provider type
+  const { api, provider } = resolveModelFormat(config.providerType);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const model: Model<any> = {
     id: config.llmModel,
     name: config.llmModel,
-    api: 'openai-completions',
-    provider: 'openai',
+    api,
+    provider,
     baseUrl: config.llmApiUrl,
     reasoning: false,
     input: ['text'],
@@ -85,10 +100,12 @@ export function subscribeAgentEvents(
   toolContext: ToolContext,
   send: (data: SSEEvent) => void
 ): () => void {
-  // Track whether text_delta events were sent for the current assistant message.
-  // Non-streaming models (e.g., Kimi) skip text_delta and only provide final
-  // content in the message_end event. This flag enables a fallback path.
+  // Track whether text_delta events or tool calls were sent for the current
+  // assistant message. Non-streaming models (e.g., Kimi) skip text_delta and
+  // only provide final content in the message_end event. Tool-only messages
+  // (no text, only tool_use) are normal in multi-turn agent loops.
   let textDeltaSent = false;
+  let toolCallMade = false;
 
   return agent.subscribe((event: AgentEvent) => {
     switch (event.type) {
@@ -110,6 +127,7 @@ export function subscribeAgentEvents(
 
       case 'message_start':
         textDeltaSent = false;
+        toolCallMade = false;
         send({ type: 'message_start' });
         break;
 
@@ -135,12 +153,21 @@ export function subscribeAgentEvents(
             send({ type: 'text_delta', content: fullText });
             textDeltaSent = true;
           }
+
+          // Detect toolCall blocks in message content — pi-agent-core normalizes
+          // tool calls to type "toolCall" (not Anthropic's "tool_use").
+          // This runs BEFORE the error check because tool_execution_start fires
+          // AFTER message_end in pi-agent-core's event ordering.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const hasToolCall = msg.content.some((c: any) => c.type === 'toolCall' || c.type === 'tool_use');
+          if (hasToolCall) {
+            toolCallMade = true;
+          }
         }
 
-        // If still no text was sent for this assistant message, the model
-        // returned empty content (likely doesn't support tool use).
-        // Emit an error so the UI can display a meaningful message.
-        if (!textDeltaSent && msg && msg.role === 'assistant') {
+        // Only emit error if the assistant message had neither text nor tool calls.
+        // Tool-only messages (no text) are normal during multi-turn agent loops.
+        if (!textDeltaSent && !toolCallMade && msg && msg.role === 'assistant') {
           send({
             type: 'error',
             message: 'The model returned an empty response. It may not support tool-use required by the editing agent. Please try a model that supports function calling (e.g., GPT-4, Claude, Qwen).',
@@ -161,6 +188,7 @@ export function subscribeAgentEvents(
       }
 
       case 'tool_execution_start':
+        toolCallMade = true;
         send({
           type: 'tool_call',
           toolCallId: event.toolCallId,

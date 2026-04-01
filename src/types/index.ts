@@ -748,4 +748,37 @@ export interface VideoCutResponse {
   clips: VideoCutClipResult[];
   total_clips: number;
   processing_time: number;
-} 
+}
+
+// ========================
+// System Settings types
+// ========================
+
+/** A single system setting with its current value, default, and metadata. */
+export interface SystemSettingItem {
+  key: string;
+  value: any;
+  default_value: any;
+  value_type: string;
+  description?: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+/** Metadata for a settings category. */
+export interface SettingsCategory {
+  name: string;
+  label: string;
+  description: string;
+}
+
+/** A single audit log record for settings changes. */
+export interface AuditLogEntry {
+  id: string;
+  setting_type: string;
+  category?: string;
+  key?: string;
+  action: string;
+  changed_by?: string;
+  changed_at: string;
+}

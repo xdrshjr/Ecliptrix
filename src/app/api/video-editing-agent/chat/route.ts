@@ -18,6 +18,7 @@ const getConfig = async () => {
           apiUrl: data.api_url,
           apiKey: data.api_key,
           model: data.model_name,
+          providerType: data.provider_type as string | undefined,
         };
       }
     }
@@ -33,7 +34,7 @@ const getConfig = async () => {
     throw new Error('API key not configured');
   }
 
-  return { apiUrl, apiKey, model };
+  return { apiUrl, apiKey, model, providerType: undefined as string | undefined };
 };
 
 export async function POST(request: NextRequest) {
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest) {
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
             llmModel: config.model,
+            providerType: config.providerType,
             timelineState: effectiveTimelineState,
             materials: effectiveMaterials,
             conversationHistory: messages,

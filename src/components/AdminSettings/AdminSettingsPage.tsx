@@ -6,6 +6,11 @@ import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import UserManagement from './UserManagement';
 import ModelSettingsPanel from './ModelSettingsPanel';
 import CodingPlanPanel from './CodingPlanPanel';
+import TTSSettingsPanel from './TTSSettingsPanel';
+import YouTubeSettingsPanel from './YouTubeSettingsPanel';
+import UploadSettingsPanel from './UploadSettingsPanel';
+import WatermarkSettingsPanel from './WatermarkSettingsPanel';
+import VideoAnalysisSettingsPanel from './VideoAnalysisSettingsPanel';
 
 interface AdminSettingsPageProps {
   onClose: () => void;
@@ -23,6 +28,16 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
         return <ModelSettingsPanel />;
       case 'codingPlan':
         return <CodingPlanPanel />;
+      case 'ttsSettings':
+        return <TTSSettingsPanel />;
+      case 'youtubeSettings':
+        return <YouTubeSettingsPanel />;
+      case 'uploadSettings':
+        return <UploadSettingsPanel />;
+      case 'watermarkSettings':
+        return <WatermarkSettingsPanel />;
+      case 'videoAnalysisSettings':
+        return <VideoAnalysisSettingsPanel />;
       case 'systemSettings':
         return (
           <div className="flex items-center justify-center h-full bg-background">
@@ -67,4 +82,3 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
 };
 
 export default AdminSettingsPage;
-

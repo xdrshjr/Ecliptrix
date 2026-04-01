@@ -90,13 +90,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
 
-    # Initialize model settings SQLite database
+    # Initialize system settings service (load from PostgreSQL into cache)
     try:
-        from app.services.model_settings_service import model_settings_service
-        await model_settings_service.init_db()
-        logger.info("Model settings database initialized successfully")
+        from app.services.system_settings_service import system_settings_service
+
+        # Seed default values from YAML configs (idempotent — only inserts missing rows)
+        seeded = await system_settings_service.ensure_defaults_seeded()
+        if seeded > 0:
+            logger.info(f"Seeded {seeded} new default settings from YAML configs")
+
+        # Load all settings from DB into in-memory cache
+        await system_settings_service.load_all()
+        logger.info("System settings loaded into cache successfully")
+
+        # Sync DB values to the config.py Settings object for hot-reload compatibility
+        await system_settings_service.sync_all_to_settings()
+        logger.info("System settings synced to config.py Settings object")
     except Exception as e:
-        logger.error(f"Failed to initialize model settings database: {str(e)}", exc_info=True)
+        logger.error(f"Failed to load system settings: {str(e)}", exc_info=True)
 
     logger.info("Application startup completed")
 
@@ -374,9 +385,17 @@ app.include_router(ark_image_router.router, prefix="/api")
 from app.routers import model_settings_router
 app.include_router(model_settings_router.router, prefix="/api")
 
+# Import and include System Settings router (admin-only, settings persistence)
+from app.routers import system_settings_router
+app.include_router(system_settings_router.router, prefix="/api")
+
 # Import and include Storyboard router
 from app.routers import storyboard_router
 app.include_router(storyboard_router.router, prefix="/api")
+
+# Import and include Silence Removal router
+from app.routers import silence_removal_router
+app.include_router(silence_removal_router.router, prefix="/api")
 
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
@@ -387,6 +406,10 @@ app.mount("/api/audio/generated", StaticFiles(directory=audio_static_dir), name=
 subtitle_static_dir = "static/audio/subtitles"
 os.makedirs(subtitle_static_dir, exist_ok=True)
 app.mount("/api/audio/subtitles", StaticFiles(directory=subtitle_static_dir), name="audio_subtitles")
+
+# Silence detection audio & removal output are now stored under STORAGE_ROOT
+# (e.g. static/uploads/audio/silence_detect/ and static/uploads/video/silence_removed/)
+# and served via the existing /api/storage/files mount — no separate mounts needed.
 
 # Mount static files for timeline exports
 timeline_export_static_dir = "static/timeline_exports"

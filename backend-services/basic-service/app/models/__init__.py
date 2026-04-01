@@ -145,6 +145,20 @@ from .queue_models import (
     QueueErrorResponse
 )
 
+from .silence_removal_models import (
+    SilenceSegment,
+    SilenceDetectData,
+    SilenceDetectRequest,
+    SilenceDetectResponse,
+    SegmentToRemove,
+    SilenceRemoveRequest,
+    SilenceRemoveAcceptedData,
+    SilenceRemoveAccepted,
+    SilenceRemoveResult,
+    SilenceProgressData,
+    SilenceProgressResponse,
+)
+
 __all__ = [
     "BaseResponse",
     "HealthCheckResponse", 
@@ -262,5 +276,18 @@ __all__ = [
     "UserRegistrationResponse",
     "PasswordChangeRequest",
     "UserUpdateRequest",
-    "UserUpdateResponse"
+    "UserUpdateResponse",
+
+    # Silence Removal Models
+    "SilenceSegment",
+    "SilenceDetectData",
+    "SilenceDetectRequest",
+    "SilenceDetectResponse",
+    "SegmentToRemove",
+    "SilenceRemoveRequest",
+    "SilenceRemoveAcceptedData",
+    "SilenceRemoveAccepted",
+    "SilenceRemoveResult",
+    "SilenceProgressData",
+    "SilenceProgressResponse",
 ] 

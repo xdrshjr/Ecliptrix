@@ -288,6 +288,162 @@ export interface Translations {
     perPage: string;
     refresh: string;
     user: string;
+    // Settings panels - shared
+    settingsUnsaved: string;
+    settingsSaveSuccess: string;
+    settingsSaveError: string;
+    settingsResetSuccess: string;
+    settingsResetError: string;
+    settingsRestoreDefaults: string;
+    settingsResetting: string;
+    settingsResetConfirmTitle: string;
+    settingsResetConfirmMessage: string;
+    settingsLogging: string;
+    settingsVerboseLog: string;
+    settingsProgressInterval: string;
+    settingsLogLevel: string;
+    // TTS Settings
+    ttsSettings: string;
+    ttsSettingsDesc: string;
+    ttsConcurrency: string;
+    ttsConcurrencyDesc: string;
+    ttsConcurrentThreads: string;
+    ttsMaxConcurrentThreads: string;
+    ttsRequestTimeout: string;
+    ttsBatchTimeout: string;
+    ttsRetry: string;
+    ttsRetryDesc: string;
+    ttsMaxRetries: string;
+    ttsRetryDelay: string;
+    ttsBackoffFactor: string;
+    ttsLimits: string;
+    ttsLimitsDesc: string;
+    ttsMaxSegments: string;
+    ttsMaxCharsPerSegment: string;
+    ttsMaxTotalChars: string;
+    ttsVoices: string;
+    ttsVoicesDesc: string;
+    // Voice list editor
+    voiceSearch: string;
+    voiceAllCategories: string;
+    voiceAllGenders: string;
+    voiceMale: string;
+    voiceFemale: string;
+    voiceAdd: string;
+    voiceEdit: string;
+    voiceDelete: string;
+    voiceTotal: string;
+    voiceNoResults: string;
+    voiceValue: string;
+    voiceLabel: string;
+    voiceCategory: string;
+    voiceGender: string;
+    voiceLanguage: string;
+    voiceDescription: string;
+    voiceCatGeneral: string;
+    voiceCatDialect: string;
+    voiceCatRoleplay: string;
+    voiceCatNarration: string;
+    voiceCatAudiobook: string;
+    // YouTube Settings
+    youtubeSettings: string;
+    youtubeSettingsDesc: string;
+    ytDownload: string;
+    ytDownloadDesc: string;
+    ytMaxConcurrent: string;
+    ytTimeout: string;
+    ytMaxRetries: string;
+    ytRetryDelay: string;
+    ytUpload: string;
+    ytUploadDesc: string;
+    ytUploadTimeout: string;
+    ytQuality: string;
+    ytQualityDesc: string;
+    ytVideoQuality: string;
+    ytAudioQuality: string;
+    ytOutputFormat: string;
+    ytFileManagement: string;
+    ytFileManagementDesc: string;
+    ytAutoCleanup: string;
+    ytRetentionHours: string;
+    ytGenerateThumbnail: string;
+    ytLogProgress: string;
+    ytProgressInterval: string;
+    // Upload Settings
+    uploadSettings: string;
+    uploadSettingsDesc: string;
+    uploadConcurrent: string;
+    uploadConcurrentDesc: string;
+    uploadMaxConcurrent: string;
+    uploadQueueMaxLength: string;
+    uploadTimeout: string;
+    uploadEnableQueue: string;
+    uploadFileLimits: string;
+    uploadFileLimitsDesc: string;
+    uploadVideoMax: string;
+    uploadAudioMax: string;
+    uploadImageMax: string;
+    uploadRetry: string;
+    uploadMaxRetries: string;
+    uploadRetryDelay: string;
+    uploadExponentialBackoff: string;
+    uploadThumbnail: string;
+    uploadThumbnailDesc: string;
+    uploadAutoThumbnail: string;
+    uploadThumbnailQuality: string;
+    uploadThumbnailMaxWidth: string;
+    uploadThumbnailMaxHeight: string;
+    uploadTempFiles: string;
+    uploadAutoCleanup: string;
+    uploadRetentionHours: string;
+    uploadTempDir: string;
+    // Watermark Settings
+    watermarkSettings: string;
+    watermarkSettingsDesc: string;
+    wmRemoval: string;
+    wmRemovalDesc: string;
+    wmConcurrentThreads: string;
+    wmMaxConcurrentThreads: string;
+    wmBatchFrames: string;
+    wmBatchTimeout: string;
+    wmProgressIntervalFrames: string;
+    wmThreadLogging: string;
+    // Video Analysis Settings
+    videoAnalysisSettings: string;
+    videoAnalysisSettingsDesc: string;
+    vaQueueManagement: string;
+    vaQueueManagementDesc: string;
+    vaMaxConcurrentAnalyses: string;
+    vaEnableSingleVideoQueue: string;
+    vaVlmProcessing: string;
+    vaVlmProcessingDesc: string;
+    vaConcurrentThreads: string;
+    vaApiTimeout: string;
+    vaMaxRetries: string;
+    vaFrameExtraction: string;
+    vaFrameExtractionDesc: string;
+    vaDefaultFrameInterval: string;
+    vaMaxFramesPerVideo: string;
+    vaSupportedFormats: string;
+    vaDurationStrategy: string;
+    vaShortVideos: string;
+    vaMediumVideos: string;
+    vaLongVideos: string;
+    vaMaxDuration: string;
+    vaFrameInterval: string;
+    vaMaxFrames: string;
+    vaPerformance: string;
+    vaPerformanceDesc: string;
+    vaEnablePerfLog: string;
+    vaLogConcurrencyStats: string;
+    vaMaxVideoDuration: string;
+    vaTempFiles: string;
+    vaVideoDownloadDir: string;
+    vaFrameExtractPrefix: string;
+    vaAutoCleanup: string;
+    vaCleanupTimeout: string;
+    vaLogAnalysisContent: string;
+    vaLogFrameProcessingTime: string;
   };
   tasks: {
     workflow: string;
@@ -1434,6 +1590,162 @@ export const translations: Record<string, Translations> = {
       perPage: 'per page',
       refresh: 'Refresh',
       user: 'User',
+      // Settings panels - shared
+      settingsUnsaved: 'Unsaved changes',
+      settingsSaveSuccess: 'Settings saved successfully',
+      settingsSaveError: 'Failed to save settings',
+      settingsResetSuccess: 'Settings restored to defaults',
+      settingsResetError: 'Failed to restore defaults',
+      settingsRestoreDefaults: 'Restore Defaults',
+      settingsResetting: 'Resetting...',
+      settingsResetConfirmTitle: 'Restore Defaults',
+      settingsResetConfirmMessage: 'Are you sure you want to restore all settings in this category to their default values? This action cannot be undone.',
+      settingsLogging: 'Logging',
+      settingsVerboseLog: 'Enable verbose logging',
+      settingsProgressInterval: 'Progress log interval',
+      settingsLogLevel: 'Log level',
+      // TTS Settings
+      ttsSettings: 'TTS Settings',
+      ttsSettingsDesc: 'Configure text-to-speech concurrency, retry, limits, and voice list',
+      ttsConcurrency: 'Concurrency & Timeout',
+      ttsConcurrencyDesc: 'Control concurrent thread count and timeout settings',
+      ttsConcurrentThreads: 'Concurrent threads',
+      ttsMaxConcurrentThreads: 'Max concurrent threads',
+      ttsRequestTimeout: 'Request timeout (s)',
+      ttsBatchTimeout: 'Batch timeout (s)',
+      ttsRetry: 'Retry Configuration',
+      ttsRetryDesc: 'Control retry behavior for failed TTS requests',
+      ttsMaxRetries: 'Max retries',
+      ttsRetryDelay: 'Retry delay (s)',
+      ttsBackoffFactor: 'Backoff factor',
+      ttsLimits: 'Resource Limits',
+      ttsLimitsDesc: 'Set maximum values for batch processing',
+      ttsMaxSegments: 'Max segments per batch',
+      ttsMaxCharsPerSegment: 'Max chars per segment',
+      ttsMaxTotalChars: 'Max total chars',
+      ttsVoices: 'Voice List',
+      ttsVoicesDesc: 'Manage available TTS voices by category',
+      // Voice list editor
+      voiceSearch: 'Search voices...',
+      voiceAllCategories: 'All Categories',
+      voiceAllGenders: 'All Genders',
+      voiceMale: 'Male',
+      voiceFemale: 'Female',
+      voiceAdd: 'Add Voice',
+      voiceEdit: 'Edit Voice',
+      voiceDelete: 'Delete',
+      voiceTotal: 'Total',
+      voiceNoResults: 'No voices found matching your filters',
+      voiceValue: 'Voice ID',
+      voiceLabel: 'Display Name',
+      voiceCategory: 'Category',
+      voiceGender: 'Gender',
+      voiceLanguage: 'Language',
+      voiceDescription: 'Description',
+      voiceCatGeneral: 'General',
+      voiceCatDialect: 'Dialect',
+      voiceCatRoleplay: 'Roleplay',
+      voiceCatNarration: 'Narration',
+      voiceCatAudiobook: 'Audiobook',
+      // YouTube Settings
+      youtubeSettings: 'YouTube Settings',
+      youtubeSettingsDesc: 'Configure YouTube download, upload, quality, and file management',
+      ytDownload: 'Download',
+      ytDownloadDesc: 'Configure download concurrency and timeouts',
+      ytMaxConcurrent: 'Max concurrent downloads',
+      ytTimeout: 'Download timeout (s)',
+      ytMaxRetries: 'Max retries',
+      ytRetryDelay: 'Retry delay (s)',
+      ytUpload: 'Upload',
+      ytUploadDesc: 'Configure upload timeouts and retries',
+      ytUploadTimeout: 'Upload timeout (s)',
+      ytQuality: 'Video Quality',
+      ytQualityDesc: 'Default quality settings for downloads',
+      ytVideoQuality: 'Default video quality',
+      ytAudioQuality: 'Default audio quality',
+      ytOutputFormat: 'Default output format',
+      ytFileManagement: 'File Management',
+      ytFileManagementDesc: 'Configure temporary file cleanup and thumbnails',
+      ytAutoCleanup: 'Auto cleanup temp files',
+      ytRetentionHours: 'Retention time (hours)',
+      ytGenerateThumbnail: 'Generate thumbnails',
+      ytLogProgress: 'Log download progress',
+      ytProgressInterval: 'Progress log interval (s)',
+      // Upload Settings
+      uploadSettings: 'Upload Settings',
+      uploadSettingsDesc: 'Configure file upload concurrency, size limits, and temporary file management',
+      uploadConcurrent: 'Concurrent Upload',
+      uploadConcurrentDesc: 'Control upload concurrency and queue settings',
+      uploadMaxConcurrent: 'Max concurrent uploads',
+      uploadQueueMaxLength: 'Queue max length (0=unlimited)',
+      uploadTimeout: 'Upload timeout (s)',
+      uploadEnableQueue: 'Enable upload queue',
+      uploadFileLimits: 'File Size Limits',
+      uploadFileLimitsDesc: 'Maximum file size by type (MB)',
+      uploadVideoMax: 'Video max size (MB)',
+      uploadAudioMax: 'Audio max size (MB)',
+      uploadImageMax: 'Image max size (MB)',
+      uploadRetry: 'Retry Configuration',
+      uploadMaxRetries: 'Max retries',
+      uploadRetryDelay: 'Retry delay (s)',
+      uploadExponentialBackoff: 'Exponential backoff',
+      uploadThumbnail: 'Thumbnail Generation',
+      uploadThumbnailDesc: 'Auto-generate thumbnails for uploaded videos',
+      uploadAutoThumbnail: 'Auto generate thumbnails',
+      uploadThumbnailQuality: 'Thumbnail quality (1-31)',
+      uploadThumbnailMaxWidth: 'Max width (px)',
+      uploadThumbnailMaxHeight: 'Max height (px)',
+      uploadTempFiles: 'Temporary Files',
+      uploadAutoCleanup: 'Auto cleanup',
+      uploadRetentionHours: 'Retention time (hours)',
+      uploadTempDir: 'Temp directory',
+      // Watermark Settings
+      watermarkSettings: 'Watermark Removal',
+      watermarkSettingsDesc: 'Configure watermark removal processing parameters',
+      wmRemoval: 'Processing Configuration',
+      wmRemovalDesc: 'Thread and batch settings for watermark removal',
+      wmConcurrentThreads: 'Concurrent threads',
+      wmMaxConcurrentThreads: 'Max concurrent threads',
+      wmBatchFrames: 'Batch frame count',
+      wmBatchTimeout: 'Batch timeout (s)',
+      wmProgressIntervalFrames: 'Progress interval (frames)',
+      wmThreadLogging: 'Enable thread logging',
+      // Video Analysis Settings
+      videoAnalysisSettings: 'Video Analysis',
+      videoAnalysisSettingsDesc: 'Configure video analysis queue, VLM processing, and frame extraction',
+      vaQueueManagement: 'Queue Management',
+      vaQueueManagementDesc: 'Control concurrent analysis and queue behavior',
+      vaMaxConcurrentAnalyses: 'Max concurrent analyses',
+      vaEnableSingleVideoQueue: 'Enable single video queue',
+      vaVlmProcessing: 'VLM Processing',
+      vaVlmProcessingDesc: 'Configure vision-language model API settings',
+      vaConcurrentThreads: 'Concurrent threads',
+      vaApiTimeout: 'API timeout (s)',
+      vaMaxRetries: 'Max retries',
+      vaFrameExtraction: 'Frame Extraction',
+      vaFrameExtractionDesc: 'Configure how frames are extracted from videos for analysis',
+      vaDefaultFrameInterval: 'Default frame interval (s)',
+      vaMaxFramesPerVideo: 'Max frames per video',
+      vaSupportedFormats: 'Supported formats',
+      vaDurationStrategy: 'Duration-based Strategy',
+      vaShortVideos: 'Short Videos',
+      vaMediumVideos: 'Medium Videos',
+      vaLongVideos: 'Long Videos',
+      vaMaxDuration: 'Max duration (s)',
+      vaFrameInterval: 'Frame interval (s)',
+      vaMaxFrames: 'Max frames',
+      vaPerformance: 'Performance',
+      vaPerformanceDesc: 'Performance monitoring and limits',
+      vaEnablePerfLog: 'Enable performance logging',
+      vaLogConcurrencyStats: 'Log concurrency statistics',
+      vaMaxVideoDuration: 'Max video duration (s)',
+      vaTempFiles: 'Temporary Files',
+      vaVideoDownloadDir: 'Video download directory',
+      vaFrameExtractPrefix: 'Frame extract prefix',
+      vaAutoCleanup: 'Auto cleanup',
+      vaCleanupTimeout: 'Cleanup timeout (s)',
+      vaLogAnalysisContent: 'Log analysis content',
+      vaLogFrameProcessingTime: 'Log frame processing time',
     },
     tasks: {
       workflow: 'WorkFlow',
@@ -2593,6 +2905,162 @@ export const translations: Record<string, Translations> = {
       perPage: '每页',
       refresh: '刷新',
       user: '用户',
+      // Settings panels - shared
+      settingsUnsaved: '有未保存的更改',
+      settingsSaveSuccess: '设置保存成功',
+      settingsSaveError: '保存设置失败',
+      settingsResetSuccess: '设置已恢复为默认值',
+      settingsResetError: '恢复默认值失败',
+      settingsRestoreDefaults: '恢复默认值',
+      settingsResetting: '恢复中...',
+      settingsResetConfirmTitle: '恢复默认值',
+      settingsResetConfirmMessage: '确定要将此类别的所有设置恢复为默认值吗？此操作无法撤销。',
+      settingsLogging: '日志配置',
+      settingsVerboseLog: '启用详细日志',
+      settingsProgressInterval: '进度记录间隔',
+      settingsLogLevel: '日志级别',
+      // TTS Settings
+      ttsSettings: 'TTS 设置',
+      ttsSettingsDesc: '配置文本转语音的并发、重试、限制和声音列表',
+      ttsConcurrency: '并发与超时',
+      ttsConcurrencyDesc: '控制并发线程数和超时设置',
+      ttsConcurrentThreads: '并发线程数',
+      ttsMaxConcurrentThreads: '最大并发线程数',
+      ttsRequestTimeout: '单请求超时（秒）',
+      ttsBatchTimeout: '批处理总超时（秒）',
+      ttsRetry: '重试配置',
+      ttsRetryDesc: '控制失败 TTS 请求的重试行为',
+      ttsMaxRetries: '最大重试次数',
+      ttsRetryDelay: '重试间隔（秒）',
+      ttsBackoffFactor: '退避因子',
+      ttsLimits: '资源限制',
+      ttsLimitsDesc: '设置批处理的最大值',
+      ttsMaxSegments: '每批最大段数',
+      ttsMaxCharsPerSegment: '每段最大字符数',
+      ttsMaxTotalChars: '总最大字符数',
+      ttsVoices: '声音列表',
+      ttsVoicesDesc: '按分类管理可用的 TTS 声音',
+      // Voice list editor
+      voiceSearch: '搜索声音...',
+      voiceAllCategories: '全部分类',
+      voiceAllGenders: '全部性别',
+      voiceMale: '男声',
+      voiceFemale: '女声',
+      voiceAdd: '添加声音',
+      voiceEdit: '编辑声音',
+      voiceDelete: '删除',
+      voiceTotal: '总计',
+      voiceNoResults: '没有找到匹配的声音',
+      voiceValue: '声音 ID',
+      voiceLabel: '显示名称',
+      voiceCategory: '分类',
+      voiceGender: '性别',
+      voiceLanguage: '语言',
+      voiceDescription: '描述',
+      voiceCatGeneral: '通用场景',
+      voiceCatDialect: '方言',
+      voiceCatRoleplay: '角色扮演',
+      voiceCatNarration: '旁白',
+      voiceCatAudiobook: '有声书',
+      // YouTube Settings
+      youtubeSettings: 'YouTube 设置',
+      youtubeSettingsDesc: '配置 YouTube 下载、上传、质量和文件管理',
+      ytDownload: '下载配置',
+      ytDownloadDesc: '配置下载并发数和超时',
+      ytMaxConcurrent: '最大并发下载数',
+      ytTimeout: '下载超时（秒）',
+      ytMaxRetries: '最大重试次数',
+      ytRetryDelay: '重试间隔（秒）',
+      ytUpload: '上传配置',
+      ytUploadDesc: '配置上传超时和重试',
+      ytUploadTimeout: '上传超时（秒）',
+      ytQuality: '视频质量',
+      ytQualityDesc: '下载的默认质量设置',
+      ytVideoQuality: '默认视频质量',
+      ytAudioQuality: '默认音频质量',
+      ytOutputFormat: '默认输出格式',
+      ytFileManagement: '文件管理',
+      ytFileManagementDesc: '配置临时文件清理和缩略图生成',
+      ytAutoCleanup: '自动清理临时文件',
+      ytRetentionHours: '保留时间（小时）',
+      ytGenerateThumbnail: '生成缩略图',
+      ytLogProgress: '记录下载进度',
+      ytProgressInterval: '进度日志间隔（秒）',
+      // Upload Settings
+      uploadSettings: '上传设置',
+      uploadSettingsDesc: '配置文件上传并发、大小限制和临时文件管理',
+      uploadConcurrent: '并发上传',
+      uploadConcurrentDesc: '控制上传并发和队列设置',
+      uploadMaxConcurrent: '最大并发上传数',
+      uploadQueueMaxLength: '队列最大长度（0=无限）',
+      uploadTimeout: '上传超时（秒）',
+      uploadEnableQueue: '启用上传队列',
+      uploadFileLimits: '文件大小限制',
+      uploadFileLimitsDesc: '按类型设置最大文件大小（MB）',
+      uploadVideoMax: '视频最大大小（MB）',
+      uploadAudioMax: '音频最大大小（MB）',
+      uploadImageMax: '图片最大大小（MB）',
+      uploadRetry: '重试配置',
+      uploadMaxRetries: '最大重试次数',
+      uploadRetryDelay: '重试间隔（秒）',
+      uploadExponentialBackoff: '指数退避',
+      uploadThumbnail: '缩略图生成',
+      uploadThumbnailDesc: '自动为上传的视频生成缩略图',
+      uploadAutoThumbnail: '自动生成缩略图',
+      uploadThumbnailQuality: '缩略图质量（1-31）',
+      uploadThumbnailMaxWidth: '最大宽度（px）',
+      uploadThumbnailMaxHeight: '最大高度（px）',
+      uploadTempFiles: '临时文件',
+      uploadAutoCleanup: '自动清理',
+      uploadRetentionHours: '保留时间（小时）',
+      uploadTempDir: '临时文件目录',
+      // Watermark Settings
+      watermarkSettings: '水印移除设置',
+      watermarkSettingsDesc: '配置水印移除处理参数',
+      wmRemoval: '处理配置',
+      wmRemovalDesc: '水印移除的线程和批处理设置',
+      wmConcurrentThreads: '并发线程数',
+      wmMaxConcurrentThreads: '最大并发线程数',
+      wmBatchFrames: '批处理帧数',
+      wmBatchTimeout: '批处理超时（秒）',
+      wmProgressIntervalFrames: '进度记录间隔（帧）',
+      wmThreadLogging: '启用线程日志',
+      // Video Analysis Settings
+      videoAnalysisSettings: '视频分析设置',
+      videoAnalysisSettingsDesc: '配置视频分析队列、VLM 处理和帧提取',
+      vaQueueManagement: '队列管理',
+      vaQueueManagementDesc: '控制并发分析和队列行为',
+      vaMaxConcurrentAnalyses: '最大并发分析数',
+      vaEnableSingleVideoQueue: '启用单视频队列',
+      vaVlmProcessing: 'VLM 处理',
+      vaVlmProcessingDesc: '配置视觉语言模型 API 设置',
+      vaConcurrentThreads: '并发线程数',
+      vaApiTimeout: 'API 超时（秒）',
+      vaMaxRetries: '最大重试次数',
+      vaFrameExtraction: '帧提取',
+      vaFrameExtractionDesc: '配置如何从视频中提取帧用于分析',
+      vaDefaultFrameInterval: '默认帧间隔（秒）',
+      vaMaxFramesPerVideo: '每视频最大帧数',
+      vaSupportedFormats: '支持的格式',
+      vaDurationStrategy: '基于时长的策略',
+      vaShortVideos: '短视频',
+      vaMediumVideos: '中等视频',
+      vaLongVideos: '长视频',
+      vaMaxDuration: '最大时长（秒）',
+      vaFrameInterval: '帧间隔（秒）',
+      vaMaxFrames: '最大帧数',
+      vaPerformance: '性能',
+      vaPerformanceDesc: '性能监控和限制',
+      vaEnablePerfLog: '启用性能日志',
+      vaLogConcurrencyStats: '记录并发统计',
+      vaMaxVideoDuration: '最大视频时长（秒）',
+      vaTempFiles: '临时文件',
+      vaVideoDownloadDir: '视频下载目录',
+      vaFrameExtractPrefix: '帧提取目录前缀',
+      vaAutoCleanup: '自动清理',
+      vaCleanupTimeout: '清理超时（秒）',
+      vaLogAnalysisContent: '记录分析内容',
+      vaLogFrameProcessingTime: '记录帧处理时间',
     },
     tasks: {
       workflow: '工作流',

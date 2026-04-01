@@ -9,6 +9,8 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useLocale } from '@/contexts/LocaleContext';
 import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
 import WatermarkRemovalModal from '../WatermarkRemovalModal/WatermarkRemovalModal';
+import { VideoProcessingModal, MinimizedProgressIndicator } from '../VideoProcessingModal';
+import type { SilenceRemoveResult, MinimizedTaskState } from '../VideoProcessingModal';
 import { useNotification } from '@/contexts/NotificationContext';
 import AiVideoModal from '../AiVideoModal/AiVideoModal';
 import AiImageModal from '../AiImageModal/AiImageModal';
@@ -113,6 +115,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [aiVideoInitialImage, setAiVideoInitialImage] = useState<{ url: string; name: string } | null>(null);
   // AI图像生成弹窗状态
   const [isAiImageModalOpen, setIsAiImageModalOpen] = useState(false);
+
+  // 视频处理弹窗状态
+  const [isVideoProcessingOpen, setIsVideoProcessingOpen] = useState(false);
+  // 最小化任务状态（浮动进度指示器）
+  const [minimizedTask, setMinimizedTask] = useState<MinimizedTaskState | null>(null);
 
   // 分镜包状态
   const [storyboardPacks, setStoryboardPacks] = useState<StoryboardPack[]>([]);
@@ -926,9 +933,74 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
     // 替换素材而不是添加新素材，这样时间轴中的引用会自动更新
     addOrReplaceMaterial(newMaterial);
-    
+
     showSuccess('水印去除成功！素材已更新为无水印版本');
   };
+
+  // 静音移除完成回调（与 handleWatermarkRemoved 同模式）
+  const handleSilenceRemoved = (processedVideoUrl: string, result: SilenceRemoveResult, originalMaterial: MaterialItem) => {
+    logger.info('静音移除完成', {
+      originalMaterialId: originalMaterial.id,
+      originalMaterialName: originalMaterial.name,
+      processedVideoUrl: processedVideoUrl.substring(0, 100),
+      removedCount: result.removed_count,
+      timeSaved: result.time_saved
+    });
+
+    // 创建新的素材项，保持原有ID但更新URL和时长
+    const newMaterial: MaterialItem = {
+      ...originalMaterial,
+      id: originalMaterial.id,
+      name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_静音移除$/, '')}_静音移除.mp4`,
+      url: processedVideoUrl,
+      serverUrl: processedVideoUrl,
+      duration: result.new_duration,
+      createdAt: new Date(),
+      metadata: {
+        ...originalMaterial.metadata,
+        isSilenceRemoved: true,
+        originalVideoUrl: originalMaterial.url,
+        silenceRemovedAt: new Date().toISOString(),
+        removedSegments: result.removed_count,
+        timeSaved: result.time_saved,
+        source: 'silence-removed'
+      }
+    };
+
+    logger.info('替换原始素材为静音移除版本', {
+      materialId: newMaterial.id,
+      newMaterialName: newMaterial.name,
+      newMaterialUrl: newMaterial.url.substring(0, 100),
+      newDuration: result.new_duration,
+      replacementStrategy: 'same-id-replacement'
+    });
+
+    addOrReplaceMaterial(newMaterial);
+    setMinimizedTask(null);
+    showSuccess(`静音移除完成！移除了${result.removed_count}个静音段，节省${result.time_saved.toFixed(1)}秒`);
+  };
+
+  // 视频处理最小化回调
+  const handleVideoProcessingMinimize = useCallback((processingTaskId: string, videoName: string) => {
+    setIsVideoProcessingOpen(false);
+    setMinimizedTask({
+      taskId: processingTaskId,
+      videoName,
+      progress: 0,
+      status: 'processing',
+    });
+  }, []);
+
+  // 最小化指示器恢复弹窗回调
+  const handleRestoreFromMinimized = useCallback(() => {
+    setIsVideoProcessingOpen(true);
+    setMinimizedTask(null);
+  }, []);
+
+  // 最小化任务状态更新回调
+  const handleMinimizedTaskUpdate = useCallback((update: Partial<MinimizedTaskState>) => {
+    setMinimizedTask(prev => prev ? { ...prev, ...update } : null);
+  }, []);
 
   // 将blob URL转换为base64数据
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -2009,6 +2081,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <span>AI视频</span>
               </button>
 
+              <button
+                onClick={() => setIsVideoProcessingOpen(true)}
+                className="flex items-center space-x-1 text-muted-foreground hover:text-foreground bg-muted hover:bg-accent px-2 py-1 rounded-md transition-colors"
+                title="视频处理（切气口等）"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+                </svg>
+                <span>视频处理</span>
+              </button>
+
             </div>
             <div className="text-muted-foreground">
               {materials.length}{t.materialsPanel.materialsCount}
@@ -2290,6 +2373,25 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           return pack;
         }}
       />
+
+      {/* 视频处理弹窗 */}
+      <VideoProcessingModal
+        isOpen={isVideoProcessingOpen}
+        onClose={() => setIsVideoProcessingOpen(false)}
+        materials={materials.filter(m => m.type === 'video')}
+        onSilenceRemoved={handleSilenceRemoved}
+        onMinimize={handleVideoProcessingMinimize}
+        taskId={taskId}
+      />
+
+      {/* 最小化进度指示器（浮动右下角） */}
+      {minimizedTask && (
+        <MinimizedProgressIndicator
+          task={minimizedTask}
+          onRestore={handleRestoreFromMinimized}
+          onTaskUpdate={handleMinimizedTaskUpdate}
+        />
+      )}
     </div>
   );
 };

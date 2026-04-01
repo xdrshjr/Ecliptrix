@@ -14,7 +14,7 @@ interface KnownProvider {
 }
 
 interface SavedProvider {
-  id: number;
+  id: string;
   name: string;
   provider_type: string;
   api_url: string;
@@ -31,7 +31,7 @@ interface ProviderWithModels extends SavedProvider {
 
 interface Assignment {
   function_type: FunctionType;
-  provider_id: number;
+  provider_id: string;
   provider_name: string;
   provider_type: string;
   model_name: string;
@@ -41,7 +41,7 @@ interface Assignment {
 }
 
 interface ProviderFormState {
-  id: number | null; // null = creating new
+  id: string | null; // null = creating new
   name: string;
   provider_type: string;
   api_url: string;
@@ -50,7 +50,7 @@ interface ProviderFormState {
 }
 
 interface AssignmentFormState {
-  provider_id: number | null;
+  provider_id: string | null;
   model_name: string;
   temperature: number;
   modelInputMode: 'select' | 'manual';
@@ -118,8 +118,8 @@ const ModelSettingsPanel: React.FC = () => {
   const [providerForm, setProviderForm] = useState<ProviderFormState | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [savingProvider, setSavingProvider] = useState(false);
-  const [fetchingModels, setFetchingModels] = useState<number | 'new' | null>(null);
-  const [testingProvider, setTestingProvider] = useState<number | 'new' | null>(null);
+  const [fetchingModels, setFetchingModels] = useState<string | 'new' | null>(null);
+  const [testingProvider, setTestingProvider] = useState<string | 'new' | null>(null);
   const [providerTestResult, setProviderTestResult] = useState<TestResult | null>(null);
 
   // ── Assignment Form State ──
@@ -135,10 +135,10 @@ const ModelSettingsPanel: React.FC = () => {
   const [newProviderModels, setNewProviderModels] = useState<string[]>([]);
 
   // ── Expanded model lists ──
-  const [expandedProviderModels, setExpandedProviderModels] = useState<number | null>(null);
+  const [expandedProviderModels, setExpandedProviderModels] = useState<string | null>(null);
 
   // ── Delete Confirmation ──
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const tabLabels: Record<FunctionType, string> = {
     chat: t.adminSettings.modelChat,
@@ -298,7 +298,7 @@ const ModelSettingsPanel: React.FC = () => {
     }
   };
 
-  const handleDeleteProvider = async (providerId: number) => {
+  const handleDeleteProvider = async (providerId: string) => {
     try {
       const res = await fetch(`/api/model-settings/providers/${providerId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -314,7 +314,7 @@ const ModelSettingsPanel: React.FC = () => {
     }
   };
 
-  const handleFetchModelsForProvider = async (providerId: number | 'new') => {
+  const handleFetchModelsForProvider = async (providerId: string | 'new') => {
     setFetchingModels(providerId);
     try {
       let res: Response;
@@ -354,7 +354,7 @@ const ModelSettingsPanel: React.FC = () => {
     }
   };
 
-  const handleTestProviderConnection = async (providerId: number | 'new', modelName?: string) => {
+  const handleTestProviderConnection = async (providerId: string | 'new', modelName?: string) => {
     setTestingProvider(providerId);
     setProviderTestResult(null);
 
@@ -398,7 +398,7 @@ const ModelSettingsPanel: React.FC = () => {
     }));
   };
 
-  const handleAssignmentProviderChange = async (ft: FunctionType, providerId: number) => {
+  const handleAssignmentProviderChange = async (ft: FunctionType, providerId: string) => {
     updateAssignmentForm(ft, { provider_id: providerId, model_name: '', modelInputMode: 'select' });
     // Auto-fetch models for this provider if not yet fetched
     const provider = savedProviders.find(p => p.id === providerId);
@@ -452,13 +452,13 @@ const ModelSettingsPanel: React.FC = () => {
   };
 
   // ── Helpers ──
-  const getProviderModels = (providerId: number | null): string[] => {
+  const getProviderModels = (providerId: string | null): string[] => {
     if (!providerId) return [];
     const provider = savedProviders.find(p => p.id === providerId);
     return provider?.models || [];
   };
 
-  const getAssignmentsForProvider = (providerId: number): FunctionType[] => {
+  const getAssignmentsForProvider = (providerId: string): FunctionType[] => {
     return FUNCTION_TYPES.filter(ft => assignments[ft]?.provider_id === providerId);
   };
 
@@ -721,12 +721,12 @@ const ModelSettingsPanel: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setExpandedProviderModels(
-                          expandedProviderModels === (providerForm.id || -1) ? null : (providerForm.id || -1)
+                          expandedProviderModels === (providerForm.id || 'new') ? null : (providerForm.id || 'new')
                         )}
                         className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                       >
                         <svg
-                          className={`w-3 h-3 transition-transform ${expandedProviderModels === (providerForm.id || -1) ? 'rotate-90' : ''}`}
+                          className={`w-3 h-3 transition-transform ${expandedProviderModels === (providerForm.id || 'new') ? 'rotate-90' : ''}`}
                           fill="none" stroke="currentColor" viewBox="0 0 24 24"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -845,8 +845,8 @@ const ModelSettingsPanel: React.FC = () => {
                           <select
                             value={form.provider_id || ''}
                             onChange={e => {
-                              const id = parseInt(e.target.value);
-                              if (!isNaN(id)) {
+                              const id = e.target.value;
+                              if (id) {
                                 handleAssignmentProviderChange(ft, id);
                               } else {
                                 updateAssignmentForm(ft, { provider_id: null, model_name: '' });

@@ -31,6 +31,7 @@
     "react-syntax-highlighter": "^15.5.0",
     "remark-gfm": "^4.0.0",
     "tailwindcss-animate": "^1.0.7",
+    "wavesurfer.js": "^7.12.5",
     "xstate": "^5.28.0",
     "zustand": "^5.0.12"
   },

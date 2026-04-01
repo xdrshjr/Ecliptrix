@@ -66,13 +66,14 @@ async def create_provider(request: ModelProviderCreate):
         return {"success": True, "message": "Provider created", "provider": provider}
     except Exception as e:
         logger.error(f"Error creating provider: {e}")
-        if "UNIQUE constraint" in str(e):
+        err_str = str(e).lower()
+        if "unique" in err_str or "duplicate key" in err_str:
             raise HTTPException(status_code=400, detail="A provider with this name already exists")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/providers/{provider_id}")
-async def update_provider(provider_id: int, request: ModelProviderUpdate):
+async def update_provider(provider_id: str, request: ModelProviderUpdate):
     """Update a provider credential. Use '__KEEP__' for api_key to preserve existing."""
     try:
         provider = await model_settings_service.update_provider(provider_id, request)
@@ -83,13 +84,14 @@ async def update_provider(provider_id: int, request: ModelProviderUpdate):
         raise
     except Exception as e:
         logger.error(f"Error updating provider: {e}")
-        if "UNIQUE constraint" in str(e):
+        err_str = str(e).lower()
+        if "unique" in err_str or "duplicate key" in err_str:
             raise HTTPException(status_code=400, detail="A provider with this name already exists")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/providers/{provider_id}")
-async def delete_provider(provider_id: int):
+async def delete_provider(provider_id: str):
     """Delete a provider and cascade-delete its feature assignments."""
     try:
         deleted = await model_settings_service.delete_provider(provider_id)
@@ -106,7 +108,7 @@ async def delete_provider(provider_id: int):
 # ── Model Fetching ──
 
 @router.post("/providers/{provider_id}/fetch-models", response_model=FetchModelsResponse)
-async def fetch_models_for_provider(provider_id: int):
+async def fetch_models_for_provider(provider_id: str):
     """Fetch available models using a saved provider's credentials."""
     try:
         result = await model_settings_service.fetch_models_for_provider(provider_id)

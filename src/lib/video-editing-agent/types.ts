@@ -139,6 +139,8 @@ export interface VideoEditingAgentConfig {
   llmApiUrl: string;
   llmApiKey: string;
   llmModel: string;
+  /** Provider type from model settings, used to select API format (e.g. 'kimi_coding', 'anthropic') */
+  providerType?: string;
   timelineState: TimelineState;
   materials: MaterialItem[];
   conversationHistory: ChatMessage[];
