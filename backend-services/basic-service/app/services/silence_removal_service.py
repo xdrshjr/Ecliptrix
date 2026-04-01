@@ -252,12 +252,28 @@ class SilenceRemovalService:
         task_temp_dir = SILENCE_REMOVAL_TEMP_DIR / task_id
         temp_segment_paths: List[str] = []
 
+        local_temp_video: Optional[str] = None  # temp file for remote downloads
+
         try:
             # ---- Stage 1: Prepare (0 → 10 %) ----
             task.progress = 2.0
             task.stage_message = "Resolving video path..."
 
-            local_path = self._resolve_video_path(request.video_url)
+            resolved_path = self._resolve_video_path(request.video_url)
+
+            # If the resolved path is a remote URL, download it once to a local
+            # temp file. Cutting directly from HTTP causes audio/video desync
+            # because FFmpeg must re-download from the start for each segment.
+            if resolved_path.startswith(("http://", "https://")):
+                task.stage_message = "Downloading video..."
+                task_temp_dir.mkdir(parents=True, exist_ok=True)
+                local_temp_video = str(task_temp_dir / "source_video.mp4")
+                await self._download_remote_video(resolved_path, local_temp_video)
+                local_path = local_temp_video
+                logger.info(f"[{task_id}] Downloaded remote video to {local_temp_video}")
+            else:
+                local_path = resolved_path
+
             original_duration = await self._probe_duration(local_path)
 
             task.progress = 5.0
@@ -494,12 +510,17 @@ class SilenceRemovalService:
                 fade_out_start = max(0.0, seg_duration - fade_duration)
                 af_parts.append(f"afade=t=out:st={fade_out_start:.6f}:d={fade_duration:.6f}")
 
+        # Use input seeking (-ss before -i) for proper audio/video sync.
+        # With a local file this is fast (seeks to nearest keyframe, then
+        # decodes accurately from there). The -t duration flag is used instead
+        # of -to so the duration is relative, not absolute.
+        duration = end - start
         cmd = [
             "ffmpeg",
             "-y",
-            "-i", input_path,
             "-ss", f"{start:.6f}",
-            "-to", f"{end:.6f}",
+            "-i", input_path,
+            "-t", f"{duration:.6f}",
             "-c:v", "libx264",
             "-preset", "fast",
             "-c:a", "aac",
@@ -516,6 +537,24 @@ class SilenceRemovalService:
             await self._run_cmd(cmd, f"ffmpeg cut [{start:.3f}-{end:.3f}]")
         except RuntimeError as exc:
             raise RuntimeError(f"FFmpeg cut failed: {exc}") from exc
+
+    # ------------------------------------------------------------------
+    # Download remote video to local temp file
+    # ------------------------------------------------------------------
+
+    async def _download_remote_video(self, url: str, output_path: str) -> None:
+        """Download a remote video URL to a local file using FFmpeg."""
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", url,
+            "-c", "copy",
+            output_path,
+        ]
+        try:
+            await self._run_cmd(cmd, "ffmpeg download remote video")
+        except RuntimeError as exc:
+            raise RuntimeError(f"Failed to download remote video: {exc}") from exc
 
     # ------------------------------------------------------------------
     # FFmpeg: concat segments

@@ -947,10 +947,11 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       timeSaved: result.time_saved
     });
 
-    // 创建新的素材项，保持原有ID但更新URL和时长
+    // 创建新素材项（新 ID），保留原始素材不变
+    const newId = `${originalMaterial.id}_sr_${Date.now()}`;
     const newMaterial: MaterialItem = {
       ...originalMaterial,
-      id: originalMaterial.id,
+      id: newId,
       name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_静音移除$/, '')}_静音移除.mp4`,
       url: processedVideoUrl,
       serverUrl: processedVideoUrl,
@@ -960,6 +961,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         ...originalMaterial.metadata,
         isSilenceRemoved: true,
         originalVideoUrl: originalMaterial.url,
+        originalMaterialId: originalMaterial.id,
         silenceRemovedAt: new Date().toISOString(),
         removedSegments: result.removed_count,
         timeSaved: result.time_saved,
@@ -967,12 +969,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       }
     };
 
-    logger.info('替换原始素材为静音移除版本', {
-      materialId: newMaterial.id,
+    logger.info('添加静音移除后的新素材', {
+      newMaterialId: newMaterial.id,
+      originalMaterialId: originalMaterial.id,
       newMaterialName: newMaterial.name,
       newMaterialUrl: newMaterial.url.substring(0, 100),
       newDuration: result.new_duration,
-      replacementStrategy: 'same-id-replacement'
     });
 
     addOrReplaceMaterial(newMaterial);
