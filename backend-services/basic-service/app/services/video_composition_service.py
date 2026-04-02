@@ -63,8 +63,14 @@ class VideoCompositionService:
         
         # Check ffmpeg availability
         self._check_ffmpeg()
-        
-        logger.info("VideoCompositionService initialized with subtitle and YouTube support")
+
+        # Detect GPU encoder availability
+        self._gpu_encoder = self._detect_gpu_encoder()
+
+        # Concurrency control: limit simultaneous compositions to prevent CPU/memory overload
+        self._composition_semaphore = threading.Semaphore(2)
+
+        logger.info(f"VideoCompositionService initialized (gpu_encoder={self._gpu_encoder})")
     
     def _check_ffmpeg(self) -> bool:
         """Check if ffmpeg is available."""
@@ -87,6 +93,65 @@ class VideoCompositionService:
             logger.error("ffmpeg not available")
             return None
     
+    def _detect_gpu_encoder(self) -> Optional[str]:
+        """Detect available GPU hardware encoder via ffmpeg."""
+        try:
+            result = subprocess.run(
+                ['ffmpeg', '-hide_banner', '-encoders'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                output = result.stdout
+                # Check NVIDIA NVENC first (most common)
+                if 'h264_nvenc' in output:
+                    # Verify the encoder actually works with a quick test
+                    test_result = subprocess.run(
+                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.1',
+                         '-c:v', 'h264_nvenc', '-f', 'null', '-'],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if test_result.returncode == 0:
+                        logger.info("GPU encoder detected: h264_nvenc (NVIDIA)")
+                        return 'h264_nvenc'
+                # Check Intel Quick Sync
+                if 'h264_qsv' in output:
+                    test_result = subprocess.run(
+                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.1',
+                         '-c:v', 'h264_qsv', '-f', 'null', '-'],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if test_result.returncode == 0:
+                        logger.info("GPU encoder detected: h264_qsv (Intel)")
+                        return 'h264_qsv'
+        except Exception as e:
+            logger.debug(f"GPU encoder detection failed: {e}")
+        logger.info("No GPU encoder detected, using CPU libx264")
+        return None
+
+    def _get_encoding_params(self, quality: str = "fast") -> List[str]:
+        """
+        Get FFmpeg encoding parameters based on GPU availability and quality level.
+
+        Args:
+            quality: "ultrafast" for intermediate files, "fast" for final output, "high" for quality output
+
+        Returns:
+            List of FFmpeg arguments for video encoding
+        """
+        if self._gpu_encoder == 'h264_nvenc':
+            preset_map = {"ultrafast": "p1", "fast": "p4", "high": "p6"}
+            preset = preset_map.get(quality, "p4")
+            return ['-c:v', 'h264_nvenc', '-preset', preset, '-pix_fmt', 'yuv420p']
+        elif self._gpu_encoder == 'h264_qsv':
+            preset_map = {"ultrafast": "veryfast", "fast": "faster", "high": "medium"}
+            preset = preset_map.get(quality, "faster")
+            return ['-c:v', 'h264_qsv', '-preset', preset]
+        else:
+            # CPU libx264 fallback
+            preset_map = {"ultrafast": "ultrafast", "fast": "veryfast", "high": "medium"}
+            preset = preset_map.get(quality, "veryfast")
+            return ['-c:v', 'libx264', '-preset', preset, '-pix_fmt', 'yuv420p']
+
     def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
         """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
         # Round up to next even number if odd
@@ -529,10 +594,10 @@ class VideoCompositionService:
             '-vf', vf_params,
             '-r', str(video_info['target_fps']),
             '-an',  # Strip audio - video audio handled separately via _extract_video_audio_tracks
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-profile:v', 'high',
-            '-pix_fmt', 'yuv420p',
+        ])
+        # Use ultrafast preset for normalization (intermediate files, will be re-encoded later if needed)
+        normalize_cmd.extend(self._get_encoding_params("ultrafast"))
+        normalize_cmd.extend([
             '-movflags', '+faststart',
             '-avoid_negative_ts', 'make_zero',
             normalized_path
@@ -599,31 +664,33 @@ class VideoCompositionService:
     
     def _process_video_composition_async(self, composition_id: str, request: VideoCompositionRequest):
         """
-        Process video composition in background thread.
+        Process video composition in background thread with concurrency control.
         """
+        logger.info(f"Composition {composition_id} waiting for semaphore (max concurrent: 2)")
+        self._composition_semaphore.acquire()
         try:
             logger.info(f"Background processing started for composition {composition_id}")
-            
-            # Call the original synchronous composition method
-            # Status updates are handled within _compose_video_sync
+
             result = self._compose_video_sync(composition_id, request)
-            
+
             if result.success:
                 logger.info(f"Async composition {composition_id} completed successfully")
             else:
                 logger.error(f"Async composition {composition_id} failed: {result.message}")
-                
+
         except Exception as e:
             error_msg = f"Async video composition failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            
-            # Update composition status on unexpected errors
+
             if composition_id in self.compositions:
                 self.compositions[composition_id].update({
                     "status": "failed",
                     "error_details": {"error": error_msg},
                     "failed_at": datetime.utcnow()
                 })
+        finally:
+            self._composition_semaphore.release()
+            logger.info(f"Composition {composition_id} released semaphore")
 
     def _compose_video_sync(self, composition_id: str, request: VideoCompositionRequest) -> VideoCompositionResponse:
         """
@@ -1082,10 +1149,7 @@ class VideoCompositionService:
                     '-f', 'concat',
                     '-safe', '0',
                     '-i', concat_list_path,
-                    '-c:v', 'libx264',
-                    '-preset', 'medium',
-                    '-profile:v', 'high',
-                    '-pix_fmt', 'yuv420p',
+                ] + self._get_encoding_params("fast") + [
                     str(output_path)
                 ]
                 
@@ -1164,70 +1228,74 @@ class VideoCompositionService:
             else:
                 logger.info("No audio tracks to process")
             
-            # 处理图片叠加 - 使用专门的图片轨道
+            # Process image overlays and subtitles
+            # When both exist, merge into a single FFmpeg pass to avoid redundant re-encoding
             all_image_items = list(request.image_items)
-            
-            if all_image_items:
-                logger.info("Processing image overlay tracks...")
-                logger.info(f"Found {len(request.image_items)} image items to process")
-                logger.info(f"Total image overlay items to process: {len(all_image_items)}")
-                
+            has_images = bool(all_image_items)
+            has_subtitles = bool(request.subtitle_items)
+
+            if has_images and has_subtitles:
+                # P0 optimization: merge image overlays + subtitles into ONE FFmpeg call
+                logger.info(f"Merging {len(all_image_items)} image overlays and {len(request.subtitle_items)} subtitles into single encoding pass")
                 try:
-                    # 使用与音频处理相同的方式，在原始视频目录生成临时文件
+                    merged_output_path = str(output_path).replace('.mp4', '_merged.mp4')
+                    success = self._process_overlays_and_subtitles_combined(
+                        all_image_items,
+                        request.subtitle_items,
+                        str(output_path),
+                        merged_output_path,
+                        temp_dir,
+                        request.output_resolution
+                    )
+                    if success and os.path.exists(merged_output_path):
+                        os.replace(merged_output_path, str(output_path))
+                        logger.info("Image overlays and subtitles added in single pass")
+                        final_size = os.path.getsize(output_path)
+                        logger.info(f"Final video file size: {final_size} bytes")
+                    else:
+                        logger.warning("Merged processing failed, falling back to sequential processing")
+                        # Fallback to sequential processing
+                        self._process_overlays_sequential(all_image_items, request, output_path, temp_dir)
+                except Exception as e:
+                    logger.error(f"Merged overlay+subtitle processing error: {str(e)}", exc_info=True)
+                    logger.warning("Falling back to sequential processing")
+                    self._process_overlays_sequential(all_image_items, request, output_path, temp_dir)
+            elif has_images:
+                logger.info(f"Processing {len(all_image_items)} image overlay tracks...")
+                try:
                     video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
-                    
-                    # Process image overlays and add them to the video
                     success = self._process_image_overlays(
                         all_image_items,
-                        str(output_path), 
+                        str(output_path),
                         video_with_images_path,
                         temp_dir,
                         request.output_resolution
                     )
-                    
                     if success and os.path.exists(video_with_images_path):
-                        # Replace the original video with the image-processed version
                         os.replace(video_with_images_path, str(output_path))
                         logger.info("Image overlays successfully added to video")
-                        
-                        # Verify final file with image overlays
-                        final_size = os.path.getsize(output_path)
-                        logger.info(f"Final video file size with image overlays: {final_size} bytes")
                     else:
                         logger.warning("Image overlay processing did not produce output file")
-                        
                 except Exception as e:
                     logger.error(f"Image overlay processing error: {str(e)}", exc_info=True)
-
-            # Handle subtitles if present  
-            if request.subtitle_items:
-                logger.info("Processing subtitle tracks...")
-                logger.info(f"Found {len(request.subtitle_items)} subtitle items")
-                
+            elif has_subtitles:
+                logger.info(f"Processing {len(request.subtitle_items)} subtitle tracks...")
                 try:
-                    # Process subtitles and add them to the video
                     subtitle_processed_path = self._process_subtitle_tracks(
-                        request.subtitle_items, 
-                        str(output_path), 
+                        request.subtitle_items,
+                        str(output_path),
                         temp_dir
                     )
-                    
                     if subtitle_processed_path and os.path.exists(subtitle_processed_path):
-                        # Replace the original video with the subtitle-processed version
                         os.replace(subtitle_processed_path, str(output_path))
                         logger.info("Subtitles successfully added to video")
-                        
-                        # Verify final file with subtitles
-                        final_size = os.path.getsize(output_path)
-                        logger.info(f"Final video file size with subtitles: {final_size} bytes")
                     else:
                         logger.warning("Subtitle processing failed - continuing without subtitles")
-                        
                 except Exception as e:
                     logger.error(f"Subtitle processing error: {str(e)}", exc_info=True)
                     logger.warning("Continuing video composition without subtitles")
             else:
-                logger.info("No subtitle tracks to process")
+                logger.info("No image overlays or subtitle tracks to process")
             
             # Final processing
             processing_time = time.time() - start_time
@@ -2086,6 +2154,169 @@ class VideoCompositionService:
         
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
     
+    def _process_overlays_sequential(self, all_image_items: List, request, output_path, temp_dir: str):
+        """Fallback: process image overlays and subtitles sequentially (two encoding passes)."""
+        try:
+            video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
+            success = self._process_image_overlays(
+                all_image_items, str(output_path), video_with_images_path,
+                temp_dir, request.output_resolution
+            )
+            if success and os.path.exists(video_with_images_path):
+                os.replace(video_with_images_path, str(output_path))
+                logger.info("Image overlays added (sequential fallback)")
+        except Exception as e:
+            logger.error(f"Image overlay error in fallback: {e}", exc_info=True)
+
+        try:
+            subtitle_processed_path = self._process_subtitle_tracks(
+                request.subtitle_items, str(output_path), temp_dir
+            )
+            if subtitle_processed_path and os.path.exists(subtitle_processed_path):
+                os.replace(subtitle_processed_path, str(output_path))
+                logger.info("Subtitles added (sequential fallback)")
+        except Exception as e:
+            logger.error(f"Subtitle error in fallback: {e}", exc_info=True)
+
+    def _process_overlays_and_subtitles_combined(
+        self, image_items: List, subtitle_items: List,
+        video_path: str, output_path: str, temp_dir: str,
+        output_resolution: Dict[str, int]
+    ) -> bool:
+        """
+        Merge image overlays and subtitle drawtext filters into a single FFmpeg encoding pass.
+        This eliminates one full re-encoding compared to processing them sequentially.
+        """
+        try:
+            ffmpeg_path = self._get_ffmpeg_path()
+
+            # --- Build image overlay inputs and filter chain ---
+            cmd = [ffmpeg_path, '-y', '-i', video_path]
+            valid_items = []
+            for i, item in enumerate(image_items):
+                image_url = item.url
+                local_image_path = self._convert_url_to_local_path(image_url)
+                if not os.path.exists(local_image_path):
+                    downloaded_image = self._download_image(image_url, temp_dir, i)
+                    if downloaded_image and downloaded_image.get('success'):
+                        local_image_path = downloaded_image['output_path']
+                    else:
+                        logger.warning(f"Failed to download image {image_url}, skipping")
+                        continue
+                cmd.extend(['-i', local_image_path])
+                valid_items.append(item)
+
+            video_width = output_resolution['width']
+            video_height = output_resolution['height']
+            filter_parts = []
+            base_input = "[0:v]"
+
+            for i, item in enumerate(valid_items):
+                input_idx = i + 1
+                pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
+                if not pos:
+                    pos = type('Position', (), {
+                        'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
+                    })()
+
+                x = int(pos.x * video_width)
+                y = int(pos.y * video_height)
+                w = int(pos.width * video_width)
+                h = int(pos.height * video_height)
+                even_w, even_h = self._ensure_even_dimensions(w, h)
+                start_time = item.start_time
+                end_time = item.start_time + item.duration
+
+                scale_filter = f"[{input_idx}:v]scale={even_w}:{even_h}:force_original_aspect_ratio=decrease,pad={even_w}:{even_h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
+                filter_parts.append(scale_filter)
+
+                if i == 0:
+                    overlay_filter = f"{base_input}[img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
+                else:
+                    overlay_filter = f"[v{i-1}][img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
+                filter_parts.append(overlay_filter)
+
+            # --- Build subtitle drawtext filters ---
+            srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
+            if not srt_path or not os.path.exists(srt_path):
+                logger.error("Failed to create SRT file for merged processing")
+                return False
+
+            first_subtitle = subtitle_items[0]
+            font_family = getattr(first_subtitle, 'font_family', 'default')
+            font_size = getattr(first_subtitle, 'font_size', 24)
+            font_color = getattr(first_subtitle, 'font_color', '#FFFFFF')
+            background_color = getattr(first_subtitle, 'background_color', None)
+            position = getattr(first_subtitle, 'position', 'bottom')
+            if not background_color:
+                background_color = "#000000@0.5"
+
+            subtitle_request = SubtitleAddRequest(
+                video_file_path=video_path,
+                subtitle_file_path=srt_path,
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                background_color=background_color,
+                border_width=2,
+                border_color="#000000",
+                position=position,
+                margin_vertical=50,
+                margin_horizontal=50
+            )
+
+            text_files_dir = tempfile.mkdtemp(prefix="ecliptrix_merged_subs_")
+            try:
+                drawtext_filters, _, _ = self.subtitle_service.build_drawtext_filters(
+                    subtitle_request, text_files_dir
+                )
+
+                if not drawtext_filters:
+                    logger.warning("No drawtext filters generated, proceeding with image overlays only")
+                    # Still do single pass with just overlays
+                    if valid_items:
+                        filter_complex = ";".join(filter_parts)
+                        final_output = f"[v{len(valid_items)-1}]"
+                    else:
+                        return False
+                else:
+                    # Merge: chain drawtext filters onto the last overlay output
+                    if valid_items:
+                        last_overlay_label = f"[v{len(valid_items)-1}]"
+                        drawtext_chain = f"{last_overlay_label}{','.join(drawtext_filters)}[vout]"
+                        filter_parts.append(drawtext_chain)
+                        filter_complex = ";".join(filter_parts)
+                        final_output = "[vout]"
+                    else:
+                        # No valid image items but have subtitles - use drawtext only via filter_complex
+                        filter_complex = f"[0:v]{','.join(drawtext_filters)}[vout]"
+                        final_output = "[vout]"
+
+                cmd.extend([
+                    '-filter_complex', filter_complex,
+                    '-map', final_output,
+                    '-map', '0:a?',
+                    '-c:a', 'copy',
+                ])
+                cmd.extend(self._get_encoding_params("fast"))
+                cmd.append(output_path)
+
+                logger.info(f"Running merged overlay+subtitle command")
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    logger.info("Merged overlay+subtitle processing completed successfully")
+                    return True
+                else:
+                    logger.error(f"Merged processing failed: {result.stderr}")
+                    return False
+            finally:
+                shutil.rmtree(text_files_dir, ignore_errors=True)
+
+        except Exception as e:
+            logger.error(f"Error in merged overlay+subtitle processing: {str(e)}", exc_info=True)
+            return False
+
     def _process_image_overlays(self, image_items: List, video_path: str, output_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> bool:
         """
         Process image overlays and add them to the video.
@@ -2189,11 +2420,9 @@ class VideoCompositionService:
                 '-map', final_output,
                 '-map', '0:a?',  # Copy audio if it exists
                 '-c:a', 'copy',  # Copy audio codec
-                '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-pix_fmt', 'yuv420p',
-                output_path
             ])
+            cmd.extend(self._get_encoding_params("fast"))
+            cmd.append(output_path)
             
             logger.info(f"Running image overlay command: {' '.join(cmd)}")
             

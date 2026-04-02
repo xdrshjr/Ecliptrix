@@ -570,6 +570,44 @@ class SubtitleService:
             logger.error(f"Failed to convert time '{time_str}' to seconds: {str(e)}")
             return 0.0
     
+    def build_drawtext_filters(
+        self,
+        request: SubtitleAddRequest,
+        text_files_dir: str
+    ) -> Tuple[List[str], int, int]:
+        """
+        Build drawtext filter strings for subtitle burning without running FFmpeg.
+        Used by VideoCompositionService to merge subtitle filters with image overlays.
+
+        Args:
+            request: Subtitle request parameters
+            text_files_dir: Directory to store temporary text files for ffmpeg textfile= params
+
+        Returns:
+            Tuple of (list of drawtext filter strings, video_width, video_height)
+        """
+        video_width, video_height, fps = self._get_video_properties(request.video_file_path)
+        if video_width is None:
+            return [], 0, 0
+
+        subtitles = self._parse_srt_file(request.subtitle_file_path)
+        if not subtitles:
+            return [], 0, 0
+
+        aspect_ratio = video_width / video_height
+        is_portrait = aspect_ratio < 1.0
+
+        if is_portrait:
+            filters = self._build_multiline_centered_drawtext_filters(
+                subtitles, request, video_width, video_height, text_files_dir
+            )
+        else:
+            filters = self._build_standard_drawtext_filters(
+                subtitles, request, video_width, video_height, text_files_dir
+            )
+
+        return filters, video_width, video_height
+
     def _build_ffmpeg_command(
         self,
         input_video: str,
@@ -619,16 +657,19 @@ class SubtitleService:
         
         logger.info(f"Generated {len(drawtext_filters)} drawtext filters for subtitle rendering")
         
-        # Build complete ffmpeg command
+        # Build complete ffmpeg command with explicit video encoding
         cmd = [
             'ffmpeg',
             '-i', input_video,
             '-vf', ','.join(drawtext_filters),
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-pix_fmt', 'yuv420p',
             '-c:a', 'copy',  # Copy audio without re-encoding
             '-y',  # Overwrite output file
             output_video
         ]
-        
+
         return cmd
     
     def _build_standard_drawtext_filters(
