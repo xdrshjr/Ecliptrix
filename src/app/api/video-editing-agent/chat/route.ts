@@ -3,7 +3,9 @@ import { createVideoEditingAgent, subscribeAgentEvents } from '@/lib/video-editi
 import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
-const AGENT_TIMEOUT = 120_000; // 120 seconds
+const AGENT_TIMEOUT = 600_000; // 10 minutes — storyboard generation can take 4+ minutes
+
+export const maxDuration = 600; // 10 minutes (for Vercel/serverless platforms)
 
 const getConfig = async () => {
   try {
@@ -134,16 +136,23 @@ export async function POST(request: NextRequest) {
             apiBaseUrl: origin,
           });
 
-          // Subscribe to events and forward as SSE
-          subscribeAgentEvents(agent, toolContext, send);
-
-          // Run agent with timeout + abort on timeout
+          // Run agent with resettable timeout — resets on every tool activity
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          const timeoutPromise = new Promise<never>((_, reject) => {
+          let rejectTimeout: ((err: Error) => void) | undefined;
+          const resetTimeout = () => {
+            if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
               agent.abort();
-              reject(new Error('Agent timeout'));
+              rejectTimeout?.(new Error('Agent timeout'));
             }, AGENT_TIMEOUT);
+          };
+
+          // Subscribe to events and forward as SSE, with timeout reset on tool activity
+          subscribeAgentEvents(agent, toolContext, send, resetTimeout);
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            rejectTimeout = reject;
+            resetTimeout(); // start initial timeout
           });
 
           try {
@@ -161,7 +170,7 @@ export async function POST(request: NextRequest) {
           console.error('[VideoEditingAgent] Error:', message);
 
           if (message === 'Agent timeout') {
-            send({ type: 'error', message: 'Agent timed out. Please try a simpler request.' });
+            send({ type: 'error', message: `Agent timed out after ${AGENT_TIMEOUT / 1000}s of inactivity. Completed operations have been preserved. Try breaking the task into smaller steps.` });
           } else {
             send({ type: 'error', message: `Agent error: ${message}` });
           }

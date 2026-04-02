@@ -86,6 +86,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           body: JSON.stringify({
             taskId: `agent-script-${Date.now()}`,
             customPrompt,
+            durationTarget: params.duration_target,
             scriptConfig: {
               language,
               consistency: 'moderate',

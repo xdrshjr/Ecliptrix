@@ -1633,7 +1633,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                       </svg>
                     )}
-                    <span>{isGenerating ? '生成中...' : 'AI 生成'}</span>
+                    <span>{isGenerating ? t.scriptPanel.header.generating : t.scriptPanel.header.aiGenerate}</span>
                   </button>
                 )}
                 {/* 统一转换所有语音按钮 */}
@@ -1738,7 +1738,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           />
         ) : (
           <div className="flex-1 flex items-center justify-center p-8">
-            <p className="text-sm text-muted-foreground">请选择一个分镜包开始</p>
+            <p className="text-sm text-muted-foreground">{t.scriptPanel.header.selectStoryboardPack}</p>
           </div>
         )
       ) : activeTab === 'aiVideo' ? (

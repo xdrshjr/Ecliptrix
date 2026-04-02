@@ -188,7 +188,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           <button
             onClick={handleZoomOut}
             className="p-1 rounded hover:bg-accent transition-colors"
-            title="缩小"
+            title={t.timeline.ruler.zoomOut}
           >
             <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 13H5v-2h14v2z"/>
@@ -198,7 +198,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           <button
             onClick={handleZoomReset}
             className="px-2 py-0.5 text-xs bg-card border border-border rounded hover:bg-muted transition-colors"
-            title="重置缩放"
+            title={t.timeline.ruler.resetZoom}
           >
             {Math.round(zoomLevel * 100)}%
           </button>
@@ -206,7 +206,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           <button
             onClick={handleZoomIn}
             className="p-1 rounded hover:bg-accent transition-colors"
-            title="放大"
+            title={t.timeline.ruler.zoomIn}
           >
             <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>

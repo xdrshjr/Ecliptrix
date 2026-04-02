@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { StoryboardPack } from '@/types';
 
 interface StoryboardPackCardProps {
@@ -21,6 +22,7 @@ const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
   onDoubleClick,
   onDelete,
 }) => {
+  const { t } = useLocale();
   const [imgError, setImgError] = useState(false);
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -67,7 +69,7 @@ const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
           <button
             onClick={handleDelete}
             className="w-6 h-6 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
-            title="删除分镜包"
+            title={t.materialsPanel.deleteStoryboardPack}
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -78,7 +80,7 @@ const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
         {/* Bottom-right label: grid size + frame count */}
         <div className="absolute bottom-1 right-1">
           <span className="px-1 py-0.5 bg-foreground/75 text-background text-xs rounded">
-            {pack.gridSize} · {pack.frameCount}帧
+            {pack.gridSize} · {pack.frameCount}{t.materialsPanel.frames}
           </span>
         </div>
       </div>
@@ -86,10 +88,10 @@ const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
       {/* Info row */}
       <div className="p-1.5">
         <h4 className="text-xs font-medium text-foreground truncate" title={pack.prompt}>
-          {pack.prompt || '分镜包'}
+          {pack.prompt || t.materialsPanel.storyboardPack}
         </h4>
         <div className="flex items-center justify-between text-xs text-muted-foreground mt-0.5">
-          <span>分镜包</span>
+          <span>{t.materialsPanel.storyboardPack}</span>
           <span>{new Date(pack.createdAt).toLocaleDateString()}</span>
         </div>
       </div>

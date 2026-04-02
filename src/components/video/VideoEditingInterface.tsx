@@ -61,25 +61,33 @@ import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPa
  * Parse agent-generated markdown script into ScriptSegment[] format.
  * Agent formats scripts as: ## 1. Title\n\nContent\n\n## 2. Title\n\nContent
  */
+/** Split text into sentences with fallback to newline splitting */
+function splitIntoSentences(text: string): string[] {
+  let sentences = text.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim().length > 0);
+  // If punctuation splitting failed (only one long result), try newline splitting
+  if (sentences.length <= 1 && text.length > 100) {
+    sentences = text.split(/\n+/).filter(s => s.trim().length > 0);
+  }
+  return sentences;
+}
+
 function parseAgentScriptToSegments(text: string): ScriptSegment[] {
   const parts = text.split(/^## \d+\.\s*/m).filter(Boolean);
   if (parts.length === 0) {
     // No numbered headings — treat entire text as one segment
-    const sentences = text.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim().length > 0);
+    const sentences = splitIntoSentences(text);
     if (sentences.length === 0) return [];
     return [{
       id: 'agent-segment-0',
-      title: '脚本',
+      title: 'Script',
       sentences: sentences.map((s, j) => ({ id: `agent-s-0-${j}`, text: s.trim() })),
     }];
   }
   return parts.map((part, i) => {
     const lines = part.trim().split('\n');
-    const title = lines[0]?.trim() || `片段 ${i + 1}`;
+    const title = lines[0]?.trim() || `Segment ${i + 1}`;
     const body = lines.slice(1).join('\n').trim();
-    const sentences = body
-      .split(/(?<=[。！？.!?])\s*/)
-      .filter(s => s.trim().length > 0)
+    const sentences = splitIntoSentences(body)
       .map((s, j) => ({ id: `agent-s-${i}-${j}`, text: s.trim() }));
     return { id: `agent-segment-${i}`, title, sentences };
   });
@@ -546,12 +554,26 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const storeScriptContent = useVideoEditingStore(state => state.scriptContent);
   const storeScriptType = useVideoEditingStore(state => state.scriptType);
   useEffect(() => {
-    if (!storeScriptContent || !content) return;
+    if (!storeScriptContent || !contentRef.current) return;
     const segments = parseAgentScriptToSegments(storeScriptContent);
     if (segments.length === 0) return;
-    onUpdateContent({
-      ...content,
+
+    const update: Partial<VideoEditingTaskContent> = {
       scriptSegments: segments,
+    };
+
+    // Agent-generated scripts should also sync to AI Video Script tab
+    if (storeScriptType === 'ai_generated') {
+      update.aiVideoScriptSegments = segments.map((seg, i) => ({
+        id: `ai-script-${Date.now()}-${i}`,
+        title: seg.title,
+        scriptText: seg.sentences.map(s => s.text).join(' '),
+      }));
+    }
+
+    onUpdateContent({
+      ...contentRef.current,
+      ...update,
     });
   }, [storeScriptContent, storeScriptType]); // eslint-disable-line react-hooks/exhaustive-deps
 

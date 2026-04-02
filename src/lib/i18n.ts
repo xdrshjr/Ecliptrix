@@ -561,6 +561,11 @@ export interface Translations {
       cancel: string;
       placeholder: string;
     };
+    ruler: {
+      zoomIn: string;
+      zoomOut: string;
+      resetZoom: string;
+    };
   };
   materialsPanel: {
     title: string;
@@ -621,6 +626,23 @@ export interface Translations {
     selectedCount: string;
     addToMaterialManagement: string;
     totalMaterials: string;
+    aiImageTitle: string;
+    aiImage: string;
+    aiVideoTitle: string;
+    aiVideo: string;
+    videoProcessingTitle: string;
+    videoProcessing: string;
+    deleteStoryboardPack: string;
+    deleteStoryboardPackConfirm: string;
+    storyboardPack: string;
+    frames: string;
+    generating: string;
+    fluxGenerating: string;
+    aiVideoGeneration: string;
+    kenBurnsZoomIn: string;
+    kenBurnsZoomInDesc: string;
+    kenBurnsZoomOut: string;
+    kenBurnsZoomOutDesc: string;
   };
   aiMixingModal: {
     title: string;
@@ -767,6 +789,9 @@ export interface Translations {
       generateScript: string;
       convertAllSpeech: string;
       progress: string;
+      aiGenerate: string;
+      generating: string;
+      selectStoryboardPack: string;
     };
     actions: {
       convertSpeech: string;
@@ -1076,6 +1101,23 @@ export interface Translations {
     };
     multiGoalDescription: string;
     operationHint: string;
+  };
+  storyboardScriptTab: {
+    selectStoryboardPack: string;
+    selectStoryboardPackHint: string;
+  };
+  welcomeGuide: {
+    title: string;
+    descriptionWithMaterials: string;
+    descriptionWithoutMaterials: string;
+    trimFirst: string;
+    addMusic: string;
+    generateSubtitles: string;
+    adjustVolume: string;
+    searchNature: string;
+    generateAiVideo: string;
+    createScript: string;
+    searchMusic: string;
   };
   scriptGenerationModal: {
     title: string;
@@ -1848,6 +1890,23 @@ export const translations: Record<string, Translations> = {
       selectedCount: '{count} selected',
       addToMaterialManagement: 'Add to Material Management',
       totalMaterials: 'Total {count} materials',
+      aiImageTitle: 'AI Image Generation (Seedream)',
+      aiImage: 'AI Image',
+      aiVideoTitle: 'AI Video Generation (Seedance)',
+      aiVideo: 'AI Video',
+      videoProcessingTitle: 'Video Processing (cut silences, etc.)',
+      videoProcessing: 'Video Processing',
+      deleteStoryboardPack: 'Delete Storyboard Pack',
+      deleteStoryboardPackConfirm: 'Are you sure you want to delete this storyboard pack? All frames and related data will be permanently deleted.',
+      storyboardPack: 'Storyboard Pack',
+      frames: 'frames',
+      generating: 'Generating...',
+      fluxGenerating: 'FLUX Generating...',
+      aiVideoGeneration: 'AI Video Generation',
+      kenBurnsZoomIn: 'Ken Burns - Zoom In',
+      kenBurnsZoomInDesc: 'Gradually zoom in to the set focal position (smooth gradient effect)',
+      kenBurnsZoomOut: 'Ken Burns - Zoom Out',
+      kenBurnsZoomOutDesc: 'Zoom out from zoomed state to normal size (smooth gradient effect)',
     },
     aiMixingModal: {
       title: 'Select AI Mixing Mode',
@@ -1978,6 +2037,11 @@ export const translations: Record<string, Translations> = {
         cancel: 'Cancel',
         placeholder: 'Enter subtitle text...',
       },
+      ruler: {
+        zoomIn: 'Zoom In',
+        zoomOut: 'Zoom Out',
+        resetZoom: 'Reset Zoom',
+      },
     },
     videoSearchModal: {
       title: 'Search Online Videos',
@@ -2088,6 +2152,9 @@ export const translations: Record<string, Translations> = {
          generateScript: 'Generate Script',
          convertAllSpeech: 'Convert All Speech',
          progress: 'Progress',
+         aiGenerate: 'AI Generate',
+         generating: 'Generating...',
+         selectStoryboardPack: 'Please select a storyboard pack to start',
        },
              actions: {
         convertSpeech: 'Convert Speech',
@@ -2397,6 +2464,23 @@ export const translations: Record<string, Translations> = {
      },
      multiGoalDescription: 'Simultaneously meets {count} polish goals: {goals}',
      operationHint: '{count} polish goals selected, click to start polishing'
+   },
+   storyboardScriptTab: {
+     selectStoryboardPack: 'Please select a storyboard pack to start',
+     selectStoryboardPackHint: 'Select a generated storyboard pack from the dropdown above',
+   },
+   welcomeGuide: {
+     title: 'AI Video Editing Assistant',
+     descriptionWithMaterials: 'Try the operations below, or type your instructions directly',
+     descriptionWithoutMaterials: 'Click a suggestion to start, or type what you want to do',
+     trimFirst: 'Trim the first 5 seconds of the first video',
+     addMusic: 'Add upbeat background music',
+     generateSubtitles: 'Generate subtitles for all clips',
+     adjustVolume: 'Lower the volume of the second clip by 50%',
+     searchNature: 'Search for nature landscape video clips',
+     generateAiVideo: 'Generate a tech-style AI video',
+     createScript: 'Create a product showcase video script',
+     searchMusic: 'Search for upbeat background music',
    },
    scriptGenerationModal: {
       title: 'Script Generation Configuration',
@@ -3182,6 +3266,23 @@ export const translations: Record<string, Translations> = {
       selectedCount: '已选择 {count} 个',
       addToMaterialManagement: '添加到素材管理',
       totalMaterials: '共 {count} 个素材',
+      aiImageTitle: 'AI 图像生成（Seedream）',
+      aiImage: 'AI图像',
+      aiVideoTitle: 'AI 视频生成（Seedance）',
+      aiVideo: 'AI视频',
+      videoProcessingTitle: '视频处理（切气口等）',
+      videoProcessing: '视频处理',
+      deleteStoryboardPack: '删除分镜包',
+      deleteStoryboardPackConfirm: '确定要删除此分镜包吗？所有帧和相关数据将被永久删除。',
+      storyboardPack: '分镜包',
+      frames: '帧',
+      generating: '生成中...',
+      fluxGenerating: 'FLUX生成中...',
+      aiVideoGeneration: 'AI视频生成',
+      kenBurnsZoomIn: 'Ken Burns - 放大',
+      kenBurnsZoomInDesc: '逐渐放大到设置的聚焦位置（稳定渐变效果）',
+      kenBurnsZoomOut: 'Ken Burns - 缩小',
+      kenBurnsZoomOutDesc: '从放大状态缩小到正常大小（稳定渐变效果）',
     },
     aiMixingModal: {
       title: '选择AI混剪模式',
@@ -3312,6 +3413,11 @@ export const translations: Record<string, Translations> = {
         cancel: '取消',
         placeholder: '请输入字幕内容...',
       },
+      ruler: {
+        zoomIn: '放大',
+        zoomOut: '缩小',
+        resetZoom: '重置缩放',
+      },
     },
     videoSearchModal: {
       title: '搜索在线视频',
@@ -3422,6 +3528,9 @@ export const translations: Record<string, Translations> = {
          generateScript: '生成脚本',
          convertAllSpeech: '转换全部语音',
          progress: '进度',
+         aiGenerate: 'AI 生成',
+         generating: '生成中...',
+         selectStoryboardPack: '请选择一个分镜包开始',
        },
              actions: {
         convertSpeech: '转换语音',
@@ -3731,6 +3840,23 @@ export const translations: Record<string, Translations> = {
      },
      multiGoalDescription: '同时满足{count}个润色目标：{goals}',
      operationHint: '已选择 {count} 个润色目标，点击开始润色'
+   },
+   storyboardScriptTab: {
+     selectStoryboardPack: '请选择一个分镜包开始',
+     selectStoryboardPackHint: '在上方下拉菜单中选择已生成的分镜包',
+   },
+   welcomeGuide: {
+     title: 'AI视频编辑助手',
+     descriptionWithMaterials: '试试下面的操作，或直接输入你的指令',
+     descriptionWithoutMaterials: '点击建议开始，或直接输入你想做的事情',
+     trimFirst: '裁剪第一个视频的前5秒',
+     addMusic: '添加一段轻快的背景音乐',
+     generateSubtitles: '为所有片段生成字幕',
+     adjustVolume: '把第二个片段的音量调低50%',
+     searchNature: '帮我搜索一些自然风光的视频素材',
+     generateAiVideo: '生成一段科技感的AI视频',
+     createScript: '创建一个产品展示的视频脚本',
+     searchMusic: '帮我搜索轻快的背景音乐',
    },
    scriptGenerationModal: {
       title: '生成脚本配置',

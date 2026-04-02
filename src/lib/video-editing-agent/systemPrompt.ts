@@ -247,8 +247,8 @@ ${formatCompactSummary(timelineState, materials)}
 - 需要 AI 创作内容？→ explore_tools("ai_gen_tools") → generate_ai_image/generate_ai_video
 - 需要语音旁白？→ explore_tools("tts_tools") → generate_tts
 - 需要写脚本？→ explore_tools("script_tools") → generate_video_script
-- 需要分镜？→ explore_tools("storyboard_tools") → generate_storyboard
-- 对于复合需求（如"帮我做一个30秒视频"），自动规划并按顺序执行多个步骤。
+- 需要分镜？→ explore_tools("storyboard_tools") → generate_storyboard（**必须**传入 script 参数，使用前一步 generate_video_script 返回的脚本内容）
+- 对于复合需求（如"帮我做一个30秒视频"），务必将用户指定的时长传递给 generate_video_script 的 duration_target 参数。自动规划并按顺序执行多个步骤。
 
 ## 智能结果处理
 - 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track

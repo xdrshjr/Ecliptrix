@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { StoryboardScriptSegment, StoryboardPack, MaterialItem } from '@/types';
 import { useStoryboardScriptGeneration } from '../../hooks/useStoryboardScriptGeneration';
 import PackSelector from './PackSelector';
@@ -19,6 +20,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
   onAddMaterial,
   taskId,
 }) => {
+  const { t } = useLocale();
   const {
     availablePacks,
     loadPack,
@@ -170,9 +172,9 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
           />
         </svg>
-        <p className="text-sm text-muted-foreground">请选择一个分镜包开始</p>
+        <p className="text-sm text-muted-foreground">{t.storyboardScriptTab.selectStoryboardPack}</p>
         <p className="text-xs text-muted-foreground mt-1">
-          在上方下拉菜单中选择已生成的分镜包
+          {t.storyboardScriptTab.selectStoryboardPackHint}
         </p>
 
         {/* Pack selector in empty state */}

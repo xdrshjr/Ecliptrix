@@ -40,6 +40,7 @@ const buildAIVideoScriptPrompt = (
   scriptConfig?: ScriptGenerationConfig,
   customPrompt?: string,
   videoAnalysisContext?: string,
+  durationTarget?: number,
 ) => {
   const config = scriptConfig || {
     language: 'chinese',
@@ -109,6 +110,13 @@ const buildAIVideoScriptPrompt = (
 
   const contentSection = sections.join('\n\n---\n\n');
 
+  const durationConstraint = durationTarget
+    ? `\n6. CRITICAL: The total narration duration must be approximately ${durationTarget} seconds. ` +
+      `Each scene's scriptText should be about ${Math.round(durationTarget / config.segmentCount)} seconds when read aloud. ` +
+      `For Chinese text, 1 second ≈ 4 characters. For English, 1 second ≈ 2.5 words. ` +
+      `Keep each scene's scriptText within ${Math.round((durationTarget / config.segmentCount) * 4)} Chinese characters or ${Math.round((durationTarget / config.segmentCount) * 2.5)} English words.`
+    : '';
+
   return `You are an expert AI video script writer. Based on the following content, create a series of video scene descriptions optimized for AI video generation.
 
 ${contentSection}
@@ -118,7 +126,7 @@ Requirements:
 2. Each scene needs a short descriptive title and a detailed script text
 3. The script text for each scene should be a vivid visual description suitable as a prompt for AI video generation (describe what should appear in the video: characters, actions, environments, lighting, camera angles, mood)
 4. ${languageInstruction}
-5. ${consistencyInstruction}${customInstructions}
+5. ${consistencyInstruction}${customInstructions}${durationConstraint}
 
 Return the result as a JSON object with this exact structure:
 {
@@ -147,6 +155,7 @@ export async function POST(request: NextRequest) {
       customPrompt,
       videoAnalysisContext,
       selectedVideos,
+      durationTarget,
     } = body as {
       taskId: string;
       scriptConfig?: ScriptGenerationConfig;
@@ -154,6 +163,7 @@ export async function POST(request: NextRequest) {
       customPrompt?: string;
       videoAnalysisContext?: string;
       selectedVideos?: VideoInfo[];
+      durationTarget?: number;
     };
 
     // --- Input validation ---
@@ -201,7 +211,7 @@ export async function POST(request: NextRequest) {
         },
         {
           role: 'user',
-          content: buildAIVideoScriptPrompt(chatMessages, scriptConfig, customPrompt, videoAnalysisContext)
+          content: buildAIVideoScriptPrompt(chatMessages, scriptConfig, customPrompt, videoAnalysisContext, durationTarget)
         }
       ],
       temperature: 0.7,

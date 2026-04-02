@@ -10,10 +10,10 @@ import { apiUrl } from './apiHelper';
 
 const parameters = Type.Object({
   script: Type.Optional(
-    Type.String({ description: 'Video script text. Falls back to the current script panel content if omitted.' }),
+    Type.String({ description: 'Video script text to generate storyboard from. IMPORTANT: You must pass the script content from the previous generate_video_script result. Do NOT omit this parameter when a script has been generated.' }),
   ),
   topic: Type.Optional(
-    Type.String({ description: 'Topic description. Used when no script is available.' }),
+    Type.String({ description: 'Topic description. Used as fallback when no script is available. At least one of script or topic must be provided.' }),
   ),
   scene_count: Type.Optional(
     Type.Number({ description: 'Desired number of storyboard scenes/frames (maps to grid size).' }),
@@ -66,14 +66,14 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
       if (!script && !topic) {
         const err = {
           success: false,
-          error: 'Either script or topic must be provided.',
+          error: 'Either script or topic must be provided. If you just generated a script using generate_video_script, pass its content as the script parameter.',
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
 
       // --- Build the prompt for the backend ---
       const prompt = script || topic!;
-      const gridSize = params.scene_count ? sceneCountToGridSize(params.scene_count) : '3x3';
+      const gridSize = params.scene_count ? sceneCountToGridSize(params.scene_count) : '2x2';
       const aspectRatio = params.aspect_ratio ?? '16:9';
 
       try {

@@ -1544,7 +1544,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     if (playbackMode === 'composition') {
       return compositionPlayback?.totalCompositionDuration || 0;
     }
-    // preview 模式下：使用时间线实际时长，而非 mock 数据
+    // preview mode: return 0 if timeline has no items
+    const hasItems = timelineState?.tracks?.some(t => t.items && t.items.length > 0);
+    if (!hasItems) return 0;
     return timelineState?.totalDuration || 0;
   };
 
@@ -1930,6 +1932,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   <button
                     onClick={handlePlayPauseClick}
                     className="control-btn play-pause-btn"
+                    disabled={getTotalDuration() === 0}
                     title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
                   >
                     {getCurrentlyPlaying() ? (

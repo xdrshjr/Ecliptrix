@@ -1690,7 +1690,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {material.downloadStatus === 'generating' && (
                       <div className="absolute inset-0 bg-primary bg-opacity-50 flex flex-col items-center justify-center">
                         <div className="w-8 h-8 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-primary-foreground text-xs font-medium text-center px-1">生成中...</span>
+                        <span className="text-primary-foreground text-xs font-medium text-center px-1">{t.materialsPanel.generating}</span>
                         {material.downloadProgress !== undefined && (
                           <div className="w-16 bg-accent rounded-full h-1 mt-1">
                             <div
@@ -1706,7 +1706,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     {material.metadata?.source === 'flux-generating' && (
                       <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/70 bg-opacity-90 flex flex-col items-center justify-center">
                         <div className="w-8 h-8 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-primary-foreground text-xs font-medium text-center px-1">FLUX生成中...</span>
+                        <span className="text-primary-foreground text-xs font-medium text-center px-1">{t.materialsPanel.fluxGenerating}</span>
                         <div className="w-16 bg-card bg-opacity-30 rounded-full h-1 mt-1">
                           <div className="bg-card h-1 rounded-full animate-pulse"></div>
                         </div>
@@ -2064,34 +2064,34 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               <button
                 onClick={() => setIsAiImageModalOpen(true)}
                 className="flex items-center space-x-1 text-accent-foreground hover:text-foreground bg-accent hover:bg-accent/80 px-2 py-1 rounded transition-colors"
-                title="AI 图像生成（Seedream）"
+                title={t.materialsPanel.aiImageTitle}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span>AI图像</span>
+                <span>{t.materialsPanel.aiImage}</span>
               </button>
 
               <button
                 onClick={() => setIsAiVideoModalOpen(true)}
                 className="flex items-center space-x-1 text-accent-foreground hover:text-foreground bg-accent hover:bg-accent/80 px-2 py-1 rounded transition-colors"
-                title="AI 视频生成（Seedance）"
+                title={t.materialsPanel.aiVideoTitle}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                 </svg>
-                <span>AI视频</span>
+                <span>{t.materialsPanel.aiVideo}</span>
               </button>
 
               <button
                 onClick={() => setIsVideoProcessingOpen(true)}
                 className="flex items-center space-x-1 text-muted-foreground hover:text-foreground bg-muted hover:bg-accent px-2 py-1 rounded-md transition-colors"
-                title="视频处理（切气口等）"
+                title={t.materialsPanel.videoProcessingTitle}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
                 </svg>
-                <span>视频处理</span>
+                <span>{t.materialsPanel.videoProcessing}</span>
               </button>
 
             </div>
@@ -2115,8 +2115,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       {/* 分镜包删除确认对话框 */}
       <ConfirmationDialog
         isOpen={storyboardPackDeleteConfirm.isOpen}
-        title="删除分镜包"
-        message="确定要删除此分镜包吗？所有帧和相关数据将被永久删除。"
+        title={t.materialsPanel.deleteStoryboardPack}
+        message={t.materialsPanel.deleteStoryboardPackConfirm}
         type="danger"
         onConfirm={handleConfirmDeleteStoryboardPack}
         onCancel={() => setStoryboardPackDeleteConfirm({ isOpen: false, packId: null })}
@@ -2162,7 +2162,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             <svg className="w-4 h-4 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
             </svg>
-            <span>AI视频生成</span>
+            <span>{t.materialsPanel.aiVideoGeneration}</span>
           </button>
         </div>
       )}
@@ -2208,8 +2208,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           : 'border-border hover:border-primary/30 hover:bg-primary/10'
                       }`}
                     >
-                      <div className="font-medium">Ken Burns - 放大</div>
-                      <div className="text-sm text-muted-foreground">逐渐放大到设置的聚焦位置（稳定渐变效果）</div>
+                      <div className="font-medium">{t.materialsPanel.kenBurnsZoomIn}</div>
+                      <div className="text-sm text-muted-foreground">{t.materialsPanel.kenBurnsZoomInDesc}</div>
                     </button>
                     <button
                       onClick={() => setSelectedEffect('ken_burns_zoom_out')}
@@ -2219,8 +2219,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                           : 'border-border hover:border-primary/30 hover:bg-primary/10'
                       }`}
                     >
-                      <div className="font-medium">Ken Burns - 缩小</div>
-                      <div className="text-sm text-muted-foreground">从放大状态缩小到正常大小（稳定渐变效果）</div>
+                      <div className="font-medium">{t.materialsPanel.kenBurnsZoomOut}</div>
+                      <div className="text-sm text-muted-foreground">{t.materialsPanel.kenBurnsZoomOutDesc}</div>
                     </button>
                   </div>
 

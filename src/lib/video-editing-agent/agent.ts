@@ -98,7 +98,8 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
 export function subscribeAgentEvents(
   agent: Agent,
   toolContext: ToolContext,
-  send: (data: SSEEvent) => void
+  send: (data: SSEEvent) => void,
+  onToolActivity?: () => void,
 ): () => void {
   // Track whether text_delta events or tool calls were sent for the current
   // assistant message. Non-streaming models (e.g., Kimi) skip text_delta and
@@ -189,6 +190,7 @@ export function subscribeAgentEvents(
 
       case 'tool_execution_start':
         toolCallMade = true;
+        onToolActivity?.();
         send({
           type: 'tool_call',
           toolCallId: event.toolCallId,
@@ -198,6 +200,7 @@ export function subscribeAgentEvents(
         break;
 
       case 'tool_execution_end': {
+        onToolActivity?.();
         // Don't send operation if the tool errored
         const operation = event.isError
           ? null
