@@ -485,6 +485,13 @@ export interface Translations {
         exporting: string;
         exportingProgress: string;
         zoomHint: string;
+        importProject: string;
+        exportJson: string;
+        exportingJson: string;
+        extractingSubtitles: string;
+        invalidJsonFile: string;
+        volumeControl: string;
+        trackVolumeControl: string;
       };
     shortcuts: {
       selectShortcut: string;
@@ -541,6 +548,7 @@ export interface Translations {
         operationReplaced: string;
         organizeMaterialsSuccess: string;
         organizeMaterialsNoItems: string;
+        featureComingSoon: string;
     };
     subtitleEditModal: {
       title: string;
@@ -1894,6 +1902,13 @@ export const translations: Record<string, Translations> = {
         exporting: 'Exporting',
         exportingProgress: 'Exporting ({progress}%)',
         zoomHint: 'Hold Ctrl + Scroll to zoom timeline',
+        importProject: 'Import Project File',
+        exportJson: 'Export as JSON',
+        exportingJson: 'Exporting...',
+        extractingSubtitles: 'Extracting Subtitles...',
+        invalidJsonFile: 'Please select a JSON format project file',
+        volumeControl: 'Volume Control',
+        trackVolumeControl: '{type} Track Volume Control ({volume}%)',
       },
       shortcuts: {
         selectShortcut: 'V',
@@ -1950,6 +1965,7 @@ export const translations: Record<string, Translations> = {
         operationReplaced: 'Replaced',
         organizeMaterialsSuccess: 'All materials have been successfully aligned to the left',
         organizeMaterialsNoItems: 'No material segments found, alignment failed',
+        featureComingSoon: 'This feature is coming soon',
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -3220,6 +3236,13 @@ export const translations: Record<string, Translations> = {
         exporting: '导出中',
         exportingProgress: '导出中 ({progress}%)',
         zoomHint: '按住 Ctrl + 滚轮可缩放时间轴',
+        importProject: '导入项目文件',
+        exportJson: '导出为JSON',
+        exportingJson: '导出中...',
+        extractingSubtitles: '提取字幕中...',
+        invalidJsonFile: '请选择JSON格式的项目文件',
+        volumeControl: '音量控制',
+        trackVolumeControl: '{type}轨道音量控制 ({volume}%)',
       },
       shortcuts: {
         selectShortcut: 'V',
@@ -3276,6 +3299,7 @@ export const translations: Record<string, Translations> = {
           operationReplaced: '替换',
           organizeMaterialsSuccess: '所有素材已向左对齐成功',
           organizeMaterialsNoItems: '无素材片段，对齐失败',
+          featureComingSoon: '该功能即将推出',
         },
       subtitleEditModal: {
         title: '编辑字幕',

@@ -74,7 +74,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   externalTimelineUpdateId,
 }) => {
   const { t, locale } = useLocale();
-  const { showSuccess, showError } = useNotification();
+  const { showSuccess, showError, showWarning } = useNotification();
 
   // Hooks for side-effect features
   const videoCache = useVideoCache(taskId);
@@ -377,9 +377,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
     const state = useTimelineStore.getState();
-    const sameTypeCount = state.tracks.filter(t => t.type === type).length;
+    const sameTypeCount = state.tracks.filter(tr => tr.type === type && !tr.id.startsWith('image-track')).length;
     const trackNumber = sameTypeCount + 1;
-    const trackId = `${type}-track-${trackNumber}`;
+    // Use unique counter to avoid ID conflicts after delete+re-add
+    const existingIds = state.tracks.map(tr => tr.id);
+    let counter = sameTypeCount + 1;
+    let trackId = `${type}-track-${counter}`;
+    while (existingIds.includes(trackId)) {
+      counter++;
+      trackId = `${type}-track-${counter}`;
+    }
     const baseTrackName = type === 'video' ? t.timeline.track.videoTrack :
                           type === 'audio' ? t.timeline.track.audioTrack :
                           t.timeline.track.subtitleTrack;
@@ -392,11 +399,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       id: trackId,
       name: trackName,
       type,
+      height: type === 'subtitle' ? 50 : type === 'audio' ? 60 : 80,
+      isLocked: false,
+      isMuted: false,
+      isVisible: true,
+      volume: 100,
+      order: currentData.tracks.length,
       items: [],
     };
     state.importFromData({
       ...currentData,
-      tracks: [...currentData.tracks, newTrack as any],
+      tracks: [...currentData.tracks, newTrack],
     });
   }, [t]);
 
@@ -514,8 +527,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     showSuccess(t.timeline.messages.organizeMaterialsSuccess);
   }, [showSuccess, showError, t]);
 
-  const handleAddEffect = useCallback(() => {}, []);
-  const handleAddTransition = useCallback(() => {}, []);
+  const handleAddEffect = useCallback(() => {
+    showWarning(t.timeline.messages.featureComingSoon);
+  }, [showWarning, t]);
+
+  const handleAddTransition = useCallback(() => {
+    showWarning(t.timeline.messages.featureComingSoon);
+  }, [showWarning, t]);
 
   // ---------------------------------------------------------------------------
   // Subtitle extraction (kept as local handler - complex API call)

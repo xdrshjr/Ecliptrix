@@ -71,6 +71,10 @@ export function summarizeResult(result: unknown): string {
     if ('success' in obj && 'message' in obj) {
       return String(obj.message);
     }
+    if ('success' in obj && 'error' in obj) {
+      const errMsg = String(obj.error);
+      return errMsg.length > 80 ? errMsg.slice(0, 77) + '...' : errMsg;
+    }
     if ('content' in obj) {
       const c = String(obj.content);
       return c.length > 80 ? c.slice(0, 77) + '...' : c;
@@ -90,6 +94,9 @@ export function formatResult(result: unknown): string {
     const obj = result as Record<string, unknown>;
     if ('success' in obj && 'message' in obj) {
       return String(obj.message);
+    }
+    if ('success' in obj && 'error' in obj) {
+      return String(obj.error);
     }
     if ('content' in obj) return String(obj.content);
     return JSON.stringify(result, null, 2);

@@ -147,6 +147,9 @@ export const useVideoExport = ({
       });
       
       showError(errorMessage, 6000); // 显示6秒错误提示
+      setIsExporting(false);
+      setExportProgress(0);
+      setExportStartTime(null);
       return;
     }
 
@@ -163,10 +166,6 @@ export const useVideoExport = ({
     const audioItems: any[] = [];
     const subtitleItems: any[] = [];
     const imageItems: any[] = []; // 新增：用于存储图片项目
-
-    // 设置导出状态
-    setIsExporting(true);
-    setExportProgress(0);
 
     try {
       // Import the video composition API
@@ -442,13 +441,16 @@ export const useVideoExport = ({
         
         // 使用 toast 警告提示，而不是 alert 弹窗
         showWarning(`${t.videoExport.noContentToExport}，${t.videoExport.noContentToExportDesc}`, 5000);
-        
+
         console.log(`[useVideoExport] 显示无内容警告提示`, {
           taskId,
           message: `${t.videoExport.noContentToExport}，${t.videoExport.noContentToExportDesc}`,
           timestamp: new Date().toISOString()
         });
-        
+
+        setIsExporting(false);
+        setExportProgress(0);
+        setExportStartTime(null);
         return;
       }
 

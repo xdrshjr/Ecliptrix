@@ -141,14 +141,14 @@ export class Track {
       id: data.id,
       name: data.name,
       type: data.type,
-      height: data.height,
-      isLocked: data.isLocked,
-      isMuted: data.isMuted,
-      isVisible: data.isVisible,
+      height: data.height ?? TrackTypeUtils.getDefaultHeight(data.type),
+      isLocked: data.isLocked ?? false,
+      isMuted: data.isMuted ?? false,
+      isVisible: data.isVisible ?? true,
       // Existing Track interface stores volume as 0-200 (percentage)
-      volume: Volume.fromPercentage(data.volume),
+      volume: Volume.fromPercentage(data.volume ?? 100),
       items: data.items.map(d => TimelineItem.fromPlainObject(d)),
-      order: data.order,
+      order: data.order ?? 0,
     });
   }
 

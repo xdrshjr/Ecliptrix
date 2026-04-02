@@ -237,7 +237,7 @@ const Track: React.FC<TrackProps> = ({
           {/* Right: control buttons */}
           <div className="flex items-center space-x-1">
             {/* Volume button (audio + video tracks) */}
-            {(track.type === 'audio' || track.type === 'video') && (
+            {(track.type === 'audio' || (track.type === 'video' && !track.id.startsWith('image-track'))) && (
               <div className="relative group">
                 <button
                   ref={volumeButtonRef}
@@ -247,7 +247,7 @@ const Track: React.FC<TrackProps> = ({
                       ? 'bg-accent text-muted-foreground hover:bg-accent'
                       : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
-                  aria-label={`音量控制 - ${track.name}`}
+                  aria-label={`${t.timeline.toolbar.volumeControl} - ${track.name}`}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     {track.volume === 0 ? (
@@ -264,7 +264,9 @@ const Track: React.FC<TrackProps> = ({
                   {/* Hover tooltip */}
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {`${track.type === 'video' ? '视频' : '音频'}轨道音量控制 (${track.volume}%)`}
+                      {t.timeline.toolbar.trackVolumeControl
+                        .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
+                        .replace('{volume}', String(track.volume))}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>

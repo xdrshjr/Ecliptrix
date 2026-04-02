@@ -25,8 +25,8 @@ const DEFAULT_COLORS: Record<TrackType, string> = {
 
 const DEFAULT_HEIGHTS: Record<TrackType, number> = {
   video: 80,
-  audio: 48,
-  subtitle: 32,
+  audio: 60,
+  subtitle: 50,
 };
 
 // ---------------------------------------------------------------------------

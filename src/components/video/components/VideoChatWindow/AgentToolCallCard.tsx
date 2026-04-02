@@ -32,6 +32,9 @@ function formatResult(result: unknown): string {
     if ('success' in obj && 'message' in obj) {
       return String(obj.message);
     }
+    if ('success' in obj && 'error' in obj) {
+      return String(obj.error);
+    }
     if ('content' in obj) return String(obj.content);
     return JSON.stringify(result, null, 2);
   }

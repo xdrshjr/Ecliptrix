@@ -66,7 +66,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     if (file) {
       // 验证文件类型
       if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
-        alert('请选择JSON格式的项目文件');
+        alert(t.timeline.toolbar.invalidJsonFile);
         return;
       }
 
@@ -87,7 +87,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         <path d="M12,11L8,15H10.5V19H13.5V15H16L12,11Z"/>
       </svg>
     ),
-    label: '导入项目文件',
+    label: t.timeline.toolbar.importProject,
     shortcut: '',
     disabled: isImporting,
     loading: isImporting
@@ -189,7 +189,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
         </svg>
       ),
-      label: isExporting ? '导出中...' : '导出为JSON',
+      label: isExporting ? t.timeline.toolbar.exportingJson : t.timeline.toolbar.exportJson,
       shortcut: 'Ctrl+E',
       disabled: isExporting
     },
@@ -229,7 +229,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
         </svg>
       ),
-      label: isExtractingSubtitles ? '提取字幕中...' : t.timeline.toolbar.subtitles,
+      label: isExtractingSubtitles ? t.timeline.toolbar.extractingSubtitles : t.timeline.toolbar.subtitles,
       shortcut: t.timeline.shortcuts.subtitlesShortcut,
       disabled: isExtractingSubtitles
     }
