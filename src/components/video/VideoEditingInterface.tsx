@@ -123,6 +123,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [isPolishModalOpen, setIsPolishModalOpen] = useState<boolean>(
     content?.uiState?.isPolishModalOpen ?? false
   );
+  const [polishChatContent, setPolishChatContent] = useState<string>('');
   
   // 脚本生成弹窗状态
   const [isScriptGenerationModalOpen, setIsScriptGenerationModalOpen] = useState<boolean>(
@@ -585,13 +586,25 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
+    // 获取当前活动对话内容
+    const activeConversation = content?.conversations?.find(
+      conv => conv.id === content?.activeConversationId
+    );
+    const chatContent = activeConversation?.messages
+      .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
+      .join('\n\n') || '';
+
     console.log(`[VideoEditingInterface] 用户点击智能润色按钮`, {
       taskId,
       currentContentLength: documentState.markdownValue.length,
+      chatContentLength: chatContent.length,
+      messageCount: activeConversation?.messages.length || 0,
       timestamp: new Date().toISOString()
     });
+
+    setPolishChatContent(chatContent);
     setIsPolishModalOpen(true);
-  }, [taskId, documentState.markdownValue.length]);
+  }, [taskId, documentState.markdownValue.length, content]);
 
   const handlePolishClose = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭智能润色弹窗`, {
@@ -609,10 +622,56 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       contentDelta: polishedContent.length - documentState.markdownValue.length,
       timestamp: new Date().toISOString()
     });
-    
-    documentState.handleMarkdownChange(polishedContent);
+
+    // 更新本地文档状态
+    documentState.setMarkdownValue(polishedContent);
+
+    // 构建完整的更新内容（包含markdown和对话更新），避免多次调用onUpdateContent导致状态覆盖
+    const now = new Date();
+    let updatedContent: VideoEditingTaskContent = {
+      ...(content || { markdownContent: '', lastModified: now }),
+      markdownContent: polishedContent,
+      lastModified: now,
+      scriptSegments: content?.scriptSegments,
+    };
+
+    // 将润色结果回写到聊天区域
+    const activeConversationId = content?.activeConversationId;
+    if (activeConversationId) {
+      const activeConversation = content?.conversations?.find(
+        conv => conv.id === activeConversationId
+      );
+      if (activeConversation) {
+        const newMessage: ChatMessage = {
+          id: `polish-${Date.now()}`,
+          role: 'assistant',
+          content: `[智能润色结果]\n\n${polishedContent}`,
+          timestamp: now,
+        };
+        updatedContent = {
+          ...updatedContent,
+          conversations: (content?.conversations || []).map(conv => {
+            if (conv.id === activeConversationId) {
+              return {
+                ...conv,
+                messages: [...conv.messages, newMessage],
+                updatedAt: now,
+              };
+            }
+            return conv;
+          }),
+        };
+        console.log(`[VideoEditingInterface] 润色结果已回写到聊天区域`, {
+          conversationId: activeConversationId,
+          messageId: newMessage.id,
+          timestamp: now.toISOString()
+        });
+      }
+    }
+
+    onUpdateContent(updatedContent);
     setIsPolishModalOpen(false);
-  }, [taskId, documentState.markdownValue.length, documentState.handleMarkdownChange]);
+  }, [taskId, documentState.markdownValue.length, documentState.setMarkdownValue, content, onUpdateContent]);
 
   // 处理脚本生成弹窗
   const handleScriptGenerationClick = useCallback(() => {
@@ -2953,6 +3012,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={handlePolishClose}
         onContentSelect={handlePolishContentSelect}
         originalContent={documentState.markdownValue}
+        chatContent={polishChatContent}
         taskId={taskId}
       />
 

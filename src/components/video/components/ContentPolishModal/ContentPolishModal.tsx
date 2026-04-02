@@ -9,6 +9,7 @@ interface ContentPolishModalProps {
   onClose: () => void;
   onContentSelect: (content: string) => void;
   originalContent: string;
+  chatContent?: string;
   taskId: string;
 }
 
@@ -42,6 +43,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
   onClose,
   onContentSelect,
   originalContent,
+  chatContent,
   taskId
 }) => {
   const { t } = useLocale();
@@ -201,7 +203,8 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
               originalContent,
               polishStyles: selectedStyleIds,
               taskId,
-              intensity
+              intensity,
+              ...(chatContent ? { chatContext: chatContent } : {}),
             }),
           });
 
@@ -314,7 +317,7 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [originalContent, selectedStyles, taskId, logger, polishGoals]);
+  }, [originalContent, selectedStyles, taskId, logger, polishGoals, chatContent]);
 
   // 处理确认选择
   const handleConfirm = useCallback(() => {

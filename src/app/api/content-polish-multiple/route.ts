@@ -15,7 +15,7 @@ const getConfig = () => {
 };
 
 // 生成多目标润色提示词
-const generateMultiTargetPolishPrompt = (originalContent: string, polishStyles: string[], intensity: number) => {
+const generateMultiTargetPolishPrompt = (originalContent: string, polishStyles: string[], intensity: number, chatContext?: string) => {
   const intensityLabels = ['轻度', '中度', '强度', '深度', '极度'];
   const intensityLabel = intensityLabels[intensity - 1] || '中度';
 
@@ -55,6 +55,15 @@ const generateMultiTargetPolishPrompt = (originalContent: string, polishStyles: 
       intensityDescription = '中度润色：在保持原意的基础上，适度改进表达方式和语言风格。';
   }
 
+  // 构建对话上下文部分（可选）
+  const chatContextSection = chatContext ? `
+<对话上下文>
+以下是与用户的对话记录，请参考这些对话内容来更好地理解润色需求和背景：
+
+${chatContext}
+</对话上下文>
+` : '';
+
   const finalPrompt = `你是一个专业的内容润色专家。请根据以下要求对内容进行润色：
 
 <润色强度: ${intensityLabel}>
@@ -66,7 +75,7 @@ ${intensityDescription}
 
 ${combinedRequirements}
 </润色目标>
-
+${chatContextSection}
 <原始内容>
 ${originalContent}
 </原始内容>
@@ -77,7 +86,7 @@ ${originalContent}
 3. 保持原文的核心观点和主要信息不变
 4. 直接返回润色后的内容，不要包含任何解释或格式标记
 5. 确保润色后的内容自然流畅，避免生硬拼凑
-6. 各个润色目标的要求要有机融合，形成统一的风格
+6. 各个润色目标的要求要有机融合，形成统一的风格${chatContext ? '\n7. 参考对话上下文中的讨论内容，使润色结果与对话主题和用户意图保持一致' : ''}
 </重要要求>`;
 
   return finalPrompt;
@@ -116,11 +125,12 @@ const logResponse = (taskId: string, polishStyles: string[], intensity: number, 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { originalContent, polishStyles, taskId, intensity = 2 } = body as { 
-      originalContent: string; 
-      polishStyles: string[]; 
+    const { originalContent, polishStyles, taskId, intensity = 2, chatContext } = body as {
+      originalContent: string;
+      polishStyles: string[];
       taskId: string;
       intensity?: number;
+      chatContext?: string;
     };
 
     // 验证请求参数
@@ -170,7 +180,7 @@ export async function POST(request: NextRequest) {
     logRequest(originalContent, polishStyles, intensity, taskId, config);
 
     // 生成润色提示词
-    const prompt = generateMultiTargetPolishPrompt(originalContent, polishStyles, intensity);
+    const prompt = generateMultiTargetPolishPrompt(originalContent, polishStyles, intensity, chatContext);
 
     // 准备请求数据
     const requestData = {
