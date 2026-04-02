@@ -105,8 +105,9 @@ class VideoCompositionService:
                 # Check NVIDIA NVENC first (most common)
                 if 'h264_nvenc' in output:
                     # Verify the encoder actually works with a quick test
+                    # Use 256x256 — NVENC requires minimum ~128x128 resolution
                     test_result = subprocess.run(
-                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.1',
+                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.1',
                          '-c:v', 'h264_nvenc', '-f', 'null', '-'],
                         capture_output=True, text=True, timeout=10
                     )
@@ -116,7 +117,7 @@ class VideoCompositionService:
                 # Check Intel Quick Sync
                 if 'h264_qsv' in output:
                     test_result = subprocess.run(
-                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.1',
+                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.1',
                          '-c:v', 'h264_qsv', '-f', 'null', '-'],
                         capture_output=True, text=True, timeout=10
                     )
