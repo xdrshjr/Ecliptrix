@@ -1541,9 +1541,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   };
 
   const getTotalDuration = () => {
-    return playbackMode === 'composition' 
-      ? (compositionPlayback?.totalCompositionDuration || 0)
-      : videoPreview.duration;
+    if (playbackMode === 'composition') {
+      return compositionPlayback?.totalCompositionDuration || 0;
+    }
+    // preview 模式下：使用时间线实际时长，而非 mock 数据
+    return timelineState?.totalDuration || 0;
   };
 
   const getCurrentlyPlaying = () => {

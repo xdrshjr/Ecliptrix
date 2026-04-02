@@ -17,6 +17,9 @@ export interface Translations {
     languageSelector: string;
     english: string;
     chinese: string;
+    returnToHomepage: string;
+    switchToLightMode: string;
+    switchToDarkMode: string;
   };
   auth: {
     login: string;
@@ -27,6 +30,7 @@ export interface Translations {
     accountSettings: string;
     username: string;
     password: string;
+    passwordPlaceholder: string;
     loginButton: string;
     registerButton: string;
     welcomeBack: string;
@@ -765,6 +769,13 @@ export interface Translations {
       editSentence: string;
       deleteSentence: string;
       addSentence: string;
+      deleteSegment: string;
+      convertAllSpeech: string;
+      aiStoryboard: string;
+      aiMatchVideo: string;
+      aiMatching: string;
+      aiMatchNotConfigured: string;
+      noAvailableAnalyzedVideos: string;
     };
     progress: {
       conversionProgress: string;
@@ -1319,6 +1330,9 @@ export const translations: Record<string, Translations> = {
       languageSelector: 'Language',
       english: 'English',
       chinese: 'Chinese',
+      returnToHomepage: 'Return to homepage',
+      switchToLightMode: 'Switch to light mode',
+      switchToDarkMode: 'Switch to dark mode',
     },
     auth: {
       login: 'Login',
@@ -1329,6 +1343,7 @@ export const translations: Record<string, Translations> = {
       accountSettings: 'Account Settings',
       username: 'Username',
       password: 'Password',
+      passwordPlaceholder: 'Enter password (minimum 6 characters)',
       loginButton: 'Login',
       registerButton: 'Register',
       welcomeBack: 'Welcome Back',
@@ -2067,6 +2082,13 @@ export const translations: Record<string, Translations> = {
         editSentence: 'Edit Sentence',
         deleteSentence: 'Delete Sentence',
         addSentence: 'Add Sentence',
+        deleteSegment: 'Delete Segment',
+        convertAllSpeech: 'Convert All Speech',
+        aiStoryboard: 'AI Storyboard',
+        aiMatchVideo: 'AI Match Video',
+        aiMatching: 'AI Matching...',
+        aiMatchNotConfigured: 'AI match not configured',
+        noAvailableAnalyzedVideos: 'No available analyzed videos (may be used by other segments)',
       },
        progress: {
          conversionProgress: 'Conversion Progress',
@@ -2634,6 +2656,9 @@ export const translations: Record<string, Translations> = {
       languageSelector: '语言',
       english: '英文',
       chinese: '中文',
+      returnToHomepage: '返回首页',
+      switchToLightMode: '切换到亮色模式',
+      switchToDarkMode: '切换到暗色模式',
     },
     auth: {
       login: '登录',
@@ -2644,6 +2669,7 @@ export const translations: Record<string, Translations> = {
       accountSettings: '账号设置',
       username: '用户名',
       password: '密码',
+      passwordPlaceholder: '输入密码（至少6个字符）',
       loginButton: '登录',
       registerButton: '注册',
       welcomeBack: '欢迎回来',
@@ -3382,6 +3408,13 @@ export const translations: Record<string, Translations> = {
         editSentence: '编辑句子',
         deleteSentence: '删除句子',
         addSentence: '添加句子',
+        deleteSegment: '删除段落',
+        convertAllSpeech: '统一转换所有语音',
+        aiStoryboard: 'AI分镜',
+        aiMatchVideo: 'AI匹配视频',
+        aiMatching: 'AI匹配中...',
+        aiMatchNotConfigured: 'AI匹配功能未配置',
+        noAvailableAnalyzedVideos: '没有可用的已解析视频（可能已被其他段落使用）',
       },
        progress: {
          conversionProgress: '转换进度',

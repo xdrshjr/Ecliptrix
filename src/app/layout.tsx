@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   title: 'Ecliptrix - Where light and shadow collide',
   description: 'A content creation platform for social media, video editing, voice synthesis, and creative brainstorming.',
   keywords: ['content creation', 'video editing', 'AI', 'social media', 'voice synthesis'],
+  icons: {
+    icon: '/icon.png',
+  },
 }
 
 export default function RootLayout({

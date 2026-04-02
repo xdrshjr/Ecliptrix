@@ -106,7 +106,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
               handleLogoClick();
             }
           }}
-          aria-label="Return to homepage"
+          aria-label={t.header.returnToHomepage}
         >
           <div className="w-8 h-8 flex items-center justify-center">
             <Image
@@ -170,7 +170,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
           <button
             onClick={toggleTheme}
             className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? t.header.switchToLightMode : t.header.switchToDarkMode}
           >
             {isDark ? (
               <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,13 +183,6 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
             )}
           </button>
 
-          <button className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors">
-            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7H4l5-5v5z" />
-            </svg>
-          </button>
-          
           {/* Settings button - only visible for users who can manage */}
           {isAuthenticated && canManageUsers && onSettingsClick && (
             <button 

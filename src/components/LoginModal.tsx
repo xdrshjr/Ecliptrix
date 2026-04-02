@@ -175,10 +175,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     id="password"
                     name="password"
                     type="password"
+                    autoComplete="current-password"
                     value={formData.password}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 bg-input border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors"
-                    placeholder="admin"
+                    placeholder={t.auth.passwordPlaceholder}
                   />
                 </div>
 

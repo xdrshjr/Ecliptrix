@@ -25,7 +25,7 @@ export const useVideoPlayback = (
 
   // 播放状态
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(45); // 当前播放时间（秒）
+  const [currentTime, setCurrentTime] = useState(0); // 当前播放时间（秒）
   const [masterVolume, setMasterVolume] = useState(0.8); // 主音量 (0-1)，由播放器控制
   const [playbackRate, setPlaybackRate] = useState(1.0); // 播放速度
   const [previewQuality, setPreviewQuality] = useState<PreviewQuality>('high');

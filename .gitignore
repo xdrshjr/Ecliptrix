@@ -2,3 +2,4 @@
 static/uploads/
 venv/
 backend-services/basic-service/data/
+.web-debugger/

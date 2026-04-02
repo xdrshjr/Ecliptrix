@@ -1559,7 +1559,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     // 显示确认对话框
     setConfirmationDialog({
       isOpen: true,
-      title: '删除段落',
+      title: t.scriptPanel.actions.deleteSegment,
       message: `确定要删除段落"${segmentTitle}"吗？此操作不可撤销。`,
       type: 'danger',
       onConfirm: () => {
@@ -1641,7 +1641,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   onClick={handleBatchConvertToSpeech}
                   disabled={isBatchConverting || segments.length === 0}
                   className="p-2 text-chart-2 bg-chart-2/10 border border-chart-2/30 rounded-md hover:bg-chart-2/20 hover:border-chart-2/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="统一转换所有语音"
+                  title={t.scriptPanel.actions.convertAllSpeech}
                 >
                   {isBatchConverting ? (
                     <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1722,7 +1722,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             }`}
             onClick={() => setActiveTab('storyboard')}
           >
-            AI分镜
+            {t.scriptPanel.actions.aiStoryboard}
           </button>
         </div>
       </div>
@@ -1840,14 +1840,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   }`}
                   title={
                     !completedSegments.has(segment.id)
-                      ? "请先完成语音转换"
+                      ? t.scriptPanel.actions.completeConversionFirst
                       : !getVideoAnalysisResult
-                        ? "AI匹配功能未配置"
+                        ? t.scriptPanel.actions.aiMatchNotConfigured
                         : !hasAvailableAnalyzedVideos(segment.id)
-                          ? "没有可用的已解析视频（可能已被其他段落使用）"
+                          ? t.scriptPanel.actions.noAvailableAnalyzedVideos
                           : videoAIMatch.matchState.isMatching
-                            ? "AI匹配中..."
-                            : "AI匹配视频"
+                            ? t.scriptPanel.actions.aiMatching
+                            : t.scriptPanel.actions.aiMatchVideo
                   }
                 >
                   {videoAIMatch.matchState.isMatching ? (
@@ -1866,7 +1866,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 <button
                   onClick={() => handleDeleteSegment(segment.id, segment.title)}
                   className="p-1.5 text-destructive bg-destructive/10 border border-red-200 rounded hover:bg-red-100 hover:border-red-300 transition-colors"
-                  title="删除段落"
+                  title={t.scriptPanel.actions.deleteSegment}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
