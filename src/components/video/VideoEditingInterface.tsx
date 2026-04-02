@@ -202,6 +202,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [agentMode, setAgentMode] = useState<boolean>(content?.uiState?.agentMode ?? true);
   const hasAutoChatInitialized = useRef(content?.uiState?.hasAutoChatInitialized ?? false);
 
+  // Keep a ref to the latest content so callbacks always read the current value
+  const contentRef = useRef(content);
+  contentRef.current = content;
+
   console.log('[VideoEditingInterface] Restoring UI state:', {
     taskId,
     hasContent: !!content,
@@ -2289,13 +2293,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 聊天消息处理
   const updateConversationMessages = useCallback((conversationId: string, messages: ChatMessage[]) => {
+    const currentContent = contentRef.current;
     console.log(`[VideoEditingInterface] 更新聊天消息`, {
       conversationId,
       messageCount: messages.length,
       timestamp: new Date().toISOString()
     });
-    
-    const conversations = content?.conversations || [];
+
+    const conversations = currentContent?.conversations || [];
     const updatedConversations = conversations.map(conv => {
       if (conv.id === conversationId) {
         return {
@@ -2308,12 +2313,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
 
     const updatedContent: VideoEditingTaskContent = {
-      ...content!,
+      ...currentContent!,
       conversations: updatedConversations,
     };
 
     onUpdateContent(updatedContent);
-  }, [content, onUpdateContent]);
+  }, [onUpdateContent]);
 
   const handleClearChatMessages = useCallback(() => {
     const activeConversationId = content?.activeConversationId;

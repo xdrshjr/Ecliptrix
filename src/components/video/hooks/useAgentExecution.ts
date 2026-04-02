@@ -111,6 +111,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   const materialsRef = useRef(materials);
   materialsRef.current = materials;
 
+  const updateConvMessagesRef = useRef(updateConversationMessages);
+  updateConvMessagesRef.current = updateConversationMessages;
+
   // -- SSEStreamManager ref (for cancel) --
   const streamManagerRef = useRef<SSEStreamManager | null>(null);
 
@@ -247,7 +250,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     const unsubscribe = stateManager.subscribe(() => {
       const msgUpdate = stateManager.toMessageUpdate(timelineSnapshot);
       const baseMessages = messagesBeforeAgentRef.current;
-      updateConversationMessages(capturedConvId, [...baseMessages, msgUpdate]);
+      updateConvMessagesRef.current(capturedConvId, [...baseMessages, msgUpdate]);
     });
 
     // 6. Create AgentEventRouter
@@ -286,7 +289,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
         const finalMsg = stateManager.toMessageUpdate(timelineSnapshot);
         const baseMessages = messagesBeforeAgentRef.current;
-        updateConversationMessages(capturedConvId, [...baseMessages, finalMsg]);
+        updateConvMessagesRef.current(capturedConvId, [...baseMessages, finalMsg]);
 
         console.log('[useAgentExecution] Agent message completed', {
           contentLength: stateManager.getAccumulatedContent().length,
@@ -302,12 +305,11 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         stateManager.setError(error.userMessage);
         const finalMsg = stateManager.toMessageUpdate(timelineSnapshot);
         const baseMessages = messagesBeforeAgentRef.current;
-        updateConversationMessages(capturedConvId, [...baseMessages, finalMsg]);
+        updateConvMessagesRef.current(capturedConvId, [...baseMessages, finalMsg]);
       },
     });
   }, [
     agentIsExecuting,
-    updateConversationMessages,
     setTimelineState,
     onTimelineUpdate,
     onNotification,
