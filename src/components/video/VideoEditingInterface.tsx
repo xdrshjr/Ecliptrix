@@ -597,6 +597,37 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     useVideoEditingStore.getState().resetScript();
   }, [storeScriptContent, storeScriptType]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sync: Zustand storyboardStore → content.storyboardScriptSegments
+  // When Agent generates storyboards via SSE operation, it writes StoryboardItem[] to the store.
+  // Convert to StoryboardScriptSegment[] and update content so StoryboardScriptTab re-renders.
+  const storeStoryboards = useVideoEditingStore(state => state.storyboards);
+  useEffect(() => {
+    if (!storeStoryboards || storeStoryboards.length === 0) return;
+    console.log('[VideoEditingInterface] Storyboard store sync triggered:', storeStoryboards.length, 'items');
+
+    const storyboardSegments: StoryboardScriptSegment[] = storeStoryboards.map((sb, i) => ({
+      id: sb.id || `storyboard-${Date.now()}-${i}`,
+      frameIndex: sb.order ?? i,
+      frameUrl: sb.imageUrl || '',
+      description: sb.description || '',
+      duration: 5,
+      generationStatus: sb.videoUrl ? 'succeeded' as const : 'idle' as const,
+      generatedVideoUrl: sb.videoUrl,
+    }));
+
+    const baseContent = contentRef.current ?? {
+      scriptSegments: [],
+      aiVideoScriptSegments: [],
+      storyboardScriptSegments: [],
+    } as VideoEditingTaskContent;
+
+    console.log('[VideoEditingInterface] Updating content with', storyboardSegments.length, 'storyboard segments');
+    onUpdateContent({
+      ...baseContent,
+      storyboardScriptSegments: storyboardSegments,
+    });
+  }, [storeStoryboards]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 添加视频解析功能 - 需要在 convertToScript 之前初始化
   const videoAnalysis = useVideoAnalysis(taskId);
   
