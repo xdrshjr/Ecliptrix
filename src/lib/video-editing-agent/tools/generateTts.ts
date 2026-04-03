@@ -19,7 +19,7 @@ const parameters = Type.Object({
   voice_type: Type.Optional(
     Type.String({
       description:
-        'Voice ID. Popular options: zh_female_shuangkuaisisi_moon_bigtts, zh_male_chunhou_moon_bigtts, zh_female_tianmei_moon_bigtts, en_female_arabellaexpressive, en_male_caleb. Defaults to zh_female_shuangkuaisisi_moon_bigtts.',
+        'Voice ID. Popular options: zh_female_shuangkuaisisi_moon_bigtts (female, default), zh_male_shaonianzixin_moon_bigtts (male), zh_female_tianmeixiaoyuan_moon_bigtts (sweet female), zh_male_jieshuoxiaoming_moon_bigtts (narrator), en_female_anna_mars_bigtts (English female). Use explore_tools("tts_tools") to see all available voices. Defaults to zh_female_shuangkuaisisi_moon_bigtts.',
     }),
   ),
   speed: Type.Optional(
@@ -63,37 +63,17 @@ export function createGenerateTtsTool(context: ToolContext): AgentTool<typeof pa
       const voiceType = params.voice_type || DEFAULT_VOICE_TYPE;
       const speed = clamp(params.speed ?? 1.0, 0.5, 2.0);
 
-      // --- Call TTS API ---
+      // --- Call TTS API (with voice fallback) ---
       try {
-        const response = await toolFetch(context, '/api/tts/convert', {
-          method: 'POST',
-          timeout: 60_000,
-          body: JSON.stringify({
-            text,
-            voice_type: voiceType,
-            speed_ratio: speed,
-          }),
-        });
+        let usedVoice = voiceType;
+        let result = await callTtsApi(context, text, usedVoice, speed);
 
-        if (!response.ok) {
-          let detail = '';
-          try {
-            detail = await response.text();
-          } catch {
-            // ignore read errors
-          }
-          const err = {
-            success: false,
-            error: `TTS service unavailable (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
-          };
-          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+        // If the requested voice failed and it's not the default, retry with default voice
+        if (!result.success && usedVoice !== DEFAULT_VOICE_TYPE) {
+          console.warn(`[generate_tts] Voice "${usedVoice}" failed, retrying with default voice "${DEFAULT_VOICE_TYPE}"`);
+          usedVoice = DEFAULT_VOICE_TYPE;
+          result = await callTtsApi(context, text, usedVoice, speed);
         }
-
-        const result = await parseToolResponse<{
-          success: boolean;
-          message?: string;
-          data?: { audio_url?: string; duration?: number };
-        }>(response);
 
         if (!result.success || !('data' in result) || !result.data?.audio_url) {
           const err = {
@@ -161,6 +141,45 @@ export function createGenerateTtsTool(context: ToolContext): AgentTool<typeof pa
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+type TtsApiResult = {
+  success: boolean;
+  message?: string;
+  error?: string;
+  data?: { audio_url?: string; duration?: number };
+};
+
+async function callTtsApi(
+  context: ToolContext,
+  text: string,
+  voiceType: string,
+  speed: number,
+): Promise<TtsApiResult> {
+  const response = await toolFetch(context, '/api/tts/convert', {
+    method: 'POST',
+    timeout: 60_000,
+    body: JSON.stringify({
+      text,
+      voice_type: voiceType,
+      speed_ratio: speed,
+    }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      detail = await response.text();
+    } catch {
+      // ignore read errors
+    }
+    return {
+      success: false,
+      error: `TTS service error (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+    };
+  }
+
+  return parseToolResponse<TtsApiResult>(response);
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
