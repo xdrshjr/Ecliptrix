@@ -100,46 +100,31 @@ export function createBatchGenerateTtsTool(context: ToolContext): AgentTool<type
       };
       context.recordOperation(toolCallId, { type: 'start_async_task', task });
 
-      // --- Call batch TTS API ---
+      // --- Call batch TTS API (with voice fallback) ---
       try {
-        const response = await toolFetch(context, '/api/tts/batch-convert', {
-          method: 'POST',
-          timeout: 120_000,
-          body: JSON.stringify({
-            segments: requestSegments,
-            voice_type: primaryVoice,
-            speed_ratio: speed,
-            task_id: taskId,
-          }),
-        });
+        let usedVoice = primaryVoice;
+        let result = await callBatchTtsApi(context, requestSegments, usedVoice, speed, taskId);
 
-        if (!response.ok) {
-          let detail = '';
-          try {
-            detail = await response.text();
-          } catch {
-            // ignore read errors
-          }
-          const err = {
-            success: false,
-            taskId,
-            error: `Batch TTS service unavailable (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
-          };
-          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+        // If the batch failed and we weren't using the default voice, retry with default
+        if (!result.success && usedVoice !== DEFAULT_VOICE_TYPE) {
+          console.warn(`[batch_generate_tts] Voice "${usedVoice}" failed, retrying with default voice "${DEFAULT_VOICE_TYPE}"`);
+          usedVoice = DEFAULT_VOICE_TYPE;
+          // Update segment voice types to default
+          const fallbackSegments = requestSegments.map(s => ({ ...s, voice_type: usedVoice }));
+          result = await callBatchTtsApi(context, fallbackSegments, usedVoice, speed, taskId);
         }
 
-        const result = await parseToolResponse<{
-          success: boolean;
-          message?: string;
-          data?: {
-            results?: Array<{
-              success: boolean;
-              segment_id: string;
-              audio_url?: string;
-              duration?: number;
-            }>;
-          };
-        }>(response);
+        // If batch returned success but all individual segments failed, also retry with default voice
+        if (result.success && usedVoice !== DEFAULT_VOICE_TYPE) {
+          const batchResults = ('data' in result ? result.data?.results : undefined) ?? [];
+          const allFailed = batchResults.length > 0 && batchResults.every(r => !r.success);
+          if (allFailed) {
+            console.warn(`[batch_generate_tts] All segments failed with voice "${usedVoice}", retrying with default`);
+            usedVoice = DEFAULT_VOICE_TYPE;
+            const fallbackSegments = requestSegments.map(s => ({ ...s, voice_type: usedVoice }));
+            result = await callBatchTtsApi(context, fallbackSegments, usedVoice, speed, taskId);
+          }
+        }
 
         if (!result.success) {
           const err = {
@@ -237,6 +222,50 @@ export function createBatchGenerateTtsTool(context: ToolContext): AgentTool<type
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+type BatchTtsApiResult = {
+  success: boolean;
+  message?: string;
+  error?: string;
+  data?: {
+    results?: Array<{
+      success: boolean;
+      segment_id: string;
+      audio_url?: string;
+      duration?: number;
+    }>;
+  };
+};
+
+async function callBatchTtsApi(
+  context: ToolContext,
+  segments: Array<{ segment_id: string; text: string; voice_type: string }>,
+  voiceType: string,
+  speed: number,
+  taskId: string,
+): Promise<BatchTtsApiResult> {
+  const response = await toolFetch(context, '/api/tts/batch-convert', {
+    method: 'POST',
+    timeout: 120_000,
+    body: JSON.stringify({
+      segments,
+      voice_type: voiceType,
+      speed_ratio: speed,
+      task_id: taskId,
+    }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try { detail = await response.text(); } catch { /* ignore */ }
+    return {
+      success: false,
+      error: `Batch TTS service error (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+    };
+  }
+
+  return parseToolResponse<BatchTtsApiResult>(response);
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));

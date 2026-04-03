@@ -554,9 +554,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const storeScriptContent = useVideoEditingStore(state => state.scriptContent);
   const storeScriptType = useVideoEditingStore(state => state.scriptType);
   useEffect(() => {
-    if (!storeScriptContent || !contentRef.current) return;
+    if (!storeScriptContent) return;
+    console.log('[VideoEditingInterface] Script store sync triggered:', {
+      contentLength: storeScriptContent.length,
+      scriptType: storeScriptType,
+      hasContent: !!contentRef.current,
+    });
     const segments = parseAgentScriptToSegments(storeScriptContent);
-    if (segments.length === 0) return;
+    if (segments.length === 0) {
+      console.warn('[VideoEditingInterface] parseAgentScriptToSegments returned 0 segments');
+      return;
+    }
 
     const update: Partial<VideoEditingTaskContent> = {
       scriptSegments: segments,
@@ -571,10 +579,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       }));
     }
 
+    // Build the content to update: merge with current content, or create minimal default
+    const baseContent = contentRef.current ?? {
+      scriptSegments: [],
+      aiVideoScriptSegments: [],
+      storyboardScriptSegments: [],
+    } as VideoEditingTaskContent;
+
+    console.log('[VideoEditingInterface] Updating content with', segments.length, 'script segments');
     onUpdateContent({
-      ...contentRef.current,
+      ...baseContent,
       ...update,
     });
+
+    // Reset the store content after syncing to prevent re-triggering
+    // (the content is now persisted in the task content, not the ephemeral store)
+    useVideoEditingStore.getState().resetScript();
   }, [storeScriptContent, storeScriptType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 添加视频解析功能 - 需要在 convertToScript 之前初始化
