@@ -2,9 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { MaterialItem } from '@/types';
-import { apiUrl } from './apiHelper';
-
-const SEARCH_TIMEOUT_MS = 15_000;
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keywords (English or Chinese — Chinese auto-translated)' }),
@@ -26,15 +24,14 @@ function containsChinese(text: string): boolean {
 
 async function translateQuery(context: ToolContext, query: string): Promise<string> {
   try {
-    const res = await fetch(apiUrl(context, '/api/translate-search-query'), {
+    const res = await toolFetch(context, '/api/translate-search-query', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      timeout: 10_000,
       body: JSON.stringify({ query, taskId: `search-image-${Date.now()}` }),
-      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return query;
-    const data = await res.json();
-    return data.translatedQuery || query;
+    const data = await parseToolResponse<{ translatedQuery?: string }>(res);
+    return ('translatedQuery' in data && data.translatedQuery) ? data.translatedQuery : query;
   } catch {
     return query;
   }
@@ -108,27 +105,31 @@ export function createSearchImageTool(context: ToolContext): AgentTool<typeof pa
           body.color = params.color;
         }
 
-        const res = await fetch(apiUrl(context, '/api/image-search'), {
+        const res = await toolFetch(context, '/api/image-search', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 15_000,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
         });
 
         if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          const result = { success: false, message: `Image search failed (HTTP ${res.status}): ${text}` };
+          let detail = '';
+          try { detail = await res.text(); } catch { /* ignore read errors */ }
+          const result = { success: false, message: `Image search failed (HTTP ${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}` };
           return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
         }
 
-        const data = await res.json();
+        const data = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          images?: ImageSearchResult[];
+        }>(res);
 
         if (!data.success) {
-          const result = { success: false, message: data.message || 'Image search returned an error' };
+          const result = { success: false, message: ('message' in data && data.message) || 'Image search returned an error' };
           return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
         }
 
-        const images: ImageSearchResult[] = data.images || [];
+        const images: ImageSearchResult[] = ('images' in data && data.images) ? data.images : [];
 
         if (images.length === 0) {
           const result = {
@@ -159,9 +160,10 @@ export function createSearchImageTool(context: ToolContext): AgentTool<typeof pa
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
 
       } catch (err) {
-        const message = err instanceof DOMException && err.name === 'TimeoutError'
-          ? 'Image search timed out'
-          : `Image search error: ${String(err)}`;
+        const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
+        const message = isTimeout
+          ? 'Image search timed out after 15s'
+          : `Image search failed: ${err instanceof Error ? err.message : String(err)}`;
         const result = { success: false, message };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       }

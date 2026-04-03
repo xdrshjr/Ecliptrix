@@ -4,7 +4,7 @@ import type { ToolContext } from '../types';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { MaterialItem } from '@/types';
 import { findMaterial } from './index';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -99,9 +99,9 @@ async function executeWithMaterial(
 
   // --- Call the image-to-video API ---
   try {
-    const response = await fetch(apiUrl(context, '/api/video/image-to-video'), {
+    const response = await toolFetch(context, '/api/video/image-to-video', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      timeout: 120_000,
       body: JSON.stringify({
         image_url: imageUrl,
         effect,
@@ -111,20 +111,31 @@ async function executeWithMaterial(
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
+      let detail = '';
+      try { detail = await response.text(); } catch { /* ignore read errors */ }
       const err = {
         success: false,
-        error: `Image-to-video request failed (HTTP ${response.status}): ${errorBody}`,
+        error: `Image-to-video request failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(err) }], details: err };
     }
 
-    const data = await response.json();
+    const data = await parseToolResponse<{
+      success: boolean;
+      message?: string;
+      video_url?: string;
+      duration?: number;
+      width?: number;
+      height?: number;
+      thumbnail_url?: string;
+      task_id?: string;
+      taskId?: string;
+    }>(response);
 
     if (!data.success) {
       const err = {
         success: false,
-        error: data.message || 'Image-to-video conversion failed',
+        error: ('message' in data && data.message) || 'Image-to-video conversion failed',
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(err) }], details: err };
     }
@@ -133,7 +144,7 @@ async function executeWithMaterial(
     // (video_url present) or asynchronously (task_id for polling).
     const taskId = `i2v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    if (data.video_url) {
+    if ('video_url' in data && data.video_url) {
       // Synchronous result — immediately create material and record operations
       const materialId = `i2v-mat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const newMaterial: MaterialItem = {
@@ -142,11 +153,11 @@ async function executeWithMaterial(
         type: 'video',
         format: 'mp4',
         size: 0,
-        duration: data.duration || duration,
+        duration: data.duration ?? duration,
         width: data.width,
         height: data.height,
         url: data.video_url,
-        thumbnailUrl: data.thumbnail_url || imageUrl,
+        thumbnailUrl: data.thumbnail_url ?? imageUrl,
         createdAt: new Date(),
         tags: ['image-to-video', 'generated'],
         description: `Video generated from image "${material.name}"`,
@@ -168,7 +179,7 @@ async function executeWithMaterial(
     }
 
     // Async result — register task for polling
-    const backendTaskId = data.task_id || data.taskId;
+    const backendTaskId = ('task_id' in data && data.task_id) || ('taskId' in data && data.taskId);
 
     const task: AsyncTask = {
       taskId,
@@ -202,9 +213,12 @@ async function executeWithMaterial(
       details: result,
     };
   } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
     const err = {
       success: false,
-      error: `Image-to-video request failed: ${error instanceof Error ? error.message : String(error)}`,
+      error: isTimeout
+        ? 'Image-to-video request timed out after 120s'
+        : `Image-to-video request failed: ${error instanceof Error ? error.message : String(error)}`,
     };
     return { content: [{ type: 'text' as const, text: JSON.stringify(err) }], details: err };
   }

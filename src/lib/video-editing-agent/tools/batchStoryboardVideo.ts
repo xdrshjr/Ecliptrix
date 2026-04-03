@@ -2,7 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -62,9 +62,9 @@ export function createBatchStoryboardVideoTool(context: ToolContext): AgentTool<
       }
 
       try {
-        const response = await fetch(apiUrl(context, '/api/storyboard/batch-video'), {
+        const response = await toolFetch(context, '/api/storyboard/batch-video', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 120_000,
           body: JSON.stringify({
             pack_id: packId,
             segments,
@@ -72,26 +72,31 @@ export function createBatchStoryboardVideoTool(context: ToolContext): AgentTool<
         });
 
         if (!response.ok) {
-          const errorBody = await response.text();
+          let detail = '';
+          try { detail = await response.text(); } catch { /* ignore read errors */ }
           const err = {
             success: false,
-            error: `Batch video generation failed (HTTP ${response.status}): ${errorBody}`,
+            error: `Batch video generation failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        const data = await response.json();
+        const data = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          tasks?: Array<{ frame_index: number; ark_task_id?: string; error?: string }>;
+        }>(response);
 
         if (!data.success) {
           const err = {
             success: false,
-            error: data.message || 'Batch video generation task creation failed',
+            error: ('message' in data && data.message) || 'Batch video generation task creation failed',
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
         const tasks: Array<{ frame_index: number; ark_task_id?: string; error?: string }> =
-          data.tasks || [];
+          ('tasks' in data && data.tasks) ? data.tasks : [];
         const successfulTasks = tasks.filter((t) => t.ark_task_id);
         const taskId = `storyboard-video-${packId}-${Date.now()}`;
 
@@ -130,9 +135,12 @@ export function createBatchStoryboardVideoTool(context: ToolContext): AgentTool<
           details: result,
         };
       } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
-          error: `Batch video generation request failed: ${error instanceof Error ? error.message : String(error)}`,
+          error: isTimeout
+            ? 'Batch video generation timed out after 120s'
+            : `Batch video generation request failed: ${error instanceof Error ? error.message : String(error)}`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }

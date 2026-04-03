@@ -2,7 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,9 +102,9 @@ export function createBatchGenerateTtsTool(context: ToolContext): AgentTool<type
 
       // --- Call batch TTS API ---
       try {
-        const response = await fetch(apiUrl(context, '/api/tts/batch-convert'), {
+        const response = await toolFetch(context, '/api/tts/batch-convert', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 120_000,
           body: JSON.stringify({
             segments: requestSegments,
             voice_type: primaryVoice,
@@ -114,27 +114,44 @@ export function createBatchGenerateTtsTool(context: ToolContext): AgentTool<type
         });
 
         if (!response.ok) {
+          let detail = '';
+          try {
+            detail = await response.text();
+          } catch {
+            // ignore read errors
+          }
           const err = {
             success: false,
             taskId,
-            error: `Batch TTS service unavailable (HTTP ${response.status})`,
+            error: `Batch TTS service unavailable (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        const result = await response.json();
+        const result = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          data?: {
+            results?: Array<{
+              success: boolean;
+              segment_id: string;
+              audio_url?: string;
+              duration?: number;
+            }>;
+          };
+        }>(response);
 
         if (!result.success) {
           const err = {
             success: false,
             taskId,
-            error: result.message || 'Batch TTS conversion failed',
+            error: ('message' in result && result.message) || ('error' in result && (result as { error: string }).error) || 'Batch TTS conversion failed',
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
         // The batch API returns results synchronously — process them now.
-        const batchData = result.data;
+        const batchData = 'data' in result ? result.data : undefined;
         const successfulResults: Array<{ segmentId: string; audioUrl: string }> = [];
         const batchMaterials: Array<{
           id: string;
@@ -173,7 +190,7 @@ export function createBatchGenerateTtsTool(context: ToolContext): AgentTool<type
                 type: 'audio' as const,
                 format: 'mp3',
                 size: 0,
-                duration: segResult.duration || 0,
+                duration: segResult.duration ?? 0,
                 url: segResult.audio_url,
                 serverUrl: segResult.audio_url,
                 createdAt: new Date(),
@@ -205,11 +222,12 @@ export function createBatchGenerateTtsTool(context: ToolContext): AgentTool<type
           details: payload,
         };
       } catch (error) {
-        const err = {
-          success: false,
-          taskId,
-          error: `Batch TTS request failed: ${error instanceof Error ? error.message : String(error)}`,
-        };
+        const isTimeout =
+          error instanceof DOMException && error.name === 'TimeoutError';
+        const errorMessage = isTimeout
+          ? 'Batch TTS request timed out after 120 seconds'
+          : `Batch TTS request failed: ${error instanceof Error ? error.message : String(error)}`;
+        const err = { success: false, taskId, error: errorMessage };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
     },

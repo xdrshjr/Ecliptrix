@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -65,9 +65,9 @@ export function createGenerateTtsTool(context: ToolContext): AgentTool<typeof pa
 
       // --- Call TTS API ---
       try {
-        const response = await fetch(apiUrl(context, '/api/tts/convert'), {
+        const response = await toolFetch(context, '/api/tts/convert', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 60_000,
           body: JSON.stringify({
             text,
             voice_type: voiceType,
@@ -76,26 +76,36 @@ export function createGenerateTtsTool(context: ToolContext): AgentTool<typeof pa
         });
 
         if (!response.ok) {
+          let detail = '';
+          try {
+            detail = await response.text();
+          } catch {
+            // ignore read errors
+          }
           const err = {
             success: false,
-            error: `TTS service unavailable (HTTP ${response.status})`,
+            error: `TTS service unavailable (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        const result = await response.json();
+        const result = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          data?: { audio_url?: string; duration?: number };
+        }>(response);
 
-        if (!result.success || !result.data?.audio_url) {
+        if (!result.success || !('data' in result) || !result.data?.audio_url) {
           const err = {
             success: false,
-            error: result.message || 'TTS conversion failed',
+            error: ('message' in result && result.message) || ('error' in result && (result as { error: string }).error) || 'TTS conversion failed',
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
         // --- Build MaterialItem and record operation ---
         const audioUrl: string = result.data.audio_url;
-        const duration: number = result.data.duration || 0;
+        const duration: number = result.data.duration ?? 0;
         const materialId = `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const displayName =
           text.length > 30 ? `TTS: ${text.slice(0, 27)}...` : `TTS: ${text}`;
@@ -136,10 +146,12 @@ export function createGenerateTtsTool(context: ToolContext): AgentTool<typeof pa
           details: payload,
         };
       } catch (error) {
-        const err = {
-          success: false,
-          error: `TTS request failed: ${error instanceof Error ? error.message : String(error)}`,
-        };
+        const isTimeout =
+          error instanceof DOMException && error.name === 'TimeoutError';
+        const errorMessage = isTimeout
+          ? 'TTS request timed out after 60 seconds'
+          : `TTS request failed: ${error instanceof Error ? error.message : String(error)}`;
+        const err = { success: false, error: errorMessage };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
     },

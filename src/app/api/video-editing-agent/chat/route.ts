@@ -147,8 +147,52 @@ export async function POST(request: NextRequest) {
             }, AGENT_TIMEOUT);
           };
 
+          // -- Heartbeat keepalive during tool execution --
+          // When a tool is running (e.g., TTS generation taking 30+ seconds),
+          // the SSE stream is silent. Without periodic data, the client-side
+          // SSEStreamManager may trigger a heartbeat timeout and disconnect.
+          // We send SSE comments (`: heartbeat\n\n`) every 15 seconds while
+          // any tool is executing. SSE comments are ignored by the parser but
+          // the raw bytes reset the client's heartbeat timer.
+          const HEARTBEAT_INTERVAL_MS = 15_000;
+          let toolHeartbeatInterval: ReturnType<typeof setInterval> | null = null;
+          let activeToolCount = 0;
+
+          const startToolHeartbeat = () => {
+            activeToolCount++;
+            if (toolHeartbeatInterval === null) {
+              toolHeartbeatInterval = setInterval(() => {
+                try {
+                  controller.enqueue(encoder.encode(': heartbeat\n\n'));
+                } catch {
+                  // Controller may be closed; clean up the interval
+                  if (toolHeartbeatInterval !== null) {
+                    clearInterval(toolHeartbeatInterval);
+                    toolHeartbeatInterval = null;
+                  }
+                }
+              }, HEARTBEAT_INTERVAL_MS);
+            }
+          };
+
+          const stopToolHeartbeat = () => {
+            activeToolCount = Math.max(0, activeToolCount - 1);
+            if (activeToolCount === 0 && toolHeartbeatInterval !== null) {
+              clearInterval(toolHeartbeatInterval);
+              toolHeartbeatInterval = null;
+            }
+          };
+
+          const cleanupHeartbeat = () => {
+            if (toolHeartbeatInterval !== null) {
+              clearInterval(toolHeartbeatInterval);
+              toolHeartbeatInterval = null;
+            }
+            activeToolCount = 0;
+          };
+
           // Subscribe to events and forward as SSE, with timeout reset on tool activity
-          subscribeAgentEvents(agent, toolContext, send, resetTimeout);
+          subscribeAgentEvents(agent, toolContext, send, resetTimeout, startToolHeartbeat, stopToolHeartbeat);
 
           const timeoutPromise = new Promise<never>((_, reject) => {
             rejectTimeout = reject;
@@ -162,6 +206,7 @@ export async function POST(request: NextRequest) {
             ]);
           } finally {
             clearTimeout(timeoutId);
+            cleanupHeartbeat();
           }
 
           console.log('[VideoEditingAgent] Agent completed successfully');

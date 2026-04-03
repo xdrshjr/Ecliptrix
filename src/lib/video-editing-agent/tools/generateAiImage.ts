@@ -2,7 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -76,85 +76,76 @@ export function createGenerateAiImageTool(context: ToolContext): AgentTool<typeo
       // --- Create task ID ---
       const taskId = `ai-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      // --- Record async task operation for client-side store ---
-      const task: AsyncTask = {
-        taskId,
-        type: 'ai_image',
-        status: 'pending',
-        progress: 0,
-        result: null,
-        error: null,
-        createdAt: Date.now(),
-        metadata: {
-          prompt: effectivePrompt,
-          size,
-          count,
-          autoAddToTimeline: params.autoAddToTimeline ?? false,
-        },
-      };
-      context.recordOperation(toolCallId, { type: 'start_async_task', task });
+      // --- Submit the generation request and verify it was accepted ---
+      try {
+        const response = await toolFetch(context, '/api/ark-image/generate', {
+          method: 'POST',
+          timeout: 120_000,
+          body: JSON.stringify({ prompt: effectivePrompt, size, count }),
+        });
 
-      // --- Fire off the generation request (non-blocking) ---
-      // ARK image generation is synchronous (returns images directly), but we
-      // treat it as async for UI consistency. The request runs in the background
-      // and the client-side AsyncTaskPoller picks up the result.
-      fireImageGeneration(context, taskId, effectivePrompt, size, count).catch(() => {
-        // Error handling is inside fireImageGeneration
-      });
+        if (!response.ok) {
+          let detail = '';
+          try { detail = await response.text(); } catch { /* ignore read errors */ }
+          const err = {
+            success: false,
+            error: `AI image generation failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+          };
+          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+        }
 
-      const result = {
-        success: true,
-        taskId,
-        message: `Image generation started (${count} image${count > 1 ? 's' : ''}). Expected to complete in 15-30 seconds.`,
-      };
+        const data = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          images?: Array<{ url?: string }>;
+        }>(response);
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-        details: result,
-      };
+        if (!data.success) {
+          const err = {
+            success: false,
+            error: ('message' in data && data.message) || ('error' in data && (data as { error: string }).error) || 'AI image generation request was rejected',
+          };
+          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+        }
+
+        // --- Record async task operation for client-side store ---
+        const task: AsyncTask = {
+          taskId,
+          type: 'ai_image',
+          status: 'pending',
+          progress: 0,
+          result: null,
+          error: null,
+          createdAt: Date.now(),
+          metadata: {
+            prompt: effectivePrompt,
+            size,
+            count,
+            autoAddToTimeline: params.autoAddToTimeline ?? false,
+          },
+        };
+        context.recordOperation(toolCallId, { type: 'start_async_task', task });
+
+        const result = {
+          success: true,
+          taskId,
+          message: `Image generation started (${count} image${count > 1 ? 's' : ''}). Expected to complete in 15-30 seconds.`,
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result) }],
+          details: result,
+        };
+      } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
+        const err = {
+          success: false,
+          error: isTimeout
+            ? 'AI image generation timed out after 120s'
+            : `AI image generation failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      }
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Background request
-// ---------------------------------------------------------------------------
-
-/**
- * Calls the ARK image generation API. Since this runs server-side and we
- * cannot update the client-side store directly, the client-side
- * AsyncTaskPoller is responsible for polling task status and adding
- * materials when complete.
- */
-async function fireImageGeneration(
-  context: ToolContext,
-  taskId: string,
-  prompt: string,
-  size: string,
-  count: number,
-): Promise<void> {
-  try {
-    const response = await fetch(apiUrl(context, '/api/ark-image/generate'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, size, count }),
-    });
-
-    if (!response.ok) {
-      // The client-side poller will detect the failure via its own polling mechanism
-      return;
-    }
-
-    const data = await response.json();
-
-    if (!data.success || !data.images || data.images.length === 0) {
-      // The client-side poller will detect the failure
-      return;
-    }
-
-    // Server-side fire-and-forget: the client-side AsyncTaskPoller handles
-    // updating task status and adding materials to the client store.
-  } catch {
-    // Error is handled by the client-side poller
-  }
 }

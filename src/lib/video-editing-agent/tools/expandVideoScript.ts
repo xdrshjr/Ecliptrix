@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -93,8 +93,10 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
         // Parse the outline into segments for per-scene expansion
         const segments = parseScriptToSegments(outline);
 
-        // Expand each segment via the expand API
+        // Expand each segment via the expand API, tracking per-segment errors
         const expandedSegments: Array<{ title: string; expandedText: string }> = [];
+        const segmentErrors: Array<{ index: number; title: string; reason: string }> = [];
+        let successCount = 0;
 
         for (let i = 0; i < segments.length; i++) {
           const seg = segments[i];
@@ -102,29 +104,56 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
             .filter((_, idx) => idx !== i)
             .map(s => ({ index: s.index, title: s.title, scriptText: s.scriptText }));
 
-          const response = await fetch(apiUrl(_context, '/api/ai-video-script-expand'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              taskId: `agent-expand-${Date.now()}-${i}`,
-              segmentIndex: seg.index,
-              segmentTitle: seg.title,
-              segmentText: seg.scriptText,
-              otherSegments,
-            }),
-          });
+          try {
+            const response = await toolFetch(_context, '/api/ai-video-script-expand', {
+              method: 'POST',
+              timeout: 60_000,
+              body: JSON.stringify({
+                taskId: `agent-expand-${Date.now()}-${i}`,
+                segmentIndex: seg.index,
+                segmentTitle: seg.title,
+                segmentText: seg.scriptText,
+                otherSegments,
+              }),
+            });
 
-          if (!response.ok) {
-            // On per-segment failure, keep original text
+            if (!response.ok) {
+              let detail = '';
+              try { detail = await response.text(); } catch { /* ignore */ }
+              segmentErrors.push({
+                index: i,
+                title: seg.title,
+                reason: `HTTP ${response.status}${detail ? `: ${detail.slice(0, 100)}` : ''}`,
+              });
+              expandedSegments.push({ title: seg.title, expandedText: seg.scriptText });
+              continue;
+            }
+
+            const data = await parseToolResponse<{
+              success: boolean;
+              expandedText?: string;
+            }>(response);
+
+            if (data.success && 'expandedText' in data && data.expandedText) {
+              expandedSegments.push({ title: seg.title, expandedText: data.expandedText });
+              successCount++;
+            } else {
+              segmentErrors.push({
+                index: i,
+                title: seg.title,
+                reason: 'Expansion returned empty or unsuccessful result',
+              });
+              expandedSegments.push({ title: seg.title, expandedText: seg.scriptText });
+            }
+          } catch (error) {
+            const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
+            segmentErrors.push({
+              index: i,
+              title: seg.title,
+              reason: isTimeout ? 'Timed out after 60s' : (error instanceof Error ? error.message : String(error)),
+            });
             expandedSegments.push({ title: seg.title, expandedText: seg.scriptText });
-            continue;
           }
-
-          const data = await response.json();
-          expandedSegments.push({
-            title: seg.title,
-            expandedText: data.success && data.expandedText ? data.expandedText : seg.scriptText,
-          });
         }
 
         // Reassemble full script content
@@ -142,16 +171,27 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
         const wordCount = fullContent.length;
         const estimatedDur = estimateDuration(fullContent);
 
+        // Build result message with error details if any segments failed
+        const totalSegments = segments.length;
+        let message = `Expanded ${successCount}/${totalSegments} scene(s) to ${wordCount} chars (~${estimatedDur}s)`;
+        if (segmentErrors.length > 0) {
+          const failureDetails = segmentErrors.map(e => `Scene ${e.index + 1} "${e.title}": ${e.reason}`).join('; ');
+          message += `. ${segmentErrors.length} failed: [${failureDetails}]`;
+        }
+
         const result = {
-          success: true,
+          success: successCount > 0,
           script: {
             content_preview:
               fullContent.length > 200 ? fullContent.slice(0, 200) + '...' : fullContent,
             word_count: wordCount,
             estimated_duration: estimatedDur,
             segment_count: expandedSegments.length,
+            expanded_count: successCount,
+            failed_count: segmentErrors.length,
           },
-          message: `Expanded ${expandedSegments.length} scene(s) to ${wordCount} chars (~${estimatedDur}s)`,
+          message,
+          ...(segmentErrors.length > 0 ? { errors: segmentErrors } : {}),
         };
 
         return {
@@ -159,9 +199,12 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
           details: result,
         };
       } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
-          error: `Script expansion failed: ${error instanceof Error ? error.message : String(error)}`,
+          error: isTimeout
+            ? 'Script expansion timed out after 60s'
+            : `Script expansion failed: ${error instanceof Error ? error.message : String(error)}`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }

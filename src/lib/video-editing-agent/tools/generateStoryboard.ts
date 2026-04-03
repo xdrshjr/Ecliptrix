@@ -2,7 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -77,9 +77,9 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
       const aspectRatio = params.aspect_ratio ?? '16:9';
 
       try {
-        const response = await fetch(apiUrl(_context, '/api/storyboard/generate'), {
+        const response = await toolFetch(_context, '/api/storyboard/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 120_000,
           body: JSON.stringify({
             prompt,
             grid_size: gridSize,
@@ -88,20 +88,42 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
         });
 
         if (!response.ok) {
-          const errorBody = await response.text();
+          let detail = '';
+          try { detail = await response.text(); } catch { /* ignore read errors */ }
           const err = {
             success: false,
-            error: `Storyboard generation failed (HTTP ${response.status}): ${errorBody}`,
+            error: `Storyboard generation failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        const data = await response.json();
+        const data = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          data?: {
+            pack_id: string;
+            prompt: string;
+            grid_size: string;
+            aspect_ratio: string;
+            frame_count: number;
+            created_at: string;
+            original_image_url?: string;
+            reference_image_url?: string;
+            frames?: Array<{
+              index: number;
+              filename: string;
+              url: string;
+              row: number;
+              col: number;
+              description?: string;
+            }>;
+          };
+        }>(response);
 
-        if (!data.success || !data.data) {
+        if (!data.success || !('data' in data) || !data.data) {
           const err = {
             success: false,
-            error: data.message || 'Storyboard generation failed',
+            error: ('message' in data && data.message) || 'Storyboard generation failed',
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
@@ -165,9 +187,12 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
           details: result,
         };
       } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
-          error: `Storyboard generation request failed: ${error instanceof Error ? error.message : String(error)}`,
+          error: isTimeout
+            ? 'Storyboard generation timed out after 120s'
+            : `Storyboard generation request failed: ${error instanceof Error ? error.message : String(error)}`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }

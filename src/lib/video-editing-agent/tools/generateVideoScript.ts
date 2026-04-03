@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -80,9 +80,9 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           : 5;
 
         // Call the script generation API
-        const response = await fetch(apiUrl(context, '/api/ai-video-script-generation'), {
+        const response = await toolFetch(context, '/api/ai-video-script-generation', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 60_000,
           body: JSON.stringify({
             taskId: `agent-script-${Date.now()}`,
             customPrompt,
@@ -91,21 +91,26 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
               language,
               consistency: 'moderate',
               segmentCount,
-              customRequirements: params.additional_requirements || '',
+              customRequirements: params.additional_requirements ?? '',
             },
           }),
         });
 
         if (!response.ok) {
-          const text = await response.text().catch(() => '');
-          const err = { success: false, error: `Script generation failed (HTTP ${response.status}): ${text}` };
+          let detail = '';
+          try { detail = await response.text(); } catch { /* ignore read errors */ }
+          const err = { success: false, error: `Script generation failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}` };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        const data = await response.json();
+        const data = await parseToolResponse<{
+          success: boolean;
+          error?: string;
+          segments?: Array<{ title: string; scriptText: string }>;
+        }>(response);
 
-        if (!data.success || !data.segments) {
-          const err = { success: false, error: data.error || 'Script generation returned invalid data' };
+        if (!data.success || !('segments' in data) || !data.segments) {
+          const err = { success: false, error: ('error' in data && data.error) || 'Script generation returned invalid data' };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
@@ -144,9 +149,12 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           details: result,
         };
       } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
-          error: `Script generation failed: ${error instanceof Error ? error.message : String(error)}`,
+          error: isTimeout
+            ? 'Script generation timed out after 60s'
+            : `Script generation failed: ${error instanceof Error ? error.message : String(error)}`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }

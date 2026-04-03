@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { apiUrl } from './apiHelper';
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -66,8 +66,8 @@ export function createUnderstandVideoScriptTool(context: ToolContext): AgentTool
         const selectedVideos = videoMaterials.map(m => ({
           id: m.id,
           title: m.name,
-          url: m.url || m.serverUrl || '',
-          duration: m.duration || 0,
+          url: m.url ?? m.serverUrl ?? '',
+          duration: m.duration ?? 0,
           analysis: m.analysisResult?.analysis || undefined,
         }));
 
@@ -80,46 +80,51 @@ export function createUnderstandVideoScriptTool(context: ToolContext): AgentTool
 
         const language = params.language === 'en' ? 'english' : params.language === 'mixed' ? 'mixed' : 'chinese';
 
-        const response = await fetch(apiUrl(context, '/api/video-understanding-script'), {
+        const response = await toolFetch(context, '/api/video-understanding-script', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 60_000,
           body: JSON.stringify({
             taskId: `agent-understand-${Date.now()}`,
             selectedVideos,
             referenceText,
             parameters: {
               language,
-              style: params.style || 'narration',
+              style: params.style ?? 'narration',
             },
           }),
         });
 
         if (!response.ok) {
-          const text = await response.text().catch(() => '');
+          let detail = '';
+          try { detail = await response.text(); } catch { /* ignore read errors */ }
           const err = {
             success: false,
-            error: `Video understanding script failed (HTTP ${response.status}): ${text}`,
+            error: `Video understanding script failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        const data = await response.json();
+        const data = await parseToolResponse<{
+          success: boolean;
+          error?: string;
+          segments?: Array<{
+            title?: string;
+            sentences?: Array<{ text?: string }>;
+            scriptText?: string;
+            text?: string;
+          }>;
+        }>(response);
 
         if (!data.success) {
           const err = {
             success: false,
-            error: data.error || 'Video understanding script returned an error',
+            error: ('error' in data && data.error) || 'Video understanding script returned an error',
           };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
         // Build full script content from returned segments.
-        const segments: Array<{
-          title?: string;
-          sentences?: Array<{ text?: string }>;
-          scriptText?: string;
-          text?: string;
-        }> = data.segments || [];
+        const segments = ('segments' in data && data.segments) ? data.segments : [];
 
         const fullContent = segments
           .map((seg, i) => {
@@ -158,9 +163,12 @@ export function createUnderstandVideoScriptTool(context: ToolContext): AgentTool
           details: result,
         };
       } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
-          error: `Video understanding script failed: ${error instanceof Error ? error.message : String(error)}`,
+          error: isTimeout
+            ? 'Video understanding script timed out after 60s'
+            : `Video understanding script failed: ${error instanceof Error ? error.message : String(error)}`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }

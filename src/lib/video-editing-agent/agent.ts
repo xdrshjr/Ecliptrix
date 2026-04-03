@@ -100,6 +100,8 @@ export function subscribeAgentEvents(
   toolContext: ToolContext,
   send: (data: SSEEvent) => void,
   onToolActivity?: () => void,
+  onToolExecutionStart?: () => void,
+  onToolExecutionEnd?: () => void,
 ): () => void {
   // Track whether text_delta events or tool calls were sent for the current
   // assistant message. Non-streaming models (e.g., Kimi) skip text_delta and
@@ -191,6 +193,7 @@ export function subscribeAgentEvents(
       case 'tool_execution_start':
         toolCallMade = true;
         onToolActivity?.();
+        onToolExecutionStart?.();
         send({
           type: 'tool_call',
           toolCallId: event.toolCallId,
@@ -201,6 +204,7 @@ export function subscribeAgentEvents(
 
       case 'tool_execution_end': {
         onToolActivity?.();
+        onToolExecutionEnd?.();
         // Don't send operation if the tool errored
         const operation = event.isError
           ? null

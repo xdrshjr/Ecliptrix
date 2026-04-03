@@ -2,9 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { MaterialItem } from '@/types';
-import { apiUrl } from './apiHelper';
-
-const SEARCH_TIMEOUT_MS = 15_000;
+import { toolFetch, parseToolResponse } from './apiHelper';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keywords (English or Chinese — Chinese auto-translated)' }),
@@ -34,15 +32,14 @@ function containsChinese(text: string): boolean {
  */
 async function translateQuery(context: ToolContext, query: string): Promise<string> {
   try {
-    const res = await fetch(apiUrl(context, '/api/translate-search-query'), {
+    const res = await toolFetch(context, '/api/translate-search-query', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      timeout: 10_000,
       body: JSON.stringify({ query, taskId: `search-video-${Date.now()}` }),
-      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return query;
-    const data = await res.json();
-    return data.translatedQuery || query;
+    const data = await parseToolResponse<{ translatedQuery?: string }>(res);
+    return ('translatedQuery' in data && data.translatedQuery) ? data.translatedQuery : query;
   } catch {
     return query;
   }
@@ -69,7 +66,7 @@ function mapVideoToMaterial(video: VideoSearchResult, query: string): MaterialIt
     type: 'video',
     format: 'mp4',
     size: 0,
-    duration: video.duration || 0,
+    duration: video.duration ?? 0,
     width: video.width,
     height: video.height,
     thumbnailUrl: video.thumbnail || '',
@@ -115,35 +112,39 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
           body.orientation = 'mixed';
         }
 
-        const res = await fetch(apiUrl(context, '/api/video-search'), {
+        const res = await toolFetch(context, '/api/video-search', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          timeout: 15_000,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
         });
 
         if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          const result = { success: false, message: `Video search failed (HTTP ${res.status}): ${text}` };
+          let detail = '';
+          try { detail = await res.text(); } catch { /* ignore read errors */ }
+          const result = { success: false, message: `Video search failed (HTTP ${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}` };
           return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
         }
 
-        const data = await res.json();
+        const data = await parseToolResponse<{
+          success: boolean;
+          message?: string;
+          videos?: VideoSearchResult[];
+        }>(res);
 
         if (!data.success) {
-          const result = { success: false, message: data.message || 'Video search returned an error' };
+          const result = { success: false, message: ('message' in data && data.message) || 'Video search returned an error' };
           return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
         }
 
-        const videos: VideoSearchResult[] = data.videos || [];
+        const videos: VideoSearchResult[] = ('videos' in data && data.videos) ? data.videos : [];
 
         // Apply duration filters client-side
         let filtered = videos;
         if (params.min_duration != null) {
-          filtered = filtered.filter(v => (v.duration ?? 0) >= params.min_duration!);
+          filtered = filtered.filter(v => (v.duration ?? 0) >= (params.min_duration ?? 0));
         }
         if (params.max_duration != null) {
-          filtered = filtered.filter(v => (v.duration ?? 0) <= params.max_duration!);
+          filtered = filtered.filter(v => (v.duration ?? 0) <= (params.max_duration ?? Infinity));
         }
 
         if (filtered.length === 0) {
@@ -177,9 +178,10 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
 
       } catch (err) {
-        const message = err instanceof DOMException && err.name === 'TimeoutError'
-          ? 'Video search timed out'
-          : `Video search error: ${String(err)}`;
+        const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
+        const message = isTimeout
+          ? 'Video search timed out after 15s'
+          : `Video search failed: ${err instanceof Error ? err.message : String(err)}`;
         const result = { success: false, message };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       }

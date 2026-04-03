@@ -48,7 +48,7 @@ export interface SSEStreamManagerConfig {
   headers?: Record<string, string>;
   /** Total timeout in ms (default 120 000 = 2 min). */
   timeout?: number;
-  /** Heartbeat timeout — max ms between data chunks (default 30 000). */
+  /** Heartbeat timeout — max ms between data chunks (default 90 000). */
   heartbeatTimeout?: number;
   /** Maximum automatic retries (default 2). */
   maxRetries?: number;
@@ -114,7 +114,7 @@ export class SSEStreamManager {
     this.config = {
       ...config,
       timeout: config.timeout ?? 120_000,
-      heartbeatTimeout: config.heartbeatTimeout ?? 30_000,
+      heartbeatTimeout: config.heartbeatTimeout ?? 90_000,
       maxRetries: config.maxRetries ?? 2,
     };
   }
