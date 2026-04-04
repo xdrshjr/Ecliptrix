@@ -581,6 +581,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     // Build the content to update: merge with current content, or create minimal default
     const baseContent = contentRef.current ?? {
+      markdownContent: '',
+      lastModified: new Date(),
       scriptSegments: [],
       aiVideoScriptSegments: [],
       storyboardScriptSegments: [],
@@ -616,6 +618,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }));
 
     const baseContent = contentRef.current ?? {
+      markdownContent: '',
+      lastModified: new Date(),
       scriptSegments: [],
       aiVideoScriptSegments: [],
       storyboardScriptSegments: [],

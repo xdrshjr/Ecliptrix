@@ -1,0 +1,473 @@
+{
+  "version": "2.0",
+  "created_at": "2026-04-03T18:10:56.375699+00:00",
+  "agents": {
+    "google-dev-01": {
+      "role": "DEV",
+      "tokens": 125,
+      "tokens_confirmed": 125,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-04-03T18:11:03.217790+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 105,
+          "confirmed_after": 100,
+          "provisional_after": 5,
+          "reason": "D1: Code passed review with fixes (T1+T2)",
+          "timestamp": "2026-04-03T18:21:45.348277+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D3: Code passed tester acceptance (T1+T2)",
+          "timestamp": "2026-04-03T18:21:45.456600+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 115,
+          "confirmed_after": 115,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 125,
+          "provisional_after": 0,
+          "reason": "D12: Integration test pass",
+          "timestamp": "2026-04-03T18:36:21.074152+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ]
+    },
+    "google-dev-02": {
+      "role": "DEV",
+      "tokens": 130,
+      "tokens_confirmed": 130,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-04-03T18:11:03.328561+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 105,
+          "confirmed_after": 100,
+          "provisional_after": 5,
+          "reason": "D1: Code passed review with fixes (T3+T4+T5)",
+          "timestamp": "2026-04-03T18:36:08.816384+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D3: Code passed tester acceptance (T3+T4+T5)",
+          "timestamp": "2026-04-03T18:36:08.934657+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 120,
+          "confirmed_after": 100,
+          "provisional_after": 20,
+          "reason": "D10: Critical fixes - fire-and-forget + silent failures",
+          "timestamp": "2026-04-03T18:36:09.055252+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 120,
+          "confirmed_after": 120,
+          "provisional_after": 0,
+          "reason": "Escrow release: 20 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 130,
+          "confirmed_after": 130,
+          "provisional_after": 0,
+          "reason": "D12: Integration test pass",
+          "timestamp": "2026-04-03T18:36:21.182421+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 20,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ]
+    },
+    "google-dev-03": {
+      "role": "DEV",
+      "tokens": 125,
+      "tokens_confirmed": 125,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-04-03T18:11:03.439797+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 105,
+          "confirmed_after": 100,
+          "provisional_after": 5,
+          "reason": "D1: Code passed review with fixes (T6)",
+          "timestamp": "2026-04-03T18:21:45.564625+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D3: Code passed tester acceptance (T6)",
+          "timestamp": "2026-04-03T18:21:45.676333+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 115,
+          "confirmed_after": 115,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 125,
+          "provisional_after": 0,
+          "reason": "D12: Integration test pass",
+          "timestamp": "2026-04-03T18:36:21.298880+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ]
+    },
+    "google-reviewer-01": {
+      "role": "REV",
+      "tokens": 120,
+      "tokens_confirmed": 120,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-04-03T18:11:03.557406+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 110,
+          "confirmed_after": 100,
+          "provisional_after": 10,
+          "reason": "R1: Found real TimeoutError bug in T1+T2 review",
+          "timestamp": "2026-04-03T18:21:45.786726+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 120,
+          "confirmed_after": 100,
+          "provisional_after": 20,
+          "reason": "R1: Thorough review of 12 files, caught || vs ?? issue",
+          "timestamp": "2026-04-03T18:36:09.173393+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 120,
+          "confirmed_after": 120,
+          "provisional_after": 0,
+          "reason": "Escrow release: 20 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 20,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ]
+    },
+    "google-tester-01": {
+      "role": "TEST",
+      "tokens": 120,
+      "tokens_confirmed": 120,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-04-03T18:11:03.671680+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 110,
+          "confirmed_after": 100,
+          "provisional_after": 10,
+          "reason": "T1: Thorough Phase 1 acceptance testing (29/29 checks)",
+          "timestamp": "2026-04-03T18:21:45.897437+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 120,
+          "confirmed_after": 100,
+          "provisional_after": 20,
+          "reason": "T1: Thorough Phase 2 acceptance (12 files, 2 critical fixes)",
+          "timestamp": "2026-04-03T18:36:09.296503+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 120,
+          "confirmed_after": 120,
+          "provisional_after": 0,
+          "reason": "Escrow release: 20 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 20,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-04-03T18:36:20.847079+00:00"
+        }
+      ]
+    },
+    "google-inspector": {
+      "role": "REV",
+      "tokens": 100,
+      "tokens_confirmed": 100,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-04-03T18:11:03.781413+00:00"
+        }
+      ],
+      "escrow_history": []
+    }
+  },
+  "eliminated": [],
+  "phase_reports": [
+    {
+      "phase": 1,
+      "timestamp": "2026-04-03T18:21:46.008156+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 15,
+          "tokens": 115,
+          "delta": 15
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 0,
+          "tokens": 100,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 15,
+          "tokens": 115,
+          "delta": 15
+        },
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 10,
+          "tokens": 110,
+          "delta": 10
+        },
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 10,
+          "tokens": 110,
+          "delta": 10
+        },
+        {
+          "agent_id": "google-inspector",
+          "role": "REV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 0,
+          "tokens": 100,
+          "delta": 0
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "timestamp": "2026-04-03T18:36:09.404731+00:00",
+      "rankings": [
+        {
+          "agent_id": "google-dev-01",
+          "role": "DEV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 15,
+          "tokens": 115,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-dev-02",
+          "role": "DEV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 20,
+          "tokens": 120,
+          "delta": 20
+        },
+        {
+          "agent_id": "google-dev-03",
+          "role": "DEV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 15,
+          "tokens": 115,
+          "delta": 0
+        },
+        {
+          "agent_id": "google-reviewer-01",
+          "role": "REV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 20,
+          "tokens": 120,
+          "delta": 10
+        },
+        {
+          "agent_id": "google-tester-01",
+          "role": "TEST",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 20,
+          "tokens": 120,
+          "delta": 10
+        },
+        {
+          "agent_id": "google-inspector",
+          "role": "REV",
+          "tokens_confirmed": 100,
+          "tokens_provisional": 0,
+          "tokens": 100,
+          "delta": 0
+        }
+      ]
+    }
+  ]
+}
