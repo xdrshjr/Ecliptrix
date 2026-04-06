@@ -32,11 +32,12 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
     generateAllDescriptions,
     regenerateDescription,
     generateVideo,
+    generateMultipleVideos,
     batchGenerateAllVideos,
     cancelGeneration,
+    selectCandidate,
     composeAllVideos,
     isComposing,
-    composedVideoUrl,
     compositionError,
     overallProgress,
     totalDuration,
@@ -49,6 +50,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
 
   const [expandingSegmentId, setExpandingSegmentId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [batchRepeat, setBatchRepeat] = useState(1);
 
   // ── Segment operations ──
 
@@ -139,9 +141,14 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
 
   const allVideosGenerated =
     segments.length > 0 &&
-    segments.every(
-      (s) => s.generationStatus === 'succeeded' && s.generatedVideoUrl,
-    );
+    segments.every((s) => {
+      // With candidates: at least one succeeded
+      if (s.videoCandidates && s.videoCandidates.length > 0) {
+        return s.videoCandidates.some(c => c.status === 'succeeded' && c.videoUrl);
+      }
+      // Without candidates: original logic
+      return s.generationStatus === 'succeeded' && s.generatedVideoUrl;
+    });
 
   const hasIdleOrFailed = segments.some(
     (s) => s.generationStatus === 'idle' || s.generationStatus === 'failed',
@@ -226,9 +233,22 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             <span>{isDescribing ? '生成中...' : '生成描述'}</span>
           </button>
 
+          {/* Batch repeat count selector */}
+          <select
+            value={batchRepeat}
+            onChange={(e) => setBatchRepeat(Number(e.target.value))}
+            className="w-16 py-1.5 px-1 text-xs border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-teal-400"
+            title={t.storyboardScriptTab.videoCount}
+          >
+            <option value={1}>x1</option>
+            <option value={2}>x2</option>
+            <option value={3}>x3</option>
+            <option value={4}>x4</option>
+          </select>
+
           {/* Batch generate */}
           <button
-            onClick={batchGenerateAllVideos}
+            onClick={() => batchGenerateAllVideos(batchRepeat)}
             disabled={!canBatchGenerate}
             className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-teal-500 to-cyan-500 rounded-md hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             title={
@@ -242,7 +262,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
-            <span>一键批量生成</span>
+            <span>{batchRepeat > 1 ? t.storyboardScriptTab.batchGenerateMultiple : '一键批量生成'}</span>
           </button>
 
           {/* Compose */}
@@ -317,28 +337,6 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
         </div>
       )}
 
-      {/* Composed video preview */}
-      {composedVideoUrl && (
-        <div className="p-3 border-b border-border shrink-0">
-          <div className="p-2.5 bg-muted rounded-md border border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-foreground">合成视频</span>
-              <span className="text-xs text-muted-foreground">
-                总时长: {totalDuration}s
-              </span>
-            </div>
-            <div className="relative bg-black rounded-md overflow-hidden aspect-video">
-              <video
-                src={composedVideoUrl}
-                controls
-                preload="metadata"
-                className="w-full h-full object-contain"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Segment list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-3">
         {segments.map((segment, index) => (
@@ -349,12 +347,14 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             totalCount={segments.length}
             onUpdate={(updates) => handleUpdateSegment(segment.id, updates)}
             onGenerateVideo={() => generateVideo(segment.id)}
+            onGenerateMultipleVideos={(count) => generateMultipleVideos(segment.id, count)}
             onCancelGeneration={() => cancelGeneration(segment.id)}
             onRegenerateDescription={() =>
               regenerateDescription(segment.id)
             }
             onExpandScript={() => handleExpandScript(segment.id)}
             onDelete={() => setDeleteConfirmId(segment.id)}
+            onSelectCandidate={(candidateId) => selectCandidate(segment.id, candidateId)}
             isDescribing={isDescribing}
             isExpanding={expandingSegmentId === segment.id}
           />

@@ -45,6 +45,7 @@ class StoryboardVideoSegment(BaseModel):
     frame_index: int = Field(..., description="Index of the frame in the storyboard pack")
     description: str = Field(..., description="Scene description for video generation")
     duration: int = Field(default=5, ge=4, le=12, description="Video duration in seconds")
+    repeat: int = Field(default=1, ge=1, le=4, description="Number of candidate videos to generate (1-4)")
 
 
 class StoryboardBatchVideoRequest(BaseModel):

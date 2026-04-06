@@ -152,11 +152,12 @@ export async function describeFrames(
 
 /**
  * Batch generate videos from storyboard segments.
+ * Returns task groups grouped by frameIndex for multi-video support.
  */
 export async function batchGenerateVideos(
   packId: string,
-  segments: { frameIndex: number; description: string; duration: number }[]
-): Promise<{ taskIds: string[] }> {
+  segments: { frameIndex: number; description: string; duration: number; repeat?: number }[]
+): Promise<{ taskGroups: { frameIndex: number; taskIds: string[] }[] }> {
   const response = await fetch('/api/storyboard/batch-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -166,6 +167,7 @@ export async function batchGenerateVideos(
         frame_index: s.frameIndex,
         description: s.description,
         duration: s.duration,
+        repeat: s.repeat || 1,
       })),
     }),
   });
@@ -176,12 +178,21 @@ export async function batchGenerateVideos(
     throw new Error(data.message || '批量视频生成失败');
   }
 
-  // Backend returns tasks in top-level `tasks` field, not `data`
+  // Backend returns flat tasks list — group by frame_index
   const tasks = data.tasks || [];
+  const groupMap = new Map<number, string[]>();
+  for (const t of tasks) {
+    if (t.ark_task_id) {
+      const list = groupMap.get(t.frame_index) || [];
+      list.push(t.ark_task_id);
+      groupMap.set(t.frame_index, list);
+    }
+  }
   return {
-    taskIds: tasks
-      .filter((t: { ark_task_id?: string | null }) => t.ark_task_id)
-      .map((t: { ark_task_id: string }) => t.ark_task_id),
+    taskGroups: Array.from(groupMap.entries()).map(([frameIndex, taskIds]) => ({
+      frameIndex,
+      taskIds,
+    })),
   };
 }
 

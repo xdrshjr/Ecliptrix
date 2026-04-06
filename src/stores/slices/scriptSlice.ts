@@ -19,12 +19,19 @@ export type ScriptType = 'video' | 'understanding' | 'ai_generated';
 // Slice state + actions
 // ---------------------------------------------------------------------------
 
+export interface ScriptSegmentData {
+  title: string;
+  scriptText: string;
+  narrationText: string;
+}
+
 export interface ScriptSlice {
   // State
   scriptContent: string;
   scriptType: ScriptType;
   isScriptGenerating: boolean;
   scriptGenerationProgress: number;
+  scriptSegmentsData: ScriptSegmentData[] | null;
 
   // Actions
   setScriptContent: (content: string) => void;
@@ -32,6 +39,7 @@ export interface ScriptSlice {
   appendScriptContent: (content: string) => void;
   setScriptGenerating: (generating: boolean) => void;
   setScriptGenerationProgress: (progress: number) => void;
+  setScriptSegmentsData: (data: ScriptSegmentData[] | null) => void;
   resetScript: () => void;
 }
 
@@ -50,6 +58,7 @@ export const createScriptSlice: StateCreator<
   scriptType: 'video',
   isScriptGenerating: false,
   scriptGenerationProgress: 0,
+  scriptSegmentsData: null,
 
   // Actions
   setScriptContent: (content) => set({ scriptContent: content }),
@@ -65,11 +74,14 @@ export const createScriptSlice: StateCreator<
   setScriptGenerationProgress: (progress) =>
     set({ scriptGenerationProgress: Math.min(100, Math.max(0, progress)) }),
 
+  setScriptSegmentsData: (data) => set({ scriptSegmentsData: data }),
+
   resetScript: () =>
     set({
       scriptContent: '',
       scriptType: 'video',
       isScriptGenerating: false,
       scriptGenerationProgress: 0,
+      scriptSegmentsData: null,
     }),
 });

@@ -287,7 +287,8 @@ export function convertScriptSegmentsToBatchRequest(
 ): BatchTTSRequest {
   const batchSegments: BatchTTSSegmentRequest[] = segments.map(segment => ({
     segment_id: segment.id,
-    text: segment.sentences.map(sentence => sentence.text).join(' '),
+    // 优先使用解说文案，降级使用视频脚本句子拼接
+    text: segment.narrationText || segment.sentences.map(sentence => sentence.text).join(' '),
     title: segment.title
   }));
 
@@ -310,11 +311,26 @@ export function convertScriptSegmentToSentenceRequest(
   taskId?: string,
   concurrentThreads?: number
 ): SentenceBatchTTSRequest {
-  const sentences: SentenceTTSRequest[] = segment.sentences.map((sentence, index) => ({
-    sentence_id: sentence.id,
-    text: sentence.text,
-    order: index
-  }));
+  let sentences: SentenceTTSRequest[];
+
+  if (segment.narrationText) {
+    // 优先使用解说文案：拆句后作为TTS文本
+    const narrationSentences = segment.narrationText
+      .split(/(?<=[。！？.!?])\s*/)
+      .filter(s => s.trim().length > 0);
+    sentences = narrationSentences.map((text, index) => ({
+      sentence_id: segment.sentences[index]?.id || `narration-s-${index}`,
+      text: text.trim(),
+      order: index
+    }));
+  } else {
+    // 降级：使用视频脚本句子
+    sentences = segment.sentences.map((sentence, index) => ({
+      sentence_id: sentence.id,
+      text: sentence.text,
+      order: index
+    }));
+  }
 
   return {
     segment_id: segment.id,

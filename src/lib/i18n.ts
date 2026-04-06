@@ -643,6 +643,12 @@ export interface Translations {
     kenBurnsZoomInDesc: string;
     kenBurnsZoomOut: string;
     kenBurnsZoomOutDesc: string;
+    menuMaterialManagement: string;
+    clearAllMaterials: string;
+    clearAllConfirmTitle: string;
+    clearAllConfirmMessage: string;
+    clearAllSuccess: string;
+    noMaterialsToClear: string;
   };
   aiMixingModal: {
     title: string;
@@ -1105,6 +1111,15 @@ export interface Translations {
   storyboardScriptTab: {
     selectStoryboardPack: string;
     selectStoryboardPackHint: string;
+    generateSingleVideo: string;
+    generateMultiple: string;
+    selectVideo: string;
+    candidates: string;
+    batchGenerateMultiple: string;
+    videoCount: string;
+    candidateGenerating: string;
+    candidateSucceeded: string;
+    candidateFailed: string;
   };
   welcomeGuide: {
     title: string;
@@ -1907,6 +1922,12 @@ export const translations: Record<string, Translations> = {
       kenBurnsZoomInDesc: 'Gradually zoom in to the set focal position (smooth gradient effect)',
       kenBurnsZoomOut: 'Ken Burns - Zoom Out',
       kenBurnsZoomOutDesc: 'Zoom out from zoomed state to normal size (smooth gradient effect)',
+      menuMaterialManagement: 'Material Management',
+      clearAllMaterials: 'Clear All Materials',
+      clearAllConfirmTitle: 'Clear All Materials',
+      clearAllConfirmMessage: 'Are you sure you want to clear all {count} materials? This action cannot be undone.',
+      clearAllSuccess: 'All materials cleared',
+      noMaterialsToClear: 'No materials to clear',
     },
     aiMixingModal: {
       title: 'Select AI Mixing Mode',
@@ -2468,6 +2489,15 @@ export const translations: Record<string, Translations> = {
    storyboardScriptTab: {
      selectStoryboardPack: 'Please select a storyboard pack to start',
      selectStoryboardPackHint: 'Select a generated storyboard pack from the dropdown above',
+     generateSingleVideo: 'Generate Video',
+     generateMultiple: 'Generate {count} Candidates',
+     selectVideo: 'Select this video',
+     candidates: 'Candidates',
+     batchGenerateMultiple: 'Batch Multi-Generate',
+     videoCount: 'Count',
+     candidateGenerating: 'Generating',
+     candidateSucceeded: 'Completed',
+     candidateFailed: 'Failed',
    },
    welcomeGuide: {
      title: 'AI Video Editing Assistant',
@@ -3283,6 +3313,12 @@ export const translations: Record<string, Translations> = {
       kenBurnsZoomInDesc: '逐渐放大到设置的聚焦位置（稳定渐变效果）',
       kenBurnsZoomOut: 'Ken Burns - 缩小',
       kenBurnsZoomOutDesc: '从放大状态缩小到正常大小（稳定渐变效果）',
+      menuMaterialManagement: '素材管理',
+      clearAllMaterials: '清除所有素材',
+      clearAllConfirmTitle: '清除所有素材',
+      clearAllConfirmMessage: '确定要清除所有 {count} 个素材吗？此操作不可撤销。',
+      clearAllSuccess: '已清除所有素材',
+      noMaterialsToClear: '没有可清除的素材',
     },
     aiMixingModal: {
       title: '选择AI混剪模式',
@@ -3844,6 +3880,15 @@ export const translations: Record<string, Translations> = {
    storyboardScriptTab: {
      selectStoryboardPack: '请选择一个分镜包开始',
      selectStoryboardPackHint: '在上方下拉菜单中选择已生成的分镜包',
+     generateSingleVideo: '生成视频',
+     generateMultiple: '生成 {count} 个候选视频',
+     selectVideo: '选择此视频',
+     candidates: '候选视频',
+     batchGenerateMultiple: '批量多视频生成',
+     videoCount: '数量',
+     candidateGenerating: '生成中',
+     candidateSucceeded: '已完成',
+     candidateFailed: '失败',
    },
    welcomeGuide: {
      title: 'AI视频编辑助手',

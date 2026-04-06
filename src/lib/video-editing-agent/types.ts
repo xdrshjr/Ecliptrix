@@ -77,7 +77,8 @@ export type MaterialOperation =
 
 export type ScriptOperation =
   | { type: 'set_script'; content: string; scriptType: string }
-  | { type: 'append_script'; content: string };
+  | { type: 'append_script'; content: string }
+  | { type: 'set_script_with_narration'; segments: Array<{ title: string; scriptText: string; narrationText: string }>; scriptType: string };
 
 // --- Storyboard Operations ---
 

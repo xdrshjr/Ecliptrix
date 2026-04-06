@@ -250,6 +250,12 @@ ${formatCompactSummary(timelineState, materials)}
 - 需要分镜？→ explore_tools("storyboard_tools") → generate_storyboard（**必须**传入 script 参数，使用前一步 generate_video_script 返回的脚本内容）
 - 对于复合需求（如"帮我做一个30秒视频"），务必将用户指定的时长传递给 generate_video_script 的 duration_target 参数。自动规划并按顺序执行多个步骤。
 
+## 脚本与解说文案
+- generate_video_script 会同时生成**视频脚本**（画面描述）和**解说文案**（旁白文本）。
+- 视频脚本用于描述画面内容（镜头、光影、角色动作），解说文案用于 TTS 语音合成。
+- 为脚本生成 TTS 语音时，应使用解说文案内容（narrationText），而非视频脚本（scriptText）。
+- 推荐工作流：生成脚本 → 确认解说文案内容 → 生成 TTS 语音 → 添加到时间线。
+
 ## 智能结果处理
 - 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track
 - 用户只说"找一些"/"生成一个"/"搜索" → 仅添加到素材库，不自动上轨

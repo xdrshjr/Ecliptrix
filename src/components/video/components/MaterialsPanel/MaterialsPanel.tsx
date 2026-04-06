@@ -40,6 +40,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
 
 const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   materials,
+  allMaterials,
   selectedMaterialType,
   isUploading,
   uploadProgress,
@@ -69,6 +70,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   handleAiVideoGenerate,
   handleAiImageGenerate,
   handleStoryboardGenerate,
+  handleClearAllMaterials,
 }) => {
   const { t } = useLocale();
   const { showSuccess, showError } = useNotification();
@@ -144,6 +146,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   // Material Library Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Menu bar dropdown state
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Effect selection state
   const [selectedEffect, setSelectedEffect] = useState('');
@@ -330,12 +336,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // Material Library Dropdown handlers
   const handleMaterialLibraryClick = useCallback(() => {
-    logger.info('用户点击素材库按钮', {
+    logger.info('用户点击素材库���钮', {
       materialsCount: materials.length,
       selectedType: selectedMaterialType,
       dropdownOpen: !isDropdownOpen
     });
-    
+
+    if (!isDropdownOpen) setIsMenuOpen(false);
     setIsDropdownOpen(!isDropdownOpen);
   }, [isDropdownOpen, materials.length, selectedMaterialType, logger]);
 
@@ -385,6 +392,43 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       setIsDropdownOpen(false);
     }
   }, [isDropdownOpen, logger]);
+
+  // Menu bar toggle (mutual exclusion with material library dropdown)
+  const handleMenuToggle = useCallback(() => {
+    setIsMenuOpen(prev => {
+      if (!prev) setIsDropdownOpen(false);
+      return !prev;
+    });
+  }, []);
+
+  // Handle clear all materials with storyboard packs
+  const handleClearAllWithStoryboards = useCallback(() => {
+    setIsMenuOpen(false);
+    if (allMaterials.length === 0) {
+      showSuccess(t.materialsPanel.noMaterialsToClear);
+      return;
+    }
+    handleClearAllMaterials(() => {
+      setStoryboardPacks([]);
+      showSuccess(t.materialsPanel.clearAllSuccess);
+    });
+  }, [handleClearAllMaterials, allMaterials.length, showSuccess, t]);
+
+  // Click outside menu bar dropdown
+  useEffect(() => {
+    const handleClickOutsideMenu = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        if (isMenuOpen) {
+          setIsMenuOpen(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutsideMenu);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideMenu);
+    };
+  }, [isMenuOpen]);
 
   // 处理单个素材删除按钮点击
   const handleSingleMaterialDelete = (material: MaterialItem, e: React.MouseEvent) => {
@@ -1436,7 +1480,42 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           </div>
         </div>
       </div>
-      
+
+      {/* 菜单栏 */}
+      <div className="flex items-center h-8 px-3 bg-muted/50 border-b border-border">
+        <div ref={menuRef} className="relative">
+          <button
+            onClick={handleMenuToggle}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded transition-colors"
+          >
+            {t.materialsPanel.menuMaterialManagement}
+            <svg
+              className={`w-3 h-3 transition-transform duration-200 ${isMenuOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {isMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 min-w-[180px] bg-popover border border-border rounded-md shadow-md z-50 py-1">
+              <button
+                onClick={handleClearAllWithStoryboards}
+                disabled={isUploading}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                  isUploading
+                    ? 'text-muted-foreground opacity-50 cursor-not-allowed'
+                    : 'text-destructive hover:bg-destructive/10'
+                }`}
+              >
+                {t.materialsPanel.clearAllMaterials}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="materials-panel-content">
         {/* 素材类型筛选标签 */}
         <div className="flex space-x-1 mb-4 p-1 bg-muted rounded-md">

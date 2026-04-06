@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StoryboardScriptSegment, StoryboardPack, MaterialItem } from '@/types';
+import { StoryboardScriptSegment, StoryboardPack, StoryboardVideoCandidate, MaterialItem } from '@/types';
 import {
   listPacks,
   getPack,
@@ -36,13 +36,14 @@ export interface UseStoryboardScriptGenerationReturn {
 
   // Video generation
   generateVideo: (segmentId: string) => void;
-  batchGenerateAllVideos: () => void;
+  generateMultipleVideos: (segmentId: string, count: number) => void;
+  batchGenerateAllVideos: (repeat?: number) => void;
   cancelGeneration: (segmentId: string) => void;
+  selectCandidate: (segmentId: string, candidateId: string) => void;
 
   // Composition
   composeAllVideos: () => Promise<void>;
   isComposing: boolean;
-  composedVideoUrl: string | null;
   compositionError: string | null;
 
   // Computed state
@@ -55,6 +56,7 @@ export interface UseStoryboardScriptGenerationReturn {
  * Modeled after useAIVideoScriptGeneration with additions for:
  * - Pack loading and description generation via VL_LLM
  * - Batch video generation with polling
+ * - Multi-video candidate generation and selection
  * - Video composition
  */
 export function useStoryboardScriptGeneration({
@@ -69,9 +71,9 @@ export function useStoryboardScriptGeneration({
   const [isDescribing, setIsDescribing] = useState(false);
   const [isLoadingPack, setIsLoadingPack] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
-  const [composedVideoUrl, setComposedVideoUrl] = useState<string | null>(null);
   const [compositionError, setCompositionError] = useState<string | null>(null);
 
+  // Key can be segmentId (single video) or candidateId (multi-video)
   const pollTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
@@ -91,11 +93,11 @@ export function useStoryboardScriptGeneration({
 
   // ── Polling helpers ──
 
-  const stopPolling = useCallback((segmentId: string) => {
-    const timer = pollTimers.current.get(segmentId);
+  const stopPolling = useCallback((key: string) => {
+    const timer = pollTimers.current.get(key);
     if (timer) {
       clearInterval(timer);
-      pollTimers.current.delete(segmentId);
+      pollTimers.current.delete(key);
     }
   }, []);
 
@@ -177,6 +179,113 @@ export function useStoryboardScriptGeneration({
     [stopPolling, updateSegment, onAddMaterial],
   );
 
+  /** Start polling for a candidate video within a multi-video segment */
+  const startCandidatePolling = useCallback(
+    (segmentId: string, candidateId: string, arkTaskId: string) => {
+      stopPolling(candidateId);
+
+      let simulatedProgress = 10;
+
+      const timer = setInterval(async () => {
+        try {
+          const statusResult = await getArkVideoStatus(arkTaskId);
+
+          const segment = segmentsRef.current.find(s => s.id === segmentId);
+          if (!segment?.videoCandidates) {
+            stopPolling(candidateId);
+            return;
+          }
+
+          const updatedCandidates = segment.videoCandidates.map(c => {
+            if (c.id !== candidateId) return c;
+            if (statusResult.status === 'succeeded' && statusResult.video_url) {
+              return { ...c, status: 'succeeded' as const, progress: 100, videoUrl: statusResult.video_url, thumbnailUrl: statusResult.thumbnail_url };
+            } else if (statusResult.status === 'failed') {
+              return { ...c, status: 'failed' as const, progress: 0, error: statusResult.error || '视频生成失败' };
+            } else {
+              const newProgress = Math.min(c.progress + Math.random() * 8, 90);
+              return { ...c, progress: Math.round(newProgress) };
+            }
+          });
+
+          if (statusResult.status === 'succeeded' || statusResult.status === 'failed') {
+            stopPolling(candidateId);
+          }
+
+          // Check if all candidates are done
+          const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed');
+          const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
+          const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
+
+          const segmentUpdates: Partial<StoryboardScriptSegment> = {
+            videoCandidates: updatedCandidates,
+          };
+
+          if (allDone) {
+            segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
+            segmentUpdates.generationProgress = 100;
+            // Auto-select first succeeded candidate if none selected
+            if (anySucceeded && !segment.selectedCandidateId) {
+              segmentUpdates.selectedCandidateId = firstSucceeded!.id;
+              segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
+              segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
+            }
+          } else {
+            // Calculate overall progress from candidates
+            const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
+            segmentUpdates.generationProgress = Math.round(avgProgress);
+          }
+
+          updateSegment(segmentId, segmentUpdates);
+
+          // Add material for succeeded candidate
+          if (statusResult.status === 'succeeded' && statusResult.video_url && onAddMaterial) {
+            const material: MaterialItem = {
+              id: `storyboard-video-${candidateId}-${Date.now()}`,
+              name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
+              type: 'video',
+              format: 'mp4',
+              size: 0,
+              url: statusResult.video_url,
+              serverUrl: statusResult.video_url,
+              thumbnailUrl: statusResult.thumbnail_url,
+              duration: statusResult.duration || segment?.duration || 5,
+              createdAt: new Date(),
+              metadata: { source: 'storyboard-script', candidateId },
+            };
+            onAddMaterial(material);
+          }
+        } catch (error) {
+          stopPolling(candidateId);
+          // Mark this candidate as failed
+          const segment = segmentsRef.current.find(s => s.id === segmentId);
+          if (segment?.videoCandidates) {
+            const updatedCandidates = segment.videoCandidates.map(c =>
+              c.id === candidateId ? { ...c, status: 'failed' as const, progress: 0, error: error instanceof Error ? error.message : '轮询状态失败' } : c,
+            );
+            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed');
+            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
+            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
+
+            const segmentUpdates: Partial<StoryboardScriptSegment> = { videoCandidates: updatedCandidates };
+            if (allDone) {
+              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
+              if (anySucceeded && !segment.selectedCandidateId) {
+                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
+                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
+                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
+              }
+            }
+            updateSegment(segmentId, segmentUpdates);
+          }
+        }
+      }, POLL_INTERVAL);
+
+      pollTimers.current.set(candidateId, timer);
+    },
+    [stopPolling, updateSegment, onAddMaterial],
+  );
+
   // ── Pack management ──
 
   const refreshPacks = useCallback(async () => {
@@ -194,7 +303,6 @@ export function useStoryboardScriptGeneration({
   const loadPack = useCallback(
     async (packId: string) => {
       setSelectedPackId(packId);
-      setComposedVideoUrl(null);
       setCompositionError(null);
       setIsLoadingPack(true);
 
@@ -297,6 +405,8 @@ export function useStoryboardScriptGeneration({
         generationError: undefined,
         generatedVideoUrl: undefined,
         generatedVideoThumbnailUrl: undefined,
+        videoCandidates: undefined,
+        selectedCandidateId: undefined,
       });
 
       try {
@@ -308,12 +418,13 @@ export function useStoryboardScriptGeneration({
           },
         ]);
 
-        if (result.taskIds && result.taskIds.length > 0) {
+        const group = result.taskGroups.find(g => g.frameIndex === segment.frameIndex);
+        if (group && group.taskIds.length > 0) {
           updateSegment(segmentId, {
-            arkTaskId: result.taskIds[0],
+            arkTaskId: group.taskIds[0],
             generationProgress: 10,
           });
-          startPolling(segmentId, result.taskIds[0]);
+          startPolling(segmentId, group.taskIds[0]);
         } else {
           updateSegment(segmentId, {
             generationStatus: 'failed',
@@ -335,9 +446,94 @@ export function useStoryboardScriptGeneration({
     [selectedPackId, updateSegment, startPolling],
   );
 
+  // ── Multi-video generation ──
+
+  const generateMultipleVideos = useCallback(
+    async (segmentId: string, count: number) => {
+      const segment = segmentsRef.current.find(
+        (s) => s.id === segmentId,
+      );
+      if (!segment || !segment.description.trim() || !selectedPackId)
+        return;
+
+      // Initialize candidates
+      const candidates: StoryboardVideoCandidate[] = Array.from({ length: count }, (_, i) => ({
+        id: `candidate-${segmentId}-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        arkTaskId: '',
+        status: 'generating' as const,
+        progress: 0,
+      }));
+
+      updateSegment(segmentId, {
+        generationStatus: 'generating',
+        generationProgress: 5,
+        generationError: undefined,
+        generatedVideoUrl: undefined,
+        generatedVideoThumbnailUrl: undefined,
+        videoCandidates: candidates,
+        selectedCandidateId: undefined,
+      });
+
+      try {
+        const result = await batchGenerateVideos(selectedPackId, [
+          {
+            frameIndex: segment.frameIndex,
+            description: segment.description,
+            duration: segment.duration,
+            repeat: count,
+          },
+        ]);
+
+        const group = result.taskGroups.find(g => g.frameIndex === segment.frameIndex);
+        if (group && group.taskIds.length > 0) {
+          // Assign task IDs to candidates
+          const updatedCandidates = candidates.map((c, i) => {
+            if (i < group.taskIds.length) {
+              return { ...c, arkTaskId: group.taskIds[i], progress: 10 };
+            }
+            return { ...c, status: 'failed' as const, error: '未获取到任务ID' };
+          });
+
+          updateSegment(segmentId, {
+            arkTaskId: group.taskIds[0],
+            generationProgress: 10,
+            videoCandidates: updatedCandidates,
+          });
+
+          // Start independent polling for each candidate
+          updatedCandidates.forEach((c, i) => {
+            if (c.arkTaskId) {
+              setTimeout(() => {
+                startCandidatePolling(segmentId, c.id, c.arkTaskId);
+              }, i * 1000);
+            }
+          });
+        } else {
+          updateSegment(segmentId, {
+            generationStatus: 'failed',
+            generationProgress: 0,
+            generationError: '未获取到任务ID',
+            videoCandidates: undefined,
+          });
+        }
+      } catch (error) {
+        updateSegment(segmentId, {
+          generationStatus: 'failed',
+          generationProgress: 0,
+          generationError:
+            error instanceof Error
+              ? error.message
+              : '创建多视频任务失败',
+          videoCandidates: undefined,
+        });
+      }
+    },
+    [selectedPackId, updateSegment, startCandidatePolling],
+  );
+
   // ── Batch video generation ──
 
-  const batchGenerateAllVideos = useCallback(async () => {
+  const batchGenerateAllVideos = useCallback(async (repeat: number = 1) => {
     if (!selectedPackId) return;
 
     const idleSegments = segmentsRef.current.filter(
@@ -350,8 +546,17 @@ export function useStoryboardScriptGeneration({
 
     // Mark eligible segments as generating
     const idleSegmentIds = new Set(idleSegments.map((s) => s.id));
-    const updated = segmentsRef.current.map((seg) => {
-      if (idleSegmentIds.has(seg.id)) {
+
+    if (repeat > 1) {
+      // Multi-video batch: initialize candidates for each segment
+      const updated = segmentsRef.current.map((seg) => {
+        if (!idleSegmentIds.has(seg.id)) return seg;
+        const candidates: StoryboardVideoCandidate[] = Array.from({ length: repeat }, (_, i) => ({
+          id: `candidate-${seg.id}-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          arkTaskId: '',
+          status: 'generating' as const,
+          progress: 0,
+        }));
         return {
           ...seg,
           generationStatus: 'generating' as const,
@@ -359,74 +564,197 @@ export function useStoryboardScriptGeneration({
           generationError: undefined,
           generatedVideoUrl: undefined,
           generatedVideoThumbnailUrl: undefined,
+          videoCandidates: candidates,
+          selectedCandidateId: undefined,
         };
-      }
-      return seg;
-    });
-    onUpdateSegments(updated);
+      });
+      onUpdateSegments(updated);
 
-    try {
-      const batchPayload = idleSegments.map((seg) => ({
-        frameIndex: seg.frameIndex,
-        description: seg.description,
-        duration: seg.duration,
-      }));
+      try {
+        const batchPayload = idleSegments.map((seg) => ({
+          frameIndex: seg.frameIndex,
+          description: seg.description,
+          duration: seg.duration,
+          repeat,
+        }));
 
-      const result = await batchGenerateVideos(
-        selectedPackId,
-        batchPayload,
-      );
+        const result = await batchGenerateVideos(selectedPackId, batchPayload);
 
-      if (result.taskIds && result.taskIds.length > 0) {
-        // Update task IDs and start polling for each, staggered to avoid burst requests
-        idleSegments.forEach((seg, i) => {
-          if (i < result.taskIds.length) {
+        // Get the updated segments with candidates
+        const currentSegs = segmentsRef.current;
+
+        idleSegments.forEach((seg, segIdx) => {
+          const group = result.taskGroups.find(g => g.frameIndex === seg.frameIndex);
+          const currentSeg = currentSegs.find(s => s.id === seg.id);
+          if (!group || !group.taskIds.length || !currentSeg?.videoCandidates) {
             updateSegment(seg.id, {
-              arkTaskId: result.taskIds[i],
-              generationProgress: 10,
+              generationStatus: 'failed',
+              generationProgress: 0,
+              generationError: '批量生成未返回任务ID',
+              videoCandidates: undefined,
             });
-            // Stagger polling start: each task offset by 1s to spread load
-            setTimeout(() => {
-              startPolling(seg.id, result.taskIds[i]);
-            }, i * 1000);
+            return;
           }
+
+          const updatedCandidates = currentSeg.videoCandidates.map((c, i) => {
+            if (i < group.taskIds.length) {
+              return { ...c, arkTaskId: group.taskIds[i], progress: 10 };
+            }
+            return { ...c, status: 'failed' as const, error: '未获取到任务ID' };
+          });
+
+          updateSegment(seg.id, {
+            arkTaskId: group.taskIds[0],
+            generationProgress: 10,
+            videoCandidates: updatedCandidates,
+          });
+
+          // Start polling for each candidate, staggered
+          updatedCandidates.forEach((c, i) => {
+            if (c.arkTaskId) {
+              setTimeout(() => {
+                startCandidatePolling(seg.id, c.id, c.arkTaskId);
+              }, (segIdx * repeat + i) * 1000);
+            }
+          });
         });
-      } else {
-        // No task IDs — mark all as failed
+      } catch (error) {
         idleSegments.forEach((seg) => {
           updateSegment(seg.id, {
             generationStatus: 'failed',
             generationProgress: 0,
-            generationError: '批量生成未返回任务ID',
+            generationError:
+              error instanceof Error
+                ? error.message
+                : '批量生成请求失败',
+            videoCandidates: undefined,
           });
         });
       }
-    } catch (error) {
-      idleSegments.forEach((seg) => {
-        updateSegment(seg.id, {
-          generationStatus: 'failed',
-          generationProgress: 0,
-          generationError:
-            error instanceof Error
-              ? error.message
-              : '批量生成请求失败',
-        });
+    } else {
+      // Single video batch (original behavior)
+      const updated = segmentsRef.current.map((seg) => {
+        if (idleSegmentIds.has(seg.id)) {
+          return {
+            ...seg,
+            generationStatus: 'generating' as const,
+            generationProgress: 5,
+            generationError: undefined,
+            generatedVideoUrl: undefined,
+            generatedVideoThumbnailUrl: undefined,
+            videoCandidates: undefined,
+            selectedCandidateId: undefined,
+          };
+        }
+        return seg;
       });
+      onUpdateSegments(updated);
+
+      try {
+        const batchPayload = idleSegments.map((seg) => ({
+          frameIndex: seg.frameIndex,
+          description: seg.description,
+          duration: seg.duration,
+        }));
+
+        const result = await batchGenerateVideos(
+          selectedPackId,
+          batchPayload,
+        );
+
+        // Update task IDs and start polling for each, staggered
+        idleSegments.forEach((seg, i) => {
+          const group = result.taskGroups.find(g => g.frameIndex === seg.frameIndex);
+          if (group && group.taskIds.length > 0) {
+            updateSegment(seg.id, {
+              arkTaskId: group.taskIds[0],
+              generationProgress: 10,
+            });
+            setTimeout(() => {
+              startPolling(seg.id, group.taskIds[0]);
+            }, i * 1000);
+          } else {
+            updateSegment(seg.id, {
+              generationStatus: 'failed',
+              generationProgress: 0,
+              generationError: '批量生成未返回任务ID',
+            });
+          }
+        });
+      } catch (error) {
+        idleSegments.forEach((seg) => {
+          updateSegment(seg.id, {
+            generationStatus: 'failed',
+            generationProgress: 0,
+            generationError:
+              error instanceof Error
+                ? error.message
+                : '批量生成请求失败',
+          });
+        });
+      }
     }
-  }, [selectedPackId, onUpdateSegments, updateSegment, startPolling]);
+  }, [selectedPackId, onUpdateSegments, updateSegment, startPolling, startCandidatePolling]);
 
   // ── Cancel generation ──
 
   const cancelGeneration = useCallback(
     (segmentId: string) => {
-      stopPolling(segmentId);
-      updateSegment(segmentId, {
-        generationStatus: 'idle',
-        generationProgress: 0,
-        arkTaskId: undefined,
-      });
+      const segment = segmentsRef.current.find(s => s.id === segmentId);
+
+      if (segment?.videoCandidates && segment.videoCandidates.length > 0) {
+        // Multi-video: stop all candidate polling, preserve succeeded candidates
+        for (const c of segment.videoCandidates) {
+          stopPolling(c.id);
+        }
+        const updatedCandidates = segment.videoCandidates.map(c =>
+          c.status === 'generating' ? { ...c, status: 'failed' as const, progress: 0, error: '已取消' } : c,
+        );
+        const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
+        const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
+
+        updateSegment(segmentId, {
+          videoCandidates: updatedCandidates,
+          generationStatus: anySucceeded ? 'succeeded' : 'idle',
+          generationProgress: anySucceeded ? 100 : 0,
+          ...(anySucceeded && firstSucceeded && !segment.selectedCandidateId
+            ? {
+                selectedCandidateId: firstSucceeded.id,
+                generatedVideoUrl: firstSucceeded.videoUrl,
+                generatedVideoThumbnailUrl: firstSucceeded.thumbnailUrl,
+              }
+            : {}),
+        });
+      } else {
+        // Single video: original behavior
+        stopPolling(segmentId);
+        updateSegment(segmentId, {
+          generationStatus: 'idle',
+          generationProgress: 0,
+          arkTaskId: undefined,
+        });
+      }
     },
     [stopPolling, updateSegment],
+  );
+
+  // ── Select candidate ──
+
+  const selectCandidate = useCallback(
+    (segmentId: string, candidateId: string) => {
+      const segment = segmentsRef.current.find(s => s.id === segmentId);
+      if (!segment?.videoCandidates) return;
+
+      const candidate = segment.videoCandidates.find(c => c.id === candidateId);
+      if (!candidate || candidate.status !== 'succeeded' || !candidate.videoUrl) return;
+
+      updateSegment(segmentId, {
+        selectedCandidateId: candidateId,
+        generatedVideoUrl: candidate.videoUrl,
+        generatedVideoThumbnailUrl: candidate.thumbnailUrl,
+      });
+    },
+    [updateSegment],
   );
 
   // ── Video composition ──
@@ -434,27 +762,39 @@ export function useStoryboardScriptGeneration({
   const composeAllVideos = useCallback(async () => {
     if (!selectedPackId) return;
 
-    const allSucceeded = segmentsRef.current.every(
-      (s) => s.generationStatus === 'succeeded' && s.generatedVideoUrl,
-    );
-    if (!allSucceeded) return;
+    // Check readiness: each segment must have at least one succeeded video
+    const allReady = segmentsRef.current.every((s) => {
+      if (s.videoCandidates && s.videoCandidates.length > 0) {
+        return s.videoCandidates.some(c => c.status === 'succeeded' && c.videoUrl);
+      }
+      return s.generationStatus === 'succeeded' && s.generatedVideoUrl;
+    });
+    if (!allReady) return;
 
     setIsComposing(true);
     setCompositionError(null);
-    setComposedVideoUrl(null);
 
     try {
-      // Collect video URLs in frame order
+      // Collect video URLs in frame order, using selected candidate or first succeeded
       const sortedSegments = [...segmentsRef.current].sort(
         (a, b) => a.frameIndex - b.frameIndex,
       );
       const videoUrls = sortedSegments
-        .map((s) => s.generatedVideoUrl)
+        .map((s) => {
+          if (s.videoCandidates && s.videoCandidates.length > 0) {
+            // Use selected candidate, or first succeeded
+            const selected = s.selectedCandidateId
+              ? s.videoCandidates.find(c => c.id === s.selectedCandidateId)
+              : null;
+            if (selected?.videoUrl) return selected.videoUrl;
+            const firstSucceeded = s.videoCandidates.find(c => c.status === 'succeeded' && c.videoUrl);
+            return firstSucceeded?.videoUrl;
+          }
+          return s.generatedVideoUrl;
+        })
         .filter((url): url is string => Boolean(url));
 
       const result = await composeVideo(selectedPackId, videoUrls);
-
-      setComposedVideoUrl(result.videoUrl);
 
       // Add composed video to materials
       if (onAddMaterial && result.videoUrl) {
@@ -512,11 +852,15 @@ export function useStoryboardScriptGeneration({
   useEffect(() => {
     if (!selectedPackId) return;
     for (const segment of segments) {
-      if (
-        segment.generationStatus === 'generating' &&
-        segment.arkTaskId
-      ) {
-        if (!pollTimers.current.has(segment.id)) {
+      if (segment.generationStatus === 'generating') {
+        if (segment.videoCandidates && segment.videoCandidates.length > 0) {
+          // Resume candidate polling
+          for (const c of segment.videoCandidates) {
+            if (c.status === 'generating' && c.arkTaskId && !pollTimers.current.has(c.id)) {
+              startCandidatePolling(segment.id, c.id, c.arkTaskId);
+            }
+          }
+        } else if (segment.arkTaskId && !pollTimers.current.has(segment.id)) {
           startPolling(segment.id, segment.arkTaskId);
         }
       }
@@ -551,12 +895,13 @@ export function useStoryboardScriptGeneration({
     regenerateDescription,
 
     generateVideo,
+    generateMultipleVideos,
     batchGenerateAllVideos,
     cancelGeneration,
+    selectCandidate,
 
     composeAllVideos,
     isComposing,
-    composedVideoUrl,
     compositionError,
 
     overallProgress,

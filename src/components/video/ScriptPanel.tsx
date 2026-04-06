@@ -86,7 +86,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
-  
+
+  // 解说文案编辑状态
+  const [editingNarrationSegmentId, setEditingNarrationSegmentId] = useState<string | null>(null);
+  const [editingNarrationText, setEditingNarrationText] = useState<string>('');
+  // 视频脚本折叠状态（默认折叠）
+  const [expandedScriptSegments, setExpandedScriptSegments] = useState<Set<string>>(new Set());
+
   // TTS相关状态
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('zh_male_shaonianzixin_moon_bigtts');
   const [convertingSegments, setConvertingSegments] = useState<Set<string>>(new Set());
@@ -579,6 +585,55 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       e.preventDefault();
       handleCancelEdit();
     }
+  };
+
+  // 解说文案编辑处理
+  const handleStartNarrationEdit = (segmentId: string, narrationText: string) => {
+    setEditingNarrationSegmentId(segmentId);
+    setEditingNarrationText(narrationText);
+  };
+
+  const handleCancelNarrationEdit = () => {
+    setEditingNarrationSegmentId(null);
+    setEditingNarrationText('');
+  };
+
+  const handleSaveNarrationEdit = () => {
+    if (!editingNarrationSegmentId || !onUpdateSegments) return;
+    const trimmedText = editingNarrationText.trim();
+    if (!trimmedText) return;
+
+    const updatedSegments = segments.map(segment =>
+      segment.id === editingNarrationSegmentId
+        ? { ...segment, narrationText: trimmedText }
+        : segment
+    );
+    onUpdateSegments(updatedSegments);
+    setEditingNarrationSegmentId(null);
+    setEditingNarrationText('');
+  };
+
+  const handleNarrationKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSaveNarrationEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelNarrationEdit();
+    }
+  };
+
+  // 视频脚本折叠切换
+  const toggleScriptExpanded = (segmentId: string) => {
+    setExpandedScriptSegments(prev => {
+      const next = new Set(prev);
+      if (next.has(segmentId)) {
+        next.delete(segmentId);
+      } else {
+        next.add(segmentId);
+      }
+      return next;
+    });
   };
 
   const handleGenerateScript = () => {
@@ -1085,14 +1140,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       setConvertingSegments(prev => new Set([...Array.from(prev), segment.id]));
       setTtsProgress(prev => ({ ...prev, [segment.id]: 0 }));
 
-      // 检查句子是否为空
-      if (!segment.sentences || segment.sentences.length === 0) {
-        throw new Error('片段中没有句子');
-      }
-
-      // 检查句子文本是否为空
-      const hasValidText = segment.sentences.some(sentence => sentence.text.trim());
-      if (!hasValidText) {
+      // 检查是否有可用于TTS的文本（优先使用解说文案，降级使用视频脚本句子）
+      const hasNarration = segment.narrationText && segment.narrationText.trim().length > 0;
+      const hasValidSentences = segment.sentences && segment.sentences.length > 0 &&
+        segment.sentences.some(sentence => sentence.text.trim());
+      if (!hasNarration && !hasValidSentences) {
         throw new Error('片段中没有有效的文本内容');
       }
 
@@ -1884,7 +1936,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <span className="text-xs text-muted-foreground">{ttsProgress[segment.id]}%</span>
                 </div>
                 <div className="w-full bg-accent rounded-full h-1.5">
-                  <div 
+                  <div
                     className="bg-primary h-1.5 rounded-full transition-all duration-300"
                     style={{ width: `${ttsProgress[segment.id]}%` }}
                   ></div>
@@ -1892,8 +1944,77 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               </div>
             )}
 
-            {/* 句子列表 */}
-            <div className="space-y-2">
+            {/* 解说文案区域 */}
+            {segment.narrationText && (
+              <div className="mb-3 p-2.5 bg-primary/5 border border-primary/20 rounded-md">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium text-primary">
+                    解说文案
+                  </span>
+                  {editingNarrationSegmentId !== segment.id && (
+                    <button
+                      onClick={() => handleStartNarrationEdit(segment.id, segment.narrationText || '')}
+                      className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
+                      title="编辑解说文案"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {editingNarrationSegmentId === segment.id ? (
+                  <div>
+                    <textarea
+                      value={editingNarrationText}
+                      onChange={(e) => setEditingNarrationText(e.target.value)}
+                      onKeyDown={handleNarrationKeyDown}
+                      className="w-full p-2 text-sm border border-primary/30 rounded resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-background"
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="flex items-center space-x-2 mt-2">
+                      <button
+                        onClick={handleSaveNarrationEdit}
+                        className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={handleCancelNarrationEdit}
+                        className="px-2 py-1 text-xs bg-muted-foreground text-primary-foreground rounded hover:bg-muted-foreground/80 transition-colors"
+                      >
+                        取消
+                      </button>
+                      <span className="text-xs text-muted-foreground">Enter 保存, Esc 取消</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {segment.narrationText}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 视频脚本区域（可折叠） */}
+            <div className="mb-2">
+              <button
+                onClick={() => toggleScriptExpanded(segment.id)}
+                className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
+              >
+                <svg
+                  className={`w-3 h-3 transition-transform duration-200 ${expandedScriptSegments.has(segment.id) ? 'rotate-90' : ''}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span>视频脚本 ({segment.sentences.length} 句)</span>
+              </button>
+            </div>
+
+            {/* 句子列表（可折叠） */}
+            {expandedScriptSegments.has(segment.id) && <div className="space-y-2">
               {segment.sentences.map((sentence, sentenceIndex) => (
                 <div 
                   key={sentence.id}
@@ -2012,7 +2133,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                   <span>{t.scriptPanel.actions.addSentence}</span>
                 </button>
               </div>
-            </div>
+            </div>}
 
             {/* 视频预览区域 */}
             {segment.videos && segment.videos.length > 0 && (

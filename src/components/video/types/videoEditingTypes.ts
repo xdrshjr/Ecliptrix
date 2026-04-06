@@ -158,6 +158,8 @@ export interface UseMaterialManagementReturn {
   handleAiImageGenerate: (params: { prompt: string; size: ArkImageSize; count: number; watermark: boolean }) => Promise<void>;
   // 分镜包生成
   handleStoryboardGenerate: (params: import('@/types').StoryboardGenerateParams) => Promise<import('@/types').StoryboardPack>;
+  // 清除所有素材
+  handleClearAllMaterials: (onAfterClear?: () => void) => void;
 }
 
 // 新增：Youtube视频搜索结果接口

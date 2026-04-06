@@ -212,6 +212,13 @@ export class AgentEventRouter {
       case 'append_script':
         store.appendScriptContent(op.content);
         break;
+      case 'set_script_with_narration':
+        store.setScriptSegmentsData(op.segments);
+        store.setScriptType(op.scriptType as 'video' | 'understanding' | 'ai_generated');
+        // NOTE: Do NOT set scriptContent here — it would trigger the legacy text-based
+        // sync effect in VideoEditingInterface, which would overwrite the structured
+        // segments (with narrationText) with plain parsed markdown (without narrationText).
+        break;
     }
   }
 
@@ -249,7 +256,7 @@ export class AgentEventRouter {
   }
 
   private isScriptOperation(op: AgentOperation): op is ScriptOperation {
-    return ['set_script', 'append_script'].includes(op.type);
+    return ['set_script', 'append_script', 'set_script_with_narration'].includes(op.type);
   }
 
   private isStoryboardOperation(op: AgentOperation): op is StoryboardOperation {

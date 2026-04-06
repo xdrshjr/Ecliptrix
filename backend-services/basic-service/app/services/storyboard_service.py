@@ -59,8 +59,8 @@ ASPECT_RATIOS = {
     "3:4": (3, 4),
 }
 
-# In-memory cache: pack_id -> { frame_index -> ark_task_id }
-_pack_video_tasks: Dict[str, Dict[int, str]] = {}
+# In-memory cache: pack_id -> { frame_index -> [ark_task_id, ...] }
+_pack_video_tasks: Dict[str, Dict[int, List[str]]] = {}
 _PACK_CACHE_MAX_SIZE = 100
 
 VL_SYSTEM_PROMPT = (
@@ -499,24 +499,23 @@ async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[di
     semaphore = asyncio.Semaphore(STORYBOARD_MAX_CONCURRENT_VIDEO)
     task_results: List[dict] = []
 
-    async def _submit_one(segment) -> dict:
+    async def _submit_one(segment, repeat_index: int = 0, frame_data_uri: str = None) -> dict:
         async with semaphore:
             frame_info = frame_map.get(segment.frame_index)
             if not frame_info:
                 logger.warning(f"Frame index {segment.frame_index} not found in pack {request.pack_id}")
-                return {"frame_index": segment.frame_index, "ark_task_id": None, "error": "Frame not found"}
+                return {"frame_index": segment.frame_index, "ark_task_id": None, "repeat_index": repeat_index, "error": "Frame not found"}
 
-            # Read frame image as base64 data URI since ARK API needs a reachable URL
-            # and local serving paths (/api/storage/files/...) are not publicly accessible.
-            frame_path = os.path.join(pack_directory, frame_info["filename"])
-            try:
-                async with aiofiles.open(frame_path, "rb") as img_file:
-                    img_bytes = await img_file.read()
-                import base64
-                frame_data_uri = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
-            except Exception as exc:
-                logger.error(f"Failed to read frame image {frame_path}: {exc}")
-                return {"frame_index": segment.frame_index, "ark_task_id": None, "error": f"Cannot read frame image: {exc}"}
+            # Read frame image if not already provided (reuse for repeat calls)
+            if frame_data_uri is None:
+                frame_path = os.path.join(pack_directory, frame_info["filename"])
+                try:
+                    async with aiofiles.open(frame_path, "rb") as img_file:
+                        img_bytes = await img_file.read()
+                    frame_data_uri = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
+                except Exception as exc:
+                    logger.error(f"Failed to read frame image {frame_path}: {exc}")
+                    return {"frame_index": segment.frame_index, "ark_task_id": None, "repeat_index": repeat_index, "error": f"Cannot read frame image: {exc}"}
 
             try:
                 ark_request = ArkVideoGenerateRequest(
@@ -526,25 +525,54 @@ async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[di
                     duration=segment.duration,
                 )
                 ark_task_id = await ark_video_service.create_task(ark_request)
-                logger.info(f"Video task created for frame {segment.frame_index}: {ark_task_id}")
-                return {"frame_index": segment.frame_index, "ark_task_id": ark_task_id}
+                logger.info(f"Video task created for frame {segment.frame_index} repeat {repeat_index}: {ark_task_id}")
+                return {"frame_index": segment.frame_index, "ark_task_id": ark_task_id, "repeat_index": repeat_index}
             except Exception as exc:
-                logger.error(f"Failed to create video task for frame {segment.frame_index}: {exc}")
-                return {"frame_index": segment.frame_index, "ark_task_id": None, "error": str(exc)}
+                logger.error(f"Failed to create video task for frame {segment.frame_index} repeat {repeat_index}: {exc}")
+                return {"frame_index": segment.frame_index, "ark_task_id": None, "repeat_index": repeat_index, "error": str(exc)}
 
-    tasks = [_submit_one(seg) for seg in request.segments]
+    # Pre-read frame images for segments with repeat > 1 to avoid re-reading
+    frame_data_cache: Dict[int, str] = {}
+    for seg in request.segments:
+        if seg.repeat > 1:
+            frame_info = frame_map.get(seg.frame_index)
+            if frame_info:
+                frame_path = os.path.join(pack_directory, frame_info["filename"])
+                try:
+                    async with aiofiles.open(frame_path, "rb") as img_file:
+                        img_bytes = await img_file.read()
+                    frame_data_cache[seg.frame_index] = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
+                except Exception:
+                    pass  # Will be handled in _submit_one
+
+    # Build task list: each segment may produce multiple tasks based on repeat
+    tasks = []
+    for seg in request.segments:
+        repeat_count = seg.repeat
+        cached_uri = frame_data_cache.get(seg.frame_index)
+        for ri in range(repeat_count):
+            tasks.append(_submit_one(seg, repeat_index=ri, frame_data_uri=cached_uri))
+
     task_results = await asyncio.gather(*tasks)
 
-    # Cache task mappings
+    # Cache task mappings: frame_index -> [ark_task_id, ...]
     if len(_pack_video_tasks) >= _PACK_CACHE_MAX_SIZE:
         oldest = next(iter(_pack_video_tasks))
         del _pack_video_tasks[oldest]
 
-    _pack_video_tasks[request.pack_id] = {
-        r["frame_index"]: r["ark_task_id"]
-        for r in task_results
-        if r.get("ark_task_id")
-    }
+    cache_map: Dict[int, List[str]] = {}
+    for r in task_results:
+        if r.get("ark_task_id"):
+            fi = r["frame_index"]
+            if fi not in cache_map:
+                cache_map[fi] = []
+            cache_map[fi].append(r["ark_task_id"])
+
+    # Merge with existing cache for this pack (in case of incremental generation)
+    existing = _pack_video_tasks.get(request.pack_id, {})
+    for fi, ids in cache_map.items():
+        existing[fi] = ids
+    _pack_video_tasks[request.pack_id] = existing
 
     logger.info(f"Batch video: {len(task_results)} tasks submitted for pack {request.pack_id}")
     return task_results
@@ -557,27 +585,30 @@ async def get_batch_video_status(pack_id: str) -> List[dict]:
         return []
 
     statuses: List[dict] = []
-    for frame_index, ark_task_id in task_map.items():
-        try:
-            status_resp = await ark_video_service.get_status(ark_task_id)
-            statuses.append({
-                "frame_index": frame_index,
-                "ark_task_id": ark_task_id,
-                "status": status_resp.status,
-                "video_url": status_resp.video_url,
-                "thumbnail_url": status_resp.thumbnail_url,
-                "error": status_resp.error,
-            })
-        except Exception as exc:
-            logger.error(f"Failed to query status for task {ark_task_id}: {exc}")
-            statuses.append({
-                "frame_index": frame_index,
-                "ark_task_id": ark_task_id,
-                "status": "failed",
-                "video_url": None,
-                "thumbnail_url": None,
-                "error": str(exc),
-            })
+    for frame_index, ark_task_ids in task_map.items():
+        for repeat_index, ark_task_id in enumerate(ark_task_ids):
+            try:
+                status_resp = await ark_video_service.get_status(ark_task_id)
+                statuses.append({
+                    "frame_index": frame_index,
+                    "ark_task_id": ark_task_id,
+                    "repeat_index": repeat_index,
+                    "status": status_resp.status,
+                    "video_url": status_resp.video_url,
+                    "thumbnail_url": status_resp.thumbnail_url,
+                    "error": status_resp.error,
+                })
+            except Exception as exc:
+                logger.error(f"Failed to query status for task {ark_task_id}: {exc}")
+                statuses.append({
+                    "frame_index": frame_index,
+                    "ark_task_id": ark_task_id,
+                    "repeat_index": repeat_index,
+                    "status": "failed",
+                    "video_url": None,
+                    "thumbnail_url": None,
+                    "error": str(exc),
+                })
 
     return statuses
 

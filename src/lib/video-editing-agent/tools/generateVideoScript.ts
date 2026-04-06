@@ -106,7 +106,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
         const data = await parseToolResponse<{
           success: boolean;
           error?: string;
-          segments?: Array<{ title: string; scriptText: string }>;
+          segments?: Array<{ title: string; scriptText: string; narrationText?: string }>;
         }>(response);
 
         if (!data.success || !('segments' in data) || !data.segments) {
@@ -114,22 +114,31 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        // Build full script content from segments
-        const segments: Array<{ title: string; scriptText: string }> = data.segments;
+        // Build segments with narration text (fallback to scriptText if missing)
+        const segments = data.segments.map(seg => ({
+          title: seg.title,
+          scriptText: seg.scriptText,
+          narrationText: seg.narrationText || seg.scriptText,
+        }));
+
+        // Build full script content from segments (markdown for display)
         const fullContent = segments
           .map((seg, i) => `## ${i + 1}. ${seg.title}\n\n${seg.scriptText}`)
           .join('\n\n');
 
-        // Record operation for client-side store update
+        // Record structured operation with narration data
+        // NOTE: only one recordOperation per toolCallId — Map.set overwrites previous entries.
+        // The AgentEventRouter handles building markdown content from structured segments.
         context.recordOperation(toolCallId, {
-          type: 'set_script',
-          content: fullContent,
+          type: 'set_script_with_narration',
+          segments,
           scriptType: 'ai_generated',
         });
 
-        // Compute summary metrics
+        // Compute summary metrics using narration text for duration estimation
+        const narrationContent = segments.map(s => s.narrationText).join(' ');
         const wordCount = fullContent.length;
-        const estimatedDuration = estimateDuration(fullContent);
+        const estimatedDuration = estimateDuration(narrationContent);
         const preview =
           fullContent.length > 200 ? fullContent.slice(0, 200) + '...' : fullContent;
 
@@ -140,8 +149,9 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
             word_count: wordCount,
             estimated_duration: estimatedDuration,
             segment_count: segments.length,
+            has_narration: segments.every(s => !!s.narrationText),
           },
-          message: `Generated ${segments.length}-scene script (${wordCount} chars, ~${estimatedDuration}s)`,
+          message: `Generated ${segments.length}-scene script with narration (${wordCount} chars, ~${estimatedDuration}s)`,
         };
 
         return {

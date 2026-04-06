@@ -3,6 +3,7 @@ import { MaterialItem, MaterialType, StoryboardGenerateParams, StoryboardPack } 
 import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocale } from '@/contexts/LocaleContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
 import { generateStoryboard } from '@/lib/api/storyboard';
@@ -98,6 +99,8 @@ async function extractVideoThumbnail(videoUrl: string): Promise<string | null> {
 export const useMaterialManagement = (taskId: string, initialMaterials: MaterialItem[] = []): UseMaterialManagementReturn => {
   // 获取当前用户信息
   const { user } = useAuth();
+  const { t } = useLocale();
+  const clearMaterials = useVideoEditingStore(state => state.clearMaterials);
 
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
@@ -1058,6 +1061,30 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     return pack;
   }, [logger]);
 
+  // 清除所有素材
+  const handleClearAllMaterials = useCallback((onAfterClear?: () => void) => {
+    if (isUploading) {
+      return;
+    }
+    const count = materials.length;
+    if (count === 0) return;
+
+    setConfirmationDialog({
+      isOpen: true,
+      title: t.materialsPanel.clearAllConfirmTitle,
+      message: t.materialsPanel.clearAllConfirmMessage.replace('{count}', String(count)),
+      type: 'danger',
+      onConfirm: () => {
+        logger.info('用户确认清除所有素材', { count });
+        setMaterials([]);
+        setSelectedMaterials(new Set());
+        clearMaterials();
+        onAfterClear?.();
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  }, [materials.length, isUploading, clearMaterials, t, logger]);
+
   // 过滤后的素材列表
   const filteredMaterials = useMemo(() => {
     if (selectedMaterialType === 'all') {
@@ -1086,6 +1113,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleAiVideoGenerate,
     handleAiImageGenerate,
     handleStoryboardGenerate,
+    handleClearAllMaterials,
   };
 };
 

@@ -548,11 +548,68 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [materialManagement.allMaterials]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync: Zustand scriptStore → content.scriptSegments
-  // When Agent generates a script via SSE operation, it writes to the Zustand store.
+  // Sync: Zustand scriptSegmentsData → content.scriptSegments (structured data with narration)
+  // When Agent generates a script with narration via set_script_with_narration operation,
+  // it writes structured segments data to the store. Build ScriptSegment[] with narrationText.
+  const storeScriptSegmentsData = useVideoEditingStore(state => state.scriptSegmentsData);
+  const storeScriptType = useVideoEditingStore(state => state.scriptType);
+  useEffect(() => {
+    if (!storeScriptSegmentsData || storeScriptSegmentsData.length === 0) return;
+    console.log('[VideoEditingInterface] Structured script segments sync triggered:', {
+      segmentCount: storeScriptSegmentsData.length,
+      scriptType: storeScriptType,
+    });
+
+    // Build ScriptSegment[] from structured data, preserving narrationText
+    const segments: ScriptSegment[] = storeScriptSegmentsData.map((seg, i) => {
+      // Split scriptText into sentences for the sentences array
+      const sentenceTexts = seg.scriptText
+        .split(/(?<=[。！？.!?])\s*/)
+        .filter(s => s.trim().length > 0);
+      return {
+        id: `agent-segment-${i}`,
+        title: seg.title,
+        sentences: sentenceTexts.map((s, j) => ({ id: `agent-s-${i}-${j}`, text: s.trim() })),
+        narrationText: seg.narrationText,
+      };
+    });
+
+    const update: Partial<VideoEditingTaskContent> = {
+      scriptSegments: segments,
+    };
+
+    // Sync to AI Video Script tab with narrationText preserved
+    if (storeScriptType === 'ai_generated') {
+      update.aiVideoScriptSegments = segments.map((seg, i) => ({
+        id: `ai-script-${Date.now()}-${i}`,
+        title: seg.title,
+        scriptText: seg.sentences.map(s => s.text).join(' '),
+        narrationText: seg.narrationText,
+      }));
+    }
+
+    const baseContent = contentRef.current ?? {
+      markdownContent: '',
+      lastModified: new Date(),
+      scriptSegments: [],
+      aiVideoScriptSegments: [],
+      storyboardScriptSegments: [],
+    } as VideoEditingTaskContent;
+
+    console.log('[VideoEditingInterface] Updating content with', segments.length, 'structured script segments (with narration)');
+    onUpdateContent({
+      ...baseContent,
+      ...update,
+    });
+
+    // Reset the store after syncing
+    useVideoEditingStore.getState().resetScript();
+  }, [storeScriptSegmentsData, storeScriptType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync: Zustand scriptStore → content.scriptSegments (legacy text-based path)
+  // When Agent generates a script via SSE operation using set_script, it writes to the Zustand store.
   // Convert the raw text into ScriptSegment[] and update content so ScriptPanel re-renders.
   const storeScriptContent = useVideoEditingStore(state => state.scriptContent);
-  const storeScriptType = useVideoEditingStore(state => state.scriptType);
   useEffect(() => {
     if (!storeScriptContent) return;
     console.log('[VideoEditingInterface] Script store sync triggered:', {
@@ -853,8 +910,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       if (result.success && result.segments) {
         const newSegments: AIVideoScriptSegment[] = result.segments.map(
-          (seg: { title: string; scriptText: string }) =>
-            createAIVideoSegment(seg.title, seg.scriptText)
+          (seg: { title: string; scriptText: string; narrationText?: string }) =>
+            createAIVideoSegment(seg.title, seg.scriptText, seg.narrationText)
         );
         const existing = content?.aiVideoScriptSegments || [];
         handleUpdateAIVideoScriptSegments([...existing, ...newSegments]);

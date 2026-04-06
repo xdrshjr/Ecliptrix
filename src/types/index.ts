@@ -367,6 +367,7 @@ export interface WorkflowTaskContent {
 export interface ScriptSentence {
   id: string;
   text: string;
+  narration?: string; // 解说文案（对应该句的旁白文本）
   startTime?: number; // 预留给未来的时间轴功能
   endTime?: number;
 }
@@ -375,6 +376,7 @@ export interface ScriptSegment {
   id: string;
   title: string; // 视频片段标题
   sentences: ScriptSentence[];
+  narrationText?: string; // 解说文案（整段的旁白文本，TTS优先使用）
   duration?: number; // 预留给未来的时长信息
   thumbnail?: string; // 预留给未来的缩略图
   videos?: MaterialItem[]; // 关联的视频素材
@@ -385,6 +387,7 @@ export interface AIVideoScriptSegment {
   id: string;
   title: string;
   scriptText: string;
+  narrationText?: string; // 解说文案（对应该段的旁白文本）
   /** Video duration in seconds (4-12) */
   duration?: number;
   /** Generation mode: description (reference images) or keyframe (first/last frame) */
@@ -505,6 +508,17 @@ export interface StoryboardGenerateParams {
   referenceImage?: string;    // base64 data URI
 }
 
+/** A single candidate video generated for a storyboard segment */
+export interface StoryboardVideoCandidate {
+  id: string;                    // unique ID (frontend-generated UUID)
+  arkTaskId: string;             // ARK task ID
+  status: 'generating' | 'succeeded' | 'failed';
+  progress: number;              // 0-100
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  error?: string;
+}
+
 /** A storyboard script segment for AI video generation from storyboard frames */
 export interface StoryboardScriptSegment {
   id: string;
@@ -519,6 +533,10 @@ export interface StoryboardScriptSegment {
   generatedVideoUrl?: string;
   generatedVideoThumbnailUrl?: string;
   generationError?: string;
+  // Multi-video candidates (only present for multi-video generation)
+  videoCandidates?: StoryboardVideoCandidate[];
+  // User-selected candidate video ID
+  selectedCandidateId?: string;
 }
 
 // Materials Management related types

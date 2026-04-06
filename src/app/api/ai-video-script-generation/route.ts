@@ -117,23 +117,26 @@ const buildAIVideoScriptPrompt = (
       `Keep each scene's scriptText within ${Math.round((durationTarget / config.segmentCount) * 4)} Chinese characters or ${Math.round((durationTarget / config.segmentCount) * 2.5)} English words.`
     : '';
 
-  return `You are an expert AI video script writer. Based on the following content, create a series of video scene descriptions optimized for AI video generation.
+  return `You are an expert AI video script writer. Based on the following content, create a series of video scene descriptions optimized for AI video generation, along with narration scripts for voiceover.
 
 ${contentSection}
 
 Requirements:
 1. Create exactly ${config.segmentCount} scenes
-2. Each scene needs a short descriptive title and a detailed script text
-3. The script text for each scene should be a vivid visual description suitable as a prompt for AI video generation (describe what should appear in the video: characters, actions, environments, lighting, camera angles, mood)
-4. ${languageInstruction}
-5. ${consistencyInstruction}${customInstructions}${durationConstraint}
+2. Each scene needs:
+   - A short descriptive title
+   - A scriptText: vivid visual description suitable as a prompt for AI video generation (describe what should appear in the video: characters, actions, environments, lighting, camera angles, mood)
+   - A narrationText: voiceover narration script that will be converted to speech via TTS. This should be conversational, narrative text suitable for spoken delivery — NOT visual descriptions. Write it as if a narrator is telling a story or explaining to the audience.
+3. ${languageInstruction}
+4. ${consistencyInstruction}${customInstructions}${durationConstraint}
 
 Return the result as a JSON object with this exact structure:
 {
   "segments": [
     {
       "title": "Scene title describing the scene",
-      "scriptText": "Detailed visual description for AI video generation. Describe the scene, characters, actions, environment, lighting, and mood."
+      "scriptText": "Detailed visual description for AI video generation. Describe the scene, characters, actions, environment, lighting, and mood.",
+      "narrationText": "Voiceover narration script for this scene. Written in a conversational, narrative tone suitable for TTS speech synthesis."
     }
   ]
 }
@@ -141,8 +144,10 @@ Return the result as a JSON object with this exact structure:
 Important:
 - Return ONLY the JSON object, no additional text
 - Each scriptText should be 2-4 sentences of vivid visual description
-- Titles should be concise (under 20 characters)
-- Focus on visual elements that AI video generation can render well`;
+- Each narrationText should be 2-4 sentences of engaging spoken narration
+- scriptText focuses on VISUAL elements (what the viewer sees)
+- narrationText focuses on SPOKEN content (what the viewer hears as voiceover)
+- Titles should be concise (under 20 characters)`;
 };
 
 export async function POST(request: NextRequest) {
@@ -267,9 +272,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate and normalize segments
-    const segments = scriptData.segments.map((seg: { title?: string; scriptText?: string }, index: number) => ({
+    const segments = scriptData.segments.map((seg: { title?: string; scriptText?: string; narrationText?: string }, index: number) => ({
       title: seg.title || `Scene ${index + 1}`,
       scriptText: seg.scriptText || '',
+      narrationText: seg.narrationText || seg.scriptText || '', // fallback to scriptText if narrationText missing
     }));
 
     console.log(`[AI Video Script Generation API] Generated ${segments.length} scenes for task: ${taskId}`);
