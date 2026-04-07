@@ -176,6 +176,42 @@ else
   record_fail
 fi
 
+# Guard #7 — no `window.open('/api/...')` or `link.href = '/api/...'` literal
+# string in src/. Browser-direct downloads (anchor click, window.open) cannot
+# carry the Authorization header that http-client.ts injects, so any auth-
+# required endpoint hit this way will 401. Use http.download(...) instead.
+#
+# Added in Phase 3.8 after the dev-server test on 2026-04-07 caught
+# useVideoExport.ts using window.open('/api/video-compose/.../download').
+#
+# This guard only catches LITERAL string forms (`/api/x` inside the same
+# expression). Variable forms (`window.open(audioUrl)` where audioUrl is a
+# Blob URL OR an allowlisted /api/audio/generated/ URL) are intentionally
+# NOT caught — those are legitimate.
+# Filter out comment lines (`// ...`, ` * ...` JSDoc continuations) by
+# excluding lines whose content (after the file:line: prefix) starts with
+# a comment marker. This prevents the explanatory docstrings in
+# http-client.ts / videoComposition.ts / useVideoExport.ts that *describe*
+# the bug from being counted as actual call sites.
+G7_OPEN=$(grep -rE "window\.open\(['\"\`]/api/" src \
+  --include='*.ts' --include='*.tsx' 2>/dev/null \
+  | grep -vE ":[[:space:]]*(//|\*)" \
+  | grep -v '__tests__' \
+  | wc -l | tr -d ' ')
+G7_HREF=$(grep -rE "\.href[[:space:]]*=[[:space:]]*['\"\`]/api/" src \
+  --include='*.ts' --include='*.tsx' 2>/dev/null \
+  | grep -vE ":[[:space:]]*(//|\*)" \
+  | grep -v '__tests__' \
+  | wc -l | tr -d ' ')
+G7_TOTAL=$((G7_OPEN + G7_HREF))
+if [ "$G7_TOTAL" = "0" ]; then
+  mark_pass "G7 no window.open('/api/...') or .href='/api/...' in src/ (Phase 3.8 hardened guard)"
+  record_pass
+else
+  mark_fail "G7 found $G7_OPEN window.open + $G7_HREF .href literal '/api/' assignments in src/ (use http.download instead)"
+  record_fail
+fi
+
 # Guard #6 — every app.mount() in main.py has a matching ALLOWLIST_PREFIX entry
 # Added in Phase 3.7 after the dev-server test served 401 on a /api/audio/generated/
 # TTS file. The original spec only enumerated /api/storage/files/, missing 2 of the

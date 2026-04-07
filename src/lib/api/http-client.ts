@@ -607,6 +607,75 @@ async function streamRequest(
   return response;
 }
 
+// ---------------------------------------------------------------------------
+// Authenticated file download — fetch the bytes via the wrapper (so the
+// Authorization header is injected), wrap in a Blob, then trigger a
+// programmatic browser download via a hidden <a download> element.
+//
+// Why this exists
+// ---------------
+// `<a href="/api/.../download" download>` and `window.open('/api/.../download')`
+// both issue raw browser GETs that CANNOT carry the Authorization header that
+// the http-client wrapper would otherwise inject. After T01 strict middleware
+// shipped, every such direct browser navigation to an auth-required endpoint
+// returns 401. The dev-server test on 2026-04-07 caught this on
+// /api/video-compose/{id}/download.
+//
+// The fix is to fetch the bytes with auth, hold them as a Blob, and trigger
+// the download from a local Blob URL — local Blob URLs need no auth.
+//
+// Caveat: this loads the entire file into memory. For very large files
+// (>~500MB) this will pressure the browser; in that case the right answer
+// is signed URLs (Risk R3 in master-plan, deferred ticket).
+// ---------------------------------------------------------------------------
+
+interface DownloadOptions extends RequestOptions {
+  /** HTTP method (defaults to GET). */
+  method?: HttpMethod;
+  /** Optional JSON body for POST-style downloads. */
+  body?: unknown;
+}
+
+async function downloadFile(
+  path: string,
+  filename: string,
+  opts: DownloadOptions = {},
+): Promise<void> {
+  assertBrowser();
+  // streamRequest already handles auth, 401 redirect, 4xx/5xx envelopes —
+  // we just need the raw Response so we can call .blob() on it.
+  const response = await streamRequest(path, opts.body, {
+    method: opts.method ?? 'GET',
+    requireAuth: opts.requireAuth,
+    timeoutMs: opts.timeoutMs ?? 600_000, // 10 min default — large files
+    signal: opts.signal,
+    headers: opts.headers,
+  });
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  try {
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.style.display = 'none';
+    // Some browsers ignore the download attribute on cross-origin URLs;
+    // a Blob URL is same-origin so this is safe.
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } finally {
+    // Defer revocation until the download has actually started. 100ms is the
+    // standard incantation; the spec doesn't require it but cleaning up the
+    // Blob URL during the same tick has been observed to cancel the download
+    // in some Chromium versions.
+    setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 100);
+  }
+}
+
 export const http = {
   get<T>(path: string, opts?: RequestOptions): Promise<T> {
     return request<T>('GET', path, undefined, opts);
@@ -639,6 +708,30 @@ export const http = {
     opts?: StreamRequestOptions,
   ): Promise<Response> {
     return streamRequest(path, body, opts);
+  },
+  /**
+   * Authenticated file download — fetches `path` with the Authorization
+   * header set, then triggers the browser to save the response body as
+   * `filename` via a hidden Blob URL link. Use this in place of
+   * `window.open('/api/.../download')` or `<a href download>` for any
+   * download URL whose endpoint requires auth.
+   *
+   * @param path     Same-origin path beginning with `/`
+   * @param filename Suggested filename for the saved file
+   * @param opts     Optional method/body/headers/timeout/signal
+   *
+   * @example
+   *   await http.download(
+   *     `/api/video-compose/${id}/download?task_id=${taskId}`,
+   *     `composed_${id}.mp4`,
+   *   );
+   */
+  download(
+    path: string,
+    filename: string,
+    opts?: DownloadOptions,
+  ): Promise<void> {
+    return downloadFile(path, filename, opts);
   },
 };
 

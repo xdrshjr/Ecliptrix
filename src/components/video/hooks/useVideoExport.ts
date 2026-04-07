@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
+import { http } from '@/lib/api/http-client';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -603,32 +604,36 @@ export const useVideoExport = ({
           `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
         );
       } catch (downloadError: any) {
-        console.error(`[useVideoExport] 自动下载失败，提供手动下载选项`, { 
-          taskId, 
-          error: downloadError.message 
+        console.error(`[useVideoExport] 自动下载失败，尝试 Blob 下载兜底`, {
+          taskId,
+          error: downloadError.message,
         });
-        
-        // 提供手动下载链接
+
+        // **Phase 3.8 (2026-04-07) bug fix.** Previously this fallback used
+        // `window.open('/api/.../download', '_blank')`, which opens a new
+        // tab with a raw browser GET — no Authorization header, so the
+        // T01 strict middleware returns 401 and the user sees "无法从网站上
+        // 提取文件" with no usable file. The new path uses `http.download`
+        // which fetches with auth and triggers a Blob-URL download.
         const downloadUrl = `/api/video-compose/${compositionResponse.composition_id}/download?task_id=${compositionRequest.task_id}`;
-        const fallbackMessage = `自动下载失败，请点击以下链接手动下载：\n${window.location.origin}${downloadUrl}`;
-        
-        // 复制链接到剪贴板（如果支持）
-        if (navigator.clipboard) {
-          try {
-            await navigator.clipboard.writeText(`${window.location.origin}${downloadUrl}`);
-            alert(`${fallbackMessage}\n\n下载链接已复制到剪贴板！`);
-          } catch {
-            alert(fallbackMessage);
-          }
-        } else {
-          alert(fallbackMessage);
+        const filename = `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`;
+        try {
+          await http.download(downloadUrl, filename, { timeoutMs: 600_000 });
+          console.log(`[useVideoExport] Blob 兜底下载成功`, { taskId });
+        } catch (blobError: any) {
+          // Both the primary `videoCompositionAPI.triggerDownload` and the
+          // Blob fallback have failed. Surface a clear error to the user
+          // rather than silently degrading.
+          console.error(`[useVideoExport] Blob 兜底下载也失败`, {
+            taskId,
+            primaryError: downloadError.message,
+            blobError: blobError?.message,
+          });
+          showError(
+            `视频导出已完成但下载失败：${blobError?.message || '未知错误'}。请刷新页面后重试，或联系技术支持。`,
+            10000,
+          );
         }
-        
-        // 尝试在新窗口打开下载链接
-        window.open(downloadUrl, '_blank');
-        
-        // 不抛出错误，因为我们已经提供了备用方案
-        console.log(`[useVideoExport] 已提供手动下载选项`, { taskId, downloadUrl });
       }
 
       setExportProgress(100); // 完成

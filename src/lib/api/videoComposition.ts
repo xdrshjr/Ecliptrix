@@ -154,31 +154,33 @@ export class VideoCompositionAPI {
   }
 
   /**
-   * Trigger automatic download of a composed video via a hidden anchor.
+   * Trigger authenticated download of a composed video.
    *
-   * Uses direct URL navigation rather than blob conversion so large files
-   * stream directly to disk without browser memory pressure. The anchor's
-   * href hits the same Next.js BFF route — the browser sends its cookies
-   * and the route forwards Authorization, so unauthenticated users still
-   * get rejected by the backend.
+   * **Phase 3.8 (2026-04-07) bug fix.** This previously used a hidden
+   * `<a href="/api/.../download" download>` anchor and called `link.click()`,
+   * which works in development WITHOUT auth but fails 401 against the strict
+   * T01 middleware in production: anchor-triggered downloads are raw browser
+   * GETs, the browser cannot inject the Authorization header that the
+   * http-client wrapper would normally add, and there is no cookie-based
+   * auth in this app. The dev-server test on 2026-04-07 caught this on
+   * `/api/video-compose/{id}/download`.
+   *
+   * The fix is `http.download(...)` — fetches the bytes via the wrapper
+   * (which DOES inject Authorization), then triggers the download from a
+   * local Blob URL. Memory cost: the entire file is held in browser memory
+   * until the save dialog dismisses; for very large composed videos this
+   * may pressure the browser. The principled long-term fix is signed URLs
+   * (master-plan §9 Risk R3 — deferred ticket).
    */
   async triggerDownload(compositionId: string, taskId?: string, filename?: string): Promise<void> {
     const downloadUrl = `/api/video-compose/${compositionId}/download${taskId ? `?task_id=${taskId}` : ''}`;
-
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = filename || `composed_video_${compositionId}.mp4`;
-    link.style.display = 'none';
-    link.target = '_blank';
-
-    document.body.appendChild(link);
-    link.click();
-
-    setTimeout(() => {
-      if (document.body.contains(link)) {
-        document.body.removeChild(link);
-      }
-    }, 100);
+    await http.download(
+      downloadUrl,
+      filename || `composed_video_${compositionId}.mp4`,
+      // Pattern C — long-running download. The proxy route already has a
+      // 600s server-side timeout; mirror it on the client.
+      { timeoutMs: 600_000 },
+    );
   }
 
   /**
