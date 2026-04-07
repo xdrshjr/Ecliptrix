@@ -3,3 +3,9 @@ static/uploads/
 venv/
 backend-services/basic-service/data/
 .web-debugger/
+
+# Local env files — were previously tracked, which silently overwrote
+# prod's BACKEND_URL on every tarball-extract deploy (2026-04-07 incident).
+# Use leading slash so .env.example and env-config/*/.env stay tracked.
+/.env
+/backend-services/basic-service/.env
