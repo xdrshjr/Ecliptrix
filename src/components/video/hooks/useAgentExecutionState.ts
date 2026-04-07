@@ -82,6 +82,16 @@ export interface StartExecutionParams {
   url?: string;
   /** JSON request body (messages, timelineState, materials). */
   body: unknown;
+  /**
+   * Extra request headers merged into the SSE fetch. The Agent SSE flow does
+   * NOT use the central `http-client.ts` wrapper (which auto-injects auth)
+   * because it needs streaming responses, so the caller must pass the
+   * `Authorization: Bearer <token>` header explicitly. Without it the
+   * server-side `readIncomingAuth()` returns undefined, every internal tool
+   * fetch goes unauthenticated, and the backend rejects each tool call with
+   * 401 — exactly the 2026-04-07 production incident.
+   */
+  headers?: Record<string, string>;
   /** Total timeout override (ms). */
   timeout?: number;
   /** Heartbeat timeout override (ms). */
@@ -201,6 +211,7 @@ export function useAgentExecutionState() {
       const manager = new SSEStreamManager({
         url: params.url ?? '/api/video-editing-agent/chat',
         body: params.body,
+        headers: params.headers,
         timeout: params.timeout,
         heartbeatTimeout: params.heartbeatTimeout,
         maxRetries: params.maxRetries,
