@@ -18,8 +18,14 @@
 #   sudo ./ops/deploy.sh --skip-build     # 跳过前端构建
 #   sudo ./ops/deploy.sh --skip-pull      # 跳过 git pull
 #   sudo ./ops/deploy.sh --skip-backup    # 跳过备份
+#   sudo ./ops/deploy.sh --skip-nginx     # 不重新渲染 nginx 站点（保留生产 HTTPS 配置）
+#   sudo ./ops/deploy.sh --force-nginx    # 强制覆盖 nginx 站点（即使含 listen 443 ssl）
 #   sudo ./ops/deploy.sh --branch=main    # 指定 git 分支
 #   sudo ./ops/deploy.sh --rollback       # 回滚到上一次备份
+#
+# 注意：install.sh 会在检测到现有 nginx 配置含 'listen 443 ssl' 时自动跳过，
+# 这是为了保护 certbot --nginx 加上去的 HTTPS 服务器块（仓库的模板是 HTTP-only 的）。
+# 如果你确实想用模板覆盖现有 HTTPS 配置，使用 --force-nginx。
 # =============================================================================
 
 set -euo pipefail
@@ -41,6 +47,8 @@ SKIP_DEPS=false
 SKIP_BUILD=false
 SKIP_PULL=false
 SKIP_BACKUP=false
+SKIP_NGINX=false
+FORCE_NGINX=false
 BRANCH=""
 ROLLBACK=false
 
@@ -50,12 +58,18 @@ for arg in "$@"; do
     --skip-build)  SKIP_BUILD=true ;;
     --skip-pull)   SKIP_PULL=true ;;
     --skip-backup) SKIP_BACKUP=true ;;
+    --skip-nginx)  SKIP_NGINX=true ;;
+    --force-nginx) FORCE_NGINX=true ;;
     --branch=*)    BRANCH="${arg#*=}" ;;
     --rollback)    ROLLBACK=true ;;
-    --help|-h)     head -n 24 "$0" | tail -n 22 ; exit 0 ;;
+    --help|-h)     head -n 30 "$0" | tail -n 28 ; exit 0 ;;
     *) warn "未知参数: $arg" ;;
   esac
 done
+
+if [[ "$SKIP_NGINX" == true ]] && [[ "$FORCE_NGINX" == true ]]; then
+  die "--skip-nginx 与 --force-nginx 不能同时使用"
+fi
 
 if [[ "$(id -u)" -ne 0 ]]; then
   die "本脚本需要 root 权限。请用 sudo 运行。"
@@ -157,7 +171,13 @@ fi
 # 5. 重新安装 systemd 服务并重启
 # ---------------------------------------------------------------------------
 log "[5/6] 重新安装 systemd 单元..."
-bash "$SCRIPT_DIR/install.sh" --no-start
+INSTALL_ARGS=(--no-start)
+[[ "$SKIP_NGINX" == true ]] && INSTALL_ARGS+=(--no-nginx)
+if [[ "$FORCE_NGINX" == true ]]; then
+  FORCE_NGINX=true bash "$SCRIPT_DIR/install.sh" "${INSTALL_ARGS[@]}"
+else
+  bash "$SCRIPT_DIR/install.sh" "${INSTALL_ARGS[@]}"
+fi
 ok "systemd 单元已更新"
 
 # ---------------------------------------------------------------------------

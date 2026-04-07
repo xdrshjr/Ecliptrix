@@ -131,27 +131,39 @@ if [[ "$NO_NGINX" == false ]] && [[ -n "${NGINX_DOMAIN:-}" ]] && command -v ngin
   NGINX_SRC="$TEMPLATES_DIR/${PROJECT_NAME}-nginx"
   NGINX_DST="/etc/nginx/sites-available/${NGINX_SITE_NAME}"
   if [[ -f "$NGINX_SRC" ]]; then
-    # 备份已有配置
-    if [[ -f "$NGINX_DST" ]]; then
-      cp "$NGINX_DST" "${NGINX_DST}.bak.$(date +%Y%m%d-%H%M%S)"
-      log "已备份原 nginx 配置"
-    fi
-    render_template "$NGINX_SRC" "$NGINX_DST"
-    chmod 644 "$NGINX_DST"
-    ln -sf "$NGINX_DST" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
-    if nginx -t 2>&1; then
-      systemctl reload nginx
-      ok "Nginx 配置已生效（${NGINX_DOMAIN}）"
+    # ----- 安全保护：如果已有配置含 HTTPS（443/SSL），不要覆盖 -----
+    # 模板是 HTTP-only 的；certbot --nginx 会向现有配置添加 `listen 443 ssl`
+    # 和证书路径。直接覆盖会让 HTTPS 站点下线。检测到 SSL 标记则跳过覆盖，
+    # 让 ops 同事用 --no-nginx 或手动维护配置。
+    # （要强制重新渲染模板，使用 --force-nginx。）
+    if [[ -f "$NGINX_DST" ]] && [[ "${FORCE_NGINX:-false}" != true ]] \
+       && grep -qE '^[[:space:]]*listen[[:space:]]+(\[::\]:)?443[[:space:]]+ssl' "$NGINX_DST"; then
+      warn "$NGINX_DST 已包含 'listen 443 ssl'（看起来是 certbot 管理的 HTTPS 配置）"
+      warn "为避免破坏 HTTPS 站点，跳过 nginx 模板覆盖。"
+      warn "如需强制覆盖：sudo FORCE_NGINX=true bash $0 ...（覆盖前会先备份）"
     else
-      error "nginx -t 校验失败！"
-      LATEST_BAK=$(ls -t "${NGINX_DST}.bak."* 2>/dev/null | head -1) || true
-      if [[ -n "$LATEST_BAK" ]]; then
-        cp "$LATEST_BAK" "$NGINX_DST"
-        warn "已恢复备份"
-      else
-        rm -f "$NGINX_DST" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
+      # 备份已有配置
+      if [[ -f "$NGINX_DST" ]]; then
+        cp "$NGINX_DST" "${NGINX_DST}.bak.$(date +%Y%m%d-%H%M%S)"
+        log "已备份原 nginx 配置"
       fi
-      die "nginx 配置安装失败"
+      render_template "$NGINX_SRC" "$NGINX_DST"
+      chmod 644 "$NGINX_DST"
+      ln -sf "$NGINX_DST" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
+      if nginx -t 2>&1; then
+        systemctl reload nginx
+        ok "Nginx 配置已生效（${NGINX_DOMAIN}）"
+      else
+        error "nginx -t 校验失败！"
+        LATEST_BAK=$(ls -t "${NGINX_DST}.bak."* 2>/dev/null | head -1) || true
+        if [[ -n "$LATEST_BAK" ]]; then
+          cp "$LATEST_BAK" "$NGINX_DST"
+          warn "已恢复备份"
+        else
+          rm -f "$NGINX_DST" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
+        fi
+        die "nginx 配置安装失败"
+      fi
     fi
   else
     warn "nginx 模板未找到，跳过"
