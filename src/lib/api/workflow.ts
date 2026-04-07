@@ -3,6 +3,7 @@
  * Handles agent workflow persistence operations
  */
 
+import { http } from '@/lib/api/http-client';
 import { WorkflowNode, WorkflowConnection } from '@/types';
 
 // API Types
@@ -52,140 +53,54 @@ export interface DeleteWorkflowResponse {
 }
 
 /**
- * Save an agent workflow to the backend
- * @param request SaveWorkflowRequest containing workflow data
- * @returns Promise<SaveWorkflowResponse> Saved workflow data
+ * Save an agent workflow to the backend.
  */
 export async function saveAgentWorkflow(
-  request: SaveWorkflowRequest
+  request: SaveWorkflowRequest,
 ): Promise<SaveWorkflowResponse> {
-  try {
-    console.log('[Workflow API] Saving agent workflow:', {
-      workflow_id: request.workflow_id,
-      workflow_name: request.workflow_name,
-      nodes_count: request.nodes.length,
-      connections_count: request.connections.length,
-    });
+  const data = await http.post<SaveWorkflowResponse>(
+    '/api/workflow/agent/save',
+    request,
+  );
 
-    const response = await fetch('/api/workflow/agent/save', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.detail || errorData.message || `HTTP error! status: ${response.status}`
-      );
-    }
-
-    const data: SaveWorkflowResponse = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to save workflow');
-    }
-
-    console.log('[Workflow API] Workflow saved successfully:', {
-      workflow_id: data.data.workflow_id,
-      version: data.data.version,
-    });
-
-    return data;
-  } catch (error) {
-    console.error('[Workflow API] Failed to save workflow:', error);
-    throw error;
+  if (!data.success) {
+    throw new Error(data.message || 'Failed to save workflow');
   }
+
+  return data;
 }
 
 /**
- * Load all agent workflows for a user
- * @param userId User ID to load workflows for
- * @returns Promise<LoadWorkflowsResponse> List of workflows
+ * Load all agent workflows for a user.
  */
 export async function loadAgentWorkflows(
-  userId: string
+  userId: string,
 ): Promise<LoadWorkflowsResponse> {
-  try {
-    console.log('[Workflow API] Loading agent workflows for user:', userId);
+  const data = await http.get<LoadWorkflowsResponse>(
+    `/api/workflow/agent/load/${userId}`,
+  );
 
-    const response = await fetch(`/api/workflow/agent/load/${userId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.detail || errorData.message || `HTTP error! status: ${response.status}`
-      );
-    }
-
-    const data: LoadWorkflowsResponse = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to load workflows');
-    }
-
-    console.log('[Workflow API] Workflows loaded successfully:', {
-      count: data.data.length,
-    });
-
-    return data;
-  } catch (error) {
-    console.error('[Workflow API] Failed to load workflows:', error);
-    throw error;
+  if (!data.success) {
+    throw new Error(data.message || 'Failed to load workflows');
   }
+
+  return data;
 }
 
 /**
- * Delete an agent workflow
- * @param userId User ID who owns the workflow
- * @param workflowId Workflow ID to delete
- * @returns Promise<DeleteWorkflowResponse> Deletion result
+ * Delete an agent workflow.
  */
 export async function deleteAgentWorkflow(
   userId: string,
-  workflowId: string
+  workflowId: string,
 ): Promise<DeleteWorkflowResponse> {
-  try {
-    console.log('[Workflow API] Deleting agent workflow:', {
-      user_id: userId,
-      workflow_id: workflowId,
-    });
+  const data = await http.del<DeleteWorkflowResponse>(
+    `/api/workflow/agent/delete/${userId}/${workflowId}`,
+  );
 
-    const response = await fetch(`/api/workflow/agent/delete/${userId}/${workflowId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.detail || errorData.message || `HTTP error! status: ${response.status}`
-      );
-    }
-
-    const data: DeleteWorkflowResponse = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to delete workflow');
-    }
-
-    console.log('[Workflow API] Workflow deleted successfully:', {
-      workflow_id: workflowId,
-    });
-
-    return data;
-  } catch (error) {
-    console.error('[Workflow API] Failed to delete workflow:', error);
-    throw error;
+  if (!data.success) {
+    throw new Error(data.message || 'Failed to delete workflow');
   }
-}
 
+  return data;
+}

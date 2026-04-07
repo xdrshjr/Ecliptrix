@@ -6,6 +6,7 @@ import { StoryboardScriptSegment, StoryboardPack, MaterialItem } from '@/types';
 import { useStoryboardScriptGeneration } from '../../hooks/useStoryboardScriptGeneration';
 import PackSelector from './PackSelector';
 import StoryboardSegmentCard from './StoryboardSegmentCard';
+import { http, ApiError } from '@/lib/api/http-client';
 
 interface StoryboardScriptTabProps {
   segments: StoryboardScriptSegment[];
@@ -110,19 +111,22 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
           }))
           .filter((_, i) => i !== segmentIndex);
 
-        const response = await fetch('/api/ai-video-script-expand', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        let data: any;
+        try {
+          data = await http.post<any>('/api/ai-video-script-expand', {
             taskId: taskId || 'unknown',
             segmentIndex,
             segmentTitle: `分镜 #${segmentIndex + 1}`,
             segmentText: segment.description,
             otherSegments,
-          }),
-        });
-
-        const data = await response.json();
+          }, { timeoutMs: 300_000 });
+        } catch (httpError) {
+          if (httpError instanceof ApiError) {
+            data = { success: false, error: httpError.message };
+          } else {
+            throw httpError;
+          }
+        }
         if (data.success && data.expandedText) {
           handleUpdateSegment(segmentId, {
             description: data.expandedText,

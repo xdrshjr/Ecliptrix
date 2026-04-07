@@ -5,6 +5,7 @@
 
 import { AudioSearchResponse } from '../types';
 import { VideoEditingLogger } from '../utils';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export interface AudioSearchService {
   searchAudios: (params: {
@@ -110,38 +111,24 @@ export class AudioSearchServiceImpl implements AudioSearchService {
       });
 
       const searchStartTime = performance.now();
-      const response = await fetch('/api/audio-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/audio-search', {
           query: query.trim(),
           max_audios: maxAudios,
           duration_min: durationMin,
           duration_max: durationMax,
           audio_type: audioType,
           sort_by: sortBy,
-        }),
-      });
+        });
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
 
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
-        const error = new Error(errorMessage);
-        this.logger.apiError('音频搜索请求', '/api/audio-search', error, {
+        this.logger.apiError('音频搜索请求', '/api/audio-search', httpError as Error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           query: query.trim()
         });
 
@@ -153,8 +140,6 @@ export class AudioSearchServiceImpl implements AudioSearchService {
           query
         };
       }
-
-      const data = await response.json();
       const searchEndTime = performance.now();
 
       // 验证响应格式

@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { backendConfig } from '@/lib/config/backend';
 import { createVideoEditingAgent, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
 import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+// SWEEP-EXCEPTION: third-party LLM Agent SDK with custom SSE/heartbeat lifecycle
+// ─────────────────────────────────────────────────────────────────────────
+// Pattern E (counted toward the 5-route escape-hatch budget).
+// This route hosts a long-running streaming LLM Agent — it cannot be a dumb
+// proxy. It does ONE backend call (`/api/model-settings/resolve/chat`) to
+// resolve credentials, then runs the Agent SDK locally with custom tool
+// invocation, heartbeat keepalive, and SSE event ID tracking. Only the
+// backend call was migrated to `backendConfig.baseUrl`.
+
 const AGENT_TIMEOUT = 600_000; // 10 minutes — storyboard generation can take 4+ minutes
 
 export const maxDuration = 600; // 10 minutes (for Vercel/serverless platforms)
 
 const getConfig = async () => {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/model-settings/resolve/chat`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const res = await fetch(
+      backendConfig.joinPath('/api/model-settings/resolve/chat'),
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.api_key) {
@@ -41,7 +53,6 @@ const getConfig = async () => {
 
 export async function POST(request: NextRequest) {
   try {
-    // Parse body as text first, then JSON — to get useful error logging if parsing fails
     const rawText = await request.text();
     let body: AgentChatRequest;
     try {
@@ -56,8 +67,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
     }
 
-    // Tolerate null/undefined timelineState and materials — new editor sessions
-    // may not have a timeline yet. Provide sensible defaults instead of rejecting.
     const effectiveTimelineState = timelineState && Array.isArray(timelineState.tracks)
       ? timelineState
       : {
@@ -91,17 +100,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`[VideoEditingAgent] Starting agent for: "${lastUserMessage.slice(0, 100)}"`);
 
-    // Read Last-Event-ID header for SSE resumption support
     const lastEventIdHeader = request.headers.get('Last-Event-ID');
     const lastEventId = lastEventIdHeader !== null ? parseInt(lastEventIdHeader, 10) : -1;
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // Incremental event ID counter for SSE deduplication / resumption.
-        // If the client reconnects with Last-Event-ID, we still emit all
-        // events (the server-side Agent re-runs), but the client can use
-        // the IDs to skip already-processed events.
         let eventIdCounter = 0;
 
         const send = (data: SSEEvent | string) => {
@@ -114,16 +118,13 @@ export async function POST(request: NextRequest) {
           }
         };
 
-        // Send stream-start comment to prevent proxy buffering
         controller.enqueue(encoder.encode(`: stream-start\n\n`));
 
-        // Log if this is a reconnection attempt
         if (lastEventId >= 0) {
           console.log(`[VideoEditingAgent] Reconnection detected — client last event ID: ${lastEventId}`);
         }
 
         try {
-          // Create agent
           const origin = new URL(request.url).origin;
           const { agent, toolContext } = createVideoEditingAgent({
             llmApiUrl: config.apiUrl,
@@ -136,7 +137,6 @@ export async function POST(request: NextRequest) {
             apiBaseUrl: origin,
           });
 
-          // Run agent with resettable timeout — resets on every tool activity
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           let rejectTimeout: ((err: Error) => void) | undefined;
           const resetTimeout = () => {
@@ -147,13 +147,6 @@ export async function POST(request: NextRequest) {
             }, AGENT_TIMEOUT);
           };
 
-          // -- Heartbeat keepalive during tool execution --
-          // When a tool is running (e.g., TTS generation taking 30+ seconds),
-          // the SSE stream is silent. Without periodic data, the client-side
-          // SSEStreamManager may trigger a heartbeat timeout and disconnect.
-          // We send SSE comments (`: heartbeat\n\n`) every 15 seconds while
-          // any tool is executing. SSE comments are ignored by the parser but
-          // the raw bytes reset the client's heartbeat timer.
           const HEARTBEAT_INTERVAL_MS = 15_000;
           let toolHeartbeatInterval: ReturnType<typeof setInterval> | null = null;
           let activeToolCount = 0;
@@ -165,7 +158,6 @@ export async function POST(request: NextRequest) {
                 try {
                   controller.enqueue(encoder.encode(': heartbeat\n\n'));
                 } catch {
-                  // Controller may be closed; clean up the interval
                   if (toolHeartbeatInterval !== null) {
                     clearInterval(toolHeartbeatInterval);
                     toolHeartbeatInterval = null;
@@ -191,12 +183,11 @@ export async function POST(request: NextRequest) {
             activeToolCount = 0;
           };
 
-          // Subscribe to events and forward as SSE, with timeout reset on tool activity
           subscribeAgentEvents(agent, toolContext, send, resetTimeout, startToolHeartbeat, stopToolHeartbeat);
 
           const timeoutPromise = new Promise<never>((_, reject) => {
             rejectTimeout = reject;
-            resetTimeout(); // start initial timeout
+            resetTimeout();
           });
 
           try {

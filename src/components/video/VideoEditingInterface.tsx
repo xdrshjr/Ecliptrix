@@ -29,6 +29,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { analyzeVideosInBatch, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
+import { http, ApiError } from '@/lib/api/http-client';
 import {
   DocumentPanel,
   AIAssistantPanel,
@@ -891,22 +892,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsGeneratingAIVideoScript(true);
 
     try {
-      const response = await fetch('/api/ai-video-script-generation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/ai-video-script-generation', {
           taskId,
           scriptConfig: config,
           chatMessages,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `API error: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `API error: ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const result = await response.json();
 
       if (result.success && result.segments) {
         const newSegments: AIVideoScriptSegment[] = result.segments.map(
@@ -2032,23 +2030,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       });
 
       // 调用AI混剪API
-      const response = await fetch('/api/ai-mixed-editing', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/ai-mixed-editing', {
           taskId: taskId,
           materials: materialManagement.materials
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `HTTP error! status: ${httpError.status}`);
+        }
+        throw httpError;
       }
 
-      const result = await response.json();
       console.log(`[VideoEditingInterface] AI混剪API调用成功`, {
         taskId,
         hasTimelineData: !!result.timelineData,
@@ -2068,32 +2062,28 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           timestamp: new Date().toISOString()
         });
         
-        const importResponse = await fetch('/api/timeline-import', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        let importResult: any;
+        try {
+          importResult = await http.post<any>('/api/timeline-import', {
             taskId: taskId,
             fileContent: JSON.stringify(result.timelineData),
             fileName: `ai-mixed-editing-${Date.now()}.json`,
             mergeMode: 'replace',
             preserveIds: true  // AI混剪时保持素材ID，以便与现有素材对应
-          }),
-        });
-
-        if (!importResponse.ok) {
-          const importErrorData = await importResponse.json();
+          }, { timeoutMs: 300_000 });
+        } catch (httpError) {
           console.error(`[VideoEditingInterface] Timeline import API调用失败`, {
             taskId,
-            status: importResponse.status,
-            error: importErrorData,
+            status: httpError instanceof ApiError ? httpError.status : undefined,
+            error: httpError,
             timestamp: new Date().toISOString()
           });
-          throw new Error(importErrorData.error || `Timeline import failed: ${importResponse.status}`);
+          if (httpError instanceof ApiError) {
+            throw new Error(httpError.message || `Timeline import failed: ${httpError.status}`);
+          }
+          throw httpError;
         }
 
-        const importResult = await importResponse.json();
         console.log(`[VideoEditingInterface] Timeline import API调用成功`, {
           taskId,
           success: importResult.success,
@@ -2343,27 +2333,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         });
 
         // 加载工作流配置偏好设置
-        const preferencesResponse = await fetch('/api/workflow-preferences/load', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: user.id
-          }),
-        });
-
-        if (!preferencesResponse.ok) {
+        const { load: loadWorkflowPrefs } = await import('@/lib/api/workflowPreferences');
+        let preferencesResult: Awaited<ReturnType<typeof loadWorkflowPrefs>> | null = null;
+        try {
+          preferencesResult = await loadWorkflowPrefs(user.id);
+        } catch (err) {
           console.warn('[VideoEditingInterface] 加载工作流配置偏好失败，使用空配置', {
             taskId,
-            status: preferencesResponse.status,
+            error: err instanceof Error ? err.message : String(err),
             timestamp: new Date().toISOString()
           });
           return;
         }
 
-        const preferencesResult = await preferencesResponse.json();
-        
         if (preferencesResult.success && preferencesResult.preferences) {
           // 转换偏好设置对象为 Map
           const preferencesMap = new Map<string, {
@@ -2589,20 +2571,18 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timestamp: new Date().toISOString()
       });
       
-      const response = await fetch('/api/video-editing-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let response: Response;
+      try {
+        response = await http.stream('/api/video-editing-chat', {
           taskId: taskId,
           messages: messagesWithUser,
           workflowConfigs: enabledWorkflowConfigs,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(`HTTP error! status: ${httpError.status}`);
+        }
+        throw httpError;
       }
 
       const reader = response.body?.getReader();

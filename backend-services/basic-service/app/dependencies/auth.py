@@ -48,10 +48,26 @@ async def get_current_user(
 ) -> User:
     """Authenticate the caller by session token and return the User object.
 
+    Fast path: if ``SessionAuthMiddleware`` has already validated this request
+    (the normal production case), it will have populated ``request.state.user``
+    with the resolved ORM instance. We return that immediately and skip the
+    duplicate database lookup.
+
+    Slow path: when this dependency is invoked outside of the middleware
+    pipeline (e.g. in a unit test that builds a bare ``TestClient`` without
+    registering ``SessionAuthMiddleware``), we fall back to the original
+    extract-and-query logic so existing tests keep working.
+
     Raises:
         HTTPException 401: No token provided, or token does not match any active session.
         HTTPException 403: User account is disabled (is_active=False).
     """
+    # Fast path — middleware-populated user. ``request.state`` is a Starlette
+    # ``State`` object; missing attributes raise AttributeError, hence getattr.
+    cached_user = getattr(request.state, "user", None)
+    if cached_user is not None and isinstance(cached_user, User):
+        return cached_user
+
     token = _extract_token(request)
     if not token:
         logger.warning("Authentication failed: no session token in request")

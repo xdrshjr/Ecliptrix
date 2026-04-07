@@ -35,6 +35,7 @@ import {
   truncateChatMessages,
   serializeChatMessages,
 } from '@/lib/utils/chatMessageUtils';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -375,32 +376,32 @@ export function useEnhancedScriptGeneration(
           customRequirements: '',
         };
 
-        const response = await fetch('/api/ai-video-script-generation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId,
-            scriptConfig: config,
-            chatMessages: chatMsgs,
-            customPrompt: trimmedPrompt,
-            videoAnalysisContext: videoContext,
-            selectedVideos: selectedVideos.map((v) => ({
-              id: v.id,
-              title: v.name,
-              url: v.url,
-              duration: v.duration,
-            })),
-          }),
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(
-            errData.error || `HTTP error! status: ${response.status}`,
+        let result: { success: boolean; segments: any[]; error?: string };
+        try {
+          result = await http.post<{ success: boolean; segments: any[]; error?: string }>(
+            '/api/ai-video-script-generation',
+            {
+              taskId,
+              scriptConfig: config,
+              chatMessages: chatMsgs,
+              customPrompt: trimmedPrompt,
+              videoAnalysisContext: videoContext,
+              selectedVideos: selectedVideos.map((v) => ({
+                id: v.id,
+                title: v.name,
+                url: v.url,
+                duration: v.duration,
+              })),
+            },
+            { timeoutMs: 600_000 },
           );
+        } catch (httpError) {
+          if (httpError instanceof ApiError) {
+            throw new Error(httpError.message || `HTTP error! status: ${httpError.status}`);
+          }
+          throw httpError;
         }
 
-        const result = await response.json();
         if (!result.success) {
           throw new Error(result.error || 'AI视频脚本生成失败');
         }
@@ -453,30 +454,47 @@ export function useEnhancedScriptGeneration(
               referenceTextLength: (referenceText || '').length,
             });
           } else {
-            // Fallback: call the API directly
-            // Pass raw referenceText + separate chatMessages/customPrompt
-            // The API route's enrichReferenceText will merge them
-            const response = await fetch('/api/video-understanding-script', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                selectedVideos,
-                referenceText: referenceText || '',
-                parameters: scriptParameters,
-                taskId,
-                chatMessages: chatMsgs,
-                customPrompt: trimmedPrompt,
-              }),
-            });
+            // Fallback: call the API directly.
+            // T04 reduced /api/video-understanding-script to a dumb passthrough,
+            // so we now enrich `referenceText` (chatMessages + customPrompt)
+            // here at the call site. This mirrors the same merge that
+            // useVideoUnderstandingScript performs when delegated to.
+            const [{ truncateChatMessages, serializeChatMessages }, { http }] = await Promise.all([
+              import('@/lib/utils/chatMessageUtils'),
+              import('@/lib/api/http-client'),
+            ]);
 
-            if (!response.ok) {
-              const errData = await response.json().catch(() => ({}));
-              throw new Error(
-                errData.error || `HTTP error! status: ${response.status}`,
-              );
+            const enrichedParts: string[] = [];
+            if (referenceText && referenceText.trim()) {
+              enrichedParts.push(referenceText.trim());
             }
+            if (chatMsgs && chatMsgs.length > 0) {
+              const truncated = truncateChatMessages(chatMsgs);
+              const serialized = serializeChatMessages(truncated);
+              if (serialized) {
+                enrichedParts.push(`【对话参考】\n${serialized}`);
+              }
+            }
+            if (trimmedPrompt) {
+              enrichedParts.push(`【用户需求】\n${trimmedPrompt}`);
+            }
+            const enrichedReferenceText = enrichedParts.join('\n\n');
 
-            const result = await response.json();
+            const result = await http.post<{
+              success: boolean;
+              error?: string;
+              segments: ScriptSegment[];
+            }>(
+              '/api/video-understanding-script',
+              {
+                taskId,
+                selectedVideos,
+                referenceText: enrichedReferenceText,
+                parameters: scriptParameters,
+              },
+              { timeoutMs: 300_000 },
+            );
+
             if (!result.success) {
               throw new Error(result.error || '脚本生成失败');
             }
@@ -499,26 +517,26 @@ export function useEnhancedScriptGeneration(
             markdownParts.push(referenceText.trim());
           }
 
-          const response = await fetch('/api/video-script-generation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              markdownContent: markdownParts.join('\n\n'),
-              taskId,
-              scriptConfig: config,
-              chatMessages: chatMsgs,
-              customPrompt: trimmedPrompt,
-            }),
-          });
-
-          if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(
-              errData.error || `HTTP error! status: ${response.status}`,
+          let result: { success: boolean; segments: any[]; error?: string };
+          try {
+            result = await http.post<{ success: boolean; segments: any[]; error?: string }>(
+              '/api/video-script-generation',
+              {
+                markdownContent: markdownParts.join('\n\n'),
+                taskId,
+                scriptConfig: config,
+                chatMessages: chatMsgs,
+                customPrompt: trimmedPrompt,
+              },
+              { timeoutMs: 600_000 },
             );
+          } catch (httpError) {
+            if (httpError instanceof ApiError) {
+              throw new Error(httpError.message || `HTTP error! status: ${httpError.status}`);
+            }
+            throw httpError;
           }
 
-          const result = await response.json();
           if (!result.success) {
             throw new Error(result.error || '脚本生成失败');
           }

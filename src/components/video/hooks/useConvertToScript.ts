@@ -408,27 +408,28 @@ export const useConvertToScript = (
       });
 
       // 调用API生成脚本
-      const response = await fetch('/api/convert-to-script', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chatContent,
+      // The `chatContent → referenceText` rename was previously handled by
+      // `src/app/api/convert-to-script/route.ts`. T04 reduced that route to a
+      // dumb passthrough, so the rename now happens here at the call site —
+      // the backend pydantic model (`VideoUnderstandingScriptRequest`) uses
+      // `referenceText`.
+      const { http } = await import('@/lib/api/http-client');
+      const result = await http.post<{
+        success: boolean;
+        error?: string;
+        segments: ScriptSegment[];
+        metadata?: unknown;
+      }>(
+        '/api/convert-to-script',
+        {
+          taskId,
+          referenceText: chatContent,
           selectedVideos: videosWithAnalysis,
           parameters,
-          enableVideoUnderstanding,
-          analysisMode: enableVideoUnderstanding ? analysisMode : undefined,
-          taskId
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+          analysisMode: enableVideoUnderstanding ? analysisMode : 'quick',
+        },
+        { timeoutMs: 300_000 },
+      );
 
       if (!result.success) {
         throw new Error(result.error || '脚本生成失败');

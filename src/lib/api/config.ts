@@ -3,6 +3,8 @@
  * Handles fetching application configuration from the backend
  */
 
+import { http } from '@/lib/api/http-client';
+
 export interface YoutubeDownloadConfig {
   max_concurrent_downloads: number;
   download_timeout: number;
@@ -61,46 +63,36 @@ export interface ConfigResponse {
 }
 
 /**
- * Fetch application configuration from the backend
- * @returns Promise<ConfigResponse> Configuration data
+ * Fetch application configuration from the backend.
+ *
+ * `/api/config` is NOT in the backend allowlist (T01) — every caller must be
+ * authenticated. The wrapper auto-injects the session token.
  */
 export async function fetchConfig(): Promise<ConfigResponse> {
-  try {
-    const response = await fetch('/api/config', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+  const data = await http.get<ConfigResponse>('/api/config');
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data: ConfigResponse = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.error || data.message || 'Configuration fetch failed');
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Failed to fetch configuration:', error);
-    throw error;
+  if (!data.success) {
+    throw new Error(data.error || data.message || 'Configuration fetch failed');
   }
+
+  return data;
 }
 
 /**
- * Get YouTube configuration specifically
- * @returns Promise<YoutubeConfig> YouTube configuration
+ * Get YouTube configuration specifically.
+ *
+ * Falls back to a hard-coded default config when the backend call fails so
+ * downstream YouTube features keep working without throwing in the UI.
+ * The fallback is intentional per spec §9 — failure of an optional config
+ * fetch is non-fatal.
  */
 export async function fetchYoutubeConfig(): Promise<YoutubeConfig> {
   try {
     const configResponse = await fetchConfig();
     return configResponse.data.youtube;
-  } catch (error) {
-    console.error('Failed to fetch YouTube configuration:', error);
-    // Return default configuration as fallback
+  } catch {
+    // Optional feature; failure is non-fatal — return safe defaults so the
+    // YouTube panel can still render with sensible limits.
     return {
       download: {
         max_concurrent_downloads: 3,
@@ -133,15 +125,14 @@ export async function fetchYoutubeConfig(): Promise<YoutubeConfig> {
 }
 
 /**
- * Get the maximum concurrent downloads setting
- * @returns Promise<number> Maximum concurrent downloads
+ * Get the maximum concurrent downloads setting.
  */
 export async function getMaxConcurrentDownloads(): Promise<number> {
   try {
     const youtubeConfig = await fetchYoutubeConfig();
     return youtubeConfig.download.max_concurrent_downloads;
-  } catch (error) {
-    console.error('Failed to get max concurrent downloads, using default:', error);
-    return 3; // Default fallback
+  } catch {
+    // Optional feature; failure is non-fatal — fall back to a safe default.
+    return 3;
   }
-} 
+}

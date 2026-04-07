@@ -20,6 +20,7 @@ import {
   DataFormat,
 } from '@/types';
 import { convertFormat, detectFormat } from '@/lib/utils/formatConverter';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export type ExecutionCallback = (state: WorkflowExecutionState) => void;
 
@@ -672,12 +673,9 @@ export class WorkflowExecutor {
 
     try {
       // Call the LLM API
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let response: Response;
+      try {
+        response = await http.stream('/api/chat', {
           messages: [
             {
               role: 'system',
@@ -688,13 +686,15 @@ export class WorkflowExecutor {
               content: userMessage,
             },
           ],
-        }),
-        signal: this.abortController?.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `API request failed with status ${response.status}`);
+        }, {
+          timeoutMs: 600_000,
+          signal: this.abortController?.signal,
+        });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `API request failed with status ${httpError.status}`);
+        }
+        throw httpError;
       }
 
       // Read the streaming response
@@ -811,12 +811,9 @@ export class WorkflowExecutor {
 
     try {
       // Call the TTS API via sentences endpoint
-      const response = await fetch('/api/tts/convert-sentences', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/tts/convert-sentences', {
           segment_id: node.id,
           sentences: [
             {
@@ -828,15 +825,13 @@ export class WorkflowExecutor {
           voice_type: voiceType,
           speed_ratio: speedRatio,
           task_id: `workflow-${Date.now()}`,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `TTS request failed with status ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `TTS request failed with status ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const result = await response.json();
       
       console.log('[WorkflowExecutor] TTS response received', {
         nodeId: node.id,
@@ -921,27 +916,24 @@ export class WorkflowExecutor {
 
     try {
       // Call the test-node API to execute the to-array conversion
-      const response = await fetch('/api/workflow/test-node', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/workflow/test-node', {
           node_id: node.id,
           node_type: 'to-array',
           node_label: node.data.label,
           node_config: config,
           input: input,
-        }),
-        signal: this.abortController?.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || errorData.message || `Array conversion failed with status ${response.status}`);
+        }, {
+          timeoutMs: 600_000,
+          signal: this.abortController?.signal,
+        });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `Array conversion failed with status ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const result = await response.json();
       
       console.log('[WorkflowExecutor] To Array conversion response received', {
         nodeId: node.id,
@@ -1066,27 +1058,24 @@ export class WorkflowExecutor {
 
         try {
           // Call the test-node API to execute the transformation
-          const response = await fetch('/api/workflow/test-node', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
+          let result: any;
+          try {
+            result = await http.post<any>('/api/workflow/test-node', {
               node_id: `${node.id}-item-${i}`,
               node_type: 'results-combine-item',
               node_label: `${node.data.label} - Item ${i + 1}`,
               node_config: config,
               input: item,
-            }),
-            signal: this.abortController?.signal,
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(errorData.error || errorData.message || `Transformation failed with status ${response.status}`);
+            }, {
+              timeoutMs: 600_000,
+              signal: this.abortController?.signal,
+            });
+          } catch (httpError) {
+            if (httpError instanceof ApiError) {
+              throw new Error(httpError.message || `Transformation failed with status ${httpError.status}`);
+            }
+            throw httpError;
           }
-
-          const result = await response.json();
           
           if (!result.success) {
             throw new Error(result.error || result.message || 'Transformation failed');
@@ -1196,23 +1185,18 @@ export class WorkflowExecutor {
 
     try {
       // Call the Tavily search API
-      const response = await fetch('/api/workflow/tavily-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/workflow/tavily-search', {
           keywords: keywords.trim(),
           count: searchCount,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `Tavily search failed: ${response.statusText}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `Tavily search failed: ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const data = await response.json();
 
       if (!data.success) {
         throw new Error(data.message || 'Tavily search failed');
@@ -1368,30 +1352,27 @@ export class WorkflowExecutor {
         });
         
         // Call the Pexels video search API
-        const response = await fetch('/api/video-search', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        let data: any;
+        try {
+          data = await http.post<any>('/api/video-search', {
             query: keyword,
             max_videos: videoCount,
             orientation: 'mixed',
-          }),
-          signal: this.abortController?.signal,
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          this.addLog('warning', node.id, `Search failed for "${keyword}": ${errorData.error || errorData.message}`, {
-            keyword,
-            error: errorData.error || errorData.message
+          }, {
+            timeoutMs: 600_000,
+            signal: this.abortController?.signal,
           });
-          console.warn(`[WorkflowExecutor] Search failed for "${keyword}":`, errorData);
+        } catch (httpError) {
+          const errorMessage = httpError instanceof ApiError
+            ? (httpError.message || `HTTP ${httpError.status}`)
+            : (httpError instanceof Error ? httpError.message : String(httpError));
+          this.addLog('warning', node.id, `Search failed for "${keyword}": ${errorMessage}`, {
+            keyword,
+            error: errorMessage
+          });
+          console.warn(`[WorkflowExecutor] Search failed for "${keyword}":`, httpError);
           continue; // Continue with next keyword instead of failing completely
         }
-
-        const data = await response.json();
         
         console.log(`[WorkflowExecutor] Search response for "${keyword}":`, {
           success: data.success,
@@ -1527,12 +1508,9 @@ export class WorkflowExecutor {
       });
 
       // Call AI Video Generate API
-      const response = await fetch('/api/workflow/ai-video-generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/workflow/ai-video-generate', {
           nodeId: node.id,
           taskId: 'workflow-execution',
           inputs,
@@ -1541,15 +1519,13 @@ export class WorkflowExecutor {
             temperature: config?.temperature,
             maxTokens: config?.maxTokens,
           },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `API call failed: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `API call failed: ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const result = await response.json();
 
       if (!result.success) {
         throw new Error(result.message || 'AI Video Generate failed');
@@ -1625,12 +1601,9 @@ export class WorkflowExecutor {
       });
 
       // Call Video Export API
-      const response = await fetch('/api/workflow/video-export', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/workflow/video-export', {
           nodeId: node.id,
           taskId: 'workflow-execution',
           inputs: {
@@ -1641,15 +1614,13 @@ export class WorkflowExecutor {
             videoUrls,
             inputFormat: config?.inputFormat || 'array',
           },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `API call failed: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `API call failed: ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const result = await response.json();
 
       if (!result.success) {
         throw new Error(result.message || 'Video Export failed');

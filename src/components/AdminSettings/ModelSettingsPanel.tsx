@@ -3,6 +3,46 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { http, ApiError } from '@/lib/api/http-client';
+
+// ── API response envelope types (loose-typed because the backend response
+//    shapes vary across the model-settings endpoints) ──
+interface KnownProvidersResponse {
+  success: boolean;
+  providers: Record<string, unknown>[];
+}
+
+interface SavedProvidersResponse {
+  success: boolean;
+  providers: SavedProvider[];
+}
+
+interface AssignmentsResponse {
+  success: boolean;
+  assignments: Assignment[];
+}
+
+interface ProviderMutationResponse {
+  success: boolean;
+  message?: string;
+  detail?: string;
+}
+
+interface FetchModelsResponse {
+  success: boolean;
+  models: string[];
+  message?: string;
+}
+
+interface ResolveConfigResponse {
+  success: boolean;
+  config?: {
+    provider_name?: string | null;
+    api_url?: string | null;
+    model_name?: string | null;
+    source?: 'database' | 'environment' | 'none';
+  };
+}
 
 type FunctionType = 'chat' | 'fast' | 'video_cut' | 'vision' | 'coding';
 
@@ -191,21 +231,18 @@ const ModelSettingsPanel: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [knownRes, savedRes, assignRes] = await Promise.all([
-        fetch('/api/model-settings/providers'),
-        fetch('/api/model-settings/providers/saved'),
-        fetch('/api/model-settings/assignments'),
+      const [knownData, savedData, assignData] = await Promise.all([
+        http.get<KnownProvidersResponse>('/api/model-settings/providers'),
+        http.get<SavedProvidersResponse>('/api/model-settings/providers/saved'),
+        http.get<AssignmentsResponse>('/api/model-settings/assignments'),
       ]);
-      const knownData = await knownRes.json();
-      const savedData = await savedRes.json();
-      const assignData = await assignRes.json();
 
       if (knownData.success) {
         setKnownProviders(knownData.providers.map((p: Record<string, unknown>) => ({
           ...p,
           api_format: (p.api_format as string) || 'auto',
           default_models: (p.default_models as string[]) || [],
-        })));
+        })) as KnownProvider[]);
       }
 
       const providersWithModels: ProviderWithModels[] = [];
@@ -347,49 +384,46 @@ const ModelSettingsPanel: React.FC = () => {
 
     setSavingProvider(true);
     try {
-      let res: Response;
+      let data: ProviderMutationResponse;
       if (providerForm.id) {
         // Update
-        res = await fetch(`/api/model-settings/providers/${providerForm.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        data = await http.put<ProviderMutationResponse>(
+          `/api/model-settings/providers/${providerForm.id}`,
+          {
             name: providerForm.name,
             provider_type: providerForm.provider_type,
             api_url: providerForm.api_url,
             api_key: ***REMOVED*** ? providerForm.api_key : '__KEEP__',
             api_format: providerForm.api_format,
-          }),
-        });
+          },
+        );
       } else {
         // Create
         if (!providerForm.api_key) {
           showError(t.adminSettings.modelApiKeyRequired);
-          setSavingProvider(false);
-          return;
+          return; // finally{} will reset savingProvider
         }
-        res = await fetch('/api/model-settings/providers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: providerForm.name,
-            provider_type: providerForm.provider_type || 'custom',
-            api_url: providerForm.api_url,
-            api_key: providerForm.api_key,
-            api_format: providerForm.api_format,
-          }),
+        data = await http.post<ProviderMutationResponse>('/api/model-settings/providers', {
+          name: providerForm.name,
+          provider_type: providerForm.provider_type || 'custom',
+          api_url: providerForm.api_url,
+          api_key: providerForm.api_key,
+          api_format: providerForm.api_format,
         });
       }
-      const data = await res.json();
-      if (res.ok && data.success) {
+      if (data.success) {
         showSuccess(t.adminSettings.modelProviderSaved);
         setProviderForm(null);
         await fetchData();
       } else {
         showError(data.detail || data.message || t.adminSettings.modelProviderCreateError);
       }
-    } catch {
-      showError(t.adminSettings.modelProviderCreateError);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showError(err.message || t.adminSettings.modelProviderCreateError);
+      } else {
+        showError(t.adminSettings.modelProviderCreateError);
+      }
     } finally {
       setSavingProvider(false);
     }
@@ -397,41 +431,40 @@ const ModelSettingsPanel: React.FC = () => {
 
   const handleDeleteProvider = async (providerId: string) => {
     try {
-      const res = await fetch(`/api/model-settings/providers/${providerId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const data = await http.del<ProviderMutationResponse>(
+        `/api/model-settings/providers/${providerId}`,
+      );
+      if (data.success) {
         showSuccess(t.adminSettings.modelProviderDeleted);
         setDeleteConfirmId(null);
         await fetchData();
       } else {
         showError(data.detail || t.adminSettings.modelDeleteProviderError);
       }
-    } catch {
-      showError(t.adminSettings.modelDeleteProviderError);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showError(err.message || t.adminSettings.modelDeleteProviderError);
+      } else {
+        showError(t.adminSettings.modelDeleteProviderError);
+      }
     }
   };
 
   const handleFetchModelsForProvider = async (providerId: string | 'new') => {
     setFetchingModels(providerId);
     try {
-      let res: Response;
+      let data: FetchModelsResponse;
       if (providerId === 'new' && providerForm) {
         // Fetch for unsaved provider using ad-hoc credentials
-        res = await fetch('/api/model-settings/fetch-models', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_url: providerForm.api_url,
-            api_key: providerForm.api_key,
-          }),
+        data = await http.post<FetchModelsResponse>('/api/model-settings/fetch-models', {
+          api_url: providerForm.api_url,
+          api_key: providerForm.api_key,
         });
       } else {
-        res = await fetch(`/api/model-settings/providers/${providerId}/fetch-models`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
+        data = await http.post<FetchModelsResponse>(
+          `/api/model-settings/providers/${providerId}/fetch-models`,
+        );
       }
-      const data = await res.json();
       if (data.success && data.models.length > 0) {
         if (providerId === 'new') {
           setNewProviderModels(data.models);
@@ -444,8 +477,12 @@ const ModelSettingsPanel: React.FC = () => {
       } else {
         showError(data.message || t.adminSettings.modelFetchModelsError);
       }
-    } catch {
-      showError(t.adminSettings.modelFetchModelsError);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showError(err.message || t.adminSettings.modelFetchModelsError);
+      } else {
+        showError(t.adminSettings.modelFetchModelsError);
+      }
     } finally {
       setFetchingModels(null);
     }
@@ -490,22 +527,21 @@ const ModelSettingsPanel: React.FC = () => {
     }
 
     try {
-      const res = await fetch('/api/model-settings/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          api_url,
-          api_key,
-          model_name: modelName || 'test',
-          provider_id: providerId === 'new' ? undefined : providerId,
-          provider_type,
-          api_format,
-        }),
+      const data = await http.post<TestResult>('/api/model-settings/test-connection', {
+        api_url,
+        api_key,
+        model_name: modelName || 'test',
+        provider_id: providerId === 'new' ? undefined : providerId,
+        provider_type,
+        api_format,
       });
-      const data = await res.json();
       setProviderTestResult(data);
-    } catch {
-      setProviderTestResult({ success: false, message: t.adminSettings.modelRequestFailed });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setProviderTestResult({ success: false, message: err.message || t.adminSettings.modelRequestFailed });
+      } else {
+        setProviderTestResult({ success: false, message: t.adminSettings.modelRequestFailed });
+      }
     } finally {
       setTestingProvider(null);
     }
@@ -543,26 +579,28 @@ const ModelSettingsPanel: React.FC = () => {
 
     setSavingAssignment(ft);
     try {
-      const res = await fetch('/api/model-settings/assignments', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await http.put<ProviderMutationResponse>(
+        '/api/model-settings/assignments',
+        {
           function_type: ft,
           provider_id: form.provider_id,
           model_name: form.model_name,
           temperature: form.temperature,
           max_tokens: 128000,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+        },
+      );
+      if (data.success) {
         showSuccess(t.adminSettings.modelAssignmentSaved);
         await fetchData();
       } else {
         showError(data.detail || t.adminSettings.modelSaveError);
       }
-    } catch {
-      showError(t.adminSettings.modelSaveError);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showError(err.message || t.adminSettings.modelSaveError);
+      } else {
+        showError(t.adminSettings.modelSaveError);
+      }
     } finally {
       setSavingAssignment(null);
     }
@@ -570,15 +608,17 @@ const ModelSettingsPanel: React.FC = () => {
 
   const handleResetAssignment = async (ft: FunctionType) => {
     try {
-      const res = await fetch(`/api/model-settings/assignments/${ft}`, { method: 'DELETE' });
-      if (res.ok) {
-        showSuccess(t.adminSettings.modelAssignmentDeleted);
-        const defaultTemp = ft === 'coding' ? 1.0 : 0.7;
-        updateAssignmentForm(ft, { provider_id: null, model_name: '', temperature: defaultTemp, modelInputMode: 'select' });
-        setAssignments(prev => ({ ...prev, [ft]: null }));
+      await http.del(`/api/model-settings/assignments/${ft}`);
+      showSuccess(t.adminSettings.modelAssignmentDeleted);
+      const defaultTemp = ft === 'coding' ? 1.0 : 0.7;
+      updateAssignmentForm(ft, { provider_id: null, model_name: '', temperature: defaultTemp, modelInputMode: 'select' });
+      setAssignments(prev => ({ ...prev, [ft]: null }));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showError(err.message || t.adminSettings.modelSaveError);
+      } else {
+        showError(t.adminSettings.modelSaveError);
       }
-    } catch {
-      showError(t.adminSettings.modelSaveError);
     }
   };
 
@@ -615,8 +655,7 @@ const ModelSettingsPanel: React.FC = () => {
       const results = await Promise.all(
         FUNCTION_TYPES.map(async (ft) => {
           try {
-            const res = await fetch(`/api/model-settings/resolve/${ft}`);
-            const data = await res.json();
+            const data = await http.get<ResolveConfigResponse>(`/api/model-settings/resolve/${ft}`);
             if (data.success && data.config) {
               return {
                 ft,
@@ -631,6 +670,7 @@ const ModelSettingsPanel: React.FC = () => {
             }
             return { ft, config: { function_type: ft, provider_name: null, api_url: data.config?.api_url || null, model_name: data.config?.model_name || null, source: 'environment' as const } };
           } catch {
+            // Optional advanced-tab feature; per-function failure is non-fatal.
             return { ft, config: { function_type: ft, provider_name: null, api_url: null, model_name: null, source: 'none' as const } };
           }
         })

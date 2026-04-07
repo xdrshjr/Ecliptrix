@@ -6,6 +6,7 @@ import { createVideoSearchService, VideoSearchService, VideoSearchResult } from 
 import { createYoutubeVideoSearchService, YoutubeVideoSearchService } from '../services';
 import { getMaxConcurrentDownloads } from '@/lib/api/config';
 import { useNotification } from '@/contexts/NotificationContext';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export const useVideoSearch = (
   taskId: string,
@@ -511,25 +512,21 @@ export const useVideoSearch = (
         materialName: material.name
       });
 
-      const response = await fetch('/api/youtube/download-and-upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/youtube/download-and-upload', {
           url: material.youtubeUrl,
           task_id: taskId,
           video_quality: '720p',
           format_type: 'mp4',
           generate_thumbnail: true
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(`HTTP ${httpError.status}: ${httpError.message}`);
+        }
+        throw httpError;
       }
-
-      const result = await response.json();
 
       if (result.success) {
         logger.info('YouTube视频下载并上传成功', {

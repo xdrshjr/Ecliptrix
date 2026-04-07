@@ -1,6 +1,7 @@
 import { MaterialItem, MaterialType } from '@/types';
 import { VideoEditingLogger } from '../utils';
 import { SearchOrientation } from '../types';
+import { http, ApiError } from '@/lib/api/http-client';
 
 /**
  * Video Search Service Interface
@@ -124,48 +125,40 @@ export class VideoSearchServiceImpl implements VideoSearchService {
       });
 
       const translationStartTime = performance.now();
-      
+
       try {
-        const translationResponse = await fetch('/api/translate-search-query', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: originalQuery,
-            taskId: this.taskId,
-          }),
+        const translationData = await http.post<{
+          success: boolean;
+          translatedQuery: string;
+          translationNeeded: boolean;
+          isEnglish: boolean;
+          originalQuery: string;
+          error?: string;
+        }>('/api/translate-search-query', {
+          query: originalQuery,
+          taskId: this.taskId,
         });
 
-        if (translationResponse.ok) {
-          const translationData = await translationResponse.json();
-          const translationEndTime = performance.now();
-          
-          if (translationData.success) {
-            finalQuery = translationData.translatedQuery;
-            translationInfo = {
-              translationNeeded: translationData.translationNeeded,
-              isEnglish: translationData.isEnglish,
-              originalQuery: translationData.originalQuery,
-              translatedQuery: translationData.translatedQuery
-            };
+        const translationEndTime = performance.now();
 
-            this.logger.info('查询翻译完成', {
-              ...translationInfo,
-              translationTime: translationEndTime - translationStartTime,
-              queryChanged: originalQuery !== finalQuery
-            });
-          } else {
-            this.logger.warn('查询翻译失败，使用原查询', {
-              originalQuery,
-              error: translationData.error
-            });
-          }
+        if (translationData.success) {
+          finalQuery = translationData.translatedQuery;
+          translationInfo = {
+            translationNeeded: translationData.translationNeeded,
+            isEnglish: translationData.isEnglish,
+            originalQuery: translationData.originalQuery,
+            translatedQuery: translationData.translatedQuery
+          };
+
+          this.logger.info('查询翻译完成', {
+            ...translationInfo,
+            translationTime: translationEndTime - translationStartTime,
+            queryChanged: originalQuery !== finalQuery
+          });
         } else {
-          this.logger.warn('翻译服务调用失败，使用原查询', {
+          this.logger.warn('查询翻译失败，使用原查询', {
             originalQuery,
-            status: translationResponse.status,
-            statusText: translationResponse.statusText
+            error: translationData.error
           });
         }
       } catch (translationError) {
@@ -185,35 +178,21 @@ export class VideoSearchServiceImpl implements VideoSearchService {
       });
 
       const searchStartTime = performance.now();
-      const response = await fetch('/api/video-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/video-search', {
           query: finalQuery,
           max_videos: maxVideos,
           orientation: orientation,
-        }),
-      });
+        });
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
 
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
-        const error = new Error(errorMessage);
-        this.logger.apiError('视频搜索请求', '/api/video-search', error, {
+        this.logger.apiError('视频搜索请求', '/api/video-search', httpError as Error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           query: query.trim()
         });
 
@@ -222,8 +201,6 @@ export class VideoSearchServiceImpl implements VideoSearchService {
           error: errorMessage
         };
       }
-
-      const data = await response.json();
       const searchEndTime = performance.now();
 
       // 验证响应格式

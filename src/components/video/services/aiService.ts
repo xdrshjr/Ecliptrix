@@ -1,4 +1,5 @@
 import { VideoEditingLogger } from '../utils';
+import { http, ApiError } from '@/lib/api/http-client';
 
 /**
  * AI Service Interface
@@ -74,24 +75,20 @@ export class AIServiceImpl implements AIService {
     });
 
     try {
-      const response = await fetch('/api/video-editing-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let response: Response;
+      try {
+        response = await http.stream('/api/video-editing-chat', {
           message: message.trim(),
           currentContent: currentContent,
           taskId: taskId,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = new Error(`HTTP error! status: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        const error = httpError instanceof ApiError
+          ? new Error(`HTTP error! status: ${httpError.status}`)
+          : (httpError as Error);
         this.logger.apiError('AI助手请求', '/api/video-editing-chat', error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText
+          status: httpError instanceof ApiError ? httpError.status : undefined
         });
         throw error;
       }

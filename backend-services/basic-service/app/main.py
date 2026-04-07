@@ -20,6 +20,7 @@ from app.logger import get_logger, setup_logging
 from app.routers import api_router
 from app.models import ErrorResponse
 from app.database import init_db, close_db
+from app.middleware.auth_middleware import SessionAuthMiddleware
 
 
 # Initialize logging
@@ -128,6 +129,20 @@ app = FastAPI(
     debug=settings.debug,
 )
 
+
+# Register middlewares.
+#
+# Starlette ``add_middleware`` is LIFO: the LAST registered middleware ends up
+# OUTERMOST and runs FIRST per request. We therefore register
+# ``SessionAuthMiddleware`` BEFORE ``CORSMiddleware`` so that CORS wraps the
+# auth layer on the outside and answers preflight ``OPTIONS`` requests before
+# they ever reach the auth check.
+#
+# (The ``@app.middleware("http")`` logging decorator below is added at module
+# load time, AFTER both add_middleware calls, so it ends up as the outermost
+# wrapper of all. That is acceptable because the logger does not block
+# requests.)
+app.add_middleware(SessionAuthMiddleware)
 
 # Add CORS middleware
 app.add_middleware(

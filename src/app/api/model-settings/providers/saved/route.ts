@@ -1,21 +1,3 @@
-import { NextResponse } from 'next/server';
+import { createPassthroughRoute } from '@/lib/api/server/backend-proxy'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
-
-// GET all saved provider credentials
-export async function GET() {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/model-settings/providers/saved`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
-  } catch (error) {
-    console.error('[API] Error fetching saved providers:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch saved providers', providers: [] },
-      { status: 500 }
-    );
-  }
-}
+export const { GET } = createPassthroughRoute('/api/model-settings/providers/saved')

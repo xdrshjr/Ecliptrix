@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { VideoEditingLogger } from '../../utils';
 import { useLocale } from '@/contexts/LocaleContext';
+import { http, ApiError } from '@/lib/api/http-client';
 
 interface ContentPolishModalProps {
   isOpen: boolean;
@@ -72,12 +73,15 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
         
         logger.info('开始加载润色配置', { timestamp: new Date().toISOString() });
         
-        const response = await fetch('/api/polish-config');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        let config: PolishConfig;
+        try {
+          config = await http.get<PolishConfig>('/api/polish-config');
+        } catch (httpError) {
+          if (httpError instanceof ApiError) {
+            throw new Error(`HTTP error! status: ${httpError.status}`);
+          }
+          throw httpError;
         }
-        
-        const config: PolishConfig = await response.json();
         
         if (!config.polish_goals || !Array.isArray(config.polish_goals)) {
           throw new Error('Invalid config format: missing polish_goals array');
@@ -194,22 +198,20 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
             )
           });
 
-          const response = await fetch('/api/content-polish-multiple', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
+          let response: Response;
+          try {
+            response = await http.stream('/api/content-polish-multiple', {
               originalContent,
               polishStyles: selectedStyleIds,
               taskId,
               intensity,
               ...(chatContent ? { chatContext: chatContent } : {}),
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            }, { timeoutMs: 600_000 });
+          } catch (httpError) {
+            if (httpError instanceof ApiError) {
+              throw new Error(`HTTP error! status: ${httpError.status}`);
+            }
+            throw httpError;
           }
 
           const reader = response.body?.getReader();

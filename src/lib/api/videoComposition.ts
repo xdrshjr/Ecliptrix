@@ -1,6 +1,18 @@
 /**
- * Video Composition API client
+ * Video Composition API client.
+ *
+ * Owns the request body validation that previously lived in
+ * `src/app/api/video-compose/route.ts`. T04 reduced that route to a Pattern
+ * C passthrough (10 minute timeout) and explicitly delegated the validation
+ * here per the body-reshape contract documented in spec §10.
+ *
+ * The 1-retry loop that the old route had is intentionally NOT preserved
+ * per T04's note in audit/route-sweep-audit.md: long-running calls should
+ * fail loud, not silently retry. Callers can opt into retries by passing
+ * `RequestOptions.retries` to the wrapper directly.
  */
+
+import { http } from '@/lib/api/http-client';
 
 export interface VideoCompositionItem {
   id: string;
@@ -76,6 +88,35 @@ export interface CompositionStatusResponse {
 }
 
 /**
+ * Validate the composition request body before any network call.
+ *
+ * Mirrors the validation that the previous Next.js route ran. Throws an
+ * `Error` with a user-readable message that the existing UI components
+ * already know how to surface.
+ */
+function validateCompositionRequest(request: VideoCompositionRequest): void {
+  if (!request || typeof request !== 'object') {
+    throw new Error('Invalid composition request: body must be an object');
+  }
+  if (!request.task_id || typeof request.task_id !== 'string') {
+    throw new Error('Invalid composition request: task_id is required');
+  }
+  if (!Array.isArray(request.video_items) || request.video_items.length === 0) {
+    throw new Error(
+      'Invalid composition request: video_items must be a non-empty array',
+    );
+  }
+  if (
+    typeof request.total_duration !== 'number' ||
+    request.total_duration <= 0
+  ) {
+    throw new Error(
+      'Invalid composition request: total_duration must be a positive number',
+    );
+  }
+}
+
+/**
  * Video Composition API Client Class
  */
 export class VideoCompositionAPI {
@@ -87,362 +128,115 @@ export class VideoCompositionAPI {
   }
 
   /**
-   * Compose a video from timeline data
+   * Compose a video from timeline data.
+   *
+   * Validates the body locally first (delegated from the route layer by T04).
+   * Long-running call: the wrapper's per-request timeout is bumped to 10
+   * minutes to match the previous route's `AbortSignal.timeout(600000)`
+   * behavior.
    */
   async composeVideo(request: VideoCompositionRequest): Promise<VideoCompositionResponse> {
-    const url = `/api/video-compose`;
-    
-    console.log('[VideoCompositionAPI] Sending composition request to Next.js API', {
-      taskId: request.task_id,
-      videoItemsCount: request.video_items.length,
-      audioItemsCount: request.audio_items?.length || 0,
-      subtitleItemsCount: request.subtitle_items?.length || 0,
-      totalDuration: request.total_duration,
-      timeout: '10 minutes'
+    validateCompositionRequest(request);
+
+    return http.post<VideoCompositionResponse>('/api/video-compose', request, {
+      timeoutMs: 600_000,
     });
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-        // 设置10分钟超时，适应视频合成的长处理时间
-        signal: AbortSignal.timeout(600000) // 600秒（10分钟）超时
-      });
-
-      if (!response.ok) {
-        // Try to get detailed error information from response
-        let errorData: any = null;
-        try {
-          errorData = await response.json();
-        } catch (parseError) {
-          // If parsing fails, create a generic error
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        // Create an error object with the response data for better error handling
-        const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
-        (error as any).response = { json: async () => errorData };
-        throw error;
-      }
-
-      const result: VideoCompositionResponse = await response.json();
-      
-      console.log('[VideoCompositionAPI] Composition response received from Next.js API', {
-        success: result.success,
-        status: result.status,
-        compositionId: result.composition_id,
-        progress: result.progress
-      });
-
-      return result;
-    } catch (error: any) {
-      // 检查是否是超时错误并记录详细信息
-      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
-        console.error('[VideoCompositionAPI] Composition request timeout after 10 minutes', {
-          taskId: request.task_id,
-          videoItemsCount: request.video_items.length,
-          totalDuration: request.total_duration,
-          error: error.message
-        });
-      } else {
-        console.error('[VideoCompositionAPI] Composition request failed', error);
-      }
-      throw error;
-    }
   }
 
   /**
-   * Get the status of a video composition
+   * Get the status of a video composition.
    */
   async getCompositionStatus(compositionId: string): Promise<CompositionStatusResponse> {
-    const url = `/api/video-compose/${compositionId}/status`;
-    
-    console.log('[VideoCompositionAPI] Requesting composition status via Next.js API', {
-      compositionId
-    });
-
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // 设置较短超时，状态查询应该快速响应
-        signal: AbortSignal.timeout(30000) // 30秒超时
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result: CompositionStatusResponse = await response.json();
-      
-      console.log('[VideoCompositionAPI] Status response received from Next.js API', {
-        compositionId: result.composition_id,
-        status: result.status,
-        progress: result.progress
-      });
-
-      return result;
-    } catch (error) {
-      console.error('[VideoCompositionAPI] Status request failed', error);
-      throw error;
-    }
+    return http.get<CompositionStatusResponse>(
+      `/api/video-compose/${compositionId}/status`,
+      { timeoutMs: 30_000 },
+    );
   }
 
   /**
-   * Download a composed video
-   */
-  async downloadVideo(compositionId: string, taskId?: string): Promise<Blob> {
-    const url = `/api/video-compose/${compositionId}/download${taskId ? `?task_id=${taskId}` : ''}`;
-    
-    console.log('[VideoCompositionAPI] Downloading video via Next.js API', {
-      compositionId,
-      taskId
-    });
-
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        // 设置10分钟超时，适应大视频文件下载
-        signal: AbortSignal.timeout(600000) // 600秒（10分钟）超时
-      });
-
-      console.log('[VideoCompositionAPI] Download response received', {
-        compositionId,
-        status: response.status,
-        contentType: response.headers.get('content-type'),
-        contentLength: response.headers.get('content-length'),
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[VideoCompositionAPI] Download response error', {
-          status: response.status,
-          statusText: response.statusText,
-          errorText
-        });
-        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-      }
-
-      // 检查响应是否有body
-      if (!response.body) {
-        throw new Error('Response body is empty');
-      }
-
-      console.log('[VideoCompositionAPI] Starting blob conversion...');
-      
-      try {
-        const blob = await response.blob();
-        
-        console.log('[VideoCompositionAPI] Video download completed from Next.js API', {
-          compositionId,
-          blobSize: blob.size,
-          blobType: blob.type
-        });
-
-        // 验证blob是否有效
-        if (blob.size === 0) {
-          throw new Error('Downloaded blob is empty');
-        }
-
-        return blob;
-      } catch (blobError: any) {
-        console.error('[VideoCompositionAPI] Blob conversion failed', {
-          compositionId,
-          error: blobError.message,
-          responseBodyUsed: response.bodyUsed,
-          responseRedirected: response.redirected
-        });
-        throw new Error(`Failed to convert response to blob: ${blobError.message}`);
-      }
-    } catch (error: any) {
-      // 检查是否是超时错误并记录详细信息
-      if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
-        console.error('[VideoCompositionAPI] Video download timeout after 10 minutes', {
-          compositionId,
-          taskId,
-          error: error.message
-        });
-      } else {
-        console.error('[VideoCompositionAPI] Video download failed', error);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Trigger automatic download of a composed video
-   * Uses direct URL download instead of blob conversion to avoid memory issues
+   * Trigger automatic download of a composed video via a hidden anchor.
+   *
+   * Uses direct URL navigation rather than blob conversion so large files
+   * stream directly to disk without browser memory pressure. The anchor's
+   * href hits the same Next.js BFF route — the browser sends its cookies
+   * and the route forwards Authorization, so unauthenticated users still
+   * get rejected by the backend.
    */
   async triggerDownload(compositionId: string, taskId?: string, filename?: string): Promise<void> {
-    console.log('[VideoCompositionAPI] Starting direct download', {
-      compositionId,
-      taskId,
-      filename,
-      method: 'direct_url'
-    });
+    const downloadUrl = `/api/video-compose/${compositionId}/download${taskId ? `?task_id=${taskId}` : ''}`;
 
-    try {
-      // 构建下载URL
-      const downloadUrl = `/api/video-compose/${compositionId}/download${taskId ? `?task_id=${taskId}` : ''}`;
-      
-      // 创建下载链接并触发下载
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename || `composed_video_${compositionId}.mp4`;
-      
-      // 设置必要的属性以确保下载行为
-      link.style.display = 'none';
-      link.target = '_blank';
-      
-      console.log('[VideoCompositionAPI] Creating download link', {
-        url: downloadUrl,
-        filename: link.download,
-        compositionId
-      });
-      
-      // 添加到DOM，点击，然后移除
-      document.body.appendChild(link);
-      link.click();
-      
-      // 延迟移除链接，确保下载开始
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-      }, 100);
-      
-      console.log('[VideoCompositionAPI] Direct download triggered successfully', {
-        compositionId,
-        filename: link.download,
-        url: downloadUrl
-      });
-      
-    } catch (error: any) {
-      console.error('[VideoCompositionAPI] Failed to trigger direct download', {
-        compositionId,
-        taskId,
-        filename,
-        error: error.message
-      });
-      throw error;
-    }
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename || `composed_video_${compositionId}.mp4`;
+    link.style.display = 'none';
+    link.target = '_blank';
+
+    document.body.appendChild(link);
+    link.click();
+
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+    }, 100);
   }
 
   /**
-   * Poll composition status until completion
+   * Poll composition status until completion.
+   *
+   * Loop logic preserved verbatim per spec §4.4 — only the inner status
+   * call now goes through `http.get`.
    */
   async pollCompositionStatus(
-    compositionId: string, 
+    compositionId: string,
     onProgress?: (status: CompositionStatusResponse) => void,
     pollInterval: number = 2000,
-    maxAttempts: number = 300 // 10 minutes at 2s intervals (increased for subtitle processing)
+    maxAttempts: number = 300, // 10 minutes at 2s intervals
   ): Promise<CompositionStatusResponse> {
-    console.log('[VideoCompositionAPI] Starting status polling', {
-      compositionId,
-      pollInterval,
-      maxAttempts
-    });
-
     let attempts = 0;
-    
+
     return new Promise((resolve, reject) => {
       const poll = async () => {
         try {
           attempts++;
           const status = await this.getCompositionStatus(compositionId);
-          
-          // Call progress callback if provided
+
           if (onProgress) {
             onProgress(status);
           }
-          
-          // Check if composition is complete
+
           if (status.status === 'completed') {
-            console.log('[VideoCompositionAPI] Composition completed', {
-              compositionId,
-              attempts,
-              processingTime: status.processing_time
-            });
             resolve(status);
             return;
           }
-          
-          // Check if composition failed
+
           if (status.status === 'failed') {
-            console.error('[VideoCompositionAPI] Composition failed', {
-              compositionId,
-              attempts,
-              errorDetails: status.error_details
-            });
             reject(new Error(`Composition failed: ${status.error_details?.error || 'Unknown error'}`));
             return;
           }
-          
-          // Check if we've exceeded max attempts
+
           if (attempts >= maxAttempts) {
-            console.error('[VideoCompositionAPI] Polling timeout', {
-              compositionId,
-              attempts,
-              maxAttempts
-            });
             reject(new Error('Composition polling timeout'));
             return;
           }
-          
-          // Continue polling
+
           setTimeout(poll, pollInterval);
-          
         } catch (error) {
-          console.error('[VideoCompositionAPI] Polling error', {
-            compositionId,
-            attempts,
-            error
-          });
           reject(error);
         }
       };
-      
-      // Start polling
+
       poll();
     });
   }
 
   /**
-   * Check video composition service health
+   * Check video composition service health.
    */
-  async checkHealth(): Promise<any> {
-    const url = `/api/video-compose/health`;
-    
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // 设置较短超时，健康检查应该快速响应
-        signal: AbortSignal.timeout(10000) // 10秒超时
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      console.log('[VideoCompositionAPI] Health check result from Next.js API', result);
-      return result;
-    } catch (error) {
-      console.error('[VideoCompositionAPI] Health check failed', error);
-      throw error;
-    }
+  async checkHealth(): Promise<unknown> {
+    return http.get('/api/video-compose/health', { timeoutMs: 10_000 });
   }
 }
 
 // Export a default instance
-export const videoCompositionAPI = new VideoCompositionAPI(); 
+export const videoCompositionAPI = new VideoCompositionAPI();

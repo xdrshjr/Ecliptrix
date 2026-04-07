@@ -8,6 +8,7 @@ import WaveformPreview from './WaveformPreview';
 import type { WaveformPreviewHandle } from './WaveformPreview';
 import ProcessingProgress from './ProcessingProgress';
 import type { SilenceRemoveResult } from './ProcessingProgress';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // ---- Types ----
 
@@ -363,16 +364,20 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
         min_silence_duration: detectionParams.minSilenceDuration / 1000,
       };
 
-      const res = await fetch('/api/silence/detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      let json: any;
+      try {
+        json = await http.post<any>('/api/silence/detect', body, {
+          timeoutMs: 600_000,
+        });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `检测失败 (${httpError.status})`);
+        }
+        throw httpError;
+      }
 
-      const json = await res.json();
-
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || `检测失败 (${res.status})`);
+      if (!json.success) {
+        throw new Error(json.message || `检测失败`);
       }
 
       const data = json.data;
@@ -417,16 +422,20 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
         fade_duration: 0.05,
       };
 
-      const res = await fetch('/api/silence/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      let json: any;
+      try {
+        json = await http.post<any>('/api/silence/remove', body, {
+          timeoutMs: 600_000,
+        });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `处理请求失败 (${httpError.status})`);
+        }
+        throw httpError;
+      }
 
-      const json = await res.json();
-
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || `处理请求失败 (${res.status})`);
+      if (!json.success) {
+        throw new Error(json.message || `处理请求失败`);
       }
 
       // Capture task_id for polling by ProcessingProgress (TODO 04)

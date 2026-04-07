@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { VolcanoTTSNodeConfig, DataFormat } from '@/types';
 import NodeTestPanel from './NodeTestPanel';
 import FormatSelector from './FormatSelector';
+import { http } from '@/lib/api/http-client';
 
 interface VolcanoTTSConfigPanelProps {
   nodeId: string;
@@ -69,9 +70,8 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
       setIsLoadingVoices(true);
       
       try {
-        const response = await fetch(`/api/tts/voice-types?locale=${locale}`);
-        const data = await response.json();
-        
+        const data = await http.get<any>(`/api/tts/voice-types?locale=${locale}`);
+
         if (data.success && data.data) {
           console.log('[VolcanoTTSConfigPanel] Voice types loaded successfully:', {
             count: Object.keys(data.data).length,

@@ -5,6 +5,10 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { loadAgentWorkflows, WorkflowRecord } from '@/lib/api/workflow';
+import {
+  load as loadWorkflowPrefs,
+  save as saveWorkflowPrefs,
+} from '@/lib/api/workflowPreferences';
 
 /**
  * Workflow configuration stored in memory
@@ -124,22 +128,8 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
     try {
       console.log('[WorkflowConfigModal] Loading workflow preferences for user:', user.id);
       
-      const response = await fetch('/api/workflow-preferences/load', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.id
-        }),
-      });
+      const result = await loadWorkflowPrefs(user.id);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
       if (result.success && result.preferences) {
         // Convert preferences object to Map
         const preferencesMap = new Map<string, WorkflowConfig>();
@@ -199,26 +189,11 @@ const WorkflowConfigModal: React.FC<WorkflowConfigModalProps> = ({
         };
       });
 
-      const response = await fetch('/api/workflow-preferences/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          preferences: preferencesObject
-        }),
-      });
+      const result = await saveWorkflowPrefs(user.id, preferencesObject);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
       if (result.success) {
         console.log('[WorkflowConfigModal] Workflow preferences saved successfully:', {
-          savedCount: result.savedCount,
+          savedCount: result.saved_count,
           timestamp: new Date().toISOString()
         });
       }

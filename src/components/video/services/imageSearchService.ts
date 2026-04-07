@@ -1,5 +1,6 @@
 import { ImageSearchResponse, ImageSearchResult, ImageOrientation, ImageColor, ImageOrderBy } from '../types';
 import { VideoEditingLogger } from '../utils';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export interface ImageSearchService {
   searchImages: (
@@ -64,36 +65,24 @@ export class ImageSearchServiceImpl implements ImageSearchService {
       }
 
       // 调用API
-      const response = await fetch('/api/image-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let data: ImageSearchResponse;
+      try {
+        data = await http.post<ImageSearchResponse>('/api/image-search', {
           query: query.trim(),
           max_images: maxImages,
           orientation,
           color,
           order_by: orderBy
-        }),
-      });
-
-      this.logger.info('API响应状态', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        const errorMessage = `API请求失败: ${response.status} ${response.statusText}`;
-        const error = new Error(errorMessage);
-        this.logger.error(errorMessage, error, {
-          status: response.status,
-          statusText: response.statusText,
-          errorText: errorText
         });
-        
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? `API请求失败: ${httpError.status} ${httpError.message}`
+          : `图片搜索异常: ${httpError instanceof Error ? httpError.message : String(httpError)}`;
+        const errorObj = httpError instanceof Error ? httpError : new Error(String(httpError));
+        this.logger.error(errorMessage, errorObj, {
+          status: httpError instanceof ApiError ? httpError.status : undefined
+        });
+
         return {
           success: false,
           message: errorMessage,
@@ -103,7 +92,9 @@ export class ImageSearchServiceImpl implements ImageSearchService {
         };
       }
 
-      const data: ImageSearchResponse = await response.json();
+      this.logger.info('API响应已接收', {
+        success: data.success
+      });
 
       // 验证响应数据
       if (!data || typeof data.success !== 'boolean') {

@@ -6,6 +6,7 @@
 import { VideoEditingLogger } from '../utils/logger';
 import { MaterialItem } from '@/types';
 import { VideoAnalysisResponse } from './videoAnalysisService';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // 视频分析结果接口（用于API调用）
 export interface VideoAnalysisResult {
@@ -169,38 +170,24 @@ export class VideoAIMatchServiceImpl implements VideoAIMatchService {
         segmentDuration
       };
 
-      const response = await fetch('/api/video-ai-match', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
+      let data: VideoAIMatchResponse;
+      try {
+        data = await http.post<VideoAIMatchResponse>('/api/video-ai-match', requestBody, {
+          timeoutMs: 600_000,
+        });
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
         const error = new Error(errorMessage);
         this.logger.apiError('视频AI匹配请求', '/api/video-ai-match', error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           scriptTextLength: scriptText.length,
           videoCount: videoAnalysisResults.length
         });
         throw error;
       }
-
-      const data: VideoAIMatchResponse = await response.json();
       const responseTime = performance.now() - startTime;
 
       // 验证响应格式

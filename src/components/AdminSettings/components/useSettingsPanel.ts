@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+import { http } from '@/lib/api/http-client';
+
 export interface SettingItem {
   key: string;
   value: unknown;
@@ -24,38 +26,23 @@ interface UseSettingsPanelReturn {
   refetch: () => Promise<void>;
 }
 
-function getAuthHeaders(): Record<string, string> {
-  const token = typeof window !== 'undefined'
-    ? localStorage.getItem('ecliptrix-session-token')
-    : null;
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-  };
-}
-
 async function fetchCategorySettings(category: string): Promise<{
   success: boolean;
   settings: SettingItem[];
 }> {
-  const res = await fetch(`/api/system-settings/${category}`, {
-    headers: getAuthHeaders(),
-  });
-  if (!res.ok) throw new Error(`Failed to fetch ${category} settings`);
-  return res.json();
+  return http.get<{ success: boolean; settings: SettingItem[] }>(
+    `/api/system-settings/${category}`,
+  );
 }
 
 async function saveCategorySettings(
   category: string,
-  settings: Record<string, unknown>
+  settings: Record<string, unknown>,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`/api/system-settings/${category}`, {
-    method: 'PUT',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ settings }),
-  });
-  if (!res.ok) throw new Error(`Failed to save ${category} settings`);
-  return res.json();
+  return http.put<{ success: boolean; message: string }>(
+    `/api/system-settings/${category}`,
+    { settings },
+  );
 }
 
 async function resetCategorySettings(category: string): Promise<{
@@ -63,12 +50,9 @@ async function resetCategorySettings(category: string): Promise<{
   message: string;
   settings: SettingItem[];
 }> {
-  const res = await fetch(`/api/system-settings/${category}/reset`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
-  if (!res.ok) throw new Error(`Failed to reset ${category} settings`);
-  return res.json();
+  return http.post<{ success: boolean; message: string; settings: SettingItem[] }>(
+    `/api/system-settings/${category}/reset`,
+  );
 }
 
 export function useSettingsPanel(category: string): UseSettingsPanelReturn {
@@ -96,7 +80,8 @@ export function useSettingsPanel(category: string): UseSettingsPanelReturn {
         originalSettings.current = { ...settingsMap };
       }
     } catch {
-      // Error handled by caller via notification
+      // Optional feature; failure is non-fatal — caller surfaces errors via
+      // its own notification layer if needed.
     } finally {
       setLoading(false);
     }

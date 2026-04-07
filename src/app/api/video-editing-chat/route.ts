@@ -1,6 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
-import { detectIntent } from '@/lib/intent-detection-service';
+import { backendConfig } from '@/lib/config/backend';
+
+/**
+ * Server-side intent-detection helper.
+ *
+ * Replaces the previous in-process import of `detectIntent` from
+ * `@/lib/intent-detection-service`. After S06, that module is browser-only
+ * (it consumes `http-client.ts` which throws when `window` is undefined),
+ * so this server route calls the backend directly via `backendConfig.baseUrl`
+ * and forwards the incoming request's `Authorization` header so the backend
+ * `SessionAuthMiddleware` (S01) accepts the call.
+ *
+ * Spec: docs/plans/unified-api-auth-refactor/specs/06-direct-browser-call-migration.md §4.1
+ */
+interface IntentDetectionBackendResponse {
+  success: boolean;
+  data?: {
+    should_call_workflow: boolean;
+    workflow_name: string | null;
+    workflow_id: string | null;
+    confidence: number;
+    reasoning: string;
+    parameters?: Record<string, any>;
+  };
+  error?: string;
+  details?: string;
+}
+
+async function callIntentDetectionBackend(
+  payload: {
+    user_message: string;
+    enabled_workflows: Array<{
+      workflow_id: string;
+      workflow_name: string;
+      tool_description: string;
+      enabled: boolean;
+    }>;
+    conversation_history: Array<{ role: string; content: string }> | null;
+  },
+  authHeader: string | null,
+): Promise<IntentDetectionBackendResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (authHeader) {
+    headers['Authorization'] = authHeader;
+  }
+
+  const targetUrl = backendConfig.joinPath('/api/intent-detection/detect');
+  const response = await fetch(targetUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    return {
+      success: false,
+      error: `Backend intent-detection error: ${response.status}`,
+      details: errorText,
+    };
+  }
+
+  return (await response.json()) as IntentDetectionBackendResponse;
+}
 
 // 工作流配置接口
 interface WorkflowConfig {
@@ -113,17 +179,24 @@ export async function POST(request: NextRequest) {
           const lastUserMessage = messages.filter(m => m.role === 'user').pop();
           if (lastUserMessage) {
             console.log(`[Video Editing Chat API] Task ${taskId} - 开始调用意图检测服务，用户消息: ${lastUserMessage.content.substring(0, 100)}...`);
-            
-            // 直接调用意图检测服务，不通过HTTP fetch
-            const intentData = await detectIntent(
-              lastUserMessage.content,
-              enabledWorkflows.map(wf => ({
-                workflow_id: wf.workflowId,
-                workflow_name: wf.workflowName,
-                tool_description: wf.toolDescription,
-                enabled: wf.enabled
-              })),
-              messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
+
+            // Server-to-server call to the FastAPI backend (S06 §4.1).
+            // We forward the caller's Authorization header so the backend
+            // SessionAuthMiddleware (S01) sees the same identity.
+            const intentData = await callIntentDetectionBackend(
+              {
+                user_message: lastUserMessage.content,
+                enabled_workflows: enabledWorkflows.map(wf => ({
+                  workflow_id: wf.workflowId,
+                  workflow_name: wf.workflowName,
+                  tool_description: wf.toolDescription,
+                  enabled: wf.enabled,
+                })),
+                conversation_history: messages
+                  .slice(-5)
+                  .map(m => ({ role: m.role, content: m.content })),
+              },
+              request.headers.get('authorization'),
             );
             
             console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测服务返回数据:`, {

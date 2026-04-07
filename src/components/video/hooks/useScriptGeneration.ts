@@ -3,6 +3,7 @@ import { ScriptSegment, VideoEditingTaskContent, ScriptGenerationConfig, ChatMes
 import { UseScriptGenerationReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { createScriptService, ScriptService } from '../services';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // 为脚本段落生成关键词的函数
 const generateKeywordsForSegments = async (
@@ -27,29 +28,22 @@ const generateKeywordsForSegments = async (
         contentLength: segmentContent.length
       });
 
-      const response = await fetch('/api/script-keywords-generation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/script-keywords-generation', {
           segmentTitle: segment.title,
           segmentContent: segmentContent,
           taskId: taskId,
-        }),
-      });
-
-      if (!response.ok) {
+        });
+      } catch (httpError) {
         logger.warn(`段落 ${index + 1} 关键词生成失败`, {
           segmentId: segment.id,
-          status: response.status,
-          statusText: response.statusText
+          status: httpError instanceof ApiError ? httpError.status : undefined,
+          error: httpError instanceof Error ? httpError.message : String(httpError)
         });
         return segment; // 返回原始段落，不包含关键词
       }
 
-      const result = await response.json();
-      
       if (result.success && result.keywords && Array.isArray(result.keywords)) {
         logger.info(`段落 ${index + 1} 关键词生成成功`, {
           segmentId: segment.id,

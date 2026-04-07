@@ -19,6 +19,7 @@ import StoryboardPackView from './StoryboardPackView';
 import StoryboardPackModal from './StoryboardPackModal';
 import { StoryboardPack, StoryboardFrame } from '@/types';
 import { listPacks, deletePack } from '@/lib/api/storyboard';
+import { http, ApiError } from '@/lib/api/http-client';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -1120,15 +1121,18 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         requestBody.image_url = selectedImageForConversion.url;
       }
 
-      const response = await fetch('/api/video/image-to-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const result = await response.json();
+      let result: any;
+      try {
+        result = await http.post<any>('/api/video/image-to-video', requestBody, {
+          timeoutMs: 600_000,
+        });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          result = { success: false, error: httpError.message || `HTTP ${httpError.status}` };
+        } else {
+          throw httpError;
+        }
+      }
 
       if (result.success) {
         // 转换成功，添加生成的视频到素材管理

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // ---- Types ----
 
@@ -92,11 +93,18 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
     }
 
     try {
-      const res = await fetch(`/api/silence/status/${taskId}`);
-      const json = await res.json();
+      let json: any;
+      try {
+        json = await http.get<any>(`/api/silence/status/${taskId}`);
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `查询进度失败 (${httpError.status})`);
+        }
+        throw httpError;
+      }
 
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || `查询进度失败 (${res.status})`);
+      if (!json.success) {
+        throw new Error(json.message || `查询进度失败`);
       }
 
       const data = json.data;

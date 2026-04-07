@@ -3,6 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { AuthContextType, User, LoginCredentials, AuthState } from '@/types/auth';
 import { useNotification } from '@/contexts/NotificationContext';
+import { SESSION_TOKEN_KEY, SESSION_USER_KEY } from '@/lib/auth/storage-keys';
+import {
+  login as authLogin,
+  validateSession as authValidateSession,
+} from '@/lib/api/auth';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -70,8 +75,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Validate session periodically
   const validateSession = React.useCallback(async (): Promise<boolean> => {
-    const storedUser = localStorage.getItem('ecliptrix-user');
-    const storedToken = localStorage.getItem('ecliptrix-session-token');
+    const storedUser = localStorage.getItem(SESSION_USER_KEY);
+    const storedToken = localStorage.getItem(SESSION_TOKEN_KEY);
 
     if (!storedUser || !storedToken) {
       return false;
@@ -81,18 +86,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const user: User = JSON.parse(storedUser);
       console.log('[AuthContext] Validating session for user:', user.username);
 
-      const response = await fetch('/api/auth/validate-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          session_token: storedToken,
-        }),
-      });
-
-      const data = await response.json();
+      const data = (await authValidateSession({
+        user_id: user.id,
+        session_token: storedToken,
+      })) as unknown as {
+        success?: boolean;
+        valid?: boolean;
+        reason?: string;
+        message?: string;
+        user?: Record<string, unknown>;
+      };
 
       if (data.success && data.valid) {
         console.log('[AuthContext] Session is valid');
@@ -102,7 +105,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (data.user) {
           const refreshed = normalizeUser(data.user, true);
           const merged: User = { ...user, ...refreshed };
-          localStorage.setItem('ecliptrix-user', JSON.stringify(merged));
+          localStorage.setItem(SESSION_USER_KEY, JSON.stringify(merged));
           setAuthState(prev => ({
             ...prev,
             user: merged,
@@ -114,8 +117,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.warn('[AuthContext] Session is invalid:', data.reason);
 
         // Clear invalid session
-        localStorage.removeItem('ecliptrix-user');
-        localStorage.removeItem('ecliptrix-session-token');
+        localStorage.removeItem(SESSION_USER_KEY);
+        localStorage.removeItem(SESSION_TOKEN_KEY);
 
         setAuthState({
           user: null,
@@ -141,8 +144,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const loadAuthState = async () => {
       try {
-        const storedUser = localStorage.getItem('ecliptrix-user');
-        const storedToken = localStorage.getItem('ecliptrix-session-token');
+        const storedUser = localStorage.getItem(SESSION_USER_KEY);
+        const storedToken = localStorage.getItem(SESSION_TOKEN_KEY);
 
         if (storedUser && storedToken) {
           const user: User = JSON.parse(storedUser);
@@ -153,7 +156,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
           if (isValid) {
             // Re-read from localStorage because validateSession may have updated it
-            const refreshedRaw = localStorage.getItem('ecliptrix-user');
+            const refreshedRaw = localStorage.getItem(SESSION_USER_KEY);
             const refreshedUser: User = refreshedRaw ? JSON.parse(refreshedRaw) : user;
 
             setAuthState({
@@ -175,8 +178,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       } catch (error) {
         console.error('[AuthContext] Error loading auth state:', error);
-        localStorage.removeItem('ecliptrix-user');
-        localStorage.removeItem('ecliptrix-session-token');
+        localStorage.removeItem(SESSION_USER_KEY);
+        localStorage.removeItem(SESSION_TOKEN_KEY);
         setAuthState({
           user: null,
           isAuthenticated: false,
@@ -201,34 +204,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return () => clearInterval(interval);
   }, [authState.isAuthenticated, validateSession]);
 
+  // Listen for the global `ecliptrix:session-expired` event dispatched by
+  // `src/lib/api/http-client.ts` when any browser->backend call returns 401.
+  // The wrapper has already cleared localStorage and (when appropriate)
+  // navigated to /login, so all we need to do here is mirror the in-memory
+  // React state. We do NOT call the backend logout endpoint — the 401 already
+  // proved the session is invalid server-side.
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      console.log('[AuthContext] Received ecliptrix:session-expired event');
+      // Defensive: ensure localStorage is cleared even if the event fires
+      // outside the wrapper's normal path.
+      try {
+        localStorage.removeItem(SESSION_USER_KEY);
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+      } catch {
+        // ignore
+      }
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        sessionToken: null,
+      });
+    };
+
+    window.addEventListener('ecliptrix:session-expired', handleSessionExpired);
+    return () => {
+      window.removeEventListener('ecliptrix:session-expired', handleSessionExpired);
+    };
+  }, []);
+
   const login = async (credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log('[AuthContext] Login attempt for user:', credentials.username);
 
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials),
-      });
+      // The auth client (`src/lib/api/auth.ts`) owns the
+      // `result.user → frontend User` reshape that previously lived in
+      // `src/app/api/auth/login/route.ts` (delegated by T04 / T05).
+      const result = await authLogin(credentials);
 
-      const data = await response.json();
-
-      if (data.success && data.user) {
-        const user = normalizeUser(data.user);
+      if (result.success) {
+        const user = result.user;
 
         console.log('[AuthContext] Login successful:', user.username, {
-          hasSessionToken: !!data.session_token,
+          hasSessionToken: !!result.sessionToken,
           userRole: user.userRole,
           isRoot: user.isRoot,
           isAdmin: user.isAdmin,
         });
 
         // Store user and session token in localStorage
-        localStorage.setItem('ecliptrix-user', JSON.stringify(user));
-        if (data.session_token) {
-          localStorage.setItem('ecliptrix-session-token', data.session_token);
+        localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
+        if (result.sessionToken) {
+          localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken);
         }
 
         // Update auth state
@@ -236,7 +265,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           user,
           isAuthenticated: true,
           isLoading: false,
-          sessionToken: data.session_token || null,
+          sessionToken: result.sessionToken || null,
         });
 
         // Show success notification with role information
@@ -247,8 +276,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         return { success: true };
       } else {
-        console.warn('[AuthContext] Login failed:', data.error);
-        return { success: false, error: data.error || 'Login failed' };
+        console.warn('[AuthContext] Login failed:', result.error);
+        return { success: false, error: result.error || 'Login failed' };
       }
     } catch (error) {
       console.error('[AuthContext] Login error:', error);
@@ -260,8 +289,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     console.log('[AuthContext] User logout');
 
     // Clear localStorage
-    localStorage.removeItem('ecliptrix-user');
-    localStorage.removeItem('ecliptrix-session-token');
+    localStorage.removeItem(SESSION_USER_KEY);
+    localStorage.removeItem(SESSION_TOKEN_KEY);
 
     // Update auth state — all permission fields are cleared because user is null
     setAuthState({
@@ -276,7 +305,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     console.log('[AuthContext] Updating user profile:', updatedUser.username);
 
     // Update localStorage
-    localStorage.setItem('ecliptrix-user', JSON.stringify(updatedUser));
+    localStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
 
     // Update auth state
     setAuthState(prev => ({

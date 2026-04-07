@@ -8,6 +8,7 @@ import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@
 import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
 import { generateStoryboard } from '@/lib/api/storyboard';
 import { useVideoEditingStore } from '@/stores';
+import { http, ApiError } from '@/lib/api/http-client';
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -348,16 +349,17 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           formData.append('user_id', user.id);
         }
 
-        const response = await fetch('/api/storage/upload-video', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!response.ok) {
-          throw new Error(`视频上传失败: ${response.status} ${response.statusText}`);
+        let result: any;
+        try {
+          result = await http.upload<any>('/api/storage/upload-video', formData, {
+            timeoutMs: 600_000,
+          });
+        } catch (httpError) {
+          if (httpError instanceof ApiError) {
+            throw new Error(`视频上传失败: ${httpError.status} ${httpError.message}`);
+          }
+          throw httpError;
         }
-
-        const result = await response.json();
 
         if (!result.success) {
           throw new Error(`视频上传失败: ${result.message}`);
@@ -407,16 +409,17 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           formData.append('user_id', user.id);
         }
 
-        const response = await fetch('/api/storage/upload-file', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!response.ok) {
-          throw new Error(`文件上传失败: ${response.status} ${response.statusText}`);
+        let result: any;
+        try {
+          result = await http.upload<any>('/api/storage/upload-file', formData, {
+            timeoutMs: 600_000,
+          });
+        } catch (httpError) {
+          if (httpError instanceof ApiError) {
+            throw new Error(`文件上传失败: ${httpError.status} ${httpError.message}`);
+          }
+          throw httpError;
         }
-
-        const result = await response.json();
 
         if (!result.success) {
           throw new Error(`文件上传失败: ${result.message}`);
@@ -472,21 +475,19 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     ));
 
     try {
-      const response = await fetch('/api/video/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/video/analyze', {
           video_url: material.url || material.serverUrl,
           use_thumbnail: true,
           thumbnail_url: material.thumbnailUrl,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`解析请求失败: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(`解析请求失败: ${httpError.status}`);
+        }
+        throw httpError;
       }
-
-      const data = await response.json();
       const analysisText = data?.data?.frame_analyses?.[0]?.analysis
         || data?.frame_analyses?.[0]?.analysis
         || '';

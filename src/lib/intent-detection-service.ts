@@ -1,8 +1,22 @@
 /**
- * Intent Detection Service
- * Shared service for detecting user intent and determining if workflow should be called
- * This service can be used directly by API routes without HTTP fetch
+ * Intent Detection Service (browser-only)
+ *
+ * Thin wrapper around `http.post('/api/intent-detection/detect', ...)`. After
+ * the unified-api-auth-refactor (S06), this file no longer talks to the
+ * backend directly — it goes through the Next.js proxy route, which forwards
+ * the user's session token via the new HTTP wrapper.
+ *
+ * IMPORTANT: This module is BROWSER-ONLY. `http-client.ts` throws when
+ * imported on the server (`window` is undefined). The two former server-side
+ * consumers (`src/app/api/intent-detection/route.ts` and
+ * `src/app/api/video-editing-chat/route.ts`) have been migrated per S06 §4.1
+ * to call the backend server-to-server via `backendConfig.baseUrl`. Do NOT
+ * re-introduce a server-side import of `detectIntent`.
+ *
+ * Spec: docs/plans/unified-api-auth-refactor/specs/06-direct-browser-call-migration.md §4.1
  */
+
+import { http } from '@/lib/api/http-client';
 
 interface EnabledWorkflow {
   workflow_id: string;
@@ -30,94 +44,43 @@ interface IntentDetectionResult {
   details?: string;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-
 /**
- * Detect user intent by calling the Python backend service
+ * Detect user intent by calling the backend Fast LLM via the Next.js proxy.
+ *
  * @param userMessage - The user's message
  * @param enabledWorkflows - List of enabled workflows
  * @param conversationHistory - Optional conversation history
  * @returns Intent detection result
+ *
+ * Errors from the HTTP wrapper (`MissingAuthError`, `SessionExpiredError`,
+ * `ApiError`, `TimeoutError`) propagate to the caller — there is no
+ * `{success: false}` envelope wrapping. The pre-flight validation of empty
+ * `userMessage` / empty `enabledWorkflows` remains because it is a pure
+ * client-side guard, not a network/auth concern.
  */
 export async function detectIntent(
   userMessage: string,
   enabledWorkflows: EnabledWorkflow[],
   conversationHistory?: ConversationMessage[]
 ): Promise<IntentDetectionResult> {
-  try {
-    console.log('[Intent Detection Service] 开始Fast LLM意图检测:', {
-      messagePreview: userMessage.substring(0, 100) + '...',
-      messageLength: userMessage.length,
-      workflowsCount: enabledWorkflows.length,
-      workflows: enabledWorkflows.map(wf => wf.workflow_name).join(', '),
-      hasHistory: !!conversationHistory,
-      historyLength: conversationHistory?.length || 0,
-      backendUrl: BACKEND_URL
-    });
-
-    // Validate input
-    if (!userMessage || userMessage.trim() === '') {
-      console.error('[Intent Detection Service] user_message为空');
-      return {
-        success: false,
-        error: 'user_message is required and cannot be empty'
-      };
-    }
-
-    if (!enabledWorkflows || !Array.isArray(enabledWorkflows) || enabledWorkflows.length === 0) {
-      console.error('[Intent Detection Service] enabled_workflows为空或无效');
-      return {
-        success: false,
-        error: 'enabled_workflows array is required and cannot be empty'
-      };
-    }
-
-    // Call backend service
-    const backendResponse = await fetch(`${BACKEND_URL}/api/intent-detection/detect`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_message: userMessage,
-        enabled_workflows: enabledWorkflows,
-        conversation_history: conversationHistory || null
-      }),
-    });
-
-    if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
-      console.error('[Intent Detection Service] Python后端Fast LLM调用失败:', {
-        status: backendResponse.status,
-        error: errorText
-      });
-      return {
-        success: false,
-        error: `Backend Fast LLM error: ${backendResponse.status}`,
-        details: errorText
-      };
-    }
-
-    const data = await backendResponse.json();
-
-    console.log('[Intent Detection Service] Python后端Fast LLM响应:', {
-      success: data.success,
-      shouldCallWorkflow: data.data?.should_call_workflow || false,
-      workflowName: data.data?.workflow_name || null,
-      confidence: data.data?.confidence || 0,
-      reasoning: data.data?.reasoning || '',
-      error: data.error || null
-    });
-
-    return data;
-
-  } catch (error) {
-    console.error('[Intent Detection Service] 异常:', error);
+  // Pre-flight validation (pure client-side guard, no network involved).
+  if (!userMessage || userMessage.trim() === '') {
     return {
       success: false,
-      error: 'Internal server error in intent detection',
-      details: error instanceof Error ? error.message : String(error)
+      error: 'user_message is required and cannot be empty',
     };
   }
-}
 
+  if (!enabledWorkflows || !Array.isArray(enabledWorkflows) || enabledWorkflows.length === 0) {
+    return {
+      success: false,
+      error: 'enabled_workflows array is required and cannot be empty',
+    };
+  }
+
+  return http.post<IntentDetectionResult>('/api/intent-detection/detect', {
+    user_message: userMessage,
+    enabled_workflows: enabledWorkflows,
+    conversation_history: conversationHistory || null,
+  });
+}

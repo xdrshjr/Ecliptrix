@@ -1,3 +1,5 @@
+import { http } from '@/lib/api/http-client';
+
 export interface ArkVideoGenerateParams {
   prompt: string;
   duration: number;
@@ -29,16 +31,31 @@ export interface ArkVideoStatusResult {
   error?: string;
 }
 
+interface ArkVideoGenerateEnvelope {
+  success?: boolean;
+  message?: string;
+  ark_task_id?: string;
+}
+
+interface ArkVideoStatusEnvelope {
+  success?: boolean;
+  message?: string;
+  status?: ArkVideoStatusResult['status'];
+  video_url?: string;
+  thumbnail_url?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  error?: string;
+}
+
 export async function createArkVideoTask(params: ArkVideoGenerateParams): Promise<ArkVideoGenerateResult> {
-  const response = await fetch('/api/ark-video/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const data = await http.post<ArkVideoGenerateEnvelope>(
+    '/api/ark-video/generate',
+    params,
+  );
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success || !data.ark_task_id) {
     throw new Error(data.message || 'Failed to create Ark video task');
   }
 
@@ -46,15 +63,14 @@ export async function createArkVideoTask(params: ArkVideoGenerateParams): Promis
 }
 
 export async function getArkVideoStatus(arkTaskId: string): Promise<ArkVideoStatusResult> {
-  const response = await fetch(`/api/ark-video/status/${arkTaskId}`);
-  const data = await response.json();
+  const data = await http.get<ArkVideoStatusEnvelope>(`/api/ark-video/status/${arkTaskId}`);
 
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || 'Failed to query Ark video status');
   }
 
   return {
-    status: data.status,
+    status: data.status as ArkVideoStatusResult['status'],
     video_url: data.video_url,
     thumbnail_url: data.thumbnail_url,
     duration: data.duration,

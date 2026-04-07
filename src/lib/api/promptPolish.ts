@@ -6,6 +6,7 @@
  * using LLM before video script generation.
  */
 
+import { ApiError, TimeoutError, http } from '@/lib/api/http-client';
 import { ChatMessage } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -36,77 +37,30 @@ export interface PolishPromptResponse {
 /**
  * Polish a user prompt via the /api/prompt-polish endpoint.
  *
- * @param params - The prompt and optional context to send for polishing
- * @returns The polished prompt along with success status
- * @throws Error if the network request fails or returns a non-OK status
- *
- * @example
- * ```ts
- * const result = await polishPrompt({
- *   prompt: '做一个关于猫的视频',
- *   targetType: 'ai-video',
- * });
- * if (result.success) {
- *   console.log(result.polishedPrompt);
- * }
- * ```
+ * Preserves the legacy "always returns a structured response" contract so
+ * existing UI components do not need to add try/catch. Wrapper errors are
+ * mapped to a `success: false` envelope here; we explicitly DO NOT
+ * string-match against `err.message` (per spec AC #8) — we use the typed
+ * errors from S03.
  */
 export async function polishPrompt(params: PolishPromptParams): Promise<PolishPromptResponse> {
   const { prompt, chatMessages, videoAnalysisContext, targetType } = params;
 
-  console.log('[PromptPolish API Client] Sending polish request', {
-    promptLength: prompt.length,
-    chatMessagesCount: chatMessages?.length ?? 0,
-    hasVideoAnalysis: !!videoAnalysisContext,
-    targetType,
-  });
-
   try {
-    const response = await fetch('/api/prompt-polish', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        chatMessages,
-        videoAnalysisContext,
-        targetType,
-      }),
-      signal: AbortSignal.timeout(35000), // Slightly longer than server-side 30s timeout
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('[PromptPolish API Client] Server returned error', {
-        status: response.status,
-        message: data.message,
-      });
-
-      // Return structured error rather than throwing, so the UI can display
-      // a user-friendly message without needing a try/catch.
-      return {
-        success: false,
-        polishedPrompt: '',
-        message: data.message || `Request failed with status ${response.status}`,
-      };
-    }
-
-    console.log('[PromptPolish API Client] Polish completed successfully', {
-      polishedLength: data.polishedPrompt?.length ?? 0,
-    });
+    const data = await http.post<PolishPromptResponse>(
+      '/api/prompt-polish',
+      { prompt, chatMessages, videoAnalysisContext, targetType },
+      // Slightly longer than server-side 30s timeout
+      { timeoutMs: 35_000 },
+    );
 
     return {
       success: data.success,
       polishedPrompt: data.polishedPrompt ?? '',
       message: data.message,
     };
-
   } catch (error) {
-    // Handle timeout specifically
-    if (error instanceof DOMException && error.name === 'TimeoutError') {
-      console.error('[PromptPolish API Client] Request timed out');
+    if (error instanceof TimeoutError) {
       return {
         success: false,
         polishedPrompt: '',
@@ -114,8 +68,14 @@ export async function polishPrompt(params: PolishPromptParams): Promise<PolishPr
       };
     }
 
-    // Network / fetch failure
-    console.error('[PromptPolish API Client] Network error:', error);
+    if (error instanceof ApiError) {
+      return {
+        success: false,
+        polishedPrompt: '',
+        message: error.message || `Request failed with status ${error.status}`,
+      };
+    }
+
     return {
       success: false,
       polishedPrompt: '',

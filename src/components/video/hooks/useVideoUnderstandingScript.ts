@@ -253,27 +253,48 @@ export const useVideoUnderstandingScript = (
       });
 
       // 调用真实API
-      const response = await fetch('/api/video-understanding-script', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          selectedVideos: videosWithAnalysis,
-          referenceText,
-          parameters,
-          taskId,
-          chatMessages,
-          customPrompt,
-        }),
-      });
+      // The `referenceText` enrichment (merging chat messages + custom
+      // prompt) was previously done in
+      // `src/app/api/video-understanding-script/route.ts`. T04 reduced that
+      // route to a dumb passthrough, so the enrichment now happens here at
+      // the call site — the backend's `referenceText` field receives the
+      // merged content directly.
+      const [{ truncateChatMessages, serializeChatMessages }, { http }] = await Promise.all([
+        import('@/lib/utils/chatMessageUtils'),
+        import('@/lib/api/http-client'),
+      ]);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      const enrichedParts: string[] = [];
+      if (referenceText && referenceText.trim()) {
+        enrichedParts.push(referenceText.trim());
       }
+      if (chatMessages && chatMessages.length > 0) {
+        const truncated = truncateChatMessages(chatMessages);
+        const serialized = serializeChatMessages(truncated);
+        if (serialized) {
+          enrichedParts.push(`【对话参考】\n${serialized}`);
+        }
+      }
+      if (customPrompt && customPrompt.trim()) {
+        enrichedParts.push(`【用户需求】\n${customPrompt.trim()}`);
+      }
+      const enrichedReferenceText = enrichedParts.join('\n\n');
 
-      const result = await response.json();
+      const result = await http.post<{
+        success: boolean;
+        error?: string;
+        segments: ScriptSegment[];
+        metadata?: unknown;
+      }>(
+        '/api/video-understanding-script',
+        {
+          taskId,
+          selectedVideos: videosWithAnalysis,
+          referenceText: enrichedReferenceText,
+          parameters,
+        },
+        { timeoutMs: 300_000 },
+      );
 
       if (!result.success) {
         throw new Error(result.error || '脚本生成失败');

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { http, ApiError } from '@/lib/api/http-client';
 
 interface UserFormData {
   username: string;
@@ -64,15 +65,16 @@ const UserInfoPanel: React.FC = () => {
     setSaving(true);
     try {
       // Call API to update user profile
-      const response = await fetch('/api/user/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const result = await response.json();
+      let result: any;
+      try {
+        result = await http.put<any>('/api/user/profile', formData);
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          result = { success: false, message: httpError.message || `HTTP ${httpError.status}` };
+        } else {
+          throw httpError;
+        }
+      }
 
       if (result.success) {
         // Update auth context with new user data

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export interface NodeTestPanelProps {
   nodeId: string;
@@ -143,23 +144,24 @@ const NodeTestPanel: React.FC<NodeTestPanelProps> = ({
       });
 
       // Call backend API to test single node
-      const response = await fetch('/api/workflow/test-node', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/workflow/test-node', {
           node_id: nodeId,
           node_type: nodeType,
           node_label: nodeLabel,
           node_config: nodeConfig,
           input: parsedInput,
-        }),
-      });
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          data = { success: false, error: httpError.message || `HTTP ${httpError.status}` };
+        } else {
+          throw httpError;
+        }
+      }
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || data.message || 'Test failed');
       }
 

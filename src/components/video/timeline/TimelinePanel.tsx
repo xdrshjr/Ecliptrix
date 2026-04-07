@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // ---------------------------------------------------------------------------
 // Inline throttle (avoids lodash dependency)
@@ -573,10 +574,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         };
       });
 
-      const response = await fetch('/api/audio/batch-transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/audio/batch-transcribe', {
           audio_items: audioItemsForTranscription,
           language: 'zh-CN',
           use_itn: true,
@@ -584,11 +584,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           max_lines: 2,
           words_per_line: 15,
           generate_srt_file: true,
-        }),
-      });
-
-      if (!response.ok) throw new Error(`批量转录请求失败: ${response.status}`);
-      const result = await response.json();
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(`批量转录请求失败: ${httpError.status}`);
+        }
+        throw httpError;
+      }
       if (!result.success) throw new Error(`批量转录失败: ${result.error || '未知错误'}`);
 
       const subtitleTrack = state.tracks.find(t => t.type === 'subtitle');
@@ -667,24 +669,22 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         reader.readAsText(file);
       });
 
-      const response = await fetch('/api/timeline-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/timeline-import', {
           taskId,
           fileContent,
           fileName: file.name,
           mergeMode: 'replace',
           preserveIds: false,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `导入失败: ${response.status}`);
+        }, { timeoutMs: 300_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(httpError.message || `导入失败: ${httpError.status}`);
+        }
+        throw httpError;
       }
 
-      const result = await response.json();
       if (!result.success) throw new Error(result.error || '导入失败');
 
       const importedData = result.importedData;

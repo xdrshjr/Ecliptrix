@@ -18,6 +18,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useVideoEditingStore } from '@/stores/videoEditingStore';
 import type { AsyncTask, AsyncTaskType } from '@/stores/slices/asyncTaskSlice';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // ---------------------------------------------------------------------------
 // Polling interval per task type (ms)
@@ -190,14 +191,18 @@ async function pollAiVideoTask(task: AsyncTask): Promise<void> {
     return;
   }
 
-  const response = await fetch(`/api/ark-video/status/${arkTaskId}`);
-  if (!response.ok) {
+  let data: any;
+  try {
+    data = await http.get<any>(`/api/ark-video/status/${arkTaskId}`);
+  } catch (httpError) {
     // Transient error — don't fail the task, just log and retry next interval
-    console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}: HTTP ${response.status}`);
+    if (httpError instanceof ApiError) {
+      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}: HTTP ${httpError.status}`);
+    } else {
+      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}:`, httpError);
+    }
     return;
   }
-
-  const data = await response.json();
 
   if (data.status === 'succeeded' && data.video_url) {
     // --- Task completed successfully ---
@@ -269,13 +274,17 @@ async function pollImageToVideoTask(task: AsyncTask): Promise<void> {
   }
 
   // Use the same image-to-video endpoint with task_id query param
-  const response = await fetch(`/api/video/image-to-video?task_id=${backendTaskId}`);
-  if (!response.ok) {
-    console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}: HTTP ${response.status}`);
+  let data: any;
+  try {
+    data = await http.get<any>(`/api/video/image-to-video?task_id=${backendTaskId}`);
+  } catch (httpError) {
+    if (httpError instanceof ApiError) {
+      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}: HTTP ${httpError.status}`);
+    } else {
+      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}:`, httpError);
+    }
     return;
   }
-
-  const data = await response.json();
 
   if (data.success && data.video_url) {
     store.updateTask(task.taskId, {
@@ -331,13 +340,17 @@ async function pollStoryboardVideoTask(task: AsyncTask): Promise<void> {
     return;
   }
 
-  const response = await fetch(`/api/storyboard/batch-video/status/${packId}`);
-  if (!response.ok) {
-    console.warn(`[AsyncTaskPoller] Storyboard video status check failed for ${task.taskId}: HTTP ${response.status}`);
+  let data: any;
+  try {
+    data = await http.get<any>(`/api/storyboard/batch-video/status/${packId}`);
+  } catch (httpError) {
+    if (httpError instanceof ApiError) {
+      console.warn(`[AsyncTaskPoller] Storyboard video status check failed for ${task.taskId}: HTTP ${httpError.status}`);
+    } else {
+      console.warn(`[AsyncTaskPoller] Storyboard video status check failed for ${task.taskId}:`, httpError);
+    }
     return;
   }
-
-  const data = await response.json();
 
   if (!data.success) {
     console.warn(`[AsyncTaskPoller] Storyboard video status error: ${data.message}`);

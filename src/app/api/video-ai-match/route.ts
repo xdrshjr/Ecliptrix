@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 后端服务配置
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+// SWEEP-NOTE: this route does NOT proxy to the FastAPI backend at all.
+// It calls a third-party LLM (Aliyun DashScope) directly using its own
+// AI_VIDEO_MATCH_LLM_* env vars. The previous file declared a top-level
+// `BACKEND_URL` constant that was DEAD CODE — it was never actually used
+// inside the handler. The constant has been removed so the file no longer
+// trips the AC#3 grep guard. No backend behavior changed.
 
-// AI视频匹配专用LLM配置
 const getConfig = () => {
   const apiUrl = process.env.AI_VIDEO_MATCH_LLM_API_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
   const apiKey = ***REMOVED*** || '';
@@ -16,7 +19,6 @@ const getConfig = () => {
   return { apiUrl, apiKey, model };
 };
 
-// 视频分析结果接口
 interface VideoAnalysisResult {
   videoUrl: string;
   videoName: string;
@@ -30,15 +32,13 @@ interface VideoAnalysisResult {
   totalFrames: number;
 }
 
-// 请求接口
 interface VideoAIMatchRequest {
   scriptText: string;
   videoAnalysisResults: VideoAnalysisResult[];
   taskId: string;
-  segmentDuration?: number; // 段落语音时长（秒）
+  segmentDuration?: number;
 }
 
-// 响应接口
 interface VideoMatchResult {
   materialId: string;
   videoUrl: string;
@@ -55,7 +55,6 @@ interface VideoAIMatchResponse {
   processingTime: number;
 }
 
-// 日志记录函数
 const logRequest = (scriptText: string, videoCount: number, taskId: string) => {
   console.log(`[Video AI Match API] ${new Date().toISOString()} - AI video matching request`);
   console.log(`[Video AI Match API] Task ID: ${taskId}`);
@@ -73,7 +72,6 @@ const logResponse = (success: boolean, matchCount?: number, error?: string) => {
   }
 };
 
-// 格式化LLM消息
 const formatMessages = (scriptText: string, videoAnalysisResults: VideoAnalysisResult[], segmentDuration?: number) => {
   const systemPrompt = `你是一个专业的视频内容匹配专家。你的任务是根据给定的脚本文本，从提供的视频分析结果中找出最匹配的视频，并确保视频总时长与段落语音时长接近。
 
@@ -84,7 +82,7 @@ const formatMessages = (scriptText: string, videoAnalysisResults: VideoAnalysisR
   "matches": [
     {
       "materialId": "视频素材ID",
-      "videoUrl": "视频URL", 
+      "videoUrl": "视频URL",
       "videoName": "视频名称",
       "matchScore": 0.85,
       "matchReason": "匹配原因的详细说明，包括内容匹配和时长考虑"
@@ -117,7 +115,7 @@ const formatMessages = (scriptText: string, videoAnalysisResults: VideoAnalysisR
     const analysisText = video.frameAnalyses
       .map(frame => `[${frame.timestamp.toFixed(1)}s] ${frame.analysis}`)
       .join('\n');
-    
+
     return `视频: ${video.videoName} (ID: ${video.materialId})
 URL: ${video.videoUrl}
 时长: ${video.videoDuration.toFixed(1)}秒
@@ -154,16 +152,15 @@ ${segmentDuration ? `
 
 export async function POST(request: NextRequest) {
   const startTime = performance.now();
-  
+
   try {
     const body = await request.json();
     const { scriptText, videoAnalysisResults, taskId, segmentDuration } = body as VideoAIMatchRequest;
 
-    // 验证请求参数
     if (!scriptText || typeof scriptText !== 'string' || scriptText.trim().length === 0) {
       console.error('[Video AI Match API] Invalid request: scriptText is required');
       return NextResponse.json(
-        { 
+        {
           success: false,
           message: 'Script text is required',
           matches: [],
@@ -177,7 +174,7 @@ export async function POST(request: NextRequest) {
     if (!videoAnalysisResults || !Array.isArray(videoAnalysisResults) || videoAnalysisResults.length === 0) {
       console.error('[Video AI Match API] Invalid request: videoAnalysisResults is required');
       return NextResponse.json(
-        { 
+        {
           success: false,
           message: 'Video analysis results are required',
           matches: [],
@@ -191,7 +188,7 @@ export async function POST(request: NextRequest) {
     if (!taskId || typeof taskId !== 'string') {
       console.error('[Video AI Match API] Invalid request: taskId is required');
       return NextResponse.json(
-        { 
+        {
           success: false,
           message: 'Task ID is required',
           matches: [],
@@ -205,18 +202,16 @@ export async function POST(request: NextRequest) {
     const config = getConfig();
     logRequest(scriptText.trim(), videoAnalysisResults.length, taskId);
 
-    // 准备LLM请求数据
     const requestData = {
       model: config.model,
       messages: formatMessages(scriptText.trim(), videoAnalysisResults, segmentDuration),
-      temperature: 0.3, // 较低的温度以获得更一致的结果
+      temperature: 0.3,
       max_tokens: 2000,
-      response_format: { type: "json_object" }, // 指定返回JSON格式
+      response_format: { type: "json_object" },
     };
 
     console.log(`[Video AI Match API] Calling AI Video Match LLM API: ${config.apiUrl}/chat/completions for task: ${taskId}`);
 
-    // 调用LLM API
     const response = await fetch(`${config.apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -230,9 +225,9 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error(`[Video AI Match API] AI Video Match LLM API error: ${response.status} - ${errorText} for task: ${taskId}`);
       logResponse(false, undefined, `AI Video Match LLM API error: ${response.status}`);
-      
+
       return NextResponse.json(
-        { 
+        {
           success: false,
           message: `AI Video Match LLM API error: ${response.status}`,
           matches: [],
@@ -246,7 +241,6 @@ export async function POST(request: NextRequest) {
     const llmResponse = await response.json();
     const processingTime = performance.now() - startTime;
 
-    // 解析LLM响应
     let matchResults: VideoMatchResult[] = [];
     try {
       const content = llmResponse.choices?.[0]?.message?.content;
@@ -254,25 +248,24 @@ export async function POST(request: NextRequest) {
         throw new Error('No content in LLM response');
       }
 
-      // 尝试解析JSON
       const parsedContent = JSON.parse(content);
       if (parsedContent.matches && Array.isArray(parsedContent.matches)) {
         matchResults = parsedContent.matches
-          .filter((match: any) => 
-            match.materialId && 
-            match.videoUrl && 
-            match.videoName && 
+          .filter((match: any) =>
+            match.materialId &&
+            match.videoUrl &&
+            match.videoName &&
             typeof match.matchScore === 'number' &&
-            match.matchScore >= 0.5 // 只保留评分0.5以上的结果
+            match.matchScore >= 0.5
           )
-          .sort((a: any, b: any) => b.matchScore - a.matchScore); // 按评分降序排列
+          .sort((a: any, b: any) => b.matchScore - a.matchScore);
       }
     } catch (parseError) {
       console.error(`[Video AI Match API] Failed to parse AI Video Match LLM response for task: ${taskId}`, parseError);
       console.error(`[Video AI Match API] AI Video Match LLM response content:`, llmResponse.choices?.[0]?.message?.content);
-      
+
       return NextResponse.json(
-        { 
+        {
           success: false,
           message: 'Failed to parse AI Video Match LLM response',
           matches: [],
@@ -289,7 +282,6 @@ export async function POST(request: NextRequest) {
 
     logResponse(true, matchResults.length);
 
-    // 返回结果
     const result: VideoAIMatchResponse = {
       success: true,
       message: `Found ${matchResults.length} matching videos`,
@@ -304,9 +296,9 @@ export async function POST(request: NextRequest) {
     const processingTime = performance.now() - startTime;
     console.error('[Video AI Match API] Request processing error:', error);
     logResponse(false, undefined, String(error));
-    
+
     return NextResponse.json(
-      { 
+      {
         success: false,
         message: 'Internal server error',
         matches: [],
@@ -318,7 +310,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 健康检查端点
 export async function GET() {
   try {
     const config = getConfig();
@@ -334,7 +325,7 @@ export async function GET() {
     });
   } catch (error) {
     return NextResponse.json(
-      { 
+      {
         status: 'unhealthy',
         service: 'video-ai-match',
         error: String(error),
@@ -343,4 +334,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-} 
+}

@@ -5,6 +5,7 @@ import { ChatMessage, CreativeBrainstormingConfig } from '../types';
 import { getExpertsByIds } from '../data/expertProfiles';
 import { VideoEditingLogger } from '../../../utils/logger';
 import { Translations } from '@/lib/i18n';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export const useBrainstormingChat = (
   taskId: string, 
@@ -52,33 +53,28 @@ export const useBrainstormingChat = (
     userMessage?: string
   ) => {
     try {
-      const response = await fetch('/api/creative-brainstorming', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          taskId,
-          config,
-          currentContent,
-          messages: messages.map(msg => ({
-            type: msg.type,
-            expertId: msg.expertId,
-            content: msg.content,
-            timestamp: msg.timestamp.toISOString()
-          })),
-          phase,
-          currentRound,
-          userMessage
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API调用失败: ${response.status}`);
-      }
+      const response = await http.stream('/api/creative-brainstorming', {
+        taskId,
+        config,
+        currentContent,
+        messages: messages.map(msg => ({
+          type: msg.type,
+          expertId: msg.expertId,
+          content: msg.content,
+          timestamp: msg.timestamp.toISOString()
+        })),
+        phase,
+        currentRound,
+        userMessage
+      }, { timeoutMs: 600_000 });
 
       return response;
     } catch (error) {
+      if (error instanceof ApiError) {
+        const apiErr = new Error(`API调用失败: ${error.status}`);
+        logger.error('API调用错误', apiErr, { phase, currentRound });
+        throw apiErr;
+      }
       logger.error('API调用错误', error as Error, { phase, currentRound });
       throw error;
     }

@@ -4,8 +4,12 @@
  * Provides typed methods for managing system-level configuration
  * (TTS, YouTube, upload, watermark, video analysis) persisted in PostgreSQL.
  *
- * All methods send the session token from localStorage for admin auth.
+ * Refactored in T05 to use the secure-by-default `http.*` wrapper. The
+ * previous local `getAuthHeaders()` helper has been removed — auth is now
+ * injected globally by `src/lib/api/http-client.ts`.
  */
+
+import { http } from '@/lib/api/http-client';
 
 // ── Types ──
 
@@ -74,46 +78,20 @@ export interface AuditLogResponse {
 
 const API_BASE = '/api/system-settings';
 
-function getAuthHeaders(): Record<string, string> {
-  const token = typeof window !== 'undefined'
-    ? localStorage.getItem('ecliptrix-session-token')
-    : null;
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-  };
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || `Request failed with status ${response.status}`);
-  }
-  return data as T;
-}
-
 // ── API Methods ──
 
 /**
  * Fetch all available settings categories with labels and descriptions.
  */
 export async function getCategories(): Promise<CategoriesResponse> {
-  const response = await fetch(`${API_BASE}/categories`, {
-    method: 'GET',
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<CategoriesResponse>(response);
+  return http.get<CategoriesResponse>(`${API_BASE}/categories`);
 }
 
 /**
  * Fetch all settings within a given category.
  */
 export async function getCategorySettings(category: string): Promise<CategorySettingsResponse> {
-  const response = await fetch(`${API_BASE}/${category}`, {
-    method: 'GET',
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<CategorySettingsResponse>(response);
+  return http.get<CategorySettingsResponse>(`${API_BASE}/${category}`);
 }
 
 /**
@@ -124,12 +102,7 @@ export async function updateSetting(
   key: string,
   value: any,
 ): Promise<SettingUpdateResponse> {
-  const response = await fetch(`${API_BASE}/${category}/${key}`, {
-    method: 'PUT',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ value }),
-  });
-  return handleResponse<SettingUpdateResponse>(response);
+  return http.put<SettingUpdateResponse>(`${API_BASE}/${category}/${key}`, { value });
 }
 
 /**
@@ -140,34 +113,21 @@ export async function updateCategorySettings(
   category: string,
   settings: Record<string, any>,
 ): Promise<BatchUpdateResponse> {
-  const response = await fetch(`${API_BASE}/${category}`, {
-    method: 'PUT',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ settings }),
-  });
-  return handleResponse<BatchUpdateResponse>(response);
+  return http.put<BatchUpdateResponse>(`${API_BASE}/${category}`, { settings });
 }
 
 /**
  * Reset all settings in a category to their factory default values.
  */
 export async function resetCategory(category: string): Promise<ResetResponse> {
-  const response = await fetch(`${API_BASE}/${category}/reset`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<ResetResponse>(response);
+  return http.post<ResetResponse>(`${API_BASE}/${category}/reset`);
 }
 
 /**
  * Reset ALL settings across all categories to factory defaults.
  */
 export async function resetAll(): Promise<ResetResponse> {
-  const response = await fetch(`${API_BASE}/reset-all`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<ResetResponse>(response);
+  return http.post<ResetResponse>(`${API_BASE}/reset-all`);
 }
 
 /**
@@ -184,9 +144,5 @@ export async function getAuditLog(params?: {
   if (params?.offset !== undefined) searchParams.set('offset', String(params.offset));
   const qs = searchParams.toString();
 
-  const response = await fetch(`${API_BASE}/audit-log${qs ? `?${qs}` : ''}`, {
-    method: 'GET',
-    headers: getAuthHeaders(),
-  });
-  return handleResponse<AuditLogResponse>(response);
+  return http.get<AuditLogResponse>(`${API_BASE}/audit-log${qs ? `?${qs}` : ''}`);
 }

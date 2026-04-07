@@ -8,19 +8,17 @@ import {
   convertScriptSegmentsToBatchRequest,
   convertSentencesToSpeech,
   convertScriptSegmentToSentenceRequest,
-  downloadAudioFile,
-  TTSRequest, 
+  TTSRequest,
   BatchTTSResponse,
   SentenceBatchTTSResponse,
   SentenceTTSResult 
 } from '@/lib/api/tts';
-import { 
-  transcribeAudioFromPath, 
+import {
+  transcribeAudioFromPath,
   transcribeAudioFromFile,
   formatSubtitleTime,
   SubtitleItem,
-  AudioTranscriptionResponse,
-  AudioTranscriptionErrorResponse 
+  AudioTranscriptionResponse
 } from '@/lib/api/audioTranscription';
 import VoiceSelector from './components/VoiceSelector';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
@@ -278,12 +276,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
          serverAudioPath = possibleServerPaths[0];
        }
        
-       let transcriptionResult: AudioTranscriptionResponse | AudioTranscriptionErrorResponse;
-       
+       // S06 §4.3 Option A: the transcribe* helpers throw on backend/auth/network failures.
+       // The outer try/catch below maps any thrown error into `setSubtitleErrors`.
+       let transcriptionResult: AudioTranscriptionResponse;
+
        if (audioFile) {
          // 使用本地音频文件
          logger.info('使用本地音频文件进行字幕识别', { segmentId, fileName: audioFile.name });
-         
+
          transcriptionResult = await transcribeAudioFromFile(audioFile, {
            language: 'zh-CN',
            use_itn: true,
@@ -295,7 +295,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
        } else if (serverAudioPath) {
          // 使用服务器路径
          logger.info('使用服务器路径进行字幕识别', { segmentId, serverAudioPath });
-         
+
          transcriptionResult = await transcribeAudioFromPath({
            file_path: serverAudioPath,
            language: 'zh-CN',
@@ -310,8 +310,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
        }
 
              if (transcriptionResult.success) {
-         const response = transcriptionResult as AudioTranscriptionResponse;
-         
+         const response = transcriptionResult;
+
          logger.info('字幕识别成功', {
            segmentId,
            jobId: response.job_id,
@@ -386,16 +386,16 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
            }
          }
       } else {
-        const errorResponse = transcriptionResult as AudioTranscriptionErrorResponse;
-        
-                 logger.error('字幕识别失败', new Error(errorResponse.error), {
-           segmentId,
-           errorCode: errorResponse.error_code
-         });
+        // The backend returned `success: false` inside a 200 envelope. Surface
+        // the message via the same error sink that the catch block uses.
+        const fallbackMsg = transcriptionResult.message || '字幕识别失败';
+        logger.error('字幕识别失败', new Error(fallbackMsg), {
+          segmentId,
+        });
 
         setSubtitleErrors(prev => ({
           ...prev,
-          [segmentId]: errorResponse.error
+          [segmentId]: fallbackMsg,
         }));
       }
     } catch (error) {

@@ -1,8 +1,13 @@
 /**
  * User Management API client
  * 用户管理 API 客户端
+ *
+ * Refactored in T05 to use the secure-by-default `http.*` wrapper. The
+ * previous local `getAuthHeaders()` helper has been removed — auth is now
+ * injected globally by `src/lib/api/http-client.ts`.
  */
 
+import { http } from '@/lib/api/http-client';
 import type {
   UserListParams,
   UserListResponse,
@@ -12,27 +17,6 @@ import type {
   LoginHistoryRecord,
   UserInfo,
 } from '@/types/auth';
-
-function getAuthHeaders(): Record<string, string> {
-  const token = typeof window !== 'undefined'
-    ? localStorage.getItem('ecliptrix-session-token')
-    : null;
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || `Request failed with status ${response.status}`);
-  }
-  return data as T;
-}
 
 // ---------------------------------------------------------------------------
 // Normalize helpers — backend uses snake_case, frontend uses camelCase
@@ -83,8 +67,7 @@ export async function getUserList(params: UserListParams = {}): Promise<UserList
   const qs = searchParams.toString();
   const url = `/api/admin/users/list${qs ? `?${qs}` : ''}`;
 
-  const response = await fetch(url, { headers: getAuthHeaders() });
-  const json = await handleResponse<Record<string, unknown>>(response);
+  const json = await http.get<Record<string, unknown>>(url);
 
   // Backend wraps payload in `data`: { success, message, data: { users, total, ... } }
   const envelope = (json.data ?? json) as Record<string, unknown>;
@@ -111,18 +94,13 @@ export async function createUser(
     is_active: true,
   };
 
-  const response = await fetch('/api/admin/users/create', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(body),
-  });
+  const data = await http.post<Record<string, unknown>>(
+    '/api/admin/users/create',
+    body,
+  );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || 'Failed to create user');
-  }
   return {
-    success: data.success ?? true,
+    success: (data.success as boolean | undefined) ?? true,
     user: data.user ? normalizeUserInfo(data.user as Record<string, unknown>) : undefined,
     message: data.message as string | undefined,
   };
@@ -146,33 +124,26 @@ export async function updateUser(
     body.is_admin = payload.userRole === 'admin';
   }
 
-  const response = await fetch(`/api/admin/users/${userId}/edit`, {
-    method: 'PUT',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(body),
-  });
+  const data = await http.put<Record<string, unknown>>(
+    `/api/admin/users/${userId}/edit`,
+    body,
+  );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || 'Failed to update user');
-  }
-  return { success: data.success ?? true, message: data.message as string | undefined };
+  return {
+    success: (data.success as boolean | undefined) ?? true,
+    message: data.message as string | undefined,
+  };
 }
 
 export async function toggleUserStatus(
   userId: string,
 ): Promise<{ success: boolean; isActive?: boolean; message?: string }> {
-  const response = await fetch(`/api/admin/users/${userId}/toggle-status`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
+  const data = await http.post<Record<string, unknown>>(
+    `/api/admin/users/${userId}/toggle-status`,
+  );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || 'Failed to toggle user status');
-  }
   return {
-    success: data.success ?? true,
+    success: (data.success as boolean | undefined) ?? true,
     isActive: (data.is_active ?? data.isActive) as boolean | undefined,
     message: data.message as string | undefined,
   };
@@ -187,18 +158,13 @@ export async function resetUserPassword(
     body.new_password = payload.newPassword;
   }
 
-  const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(body),
-  });
+  const data = await http.post<Record<string, unknown>>(
+    `/api/admin/users/${userId}/reset-password`,
+    body,
+  );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || 'Failed to reset password');
-  }
   return {
-    success: data.success ?? true,
+    success: (data.success as boolean | undefined) ?? true,
     tempPassword: (data.temp_password ?? data.tempPassword ?? data.temporary_password) as string | undefined,
     message: data.message as string | undefined,
   };
@@ -220,8 +186,7 @@ export async function getUserLoginHistory(
   const qs = searchParams.toString();
   const url = `/api/admin/users/${userId}/login-history${qs ? `?${qs}` : ''}`;
 
-  const response = await fetch(url, { headers: getAuthHeaders() });
-  const data = await handleResponse<Record<string, unknown>>(response);
+  const data = await http.get<Record<string, unknown>>(url);
 
   const rawRecords = (data.records ?? data.data ?? data.history ?? []) as Record<string, unknown>[];
   return {
@@ -233,34 +198,29 @@ export async function getUserLoginHistory(
 }
 
 export async function forceLogout(userId: string): Promise<{ success: boolean; message?: string }> {
-  const response = await fetch(`/api/admin/users/${userId}/force-logout`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
+  const data = await http.post<Record<string, unknown>>(
+    `/api/admin/users/${userId}/force-logout`,
+  );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || 'Failed to force logout');
-  }
-  return { success: data.success ?? true, message: data.message as string | undefined };
+  return {
+    success: (data.success as boolean | undefined) ?? true,
+    message: data.message as string | undefined,
+  };
 }
 
 export async function deleteUser(userId: string): Promise<{ success: boolean; message?: string }> {
-  const response = await fetch(`/api/admin/users/${userId}/delete`, {
-    method: 'DELETE',
-    headers: getAuthHeaders(),
-  });
+  const data = await http.del<Record<string, unknown>>(
+    `/api/admin/users/${userId}/delete`,
+  );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || data.detail || 'Failed to delete user');
-  }
-  return { success: data.success ?? true, message: data.message as string | undefined };
+  return {
+    success: (data.success as boolean | undefined) ?? true,
+    message: data.message as string | undefined,
+  };
 }
 
 export async function getUserStats(): Promise<UserStats> {
-  const response = await fetch('/api/admin/users/stats', { headers: getAuthHeaders() });
-  const data = await handleResponse<Record<string, unknown>>(response);
+  const data = await http.get<Record<string, unknown>>('/api/admin/users/stats');
 
   // The backend may nest stats inside a 'data' field or return them flat
   const stats = (data.data ?? data) as Record<string, unknown>;

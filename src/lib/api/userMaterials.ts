@@ -3,6 +3,8 @@
  * 用户素材查询API客户端
  */
 
+import { ApiError, http } from '@/lib/api/http-client';
+
 /**
  * User material interface
  */
@@ -35,12 +37,10 @@ export interface UserMaterialsResponse {
 /**
  * Get user's uploaded materials from storage
  * 获取用户上传的所有素材
- * 
- * @param userId - User ID
- * @param page - Page number (1-indexed)
- * @param pageSize - Items per page
- * @param materialType - Filter by material type (video/audio/image)
- * @returns User materials response
+ *
+ * Preserves the legacy "always returns a UserMaterialsResponse" contract
+ * (failures yield `success:false` with an empty materials array) so the
+ * existing material gallery UI does not need to add try/catch.
  */
 export async function getUserMaterials(
   userId: string,
@@ -48,63 +48,37 @@ export async function getUserMaterials(
   pageSize: number = 20,
   materialType?: 'video' | 'audio' | 'image'
 ): Promise<UserMaterialsResponse> {
+  const params = new URLSearchParams({
+    user_id: userId,
+    page: String(page),
+    page_size: String(pageSize),
+  });
+
+  if (materialType) {
+    params.append('material_type', materialType);
+  }
+
   try {
-    console.log('[User Materials API] 发送查询请求', {
-      userId,
-      page,
-      pageSize,
-      materialType
-    });
-
-    const params = new URLSearchParams({
-      user_id: userId,
-      page: String(page),
-      page_size: String(pageSize),
-    });
-
-    if (materialType) {
-      params.append('material_type', materialType);
-    }
-
-    const response = await fetch(`/api/storage/user-materials?${params}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-
-    console.log('[User Materials API] 查询响应', {
-      success: result.success,
-      total: result.total,
-      page: result.page,
-      returned: result.materials?.length || 0
-    });
-
-    return result;
+    return await http.get<UserMaterialsResponse>(
+      `/api/storage/user-materials?${params}`,
+    );
   } catch (error) {
-    console.error('[User Materials API] 查询失败', {
-      error: error instanceof Error ? error.message : String(error),
-      userId,
-      page,
-      pageSize
-    });
-
-    // Return error response
+    // Map any wrapper error to the legacy envelope so callers can keep
+    // rendering an empty grid instead of crashing.
+    const message =
+      error instanceof ApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : String(error);
     return {
       success: false,
-      message: `查询素材失败: ${error instanceof Error ? error.message : String(error)}`,
+      message: `查询素材失败: ${message}`,
       materials: [],
       total: 0,
       page,
       page_size: pageSize,
-      total_pages: 0
+      total_pages: 0,
     };
   }
 }
-

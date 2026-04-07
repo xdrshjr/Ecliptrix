@@ -4,6 +4,7 @@
  */
 
 import { VideoEditingLogger } from '../utils/logger';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // 类型定义
 export interface FrameAnalysis {
@@ -155,101 +156,85 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
     });
 
     try {
-      let response: Response;
+      let data: VideoAnalysisResponse;
 
-      // 如果是blob URL，需要上传文件
-      if (isBlobUrl) {
-        this.logger.info('检测到blob URL，转换为文件上传', { videoUrl, useThumbnail });
-        
-        // 将blob URL转换为File对象
-        const file = await this.blobUrlToFile(videoUrl);
-        
-        // 创建FormData
-        const formData = new FormData();
-        formData.append('video', file);
-        formData.append('frame_interval', frameInterval.toString());
-        if (customPrompt) {
-          formData.append('custom_prompt', customPrompt);
-        }
-        
-        // 添加缩略图相关参数
-        if (useThumbnail && thumbnailUrl) {
-          formData.append('use_thumbnail', 'true');
-          
-          // 如果缩略图也是blob URL，需要转换并上传
-          if (this.isBlobUrl(thumbnailUrl)) {
-            this.logger.info('缩略图是blob URL，转换为文件上传', { thumbnailUrl });
-            const thumbnailFile = await this.blobUrlToFile(thumbnailUrl, undefined, 'image/jpeg');
-            formData.append('thumbnail', thumbnailFile);
-            formData.append('thumbnail_url', ''); // 留空，使用上传的文件
-          } else {
-            // 如果是普通URL，直接传递
-            formData.append('thumbnail_url', thumbnailUrl);
+      try {
+        // 如果是blob URL，需要上传文件
+        if (isBlobUrl) {
+          this.logger.info('检测到blob URL，转换为文件上传', { videoUrl, useThumbnail });
+
+          // 将blob URL转换为File对象
+          const file = await this.blobUrlToFile(videoUrl);
+
+          // 创建FormData
+          const formData = new FormData();
+          formData.append('video', file);
+          formData.append('frame_interval', frameInterval.toString());
+          if (customPrompt) {
+            formData.append('custom_prompt', customPrompt);
           }
+
+          // 添加缩略图相关参数
+          if (useThumbnail && thumbnailUrl) {
+            formData.append('use_thumbnail', 'true');
+
+            // 如果缩略图也是blob URL，需要转换并上传
+            if (this.isBlobUrl(thumbnailUrl)) {
+              this.logger.info('缩略图是blob URL，转换为文件上传', { thumbnailUrl });
+              const thumbnailFile = await this.blobUrlToFile(thumbnailUrl, undefined, 'image/jpeg');
+              formData.append('thumbnail', thumbnailFile);
+              formData.append('thumbnail_url', ''); // 留空，使用上传的文件
+            } else {
+              // 如果是普通URL，直接传递
+              formData.append('thumbnail_url', thumbnailUrl);
+            }
+          } else {
+            formData.append('use_thumbnail', 'false');
+          }
+
+          this.logger.info('上传视频文件进行解析', {
+            fileName: file.name,
+            fileSize: file.size,
+            frameInterval,
+            hasCustomPrompt: !!customPrompt,
+            useThumbnail,
+            hasThumbnailUrl: !!thumbnailUrl
+          });
+
+          // 发送multipart/form-data请求
+          data = await http.upload<VideoAnalysisResponse>('/api/video/analyze', formData, {
+            timeoutMs: 600_000,
+          });
         } else {
-          formData.append('use_thumbnail', 'false');
-        }
+          // 如果是普通URL，使用JSON请求
+          this.logger.info('使用URL方式进行视频解析', { videoUrl, useThumbnail });
 
-        this.logger.info('上传视频文件进行解析', {
-          fileName: file.name,
-          fileSize: file.size,
-          frameInterval,
-          hasCustomPrompt: !!customPrompt,
-          useThumbnail,
-          hasThumbnailUrl: !!thumbnailUrl
-        });
+          const requestBody: VideoAnalysisRequest = {
+            video_url: videoUrl,
+            frame_interval: frameInterval,
+            custom_prompt: customPrompt,
+            thumbnail_url: thumbnailUrl,
+            use_thumbnail: useThumbnail
+          };
 
-        // 发送multipart/form-data请求
-        response = await fetch('/api/video/analyze', {
-          method: 'POST',
-          body: formData,
-          // 不设置Content-Type，让浏览器自动设置boundary
-        });
-      } else {
-        // 如果是普通URL，使用JSON请求
-        this.logger.info('使用URL方式进行视频解析', { videoUrl, useThumbnail });
-        
-        const requestBody: VideoAnalysisRequest = {
-          video_url: videoUrl,
-          frame_interval: frameInterval,
-          custom_prompt: customPrompt,
-          thumbnail_url: thumbnailUrl,
-          use_thumbnail: useThumbnail
-        };
-
-        response = await fetch('/api/video/analyze', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-      }
-
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.detail || errorData.message || errorData.error || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
+          data = await http.post<VideoAnalysisResponse>('/api/video/analyze', requestBody, {
+            timeoutMs: 600_000,
           });
         }
-
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
         const error = new Error(errorMessage);
         this.logger.apiError('视频解析请求', '/api/video/analyze', error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           videoUrl,
           isBlobUrl
         });
         throw error;
       }
 
-      const data: VideoAnalysisResponse = await response.json();
       const responseTime = performance.now() - startTime;
 
       // 验证响应格式
@@ -297,35 +282,20 @@ export class VideoAnalysisServiceImpl implements VideoAnalysisService {
     this.logger.apiCall('查询解析队列状态', '/api/video/analysis-queue-status', {});
 
     try {
-      const response = await fetch('/api/video/analysis-queue-status', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.detail || errorData.message || errorData.error || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析队列状态错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
+      let data: QueueStatusResponse;
+      try {
+        data = await http.get<QueueStatusResponse>('/api/video/analysis-queue-status');
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
         const error = new Error(errorMessage);
         this.logger.apiError('查询解析队列状态', '/api/video/analysis-queue-status', error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText
+          status: httpError instanceof ApiError ? httpError.status : undefined
         });
         throw error;
       }
-
-      const data: QueueStatusResponse = await response.json();
       const responseTime = performance.now() - startTime;
 
       this.logger.info('查询解析队列状态成功', {

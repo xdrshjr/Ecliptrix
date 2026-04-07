@@ -1,3 +1,4 @@
+import { http } from '@/lib/api/http-client';
 import { StoryboardGenerateParams, StoryboardPack, StoryboardFrame, StoryboardAspectRatio } from '@/types';
 
 /** Raw backend frame shape (snake_case). */
@@ -21,6 +22,12 @@ interface RawPack {
   original_image_url: string;
   reference_image_url?: string;
   frames?: RawFrame[];
+}
+
+interface StoryboardEnvelope<T> {
+  success?: boolean;
+  message?: string;
+  data?: T;
 }
 
 /** Convert a raw backend frame to a frontend StoryboardFrame. */
@@ -55,20 +62,18 @@ function toPack(d: RawPack): StoryboardPack {
  * Returns the created StoryboardPack with all cropped frames.
  */
 export async function generateStoryboard(params: StoryboardGenerateParams): Promise<StoryboardPack> {
-  const response = await fetch('/api/storyboard/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const data = await http.post<StoryboardEnvelope<RawPack>>(
+    '/api/storyboard/generate',
+    {
       prompt: params.prompt,
       frame_count: params.frameCount,
       aspect_ratio: params.aspectRatio || '1:1',
       reference_image: params.referenceImage,
-    }),
-  });
+    },
+    { timeoutMs: 180_000 },
+  );
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success || !data.data) {
     throw new Error(data.message || '分镜生成失败');
   }
 
@@ -79,13 +84,9 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
  * List all storyboard packs.
  */
 export async function listPacks(): Promise<StoryboardPack[]> {
-  const response = await fetch('/api/storyboard/packs', {
-    method: 'GET',
-  });
+  const data = await http.get<StoryboardEnvelope<RawPack[]>>('/api/storyboard/packs');
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || '获取分镜包列表失败');
   }
 
@@ -96,13 +97,9 @@ export async function listPacks(): Promise<StoryboardPack[]> {
  * Get a single storyboard pack by ID.
  */
 export async function getPack(packId: string): Promise<StoryboardPack> {
-  const response = await fetch(`/api/storyboard/packs/${packId}`, {
-    method: 'GET',
-  });
+  const data = await http.get<StoryboardEnvelope<RawPack>>(`/api/storyboard/packs/${packId}`);
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success || !data.data) {
     throw new Error(data.message || '获取分镜包失败');
   }
 
@@ -113,15 +110,18 @@ export async function getPack(packId: string): Promise<StoryboardPack> {
  * Delete a storyboard pack.
  */
 export async function deletePack(packId: string): Promise<void> {
-  const response = await fetch(`/api/storyboard/packs/${packId}`, {
-    method: 'DELETE',
-  });
+  const data = await http.del<StoryboardEnvelope<unknown>>(`/api/storyboard/packs/${packId}`);
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || '删除分镜包失败');
   }
+}
+
+interface DescribeFramesEnvelope {
+  success?: boolean;
+  message?: string;
+  descriptions?: { index: number; description: string }[];
+  data?: { index: number; description: string }[];
 }
 
 /**
@@ -130,24 +130,28 @@ export async function deletePack(packId: string): Promise<void> {
  */
 export async function describeFrames(
   packId: string,
-  frameIndices?: number[]
+  frameIndices?: number[],
 ): Promise<{ index: number; description: string }[]> {
-  const response = await fetch('/api/storyboard/describe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const data = await http.post<DescribeFramesEnvelope>(
+    '/api/storyboard/describe',
+    {
       pack_id: packId,
       frame_indices: frameIndices,
-    }),
-  });
+    },
+    { timeoutMs: 180_000 },
+  );
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || '生成分镜描述失败');
   }
 
   return data.descriptions || data.data || [];
+}
+
+interface BatchVideoEnvelope {
+  success?: boolean;
+  message?: string;
+  tasks?: { ark_task_id?: string; frame_index: number }[];
 }
 
 /**
@@ -156,12 +160,11 @@ export async function describeFrames(
  */
 export async function batchGenerateVideos(
   packId: string,
-  segments: { frameIndex: number; description: string; duration: number; repeat?: number }[]
+  segments: { frameIndex: number; description: string; duration: number; repeat?: number }[],
 ): Promise<{ taskGroups: { frameIndex: number; taskIds: string[] }[] }> {
-  const response = await fetch('/api/storyboard/batch-video', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const data = await http.post<BatchVideoEnvelope>(
+    '/api/storyboard/batch-video',
+    {
       pack_id: packId,
       segments: segments.map(s => ({
         frame_index: s.frameIndex,
@@ -169,12 +172,11 @@ export async function batchGenerateVideos(
         duration: s.duration,
         repeat: s.repeat || 1,
       })),
-    }),
-  });
+    },
+    { timeoutMs: 180_000 },
+  );
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || '批量视频生成失败');
   }
 
@@ -196,22 +198,26 @@ export async function batchGenerateVideos(
   };
 }
 
+interface BatchVideoStatusEnvelope {
+  success?: boolean;
+  message?: string;
+  statuses?: { frame_index: number; status: string; video_url?: string; error?: string }[];
+}
+
 /**
  * Get the status of batch video generation for a storyboard pack.
  */
 export async function getBatchVideoStatus(
-  packId: string
+  packId: string,
 ): Promise<{
   status: 'pending' | 'processing' | 'completed' | 'failed';
   segments: { frameIndex: number; status: string; videoUrl?: string; error?: string }[];
 }> {
-  const response = await fetch(`/api/storyboard/batch-video/status/${packId}`, {
-    method: 'GET',
-  });
+  const data = await http.get<BatchVideoStatusEnvelope>(
+    `/api/storyboard/batch-video/status/${packId}`,
+  );
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || '获取批量视频状态失败');
   }
 
@@ -219,7 +225,7 @@ export async function getBatchVideoStatus(
   const statuses = data.statuses || [];
   return {
     status: 'processing' as const,
-    segments: statuses.map((s: { frame_index: number; status: string; video_url?: string; error?: string }) => ({
+    segments: statuses.map(s => ({
       frameIndex: s.frame_index,
       status: s.status,
       videoUrl: s.video_url,
@@ -228,25 +234,29 @@ export async function getBatchVideoStatus(
   };
 }
 
+interface ComposeVideoEnvelope {
+  success?: boolean;
+  message?: string;
+  video_url?: string;
+}
+
 /**
  * Compose all generated storyboard videos into a single video.
  */
 export async function composeVideo(
   packId: string,
-  videoUrls: string[]
+  videoUrls: string[],
 ): Promise<{ videoUrl: string }> {
-  const response = await fetch('/api/storyboard/compose', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const data = await http.post<ComposeVideoEnvelope>(
+    '/api/storyboard/compose',
+    {
       pack_id: packId,
       video_urls: videoUrls,
-    }),
-  });
+    },
+    { timeoutMs: 600_000 },
+  );
 
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
+  if (!data.success) {
     throw new Error(data.message || '视频合成失败');
   }
 

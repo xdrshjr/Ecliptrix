@@ -1,5 +1,6 @@
 import { MaterialItem } from '@/types';
 import type { UseVideoAnalysisReturn } from '../hooks/useVideoAnalysis';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // Configuration constants
 export const VIDEO_ANALYSIS_CONFIG = {
@@ -179,29 +180,24 @@ async function analyzeSingleVideoWithRetry(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS);
 
-      const response = await fetch('/api/video/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
+      let analysisResult: any;
+      try {
+        analysisResult = await http.post<any>('/api/video/analyze', requestBody, {
+          timeoutMs: VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS,
+          signal: controller.signal,
+        });
+      } catch (httpError) {
+        clearTimeout(timeoutId);
+        const responseTime = performance.now() - startTime;
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
 
-      clearTimeout(timeoutId);
-
-      const responseTime = performance.now() - startTime;
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || errorData.detail || `HTTP error! status: ${response.status}`;
-        
         console.warn(`[ParallelVideoAnalysis] API请求失败: ${material.name}`, {
           taskId,
           videoId: material.id,
           attempt: attempts + 1,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           errorMessage,
           responseTime,
           timestamp: new Date().toISOString()
@@ -210,7 +206,9 @@ async function analyzeSingleVideoWithRetry(
         throw new Error(errorMessage);
       }
 
-      const analysisResult = await response.json();
+      clearTimeout(timeoutId);
+
+      const responseTime = performance.now() - startTime;
       
       console.log(`[ParallelVideoAnalysis] API请求成功: ${material.name}`, {
         taskId,
@@ -604,36 +602,33 @@ export async function analyzeVideosInBatch(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS);
 
-    const response = await fetch('/api/video/batch-analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+    let batchResult: BatchVideoAnalysisResponse;
+    try {
+      batchResult = await http.post<BatchVideoAnalysisResponse>('/api/video/batch-analyze', requestBody, {
+        timeoutMs: VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS,
+        signal: controller.signal,
+      });
+    } catch (httpError) {
+      clearTimeout(timeoutId);
+      const errorResponseTime = performance.now() - startTime;
+      const errorMessage = httpError instanceof ApiError
+        ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+        : (httpError instanceof Error ? httpError.message : String(httpError));
 
-    clearTimeout(timeoutId);
-
-    const responseTime = performance.now() - startTime;
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || errorData.detail || `HTTP error! status: ${response.status}`;
-      
       console.error(`[BatchVideoAnalysis] 批量分析API请求失败`, {
         taskId,
-        status: response.status,
-        statusText: response.statusText,
+        status: httpError instanceof ApiError ? httpError.status : undefined,
         errorMessage,
-        responseTime,
+        responseTime: errorResponseTime,
         timestamp: new Date().toISOString()
       });
 
       throw new Error(errorMessage);
     }
 
-    const batchResult: BatchVideoAnalysisResponse = await response.json();
+    clearTimeout(timeoutId);
+
+    const responseTime = performance.now() - startTime;
     
     console.log(`[BatchVideoAnalysis] 批量分析API请求成功`, {
       taskId,

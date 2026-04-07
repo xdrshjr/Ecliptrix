@@ -6,6 +6,7 @@ import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
 import ChatTypeSelectionModal from './ChatTypeSelectionModal';
 import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
+import { http, ApiError } from '@/lib/api/http-client';
 
 interface ChatInterfaceProps {
   taskId: string;
@@ -483,18 +484,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       // Handle regular chatbot conversation with API
       console.log('[ChatInterface] Using regular chat API for chatbot conversation');
       
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let response: Response;
+      try {
+        response = await http.stream('/api/chat', {
           messages: messagesWithUser,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(`HTTP error! status: ${httpError.status}`);
+        }
+        throw httpError;
       }
 
       const reader = response.body?.getReader();

@@ -1,5 +1,6 @@
 import { ScriptSegment, ScriptGenerationConfig, ChatMessage } from '@/types';
 import { VideoEditingLogger } from '../utils';
+import { http, ApiError } from '@/lib/api/http-client';
 
 /**
  * Script Service Interface
@@ -100,34 +101,20 @@ export class ScriptServiceImpl implements ScriptService {
     });
 
     try {
-      const response = await fetch('/api/video-script-generation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/video-script-generation', {
           markdownContent: markdownContent,
           taskId: taskId,
-        }),
-      });
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
 
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
-        const error = new Error(errorMessage);
-        this.logger.apiError('脚本生成请求', '/api/video-script-generation', error, {
+        this.logger.apiError('脚本生成请求', '/api/video-script-generation', httpError as Error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           markdownLength: markdownContent.length
         });
 
@@ -136,8 +123,6 @@ export class ScriptServiceImpl implements ScriptService {
           error: errorMessage
         };
       }
-
-      const result = await response.json();
       const endTime = performance.now();
 
       // 验证响应格式
@@ -261,37 +246,23 @@ export class ScriptServiceImpl implements ScriptService {
     });
 
     try {
-      const response = await fetch('/api/video-script-generation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: any;
+      try {
+        result = await http.post<any>('/api/video-script-generation', {
           markdownContent: markdownContent,
           taskId: taskId,
           scriptConfig: config,
           chatMessages: chatMessages,
           customPrompt: customPrompt,
-        }),
-      });
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
 
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析错误响应失败（带配置）', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
-        const error = new Error(errorMessage);
-        this.logger.apiError('脚本生成请求（带配置）', '/api/video-script-generation', error, {
+        this.logger.apiError('脚本生成请求（带配置）', '/api/video-script-generation', httpError as Error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           markdownLength: markdownContent.length,
           config
         });
@@ -301,8 +272,6 @@ export class ScriptServiceImpl implements ScriptService {
           error: errorMessage
         };
       }
-
-      const result = await response.json();
       const endTime = performance.now();
 
       // 验证响应格式

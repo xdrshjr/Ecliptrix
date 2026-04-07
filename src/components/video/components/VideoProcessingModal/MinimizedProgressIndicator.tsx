@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { SilenceRemoveResult } from './ProcessingProgress';
+import { http } from '@/lib/api/http-client';
 
 // ---- Types ----
 
@@ -42,10 +43,9 @@ const MinimizedProgressIndicator: React.FC<MinimizedProgressIndicatorProps> = ({
 
   const pollStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/silence/status/${task.taskId}`);
-      const json = await res.json();
+      const json = await http.get<any>(`/api/silence/status/${task.taskId}`);
 
-      if (!res.ok || !json.success) return;
+      if (!json.success) return;
 
       const data = json.data;
       retryCountRef.current = 0;

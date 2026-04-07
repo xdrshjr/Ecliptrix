@@ -6,6 +6,7 @@
  */
 import { TimelineState, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../utils';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export interface TimelineExportData {
   metadata: {
@@ -125,25 +126,20 @@ export class TimelineExportService {
       const exportData = this.prepareExportData(taskId, timelineState, materials);
 
       // 调用API进行导出
-      const response = await fetch(TimelineExportService.API_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let result: TimelineExportResponse;
+      try {
+        result = await http.post<TimelineExportResponse>(TimelineExportService.API_ENDPOINT, {
           taskId,
           timelineState,
           materials,
           exportData
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(`API request failed: ${response.status} - ${errorData.error || 'Unknown error'}`);
+        }, { timeoutMs: 600_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          throw new Error(`API request failed: ${httpError.status} - ${httpError.message || 'Unknown error'}`);
+        }
+        throw httpError;
       }
-
-      const result: TimelineExportResponse = await response.json();
 
       this.logger.info('时间轴数据导出成功', {
         taskId,

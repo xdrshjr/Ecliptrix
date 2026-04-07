@@ -1,6 +1,7 @@
 import { MaterialItem, MaterialType } from '@/types';
 import { VideoEditingLogger } from '../utils';
 import { SearchOrientation, YoutubeVideoSearchResult, YoutubeVideoSearchResponse } from '../types';
+import { http, ApiError } from '@/lib/api/http-client';
 
 /**
  * Youtube Video Search Service Interface
@@ -153,37 +154,23 @@ export class YoutubeVideoSearchServiceImpl implements YoutubeVideoSearchService 
 
     try {
       // 调用YouTube搜索API
-      const response = await fetch('/api/youtube/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/youtube/search', {
           query: query.trim(),
           max_videos: maxVideos,
           orientation: orientation,
           ...(minDuration !== undefined && { min_duration: minDuration }),
           ...(maxDuration !== undefined && { max_duration: maxDuration }),
-        }),
-      });
+        });
+      } catch (httpError) {
+        const errorMessage = httpError instanceof ApiError
+          ? (httpError.message || `HTTP error! status: ${httpError.status}`)
+          : (httpError instanceof Error ? httpError.message : String(httpError));
 
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (parseError) {
-          this.logger.error('解析YouTube搜索错误响应失败', parseError as Error, {
-            status: response.status,
-            statusText: response.statusText
-          });
-        }
-
-        const error = new Error(errorMessage);
-        this.logger.apiError('Youtube视频搜索请求', '/api/youtube/search', error, {
+        this.logger.apiError('Youtube视频搜索请求', '/api/youtube/search', httpError as Error, {
           responseTime: performance.now() - startTime,
-          status: response.status,
-          statusText: response.statusText,
+          status: httpError instanceof ApiError ? httpError.status : undefined,
           query: query.trim()
         });
 
@@ -193,7 +180,6 @@ export class YoutubeVideoSearchServiceImpl implements YoutubeVideoSearchService 
         };
       }
 
-      const data = await response.json();
       const searchTime = performance.now() - startTime;
 
       // 验证响应格式

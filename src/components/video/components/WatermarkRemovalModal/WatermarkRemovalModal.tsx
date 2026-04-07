@@ -5,6 +5,7 @@ import { MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
+import { http, ApiError } from '@/lib/api/http-client';
 
 // 水印区域数据结构
 export interface WatermarkArea {
@@ -380,15 +381,23 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
       logger.info('发送水印去除请求', requestData);
       setProcessingProgress('正在处理视频...');
       
-      const response = await fetch('/api/video/watermark-removal', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData),
-      });
-      
-      const result: WatermarkRemovalResponse = await response.json();
+      let result: WatermarkRemovalResponse;
+      try {
+        result = await http.post<WatermarkRemovalResponse>('/api/video/watermark-removal', requestData, {
+          timeoutMs: 600_000,
+        });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          result = {
+            success: false,
+            message: httpError.message || `HTTP ${httpError.status}`,
+            task_id: '',
+            original_video_url: '',
+          };
+        } else {
+          throw httpError;
+        }
+      }
       
       if (result.success && result.processed_video_url) {
         logger.info('水印去除成功', {

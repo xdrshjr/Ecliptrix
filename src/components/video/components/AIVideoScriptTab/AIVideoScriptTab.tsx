@@ -5,6 +5,7 @@ import { AIVideoScriptSegment, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAIVideoScriptGeneration } from '../../hooks/useAIVideoScriptGeneration';
 import ImagePickerSlot from './ImagePickerSlot';
+import { http, ApiError } from '@/lib/api/http-client';
 
 export function createAIVideoSegment(title: string, scriptText?: string, narrationText?: string): AIVideoScriptSegment {
   return {
@@ -66,19 +67,22 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
         }))
         .filter((_, i) => i !== segmentIndex);
 
-      const response = await fetch('/api/ai-video-script-expand', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: any;
+      try {
+        data = await http.post<any>('/api/ai-video-script-expand', {
           taskId: taskId || 'unknown',
           segmentIndex,
           segmentTitle: segment.title,
           segmentText: segment.scriptText,
           otherSegments,
-        }),
-      });
-
-      const data = await response.json();
+        }, { timeoutMs: 300_000 });
+      } catch (httpError) {
+        if (httpError instanceof ApiError) {
+          data = { success: false, error: httpError.message };
+        } else {
+          throw httpError;
+        }
+      }
       if (data.success && data.expandedText) {
         handleUpdateSegment(segmentId, { scriptText: data.expandedText });
       }

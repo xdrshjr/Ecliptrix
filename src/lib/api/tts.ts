@@ -1,3 +1,4 @@
+import { http } from '@/lib/api/http-client';
 import { ScriptSegment } from '@/types';
 
 /**
@@ -125,154 +126,38 @@ export interface SentenceBatchTTSResponse {
 }
 
 /**
- * Convert text to speech
+ * Convert text to speech.
+ *
+ * Long-running call (Volcano TTS can take 10-30s for long inputs); the
+ * wrapper's per-request timeout is bumped to match.
  */
 export async function convertTextToSpeech(request: TTSRequest): Promise<TTSResponse> {
-  try {
-    console.log('[TTS API] 发送语音转换请求', {
-      text_length: request.text.length,
-      voice_type: request.voice_type,
-      speed_ratio: request.speed_ratio,
-      segment_id: request.segment_id,
-      task_id: request.task_id
-    });
-
-    const response = await fetch('/api/tts/convert', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result: TTSResponse = await response.json();
-
-    console.log('[TTS API] 语音转换响应', {
-      success: result.success,
-      audio_url: result.success ? result.data.audio_url : null,
-      file_size: result.success ? result.data.file_size : null,
-      message: result.message
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[TTS API] 语音转换请求失败', {
-      error: error instanceof Error ? error.message : String(error),
-      request
-    });
-    throw error;
-  }
+  return http.post<TTSResponse>('/api/tts/convert', request, {
+    timeoutMs: 120_000,
+  });
 }
 
 /**
- * Convert multiple text segments to speech in batch
+ * Convert multiple text segments to speech in batch.
+ *
+ * Batch TTS can take several minutes for long scripts; bump the timeout to
+ * 5 minutes to match the previous behavior (the route uses Pattern C).
  */
 export async function convertBatchTextToSpeech(request: BatchTTSRequest): Promise<BatchTTSResponse> {
-  try {
-    console.log('[Batch TTS API] 发送批量语音转换请求', {
-      segments_count: request.segments.length,
-      voice_type: request.voice_type,
-      speed_ratio: request.speed_ratio,
-      task_id: request.task_id,
-      concurrent_threads: request.concurrent_threads,
-      total_text_length: request.segments.reduce((sum, seg) => sum + seg.text.length, 0)
-    });
-
-    const response = await fetch('/api/tts/batch-convert', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result: BatchTTSResponse = await response.json();
-
-    console.log('[Batch TTS API] 批量语音转换响应', {
-      success: result.success,
-      total_segments: result.total_segments,
-      successful_segments: result.successful_segments,
-      failed_segments: result.failed_segments,
-      total_processing_time: result.total_processing_time,
-      message: result.message
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[Batch TTS API] 批量语音转换请求失败', {
-      error: error instanceof Error ? error.message : String(error),
-      request: {
-        segments_count: request.segments.length,
-        voice_type: request.voice_type,
-        task_id: request.task_id
-      }
-    });
-    throw error;
-  }
+  return http.post<BatchTTSResponse>('/api/tts/batch-convert', request, {
+    timeoutMs: 300_000,
+  });
 }
 
 /**
- * Convert sentences to speech with concatenation and timing information
+ * Convert sentences to speech with concatenation and timing information.
  */
 export async function convertSentencesToSpeech(request: SentenceBatchTTSRequest): Promise<SentenceBatchTTSResponse> {
-  try {
-    console.log('[Sentence TTS API] 发送句子级语音转换请求', {
-      segment_id: request.segment_id,
-      sentences_count: request.sentences.length,
-      voice_type: request.voice_type,
-      speed_ratio: request.speed_ratio,
-      task_id: request.task_id,
-      concurrent_threads: request.concurrent_threads,
-      total_text_length: request.sentences.reduce((sum, sentence) => sum + sentence.text.length, 0)
-    });
-
-    const response = await fetch('/api/tts/convert-sentences', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result: SentenceBatchTTSResponse = await response.json();
-
-    console.log('[Sentence TTS API] 句子级语音转换响应', {
-      success: result.success,
-      segment_id: result.segment_id,
-      total_sentences: result.total_sentences,
-      successful_sentences: result.successful_sentences,
-      failed_sentences: result.failed_sentences,
-      total_processing_time: result.total_processing_time,
-      concatenated_audio_url: result.concatenated_audio_url,
-      total_duration: result.total_duration,
-      message: result.message
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[Sentence TTS API] 句子级语音转换请求失败', {
-      error: error instanceof Error ? error.message : String(error),
-      request: {
-        segment_id: request.segment_id,
-        sentences_count: request.sentences.length,
-        voice_type: request.voice_type,
-        task_id: request.task_id
-      }
-    });
-    throw error;
-  }
+  return http.post<SentenceBatchTTSResponse>(
+    '/api/tts/convert-sentences',
+    request,
+    { timeoutMs: 300_000 },
+  );
 }
 
 /**
@@ -343,71 +228,8 @@ export function convertScriptSegmentToSentenceRequest(
 }
 
 /**
- * Get available voice types
+ * Get available voice types.
  */
 export async function getVoiceTypes(locale: string = 'zh-CN'): Promise<VoiceTypesResponse> {
-  try {
-    console.log('[TTS API] 获取音色类型列表', {
-      locale
-    });
-
-    const response = await fetch(`/api/tts/voice-types?locale=${locale}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result: VoiceTypesResponse = await response.json();
-
-    console.log('[TTS API] 音色类型列表响应', {
-      success: result.success,
-      voice_count: Object.keys(result.data).length,
-      message: result.message
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[TTS API] 获取音色类型列表失败', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
-  }
-}
-
-/**
- * Download audio file from server
- */
-export async function downloadAudioFile(fileName: string): Promise<Blob> {
-  try {
-    console.log('[TTS API] 下载音频文件', { fileName });
-
-    const response = await fetch(`/api/audio/generated/${fileName}`, {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const blob = await response.blob();
-
-    console.log('[TTS API] 音频文件下载成功', {
-      fileName,
-      blobSize: blob.size,
-      blobType: blob.type
-    });
-
-    return blob;
-  } catch (error) {
-    console.error('[TTS API] 音频文件下载失败', {
-      fileName,
-      error: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
-  }
+  return http.get<VoiceTypesResponse>(`/api/tts/voice-types?locale=${locale}`);
 }
