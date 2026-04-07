@@ -152,13 +152,6 @@ export interface Translations {
     modelVideoCut: string;
     modelVision: string;
     modelCoding: string;
-    // Coding Plan
-    codingPlan: string;
-    codingPlanDesc: string;
-    codingPlanProviders: string;
-    codingPlanProvidersDesc: string;
-    codingPlanAssignment: string;
-    codingPlanAssignmentDesc: string;
     modelPreset: string;
     modelCustom: string;
     modelProvider: string;
@@ -211,6 +204,48 @@ export interface Translations {
     modelProviderInUse: string;
     modelAssignmentSaved: string;
     modelAssignmentDeleted: string;
+    // Tab layout & provider enhancements
+    tabProviders: string;
+    tabAssignments: string;
+    tabAdvanced: string;
+    apiFormat: string;
+    apiFormatAuto: string;
+    apiFormatOpenai: string;
+    apiFormatAnthropic: string;
+    defaultModels: string;
+    effectiveConfig: string;
+    configSource: string;
+    configFromDb: string;
+    configFromEnv: string;
+    envFallbackDesc: string;
+    envFallbackTitle: string;
+    envVarFunctionType: string;
+    envVarPrefix: string;
+    envVarUrlKey: string;
+    envVarApiKeyKey: string;
+    envVarModelKey: string;
+    envVarDescription: string;
+    envVarChatDesc: string;
+    envVarFastDesc: string;
+    envVarVideoCutDesc: string;
+    envVarVisionDesc: string;
+    envVarCodingDesc: string;
+    effectiveConfigDesc: string;
+    effectiveConfigRefresh: string;
+    effectiveConfigLoading: string;
+    effectiveConfigUrl: string;
+    effectiveConfigModel: string;
+    effectiveConfigSource: string;
+    effectiveConfigNotConfigured: string;
+    testConnectionFormat: string;
+    modelInfo: string;
+    formatUsed: string;
+    providerCard: string;
+    modelApiKeyRequired: string;
+    modelDeleteProviderError: string;
+    modelModelsFound: string;
+    modelKeyNotSet: string;
+    modelRequestFailed: string;
     deleteConfirmUsername: string;
     deleteConfirmEmail: string;
     confirmDelete: string;
@@ -1530,13 +1565,6 @@ export const translations: Record<string, Translations> = {
       modelVideoCut: 'Video Cut',
       modelVision: 'Vision',
       modelCoding: 'Coding',
-      // Coding Plan
-      codingPlan: 'Coding Plan',
-      codingPlanDesc: 'Configure coding assistant models (Kimi, Codex, Claude, GLM)',
-      codingPlanProviders: 'Coding Providers',
-      codingPlanProvidersDesc: 'Add API credentials for coding assistant services',
-      codingPlanAssignment: 'Active Coding Model',
-      codingPlanAssignmentDesc: 'Select which coding model to use',
       modelPreset: 'Preset Model',
       modelCustom: 'Custom Model',
       modelProvider: 'Provider',
@@ -1589,6 +1617,48 @@ export const translations: Record<string, Translations> = {
       modelProviderInUse: 'This provider is used by the following features',
       modelAssignmentSaved: 'Assignment saved',
       modelAssignmentDeleted: 'Assignment deleted',
+      // Tab layout & provider enhancements
+      tabProviders: 'Provider Management',
+      tabAssignments: 'Model Assignment',
+      tabAdvanced: 'Advanced Settings',
+      apiFormat: 'API Format',
+      apiFormatAuto: 'Auto Detect',
+      apiFormatOpenai: 'OpenAI Format',
+      apiFormatAnthropic: 'Anthropic Format',
+      defaultModels: 'Default Models',
+      effectiveConfig: 'Effective Configuration',
+      configSource: 'Config Source',
+      configFromDb: 'Database',
+      configFromEnv: 'Environment',
+      envFallbackDesc: 'When no DB assignment configured, system falls back to environment variables.',
+      envFallbackTitle: 'Environment Variable Fallback Reference',
+      envVarFunctionType: 'Function Type',
+      envVarPrefix: 'Env Prefix',
+      envVarUrlKey: 'URL Variable',
+      envVarApiKeyKey: 'API Key Variable',
+      envVarModelKey: 'Model Variable',
+      envVarDescription: 'Description',
+      envVarChatDesc: 'Main chat model',
+      envVarFastDesc: 'Quick operations model',
+      envVarVideoCutDesc: 'Video editing model',
+      envVarVisionDesc: 'Vision-language model',
+      envVarCodingDesc: 'Coding assistant model',
+      effectiveConfigDesc: 'Shows the currently active configuration for each function type, resolved from DB assignments or environment variable fallbacks.',
+      effectiveConfigRefresh: 'Refresh',
+      effectiveConfigLoading: 'Loading configuration...',
+      effectiveConfigUrl: 'Provider / URL',
+      effectiveConfigModel: 'Model',
+      effectiveConfigSource: 'Source',
+      effectiveConfigNotConfigured: 'Not configured',
+      testConnectionFormat: 'Test Connection Format',
+      modelInfo: 'Model Info',
+      formatUsed: 'Format Used',
+      providerCard: 'Provider Card',
+      modelApiKeyRequired: 'API Key is required',
+      modelDeleteProviderError: 'Failed to delete provider',
+      modelModelsFound: 'models found',
+      modelKeyNotSet: 'Not set',
+      modelRequestFailed: 'Request failed',
       deleteConfirmUsername: 'Username',
       deleteConfirmEmail: 'Email',
       confirmDelete: 'Delete',
@@ -2921,13 +2991,6 @@ export const translations: Record<string, Translations> = {
       modelVideoCut: '视频剪辑',
       modelVision: '视觉',
       modelCoding: '编程',
-      // Coding Plan
-      codingPlan: '编程计划',
-      codingPlanDesc: '配置编程助手模型 (Kimi, Codex, Claude, GLM)',
-      codingPlanProviders: '编程供应商',
-      codingPlanProvidersDesc: '添加编程助手服务的 API 凭证',
-      codingPlanAssignment: '当前编程模型',
-      codingPlanAssignmentDesc: '选择要使用的编程模型',
       modelPreset: '预设模型',
       modelCustom: '自定义模型',
       modelProvider: '供应商',
@@ -2980,6 +3043,48 @@ export const translations: Record<string, Translations> = {
       modelProviderInUse: '此供应商正被以下功能使用',
       modelAssignmentSaved: '分配已保存',
       modelAssignmentDeleted: '分配已删除',
+      // Tab layout & provider enhancements
+      tabProviders: '提供商管理',
+      tabAssignments: '模型分配',
+      tabAdvanced: '高级设置',
+      apiFormat: 'API 格式',
+      apiFormatAuto: '自动检测',
+      apiFormatOpenai: 'OpenAI 格式',
+      apiFormatAnthropic: 'Anthropic 格式',
+      defaultModels: '预置模型',
+      effectiveConfig: '当前生效配置',
+      configSource: '配置来源',
+      configFromDb: '数据库',
+      configFromEnv: '环境变量',
+      envFallbackDesc: '未配置数据库分配时，系统使用环境变量作为回退。',
+      envFallbackTitle: '环境变量回退参考',
+      envVarFunctionType: '功能类型',
+      envVarPrefix: '环境变量前缀',
+      envVarUrlKey: 'URL 变量',
+      envVarApiKeyKey: 'API Key 变量',
+      envVarModelKey: '模型变量',
+      envVarDescription: '说明',
+      envVarChatDesc: '主聊天模型',
+      envVarFastDesc: '快速操作模型',
+      envVarVideoCutDesc: '视频剪辑模型',
+      envVarVisionDesc: '视觉语言模型',
+      envVarCodingDesc: '编程助手模型',
+      effectiveConfigDesc: '展示每个功能类型当前生效的配置，来源于数据库分配或环境变量回退。',
+      effectiveConfigRefresh: '刷新',
+      effectiveConfigLoading: '加载配置中...',
+      effectiveConfigUrl: '提供商 / URL',
+      effectiveConfigModel: '模型',
+      effectiveConfigSource: '来源',
+      effectiveConfigNotConfigured: '未配置',
+      testConnectionFormat: '测试连接格式',
+      modelInfo: '模型信息',
+      formatUsed: '使用的格式',
+      providerCard: '提供商卡片',
+      modelApiKeyRequired: 'API Key 不能为空',
+      modelDeleteProviderError: '删除提供商失败',
+      modelModelsFound: '个模型已获取',
+      modelKeyNotSet: '未设置',
+      modelRequestFailed: '请求失败',
       deleteConfirmUsername: '用户名',
       deleteConfirmEmail: '邮箱',
       confirmDelete: '删除',

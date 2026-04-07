@@ -5,7 +5,6 @@ import { useLocale } from '@/contexts/LocaleContext';
 import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import UserManagement from './UserManagement';
 import ModelSettingsPanel from './ModelSettingsPanel';
-import CodingPlanPanel from './CodingPlanPanel';
 import TTSSettingsPanel from './TTSSettingsPanel';
 import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
@@ -26,8 +25,6 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
         return <UserManagement />;
       case 'modelSettings':
         return <ModelSettingsPanel />;
-      case 'codingPlan':
-        return <CodingPlanPanel />;
       case 'ttsSettings':
         return <TTSSettingsPanel />;
       case 'youtubeSettings':

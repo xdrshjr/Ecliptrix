@@ -7,7 +7,7 @@ Two-layer architecture:
 """
 
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -26,6 +26,8 @@ class ProviderInfo(BaseModel):
     name: str
     default_api_url: str
     region: str  # "domestic" or "international"
+    api_format: str = "auto"          # "auto" | "openai" | "anthropic"
+    default_models: List[str] = []    # Pre-configured model list (empty = use /models API)
 
 
 # ── Provider CRUD models ──
@@ -36,6 +38,7 @@ class ModelProviderCreate(BaseModel):
     provider_type: str           # 'deepseek', 'openai', 'anthropic', etc.
     api_url: str
     api_key: str
+    api_format: Literal["auto", "openai", "anthropic"] = "auto"
 
 class ModelProviderUpdate(BaseModel):
     """Request to update a provider credential."""
@@ -43,6 +46,7 @@ class ModelProviderUpdate(BaseModel):
     provider_type: Optional[str] = None
     api_url: Optional[str] = None
     api_key: Optional[str] = None   # '__KEEP__' to preserve existing key
+    api_format: Optional[Literal["auto", "openai", "anthropic"]] = None
 
 
 class ModelProviderResponse(BaseModel):
@@ -53,6 +57,7 @@ class ModelProviderResponse(BaseModel):
     api_url: str
     api_key_masked: str
     api_key_set: bool
+    api_format: str = "auto"  # "auto" | "openai" | "anthropic"
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -128,13 +133,17 @@ class TestConnectionRequest(BaseModel):
     model_name: str
     provider_id: Optional[str] = None  # UUID as string; look up saved API key from providers table
     provider_type: Optional[str] = None  # For API format detection (e.g. kimi_coding uses Anthropic format)
+    api_format: Optional[Literal["openai", "anthropic"]] = None  # None = use auto-detection
 
 
 class TestConnectionResponse(BaseModel):
     """Response from a connection test."""
+    model_config = ConfigDict(protected_namespaces=())
+
     success: bool
     message: str
     latency_ms: Optional[int] = None
+    model_info: Optional[dict] = None  # {"model": "...", "format_used": "openai|anthropic"}
 
 
 # ── Known providers list ──

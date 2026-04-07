@@ -71,6 +71,7 @@ class ModelProvider(Base):
     provider_type = Column(String(50), nullable=False)  # 'deepseek', 'openai', 'anthropic', etc.
     api_url = Column(String(500), nullable=False)
     api_key = Column(Text, nullable=False)
+    api_format = Column(String(20), default="auto", server_default="auto")  # 'auto' | 'openai' | 'anthropic'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

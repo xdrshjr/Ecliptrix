@@ -40,39 +40,83 @@ logger = get_logger(__name__)
 
 # Known providers with default API URLs
 PROVIDERS: List[ProviderInfo] = [
+    # Generic providers (api_format defaults to "openai", no default_models — use /models API)
     ProviderInfo(id="deepseek", name="DeepSeek",
-                 default_api_url="https://api.deepseek.com/v1", region="domestic"),
+                 default_api_url="https://api.deepseek.com/v1", region="domestic",
+                 api_format="openai", default_models=[]),
     ProviderInfo(id="alibaba", name="Alibaba",
-                 default_api_url="https://dashscope.aliyuncs.com/compatible-mode/v1", region="domestic"),
+                 default_api_url="https://dashscope.aliyuncs.com/compatible-mode/v1", region="domestic",
+                 api_format="openai", default_models=[]),
     ProviderInfo(id="zhipu", name="Zhipu AI",
-                 default_api_url="https://open.bigmodel.cn/api/paas/v4", region="domestic"),
+                 default_api_url="https://open.bigmodel.cn/api/paas/v4", region="domestic",
+                 api_format="openai", default_models=[]),
     ProviderInfo(id="openai", name="OpenAI",
-                 default_api_url="https://api.openai.com/v1", region="international"),
+                 default_api_url="https://api.openai.com/v1", region="international",
+                 api_format="openai", default_models=[]),
     ProviderInfo(id="anthropic", name="Anthropic",
-                 default_api_url="https://api.anthropic.com/v1", region="international"),
+                 default_api_url="https://api.anthropic.com/v1", region="international",
+                 api_format="openai", default_models=[]),
     ProviderInfo(id="google", name="Google",
-                 default_api_url="https://generativelanguage.googleapis.com/v1beta/openai", region="international"),
+                 default_api_url="https://generativelanguage.googleapis.com/v1beta/openai", region="international",
+                 api_format="openai", default_models=[]),
     # Coding Plan providers
-    ProviderInfo(id="kimi_coding", name="Kimi Coding",
-                 default_api_url="https://api.kimi.com/coding", region="international"),
+    ProviderInfo(id="kimi_coding", name="Kimi Coding Plan",
+                 default_api_url="https://api.kimi.com/coding", region="domestic",
+                 api_format="anthropic", default_models=["kimi-k2.5"]),
     ProviderInfo(id="codex", name="Codex (OpenAI)",
-                 default_api_url="https://api.openai.com/v1", region="international"),
+                 default_api_url="https://api.openai.com/v1", region="international",
+                 api_format="openai", default_models=["codex-mini-latest"]),
     ProviderInfo(id="claude_coding", name="Claude (Anthropic)",
-                 default_api_url="https://api.anthropic.com", region="international"),
-    ProviderInfo(id="glm_coding", name="GLM (Zhipu)",
-                 default_api_url="https://open.bigmodel.cn/api/paas/v4", region="domestic"),
+                 default_api_url="https://api.anthropic.com", region="international",
+                 api_format="anthropic", default_models=["claude-sonnet-4-20250514", "claude-opus-4-20250514"]),
+    ProviderInfo(id="glm_coding", name="GLM Coding Plan",
+                 default_api_url="https://open.bigmodel.cn/api/coding/paas/v4", region="domestic",
+                 api_format="openai", default_models=["glm-5.1", "glm-5-turbo"]),
 ]
 
-# Provider types that use Anthropic Messages API format instead of OpenAI
+# Provider types that use Anthropic Messages API format instead of OpenAI.
+# Kept as fallback for api_format="auto" resolution.
 ANTHROPIC_FORMAT_TYPES = {"kimi_coding", "claude_coding", "anthropic"}
 
-# Hardcoded model lists for providers without a /models endpoint
-CODING_PROVIDER_MODELS = {
-    "kimi_coding": ["kimi-k2.5"],
-    "claude_coding": ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
-    "codex": ["codex-mini-latest"],
-    "glm_coding": ["glm-4-plus", "glm-4"],
-}
+
+def _get_default_models_for_type(provider_type: str) -> List[str]:
+    """Look up default_models from PROVIDERS by provider_type id.
+
+    Returns the pre-configured model list for providers that don't expose a /models endpoint
+    (e.g., coding plan providers). Returns [] for generic providers that use /models API.
+    """
+    for p in PROVIDERS:
+        if p.id == provider_type:
+            return list(p.default_models)  # Return a copy to avoid mutation
+    return []
+
+
+def _resolve_api_format(request_format: Optional[str], db_format: Optional[str], provider_type: str) -> str:
+    """Resolve the effective API format with priority: request > db > auto-infer.
+
+    Priority order:
+      1. request_format — user explicitly specified in the current request (e.g., test-connection)
+      2. db_format — saved in the provider's database record
+      3. Auto-infer from provider_type using ANTHROPIC_FORMAT_TYPES
+
+    Args:
+        request_format: Format from the current API request (may be None).
+        db_format: Format stored in the DB provider record (may be None or "auto").
+        provider_type: The provider type identifier.
+
+    Returns:
+        "openai" or "anthropic" — never returns "auto".
+    """
+    # Priority 1: explicit request-level override
+    if request_format and request_format in ("openai", "anthropic"):
+        return request_format
+
+    # Priority 2: DB-stored format (if not "auto")
+    if db_format and db_format in ("openai", "anthropic"):
+        return db_format
+
+    # Priority 3: auto-infer from provider_type
+    return "anthropic" if provider_type in ANTHROPIC_FORMAT_TYPES else "openai"
 
 
 def _mask_api_key(key: str) -> str:
@@ -103,12 +147,13 @@ class ModelSettingsService:
                 provider_type=request.provider_type,
                 api_url=request.api_url,
                 api_key=request.api_key,
+                api_format=request.api_format,
             )
             session.add(provider)
             await session.commit()
             await session.refresh(provider)
 
-        logger.info(f"Created provider: {request.name} (id={provider.id})")
+        logger.info(f"Created provider: {request.name} (id={provider.id}, api_format={request.api_format})")
         return self._provider_to_response(provider)
 
     async def update_provider(self, provider_id: str, request: ModelProviderUpdate) -> Optional[ModelProviderResponse]:
@@ -133,6 +178,9 @@ class ModelSettingsService:
             # Handle __KEEP__ sentinel for API key
             if request.api_key is not None and request.api_key != '__KEEP__':
                 provider.api_key = request.api_key
+
+            if request.api_format is not None:
+                provider.api_format = request.api_format
 
             await session.commit()
             await session.refresh(provider)
@@ -276,10 +324,10 @@ class ModelSettingsService:
         if not provider:
             return FetchModelsResponse(success=False, message="Provider not found")
 
-        # Return hardcoded models for providers without /models endpoint
-        if provider.provider_type in CODING_PROVIDER_MODELS:
-            models = CODING_PROVIDER_MODELS[provider.provider_type]
-            return FetchModelsResponse(success=True, message=f"Found {len(models)} models", models=models)
+        # Return pre-configured models for providers without a /models endpoint
+        default_models = _get_default_models_for_type(provider.provider_type)
+        if default_models:
+            return FetchModelsResponse(success=True, message=f"Found {len(default_models)} models", models=default_models)
 
         return await self._fetch_models_from_api(provider.api_url, provider.api_key)
 
@@ -303,10 +351,10 @@ class ModelSettingsService:
                     if not provider_type:
                         provider_type = provider.provider_type
 
-        # Return hardcoded models for providers without /models endpoint
-        if provider_type in CODING_PROVIDER_MODELS:
-            models = CODING_PROVIDER_MODELS[provider_type]
-            return FetchModelsResponse(success=True, message=f"Found {len(models)} models", models=models)
+        # Return pre-configured models for providers without a /models endpoint
+        default_models = _get_default_models_for_type(provider_type)
+        if default_models:
+            return FetchModelsResponse(success=True, message=f"Found {len(default_models)} models", models=default_models)
 
         if not api_key:
             return FetchModelsResponse(success=False, message="No API key available")
@@ -376,8 +424,25 @@ class ModelSettingsService:
                     return row
         return ""
 
+    async def _get_provider_db_format(self, provider_id: Optional[str] = None) -> Optional[str]:
+        """Look up the api_format stored in the DB for a provider."""
+        if not provider_id:
+            return None
+        try:
+            pid = _parse_uuid(provider_id)
+            async with async_session_factory() as session:
+                stmt = select(ModelProvider.api_format).where(ModelProvider.id == pid)
+                result = await session.execute(stmt)
+                return result.scalar_one_or_none()
+        except Exception:
+            return None
+
     async def test_connection(self, request: TestConnectionRequest) -> TestConnectionResponse:
-        """Test a model connection by sending a minimal request (OpenAI or Anthropic format)."""
+        """Test a model connection by sending a minimal request (OpenAI or Anthropic format).
+
+        Uses 3-tier format resolution: request.api_format > DB provider api_format > auto-infer.
+        On success, populates model_info with the model name and resolved format.
+        """
         api_key = (request.api_key or "").strip()
 
         # If no usable key provided and provider_id given, look up saved key
@@ -389,16 +454,28 @@ class ModelSettingsService:
         if not api_key:
             return TestConnectionResponse(success=False, message="No API key provided")
 
-        # Determine provider_type for API format detection
+        # Determine provider_type and resolve API format via 3-tier priority
         provider_type = await self._resolve_provider_type(request.provider_type, request.provider_id)
+        db_format = await self._get_provider_db_format(request.provider_id)
+        api_format = _resolve_api_format(request.api_format, db_format, provider_type)
 
-        if provider_type in ANTHROPIC_FORMAT_TYPES:
-            return await self._test_anthropic_connection(request.api_url, api_key, request.model_name, provider_type)
+        if api_format == "anthropic":
+            result = await self._test_anthropic_connection(request.api_url, api_key, request.model_name, provider_type)
+        else:
+            result = await self._test_openai_connection(request.api_url, api_key, request.model_name)
 
-        # Default: OpenAI-compatible format
+        # Populate model_info on successful connection
+        if result.success:
+            result.model_info = {"model": request.model_name, "format_used": api_format}
+
+        return result
+
+    async def _test_openai_connection(self, api_url: str, api_key: str,
+                                       model_name: str) -> TestConnectionResponse:
+        """Test connection using OpenAI Chat Completions API format."""
         start = time.time()
         try:
-            url = request.api_url.rstrip('/')
+            url = api_url.rstrip('/')
             if not url.endswith('/chat/completions'):
                 url = f"{url}/chat/completions"
 
@@ -410,7 +487,7 @@ class ModelSettingsService:
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": request.model_name,
+                        "model": model_name,
                         "messages": [{"role": "user", "content": "hi"}],
                         "max_tokens": 5,
                     },
@@ -562,6 +639,7 @@ class ModelSettingsService:
             api_url=provider.api_url,
             api_key_masked=_mask_api_key(api_key),
             api_key_set=bool(api_key),
+            api_format=provider.api_format or "auto",
             created_at=provider.created_at.isoformat() if provider.created_at else None,
             updated_at=provider.updated_at.isoformat() if provider.updated_at else None,
         )
