@@ -16,11 +16,11 @@ const parameters = Type.Object({
     Type.String({ description: 'Topic description. Used as fallback when no script is available. At least one of script or topic must be provided.' }),
   ),
   scene_count: Type.Optional(
-    Type.Number({ description: 'Desired number of storyboard scenes/frames (maps to grid size).' }),
+    Type.Number({ description: 'Desired number of storyboard scenes/frames (1-64, maps to grid size).', minimum: 1, maximum: 64 }),
   ),
   aspect_ratio: Type.Optional(
     Type.Union(
-      [Type.Literal('16:9'), Type.Literal('9:16'), Type.Literal('1:1')],
+      [Type.Literal('16:9'), Type.Literal('9:16'), Type.Literal('1:1'), Type.Literal('4:3'), Type.Literal('3:4')],
       { description: 'Aspect ratio for storyboard frames (default: "16:9")' },
     ),
   ),
@@ -31,18 +31,6 @@ type Params = Static<typeof parameters>;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Map a desired scene count to the closest supported grid size.
- * Supported: 2x2 (4), 3x3 (9), 4x4 (16), 6x6 (36), 8x8 (64).
- */
-function sceneCountToGridSize(count: number): string {
-  if (count <= 4) return '2x2';
-  if (count <= 9) return '3x3';
-  if (count <= 16) return '4x4';
-  if (count <= 36) return '6x6';
-  return '8x8';
-}
 
 // ---------------------------------------------------------------------------
 // Tool factory
@@ -73,7 +61,7 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
 
       // --- Build the prompt for the backend ---
       const prompt = script || topic!;
-      const gridSize = params.scene_count ? sceneCountToGridSize(params.scene_count) : '2x2';
+      const frameCount = params.scene_count || 4;
       const aspectRatio = params.aspect_ratio ?? '16:9';
 
       try {
@@ -82,7 +70,7 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
           timeout: 120_000,
           body: JSON.stringify({
             prompt,
-            grid_size: gridSize,
+            frame_count: frameCount,
             aspect_ratio: aspectRatio,
           }),
         });

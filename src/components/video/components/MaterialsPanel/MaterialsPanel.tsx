@@ -1400,7 +1400,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   };
 
   return (
-    <div className={`h-full ${className}`}>
+    <div className={`h-full flex flex-col ${className}`}>
       <div className="materials-panel-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -1482,7 +1482,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       </div>
 
       {/* 菜单栏 */}
-      <div className="flex items-center h-8 px-3 bg-muted/50 border-b border-border">
+      <div className="flex items-center h-8 px-3 bg-muted/50 border-b border-border flex-shrink-0">
         <div ref={menuRef} className="relative">
           <button
             onClick={handleMenuToggle}

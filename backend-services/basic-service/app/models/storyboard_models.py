@@ -3,8 +3,9 @@ Data models for AI Storyboard generation, cropping, VL description,
 batch video generation, and video composition.
 """
 
+import math
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.base_models import BaseResponse
 
@@ -19,8 +20,11 @@ class StoryboardGenerateRequest(BaseModel):
     prompt: str = Field(
         ..., max_length=2000, description="User prompt describing the storyboard content"
     )
-    grid_size: Literal["2x2", "3x3", "4x4", "6x6", "8x8"] = Field(
-        default="3x3", description="Grid layout specification (rows x cols)"
+    grid_size: Optional[str] = Field(
+        None, description="Grid layout specification (e.g. '3x3', '2x4'). If omitted, computed from frame_count."
+    )
+    frame_count: Optional[int] = Field(
+        None, ge=1, le=64, description="Desired number of storyboard frames (1-64). Auto-computes optimal grid layout."
     )
     aspect_ratio: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = Field(
         default="1:1", description="Target aspect ratio for each storyboard cell"
@@ -28,6 +32,51 @@ class StoryboardGenerateRequest(BaseModel):
     reference_image: Optional[str] = Field(
         None, description="Optional reference image as base64 data URI"
     )
+
+    @field_validator('grid_size')
+    @classmethod
+    def validate_grid_size(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        import re
+        match = re.match(r'^(\d+)x(\d+)$', v)
+        if not match:
+            raise ValueError(f"grid_size must be in 'NxM' format, got '{v}'")
+        rows, cols = int(match.group(1)), int(match.group(2))
+        if not (1 <= rows <= 8 and 1 <= cols <= 8):
+            raise ValueError(f"grid_size rows and cols must be between 1 and 8, got '{v}'")
+        if rows * cols > 64:
+            raise ValueError(f"grid_size total cells ({rows * cols}) exceeds maximum of 64")
+        return v
+
+    @model_validator(mode='after')
+    def ensure_grid_or_frame_count(self) -> 'StoryboardGenerateRequest':
+        if self.grid_size is None and self.frame_count is None:
+            self.frame_count = 9
+        if self.frame_count is not None and self.grid_size is None:
+            rows, cols = compute_optimal_grid(self.frame_count)
+            self.grid_size = f"{rows}x{cols}"
+        return self
+
+
+def compute_optimal_grid(frame_count: int) -> tuple:
+    """Compute the optimal (rows, cols) grid for a given frame count.
+
+    Picks the near-square layout with rows * cols >= frame_count,
+    with rows <= cols (landscape-oriented grid).
+
+    Algorithm: start from cols = ceil(sqrt(n)) and find the first cols
+    where rows = ceil(n / cols) satisfies rows <= cols.
+    """
+    if frame_count <= 0 or frame_count == 1:
+        return (1, 1)
+
+    cols = math.ceil(math.sqrt(frame_count))
+    while True:
+        rows = math.ceil(frame_count / cols)
+        if rows <= cols:
+            return (rows, cols)
+        cols += 1
 
 
 class StoryboardDescribeRequest(BaseModel):

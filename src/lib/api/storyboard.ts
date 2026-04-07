@@ -1,4 +1,4 @@
-import { StoryboardGenerateParams, StoryboardPack, StoryboardFrame } from '@/types';
+import { StoryboardGenerateParams, StoryboardPack, StoryboardFrame, StoryboardAspectRatio } from '@/types';
 
 /** Raw backend frame shape (snake_case). */
 interface RawFrame {
@@ -40,8 +40,8 @@ function toPack(d: RawPack): StoryboardPack {
   return {
     packId: d.pack_id,
     prompt: d.prompt,
-    gridSize: d.grid_size as StoryboardPack['gridSize'],
-    aspectRatio: d.aspect_ratio || '1:1',
+    gridSize: d.grid_size,
+    aspectRatio: (d.aspect_ratio || '1:1') as StoryboardAspectRatio,
     frameCount: d.frame_count,
     createdAt: d.created_at,
     originalImageUrl: d.original_image_url,
@@ -60,7 +60,7 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       prompt: params.prompt,
-      grid_size: params.gridSize,
+      frame_count: params.frameCount,
       aspect_ratio: params.aspectRatio || '1:1',
       reference_image: params.referenceImage,
     }),

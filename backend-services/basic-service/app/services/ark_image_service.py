@@ -75,8 +75,14 @@ async def generate_images(request: ArkImageGenerateRequest) -> List[ArkImageResu
         "watermark": request.watermark,
     }
 
+    # Same fix as storyboard_service: ARK Doubao Seedream's image-generation
+    # endpoint reads `image` (singular), NOT `image_urls`. The latter is the
+    # *video* API field — using it here silently degrades to text-to-image.
     if request.reference_image:
-        payload["image_urls"] = [request.reference_image]
+        payload["image"] = request.reference_image
+        logger.info(
+            f"Ark image reference attached ({len(request.reference_image)} chars)"
+        )
 
     if request.mode in ("character", "scene"):
         payload["n"] = 1

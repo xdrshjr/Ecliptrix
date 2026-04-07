@@ -1,0 +1,19 @@
+[Unit]
+Description=Ecliptrix Watchdog Health Check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@@RUN_USER@@
+Group=@@RUN_GROUP@@
+WorkingDirectory=@@PROJECT_DIR@@
+ExecStart=/bin/bash @@SCRIPT_DIR@@/healthcheck.sh
+
+# 看门狗本身不应该卡住
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ecliptrix-watchdog
+
+[Install]
+WantedBy=multi-user.target

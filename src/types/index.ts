@@ -471,7 +471,7 @@ export interface ScriptGenerationConfig {
 // Storyboard Generation types
 // ========================
 
-/** Supported storyboard grid sizes (square grids only) */
+/** Preset storyboard grid sizes for quick selection */
 export type StoryboardGridSize = '2x2' | '3x3' | '4x4' | '6x6' | '8x8';
 
 /** Supported aspect ratios for storyboard frame cells */
@@ -491,8 +491,8 @@ export interface StoryboardFrame {
 export interface StoryboardPack {
   packId: string;
   prompt: string;
-  gridSize: StoryboardGridSize;
-  aspectRatio?: string;
+  gridSize: string;           // Grid layout string (e.g. '3x3', '2x3') — may be non-preset
+  aspectRatio?: StoryboardAspectRatio;
   frameCount: number;
   createdAt: string;
   originalImageUrl: string;   // Original full grid image URL
@@ -503,7 +503,7 @@ export interface StoryboardPack {
 /** Parameters for generating a storyboard */
 export interface StoryboardGenerateParams {
   prompt: string;
-  gridSize: StoryboardGridSize;
+  frameCount: number;
   aspectRatio?: StoryboardAspectRatio;
   referenceImage?: string;    // base64 data URI
 }

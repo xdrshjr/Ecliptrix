@@ -302,11 +302,13 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .materials-panel-content {
   padding: 16px;
-  height: calc(100% - 60px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;

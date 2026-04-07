@@ -32,6 +32,7 @@ from app.models.storyboard_models import (
     StoryboardFrame,
     StoryboardGenerateRequest,
     StoryboardPack,
+    compute_optimal_grid,
 )
 from app.services import ark_video_service
 from app.services.oss_client import get_oss_client
@@ -234,7 +235,9 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
             "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
         )
 
+    # grid_size is guaranteed to be set by model_validator (from frame_count or default)
     rows, cols = _parse_grid_size(request.grid_size)
+    requested_frame_count = request.frame_count  # may be None if grid_size was provided directly
     aspect_ratio = getattr(request, "aspect_ratio", "1:1") or "1:1"
     final_prompt = build_storyboard_prompt(request.prompt, rows, cols, aspect_ratio)
 
@@ -248,12 +251,17 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         "watermark": False,
     }
 
-    # Handle optional reference image (base64 data URI → URL for the API)
-    reference_image_url: Optional[str] = None
+    # Handle optional reference image. ARK Doubao Seedream's image-generation
+    # endpoint reads `image` (singular, base64 data URI or HTTPS URL), NOT
+    # `image_urls`. Passing the wrong key silently degrades to text-to-image,
+    # which is exactly the bug we are fixing here. `image_urls` is the *video*
+    # API field — do not confuse the two.
     if request.reference_image:
-        payload["image_urls"] = [request.reference_image]
-        # We'll save the reference image alongside the pack later if needed
-        reference_image_url = request.reference_image
+        payload["image"] = request.reference_image  # base64 data URI is accepted
+        logger.info(
+            f"Storyboard reference image attached "
+            f"({len(request.reference_image)} chars, key='image')"
+        )
 
     headers = {
         "Authorization": f"Bearer {settings.ark_api_key}",
@@ -299,6 +307,15 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
     # Crop into individual frames
     frame_dicts = crop_storyboard(original_path, rows, cols, pack_directory, aspect_ratio)
 
+    # Truncate to requested frame_count (discard excess cells)
+    if requested_frame_count and requested_frame_count < len(frame_dicts):
+        # Remove excess frame files from disk
+        for excess in frame_dicts[requested_frame_count:]:
+            excess_path = os.path.join(pack_directory, excess["filename"])
+            if os.path.exists(excess_path):
+                os.remove(excess_path)
+        frame_dicts = frame_dicts[:requested_frame_count]
+
     # Build frame metadata with URLs
     original_image_url = _frame_url(today_str, pack_id, "original.png")
     frames: List[StoryboardFrame] = []
@@ -311,19 +328,30 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
             col=fd["col"],
         ))
 
-    # Save reference image alongside pack if provided
+    # Save reference image alongside pack if provided. Two cases:
+    #   1) base64 data URI — decode and persist locally so the frontend can
+    #      display the same reference the user uploaded.
+    #   2) HTTPS URL — pass the URL straight through to the response without
+    #      re-downloading; the user already has it accessible.
+    # In both cases the resulting URL is exposed via StoryboardPack.reference_image_url
+    # so the response always reflects "yes, a reference was used".
     saved_reference_url: Optional[str] = None
-    if request.reference_image and request.reference_image.startswith("data:"):
-        try:
-            # Extract base64 payload from data URI
-            header, b64_data = request.reference_image.split(",", 1)
-            ref_bytes = base64.b64decode(b64_data)
-            ref_path = os.path.join(pack_directory, "reference.png")
-            async with aiofiles.open(ref_path, "wb") as f:
-                await f.write(ref_bytes)
-            saved_reference_url = _frame_url(today_str, pack_id, "reference.png")
-        except Exception as exc:
-            logger.warning(f"Failed to save reference image: {exc}")
+    if request.reference_image:
+        if request.reference_image.startswith("data:"):
+            try:
+                # Extract base64 payload from data URI
+                header, b64_data = request.reference_image.split(",", 1)
+                ref_bytes = base64.b64decode(b64_data)
+                ref_path = os.path.join(pack_directory, "reference.png")
+                async with aiofiles.open(ref_path, "wb") as f:
+                    await f.write(ref_bytes)
+                saved_reference_url = _frame_url(today_str, pack_id, "reference.png")
+            except Exception as exc:
+                logger.warning(f"Failed to save reference image: {exc}")
+        else:
+            # HTTPS URL — pass through to the response so the frontend still
+            # knows a reference was attached.
+            saved_reference_url = request.reference_image
 
     # Write metadata.json
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -333,6 +361,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         "grid_size": request.grid_size,
         "aspect_ratio": aspect_ratio,
         "frame_count": len(frames),
+        "requested_frame_count": requested_frame_count,
         "created_at": now_iso,
         "reference_image": saved_reference_url,
         "original_image_url": original_image_url,

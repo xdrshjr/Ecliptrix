@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { StoryboardAspectRatio, StoryboardGridSize, StoryboardPack } from '@/types';
+import { StoryboardAspectRatio, StoryboardPack } from '@/types';
 import ImageUploadArea from './ImageUploadArea';
 import GridSizeSelector from './GridSizeSelector';
 
@@ -39,15 +39,9 @@ const ratioIcon = (icon: string, active: boolean) => {
   }
 };
 
-/** Parse NxN grid size string into the total frame count */
-function getFrameCount(gridSize: StoryboardGridSize): number {
-  const n = parseInt(gridSize.split('x')[0], 10);
-  return n * n;
-}
-
 export interface StoryboardTabState {
   prompt: string;
-  gridSize: StoryboardGridSize;
+  frameCount: number;
   aspectRatio: StoryboardAspectRatio;
   referenceImage: string | null;
 }
@@ -63,12 +57,11 @@ interface StoryboardTabProps {
 const MAX_PROMPT_LENGTH = 2000;
 
 const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenerate }) => {
-  const { prompt, gridSize, aspectRatio, referenceImage } = state;
+  const { prompt, frameCount, aspectRatio, referenceImage } = state;
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [resultPack, setResultPack] = useState<StoryboardPack | null>(null);
 
-  const frameCount = getFrameCount(gridSize);
   const canGenerate = prompt.trim().length > 0 && status !== 'generating';
 
   const handleGenerate = useCallback(async () => {
@@ -100,8 +93,8 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
     <div className="space-y-6">
       {/* Grid Size Selector */}
       <GridSizeSelector
-        value={gridSize}
-        onChange={(size) => onChange({ ...state, gridSize: size })}
+        value={frameCount}
+        onChange={(fc) => onChange({ ...state, frameCount: fc })}
         disabled={isDisabled}
       />
 
@@ -170,7 +163,7 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
             生成分镜
           </button>
           <p className="text-xs text-muted-foreground text-center mt-2">
-            将生成 {gridSize} = {frameCount} 格分镜，画面比例 {aspectRatio}
+            将生成 {frameCount} 格分镜，画面比例 {aspectRatio}
           </p>
         </div>
       )}
@@ -179,8 +172,8 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
       {status === 'generating' && (
         <div className="flex flex-col items-center gap-3 py-4">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">正在生成 {gridSize} 分镜...</p>
-          <p className="text-xs text-muted-foreground">AI 正在绘制 {frameCount} 格分镜大图并自动裁剪</p>
+          <p className="text-sm text-muted-foreground">正在生成 {frameCount} 格分镜...</p>
+          <p className="text-xs text-muted-foreground">AI 正在绘制分镜大图并自动裁剪</p>
         </div>
       )}
 
