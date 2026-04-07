@@ -58,6 +58,7 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     timelineState: localTimelineState,
     materials: config.materials,
     apiBaseUrl: config.apiBaseUrl,
+    authToken: config.authToken,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
       toolContext.operations.set(toolCallId, operation);
@@ -93,6 +94,23 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
 }
 
 /**
+ * Maximum number of consecutive tool failures before the agent loop is
+ * force-aborted. The 2026-04-07 production incident showed the LLM burning
+ * 28+ `add_to_track` calls after the first 5 generation tools all failed
+ * with `fetch failed` — this circuit breaker cuts that feedback loop off
+ * at the source.
+ *
+ * A "failure" is either:
+ *   - a hard exception (pi-agent-core sets `event.isError = true`), OR
+ *   - a soft failure where the tool returned a `{ success: false, ... }`
+ *     detail envelope (our tools do not throw for HTTP/network errors;
+ *     they wrap them into structured results).
+ *
+ * Any successful tool call resets the counter to 0.
+ */
+const MAX_CONSECUTIVE_TOOL_FAILURES = 5;
+
+/**
  * Subscribe to agent events and forward them as SSE events.
  */
 export function subscribeAgentEvents(
@@ -109,6 +127,10 @@ export function subscribeAgentEvents(
   // (no text, only tool_use) are normal in multi-turn agent loops.
   let textDeltaSent = false;
   let toolCallMade = false;
+
+  // Consecutive failure counter for the circuit breaker.
+  let consecutiveFailures = 0;
+  let circuitBreakerTripped = false;
 
   return agent.subscribe((event: AgentEvent) => {
     switch (event.type) {
@@ -212,6 +234,22 @@ export function subscribeAgentEvents(
         // event.result is AgentToolResult = { content, details }
         const details = event.result?.details ?? event.result;
 
+        // Circuit breaker: a tool counts as "failed" if pi-agent-core marked
+        // it as a hard error OR the returned details explicitly say
+        // `success: false`. Successful calls reset the counter.
+        const softFailure =
+          typeof details === 'object' &&
+          details !== null &&
+          'success' in details &&
+          (details as { success: unknown }).success === false;
+        const failed = event.isError === true || softFailure;
+
+        if (failed) {
+          consecutiveFailures++;
+        } else {
+          consecutiveFailures = 0;
+        }
+
         send({
           type: 'tool_result',
           toolCallId: event.toolCallId,
@@ -219,6 +257,27 @@ export function subscribeAgentEvents(
           result: details,
           operation,
         });
+
+        if (
+          !circuitBreakerTripped &&
+          consecutiveFailures >= MAX_CONSECUTIVE_TOOL_FAILURES
+        ) {
+          circuitBreakerTripped = true;
+          console.error(
+            `[VideoEditingAgent] Circuit breaker tripped after ${consecutiveFailures} consecutive tool failures — aborting agent.`
+          );
+          send({
+            type: 'error',
+            message: `Agent aborted: ${consecutiveFailures} consecutive tool calls failed. This usually indicates a network/auth problem with internal APIs — please retry, and if the problem persists, check server logs for '[VideoEditingAgent]'.`,
+          });
+          // Fire-and-forget: abort() is synchronous in pi-agent-core, but
+          // wrap in try/catch just in case the controller is already gone.
+          try {
+            agent.abort();
+          } catch {
+            // Already aborted or controller disposed — nothing to do.
+          }
+        }
         break;
       }
     }

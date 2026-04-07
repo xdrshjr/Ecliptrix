@@ -236,6 +236,8 @@ export function buildSystemPrompt(
 - 对于高级功能，先调用 explore_tools 加载对应工具类别，然后使用。
 - 复合任务请自动拆解为多个步骤顺序执行。
 - 搜索/生成的结果会自动添加到素材库。AI生成任务为异步，启动后无需等待。
+- **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
+- **失败必须停止**：如果某个生成或搜索工具返回 "success: false"，你必须先向用户报告错误并停止当前流程，不要用编造的 ID 继续调用 add_to_track。连续 5 次工具失败后，Agent 将被自动中断。
 
 ${formatToolOverview(categorySummaries)}
 

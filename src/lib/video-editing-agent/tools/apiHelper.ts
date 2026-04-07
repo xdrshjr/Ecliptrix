@@ -2,9 +2,11 @@ import type { ToolContext } from '../types';
 
 /**
  * Construct an absolute URL for internal API calls from the server-side agent context.
- * Uses `context.apiBaseUrl` which is derived from the incoming request's origin,
- * ensuring the URL always points to the correct host/port regardless of how the
- * server was started.
+ * Uses `context.apiBaseUrl` which is the loopback URL for the local Next.js
+ * process (see `src/app/api/video-editing-agent/chat/route.ts` →
+ * `resolveAgentLoopbackUrl`). Loopback is used — not the incoming request
+ * origin — so tool fetches don't hairpin through public nginx/HTTPS, which
+ * was the root cause of the 2026-04-07 `fetch failed` production incident.
  */
 export function apiUrl(context: ToolContext, path: string): string {
   return `${context.apiBaseUrl}${path}`;
@@ -59,15 +61,32 @@ export async function toolFetch(
     : timeoutSignal;
 
   // Merge headers — ensure Content-Type defaults to application/json but
-  // callers can override by passing their own Content-Type.
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(callerHeaders instanceof Headers
+  // callers can override by passing their own Content-Type. Normalise the
+  // three HeadersInit shapes (Headers / array / record / undefined) into a
+  // plain object before spreading so the auth-injection step below can do
+  // simple key lookups. Parens around the ternary make the `?? {}` apply to
+  // the whole conditional, not just its last branch.
+  const normalizedCallerHeaders: Record<string, string> =
+    (callerHeaders instanceof Headers
       ? Object.fromEntries(callerHeaders.entries())
       : Array.isArray(callerHeaders)
         ? Object.fromEntries(callerHeaders)
-        : callerHeaders),
+        : (callerHeaders as Record<string, string> | undefined)) ?? {};
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...normalizedCallerHeaders,
   };
+
+  // Inject the incoming user's session token so the downstream BFF routes
+  // and backend SessionAuthMiddleware see the caller identity. Without this
+  // every Agent tool call would 401 after the auth refactor (T01/T02).
+  // Callers can still override by setting their own Authorization header.
+  if (context.authToken && !('Authorization' in headers) && !('authorization' in headers)) {
+    headers['Authorization'] = context.authToken.startsWith('Bearer ')
+      ? context.authToken
+      : `Bearer ${context.authToken}`;
+  }
 
   const url = apiUrl(context, path);
   const fetchInit: RequestInit = { ...restInit, headers, signal };

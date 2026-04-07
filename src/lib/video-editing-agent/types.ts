@@ -7,8 +7,22 @@ import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 export interface ToolContext {
   timelineState: TimelineState;
   materials: MaterialItem[];
-  /** Base URL for internal API calls (e.g. "http://localhost:3010"), derived from the incoming request */
+  /**
+   * Base URL for internal API calls. In production this is a loopback URL
+   * (e.g. "http://127.0.0.1:3088") pointing at the local Next.js process, so
+   * that server-side tool fetches bypass nginx/HTTPS and do not hairpin
+   * through the public domain.
+   */
   apiBaseUrl: string;
+  /**
+   * Session token from the incoming user request, forwarded as an
+   * `Authorization: Bearer <token>` header on every internal tool fetch so
+   * the downstream Next.js BFF routes (and the backend SessionAuthMiddleware)
+   * can identify the caller. Undefined when the incoming request carried no
+   * credentials — tools should still run but will likely see 401 from
+   * auth-protected routes.
+   */
+  authToken?: string;
   /** Map of toolCallId → operation produced by that tool call */
   operations: Map<string, AgentOperation>;
   /** Called by tools to record an operation and update local state */
@@ -145,8 +159,19 @@ export interface VideoEditingAgentConfig {
   timelineState: TimelineState;
   materials: MaterialItem[];
   conversationHistory: ChatMessage[];
-  /** Base URL for internal API calls, derived from the incoming request origin */
+  /**
+   * Base URL for internal API calls. Should point at the local Next.js
+   * process via loopback (e.g. "http://127.0.0.1:3088") so tool fetches do
+   * not depend on public DNS / nginx / HTTPS being reachable from inside
+   * the server container.
+   */
   apiBaseUrl: string;
+  /**
+   * Session token from the incoming request, forwarded to every internal
+   * tool fetch so auth-protected BFF routes and the backend
+   * SessionAuthMiddleware see the user identity.
+   */
+  authToken?: string;
 }
 
 // Re-export from central types for convenience

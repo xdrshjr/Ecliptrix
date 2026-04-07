@@ -16,13 +16,48 @@ const AGENT_TIMEOUT = 600_000; // 10 minutes — storyboard generation can take 
 
 export const maxDuration = 600; // 10 minutes (for Vercel/serverless platforms)
 
-const getConfig = async () => {
+/**
+ * Read the caller's bare session token from the incoming request. Supports
+ * both the canonical `Authorization: Bearer <token>` header and the legacy
+ * `x-session-token` header kept for backwards compatibility. The `Bearer `
+ * prefix is stripped — callers re-add it where needed (`Bearer ${token}`).
+ *
+ * Returns `undefined` when the request carries no credentials — callers
+ * should handle that case rather than silently dropping auth.
+ */
+function readIncomingAuth(request: NextRequest): string | undefined {
+  const auth = request.headers.get('authorization');
+  if (auth) {
+    return auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+  }
+  const legacy = request.headers.get('x-session-token');
+  if (legacy) {
+    return legacy;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the LLM credentials/model for this Agent invocation.
+ *
+ * Must forward the caller's session token to the backend — otherwise the
+ * backend `SessionAuthMiddleware` returns 401 and `getConfig()` silently
+ * falls back to `.env` defaults, which means any user-selected model from
+ * `model_settings` (Kimi / GLM / Claude custom) is ignored. That bug was
+ * diagnosed on 2026-04-07 alongside the main "fetch failed" incident.
+ */
+const getConfig = async (authToken: string | undefined) => {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+      headers['x-session-token'] = authToken;
+    }
     const res = await fetch(
       backendConfig.joinPath('/api/model-settings/resolve/chat'),
       {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
       },
     );
     if (res.ok) {
@@ -35,9 +70,14 @@ const getConfig = async () => {
           providerType: data.provider_type as string | undefined,
         };
       }
+    } else {
+      console.warn(
+        `[VideoEditingAgent] model-settings/resolve/chat returned ${res.status}; falling back to env vars`
+      );
     }
-  } catch {
-    console.warn('[VideoEditingAgent] Failed to fetch model settings, falling back to env vars');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[VideoEditingAgent] Failed to fetch model settings (${msg}); falling back to env vars`);
   }
 
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
@@ -50,6 +90,35 @@ const getConfig = async () => {
 
   return { apiUrl, apiKey, model, providerType: undefined as string | undefined };
 };
+
+/**
+ * Build the loopback apiBaseUrl passed to Agent tools.
+ *
+ * Production: the Agent runs inside the Next.js server container. If we use
+ * the public origin (e.g. `https://ecliptrix.com`), tool fetches must round
+ * trip through nginx / certbot HTTPS / DNS / hairpin NAT — any of which can
+ * make undici throw `TypeError: fetch failed` (observed 2026-04-07 incident).
+ *
+ * Instead we point at `http://127.0.0.1:<port>` — the local Next.js process
+ * itself — so tool fetches stay inside the same machine.
+ *
+ * Port resolution order:
+ *   1. `AGENT_LOOPBACK_PORT` — explicit override for deployments that don't
+ *      use the systemd `Environment=PORT=...` convention (e.g. pm2, docker
+ *      compose, next-dev). ALWAYS wins.
+ *   2. `PORT` — set by `ops/templates/ecliptrix-frontend.service`
+ *      (`Environment=PORT=@@FRONTEND_PORT@@`) so every production deploy
+ *      using ops/install.sh picks up the right port automatically.
+ *   3. `3000` — dev/Next.js default fallback; matches the `npm run dev`
+ *      behaviour for local work.
+ */
+function resolveAgentLoopbackUrl(): string {
+  const port =
+    process.env.AGENT_LOOPBACK_PORT ??
+    process.env.PORT ??
+    '3000';
+  return `http://127.0.0.1:${port}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -95,7 +164,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Last message must be a non-empty user message' }, { status: 400 });
     }
 
-    const config = await getConfig();
+    const incomingAuthToken = readIncomingAuth(request);
+    const config = await getConfig(incomingAuthToken);
     const lastUserMessage = lastMessage.content;
 
     console.log(`[VideoEditingAgent] Starting agent for: "${lastUserMessage.slice(0, 100)}"`);
@@ -125,7 +195,11 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          const origin = new URL(request.url).origin;
+          // Use loopback, NOT new URL(request.url).origin — in production the
+          // origin is the public HTTPS domain which the server-side container
+          // cannot reliably reach back through nginx (see diagnosis report
+          // 2026-04-07).
+          const apiBaseUrl = resolveAgentLoopbackUrl();
           const { agent, toolContext } = createVideoEditingAgent({
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
@@ -134,7 +208,8 @@ export async function POST(request: NextRequest) {
             timelineState: effectiveTimelineState,
             materials: effectiveMaterials,
             conversationHistory: messages,
-            apiBaseUrl: origin,
+            apiBaseUrl,
+            authToken: incomingAuthToken,
           });
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
