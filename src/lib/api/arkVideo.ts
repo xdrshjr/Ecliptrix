@@ -9,7 +9,7 @@ export interface ArkVideoGenerateParams {
   image_urls?: string[];
   aspect_ratio?: '16:9' | '9:16' | '1:1';
   resolution?: '480p' | '720p' | '1080p';
-  /** Generation mode: "description" uses reference images (first/last frame roles), "keyframe" uses first/last frame images, "reference" uses reference images with first_frame/last_frame roles (ARK API structured mode requirement) */
+  /** Generation mode: "description" uses reference images (first/last frame roles), "keyframe" uses first/last frame images, "reference" uses reference images with role="reference_image" per official ARK API spec */
   mode?: 'description' | 'keyframe' | 'reference';
   /** First frame image URL (required when mode="keyframe") */
   first_frame_url?: string;

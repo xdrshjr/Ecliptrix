@@ -324,9 +324,9 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
       Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
     - "keyframe": Uses first_frame_url (required) and last_frame_url (optional).
       Ratio is always forced to "adaptive". image_url/image_urls are ignored.
-    - "reference": Uses image_url/image_urls as style/content references.
-      Images are sent with first_frame/last_frame roles (ARK API requirement in
-      structured mode). Ratio is "adaptive" when images are present.
+    - "reference": Uses image_url/image_urls as reference images with role="reference_image".
+      Supports 1-4 images. Ratio is "adaptive" when images are present.
+      Follows the official ARK content_generation API spec for reference image generation.
 
     Returns the ark_task_id string.
     Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
@@ -375,27 +375,25 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
 
     elif request.mode == "reference":
         # --- Reference mode ---
-        # ARK Seedance API requires "role" on every image in structured mode
-        # (with top-level duration/ratio/resolution). The only valid roles are
-        # "first_frame" and "last_frame". Reference images are mapped to these
-        # roles so the API accepts them — functionally equivalent to style/content reference.
+        # Per official ARK API docs (image-video-ref-doubao), reference images
+        # use role="reference_image" (not first_frame/last_frame).
+        # Supports 1-4 reference images. Each image is sent with the same role.
         all_images = list(request.image_urls or [])
         if request.image_url and request.image_url not in all_images:
             all_images.insert(0, request.image_url)
 
-        image_roles = ["first_frame", "last_frame"]
-        for i, img_url in enumerate(all_images[:2]):
+        for img_url in all_images[:4]:
             resolved_url = await _resolve_image_url(img_url)
             content.append(
                 {
                     "type": "image_url",
                     "image_url": {"url": resolved_url},
-                    "role": image_roles[i],
+                    "role": "reference_image",
                 }
             )
 
         ratio = "adaptive" if all_images else request.aspect_ratio
-        image_count = len(all_images[:2])
+        image_count = len(all_images[:4])
 
     else:
         # --- Description mode (default) ---

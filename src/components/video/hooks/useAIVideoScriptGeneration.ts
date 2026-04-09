@@ -227,7 +227,7 @@ export function useAIVideoScriptGeneration(
 
         startPolling(segmentId, result.ark_task_id);
       } else if (mode === 'reference') {
-        // 参考图模式 — 收集参考图片，后端会分配 first_frame/last_frame 角色
+        // 参考图模式 — 收集参考图片，后端会使用 role="reference_image"
         const imageUrls: string[] = [];
         if (segment.referenceImageUrl) imageUrls.push(segment.referenceImageUrl);
         if (segment.referenceImage2Url) imageUrls.push(segment.referenceImage2Url);

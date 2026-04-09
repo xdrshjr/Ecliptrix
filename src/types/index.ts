@@ -390,7 +390,7 @@ export interface AIVideoScriptSegment {
   narrationText?: string; // 解说文案（对应该段的旁白文本）
   /** Video duration in seconds (4-12) */
   duration?: number;
-  /** Generation mode: description (reference images with first/last frame roles), keyframe (first/last frame), reference (style/content reference images with first_frame/last_frame roles) */
+  /** Generation mode: description (reference images with first/last frame roles), keyframe (first/last frame), reference (reference images with role="reference_image") */
   generationMode?: 'description' | 'keyframe' | 'reference';
   // Mode A (描述生成) — reference images with first_frame/last_frame roles
   characterImageUrl?: string;
@@ -402,7 +402,7 @@ export interface AIVideoScriptSegment {
   firstFrameName?: string;
   lastFrameUrl?: string;
   lastFrameName?: string;
-  // Mode C (参考图生成) — reference images with first_frame/last_frame roles (ARK API requirement)
+  // Mode C (参考图生成) — reference images with role="reference_image" (official ARK API spec)
   referenceImageUrl?: string;
   referenceImageName?: string;
   referenceImage2Url?: string;

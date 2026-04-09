@@ -356,11 +356,11 @@ def test_pydantic_model_accepts_all_frontend_fields():
     assert request.last_frame_url == "http://last.jpg"
 
 
-# ---- Scenario I: Reference mode - images get first_frame/last_frame roles ----
+# ---- Scenario I: Reference mode - images get reference_image role ----
 
 
 def test_scenario_i_reference_mode_with_images(mock_ark_api, captured_payloads):
-    """Reference mode images must include role field (ARK API structured mode requirement)."""
+    """Reference mode images must use role='reference_image' per official ARK API spec."""
     request = ArkVideoGenerateRequest(
         prompt="test",
         mode="reference",
@@ -374,23 +374,23 @@ def test_scenario_i_reference_mode_with_images(mock_ark_api, captured_payloads):
     payload = captured_payloads[0]
     content = payload["content"]
 
-    # Should have text + 2 images with roles
+    # Should have text + 2 images with reference_image role
     assert len(content) == 3
     assert content[0]["type"] == "text"
 
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"] == "http://ref1.jpg"
-    assert content[1]["role"] == "first_frame"
+    assert content[1]["role"] == "reference_image"
 
     assert content[2]["type"] == "image_url"
     assert content[2]["image_url"]["url"] == "http://ref2.jpg"
-    assert content[2]["role"] == "last_frame"
+    assert content[2]["role"] == "reference_image"
 
     assert payload["ratio"] == "adaptive"
 
 
 def test_scenario_j_reference_mode_single_image(mock_ark_api, captured_payloads):
-    """Reference mode with single image should use first_frame role."""
+    """Reference mode with single image should use reference_image role."""
     request = ArkVideoGenerateRequest(
         prompt="test",
         mode="reference",
@@ -407,7 +407,7 @@ def test_scenario_j_reference_mode_single_image(mock_ark_api, captured_payloads)
     assert len(content) == 2
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"] == "http://ref.jpg"
-    assert content[1]["role"] == "first_frame"
+    assert content[1]["role"] == "reference_image"
 
     assert payload["ratio"] == "adaptive"
 

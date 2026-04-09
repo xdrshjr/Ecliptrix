@@ -362,7 +362,7 @@ async def test_router_returns_400_for_keyframe_validation():
 
 @pytest.mark.asyncio
 async def test_reference_mode_single_image_url():
-    """Reference mode with image_url: content has text + one image with first_frame role."""
+    """Reference mode with image_url: content has text + one image with reference_image role."""
     request = ArkVideoGenerateRequest(
         prompt="A cat on a sofa",
         mode="reference",
@@ -374,7 +374,7 @@ async def test_reference_mode_single_image_url():
     assert payload["content"][0] == {"type": "text", "text": "A cat on a sofa"}
     assert payload["content"][1]["type"] == "image_url"
     assert payload["content"][1]["image_url"]["url"] == "https://example.com/ref.jpg"
-    assert payload["content"][1]["role"] == "first_frame"
+    assert payload["content"][1]["role"] == "reference_image"
     assert payload["ratio"] == "adaptive"
 
 
@@ -385,7 +385,7 @@ async def test_reference_mode_single_image_url():
 
 @pytest.mark.asyncio
 async def test_reference_mode_two_image_urls():
-    """Reference mode with image_urls: content has text + two images with roles."""
+    """Reference mode with image_urls: content has text + two images with reference_image role."""
     request = ArkVideoGenerateRequest(
         prompt="Transition from day to night",
         mode="reference",
@@ -397,10 +397,10 @@ async def test_reference_mode_two_image_urls():
     assert payload["content"][0]["type"] == "text"
     assert payload["content"][1]["type"] == "image_url"
     assert payload["content"][1]["image_url"]["url"] == "https://example.com/day.jpg"
-    assert payload["content"][1]["role"] == "first_frame"
+    assert payload["content"][1]["role"] == "reference_image"
     assert payload["content"][2]["type"] == "image_url"
     assert payload["content"][2]["image_url"]["url"] == "https://example.com/night.jpg"
-    assert payload["content"][2]["role"] == "last_frame"
+    assert payload["content"][2]["role"] == "reference_image"
     assert payload["ratio"] == "adaptive"
 
 
@@ -444,8 +444,8 @@ async def test_reference_mode_merges_image_url_and_image_urls():
     assert (
         payload["content"][1]["image_url"]["url"] == "https://example.com/primary.jpg"
     )
-    assert payload["content"][1]["role"] == "first_frame"
+    assert payload["content"][1]["role"] == "reference_image"
     assert (
         payload["content"][2]["image_url"]["url"] == "https://example.com/secondary.jpg"
     )
-    assert payload["content"][2]["role"] == "last_frame"
+    assert payload["content"][2]["role"] == "reference_image"
