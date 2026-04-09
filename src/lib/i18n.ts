@@ -934,11 +934,15 @@ export interface Translations {
       aiGenerating: string;
       modeDescription: string;
       modeKeyframe: string;
+      modeReference: string;
       firstFrameImage: string;
       firstFrameRequired: string;
       lastFrameImage: string;
       lastFrameOptional: string;
       firstFrameMissing: string;
+      referenceImage1: string;
+      referenceImage2: string;
+      referenceImageMissing: string;
       invalidImageUrl: string;
       durationLabel: string;
       expandScript: string;
@@ -2345,14 +2349,18 @@ export const translations: Record<string, Translations> = {
          cancelGeneration: 'Cancel',
          aiGenerate: 'AI Generate',
          aiGenerating: 'Generating...',
-         modeDescription: 'Description Mode',
-         modeKeyframe: 'Keyframe Mode',
-         firstFrameImage: 'First Frame',
-         firstFrameRequired: '*Required',
-         lastFrameImage: 'Last Frame',
-         lastFrameOptional: '(Optional)',
-         firstFrameMissing: 'Please upload a first frame image first',
-         invalidImageUrl: 'Please enter a valid HTTP/HTTPS URL',
+          modeDescription: 'Description Mode',
+          modeKeyframe: 'First/Last Frame',
+          modeReference: 'Reference Image',
+          firstFrameImage: 'First Frame',
+          firstFrameRequired: '*Required',
+          lastFrameImage: 'Last Frame',
+          lastFrameOptional: '(Optional)',
+          firstFrameMissing: 'Please upload a first frame image first',
+          invalidImageUrl: 'Please enter a valid HTTP/HTTPS URL',
+          referenceImage1: 'Reference Image 1',
+          referenceImage2: 'Reference Image 2',
+          referenceImageMissing: 'Please upload a reference image first',
          durationLabel: 'Duration:',
          expandScript: 'AI Expand',
          expandingScript: 'Expanding...',
@@ -3771,14 +3779,18 @@ export const translations: Record<string, Translations> = {
          cancelGeneration: '取消',
          aiGenerate: 'AI 生成',
          aiGenerating: '生成中...',
-         modeDescription: '描述生成',
-         modeKeyframe: '关键帧生成',
-         firstFrameImage: '首帧图片',
-         firstFrameRequired: '*必填',
-         lastFrameImage: '尾帧图片',
-         lastFrameOptional: '(可选)',
-         firstFrameMissing: '请先上传首帧图片',
-         invalidImageUrl: '请输入有效的 HTTP/HTTPS 链接',
+          modeDescription: '描述生成',
+          modeKeyframe: '首尾帧生成',
+          modeReference: '参考图生成',
+          firstFrameImage: '首帧图片',
+          firstFrameRequired: '*必填',
+          lastFrameImage: '尾帧图片',
+          lastFrameOptional: '(可选)',
+          firstFrameMissing: '请先上传首帧图片',
+          invalidImageUrl: '请输入有效的 HTTP/HTTPS 链接',
+          referenceImage1: '参考图1',
+          referenceImage2: '参考图2',
+          referenceImageMissing: '请先上传参考图片',
          durationLabel: '时长:',
          expandScript: 'AI 扩写',
          expandingScript: '扩写中...',

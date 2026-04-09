@@ -101,16 +101,24 @@ async def _download_and_cache(
 
         # Skip download if file already exists (e.g. after server restart)
         if not Path(local_path).exists():
-            logger.info(f"Background: downloading Ark video {ark_task_id} to {local_path}")
-            async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as dl_client:
+            logger.info(
+                f"Background: downloading Ark video {ark_task_id} to {local_path}"
+            )
+            async with httpx.AsyncClient(
+                timeout=120.0, follow_redirects=True
+            ) as dl_client:
                 async with dl_client.stream("GET", video_remote_url) as stream_response:
                     stream_response.raise_for_status()
                     async with aiofiles.open(local_path, "wb") as f:
-                        async for chunk in stream_response.aiter_bytes(chunk_size=65536):
+                        async for chunk in stream_response.aiter_bytes(
+                            chunk_size=65536
+                        ):
                             await f.write(chunk)
             logger.info(f"Background: Ark video {ark_task_id} downloaded")
         else:
-            logger.info(f"Background: Ark video {ark_task_id} already exists locally, skipping download")
+            logger.info(
+                f"Background: Ark video {ark_task_id} already exists locally, skipping download"
+            )
 
         local_url = f"/api/storage/files/video/ark/{today_str}/{local_filename}"
         video_relative_path = f"video/ark/{today_str}/{local_filename}"
@@ -120,8 +128,12 @@ async def _download_and_cache(
         oss_client = get_oss_client()
         if oss_client:
             try:
-                final_video_url = await oss_client.upload_file(local_path, video_relative_path, "video/mp4")
-                logger.info(f"Background: Ark video {ark_task_id} uploaded to OSS: {final_video_url}")
+                final_video_url = await oss_client.upload_file(
+                    local_path, video_relative_path, "video/mp4"
+                )
+                logger.info(
+                    f"Background: Ark video {ark_task_id} uploaded to OSS: {final_video_url}"
+                )
             except Exception as oss_exc:
                 logger.warning(
                     f"Background: OSS upload failed for Ark video {ark_task_id}: {oss_exc}, "
@@ -137,12 +149,19 @@ async def _download_and_cache(
             if not Path(thumb_path).exists():
                 seek_time = 1 if (duration or 0) > 2 else 0
                 ffmpeg_cmd = [
-                    "ffmpeg", "-ss", str(seek_time),
-                    "-i", local_path,
-                    "-vframes", "1",
-                    "-q:v", "2",
-                    "-vf", "scale=320:-1",
-                    "-y", thumb_path,
+                    "ffmpeg",
+                    "-ss",
+                    str(seek_time),
+                    "-i",
+                    local_path,
+                    "-vframes",
+                    "1",
+                    "-q:v",
+                    "2",
+                    "-vf",
+                    "scale=320:-1",
+                    "-y",
+                    thumb_path,
                 ]
                 process = await asyncio.create_subprocess_exec(
                     *ffmpeg_cmd,
@@ -151,30 +170,44 @@ async def _download_and_cache(
                 )
                 _, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
                 if process.returncode == 0 and Path(thumb_path).exists():
-                    thumbnail_url = f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
-                    logger.info(f"Background: Ark video thumbnail generated: {thumb_path}")
+                    thumbnail_url = (
+                        f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
+                    )
+                    logger.info(
+                        f"Background: Ark video thumbnail generated: {thumb_path}"
+                    )
                 else:
                     logger.warning(
                         f"Background: ffmpeg thumbnail failed for {ark_task_id}: "
                         + (stderr.decode(errors="replace")[:300] if stderr else "")
                     )
             else:
-                thumbnail_url = f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
-                logger.info(f"Background: Ark video thumbnail already exists: {thumb_path}")
+                thumbnail_url = (
+                    f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
+                )
+                logger.info(
+                    f"Background: Ark video thumbnail already exists: {thumb_path}"
+                )
 
             # Upload thumbnail to OSS if generated successfully
             if thumbnail_url and oss_client:
                 try:
                     thumb_relative_path = f"video/ark/{today_str}/{thumb_filename}"
-                    thumbnail_url = await oss_client.upload_file(thumb_path, thumb_relative_path, "image/jpeg")
-                    logger.info(f"Background: Ark thumbnail {ark_task_id} uploaded to OSS: {thumbnail_url}")
+                    thumbnail_url = await oss_client.upload_file(
+                        thumb_path, thumb_relative_path, "image/jpeg"
+                    )
+                    logger.info(
+                        f"Background: Ark thumbnail {ark_task_id} uploaded to OSS: {thumbnail_url}"
+                    )
                 except Exception as oss_exc:
                     logger.warning(
                         f"Background: OSS thumbnail upload failed for {ark_task_id}: {oss_exc}, "
                         "falling back to local URL"
                     )
         except FileNotFoundError:
-            logger.warning("Background: ffmpeg not found — skipping Ark video thumbnail generation")
+            logger.warning(
+                "Background: ffmpeg not found — skipping Ark video thumbnail generation"
+            )
         except asyncio.TimeoutError:
             logger.warning(f"Background: ffmpeg thumbnail timed out for {ark_task_id}")
             try:
@@ -193,13 +226,17 @@ async def _download_and_cache(
             "height": height,
         }
         _cache_result(ark_task_id, result)
-        logger.info(f"Background: Ark video {ark_task_id} processing complete, final URL: {final_video_url}")
+        logger.info(
+            f"Background: Ark video {ark_task_id} processing complete, final URL: {final_video_url}"
+        )
 
     except asyncio.CancelledError:
         logger.info(f"Background: Ark video {ark_task_id} download cancelled")
         raise
     except Exception as exc:
-        logger.error(f"Background: Ark video {ark_task_id} download/processing failed: {exc}")
+        logger.error(
+            f"Background: Ark video {ark_task_id} download/processing failed: {exc}"
+        )
     finally:
         _pending_downloads.pop(ark_task_id, None)
         _cdn_urls.pop(ark_task_id, None)
@@ -209,11 +246,14 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     """
     Submit a video generation task to the Ark platform.
 
-    Supports two generation modes:
+    Supports three generation modes:
     - "description": Uses image_url/image_urls as reference images (first_frame/last_frame roles).
       Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
     - "keyframe": Uses first_frame_url (required) and last_frame_url (optional).
       Ratio is always forced to "adaptive". image_url/image_urls are ignored.
+    - "reference": Uses image_url/image_urls as style/content references (no role field).
+      Images are sent WITHOUT role, so ARK API treats them as style references.
+      Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
 
     Returns the ark_task_id string.
     Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
@@ -237,22 +277,45 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
                 "Provide a URL or base64 data URI for the first frame image."
             )
 
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": request.first_frame_url},
-            "role": "first_frame",
-        })
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": request.first_frame_url},
+                "role": "first_frame",
+            }
+        )
 
         if request.last_frame_url:
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": request.last_frame_url},
-                "role": "last_frame",
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": request.last_frame_url},
+                    "role": "last_frame",
+                }
+            )
 
         # Keyframe mode always uses adaptive ratio (API requirement when images are present)
         ratio = "adaptive"
         image_count = 1 + (1 if request.last_frame_url else 0)
+
+    elif request.mode == "reference":
+        # --- Reference mode ---
+        # Images are sent WITHOUT role field, so ARK API treats them as
+        # style/content references rather than strict first/last frame constraints.
+        all_images = list(request.image_urls or [])
+        if request.image_url and request.image_url not in all_images:
+            all_images.insert(0, request.image_url)
+
+        for img_url in all_images[:2]:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": img_url},
+                }
+            )
+
+        ratio = "adaptive" if all_images else request.aspect_ratio
+        image_count = len(all_images[:2])
 
     else:
         # --- Description mode (default) ---
@@ -265,11 +328,13 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
         # Ark API requires role for each image: first_frame for first, last_frame for second
         image_roles = ["first_frame", "last_frame"]
         for i, img_url in enumerate(all_images[:2]):
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": img_url},
-                "role": image_roles[i],
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": img_url},
+                    "role": image_roles[i],
+                }
+            )
 
         # When images are present, ratio must be "adaptive" (API requirement)
         ratio = "adaptive" if all_images else request.aspect_ratio
@@ -386,7 +451,9 @@ async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
 
         # Duration and resolution are top-level fields
         duration_val = data.get("duration")
-        duration: Optional[int] = int(duration_val) if duration_val is not None else None
+        duration: Optional[int] = (
+            int(duration_val) if duration_val is not None else None
+        )
         width, height = _parse_resolution(data)
 
         # Start background download+thumbnail task if not already running
@@ -398,7 +465,9 @@ async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
                 "height": height,
             }
             task = asyncio.create_task(
-                _download_and_cache(ark_task_id, video_remote_url, duration, width, height)
+                _download_and_cache(
+                    ark_task_id, video_remote_url, duration, width, height
+                )
             )
             _pending_downloads[ark_task_id] = task
             logger.info(

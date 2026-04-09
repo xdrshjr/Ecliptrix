@@ -116,6 +116,16 @@ export function useAIVideoScriptGeneration(
       return;
     }
 
+    // 参考图模式下，至少需要一张参考图
+    if (mode === 'reference' && !segment.referenceImageUrl) {
+      updateSegment(segmentId, {
+        generationStatus: 'failed',
+        generationProgress: 0,
+        generationError: '请先上传参考图片',
+      });
+      return;
+    }
+
     updateSegment(segmentId, {
       generationStatus: 'generating',
       generationProgress: 5,
@@ -144,8 +154,31 @@ export function useAIVideoScriptGeneration(
         });
 
         startPolling(segmentId, result.ark_task_id);
+      } else if (mode === 'reference') {
+        // 参考图模式 — 收集参考图片，不带角色约束
+        const imageUrls: string[] = [];
+        if (segment.referenceImageUrl) imageUrls.push(segment.referenceImageUrl);
+        if (segment.referenceImage2Url) imageUrls.push(segment.referenceImage2Url);
+
+        const result = await createArkVideoTask({
+          prompt: segment.scriptText,
+          duration: segment.duration || 5,
+          camera_fixed: false,
+          watermark: false,
+          mode: 'reference',
+          image_urls: imageUrls.length > 0 ? imageUrls : undefined,
+          aspect_ratio: '16:9',
+          resolution: '720p',
+        });
+
+        updateSegment(segmentId, {
+          arkTaskId: result.ark_task_id,
+          generationProgress: 10,
+        });
+
+        startPolling(segmentId, result.ark_task_id);
       } else {
-        // 描述生成模式 — 收集参考图片
+        // 描述生成模式 — 收集参考图片（首尾帧角色）
         const imageUrls: string[] = [];
         if (segment.characterImageUrl) imageUrls.push(segment.characterImageUrl);
         if (segment.sceneImageUrl) imageUrls.push(segment.sceneImageUrl);

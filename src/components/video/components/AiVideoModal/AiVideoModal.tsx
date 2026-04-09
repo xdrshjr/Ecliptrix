@@ -15,7 +15,7 @@ interface AiVideoModalProps {
   materials?: MaterialItem[];
 }
 
-type GenerationMode = 'description' | 'keyframe';
+type GenerationMode = 'description' | 'keyframe' | 'reference';
 
 const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm, initialImageUrl, materials }) => {
   const { t } = useLocale();
@@ -39,6 +39,12 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   const [firstFrameName, setFirstFrameName] = useState('');
   const [lastFrameUrl, setLastFrameUrl] = useState('');
   const [lastFrameName, setLastFrameName] = useState('');
+
+  // Mode C (reference) state
+  const [referenceImageUrl, setReferenceImageUrl] = useState('');
+  const [referenceImageName, setReferenceImageName] = useState('');
+  const [referenceImage2Url, setReferenceImage2Url] = useState('');
+  const [referenceImage2Name, setReferenceImage2Name] = useState('');
 
   // Pre-fill from MaterialsPanel: set keyframe mode + fill firstFrameUrl
   useEffect(() => {
@@ -66,6 +72,10 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     setFirstFrameName('');
     setLastFrameUrl('');
     setLastFrameName('');
+    setReferenceImageUrl('');
+    setReferenceImageName('');
+    setReferenceImage2Url('');
+    setReferenceImage2Name('');
   };
 
   const handleClose = () => {
@@ -76,7 +86,6 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   const handleModeSwitch = (newMode: GenerationMode) => {
     if (newMode === mode) return;
     setMode(newMode);
-    // Clear image fields when switching modes
     setCharacterImageUrl('');
     setCharacterImageName('');
     setSceneImageUrl('');
@@ -85,6 +94,10 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     setFirstFrameName('');
     setLastFrameUrl('');
     setLastFrameName('');
+    setReferenceImageUrl('');
+    setReferenceImageName('');
+    setReferenceImage2Url('');
+    setReferenceImage2Name('');
   };
 
   const handleSubmit = () => {
@@ -99,6 +112,20 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
         first_frame_url: firstFrameUrl.trim(),
         last_frame_url: lastFrameUrl.trim() || undefined,
         duration,
+        resolution,
+        camera_fixed: cameraFixed,
+        watermark,
+      });
+    } else if (mode === 'reference') {
+      const imageUrls = [referenceImageUrl.trim(), referenceImage2Url.trim()].filter(Boolean);
+      if (imageUrls.length === 0) return;
+
+      onConfirm({
+        prompt: prompt.trim(),
+        mode: 'reference',
+        image_urls: imageUrls,
+        duration,
+        aspect_ratio: aspectRatio,
         resolution,
         camera_fixed: cameraFixed,
         watermark,
@@ -120,7 +147,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   };
 
   const isKeyframeMissingFirstFrame = mode === 'keyframe' && !firstFrameUrl.trim();
-  const isSubmitDisabled = !prompt.trim() || isKeyframeMissingFirstFrame;
+  const isReferenceMissingImage = mode === 'reference' && !referenceImageUrl.trim();
+  const isSubmitDisabled = !prompt.trim() || isKeyframeMissingFirstFrame || isReferenceMissingImage;
 
   if (!isOpen) return null;
 
@@ -154,24 +182,34 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           {/* Mode SegmentedControl — same style as AIVideoScriptTab */}
           <div className="flex rounded-md border border-border overflow-hidden">
             <button
-              onClick={() => handleModeSwitch('description')}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                mode === 'description'
-                  ? 'bg-purple-500 text-white dark:bg-purple-600'
-                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
-              }`}
-            >
-              {t.scriptPanel.aiVideoScript.modeDescription}
-            </button>
-            <button
               onClick={() => handleModeSwitch('keyframe')}
-              className={`flex-1 py-2 text-sm font-medium transition-colors border-l border-border ${
+              className={`flex-1 py-2 text-sm font-medium transition-colors ${
                 mode === 'keyframe'
                   ? 'bg-purple-500 text-white dark:bg-purple-600'
                   : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
               }`}
             >
               {t.scriptPanel.aiVideoScript.modeKeyframe}
+            </button>
+            <button
+              onClick={() => handleModeSwitch('reference')}
+              className={`flex-1 py-2 text-sm font-medium transition-colors border-l border-border ${
+                mode === 'reference'
+                  ? 'bg-purple-500 text-white dark:bg-purple-600'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
+              }`}
+            >
+              {t.scriptPanel.aiVideoScript.modeReference}
+            </button>
+            <button
+              onClick={() => handleModeSwitch('description')}
+              className={`flex-1 py-2 text-sm font-medium transition-colors border-l border-border ${
+                mode === 'description'
+                  ? 'bg-purple-500 text-white dark:bg-purple-600'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
+              }`}
+            >
+              {t.scriptPanel.aiVideoScript.modeDescription}
             </button>
           </div>
 
@@ -218,7 +256,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           </div>
 
           {/* Aspect Ratio — hidden in keyframe mode (forced to adaptive) */}
-          {mode === 'description' && (
+          {mode !== 'keyframe' && (
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 视频比例
@@ -277,7 +315,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                 />
               </div>
             </div>
-          ) : (
+          ) : mode === 'keyframe' ? (
             <div className="space-y-4">
               <div className="flex gap-3">
                 <ImagePickerSlot
@@ -294,6 +332,27 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                   imageName={lastFrameName || undefined}
                   onSelect={(url, name) => { setLastFrameUrl(url); setLastFrameName(name); }}
                   onRemove={() => { setLastFrameUrl(''); setLastFrameName(''); }}
+                  materials={materials}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <ImagePickerSlot
+                  label={`${t.scriptPanel.aiVideoScript.referenceImage1 || '参考图1'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`}
+                  imageUrl={referenceImageUrl || undefined}
+                  imageName={referenceImageName || undefined}
+                  onSelect={(url, name) => { setReferenceImageUrl(url); setReferenceImageName(name); }}
+                  onRemove={() => { setReferenceImageUrl(''); setReferenceImageName(''); }}
+                  materials={materials}
+                />
+                <ImagePickerSlot
+                  label={`${t.scriptPanel.aiVideoScript.referenceImage2 || '参考图2'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`}
+                  imageUrl={referenceImage2Url || undefined}
+                  imageName={referenceImage2Name || undefined}
+                  onSelect={(url, name) => { setReferenceImage2Url(url); setReferenceImage2Name(name); }}
+                  onRemove={() => { setReferenceImage2Url(''); setReferenceImage2Name(''); }}
                   materials={materials}
                 />
               </div>

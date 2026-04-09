@@ -178,23 +178,12 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
             rows={4}
           />
 
-          {/* Mode switcher — 描述生成 / 关键帧生成 */}
+          {/* Mode switcher — 首尾帧 / 参考图 / 描述生成 */}
           <div className="flex rounded-md border border-border overflow-hidden mt-3">
-            <button
-              onClick={() => segment.generationStatus !== 'generating' && handleUpdateSegment(segment.id, { generationMode: 'description' })}
-              disabled={segment.generationStatus === 'generating'}
-              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-                (segment.generationMode || 'description') === 'description'
-                  ? 'bg-purple-500 text-white dark:bg-purple-600'
-                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
-              } disabled:opacity-60 disabled:cursor-not-allowed`}
-            >
-              {t.scriptPanel.aiVideoScript.modeDescription}
-            </button>
             <button
               onClick={() => segment.generationStatus !== 'generating' && handleUpdateSegment(segment.id, { generationMode: 'keyframe' })}
               disabled={segment.generationStatus === 'generating'}
-              className={`flex-1 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
                 segment.generationMode === 'keyframe'
                   ? 'bg-purple-500 text-white dark:bg-purple-600'
                   : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
@@ -202,29 +191,32 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
             >
               {t.scriptPanel.aiVideoScript.modeKeyframe}
             </button>
+            <button
+              onClick={() => segment.generationStatus !== 'generating' && handleUpdateSegment(segment.id, { generationMode: 'reference' })}
+              disabled={segment.generationStatus === 'generating'}
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+                segment.generationMode === 'reference'
+                  ? 'bg-purple-500 text-white dark:bg-purple-600'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              {t.scriptPanel.aiVideoScript.modeReference}
+            </button>
+            <button
+              onClick={() => segment.generationStatus !== 'generating' && handleUpdateSegment(segment.id, { generationMode: 'description' })}
+              disabled={segment.generationStatus === 'generating'}
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+                (segment.generationMode || 'description') === 'description'
+                  ? 'bg-purple-500 text-white dark:bg-purple-600'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground'
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              {t.scriptPanel.aiVideoScript.modeDescription}
+            </button>
           </div>
 
           {/* Image pickers — conditional on mode */}
-          {(segment.generationMode || 'description') === 'description' ? (
-            <div className="flex space-x-3 mt-3">
-              <ImagePickerSlot
-                label={t.scriptPanel.aiVideoScript.characterImage}
-                imageUrl={segment.characterImageUrl}
-                imageName={segment.characterImageName}
-                onSelect={(url, name) => handleUpdateSegment(segment.id, { characterImageUrl: url, characterImageName: name })}
-                onRemove={() => handleUpdateSegment(segment.id, { characterImageUrl: undefined, characterImageName: undefined })}
-                materials={materials}
-              />
-              <ImagePickerSlot
-                label={t.scriptPanel.aiVideoScript.sceneImage}
-                imageUrl={segment.sceneImageUrl}
-                imageName={segment.sceneImageName}
-                onSelect={(url, name) => handleUpdateSegment(segment.id, { sceneImageUrl: url, sceneImageName: name })}
-                onRemove={() => handleUpdateSegment(segment.id, { sceneImageUrl: undefined, sceneImageName: undefined })}
-                materials={materials}
-              />
-            </div>
-          ) : (
+          {segment.generationMode === 'keyframe' ? (
             <div className="flex space-x-3 mt-3">
               <ImagePickerSlot
                 label={`${t.scriptPanel.aiVideoScript.firstFrameImage} ${t.scriptPanel.aiVideoScript.firstFrameRequired}`}
@@ -240,6 +232,44 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
                 imageName={segment.lastFrameName}
                 onSelect={(url, name) => handleUpdateSegment(segment.id, { lastFrameUrl: url, lastFrameName: name })}
                 onRemove={() => handleUpdateSegment(segment.id, { lastFrameUrl: undefined, lastFrameName: undefined })}
+                materials={materials}
+              />
+            </div>
+          ) : segment.generationMode === 'reference' ? (
+            <div className="flex space-x-3 mt-3">
+              <ImagePickerSlot
+                label={`${t.scriptPanel.aiVideoScript.referenceImage1} ${t.scriptPanel.aiVideoScript.firstFrameRequired}`}
+                imageUrl={segment.referenceImageUrl}
+                imageName={segment.referenceImageName}
+                onSelect={(url, name) => handleUpdateSegment(segment.id, { referenceImageUrl: url, referenceImageName: name })}
+                onRemove={() => handleUpdateSegment(segment.id, { referenceImageUrl: undefined, referenceImageName: undefined })}
+                materials={materials}
+              />
+              <ImagePickerSlot
+                label={`${t.scriptPanel.aiVideoScript.referenceImage2} ${t.scriptPanel.aiVideoScript.lastFrameOptional}`}
+                imageUrl={segment.referenceImage2Url}
+                imageName={segment.referenceImage2Name}
+                onSelect={(url, name) => handleUpdateSegment(segment.id, { referenceImage2Url: url, referenceImage2Name: name })}
+                onRemove={() => handleUpdateSegment(segment.id, { referenceImage2Url: undefined, referenceImage2Name: undefined })}
+                materials={materials}
+              />
+            </div>
+          ) : (
+            <div className="flex space-x-3 mt-3">
+              <ImagePickerSlot
+                label={t.scriptPanel.aiVideoScript.characterImage}
+                imageUrl={segment.characterImageUrl}
+                imageName={segment.characterImageName}
+                onSelect={(url, name) => handleUpdateSegment(segment.id, { characterImageUrl: url, characterImageName: name })}
+                onRemove={() => handleUpdateSegment(segment.id, { characterImageUrl: undefined, characterImageName: undefined })}
+                materials={materials}
+              />
+              <ImagePickerSlot
+                label={t.scriptPanel.aiVideoScript.sceneImage}
+                imageUrl={segment.sceneImageUrl}
+                imageName={segment.sceneImageName}
+                onSelect={(url, name) => handleUpdateSegment(segment.id, { sceneImageUrl: url, sceneImageName: name })}
+                onRemove={() => handleUpdateSegment(segment.id, { sceneImageUrl: undefined, sceneImageName: undefined })}
                 materials={materials}
               />
             </div>
@@ -305,8 +335,8 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
             ) : (
               <button
                 onClick={() => generateVideo(segment.id)}
-                disabled={!segment.scriptText.trim() || (segment.generationMode === 'keyframe' && !segment.firstFrameUrl)}
-                title={segment.generationMode === 'keyframe' && !segment.firstFrameUrl ? t.scriptPanel.aiVideoScript.firstFrameMissing : undefined}
+                disabled={!segment.scriptText.trim() || (segment.generationMode === 'keyframe' && !segment.firstFrameUrl) || (segment.generationMode === 'reference' && !segment.referenceImageUrl)}
+                title={segment.generationMode === 'keyframe' && !segment.firstFrameUrl ? t.scriptPanel.aiVideoScript.firstFrameMissing : segment.generationMode === 'reference' && !segment.referenceImageUrl ? t.scriptPanel.aiVideoScript.referenceImageMissing : undefined}
                 className="w-full flex items-center justify-center space-x-1.5 py-2 text-xs font-medium text-white bg-gradient-to-r from-purple-500 to-purple-600 rounded-md hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

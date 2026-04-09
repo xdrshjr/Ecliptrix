@@ -390,9 +390,9 @@ export interface AIVideoScriptSegment {
   narrationText?: string; // 解说文案（对应该段的旁白文本）
   /** Video duration in seconds (4-12) */
   duration?: number;
-  /** Generation mode: description (reference images) or keyframe (first/last frame) */
-  generationMode?: 'description' | 'keyframe';
-  // Mode A (描述生成) — reference images
+  /** Generation mode: description (reference images with first/last frame roles), keyframe (first/last frame), reference (style/content reference images without role constraint) */
+  generationMode?: 'description' | 'keyframe' | 'reference';
+  // Mode A (描述生成) — reference images with first_frame/last_frame roles
   characterImageUrl?: string;
   characterImageName?: string;
   sceneImageUrl?: string;
@@ -402,6 +402,11 @@ export interface AIVideoScriptSegment {
   firstFrameName?: string;
   lastFrameUrl?: string;
   lastFrameName?: string;
+  // Mode C (参考图生成) — reference images without role constraint
+  referenceImageUrl?: string;
+  referenceImageName?: string;
+  referenceImage2Url?: string;
+  referenceImage2Name?: string;
   generationStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
   generationProgress?: number;
   arkTaskId?: string;
