@@ -3,6 +3,7 @@ Service for Ark Seedance video generation via Ark API.
 """
 
 import asyncio
+import base64
 import os
 import logging
 from datetime import date
@@ -23,6 +24,15 @@ ARK_API_BASE = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/ta
 # Model supports both text-to-video and image-to-video in one endpoint.
 ARK_MODEL = "doubao-seedance-1-5-pro-251215"
 
+_MIME_MAP = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
 # In-memory cache: ark_task_id -> status dict (avoids re-downloading completed tasks).
 # Capped at _TASK_RESULTS_MAX_SIZE to prevent unbounded growth.
 _task_results: Dict[str, dict] = {}
@@ -34,6 +44,69 @@ _pending_downloads: Dict[str, asyncio.Task] = {}
 # Caches CDN URL info for tasks whose background download is still in progress.
 # Allows subsequent polls to return CDN URL without re-querying the Ark API.
 _cdn_urls: Dict[str, dict] = {}
+
+
+async def _resolve_image_url(url: str) -> str:
+    """
+    Convert relative/local image URLs to base64 data URIs for ARK API compatibility.
+
+    The ARK Seedance API requires publicly accessible image URLs or data URIs.
+    Local server paths (e.g., /api/storage/files/images/xxx.jpg) are unreachable
+    by the API server, so we convert them to base64 data URIs instead.
+    """
+    if not url:
+        return url
+
+    # Already in a format the ARK API can handle
+    if (
+        url.startswith("data:")
+        or url.startswith("https://")
+        or url.startswith("http://")
+    ):
+        return url
+
+    # Handle relative storage URLs like /api/storage/files/...
+    if url.startswith("/"):
+        storage_root = getattr(settings, "storage", None)
+        if storage_root and hasattr(storage_root, "root"):
+            root = storage_root.root
+        else:
+            root = "static/uploads"
+
+        # Strip leading /api/storage/files/ prefix to get relative file path
+        if url.startswith("/api/storage/files/"):
+            relative_path = url[len("/api/storage/files/") :]
+        else:
+            relative_path = url.lstrip("/")
+
+        local_path = os.path.join(root, relative_path)
+
+        if os.path.exists(local_path):
+            try:
+                async with aiofiles.open(local_path, "rb") as f:
+                    file_data = await f.read()
+
+                ext = os.path.splitext(local_path)[1].lower()
+                mime_type = _MIME_MAP.get(ext, "image/jpeg")
+                b64 = base64.b64encode(file_data).decode("ascii")
+                data_uri = f"data:{mime_type};base64,{b64}"
+                logger.info(
+                    f"Resolved local image URL to base64 data URI "
+                    f"(path={local_path}, size={len(file_data)} bytes, mime={mime_type})"
+                )
+                return data_uri
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to convert local image to base64: {local_path}: {exc}"
+                )
+
+        logger.warning(
+            f"Local image file not found for URL '{url}' "
+            f"(tried path: {local_path}). "
+            f"ARK API requires publicly accessible URLs or data URIs."
+        )
+
+    return url
 
 
 def _cache_result(ark_task_id: str, result: dict) -> None:
@@ -251,9 +324,9 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
       Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
     - "keyframe": Uses first_frame_url (required) and last_frame_url (optional).
       Ratio is always forced to "adaptive". image_url/image_urls are ignored.
-    - "reference": Uses image_url/image_urls as style/content references (no role field).
-      Images are sent WITHOUT role, so ARK API treats them as style references.
-      Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
+    - "reference": Uses image_url/image_urls as style/content references.
+      Images are sent with first_frame/last_frame roles (ARK API requirement in
+      structured mode). Ratio is "adaptive" when images are present.
 
     Returns the ark_task_id string.
     Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
@@ -277,19 +350,21 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
                 "Provide a URL or base64 data URI for the first frame image."
             )
 
+        resolved_first = await _resolve_image_url(request.first_frame_url)
         content.append(
             {
                 "type": "image_url",
-                "image_url": {"url": request.first_frame_url},
+                "image_url": {"url": resolved_first},
                 "role": "first_frame",
             }
         )
 
         if request.last_frame_url:
+            resolved_last = await _resolve_image_url(request.last_frame_url)
             content.append(
                 {
                     "type": "image_url",
-                    "image_url": {"url": request.last_frame_url},
+                    "image_url": {"url": resolved_last},
                     "role": "last_frame",
                 }
             )
@@ -300,17 +375,22 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
 
     elif request.mode == "reference":
         # --- Reference mode ---
-        # Images are sent WITHOUT role field, so ARK API treats them as
-        # style/content references rather than strict first/last frame constraints.
+        # ARK Seedance API requires "role" on every image in structured mode
+        # (with top-level duration/ratio/resolution). The only valid roles are
+        # "first_frame" and "last_frame". Reference images are mapped to these
+        # roles so the API accepts them — functionally equivalent to style/content reference.
         all_images = list(request.image_urls or [])
         if request.image_url and request.image_url not in all_images:
             all_images.insert(0, request.image_url)
 
-        for img_url in all_images[:2]:
+        image_roles = ["first_frame", "last_frame"]
+        for i, img_url in enumerate(all_images[:2]):
+            resolved_url = await _resolve_image_url(img_url)
             content.append(
                 {
                     "type": "image_url",
-                    "image_url": {"url": img_url},
+                    "image_url": {"url": resolved_url},
+                    "role": image_roles[i],
                 }
             )
 
@@ -328,10 +408,11 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
         # Ark API requires role for each image: first_frame for first, last_frame for second
         image_roles = ["first_frame", "last_frame"]
         for i, img_url in enumerate(all_images[:2]):
+            resolved_url = await _resolve_image_url(img_url)
             content.append(
                 {
                     "type": "image_url",
-                    "image_url": {"url": img_url},
+                    "image_url": {"url": resolved_url},
                     "role": image_roles[i],
                 }
             )
@@ -364,7 +445,25 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
         if response.status_code != 200:
             error_body = response.text
             logger.error(f"Ark API error {response.status_code}: {error_body}")
-            response.raise_for_status()
+            logger.error(
+                f"Ark API failed payload (mode={request.mode}): "
+                f"ratio={ratio}, duration={request.duration}, "
+                f"content_types={[c.get('type') for c in content]}"
+            )
+            try:
+                error_json = response.json()
+                ark_error_msg = (
+                    error_json.get("error", {}).get("message")
+                    if isinstance(error_json.get("error"), dict)
+                    else error_json.get("message", "")
+                )
+            except Exception:
+                ark_error_msg = error_body[:500]
+            raise httpx.HTTPStatusError(
+                f"Ark API {response.status_code}: {ark_error_msg or error_body[:300]}",
+                request=response.request,
+                response=response,
+            )
         data = response.json()
 
     ark_task_id = data.get("id")

@@ -19,15 +19,15 @@ class ArkVideoGenerateRequest(BaseModel):
       last_frame_url optional). Ratio is always forced to "adaptive".
       In this mode, image_url/image_urls are ignored even if provided.
     - "reference": Text prompt with reference images (image_url/image_urls).
-      Images are sent WITHOUT role field, so the ARK API treats them as style/content
-      references rather than strict first/last frame constraints.
+      Images are sent with first_frame/last_frame roles (ARK API requirement for
+      structured mode with top-level duration/ratio/resolution fields).
       When images are present, ratio is automatically set to "adaptive".
     """
 
     prompt: str = Field(..., description="Text prompt describing the video to generate")
     mode: Literal["description", "keyframe", "reference"] = Field(
         default="description",
-        description="Generation mode: 'description' for text+reference images (first/last frame roles), 'keyframe' for explicit first/last frame images, 'reference' for style/content reference images (no role constraint)",
+        description="Generation mode: 'description' for text+reference images (first/last frame roles), 'keyframe' for explicit first/last frame images, 'reference' for style/content reference images (mapped to first_frame/last_frame roles)",
     )
     duration: int = Field(
         default=5, ge=4, le=12, description="Video duration in seconds (4-12)"

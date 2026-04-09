@@ -14,8 +14,14 @@ from unittest.mock import MagicMock
 # Pre-mock heavy optional dependencies imported transitively by app.services.__init__
 # and other modules. These must be set before any app imports.
 _MOCK_MODULES = [
-    "cv2", "pydub", "pydub.audio_segment", "yt_dlp",
-    "whisper", "pyaudio", "librosa", "soundfile",
+    "cv2",
+    "pydub",
+    "pydub.audio_segment",
+    "yt_dlp",
+    "whisper",
+    "pyaudio",
+    "librosa",
+    "soundfile",
 ]
 for mod_name in _MOCK_MODULES:
     if mod_name not in sys.modules:
@@ -37,7 +43,10 @@ def _make_mock_ark_response(status_code: int = 200, body: dict = None):
     """Create a mock httpx.Response."""
     if body is None:
         body = {"id": "fake-task-id"}
-    request = Request(method="POST", url="https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks")
+    request = Request(
+        method="POST",
+        url="https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
+    )
     return Response(status_code=status_code, json=body, request=request)
 
 
@@ -79,6 +88,7 @@ def _run(coro):
 
 # ---- Scenario A: Description mode - no images (backward compat) ----
 
+
 def test_scenario_a_description_no_images(mock_ark_api, captured_payloads):
     """POST with just prompt (no mode field) should work as backward-compatible description mode."""
     request = ArkVideoGenerateRequest(prompt="test")
@@ -100,6 +110,7 @@ def test_scenario_a_description_no_images(mock_ark_api, captured_payloads):
 
 
 # ---- Scenario B: Description mode - with images ----
+
 
 def test_scenario_b_description_with_images(mock_ark_api, captured_payloads):
     """Description mode with image_urls should include images as first_frame/last_frame."""
@@ -136,6 +147,7 @@ def test_scenario_b_description_with_images(mock_ark_api, captured_payloads):
 
 # ---- Scenario C: Keyframe mode - first frame only ----
 
+
 def test_scenario_c_keyframe_first_frame_only(mock_ark_api, captured_payloads):
     """Keyframe mode with only first_frame_url should work."""
     request = ArkVideoGenerateRequest(
@@ -163,6 +175,7 @@ def test_scenario_c_keyframe_first_frame_only(mock_ark_api, captured_payloads):
 
 
 # ---- Scenario D: Keyframe mode - first + last frame ----
+
 
 def test_scenario_d_keyframe_both_frames(mock_ark_api, captured_payloads):
     """Keyframe mode with both first and last frame URLs."""
@@ -195,6 +208,7 @@ def test_scenario_d_keyframe_both_frames(mock_ark_api, captured_payloads):
 
 # ---- Scenario E: Keyframe mode - missing first frame (should fail) ----
 
+
 def test_scenario_e_keyframe_missing_first_frame(mock_ark_api, captured_payloads):
     """Keyframe mode without first_frame_url should raise ValueError."""
     request = ArkVideoGenerateRequest(
@@ -209,6 +223,7 @@ def test_scenario_e_keyframe_missing_first_frame(mock_ark_api, captured_payloads
 
 
 # ---- Scenario F: Keyframe mode ignores image_urls ----
+
 
 def test_scenario_f_keyframe_ignores_image_urls(mock_ark_api, captured_payloads):
     """Keyframe mode should ignore image_urls field."""
@@ -241,7 +256,10 @@ def test_scenario_f_keyframe_ignores_image_urls(mock_ark_api, captured_payloads)
 
 # ---- Scenario G: Description mode ignores first_frame_url ----
 
-def test_scenario_g_description_ignores_first_frame_url(mock_ark_api, captured_payloads):
+
+def test_scenario_g_description_ignores_first_frame_url(
+    mock_ark_api, captured_payloads
+):
     """Description mode should ignore first_frame_url field."""
     request = ArkVideoGenerateRequest(
         prompt="test",
@@ -269,6 +287,7 @@ def test_scenario_g_description_ignores_first_frame_url(mock_ark_api, captured_p
 
 
 # ---- Scenario H: All frontend params accepted ----
+
 
 def test_scenario_h_all_frontend_params(mock_ark_api, captured_payloads):
     """All fields from the TypeScript ArkVideoGenerateParams interface should be accepted."""
@@ -306,6 +325,7 @@ def test_scenario_h_all_frontend_params(mock_ark_api, captured_payloads):
 
 # ---- Additional: Verify Pydantic model accepts all frontend fields ----
 
+
 def test_pydantic_model_accepts_all_frontend_fields():
     """Ensure ArkVideoGenerateRequest accepts every field from ArkVideoGenerateParams."""
     # These are ALL fields from the TypeScript interface
@@ -334,3 +354,78 @@ def test_pydantic_model_accepts_all_frontend_fields():
     assert request.mode == "description"
     assert request.first_frame_url == "http://first.jpg"
     assert request.last_frame_url == "http://last.jpg"
+
+
+# ---- Scenario I: Reference mode - images get first_frame/last_frame roles ----
+
+
+def test_scenario_i_reference_mode_with_images(mock_ark_api, captured_payloads):
+    """Reference mode images must include role field (ARK API structured mode requirement)."""
+    request = ArkVideoGenerateRequest(
+        prompt="test",
+        mode="reference",
+        image_urls=["http://ref1.jpg", "http://ref2.jpg"],
+    )
+    task_id = _run(ark_video_svc.create_task(request))
+
+    assert task_id == "fake-task-id"
+    assert len(captured_payloads) == 1
+
+    payload = captured_payloads[0]
+    content = payload["content"]
+
+    # Should have text + 2 images with roles
+    assert len(content) == 3
+    assert content[0]["type"] == "text"
+
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"] == "http://ref1.jpg"
+    assert content[1]["role"] == "first_frame"
+
+    assert content[2]["type"] == "image_url"
+    assert content[2]["image_url"]["url"] == "http://ref2.jpg"
+    assert content[2]["role"] == "last_frame"
+
+    assert payload["ratio"] == "adaptive"
+
+
+def test_scenario_j_reference_mode_single_image(mock_ark_api, captured_payloads):
+    """Reference mode with single image should use first_frame role."""
+    request = ArkVideoGenerateRequest(
+        prompt="test",
+        mode="reference",
+        image_url="http://ref.jpg",
+    )
+    task_id = _run(ark_video_svc.create_task(request))
+
+    assert task_id == "fake-task-id"
+    assert len(captured_payloads) == 1
+
+    payload = captured_payloads[0]
+    content = payload["content"]
+
+    assert len(content) == 2
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"] == "http://ref.jpg"
+    assert content[1]["role"] == "first_frame"
+
+    assert payload["ratio"] == "adaptive"
+
+
+def test_scenario_k_reference_mode_no_images(mock_ark_api, captured_payloads):
+    """Reference mode without images should use requested aspect_ratio."""
+    request = ArkVideoGenerateRequest(
+        prompt="test",
+        mode="reference",
+    )
+    task_id = _run(ark_video_svc.create_task(request))
+
+    assert task_id == "fake-task-id"
+    assert len(captured_payloads) == 1
+
+    payload = captured_payloads[0]
+    content = payload["content"]
+
+    assert len(content) == 1
+    assert content[0]["type"] == "text"
+    assert payload["ratio"] == "16:9"

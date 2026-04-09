@@ -35,7 +35,9 @@ from app.models.ark_video_models import ArkVideoGenerateRequest
 # "import app.services.ark_video_service" does NOT execute __init__.py.
 # Instead we load the single .py file directly.
 _ark_svc_path = os.path.join(_SERVICE_ROOT, "app", "services", "ark_video_service.py")
-_spec = importlib.util.spec_from_file_location("app.services.ark_video_service", _ark_svc_path)
+_spec = importlib.util.spec_from_file_location(
+    "app.services.ark_video_service", _ark_svc_path
+)
 _ark_video_service = importlib.util.module_from_spec(_spec)
 
 # Inject into sys.modules BEFORE exec so relative imports within the module resolve
@@ -55,6 +57,7 @@ ark_video_service = _ark_video_service
 # ---------------------------------------------------------------------------
 # Helper: capture the payload sent to httpx by create_task()
 # ---------------------------------------------------------------------------
+
 
 async def _capture_payload(request: ArkVideoGenerateRequest) -> dict:
     """
@@ -89,6 +92,7 @@ async def _capture_payload(request: ArkVideoGenerateRequest) -> dict:
 # Test 1: Description mode, text only (no images)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_description_mode_no_images():
     """Description mode with no images: content has only the text entry."""
@@ -108,6 +112,7 @@ async def test_description_mode_no_images():
 # ---------------------------------------------------------------------------
 # Test 2: Description mode with single image_url
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_description_mode_with_image_url():
@@ -132,6 +137,7 @@ async def test_description_mode_with_image_url():
 # Test 3: Description mode with image_urls (multiple images)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_description_mode_with_image_urls():
     """Description mode with image_urls: content has text + two image entries."""
@@ -154,6 +160,7 @@ async def test_description_mode_with_image_urls():
 # ---------------------------------------------------------------------------
 # Test 4: Keyframe mode with first_frame_url only
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_keyframe_mode_first_frame_only():
@@ -179,6 +186,7 @@ async def test_keyframe_mode_first_frame_only():
 # Test 5: Keyframe mode with first_frame_url + last_frame_url
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_keyframe_mode_first_and_last_frame():
     """Keyframe mode with both frames: two image entries, ratio=adaptive."""
@@ -203,6 +211,7 @@ async def test_keyframe_mode_first_and_last_frame():
 # Test 6: Keyframe mode without first_frame_url raises ValueError
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_keyframe_mode_missing_first_frame_raises():
     """Keyframe mode without first_frame_url must raise ValueError."""
@@ -220,6 +229,7 @@ async def test_keyframe_mode_missing_first_frame_raises():
 # ---------------------------------------------------------------------------
 # Test 7: Backward compatibility — no mode field defaults to description
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_backward_compatibility_no_mode():
@@ -242,6 +252,7 @@ async def test_backward_compatibility_no_mode():
 # ---------------------------------------------------------------------------
 # Test 8: Keyframe mode ignores image_url / image_urls
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_keyframe_mode_ignores_description_images():
@@ -271,6 +282,7 @@ async def test_keyframe_mode_ignores_description_images():
 # Test 9: Description mode ignores first_frame_url / last_frame_url
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_description_mode_ignores_keyframe_fields():
     """Description mode should ignore first_frame_url/last_frame_url even if provided."""
@@ -299,6 +311,7 @@ async def test_description_mode_ignores_keyframe_fields():
 # Test 10: Router returns 400 for keyframe validation failure
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_router_returns_400_for_keyframe_validation():
     """POST /api/ark-video/generate with keyframe mode but no first_frame_url returns 400.
@@ -318,7 +331,9 @@ async def test_router_returns_400_for_keyframe_validation():
     async def generate_video(request: ArkVideoGenerateRequest):
         try:
             task_id = await ark_video_service.create_task(request)
-            return ArkVideoGenerateResponse(success=True, message="ok", ark_task_id=task_id)
+            return ArkVideoGenerateResponse(
+                success=True, message="ok", ark_task_id=task_id
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -338,3 +353,99 @@ async def test_router_returns_400_for_keyframe_validation():
 
     assert response.status_code == 400
     assert "first_frame_url" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Reference mode with single image_url
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reference_mode_single_image_url():
+    """Reference mode with image_url: content has text + one image with first_frame role."""
+    request = ArkVideoGenerateRequest(
+        prompt="A cat on a sofa",
+        mode="reference",
+        image_url="https://example.com/ref.jpg",
+    )
+    payload = await _capture_payload(request)
+
+    assert len(payload["content"]) == 2
+    assert payload["content"][0] == {"type": "text", "text": "A cat on a sofa"}
+    assert payload["content"][1]["type"] == "image_url"
+    assert payload["content"][1]["image_url"]["url"] == "https://example.com/ref.jpg"
+    assert payload["content"][1]["role"] == "first_frame"
+    assert payload["ratio"] == "adaptive"
+
+
+# ---------------------------------------------------------------------------
+# Test 12: Reference mode with image_urls (two images)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reference_mode_two_image_urls():
+    """Reference mode with image_urls: content has text + two images with roles."""
+    request = ArkVideoGenerateRequest(
+        prompt="Transition from day to night",
+        mode="reference",
+        image_urls=["https://example.com/day.jpg", "https://example.com/night.jpg"],
+    )
+    payload = await _capture_payload(request)
+
+    assert len(payload["content"]) == 3
+    assert payload["content"][0]["type"] == "text"
+    assert payload["content"][1]["type"] == "image_url"
+    assert payload["content"][1]["image_url"]["url"] == "https://example.com/day.jpg"
+    assert payload["content"][1]["role"] == "first_frame"
+    assert payload["content"][2]["type"] == "image_url"
+    assert payload["content"][2]["image_url"]["url"] == "https://example.com/night.jpg"
+    assert payload["content"][2]["role"] == "last_frame"
+    assert payload["ratio"] == "adaptive"
+
+
+# ---------------------------------------------------------------------------
+# Test 13: Reference mode without images uses aspect_ratio
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reference_mode_no_images():
+    """Reference mode without images: ratio falls back to aspect_ratio."""
+    request = ArkVideoGenerateRequest(
+        prompt="Empty reference test",
+        mode="reference",
+        aspect_ratio="9:16",
+    )
+    payload = await _capture_payload(request)
+
+    assert len(payload["content"]) == 1
+    assert payload["content"][0] == {"type": "text", "text": "Empty reference test"}
+    assert payload["ratio"] == "9:16"
+
+
+# ---------------------------------------------------------------------------
+# Test 14: Reference mode with both image_url and image_urls merges them
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reference_mode_merges_image_url_and_image_urls():
+    """Reference mode: image_url is prepended to image_urls when not already present."""
+    request = ArkVideoGenerateRequest(
+        prompt="Merged images test",
+        mode="reference",
+        image_url="https://example.com/primary.jpg",
+        image_urls=["https://example.com/secondary.jpg"],
+    )
+    payload = await _capture_payload(request)
+
+    assert len(payload["content"]) == 3
+    assert (
+        payload["content"][1]["image_url"]["url"] == "https://example.com/primary.jpg"
+    )
+    assert payload["content"][1]["role"] == "first_frame"
+    assert (
+        payload["content"][2]["image_url"]["url"] == "https://example.com/secondary.jpg"
+    )
+    assert payload["content"][2]["role"] == "last_frame"
