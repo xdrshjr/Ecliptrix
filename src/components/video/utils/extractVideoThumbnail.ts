@@ -48,3 +48,56 @@ export async function extractVideoThumbnail(videoUrl: string): Promise<string | 
     video.src = videoUrl;
   });
 }
+
+/**
+ * Extract a frame from near the end of a video.
+ * @param videoUrl The video URL to extract from
+ * @param offsetFromEnd Seconds before the end to seek to (default 3)
+ * @returns JPEG data URL of the extracted frame, or null on failure
+ */
+export async function extractFrameFromEnd(
+  videoUrl: string,
+  offsetFromEnd: number = 3,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.preload = 'auto';
+    video.muted = true;
+
+    let resolved = false;
+    const finish = (value: string | null) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
+
+    video.onloadedmetadata = () => {
+      const targetTime = Math.max(0, video.duration - offsetFromEnd);
+      video.onseeked = () => {
+        video.onseeked = null;
+        try {
+          if (!video.videoWidth || !video.videoHeight) {
+            finish(null);
+            return;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { finish(null); return; }
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          finish(canvas.toDataURL('image/jpeg', 0.92));
+        } catch {
+          finish(null);
+        }
+      };
+      video.currentTime = targetTime;
+    };
+
+    video.onerror = () => finish(null);
+    setTimeout(() => finish(null), 15000);
+
+    video.src = videoUrl;
+  });
+}

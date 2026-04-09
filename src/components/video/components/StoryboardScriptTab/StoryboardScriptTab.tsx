@@ -93,7 +93,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
   }, [segments, onUpdateSegments]);
 
   const handleExpandScript = useCallback(
-    async (segmentId: string) => {
+    async (segmentId: string, goal?: string) => {
       const segmentIndex = segments.findIndex((s) => s.id === segmentId);
       const segment = segments[segmentIndex];
       if (!segment) return;
@@ -119,6 +119,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             segmentTitle: `分镜 #${segmentIndex + 1}`,
             segmentText: segment.description,
             otherSegments,
+            expandGoal: goal || '',
           }, { timeoutMs: 300_000 });
         } catch (httpError) {
           if (httpError instanceof ApiError) {
@@ -356,7 +357,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             onRegenerateDescription={() =>
               regenerateDescription(segment.id)
             }
-            onExpandScript={() => handleExpandScript(segment.id)}
+            onExpandScript={(goal) => handleExpandScript(segment.id, goal)}
             onDelete={() => setDeleteConfirmId(segment.id)}
             onSelectCandidate={(candidateId) => selectCandidate(segment.id, candidateId)}
             isDescribing={isDescribing}

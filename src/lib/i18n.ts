@@ -951,6 +951,11 @@ export interface Translations {
       expandScript: string;
       expandingScript: string;
       generateScript: string;
+      autoTransition: string;
+      autoTransitionHint: string;
+      previousVideoNotGenerated: string;
+      extractingFrame: string;
+      autoTransitionMode: string;
     };
   };
   videoScript: {
@@ -1150,7 +1155,7 @@ export interface Translations {
     multiGoalDescription: string;
     operationHint: string;
   };
-  storyboardScriptTab: {
+    storyboardScriptTab: {
     selectStoryboardPack: string;
     selectStoryboardPackHint: string;
     generateSingleVideo: string;
@@ -1162,6 +1167,11 @@ export interface Translations {
     candidateGenerating: string;
     candidateSucceeded: string;
     candidateFailed: string;
+    expandTitle: string;
+    expandGoalPlaceholder: string;
+    expandGoalHint: string;
+    expandStart: string;
+    expandCancel: string;
   };
   welcomeGuide: {
     title: string;
@@ -2371,7 +2381,12 @@ export const translations: Record<string, Translations> = {
          expandScript: 'AI Expand',
          expandingScript: 'Expanding...',
          generateScript: 'AI Generate',
-       },
+         autoTransition: 'Auto Transition',
+         autoTransitionHint: 'Automatically use the last frames from previous video as the first frame',
+         previousVideoNotGenerated: 'Please generate the previous scene video first',
+         extractingFrame: 'Extracting frame...',
+         autoTransitionMode: 'Auto Transition',
+        },
      },
    videoScript: {
      tab: {
@@ -2570,19 +2585,24 @@ export const translations: Record<string, Translations> = {
      multiGoalDescription: 'Simultaneously meets {count} polish goals: {goals}',
      operationHint: '{count} polish goals selected, click to start polishing'
    },
-   storyboardScriptTab: {
-     selectStoryboardPack: 'Please select a storyboard pack to start',
-     selectStoryboardPackHint: 'Select a generated storyboard pack from the dropdown above',
-     generateSingleVideo: 'Generate Video',
-     generateMultiple: 'Generate {count} Candidates',
-     selectVideo: 'Select this video',
-     candidates: 'Candidates',
-     batchGenerateMultiple: 'Batch Multi-Generate',
-     videoCount: 'Count',
-     candidateGenerating: 'Generating',
-     candidateSucceeded: 'Completed',
-     candidateFailed: 'Failed',
-   },
+    storyboardScriptTab: {
+      selectStoryboardPack: 'Please select a storyboard pack to start',
+      selectStoryboardPackHint: 'Select a generated storyboard pack from the dropdown above',
+      generateSingleVideo: 'Generate Video',
+      generateMultiple: 'Generate {count} Candidates',
+      selectVideo: 'Select this video',
+      candidates: 'Candidates',
+      batchGenerateMultiple: 'Batch Multi-Generate',
+      videoCount: 'Count',
+      candidateGenerating: 'Generating',
+      candidateSucceeded: 'Completed',
+      candidateFailed: 'Failed',
+      expandTitle: 'AI Expand Description',
+      expandGoalPlaceholder: 'Enter expansion goal (optional)...',
+      expandGoalHint: 'Leave empty for default expansion, or specify a direction such as: add more environmental details, emphasize character emotions, etc.',
+      expandStart: 'Start Expand',
+      expandCancel: 'Cancel',
+    },
    welcomeGuide: {
      title: 'AI Video Editing Assistant',
      descriptionWithMaterials: 'Try the operations below, or type your instructions directly',
@@ -3804,7 +3824,12 @@ export const translations: Record<string, Translations> = {
          expandScript: 'AI 扩写',
          expandingScript: '扩写中...',
          generateScript: 'AI 生成',
-       },
+         autoTransition: '自动衔接',
+         autoTransitionHint: '自动使用上一个视频的末尾帧作为当前视频的首帧',
+         previousVideoNotGenerated: '请先生成前一个场景的视频',
+         extractingFrame: '正在提取帧...',
+         autoTransitionMode: '自动衔接',
+        },
      },
    videoScript: {
      tab: {
@@ -4003,19 +4028,24 @@ export const translations: Record<string, Translations> = {
      multiGoalDescription: '同时满足{count}个润色目标：{goals}',
      operationHint: '已选择 {count} 个润色目标，点击开始润色'
    },
-   storyboardScriptTab: {
-     selectStoryboardPack: '请选择一个分镜包开始',
-     selectStoryboardPackHint: '在上方下拉菜单中选择已生成的分镜包',
-     generateSingleVideo: '生成视频',
-     generateMultiple: '生成 {count} 个候选视频',
-     selectVideo: '选择此视频',
-     candidates: '候选视频',
-     batchGenerateMultiple: '批量多视频生成',
-     videoCount: '数量',
-     candidateGenerating: '生成中',
-     candidateSucceeded: '已完成',
-     candidateFailed: '失败',
-   },
+    storyboardScriptTab: {
+      selectStoryboardPack: '请选择一个分镜包开始',
+      selectStoryboardPackHint: '在上方下拉菜单中选择已生成的分镜包',
+      generateSingleVideo: '生成视频',
+      generateMultiple: '生成 {count} 个候选视频',
+      selectVideo: '选择此视频',
+      candidates: '候选视频',
+      batchGenerateMultiple: '批量多视频生成',
+      videoCount: '数量',
+      candidateGenerating: '生成中',
+      candidateSucceeded: '已完成',
+      candidateFailed: '失败',
+      expandTitle: 'AI 扩展描述',
+      expandGoalPlaceholder: '输入扩展目标（可选）...',
+      expandGoalHint: '留空则默认扩展，也可以指定方向，如：增加环境细节描写、强调人物情绪等。',
+      expandStart: '开始扩展',
+      expandCancel: '取消',
+    },
    welcomeGuide: {
      title: 'AI视频编辑助手',
      descriptionWithMaterials: '试试下面的操作，或直接输入你的指令',

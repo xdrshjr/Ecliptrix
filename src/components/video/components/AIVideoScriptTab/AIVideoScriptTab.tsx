@@ -3,6 +3,7 @@
 import React, { useCallback, useState } from 'react';
 import { AIVideoScriptSegment, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { useAIVideoScriptGeneration } from '../../hooks/useAIVideoScriptGeneration';
 import ImagePickerSlot from './ImagePickerSlot';
 import { http, ApiError } from '@/lib/api/http-client';
@@ -35,8 +36,11 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
   taskId,
 }) => {
   const { t } = useLocale();
+  const { showWarning } = useNotification();
   const { generateVideo, cancelGeneration } = useAIVideoScriptGeneration(segments, onUpdateSegments, onAddMaterial);
   const [expandingSegmentId, setExpandingSegmentId] = useState<string | null>(null);
+  const [expandDialogSegmentId, setExpandDialogSegmentId] = useState<string | null>(null);
+  const [expandGoal, setExpandGoal] = useState('');
 
   const handleAddSegment = useCallback(() => {
     const title = t.scriptPanel.aiVideoScript.segmentTitle.replace('{index}', String(segments.length + 1));
@@ -52,7 +56,23 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
     onUpdateSegments(segments.map(s => s.id === segmentId ? { ...s, ...updates } : s));
   }, [segments, onUpdateSegments]);
 
-  const handleExpandScript = useCallback(async (segmentId: string) => {
+  const handleGenerate = useCallback((segmentId: string) => {
+    const segIndex = segments.findIndex(s => s.id === segmentId);
+    const seg = segments[segIndex];
+    if (!seg) return;
+
+    if (seg.autoTransition && segIndex > 0) {
+      const prevSeg = segments[segIndex - 1];
+      if (!prevSeg || prevSeg.generationStatus !== 'succeeded' || !prevSeg.generatedVideoUrl) {
+        showWarning(t.scriptPanel.aiVideoScript.previousVideoNotGenerated);
+        return;
+      }
+    }
+
+    generateVideo(segmentId);
+  }, [segments, generateVideo, showWarning, t]);
+
+  const handleExpandScript = useCallback(async (segmentId: string, goal?: string) => {
     const segmentIndex = segments.findIndex(s => s.id === segmentId);
     const segment = segments[segmentIndex];
     if (!segment) return;
@@ -75,6 +95,7 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
           segmentTitle: segment.title,
           segmentText: segment.scriptText,
           otherSegments,
+          expandGoal: goal || '',
         }, { timeoutMs: 300_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
@@ -144,7 +165,7 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
           {/* AI expand button */}
           <div className="flex justify-end mb-1">
             <button
-              onClick={() => handleExpandScript(segment.id)}
+              onClick={() => { setExpandGoal(''); setExpandDialogSegmentId(segment.id); }}
               disabled={expandingSegmentId === segment.id || segment.generationStatus === 'generating'}
               className="flex items-center space-x-1 px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:text-purple-300 dark:hover:bg-purple-900/20 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title={segment.scriptText.trim() ? t.scriptPanel.aiVideoScript.expandScript : t.scriptPanel.aiVideoScript.generateScript}
@@ -178,8 +199,30 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
             rows={4}
           />
 
-          {/* Mode switcher — 首尾帧 / 参考图 / 描述生成 */}
-          <div className="flex rounded-md border border-border overflow-hidden mt-3">
+          {/* Auto transition toggle — only for non-first segments */}
+          {index > 0 && (
+            <div className="flex items-center justify-between mt-3 px-1">
+              <div className="flex items-center gap-2">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!segment.autoTransition}
+                    onChange={e => {
+                      handleUpdateSegment(segment.id, { autoTransition: e.target.checked });
+                    }}
+                    disabled={segment.generationStatus === 'generating'}
+                    className="sr-only peer"
+                  />
+                  <div className={`w-8 h-4 bg-muted rounded-full peer peer-checked:bg-purple-500 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-transform peer-checked:after:translate-x-4 ${segment.generationStatus === 'generating' ? 'opacity-50' : ''}`} />
+                </label>
+                <span className="text-xs font-medium text-foreground">{t.scriptPanel.aiVideoScript.autoTransition}</span>
+              </div>
+              <span className="text-[10px] text-muted-foreground">{t.scriptPanel.aiVideoScript.autoTransitionHint}</span>
+            </div>
+          )}
+
+          {/* Mode switcher — greyed out when autoTransition is on */}
+          <div className={`flex rounded-md border border-border overflow-hidden mt-2 ${segment.autoTransition ? 'opacity-50 pointer-events-none' : ''}`}>
             <button
               onClick={() => segment.generationStatus !== 'generating' && handleUpdateSegment(segment.id, { generationMode: 'keyframe' })}
               disabled={segment.generationStatus === 'generating'}
@@ -215,8 +258,18 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
             </button>
           </div>
 
-          {/* Image pickers — conditional on mode */}
-          {segment.generationMode === 'keyframe' ? (
+          {/* Image pickers or auto transition hint */}
+          {segment.autoTransition ? (
+            <div className="mt-3 p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-md border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center gap-2 text-xs text-purple-600 dark:text-purple-400">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span className="font-medium">{t.scriptPanel.aiVideoScript.autoTransitionMode}</span>
+              </div>
+              <p className="text-[10px] text-purple-500 dark:text-purple-400 mt-1">{t.scriptPanel.aiVideoScript.autoTransitionHint}</p>
+            </div>
+          ) : segment.generationMode === 'keyframe' ? (
             <div className="flex space-x-3 mt-3">
               <ImagePickerSlot
                 label={`${t.scriptPanel.aiVideoScript.firstFrameImage} ${t.scriptPanel.aiVideoScript.firstFrameRequired}`}
@@ -323,7 +376,7 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
                   {t.scriptPanel.aiVideoScript.generationFailed}: {segment.generationError}
                 </span>
                 <button
-                  onClick={() => generateVideo(segment.id)}
+                  onClick={() => handleGenerate(segment.id)}
                   className="flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-white bg-destructive rounded-md hover:bg-destructive/90 transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -334,9 +387,9 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
               </div>
             ) : (
               <button
-                onClick={() => generateVideo(segment.id)}
-                disabled={!segment.scriptText.trim() || (segment.generationMode === 'keyframe' && !segment.firstFrameUrl) || (segment.generationMode === 'reference' && !segment.referenceImageUrl)}
-                title={segment.generationMode === 'keyframe' && !segment.firstFrameUrl ? t.scriptPanel.aiVideoScript.firstFrameMissing : segment.generationMode === 'reference' && !segment.referenceImageUrl ? t.scriptPanel.aiVideoScript.referenceImageMissing : undefined}
+                onClick={() => handleGenerate(segment.id)}
+                disabled={!segment.scriptText.trim() || (!segment.autoTransition && segment.generationMode === 'keyframe' && !segment.firstFrameUrl) || (!segment.autoTransition && segment.generationMode === 'reference' && !segment.referenceImageUrl)}
+                title={!segment.autoTransition && segment.generationMode === 'keyframe' && !segment.firstFrameUrl ? t.scriptPanel.aiVideoScript.firstFrameMissing : !segment.autoTransition && segment.generationMode === 'reference' && !segment.referenceImageUrl ? t.scriptPanel.aiVideoScript.referenceImageMissing : undefined}
                 className="w-full flex items-center justify-center space-x-1.5 py-2 text-xs font-medium text-white bg-gradient-to-r from-purple-500 to-purple-600 rounded-md hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -379,6 +432,47 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
         </svg>
         <span>{t.scriptPanel.aiVideoScript.addSegment}</span>
       </button>
+
+      {/* Expand goal dialog */}
+      {expandDialogSegmentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setExpandDialogSegmentId(null)}>
+          <div className="bg-card border border-border rounded-lg p-5 shadow-xl max-w-sm mx-4 w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-foreground mb-3">
+              {t.storyboardScriptTab.expandTitle}
+            </h3>
+            <textarea
+              value={expandGoal}
+              onChange={(e) => setExpandGoal(e.target.value)}
+              placeholder={t.storyboardScriptTab.expandGoalPlaceholder}
+              className="w-full p-2.5 text-sm border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent min-h-[80px]"
+              rows={3}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground mt-2 mb-4">
+              {t.storyboardScriptTab.expandGoalHint}
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setExpandDialogSegmentId(null)}
+                className="px-3 py-1.5 text-xs text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent transition-colors"
+              >
+                {t.storyboardScriptTab.expandCancel}
+              </button>
+              <button
+                onClick={() => {
+                  const segId = expandDialogSegmentId;
+                  const goal = expandGoal.trim() || undefined;
+                  setExpandDialogSegmentId(null);
+                  handleExpandScript(segId, goal);
+                }}
+                className="px-3 py-1.5 text-xs text-white bg-gradient-to-r from-purple-500 to-purple-600 rounded-md hover:from-purple-600 hover:to-purple-700 transition-colors"
+              >
+                {t.storyboardScriptTab.expandStart}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

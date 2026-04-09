@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { AIVideoScriptSegment, MaterialItem } from '@/types';
 import { createArkVideoTask, getArkVideoStatus } from '@/lib/api/arkVideo';
-import { extractVideoThumbnail } from '../utils/extractVideoThumbnail';
+import { extractVideoThumbnail, extractFrameFromEnd } from '../utils/extractVideoThumbnail';
 
 const POLL_INTERVAL = 5000;
 
@@ -173,12 +173,73 @@ export function useAIVideoScriptGeneration(
   }, [stopPolling, updateSegment, onAddMaterial]);
 
   const generateVideo = useCallback(async (segmentId: string) => {
-    const segment = segmentsRef.current.find(s => s.id === segmentId);
+    const currentSegments = segmentsRef.current;
+    const segIndex = currentSegments.findIndex(s => s.id === segmentId);
+    const segment = currentSegments[segIndex];
     if (!segment || !segment.scriptText.trim()) return;
 
     const mode = segment.generationMode || 'description';
 
-    // 关键帧模式下，首帧图片为必填
+    if (segment.autoTransition && segIndex > 0) {
+      const prevSegment = currentSegments[segIndex - 1];
+      if (!prevSegment || prevSegment.generationStatus !== 'succeeded' || !prevSegment.generatedVideoUrl) {
+        updateSegment(segmentId, {
+          generationStatus: 'failed',
+          generationProgress: 0,
+          generationError: 'Previous video not generated. Please generate the previous scene first.',
+        });
+        return;
+      }
+
+      updateSegment(segmentId, {
+        generationStatus: 'generating',
+        generationProgress: 3,
+        generationError: undefined,
+        generatedVideoUrl: undefined,
+        generatedVideoThumbnailUrl: undefined,
+      });
+
+      try {
+        updateSegment(segmentId, { generationProgress: 5 });
+        const extractedFrame = await extractFrameFromEnd(prevSegment.generatedVideoUrl, 3);
+
+        if (!extractedFrame) {
+          updateSegment(segmentId, {
+            generationStatus: 'failed',
+            generationProgress: 0,
+            generationError: 'Frame extraction failed. Please try again.',
+          });
+          return;
+        }
+
+        updateSegment(segmentId, { generationProgress: 8 });
+
+        const result = await createArkVideoTask({
+          prompt: segment.scriptText,
+          duration: segment.duration || 5,
+          camera_fixed: false,
+          watermark: false,
+          mode: 'keyframe',
+          first_frame_url: extractedFrame,
+          resolution: '720p',
+        });
+
+        updateSegment(segmentId, {
+          arkTaskId: result.ark_task_id,
+          generationProgress: 10,
+        });
+
+        startPolling(segmentId, result.ark_task_id);
+      } catch (error) {
+        updateSegment(segmentId, {
+          generationStatus: 'failed',
+          generationProgress: 0,
+          generationError: error instanceof Error ? error.message : 'Failed to create task',
+        });
+      }
+      return;
+    }
+
     if (mode === 'keyframe' && !segment.firstFrameUrl) {
       updateSegment(segmentId, {
         generationStatus: 'failed',

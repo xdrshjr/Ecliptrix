@@ -18,14 +18,41 @@ interface OtherSegment {
   scriptText: string;
 }
 
+function detectLanguage(text: string): 'chinese' | 'english' | 'unknown' {
+  if (!text || !text.trim()) return 'unknown';
+  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const englishChars = (text.match(/[a-zA-Z]/g) || []).length;
+  if (chineseChars > 0 && chineseChars >= englishChars) return 'chinese';
+  if (englishChars > 0) return 'english';
+  return 'unknown';
+}
+
+function getLanguageInstruction(
+  segmentText: string,
+  otherSegments: OtherSegment[],
+): string {
+  const draftLang = detectLanguage(segmentText);
+  if (draftLang === 'chinese') return '必须使用中文输出。The output MUST be in Chinese.';
+  if (draftLang === 'english') return 'Must output in English. 输出必须使用英文。';
+
+  const allOtherText = otherSegments.map(s => s.scriptText).join(' ');
+  const otherLang = detectLanguage(allOtherText);
+  if (otherLang === 'chinese') return '必须使用中文输出。The output MUST be in Chinese.';
+  if (otherLang === 'english') return 'Must output in English. 输出必须使用英文。';
+
+  return '必须使用中文输出。The output MUST be in Chinese.';
+}
+
 function buildExpandPrompt(
   segmentIndex: number,
   segmentTitle: string,
   segmentText: string,
   otherSegments: OtherSegment[],
+  expandGoal?: string,
 ): string {
   const totalCount = otherSegments.length + 1;
   const hasDraft = segmentText && segmentText.trim().length > 0;
+  const languageInstruction = getLanguageInstruction(segmentText, otherSegments);
 
   let contextSection = '';
   if (otherSegments.length > 0) {
@@ -36,9 +63,13 @@ function buildExpandPrompt(
     contextSection = `You are working on a multi-scene video project. Below is the context of all other scenes so you understand the full narrative:\n\n${contextLines.join('\n')}\n\n---\n\n`;
   }
 
+  const goalSection = expandGoal
+    ? `\nUser's expansion goal: "${expandGoal}"\nFocus the expansion based on this goal while still following the other requirements.\n`
+    : '';
+
   if (hasDraft) {
     return `${contextSection}Now expand the following scene (Scene ${segmentIndex + 1} of ${totalCount}: "${segmentTitle}") into a rich visual description:
-
+${goalSection}
 Draft: "${segmentText}"
 
 Requirements:
@@ -46,46 +77,40 @@ Requirements:
 2. Describe characters, actions, environment, lighting, camera angles, and mood
 3. Ensure this scene complements but does NOT repeat content from the other scenes listed above
 4. Maintain narrative flow — this is scene ${segmentIndex + 1} of ${totalCount}
-5. Keep the same language as the draft text
+5. ${languageInstruction}
 6. Output ONLY the expanded description text, no JSON, no scene title, no additional formatting`;
   }
 
-  // No draft — generate from scratch based on title and context
-  const languageHint = otherSegments.some(s => /[\u4e00-\u9fff]/.test(s.scriptText))
-    ? 'Write in Chinese.'
-    : 'Write in the same language as the other scenes, or Chinese if no other scenes exist.';
-
   return `${contextSection}Create a vivid visual description for Scene ${segmentIndex + 1} of ${totalCount}, titled "${segmentTitle}".
-
+${goalSection}
 Requirements:
 1. Write 2-4 sentences of vivid visual description suitable as a prompt for AI video generation
 2. Describe characters, actions, environment, lighting, camera angles, and mood
 3. Ensure this scene complements but does NOT repeat content from the other scenes listed above
 4. Maintain narrative flow — this is scene ${segmentIndex + 1} of ${totalCount}
-5. ${languageHint}
+5. ${languageInstruction}
 6. Output ONLY the scene description text, no JSON, no scene title, no additional formatting`;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { taskId, segmentIndex, segmentTitle, segmentText, otherSegments } = body as {
+    const { taskId, segmentIndex, segmentTitle, segmentText, otherSegments, expandGoal } = body as {
       taskId: string;
       segmentIndex: number;
       segmentTitle: string;
       segmentText: string;
       otherSegments: OtherSegment[];
+      expandGoal?: string;
     };
 
     if (!taskId || typeof taskId !== 'string') {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
 
-    // segmentText can be empty — in that case we generate from scratch
-
     const config = getConfig();
 
-    console.log(`[AI Script Expand API] ${new Date().toISOString()} - Expanding scene ${segmentIndex + 1} for task: ${taskId}`);
+    console.log(`[AI Script Expand API] ${new Date().toISOString()} - Expanding scene ${segmentIndex + 1} for task: ${taskId}${expandGoal ? ` with goal: "${expandGoal}"` : ''}`);
 
     const response = await fetch(`${config.apiUrl}/chat/completions`, {
       method: 'POST',
@@ -98,11 +123,11 @@ export async function POST(request: NextRequest) {
         messages: [
           {
             role: 'system',
-            content: 'You are an expert AI video script writer. You expand brief scene notes into vivid, detailed visual descriptions optimized for AI video generation. Always respond with ONLY the expanded description text.'
+            content: 'You are an expert AI video script writer. You expand brief scene notes into vivid, detailed visual descriptions optimized for AI video generation. Always respond with ONLY the expanded description text. CRITICAL: You MUST output in the same language as the input text.'
           },
           {
             role: 'user',
-            content: buildExpandPrompt(segmentIndex, segmentTitle, segmentText, otherSegments || [])
+            content: buildExpandPrompt(segmentIndex, segmentTitle, segmentText, otherSegments || [], expandGoal || '')
           }
         ],
         temperature: 0.7,

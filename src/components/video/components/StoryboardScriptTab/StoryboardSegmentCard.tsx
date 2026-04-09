@@ -13,7 +13,7 @@ interface StoryboardSegmentCardProps {
   onGenerateMultipleVideos: (count: number) => void;
   onCancelGeneration: () => void;
   onRegenerateDescription: () => void;
-  onExpandScript: () => void;
+  onExpandScript: (goal?: string) => void;
   onDelete: () => void;
   onSelectCandidate?: (candidateId: string) => void;
   isDescribing: boolean;
@@ -41,6 +41,8 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
   const { t } = useLocale();
   const [isImageEnlarged, setIsImageEnlarged] = useState(false);
   const [showMultiMenu, setShowMultiMenu] = useState(false);
+  const [showExpandDialog, setShowExpandDialog] = useState(false);
+  const [expandGoal, setExpandGoal] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isGenerating = segment.generationStatus === 'generating';
@@ -61,9 +63,9 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
   }, [showMultiMenu]);
 
   return (
-    <div className="bg-card border border-border rounded-md overflow-hidden transition-shadow duration-200">
+    <div className="bg-card border border-border rounded-md transition-shadow duration-200">
       {/* Gradient header */}
-      <div className="bg-gradient-to-r from-teal-500/10 to-cyan-500/10 dark:from-teal-500/20 dark:to-cyan-500/20 px-3 py-2 border-b border-border">
+      <div className="bg-gradient-to-r from-teal-500/10 to-cyan-500/10 dark:from-teal-500/20 dark:to-cyan-500/20 px-3 py-2 border-b border-border rounded-t-md">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-foreground flex items-center">
             <span className="w-6 h-6 bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400 rounded-full text-xs font-semibold flex items-center justify-center mr-2">
@@ -134,7 +136,7 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
                 <span>重新描述</span>
               </button>
               <button
-                onClick={onExpandScript}
+                onClick={() => { setExpandGoal(''); setShowExpandDialog(true); }}
                 disabled={isExpanding || isGenerating}
                 className="flex items-center space-x-1 px-2 py-1 text-xs text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:text-teal-300 dark:hover:bg-teal-900/20 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 title={segment.description.trim() ? 'AI扩展描述' : 'AI生成描述'}
@@ -285,7 +287,7 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
                 </svg>
               </button>
               {showMultiMenu && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg z-10 overflow-hidden">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg z-50 overflow-hidden">
                   {MULTI_VIDEO_OPTIONS.map((count) => (
                     <button
                       key={count}
@@ -424,6 +426,45 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Expand goal dialog */}
+      {showExpandDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowExpandDialog(false)}>
+          <div className="bg-card border border-border rounded-lg p-5 shadow-xl max-w-sm mx-4 w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-foreground mb-3">
+              {t.storyboardScriptTab.expandTitle}
+            </h3>
+            <textarea
+              value={expandGoal}
+              onChange={(e) => setExpandGoal(e.target.value)}
+              placeholder={t.storyboardScriptTab.expandGoalPlaceholder}
+              className="w-full p-2.5 text-sm border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent min-h-[80px]"
+              rows={3}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground mt-2 mb-4">
+              {t.storyboardScriptTab.expandGoalHint}
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowExpandDialog(false)}
+                className="px-3 py-1.5 text-xs text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent transition-colors"
+              >
+                {t.storyboardScriptTab.expandCancel}
+              </button>
+              <button
+                onClick={() => {
+                  setShowExpandDialog(false);
+                  onExpandScript(expandGoal.trim() || undefined);
+                }}
+                className="px-3 py-1.5 text-xs text-white bg-gradient-to-r from-teal-500 to-cyan-500 rounded-md hover:from-teal-600 hover:to-cyan-600 transition-colors"
+              >
+                {t.storyboardScriptTab.expandStart}
+              </button>
+            </div>
           </div>
         </div>
       )}

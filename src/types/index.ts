@@ -407,6 +407,7 @@ export interface AIVideoScriptSegment {
   referenceImageName?: string;
   referenceImage2Url?: string;
   referenceImage2Name?: string;
+  autoTransition?: boolean;
   generationStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
   generationProgress?: number;
   arkTaskId?: string;
