@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { AIVideoScriptSegment, MaterialItem } from '@/types';
 import { createArkVideoTask, getArkVideoStatus } from '@/lib/api/arkVideo';
+import { extractVideoThumbnail } from '../utils/extractVideoThumbnail';
 
 const POLL_INTERVAL = 5000;
 
@@ -35,43 +36,115 @@ export function useAIVideoScriptGeneration(
     stopPolling(segmentId);
 
     let simulatedProgress = 10;
+    let videoSucceeded = false;
+    let ossWaitRetries = 0;
+    const MAX_OSS_WAIT_RETRIES = 20;
+    const materialId = `ai-video-${segmentId}`;
 
     const timer = setInterval(async () => {
       try {
         const result = await getArkVideoStatus(arkTaskId);
 
-        if (result.status === 'succeeded') {
-          stopPolling(segmentId);
-          updateSegment(segmentId, {
-            generationStatus: 'succeeded',
-            generationProgress: 100,
-            generatedVideoUrl: result.video_url,
-            generatedVideoThumbnailUrl: result.thumbnail_url,
-            generatedVideoDuration: result.duration,
-            generatedVideoWidth: result.width,
-            generatedVideoHeight: result.height,
-            generationError: undefined,
-          });
+        if (result.status === 'succeeded' && result.video_url) {
+          if (result.thumbnail_url) {
+            stopPolling(segmentId);
+            updateSegment(segmentId, {
+              generationStatus: 'succeeded',
+              generationProgress: 100,
+              generatedVideoUrl: result.video_url,
+              generatedVideoThumbnailUrl: result.thumbnail_url,
+              generatedVideoDuration: result.duration,
+              generatedVideoWidth: result.width,
+              generatedVideoHeight: result.height,
+              generationError: undefined,
+            });
 
-          // Add generated video to materials panel
-          if (onAddMaterial && result.video_url) {
-            const seg = segmentsRef.current.find(s => s.id === segmentId);
-            const material: MaterialItem = {
-              id: `ai-video-${segmentId}-${Date.now()}`,
-              name: seg?.title || 'AI Generated Video',
-              type: 'video',
-              format: 'mp4',
-              size: 0,
-              url: result.video_url,
-              serverUrl: result.video_url,
-              thumbnailUrl: result.thumbnail_url,
-              duration: result.duration,
-              width: result.width,
-              height: result.height,
-              createdAt: new Date(),
-              metadata: { source: 'ai-video-script' },
-            };
-            onAddMaterial(material);
+            if (onAddMaterial) {
+              const seg = segmentsRef.current.find(s => s.id === segmentId);
+              const material: MaterialItem = {
+                id: materialId,
+                name: seg?.title || 'AI Generated Video',
+                type: 'video',
+                format: 'mp4',
+                size: 0,
+                url: result.video_url,
+                serverUrl: result.video_url,
+                thumbnailUrl: result.thumbnail_url,
+                duration: result.duration,
+                width: result.width,
+                height: result.height,
+                createdAt: new Date(),
+                metadata: { source: 'ai-video-script' },
+              };
+              onAddMaterial(material);
+            }
+          } else {
+            if (!videoSucceeded) {
+              videoSucceeded = true;
+              updateSegment(segmentId, {
+                generationProgress: 95,
+              });
+              if (onAddMaterial) {
+                const seg = segmentsRef.current.find(s => s.id === segmentId);
+                const material: MaterialItem = {
+                  id: materialId,
+                  name: seg?.title || 'AI Generated Video',
+                  type: 'video',
+                  format: 'mp4',
+                  size: 0,
+                  url: result.video_url,
+                  serverUrl: result.video_url,
+                  thumbnailUrl: undefined,
+                  duration: result.duration,
+                  width: result.width,
+                  height: result.height,
+                  createdAt: new Date(),
+                  metadata: { source: 'ai-video-script' },
+                };
+                onAddMaterial(material);
+              }
+            }
+
+            ossWaitRetries++;
+            if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
+              stopPolling(segmentId);
+              updateSegment(segmentId, {
+                generationStatus: 'succeeded',
+                generationProgress: 100,
+                generatedVideoUrl: result.video_url,
+                generatedVideoThumbnailUrl: undefined,
+                generatedVideoDuration: result.duration,
+                generatedVideoWidth: result.width,
+                generatedVideoHeight: result.height,
+                generationError: undefined,
+              });
+
+              extractVideoThumbnail(result.video_url).then(dataUrl => {
+                if (dataUrl) {
+                  updateSegment(segmentId, {
+                    generatedVideoThumbnailUrl: dataUrl,
+                  });
+                  if (onAddMaterial) {
+                    const seg = segmentsRef.current.find(s => s.id === segmentId);
+                    onAddMaterial({
+                      id: materialId,
+                      name: seg?.title || 'AI Generated Video',
+                      type: 'video',
+                      format: 'mp4',
+                      size: 0,
+                      url: result.video_url!,
+                      serverUrl: result.video_url,
+                      thumbnailUrl: dataUrl,
+                      duration: result.duration,
+                      width: result.width,
+                      height: result.height,
+                      createdAt: new Date(),
+                      metadata: { source: 'ai-video-script' },
+                    });
+                  }
+                }
+              });
+            }
           }
         } else if (result.status === 'failed') {
           stopPolling(segmentId);
@@ -81,7 +154,6 @@ export function useAIVideoScriptGeneration(
             generationError: result.error || 'Video generation failed',
           });
         } else {
-          // Running — simulate progress up to 90%
           simulatedProgress = Math.min(simulatedProgress + Math.random() * 8, 90);
           updateSegment(segmentId, {
             generationProgress: Math.round(simulatedProgress),
@@ -98,7 +170,7 @@ export function useAIVideoScriptGeneration(
     }, POLL_INTERVAL);
 
     pollTimers.current.set(segmentId, timer);
-  }, [stopPolling, updateSegment]);
+  }, [stopPolling, updateSegment, onAddMaterial]);
 
   const generateVideo = useCallback(async (segmentId: string) => {
     const segment = segmentsRef.current.find(s => s.id === segmentId);

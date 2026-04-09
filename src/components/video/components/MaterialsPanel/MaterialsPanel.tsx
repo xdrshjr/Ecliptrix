@@ -1518,6 +1518,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
           )}
         </div>
+        <div className="w-px h-4 bg-border mx-2"></div>
+        <button
+          onClick={() => setIsVideoProcessingOpen(true)}
+          className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded transition-colors"
+          title={t.materialsPanel.videoProcessingTitle}
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+          </svg>
+          <span>{t.materialsPanel.videoProcessing}</span>
+        </button>
       </div>
 
       <div className="materials-panel-content">
@@ -2166,17 +2177,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <span>{t.materialsPanel.aiVideo}</span>
               </button>
 
-              <button
-                onClick={() => setIsVideoProcessingOpen(true)}
-                className="flex items-center space-x-1 text-muted-foreground hover:text-foreground bg-muted hover:bg-accent px-2 py-1 rounded-md transition-colors"
-                title={t.materialsPanel.videoProcessingTitle}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-                </svg>
-                <span>{t.materialsPanel.videoProcessing}</span>
-              </button>
-
             </div>
             <div className="text-muted-foreground">
               {materials.length}{t.materialsPanel.materialsCount}
@@ -2467,6 +2467,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onSilenceRemoved={handleSilenceRemoved}
         onMinimize={handleVideoProcessingMinimize}
         taskId={taskId}
+        onSelectMaterialForWatermark={(material) => {
+          setIsVideoProcessingOpen(false);
+          handleWatermarkRemoval(material);
+        }}
       />
 
       {/* 最小化进度指示器（浮动右下角） */}

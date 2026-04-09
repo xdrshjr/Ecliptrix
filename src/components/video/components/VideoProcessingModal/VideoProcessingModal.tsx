@@ -4,8 +4,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { MaterialItem } from '@/types';
 import SilenceRemovalTab from './SilenceRemovalTab';
 import type { SilenceRemoveResult } from './ProcessingProgress';
-
-// ---- Types ----
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface VideoProcessingModalProps {
   isOpen: boolean;
@@ -14,22 +13,21 @@ export interface VideoProcessingModalProps {
   onSilenceRemoved?: (processedVideoUrl: string, result: SilenceRemoveResult, originalMaterial: MaterialItem) => void;
   onMinimize?: (taskId: string, videoName: string) => void;
   taskId: string;
+  onSelectMaterialForWatermark?: (material: MaterialItem) => void;
 }
 
-// ---- Tab definitions ----
-
-type TabId = 'silence-removal';
+type TabId = 'silence-removal' | 'watermark-removal';
 
 interface TabDef {
   id: TabId;
-  label: string;
+  labelKey: 'silenceRemoval' | 'watermarkRemoval';
   icon: React.ReactNode;
 }
 
 const TABS: TabDef[] = [
   {
     id: 'silence-removal',
-    label: '切气口',
+    labelKey: 'silenceRemoval',
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -38,6 +36,16 @@ const TABS: TabDef[] = [
           strokeWidth={2}
           d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"
         />
+      </svg>
+    ),
+  },
+  {
+    id: 'watermark-removal',
+    labelKey: 'watermarkRemoval',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
       </svg>
     ),
   },
@@ -52,7 +60,9 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
   onSilenceRemoved,
   onMinimize,
   taskId,
+  onSelectMaterialForWatermark,
 }) => {
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabId>('silence-removal');
 
   // Track whether the modal has ever been opened. Once opened, we keep it mounted
@@ -185,7 +195,7 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
               }`}
             >
               {tab.icon}
-              {tab.label}
+              {tab.labelKey === 'silenceRemoval' ? '切气口' : t.materialsPanel.watermarkRemovalTab}
             </button>
           ))}
         </div>
@@ -201,6 +211,47 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
               onProcessingStateChange={handleProcessingStateChange}
               isModalVisible={isOpen}
             />
+          )}
+          {activeTab === 'watermark-removal' && (
+            <div className="p-4 overflow-y-auto">
+              <p className="text-sm text-muted-foreground mb-3">
+                {t.materialsPanel.selectVideoForWatermark}
+              </p>
+              {materials.length === 0 ? (
+                <p className="text-center text-muted-foreground text-sm py-8">
+                  {t.materialsPanel.noVideoMaterials}
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {materials.map(material => (
+                    <button
+                      key={material.id}
+                      type="button"
+                      onClick={() => onSelectMaterialForWatermark?.(material)}
+                      className="flex flex-col items-center p-2 rounded-md border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                    >
+                      {material.thumbnailUrl ? (
+                        <img
+                          src={material.thumbnailUrl}
+                          alt={material.name}
+                          className="w-full aspect-video object-cover rounded mb-1.5"
+                        />
+                      ) : (
+                        <div className="w-full aspect-video bg-muted rounded mb-1.5 flex items-center justify-center">
+                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                      )}
+                      <span className="text-xs text-foreground truncate w-full">{material.name}</span>
+                      {material.duration != null && (
+                        <span className="text-xs text-muted-foreground">{material.duration.toFixed(1)}s</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

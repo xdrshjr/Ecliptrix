@@ -667,6 +667,9 @@ export interface Translations {
     aiVideo: string;
     videoProcessingTitle: string;
     videoProcessing: string;
+    watermarkRemovalTab: string;
+    selectVideoForWatermark: string;
+    noVideoMaterials: string;
     deleteStoryboardPack: string;
     deleteStoryboardPackConfirm: string;
     storyboardPack: string;
@@ -1985,6 +1988,9 @@ export const translations: Record<string, Translations> = {
       aiVideo: 'AI Video',
       videoProcessingTitle: 'Video Processing (cut silences, etc.)',
       videoProcessing: 'Video Processing',
+      watermarkRemovalTab: 'Watermark Removal',
+      selectVideoForWatermark: 'Select a video to remove watermark',
+      noVideoMaterials: 'No video materials available',
       deleteStoryboardPack: 'Delete Storyboard Pack',
       deleteStoryboardPackConfirm: 'Are you sure you want to delete this storyboard pack? All frames and related data will be permanently deleted.',
       storyboardPack: 'Storyboard Pack',
@@ -3415,6 +3421,9 @@ export const translations: Record<string, Translations> = {
       aiVideo: 'AI视频',
       videoProcessingTitle: '视频处理（切气口等）',
       videoProcessing: '视频处理',
+      watermarkRemovalTab: '去除水印',
+      selectVideoForWatermark: '选择视频进行去除水印操作',
+      noVideoMaterials: '暂无视频素材',
       deleteStoryboardPack: '删除分镜包',
       deleteStoryboardPackConfirm: '确定要删除此分镜包吗？所有帧和相关数据将被永久删除。',
       storyboardPack: '分镜包',

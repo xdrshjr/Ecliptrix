@@ -10,6 +10,7 @@ import {
   composeVideo,
 } from '@/lib/api/storyboard';
 import { getArkVideoStatus } from '@/lib/api/arkVideo';
+import { extractVideoThumbnail } from '../utils/extractVideoThumbnail';
 
 const POLL_INTERVAL = 5000;
 
@@ -106,43 +107,101 @@ export function useStoryboardScriptGeneration({
       stopPolling(segmentId);
 
       let simulatedProgress = 10;
+      let videoSucceeded = false;
+      let ossWaitRetries = 0;
+      const MAX_OSS_WAIT_RETRIES = 20;
+      const materialId = `storyboard-video-${segmentId}`;
 
       const timer = setInterval(async () => {
         try {
-          // Poll individual ARK task status — same proven pattern as useAIVideoScriptGeneration
           const statusResult = await getArkVideoStatus(arkTaskId);
 
           if (statusResult.status === 'succeeded' && statusResult.video_url) {
-            stopPolling(segmentId);
-            updateSegment(segmentId, {
-              generationStatus: 'succeeded',
-              generationProgress: 100,
-              generatedVideoUrl: statusResult.video_url,
-              generatedVideoThumbnailUrl: statusResult.thumbnail_url,
-              generationError: undefined,
-            });
+            if (statusResult.thumbnail_url) {
+              stopPolling(segmentId);
+              updateSegment(segmentId, {
+                generationStatus: 'succeeded',
+                generationProgress: 100,
+                generatedVideoUrl: statusResult.video_url,
+                generatedVideoThumbnailUrl: statusResult.thumbnail_url,
+                generationError: undefined,
+              });
 
-            // Add to materials panel
-            if (onAddMaterial) {
-              const seg = segmentsRef.current.find(
-                (s) => s.id === segmentId,
-              );
-              const material: MaterialItem = {
-                id: `storyboard-video-${segmentId}-${Date.now()}`,
-                name: seg
-                  ? `分镜 #${seg.frameIndex + 1}`
-                  : 'Storyboard Video',
-                type: 'video',
-                format: 'mp4',
-                size: 0,
-                url: statusResult.video_url,
-                serverUrl: statusResult.video_url,
-                thumbnailUrl: statusResult.thumbnail_url,
-                duration: statusResult.duration || seg?.duration || 5,
-                createdAt: new Date(),
-                metadata: { source: 'storyboard-script' },
-              };
-              onAddMaterial(material);
+              if (onAddMaterial) {
+                const seg = segmentsRef.current.find((s) => s.id === segmentId);
+                const material: MaterialItem = {
+                  id: materialId,
+                  name: seg ? `分镜 #${seg.frameIndex + 1}` : 'Storyboard Video',
+                  type: 'video',
+                  format: 'mp4',
+                  size: 0,
+                  url: statusResult.video_url,
+                  serverUrl: statusResult.video_url,
+                  thumbnailUrl: statusResult.thumbnail_url,
+                  duration: statusResult.duration || seg?.duration || 5,
+                  createdAt: new Date(),
+                  metadata: { source: 'storyboard-script' },
+                };
+                onAddMaterial(material);
+              }
+            } else {
+              if (!videoSucceeded) {
+                videoSucceeded = true;
+                updateSegment(segmentId, { generationProgress: 95 });
+                if (onAddMaterial) {
+                  const seg = segmentsRef.current.find((s) => s.id === segmentId);
+                  const material: MaterialItem = {
+                    id: materialId,
+                    name: seg ? `分镜 #${seg.frameIndex + 1}` : 'Storyboard Video',
+                    type: 'video',
+                    format: 'mp4',
+                    size: 0,
+                    url: statusResult.video_url,
+                    serverUrl: statusResult.video_url,
+                    thumbnailUrl: undefined,
+                    duration: statusResult.duration || seg?.duration || 5,
+                    createdAt: new Date(),
+                    metadata: { source: 'storyboard-script' },
+                  };
+                  onAddMaterial(material);
+                }
+              }
+
+              ossWaitRetries++;
+              if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
+                stopPolling(segmentId);
+                updateSegment(segmentId, {
+                  generationStatus: 'succeeded',
+                  generationProgress: 100,
+                  generatedVideoUrl: statusResult.video_url,
+                  generatedVideoThumbnailUrl: undefined,
+                  generationError: undefined,
+                });
+
+                extractVideoThumbnail(statusResult.video_url).then((dataUrl) => {
+                  if (dataUrl) {
+                    updateSegment(segmentId, {
+                      generatedVideoThumbnailUrl: dataUrl,
+                    });
+                    if (onAddMaterial) {
+                      const seg = segmentsRef.current.find((s) => s.id === segmentId);
+                      onAddMaterial({
+                        id: materialId,
+                        name: seg ? `分镜 #${seg.frameIndex + 1}` : 'Storyboard Video',
+                        type: 'video',
+                        format: 'mp4',
+                        size: 0,
+                        url: statusResult.video_url!,
+                        serverUrl: statusResult.video_url,
+                        thumbnailUrl: dataUrl,
+                        duration: statusResult.duration || seg?.duration || 5,
+                        createdAt: new Date(),
+                        metadata: { source: 'storyboard-script' },
+                      });
+                    }
+                  }
+                });
+              }
             }
           } else if (statusResult.status === 'failed') {
             stopPolling(segmentId);
@@ -152,11 +211,7 @@ export function useStoryboardScriptGeneration({
               generationError: statusResult.error || '视频生成失败',
             });
           } else {
-            // Still running — simulate progress
-            simulatedProgress = Math.min(
-              simulatedProgress + Math.random() * 8,
-              90,
-            );
+            simulatedProgress = Math.min(simulatedProgress + Math.random() * 8, 90);
             updateSegment(segmentId, {
               generationProgress: Math.round(simulatedProgress),
             });
@@ -166,10 +221,7 @@ export function useStoryboardScriptGeneration({
           updateSegment(segmentId, {
             generationStatus: 'failed',
             generationProgress: 0,
-            generationError:
-              error instanceof Error
-                ? error.message
-                : '轮询状态失败',
+            generationError: error instanceof Error ? error.message : '轮询状态失败',
           });
         }
       }, POLL_INTERVAL);
@@ -185,6 +237,9 @@ export function useStoryboardScriptGeneration({
       stopPolling(candidateId);
 
       let simulatedProgress = 10;
+      let ossWaitRetries = 0;
+      const MAX_OSS_WAIT_RETRIES = 20;
+      const materialId = `storyboard-video-${candidateId}`;
 
       const timer = setInterval(async () => {
         try {
@@ -196,68 +251,162 @@ export function useStoryboardScriptGeneration({
             return;
           }
 
-          const updatedCandidates = segment.videoCandidates.map(c => {
-            if (c.id !== candidateId) return c;
-            if (statusResult.status === 'succeeded' && statusResult.video_url) {
-              return { ...c, status: 'succeeded' as const, progress: 100, videoUrl: statusResult.video_url, thumbnailUrl: statusResult.thumbnail_url };
-            } else if (statusResult.status === 'failed') {
-              return { ...c, status: 'failed' as const, progress: 0, error: statusResult.error || '视频生成失败' };
-            } else {
-              const newProgress = Math.min(c.progress + Math.random() * 8, 90);
-              return { ...c, progress: Math.round(newProgress) };
-            }
-          });
-
-          if (statusResult.status === 'succeeded' || statusResult.status === 'failed') {
+          if (statusResult.status === 'succeeded' && statusResult.video_url && statusResult.thumbnail_url) {
             stopPolling(candidateId);
-          }
 
-          // Check if all candidates are done
-          const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed');
-          const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-          const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
+            const updatedCandidates = segment.videoCandidates.map(c => {
+              if (c.id !== candidateId) return c;
+              return { ...c, status: 'succeeded' as const, progress: 100, videoUrl: statusResult.video_url, thumbnailUrl: statusResult.thumbnail_url };
+            });
 
-          const segmentUpdates: Partial<StoryboardScriptSegment> = {
-            videoCandidates: updatedCandidates,
-          };
+            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed');
+            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
+            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
 
-          if (allDone) {
-            segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
-            segmentUpdates.generationProgress = 100;
-            // Auto-select first succeeded candidate if none selected
-            if (anySucceeded && !segment.selectedCandidateId) {
-              segmentUpdates.selectedCandidateId = firstSucceeded!.id;
-              segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
-              segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
-            }
-          } else {
-            // Calculate overall progress from candidates
-            const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
-            segmentUpdates.generationProgress = Math.round(avgProgress);
-          }
-
-          updateSegment(segmentId, segmentUpdates);
-
-          // Add material for succeeded candidate
-          if (statusResult.status === 'succeeded' && statusResult.video_url && onAddMaterial) {
-            const material: MaterialItem = {
-              id: `storyboard-video-${candidateId}-${Date.now()}`,
-              name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
-              type: 'video',
-              format: 'mp4',
-              size: 0,
-              url: statusResult.video_url,
-              serverUrl: statusResult.video_url,
-              thumbnailUrl: statusResult.thumbnail_url,
-              duration: statusResult.duration || segment?.duration || 5,
-              createdAt: new Date(),
-              metadata: { source: 'storyboard-script', candidateId },
+            const segmentUpdates: Partial<StoryboardScriptSegment> = {
+              videoCandidates: updatedCandidates,
             };
-            onAddMaterial(material);
+
+            if (allDone) {
+              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
+              segmentUpdates.generationProgress = 100;
+              if (anySucceeded && !segment.selectedCandidateId) {
+                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
+                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
+                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
+              }
+            } else {
+              const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
+              segmentUpdates.generationProgress = Math.round(avgProgress);
+            }
+
+            updateSegment(segmentId, segmentUpdates);
+
+            if (onAddMaterial) {
+              const material: MaterialItem = {
+                id: materialId,
+                name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
+                type: 'video',
+                format: 'mp4',
+                size: 0,
+                url: statusResult.video_url,
+                serverUrl: statusResult.video_url,
+                thumbnailUrl: statusResult.thumbnail_url,
+                duration: statusResult.duration || segment?.duration || 5,
+                createdAt: new Date(),
+                metadata: { source: 'storyboard-script', candidateId },
+              };
+              onAddMaterial(material);
+            }
+          } else if (statusResult.status === 'succeeded' && statusResult.video_url) {
+            ossWaitRetries++;
+
+            if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
+              stopPolling(candidateId);
+
+              const updatedCandidates = segment.videoCandidates.map(c => {
+                if (c.id !== candidateId) return c;
+                return { ...c, status: 'succeeded' as const, progress: 100, videoUrl: statusResult.video_url, thumbnailUrl: undefined };
+              });
+
+              const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed');
+              const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
+              const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
+
+              const segmentUpdates: Partial<StoryboardScriptSegment> = {
+                videoCandidates: updatedCandidates,
+              };
+
+              if (allDone) {
+                segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
+                segmentUpdates.generationProgress = 100;
+                if (anySucceeded && !segment.selectedCandidateId) {
+                  segmentUpdates.selectedCandidateId = firstSucceeded!.id;
+                  segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
+                  segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
+                }
+              }
+
+              updateSegment(segmentId, segmentUpdates);
+
+              if (onAddMaterial) {
+                const material: MaterialItem = {
+                  id: materialId,
+                  name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
+                  type: 'video',
+                  format: 'mp4',
+                  size: 0,
+                  url: statusResult.video_url,
+                  serverUrl: statusResult.video_url,
+                  thumbnailUrl: undefined,
+                  duration: statusResult.duration || segment?.duration || 5,
+                  createdAt: new Date(),
+                  metadata: { source: 'storyboard-script', candidateId },
+                };
+                onAddMaterial(material);
+              }
+
+              extractVideoThumbnail(statusResult.video_url).then(dataUrl => {
+                if (dataUrl && onAddMaterial) {
+                  onAddMaterial({
+                    id: materialId,
+                    name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
+                    type: 'video',
+                    format: 'mp4',
+                    size: 0,
+                    url: statusResult.video_url!,
+                    serverUrl: statusResult.video_url,
+                    thumbnailUrl: dataUrl,
+                    duration: statusResult.duration || segment?.duration || 5,
+                    createdAt: new Date(),
+                    metadata: { source: 'storyboard-script', candidateId },
+                  });
+                }
+              });
+            } else {
+              const updatedCandidates = segment.videoCandidates.map(c => {
+                if (c.id !== candidateId) return c;
+                return { ...c, progress: 95, videoUrl: statusResult.video_url };
+              });
+              const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
+              updateSegment(segmentId, {
+                videoCandidates: updatedCandidates,
+                generationProgress: Math.round(avgProgress),
+              });
+            }
+          } else if (statusResult.status === 'failed') {
+            stopPolling(candidateId);
+            const updatedCandidates = segment.videoCandidates.map(c =>
+              c.id === candidateId ? { ...c, status: 'failed' as const, progress: 0, error: statusResult.error || '视频生成失败' } : c,
+            );
+            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed');
+            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
+            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
+
+            const segmentUpdates: Partial<StoryboardScriptSegment> = { videoCandidates: updatedCandidates };
+            if (allDone) {
+              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
+              if (anySucceeded && !segment.selectedCandidateId) {
+                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
+                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
+                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
+              }
+            }
+            updateSegment(segmentId, segmentUpdates);
+          } else {
+            simulatedProgress = Math.min(simulatedProgress + Math.random() * 8, 90);
+            const updatedCandidates = segment.videoCandidates.map(c => {
+              if (c.id !== candidateId) return c;
+              return { ...c, progress: Math.round(simulatedProgress) };
+            });
+            const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
+            updateSegment(segmentId, {
+              videoCandidates: updatedCandidates,
+              generationProgress: Math.round(avgProgress),
+            });
           }
         } catch (error) {
           stopPolling(candidateId);
-          // Mark this candidate as failed
           const segment = segmentsRef.current.find(s => s.id === segmentId);
           if (segment?.videoCandidates) {
             const updatedCandidates = segment.videoCandidates.map(c =>
