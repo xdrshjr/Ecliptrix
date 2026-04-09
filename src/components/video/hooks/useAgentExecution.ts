@@ -293,6 +293,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         messages: messagesWithUser,
         timelineState: currentTL,
         materials: materialsRef.current,
+        sessionToken: sessionToken ?? undefined,
       },
       onEvent: (event: SSEEvent) => {
         // Route event through AgentEventRouter (async for timeline operations)

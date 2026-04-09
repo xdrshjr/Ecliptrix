@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       console.error('[VideoEditingAgent] JSON parse failed. Raw body length:', rawText.length, 'Preview:', rawText.slice(0, 500));
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
-    const { messages, timelineState, materials } = body;
+    const { messages, timelineState, materials, sessionToken: bodyToken } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -164,7 +164,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Last message must be a non-empty user message' }, { status: 400 });
     }
 
-    const incomingAuthToken = readIncomingAuth(request);
+    // Read auth from header first, fall back to body (belt-and-suspenders for
+    // environments where the Authorization header is silently stripped).
+    const incomingAuthToken = readIncomingAuth(request) ?? bodyToken;
+
+    if (!incomingAuthToken) {
+      console.error('[VideoEditingAgent] No auth token found — returning 401 immediately. Header:', request.headers.get('authorization') ? 'present' : 'missing', 'Body token:', bodyToken ? 'present' : 'missing');
+      return NextResponse.json(
+        { success: false, message: '未提供认证凭证', error_code: 'UNAUTHORIZED', error_details: { reason: 'Missing session token' } },
+        { status: 401 },
+      );
+    }
+
     const config = await getConfig(incomingAuthToken);
     const lastUserMessage = lastMessage.content;
 

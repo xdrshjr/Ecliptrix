@@ -88,6 +88,10 @@ export async function toolFetch(
       : `Bearer ${context.authToken}`;
   }
 
+  if (!context.authToken) {
+    console.warn(`[toolFetch] No authToken in context for ${path} — request will be unauthenticated`);
+  }
+
   const url = apiUrl(context, path);
   const fetchInit: RequestInit = { ...restInit, headers, signal };
 

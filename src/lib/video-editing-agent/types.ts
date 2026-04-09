@@ -146,6 +146,12 @@ export interface AgentChatRequest {
   messages: ChatMessage[];
   timelineState: TimelineState;
   materials: MaterialItem[];
+  /**
+   * Session token passed in the request body as a fallback for cases where
+   * the Authorization header is lost (observed in some dev/deploy environments).
+   * The chat route reads from header first, then falls back to this field.
+   */
+  sessionToken?: string;
 }
 
 // --- Agent Factory Config ---
