@@ -368,12 +368,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       const clampedAudioTime = Math.max(clipStart, Math.min(actualAudioTime, clipEnd));
       
       if (isPlaying) {
-        // 设置音频播放位置
-        if (Math.abs(audioElement.currentTime - clampedAudioTime) > 0.1) {
+        const drift = Math.abs(audioElement.currentTime - clampedAudioTime);
+        if (drift > 0.5) {
           audioElement.currentTime = clampedAudioTime;
         }
         
-        // 开始播放音频
         if (audioElement.paused) {
           try {
             await audioElement.play();
@@ -388,10 +387,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               volume: audioSeq.volume?.toFixed(2) || '1.00'
             });
           } catch (error) {
-            logger.error('音频播放失败', error as Error, {
-              audioId: audioSeq.id,
-              audioName: audioSeq.name
-            });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            if (errMsg.includes('interrupted')) {
+              logger.warn('音频play()被中断（可忽略）', {
+                audioId: audioSeq.id,
+                audioName: audioSeq.name
+              });
+            } else {
+              logger.error('音频播放失败', error as Error, {
+                audioId: audioSeq.id,
+                audioName: audioSeq.name
+              });
+            }
           }
         }
       } else {
@@ -1281,13 +1288,21 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   if (videoRef.current) {
                     videoRef.current.currentTime = clampedVideoTime;
                     videoRef.current.play().catch(error => {
-                      logger.error('开始播放组合视频失败（裁剪模式）', error, {
-                        sequenceIndex: targetSequenceIndex,
-                        sequenceName: targetSequence.name,
-                        actualVideoTime: actualVideoTime.toFixed(2),
-                        clipStart: clipStart.toFixed(2),
-                        clipEnd: clipEnd.toFixed(2)
-                      });
+                      const errMsg = error instanceof Error ? error.message : String(error);
+                      if (errMsg.includes('interrupted')) {
+                        logger.warn('组合视频play()被中断（可忽略）', {
+                          sequenceIndex: targetSequenceIndex,
+                          sequenceName: targetSequence.name
+                        });
+                      } else {
+                        logger.error('开始播放组合视频失败（裁剪模式）', error, {
+                          sequenceIndex: targetSequenceIndex,
+                          sequenceName: targetSequence.name,
+                          actualVideoTime: actualVideoTime.toFixed(2),
+                          clipStart: clipStart.toFixed(2),
+                          clipEnd: clipEnd.toFixed(2)
+                        });
+                      }
                     });
                     isSeekingRef.current = false;
                     hideCanvasBuffer();
@@ -1304,13 +1319,21 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 // 视频源相同，直接设置时间并播放
                 currentVideo.currentTime = clampedVideoTime;
                 currentVideo.play().catch(error => {
-                  logger.error('开始播放组合视频失败（裁剪模式）', error, {
-                    sequenceIndex: targetSequenceIndex,
-                    sequenceName: targetSequence.name,
-                    actualVideoTime: actualVideoTime.toFixed(2),
-                    clipStart: clipStart.toFixed(2),
-                    clipEnd: clipEnd.toFixed(2)
-                  });
+                  const errMsg = error instanceof Error ? error.message : String(error);
+                  if (errMsg.includes('interrupted')) {
+                    logger.warn('组合视频play()被中断（可忽略）', {
+                      sequenceIndex: targetSequenceIndex,
+                      sequenceName: targetSequence.name
+                    });
+                  } else {
+                    logger.error('开始播放组合视频失败（裁剪模式）', error, {
+                      sequenceIndex: targetSequenceIndex,
+                      sequenceName: targetSequence.name,
+                      actualVideoTime: actualVideoTime.toFixed(2),
+                      clipStart: clipStart.toFixed(2),
+                      clipEnd: clipEnd.toFixed(2)
+                    });
+                  }
                 });
               }
               setCompositionCurrentTime(startTime);
@@ -1416,10 +1439,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     sequenceName: targetSequence.name
                   });
                 }).catch((playError) => {
-                  logger.error('视频切换后恢复播放失败', playError, {
-                    compositionTime: compositionTime.toFixed(2),
-                    sequenceName: targetSequence.name
-                  });
+                  const errMsg = playError instanceof Error ? playError.message : String(playError);
+                  if (errMsg.includes('interrupted')) {
+                    logger.warn('视频切换后play()被中断（可忽略）', {
+                      compositionTime: compositionTime.toFixed(2),
+                      sequenceName: targetSequence.name
+                    });
+                  } else {
+                    logger.error('视频切换后恢复播放失败', playError, {
+                      compositionTime: compositionTime.toFixed(2),
+                      sequenceName: targetSequence.name
+                    });
+                  }
                 });
               }
             }
@@ -1455,10 +1486,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 sequenceName: targetSequence.name
               });
             }).catch((playError) => {
-              logger.error('视频跳转后恢复播放失败', playError, {
-                compositionTime: compositionTime.toFixed(2),
-                sequenceName: targetSequence.name
-              });
+              const errMsg = playError instanceof Error ? playError.message : String(playError);
+              if (errMsg.includes('interrupted')) {
+                logger.warn('视频跳转后play()被中断（可忽略）', {
+                  compositionTime: compositionTime.toFixed(2),
+                  sequenceName: targetSequence.name
+                });
+              } else {
+                logger.error('视频跳转后恢复播放失败', playError, {
+                  compositionTime: compositionTime.toFixed(2),
+                  sequenceName: targetSequence.name
+                });
+              }
             });
           }
         }
@@ -1577,10 +1616,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 新增：从timeline游标位置开始播放/暂停
   const handlePlayPauseFromTimeline = useCallback(async (timelineTime: number) => {
+    const wasPlaying = getCurrentlyPlaying();
+
     logger.info('从Timeline游标位置播放/暂停', {
       timelineTime: timelineTime.toFixed(2),
       currentVideoTime: getCurrentTime().toFixed(2),
-      currentlyPlaying: getCurrentlyPlaying(),
+      currentlyPlaying: wasPlaying,
       playbackMode,
       action: 'spacebar_from_timeline',
       timestamp: new Date().toISOString()
@@ -1589,17 +1630,42 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     // 如果timeline时间与当前视频时间不同，先跳转到timeline时间
     const currentVideoTime = getCurrentTime();
     const timeDifference = Math.abs(timelineTime - currentVideoTime);
+    const needsSeek = timeDifference > 0.5;
     
-    if (timeDifference > 0.1) { // 允许0.1秒的误差
-      logger.info('Timeline时间与视频时间不同步，先跳转', {
-        timelineTime: timelineTime.toFixed(2),
-        currentVideoTime: currentVideoTime.toFixed(2),
-        timeDifference: timeDifference.toFixed(2),
-        threshold: 0.1
-      });
+    if (playbackMode === 'composition' && compositionPlayback) {
+      if (wasPlaying) {
+        // 当前正在播放：只需跳转到新位置（handleCompositionSeek会恢复播放）
+        if (needsSeek) {
+          let targetSequenceIndex = 0;
+          let accumulatedTime = 0;
+          let targetVideoTime = timelineTime;
 
-      if (playbackMode === 'composition' && compositionPlayback) {
-        // 组合模式：计算应该跳转到哪个视频序列
+          for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
+            const sequence = compositionPlayback.videoSequences[i];
+            if (accumulatedTime + sequence.duration > timelineTime) {
+              targetSequenceIndex = i;
+              targetVideoTime = timelineTime - accumulatedTime;
+              break;
+            }
+            accumulatedTime += sequence.duration;
+          }
+
+          const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
+          if (targetSequence) {
+            await handleCompositionSeek(timelineTime, targetSequence, targetVideoTime, 'timeline');
+          }
+        } else {
+          // 时间接近，不seek，暂停播放
+          const currentVideo = getCurrentVideoElement();
+          if (currentVideo) {
+            currentVideo.pause();
+          }
+          await syncAudioPlayback(compositionCurrentTime, false);
+          setIsCompositionPlaying(false);
+          if (onCompositionPlayPause) onCompositionPlayPause();
+        }
+      } else {
+        // 当前暂停：先seek到timeline位置，然后开始播放（不调用handlePlayPauseClick避免竞态）
         let targetSequenceIndex = 0;
         let accumulatedTime = 0;
         let targetVideoTime = timelineTime;
@@ -1615,24 +1681,79 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         }
 
         const targetSequence = compositionPlayback.videoSequences[targetSequenceIndex];
-        if (targetSequence) {
-          await handleCompositionSeek(timelineTime, targetSequence, targetVideoTime, 'timeline');
+        const currentVideo = getCurrentVideoElement();
+
+        if (targetSequence && currentVideo) {
+          const clipStart = targetSequence.clipStart || 0;
+          const clipEnd = targetSequence.clipEnd || targetSequence.originalDuration || targetSequence.duration;
+          const clipDuration = clipEnd - clipStart;
+          const actualVideoTime = clipStart + (targetVideoTime * clipDuration / targetSequence.duration);
+          const clampedVideoTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd));
+
+          if (compositionPlayback.currentSequenceIndex !== targetSequenceIndex) {
+            if (onSequenceIndexUpdate) {
+              onSequenceIndexUpdate(targetSequenceIndex);
+            }
+          }
+
+          const needsSourceChange = normalizeVideoUrl(currentVideo.src) !== normalizeVideoUrl(targetSequence.url);
+
+          if (needsSourceChange) {
+            captureFrameToCanvas();
+            isSeekingRef.current = true;
+            const tid = ++transitionIdRef.current;
+            currentVideo.src = targetSequence.url;
+            const handleLoaded = () => {
+              if (transitionIdRef.current !== tid) return;
+              if (videoRef.current) {
+                videoRef.current.currentTime = clampedVideoTime;
+                videoRef.current.play().catch(err => {
+                  logger.warn('timeline播放启动失败（可忽略）', { error: String(err) });
+                });
+                isSeekingRef.current = false;
+                hideCanvasBuffer();
+              }
+            };
+            currentVideo.addEventListener('canplay', handleLoaded, { once: true });
+            setTimeout(() => {
+              if (transitionIdRef.current !== tid) return;
+              currentVideo.removeEventListener('canplay', handleLoaded);
+              isSeekingRef.current = false;
+              hideCanvasBuffer();
+            }, 5000);
+          } else {
+            ++transitionIdRef.current;
+            hideCanvasBuffer();
+            currentVideo.currentTime = clampedVideoTime;
+            isSeekingRef.current = false;
+            currentVideo.play().catch(err => {
+              logger.warn('timeline播放启动失败（可忽略）', { error: String(err) });
+            });
+          }
+
+          setCompositionCurrentTime(timelineTime);
+          preloadTriggeredRef.current.clear();
+          preloadUpcomingSequences(targetSequenceIndex + 1, 3);
+          await syncAudioPlayback(timelineTime, true);
         }
-      } else {
-        // 预览模式：直接跳转
+
+        setIsCompositionPlaying(true);
+        if (onCompositionPlayPause) onCompositionPlayPause();
+      }
+    } else {
+      // 预览模式：直接调用原有逻辑
+      if (needsSeek) {
         handleTimeSeek(timelineTime);
       }
+      await handlePlayPauseClick();
     }
-
-    // 执行播放/暂停
-    await handlePlayPauseClick();
     
     logger.info('从Timeline游标位置播放/暂停完成', {
       timelineTime: timelineTime.toFixed(2),
       newState: getCurrentlyPlaying() ? '播放中' : '已暂停',
       finalVideoTime: getCurrentTime().toFixed(2)
     });
-  }, [getCurrentTime, getCurrentlyPlaying, playbackMode, compositionPlayback, handleCompositionSeek, handleTimeSeek, handlePlayPauseClick, logger]);
+  }, [getCurrentTime, getCurrentlyPlaying, playbackMode, compositionPlayback, compositionCurrentTime, handleCompositionSeek, handleTimeSeek, handlePlayPauseClick, syncAudioPlayback, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, preloadUpcomingSequences, onCompositionPlayPause, onSequenceIndexUpdate, logger, getCurrentVideoElement]);
 
   // 新增：通过ref暴露方法给父组件
   useImperativeHandle(ref, () => ({
