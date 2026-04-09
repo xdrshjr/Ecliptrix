@@ -1,8 +1,20 @@
+function proxiedVideoUrl(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    if (parsed.origin !== window.location.origin) {
+      return `/api/video-proxy?url=${encodeURIComponent(url)}`
+    }
+  } catch {}
+  return url
+}
+
 /**
  * Extract a thumbnail frame from a video URL using an offscreen canvas.
- * Works with CDN URLs that support CORS. Returns a JPEG data URL or null on failure.
+ * Automatically routes cross-origin URLs through the server-side proxy.
+ * Returns a JPEG data URL or null on failure.
  */
 export async function extractVideoThumbnail(videoUrl: string): Promise<string | null> {
+  const src = proxiedVideoUrl(videoUrl)
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
@@ -16,8 +28,7 @@ export async function extractVideoThumbnail(videoUrl: string): Promise<string | 
       resolve(value);
     };
 
-    // Register onseeked INSIDE onloadedmetadata so it only fires for our explicit seek,
-    // not for any browser-initiated initial seek at t=0 (which would capture a blank frame).
+    // Register onseeked INSIDE onloadedmetadata so it only fires for our explicit seek
     video.onloadedmetadata = () => {
       const targetTime = video.duration > 2 ? 1 : 0;
       video.onseeked = () => {
@@ -45,12 +56,13 @@ export async function extractVideoThumbnail(videoUrl: string): Promise<string | 
     // Fallback: if seek event doesn't fire within 10s, give up
     setTimeout(() => finish(null), 10000);
 
-    video.src = videoUrl;
+    video.src = src;
   });
 }
 
 /**
  * Extract a frame from near the end of a video.
+ * Automatically routes cross-origin URLs through the server-side proxy.
  * @param videoUrl The video URL to extract from
  * @param offsetFromEnd Seconds before the end to seek to (default 3)
  * @returns JPEG data URL of the extracted frame, or null on failure
@@ -59,6 +71,7 @@ export async function extractFrameFromEnd(
   videoUrl: string,
   offsetFromEnd: number = 3,
 ): Promise<string | null> {
+  const src = proxiedVideoUrl(videoUrl)
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
@@ -98,6 +111,6 @@ export async function extractFrameFromEnd(
     video.onerror = () => finish(null);
     setTimeout(() => finish(null), 15000);
 
-    video.src = videoUrl;
+    video.src = src;
   });
 }
