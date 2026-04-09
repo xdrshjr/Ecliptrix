@@ -70,6 +70,15 @@ export function useStoryboardScriptGeneration({
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [isDescribing, setIsDescribing] = useState(false);
+
+  useEffect(() => {
+    if (!selectedPackId && segments.length > 0) {
+      const derived = segments[0].packId;
+      if (derived) {
+        setSelectedPackId(derived);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [isLoadingPack, setIsLoadingPack] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [compositionError, setCompositionError] = useState<string | null>(null);
@@ -463,6 +472,7 @@ export function useStoryboardScriptGeneration({
         const newSegments: StoryboardScriptSegment[] = pack.frames.map(
           (frame) => ({
             id: `storyboard-seg-${packId}-${frame.index}-${Date.now()}`,
+            packId,
             frameIndex: frame.index,
             frameUrl: frame.url,
             frameThumbnailUrl: frame.url,

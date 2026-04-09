@@ -528,6 +528,7 @@ export interface StoryboardVideoCandidate {
 /** A storyboard script segment for AI video generation from storyboard frames */
 export interface StoryboardScriptSegment {
   id: string;
+  packId?: string;
   frameIndex: number;
   frameUrl: string;
   frameThumbnailUrl?: string;
