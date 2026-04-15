@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Strict whitelist. Every entry must be an explicit host (or a receiving-side
+// subdomain match via `.<host>`). Do NOT add top-level company domains such as
+// `volces.com` or `bytedance.com` — that would turn this route into an open
+// proxy. Keep this list short (≤3) and document the source for each entry.
 const ALLOWED_HOSTS = [
+  // Our own OSS bucket (final storage after ffmpeg + upload finishes).
   'ecliptrix.oss-cn-beijing.aliyuncs.com',
+  // ByteDance ARK video generation CDN — used for the temporary video_url
+  // returned by the ARK SDK before the backend finishes uploading to OSS.
+  // Source: ark_video_service.py populates `_cdn_urls[...]['video_url']`
+  // directly from the ARK response `content.video_url`.
+  'ark-content-generation-v2-cn-beijing.tos-cn-beijing.volces.com',
 ]
 
 const UPSTREAM_TIMEOUT_MS = 60_000
