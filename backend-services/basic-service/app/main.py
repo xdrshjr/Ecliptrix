@@ -14,6 +14,7 @@ import time
 import traceback
 import os
 import logging
+import asyncio
 
 from app.config import settings
 from app.logger import get_logger, setup_logging
@@ -103,11 +104,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
 
     # Initialize database
-    try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
+    MAX_DB_RETRIES = 3
+    DB_RETRY_DELAY = 2
+    for attempt in range(MAX_DB_RETRIES):
+        try:
+            await init_db()
+            logger.info("Database initialized successfully")
+            break
+        except Exception as e:
+            logger.error(f"Database init attempt {attempt + 1}/{MAX_DB_RETRIES} failed: {type(e).__name__}: {str(e)}")
+            if attempt < MAX_DB_RETRIES - 1:
+                await asyncio.sleep(DB_RETRY_DELAY)
+            else:
+                logger.error(f"FATAL: Database initialization failed after {MAX_DB_RETRIES} attempts")
+                raise
 
     # Initialize system settings service (load from PostgreSQL into cache)
     try:

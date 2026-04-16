@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { AuthContextType, User, LoginCredentials, AuthState } from '@/types/auth';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useLocale } from '@/contexts/LocaleContext';
 import { SESSION_TOKEN_KEY, SESSION_USER_KEY } from '@/lib/auth/storage-keys';
 import {
   login as authLogin,
@@ -65,6 +66,7 @@ function normalizeUser(raw: Record<string, unknown>, partial = false): User {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const notification = useNotification();
+  const { t } = useLocale();
 
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
@@ -269,10 +271,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         });
 
         // Show success notification with role information
-        const roleLabel = user.isRoot ? '超级管理员' :
-                         user.userRole === 'admin' ? '管理员' :
-                         user.userRole === 'premium' ? '高级用户' : '普通用户';
-        notification.showSuccess(`欢迎回来，${user.username}！(${roleLabel})`, 3000);
+        const roleLabel = user.isRoot ? t.adminSettings.roleRoot :
+                         user.userRole === 'admin' ? t.adminSettings.roleAdmin :
+                         user.userRole === 'premium' ? t.adminSettings.rolePremium :
+                         t.adminSettings.roleRegular;
+        notification.showSuccess(`${t.auth.welcomeBack}，${user.username}！(${roleLabel})`, 3000);
 
         return { success: true };
       } else {

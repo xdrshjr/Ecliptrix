@@ -2009,7 +2009,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-                <span>视频脚本 ({segment.sentences.length} 句)</span>
+                <span>{t.scriptPanel.tabs.aiVideoScript} ({segment.sentences.length})</span>
               </button>
             </div>
 

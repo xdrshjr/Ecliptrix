@@ -1526,6 +1526,12 @@ export interface Translations {
       title: string;
       subtitle: string;
     };
+    messagesLabel: string;
+    replying: string;
+    clearChatTooltip: string;
+    sendMessageTooltip: string;
+    aiReplying: string;
+    enterToSendHint: string;
   };
 }
 
@@ -3073,6 +3079,12 @@ export const translations: Record<string, Translations> = {
         title: 'Ready to Chat',
         subtitle: 'Send a message to start the conversation',
       },
+      messagesLabel: 'messages',
+      replying: 'Replying...',
+      clearChatTooltip: 'Clear chat history',
+      sendMessageTooltip: 'Send message',
+      aiReplying: 'AI is replying...',
+      enterToSendHint: 'Press Enter to send, Shift + Enter for new line',
     },
   },
   'zh-CN': {
@@ -4618,6 +4630,12 @@ export const translations: Record<string, Translations> = {
         title: '准备开始聊天',
         subtitle: '发送消息以开始对话',
       },
+      messagesLabel: '条消息',
+      replying: '回复中',
+      clearChatTooltip: '清空聊天记录',
+      sendMessageTooltip: '发送消息',
+      aiReplying: 'AI 正在回复中...',
+      enterToSendHint: '按 Enter 发送，Shift + Enter 换行',
     },
   },
 };

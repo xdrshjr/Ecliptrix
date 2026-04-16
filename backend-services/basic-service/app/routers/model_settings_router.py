@@ -54,8 +54,8 @@ async def get_saved_providers():
             providers=providers,
         )
     except Exception as e:
-        logger.error(f"Error getting saved providers: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting saved providers: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 @router.post("/providers")

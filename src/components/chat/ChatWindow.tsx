@@ -277,14 +277,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                {conversation.messages.length} 条消息 • {conversation.updatedAt.toLocaleTimeString()}
+                {conversation.messages.length} {t.aiChat.messagesLabel} • {conversation.updatedAt.toLocaleTimeString()}
               </p>
             </div>
           </div>
           {isLoading && (
             <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-full">
               <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-              <span className="text-sm text-primary font-medium">回复中</span>
+              <span className="text-sm text-primary font-medium">{t.aiChat.replying}</span>
             </div>
           )}
         </div>
@@ -344,7 +344,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             onClick={handleClearChat}
             disabled={!conversation || conversation.messages.length === 0 || isLoading}
             className="bg-card border border-border hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-foreground rounded-md transition-colors flex items-center justify-center shrink-0 self-stretch min-h-[48px]"
-            title="清空聊天记录"
+            title={t.aiChat.clearChatTooltip}
             style={{ width: '48px' }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,7 +356,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             type="submit"
             disabled={!inputMessage.trim() || isLoading}
             className="bg-primary hover:bg-[var(--primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0 self-stretch min-h-[48px]"
-            title="发送消息"
+            title={t.aiChat.sendMessageTooltip}
             style={{ width: '48px' }}
           >
             {isLoading ? (
@@ -372,7 +372,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </button>
         </form>
         <div className="mt-2 text-xs text-muted-foreground text-center">
-          {isLoading ? 'AI 正在回复中...' : '按 Enter 发送，Shift + Enter 换行'}
+          {isLoading ? t.aiChat.aiReplying : t.aiChat.enterToSendHint}
         </div>
       </div>
     </div>
