@@ -1,69 +1,70 @@
-# Phase 4 上线/交付建议 — AI 图像生成面板布局修复
+# Deployment / Delivery Recommendation — 分镜生成面板修复
+
+> **Phase**: 4 (Code Review & Issue Resolution)  
+> **Date**: Phase 4 completion  
 
 ---
 
-## 一、总体质量评级
+## 1. Overall Code Quality Rating
 
-**A（可直接进入部署/交付流程）**
+**A- (Production-Ready)**
 
-经过 Phase 4 代码评审与问题修复，当前代码库满足以下标准：
-- ✅ 所有原始需求（FR-1 ~ FR-8）均已闭环
-- ✅ 197 项自动化测试全部通过，无回归
-- ✅ `tsc --noEmit` 与 `next build` 编译通过
-- ✅ 关键移动端回归与聊天面板可用性问题已修复
-- ✅ 变更范围极小，仅涉及 5 个组件文件与 2 个测试文件
+The Phase 3 refactor successfully unifies the “分镜生成” tab layout with its sibling tabs via a clean left-right split, introduces a well-isolated `StoryboardPreviewPanel`, and extracts reusable utilities (`gridUtils`, `AspectRatioIcon`). Type safety is strong, tests are comprehensive for the scope, and no regressions were detected.
+
+The only major issue discovered during review (incorrect aspect-ratio preview for `4:3`/`3:4`) has been corrected. Remaining concerns are minor, pre-existing, or outside the defined scope.
 
 ---
 
-## 二、生产就绪性评估
+## 2. Production Readiness Assessment
 
-| 评估项 | 状态 | 说明 |
-|--------|------|------|
-| 功能正确性 | ✅ 就绪 | 分镜生成双列布局稳定；四 Tab 的 focus ring 截断已修复 |
-| 响应式兼容性 | ✅ 就绪 | 已验证保留 `flex flex-col md:grid` 的断点结构，移动端单列堆叠正常 |
-| 测试覆盖 | ⚠️ 基本就绪 | 当前为类名正则测试，建议后续补视觉回归测试 |
-| 性能影响 | ✅ 无影响 | 纯 CSS/Tailwind 调整，无运行时逻辑变更 |
-| 回滚风险 | ✅ 极低 | 所有修改均可通过单次 Git revert 回退 |
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| **Functional Correctness** | ✅ Pass | Layout renders correctly across `input`, `generating`, `success`, `error`, and `script` steps. Preview panel accurately reflects selected aspect ratio after fix. |
+| **Type Safety** | ✅ Pass | `tsc --noEmit` reports **0 errors**. |
+| **Test Coverage** | ✅ Pass | **213/213** automated tests pass. Structural tests guard against accidental layout regressions. |
+| **Accessibility** | ⚠️ Acceptable | New `aria-label` on the preview region and `aria-hidden` on decorative icons are in place. Full a11y audit (focus order, color-contrast testing) was not in scope. |
+| **Performance** | ✅ Pass | No new heavy computations; `computeOptimalGrid` is memoized. Grid preview renders at most 64 DOM nodes. |
+| **Security** | ✅ Pass | No new injection surfaces. User-supplied URLs are rendered in standard `<img>` tags (existing pattern, low risk). |
+| **Maintainability** | ✅ Pass | Components are small, focused, and follow project conventions. `ConfigSection` extraction eliminated an inline-function anti-pattern. |
 
----
-
-## 三、剩余已知问题与影响评估
-
-| 编号 | 问题 | 影响 | 建议处理时机 |
-|------|------|------|--------------|
-| OBS-1 | 测试基于源码字符串匹配，未在真实浏览器中渲染验证 | 低。无法捕获极端视口或浏览器特有的像素级差异 | 后续迭代引入 Playwright/Cypress 截图测试 |
-| OBS-2 | 三个图像生成 Tab 的左侧面板因增加 `pl-2` 导致可用宽度减少 8px | 极低。模板卡片已支持横向滚动，尺寸按钮在 520px+ 仍可正常显示三列 | 若用户反馈宽度紧张，可将右侧 `w-64` 微调为 `w-60` |
-| OBS-3 | `arkImage.ts` 超时 300s 较长，若后端响应慢可能导致用户等待时间过长 | 低。属于既有业务逻辑，本次未改动 | 已在独立 backlog 中跟踪 |
-
-**结论**：无阻塞上线的已知问题。
+### Verdict
+**The codebase is approved for deployment.**
 
 ---
 
-## 四、推荐上线步骤
+## 3. Remaining Known Issues & Impact
 
-1. **合并代码**：将当前分支合并至主分支（或 staging 分支）。
-2. **部署验证清单**（建议由 QA 或前端负责人在预发环境执行）：
-   - [ ] 打开「AI 图像生成」弹窗，切换到「分镜生成」Tab
-   - [ ] 输入提示词后点击「下一步：生成分镜剧本」
-   - [ ] 验证 script 步骤下，左右两列等高、左列可滚动、右列 shot cards 可滚动
-   - [ ] 在右列发送多条聊天消息（≥ 10 条），验证消息区可滚动且输入框始终可见
-   - [ ] 使用浏览器 DevTools 模拟 375px ~ 767px 宽度，验证分镜生成 script 步骤为单列垂直堆叠
-   - [ ] 切换至「基础生成」「人物建模」「场景建模」Tab，点击左侧 textarea，验证四边 focus ring（粉色高亮边框）完整可见
-3. **灰度/全量**：因变更范围极小且风险低，建议直接全量发布；若公司流程要求灰度，可灰度 10% 用户观察 24 小时。
+| Issue | Severity | Impact | Recommended Action |
+|-------|----------|--------|--------------------|
+| Hard-coded Chinese strings in `StoryboardTab.tsx` | Low | Non-blocking for domestic (zh-CN) users; may delay future internationalization efforts. | Schedule i18n sweep in a future localization sprint. |
+| Inconsistent Tailwind disabled-state classes in `GridSizeSelector.tsx` | Very Low | Visual-only discrepancy; no functional impact. | Address when the component is next touched. |
+| Structural tests instead of mounted component tests | Low | Catches class-name regressions but not runtime interaction bugs. | Add React Testing Library / jsdom behavioral tests once the build pipeline supports JSX in test files. |
+| No visual regression (snapshot) tests | Low | UI changes must be verified manually or via class-name assertions. | Evaluate Playwright or Chromatic snapshot testing for the modal tabs. |
 
 ---
 
-## 五、上线后监控建议
+## 4. Recommended Next Steps
 
-- **Sentry / 前端监控**：关注 `AiImageModal` 及子组件相关的渲染错误（通常不会新增，但可作为基线）。
-- **用户反馈渠道**：留意「分镜生成面板显示异常」「输入框焦点看不见」两类反馈，预期在修复后应显著减少。
-- **性能监控**：本次无 JavaScript 逻辑变更，无需额外关注首屏或交互性能指标。
+1. **Merge & Deploy**  
+   The fix set is minimal and safe. Deploy through the standard CI/CD pipeline.
+
+2. **Post-Deployment Monitoring**  
+   - Watch error-tracking dashboards for any `StoryboardTab` or `StoryboardPreviewPanel` runtime exceptions.  
+   - Collect user feedback on the new preview panel, especially for `4:3` and `3:4` aspect ratios (the area most recently corrected).
+
+3. **Follow-up Work (Non-Blocking)**  
+   - **i18n completion**: Extract remaining hard-coded strings in `StoryboardTab.tsx` and `StoryboardScriptReview.tsx` into `src/lib/i18n.ts`.  
+   - **Behavioral tests**: Once the Vitest/tsconfig JSX limitation is resolved, add mounted tests for:  
+     - Changing aspect ratio updates the preview panel.  
+     - Clicking “下一步：生成分镜剧本” transitions from `input` to `script` step.  
+     - `window.confirm` on “返回修改输入” resets draft state.
 
 ---
 
-## 六、交付文档清单
+## 5. Sign-Off
 
-- [x] `docs/reviews/phase4/code-review-report.md` — 代码评审报告
-- [x] `docs/reviews/phase4/issue-fix-record.md` — 问题修复记录
-- [x] `docs/reviews/phase4/deployment-recommendation.md` — 上线/交付建议
-- [x] 最终代码版本（已修复并验证）
+- **Code Review**: Completed  
+- **Critical / Major Issues**: Resolved  
+- **Tests**: All passing (213/213)  
+- **Type Check**: Clean (0 errors)  
+- **Deployment Recommendation**: **APPROVED**

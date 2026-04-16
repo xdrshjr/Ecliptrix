@@ -1,119 +1,210 @@
-# Phase 4 问题修复记录 — AI 图像生成面板布局修复
+# Issue Fix Record — Phase 4
+
+> **Task**: 代码评审与问题修复 (Phase 4)  
+> **Project**: Ecliptrix — 分镜生成面板修复  
 
 ---
 
-## Fix #1：StoryboardTab 移动端子列高度回归
+## Fix #1 — Incorrect Aspect Ratio Preview for 4:3 and 3:4
 
-### 问题定位
-- **文件**：`src/components/video/components/AiImageModal/StoryboardTab.tsx`
-- **行号**：第 274 行、第 285 行
-- **问题类别**：正确性 / 响应式回归（Critical）
+- **Category**: Correctness  
+- **Severity**: Major  
+- **File**: `src/components/video/components/AiImageModal/StoryboardPreviewPanel.tsx`
 
-### 原因分析
-Phase 3 为清理 "flex/grid 混用"，将左、右列容器从：
-```
-flex flex-col min-h-0 flex-1 md:flex-none md:h-full
-```
-改为：
-```
-flex flex-col min-h-0 h-full overflow-hidden
-```
-在桌面端（`md:grid` 父容器）`h-full` 配合 `overflow-hidden` 表现正常；但在移动端（`flex flex-col` 父容器）下，两个子元素均声明 `height: 100%`，导致总需求高度约 200% + gap，第二列被祖父容器的 `overflow-hidden` 完全裁剪。
+### Problem
+`StoryboardPreviewPanel` mapped every landscape aspect ratio to `16 / 9` and every portrait ratio to `9 / 16` in its CSS `aspect-ratio` style. Consequently, selecting `4:3` or `3:4` displayed a preview with the wrong proportions, misleading users about the generated grid shape.
 
-### 修复内容
-恢复原有的响应式断点结构，并追加 `overflow-hidden` 作为安全兜底：
-```diff
-- <div className="flex flex-col min-h-0 h-full overflow-hidden">
-+ <div className="flex flex-col min-h-0 flex-1 md:flex-none md:h-full overflow-hidden">
+### Before
+```tsx
+<div
+  className="grid gap-1"
+  style={{
+    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+    aspectRatio: variant === 'square' ? '1 / 1' : variant === 'landscape' ? '16 / 9' : '9 / 16',
+  }}
+>
 ```
-（左右两列均作相同修改）
 
-### 验证
-- `npx vitest run src/.../layoutFixes.test.tsx`：通过
-- `npx vitest run`（全量 197 项）：全部通过
-- `npx next build`：编译通过
+### After
+```tsx
+<div
+  className="grid gap-1"
+  style={{
+    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+    aspectRatio: aspectRatio.replace(':', ' / '),
+  }}
+>
+```
+
+### Verification
+- `npm run type-check` — 0 errors
+- `npm run test` — all 213 tests pass
+- Visual logic verified: `4:3` now renders `aspect-ratio: 4 / 3`, `3:4` renders `3 / 4`, etc.
 
 ---
 
-## Fix #2：StoryboardScriptReview 聊天面板输入框裁剪
+## Fix #2 — Inline `renderConfigSection` Anti-Pattern
 
-### 问题定位
-- **文件**：`src/components/video/components/AiImageModal/StoryboardScriptReview.tsx`
-- **行号**：第 86 ~ 129 行
-- **问题类别**：可用性 / 布局健壮性（Major）
+- **Category**: Maintainability / Code Quality  
+- **Severity**: Minor  
+- **File**: `src/components/video/components/AiImageModal/StoryboardTab.tsx`
 
-### 原因分析
-聊天面板被限制为 `max-h-[28%] overflow-hidden`，消息区内部使用固定的 `max-h-32 overflow-y-auto`。当消息较多且视口高度较小时，消息区占满 128px，加上标题、输入框、padding、gap 的固定高度后可能超过 28% 上限，导致底部的输入框被 `overflow-hidden` 裁剪。
+### Problem
+`StoryboardTab` defined `renderConfigSection` as an inline function that returned JSX. This is a known React anti-pattern: it creates a new function on every render, bloats the parent component (~380 lines), and makes unit testing the config UI in isolation impossible.
 
-### 修复内容
-将聊天面板改为内部 Flex 布局，让消息区动态吸收可用空间，并移除固定 `max-h-32`：
-```diff
-- <div className="shrink-0 max-h-[28%] overflow-hidden border border-border rounded-md p-3 space-y-2 bg-card/60">
--   <div className="text-xs font-medium text-foreground">与 AI 对话修改剧本</div>
-+ <div className="shrink-0 max-h-[28%] overflow-hidden border border-border rounded-md p-3 bg-card/60 flex flex-col gap-2">
-+   <div className="text-xs font-medium text-foreground shrink-0">与 AI 对话修改剧本</div>
-    {messages.length > 0 && (
--     <div className="space-y-1 max-h-32 overflow-y-auto text-xs">
-+     <div className="space-y-1 overflow-y-auto text-xs min-h-0 flex-1">
-        ...
-      </div>
-    )}
--   <div className="flex gap-2">
-+   <div className="flex gap-2 shrink-0">
+### Before
+```tsx
+const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenerate }) => {
+  // ...
+  const renderConfigSection = (options?: { compact?: boolean }) => (
+    <div className={options?.compact ? 'space-y-5' : 'space-y-6'}>...{/* 40+ lines */}
+  );
+  // ...
+  {renderConfigSection({ compact: true })}
+  {renderConfigSection()}
+};
 ```
 
-### 验证
-- 全量测试 197/197 通过
-- 构建通过
-- 逻辑验证：
-  - `shrink-0` 保证面板不会弹性撑大挤压确认按钮
-  - `max-h-[28%]` 仍限制面板最大高度
-  - `flex-1 min-h-0` 使消息区在 28% 内动态分配剩余空间
-  - 输入框始终 `shrink-0` 保持在底部可见
+### After
+Extracted to a named component `ConfigSection` declared **outside** `StoryboardTab`:
+
+```tsx
+interface ConfigSectionProps {
+  frameCount: number;
+  aspectRatio: StoryboardAspectRatio;
+  referenceImages: MentionedImage[];
+  prompt: string;
+  onChange: React.Dispatch<React.SetStateAction<StoryboardTabState>>;
+  disabled?: boolean;
+  compact?: boolean;
+}
+
+const ConfigSection: React.FC<ConfigSectionProps> = ({ ... }) => { ... };
+```
+
+Inside `StoryboardTab`:
+```tsx
+<ConfigSection compact frameCount={frameCount} ... disabled={inputsDisabled} />
+<ConfigSection frameCount={frameCount} ... disabled={inputsDisabled} />
+```
+
+### Verification
+- `npm run type-check` — 0 errors
+- `npm run test` — all 213 tests pass, including `layoutFixes.test.tsx` structural assertions
+- No change to rendered DOM or Tailwind class names
 
 ---
 
-## Fix #3：layoutFixes.test.tsx 断言与错误实现耦合
+## Fix #3 — Missing Accessibility Attributes on Decorative Icons
 
-### 问题定位
-- **文件**：`src/components/video/components/AiImageModal/__tests__/layoutFixes.test.tsx`
-- **问题类别**：测试质量（Medium）
+- **Category**: Accessibility  
+- **Severity**: Minor  
+- **File**: `src/components/video/components/AiImageModal/AspectRatioIcon.tsx`
 
-### 修复内容
-将原本断言 "不含 `flex-1 md:flex-none md:h-full`" 的测试，改为断言正确的响应式类名存在：
-```diff
-- it('left and right columns use h-full overflow-hidden without flex-1 md:flex-none', () => {
--   expect(src).toContain('flex flex-col min-h-0 h-full overflow-hidden');
--   expect(src).not.toContain('flex-1 md:flex-none md:h-full');
-+ it('left and right columns use responsive flex/grid classes with overflow-hidden', () => {
-+   expect(src).toContain('flex flex-col min-h-0 flex-1 md:flex-none md:h-full overflow-hidden');
-  });
+### Problem
+`AspectRatioIcon` renders pure-decorative SVGs. Without `aria-hidden` and `focusable="false"`, assistive technologies may expose them as unlabeled graphics, and some browsers (IE/Edge legacy) allow keyboard focus on SVGs.
+
+### Before
+```tsx
+<svg className={`w-3.5 h-3.5 ${svgClass}`} viewBox="0 0 24 24" fill="none">
 ```
 
-同步更新 StoryboardScriptReview 的类名断言：
-```diff
-- expect(src).toContain('shrink-0 max-h-[28%] overflow-hidden border border-border rounded-md p-3 space-y-2 bg-card/60');
-+ expect(src).toContain('shrink-0 max-h-[28%] overflow-hidden border border-border rounded-md p-3 bg-card/60 flex flex-col gap-2');
+### After
+```tsx
+<svg className={svgClass} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
 ```
 
-### 验证
-- `npx vitest run src/.../layoutFixes.test.tsx`：8/8 通过
+(Also cleaned up class-name concatenation to avoid duplicate size tokens.)
+
+### Verification
+- `npm run type-check` — 0 errors
+- `npm run test` — all 213 tests pass
 
 ---
 
-## Fix #4：arkImage.test.ts 陈旧超时断言
+## Fix #4 — Missing `type="button"` on Interactive Buttons
 
-### 问题定位
-- **文件**：`src/lib/api/__tests__/arkImage.test.ts`
-- **问题类别**：测试维护（Minor / 前置债务）
+- **Category**: Security / Best Practices  
+- **Severity**: Minor  
+- **File**: `src/components/video/components/AiImageModal/StoryboardTab.tsx`
 
-### 修复内容
-将期望值从 120_000 修正为与源码一致的 300_000：
-```diff
-- expect(spy.mock.calls[0][2]).toEqual({ timeoutMs: 120_000 });
-+ expect(spy.mock.calls[0][2]).toEqual({ timeoutMs: 300_000 });
+### Problem
+Aspect-ratio preset buttons and the “skip script” fallback button lacked an explicit `type="button"`. In a future refactor where the modal body might be wrapped in a `<form>`, these buttons would unintentionally submit the form.
+
+### Before
+```tsx
+<button
+  key={preset.value}
+  onClick={() => onChange((prev) => ({ ...prev, aspectRatio: preset.value }))}
+  disabled={inputsDisabled}
+>
 ```
 
-### 验证
-- `npx vitest run src/lib/api/__tests__/arkImage.test.ts`：3/3 通过
-- 全量测试套件 197/197 全部通过
+```tsx
+<button
+  onClick={handleSkipScript}
+  disabled={!prompt.trim() || inputsDisabled}
+>
+```
+
+### After
+Added `type="button"` to all five aspect-ratio preset buttons and the skip-script button.
+
+### Verification
+- `npm run type-check` — 0 errors
+- `npm run test` — all 213 tests pass
+
+---
+
+## Fix #5 — Dead i18n Key `summaryLabel`
+
+- **Category**: Code Quality / i18n Hygiene  
+- **Severity**: Minor  
+- **File**: `src/lib/i18n.ts`
+
+### Problem
+The translation key `storyboardPreviewPanel.summaryLabel` existed in the `Translations` interface and in both the `en` and `zh-CN` translation objects, but `StoryboardPreviewPanel.tsx` never referenced it.
+
+### Before
+```ts
+// Interface
+storyboardPreviewPanel: {
+  title: string;
+  summaryLabel: string;   // <— unused
+  gridSize: string;
+  // ...
+}
+
+// en
+storyboardPreviewPanel: {
+  title: 'Storyboard Preview',
+  summaryLabel: 'Configuration Summary',
+  // ...
+}
+
+// zh-CN
+storyboardPreviewPanel: {
+  title: '分镜预览',
+  summaryLabel: '配置摘要',
+  // ...
+}
+```
+
+### After
+Removed `summaryLabel` from the interface and both translation objects.
+
+### Verification
+- `npm run type-check` — 0 errors (TypeScript confirms no consumer references the removed key)
+- `npm run test` — all 213 tests pass
+
+---
+
+## Final Validation Summary
+
+| Check | Result |
+|-------|--------|
+| TypeScript compilation | ✅ 0 errors |
+| Full unit-test suite | ✅ 213/213 passed |
+| Structural layout tests | ✅ 18/18 passed |
+| No new runtime dependencies | ✅ Confirmed |
+| i18n keys consistent (zh + en) | ✅ Confirmed |
