@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { computeOptimalGrid } from './gridUtils';
 
 const PRESET_OPTIONS: { label: string; frameCount: number }[] = [
   { label: '2x2', frameCount: 4 },
@@ -9,18 +10,6 @@ const PRESET_OPTIONS: { label: string; frameCount: number }[] = [
   { label: '6x6', frameCount: 36 },
   { label: '8x8', frameCount: 64 },
 ];
-
-/** Compute optimal grid layout (mirrors backend logic). For UI preview only. */
-function computeOptimalGrid(frameCount: number): { rows: number; cols: number } {
-  if (frameCount <= 0 || frameCount === 1) return { rows: 1, cols: 1 };
-
-  let cols = Math.ceil(Math.sqrt(frameCount));
-  while (true) {
-    const rows = Math.ceil(frameCount / cols);
-    if (rows <= cols) return { rows, cols };
-    cols++;
-  }
-}
 
 interface GridSizeSelectorProps {
   value: number;

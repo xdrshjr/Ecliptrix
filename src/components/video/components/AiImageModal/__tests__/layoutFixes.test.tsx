@@ -39,6 +39,22 @@ describe('StoryboardTab layout classes', () => {
   it('left column scrollable area has pl-2 pr-1 safe area', () => {
     expect(src).toContain('flex-1 min-h-0 overflow-y-auto pl-2 pr-1');
   });
+
+  it('input step uses left-right split flex gap-6 h-full container', () => {
+    expect(src).toContain('flex gap-6 h-full');
+  });
+
+  it('input step right panel uses fixed w-64 width', () => {
+    expect(src).toContain('w-64 flex-shrink-0 border-l border-border pl-6 overflow-y-auto');
+  });
+
+  it('imports StoryboardPreviewPanel for the right panel', () => {
+    expect(src).toContain("import StoryboardPreviewPanel from './StoryboardPreviewPanel'");
+  });
+
+  it('imports AspectRatioIcon component', () => {
+    expect(src).toContain("import AspectRatioIcon from './AspectRatioIcon'");
+  });
 });
 
 describe('StoryboardScriptReview chat panel classes', () => {
@@ -74,5 +90,39 @@ describe('SceneModelingTab focus ring safe area', () => {
 
   it('left column has pl-2 pr-1 padding', () => {
     expect(src).toContain('flex-1 min-w-0 space-y-5 overflow-y-auto pl-2 pr-1');
+  });
+});
+
+describe('StoryboardPreviewPanel layout classes', () => {
+  const src = readSource('StoryboardPreviewPanel.tsx');
+
+  it('uses CSS grid for preview cells', () => {
+    expect(src).toContain('grid gap-1');
+  });
+
+  it('root container has overflow-y-auto', () => {
+    expect(src).toContain('overflow-y-auto');
+  });
+
+  it('has aria-label on preview region', () => {
+    expect(src).toContain('aria-label={ariaLabel}');
+  });
+
+  it('limits preview width to max-w-[220px]', () => {
+    expect(src).toContain('max-w-[220px]');
+  });
+});
+
+describe('AspectRatioIcon component existence and usage', () => {
+  const iconSrc = readSource('AspectRatioIcon.tsx');
+  const tabSrc = readSource('StoryboardTab.tsx');
+
+  it('AspectRatioIcon file exists and exports a React component', () => {
+    expect(iconSrc).toContain('export interface AspectRatioIconProps');
+    expect(iconSrc).toContain('const AspectRatioIcon');
+  });
+
+  it('StoryboardTab imports AspectRatioIcon', () => {
+    expect(tabSrc).toContain("import AspectRatioIcon from './AspectRatioIcon'");
   });
 });

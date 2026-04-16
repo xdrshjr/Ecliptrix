@@ -1219,6 +1219,14 @@ export interface Translations {
     queuedPosition: string;
     generationTimeout: string;
   };
+  storyboardPreviewPanel: {
+    title: string;
+    gridSize: string;
+    aspectRatio: string;
+    totalFrames: string;
+    hint: string;
+    ariaLabel: string;
+  };
   welcomeGuide: {
     title: string;
     descriptionWithMaterials: string;
@@ -2697,6 +2705,14 @@ export const translations: Record<string, Translations> = {
       queued: 'Queued',
       queuedPosition: 'position',
       generationTimeout: 'Generation timed out',
+    },
+    storyboardPreviewPanel: {
+      title: 'Storyboard Preview',
+      gridSize: 'Grid size',
+      aspectRatio: 'Aspect ratio',
+      totalFrames: 'Total frames',
+      hint: 'Click "Next" to generate a script for each frame.',
+      ariaLabel: '{aspectRatio} storyboard preview, {rows}×{cols} grid with {frameCount} frames',
     },
    welcomeGuide: {
      title: 'AI Video Editing Assistant',
@@ -4189,6 +4205,14 @@ export const translations: Record<string, Translations> = {
       queued: '排队中',
       queuedPosition: '位置',
       generationTimeout: '生成超时',
+    },
+    storyboardPreviewPanel: {
+      title: '分镜预览',
+      gridSize: '宫格尺寸',
+      aspectRatio: '画面比例',
+      totalFrames: '总帧数',
+      hint: '点击"下一步"为每一格生成剧本。',
+      ariaLabel: '{aspectRatio} 分镜预览，{rows}×{cols} 共 {frameCount} 格',
     },
    welcomeGuide: {
      title: 'AI视频编辑助手',

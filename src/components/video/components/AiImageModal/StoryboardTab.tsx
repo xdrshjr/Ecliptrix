@@ -11,6 +11,8 @@ import {
 import MentionedImageInput from './MentionedImageInput';
 import GridSizeSelector from './GridSizeSelector';
 import StoryboardScriptReview from './StoryboardScriptReview';
+import StoryboardPreviewPanel from './StoryboardPreviewPanel';
+import AspectRatioIcon from './AspectRatioIcon';
 import {
   generateStoryboardScript,
   reviseStoryboardScript,
@@ -23,32 +25,6 @@ const ASPECT_RATIO_PRESETS: { value: StoryboardAspectRatio; label: string; icon:
   { value: '4:3', label: '4:3 横屏', icon: 'landscape' },
   { value: '3:4', label: '3:4 竖屏', icon: 'portrait' },
 ];
-
-const ratioIcon = (icon: string, active: boolean) => {
-  const cls = active ? 'text-white' : 'text-muted-foreground';
-  switch (icon) {
-    case 'square':
-      return (
-        <svg className={`w-3.5 h-3.5 ${cls}`} viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="4" width="16" height="16" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    case 'landscape':
-      return (
-        <svg className={`w-3.5 h-3.5 ${cls}`} viewBox="0 0 24 24" fill="none">
-          <rect x="1" y="5" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    case 'portrait':
-      return (
-        <svg className={`w-3.5 h-3.5 ${cls}`} viewBox="0 0 24 24" fill="none">
-          <rect x="5" y="1" width="14" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    default:
-      return null;
-  }
-};
 
 export interface StoryboardTabState {
   prompt: string;
@@ -78,6 +54,75 @@ function detectLocale(): 'zh' | 'en' {
   }
   return 'zh';
 }
+
+interface ConfigSectionProps {
+  frameCount: number;
+  aspectRatio: StoryboardAspectRatio;
+  referenceImages: MentionedImage[];
+  prompt: string;
+  onChange: React.Dispatch<React.SetStateAction<StoryboardTabState>>;
+  disabled?: boolean;
+  compact?: boolean;
+}
+
+const ConfigSection: React.FC<ConfigSectionProps> = ({
+  frameCount,
+  aspectRatio,
+  referenceImages,
+  prompt,
+  onChange,
+  disabled,
+  compact,
+}) => {
+  return (
+    <div className={compact ? 'space-y-5' : 'space-y-6'}>
+      <GridSizeSelector
+        value={frameCount}
+        onChange={(fc) => onChange((prev) => ({ ...prev, frameCount: fc }))}
+        disabled={disabled}
+      />
+
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-2">画面比例</label>
+        <div className="flex flex-wrap gap-2">
+          {ASPECT_RATIO_PRESETS.map((preset) => {
+            const active = aspectRatio === preset.value;
+            return (
+              <button
+                type="button"
+                key={preset.value}
+                onClick={() => onChange((prev) => ({ ...prev, aspectRatio: preset.value }))}
+                disabled={disabled}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                  active
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-card text-foreground border-border hover:bg-accent'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <AspectRatioIcon variant={preset.icon} active={active} />
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-2">
+          提示词 <span className="text-destructive">*</span>
+        </label>
+        <MentionedImageInput
+          value={prompt}
+          onValueChange={(val) => onChange((prev) => ({ ...prev, prompt: val.slice(0, MAX_PROMPT_LENGTH) }))}
+          referenceImages={referenceImages}
+          onReferenceImagesChange={(imgs) => onChange((prev) => ({ ...prev, referenceImages: imgs }))}
+          placeholder="描述您想要生成的分镜内容... 输入 @ 关联参考图"
+          maxLength={MAX_PROMPT_LENGTH}
+        />
+      </div>
+    </div>
+  );
+};
 
 const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenerate }) => {
   const { prompt, frameCount, aspectRatio, referenceImages } = state;
@@ -218,54 +263,6 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
   const inputsDisabled =
     step === 'script' || step === 'generating' || isScriptLoading;
 
-  const renderConfigSection = (options?: { compact?: boolean }) => (
-    <div className={options?.compact ? 'space-y-5' : 'space-y-6'}>
-      <GridSizeSelector
-        value={frameCount}
-        onChange={(fc) => onChange((prev) => ({ ...prev, frameCount: fc }))}
-        disabled={inputsDisabled}
-      />
-
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-2">画面比例</label>
-        <div className="flex flex-wrap gap-2">
-          {ASPECT_RATIO_PRESETS.map((preset) => {
-            const active = aspectRatio === preset.value;
-            return (
-              <button
-                key={preset.value}
-                onClick={() => onChange((prev) => ({ ...prev, aspectRatio: preset.value }))}
-                disabled={inputsDisabled}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-                  active
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-card text-foreground border-border hover:bg-accent'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {ratioIcon(preset.icon, active)}
-                {preset.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-2">
-          提示词 <span className="text-destructive">*</span>
-        </label>
-        <MentionedImageInput
-          value={prompt}
-          onValueChange={(val) => onChange((prev) => ({ ...prev, prompt: val.slice(0, MAX_PROMPT_LENGTH) }))}
-          referenceImages={referenceImages}
-          onReferenceImagesChange={(imgs) => onChange((prev) => ({ ...prev, referenceImages: imgs }))}
-          placeholder="描述您想要生成的分镜内容... 输入 @ 关联参考图"
-          maxLength={MAX_PROMPT_LENGTH}
-        />
-      </div>
-    </div>
-  );
-
   // Two-column layout for the script review step: config on the left, review on the right.
   if (step === 'script') {
     return (
@@ -277,7 +274,15 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
             <span className="text-xs text-muted-foreground">已锁定</span>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto pl-2 pr-1">
-            {renderConfigSection({ compact: true })}
+            <ConfigSection
+              compact
+              frameCount={frameCount}
+              aspectRatio={aspectRatio}
+              referenceImages={referenceImages}
+              prompt={prompt}
+              onChange={onChange}
+              disabled={inputsDisabled}
+            />
           </div>
         </div>
 
@@ -303,92 +308,111 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
     );
   }
 
-  // Single-column layout for input / generating / success / error.
+  // Unified two-column layout for input / generating / success / error.
   return (
-    <div className="h-full flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className={step === 'input' ? 'min-h-full flex flex-col justify-center py-4' : 'py-4'}>
-          <div className="space-y-6">
-            {renderConfigSection()}
-
-            {step === 'input' && (
-              <div className="space-y-3">
+    <div className="flex gap-6 h-full">
+      {/* Left column */}
+      <div className="flex-1 min-w-0 space-y-5 overflow-y-auto pl-2 pr-1">
+        {step === 'input' && (
+          <>
+            <ConfigSection
+              frameCount={frameCount}
+              aspectRatio={aspectRatio}
+              referenceImages={referenceImages}
+              prompt={prompt}
+              onChange={onChange}
+              disabled={inputsDisabled}
+            />
+            <div className="space-y-3">
+              <button
+                onClick={handleGenerateScript}
+                disabled={!canStartScript}
+                className="w-full py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isScriptLoading ? '正在生成剧本...' : '下一步：生成分镜剧本'}
+              </button>
+              <p className="text-xs text-muted-foreground text-center">
+                将先生成 {frameCount} 幕剧本供确认，画面比例 {aspectRatio}（语言：{locale === 'zh' ? '中文' : 'English'}）
+              </p>
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer hover:text-foreground">高级选项</summary>
                 <button
-                  onClick={handleGenerateScript}
-                  disabled={!canStartScript}
-                  className="w-full py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  type="button"
+                  onClick={handleSkipScript}
+                  disabled={!prompt.trim() || inputsDisabled}
+                  className="mt-2 w-full py-2 text-xs text-foreground bg-secondary border border-border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isScriptLoading ? '正在生成剧本...' : '下一步：生成分镜剧本'}
+                  跳过剧本，直接生成分镜（旧流程）
                 </button>
-                <p className="text-xs text-muted-foreground text-center">
-                  将先生成 {frameCount} 幕剧本供确认，画面比例 {aspectRatio}（语言：{locale === 'zh' ? '中文' : 'English'}）
-                </p>
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer hover:text-foreground">高级选项</summary>
-                  <button
-                    onClick={handleSkipScript}
-                    disabled={!prompt.trim() || inputsDisabled}
-                    className="mt-2 w-full py-2 text-xs text-foreground bg-secondary border border-border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    跳过剧本，直接生成分镜（旧流程）
-                  </button>
-                </details>
-                {scriptError && (
-                  <p className="text-xs text-destructive text-center">{scriptError}</p>
-                )}
-              </div>
-            )}
+              </details>
+              {scriptError && (
+                <p className="text-xs text-destructive text-center">{scriptError}</p>
+              )}
+            </div>
+          </>
+        )}
 
-            {step === 'generating' && (
-              <div className="flex flex-col items-center gap-3 py-4">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-muted-foreground">正在生成 {frameCount} 格分镜...</p>
-                <p className="text-xs text-muted-foreground">AI 正在根据剧本绘制并自动裁剪</p>
-              </div>
-            )}
-
-            {step === 'success' && resultPack && (
-              <div className="border border-border rounded-md p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <img
-                    src={resultPack.originalImageUrl}
-                    alt="分镜大图"
-                    className="w-20 h-20 rounded-md border border-border object-cover flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      已裁剪为 {resultPack.frameCount} 张分镜，并绑定剧本
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {resultPack.prompt}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      宫格: {resultPack.gridSize}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={resetAll}
-                  className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
-                >
-                  继续生成新分镜
-                </button>
-              </div>
-            )}
-
-            {step === 'error' && (
-              <div className="border border-destructive/30 rounded-md p-4 space-y-3">
-                <p className="text-sm text-destructive">{errorMessage}</p>
-                <button
-                  onClick={resetAll}
-                  className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
-                >
-                  重试
-                </button>
-              </div>
-            )}
+        {step === 'generating' && (
+          <div className="flex flex-col items-center justify-center gap-3 h-full min-h-[120px]">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-muted-foreground">正在生成 {frameCount} 格分镜...</p>
+            <p className="text-xs text-muted-foreground">AI 正在根据剧本绘制并自动裁剪</p>
           </div>
-        </div>
+        )}
+
+        {step === 'success' && resultPack && (
+          <div className="flex flex-col justify-center h-full min-h-[120px]">
+            <div className="border border-border rounded-md p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <img
+                  src={resultPack.originalImageUrl}
+                  alt="分镜大图"
+                  className="w-20 h-20 rounded-md border border-border object-cover flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    已裁剪为 {resultPack.frameCount} 张分镜，并绑定剧本
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    {resultPack.prompt}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    宫格: {resultPack.gridSize}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={resetAll}
+                className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
+              >
+                继续生成新分镜
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'error' && (
+          <div className="flex flex-col justify-center h-full min-h-[120px]">
+            <div className="border border-destructive/30 rounded-md p-4 space-y-3">
+              <p className="text-sm text-destructive">{errorMessage}</p>
+              <button
+                onClick={resetAll}
+                className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
+              >
+                重试
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right column: preview panel */}
+      <div className="w-64 flex-shrink-0 border-l border-border pl-6 overflow-y-auto">
+        <StoryboardPreviewPanel
+          frameCount={frameCount}
+          aspectRatio={aspectRatio}
+          locale={locale}
+        />
       </div>
     </div>
   );
