@@ -26,7 +26,7 @@ describe('arkImage API client', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0][0]).toBe('/api/ark-image/generate');
     expect(spy.mock.calls[0][1]).toEqual(params);
-    expect(spy.mock.calls[0][2]).toEqual({ timeoutMs: 120_000 });
+    expect(spy.mock.calls[0][2]).toEqual({ timeoutMs: 300_000 });
     expect(result).toEqual([fakeImg]);
   });
 
