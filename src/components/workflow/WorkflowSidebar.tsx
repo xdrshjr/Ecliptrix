@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface WorkflowItem {
   id: string;
@@ -34,6 +35,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
   const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const { t } = useLocale();
 
   console.log('[WorkflowSidebar] Rendering sidebar:', {
     workflowsCount: workflows.length,
@@ -46,10 +48,10 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
       {/* Header */}
       <div className="px-4 py-4 border-b border-border bg-card">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold text-foreground">Workflows</h2>
+          <h2 className="text-lg font-semibold text-foreground">{t.workflowInterface.sidebar.heading}</h2>
           <button
             className="p-1.5 hover:bg-accent rounded-lg transition-colors"
-            title="Add New Workflow"
+            title={t.workflowInterface.sidebar.addNew}
             onClick={() => {
               console.log('[WorkflowSidebar] Add new workflow clicked');
               onAddWorkflow();
@@ -61,7 +63,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Select or create a workflow
+          {t.workflowInterface.sidebar.subtitle}
         </p>
       </div>
 
@@ -75,7 +77,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
               </svg>
             </div>
             <p className="text-sm text-muted-foreground">
-              No workflows yet
+              {t.workflowInterface.sidebar.emptyState}
             </p>
           </div>
         ) : (
@@ -189,7 +191,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                           }
                         }}
                         className="p-1 hover:bg-primary/10 rounded transition-colors"
-                        title="Edit Workflow Details"
+                        title={t.workflowInterface.sidebar.editDetails}
                       >
                         <svg className="w-3.5 h-3.5 text-muted-foreground hover:text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -209,7 +211,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                                   setShowDeleteConfirm(null);
                                 }}
                                 className="p-1 hover:bg-red-100 rounded transition-colors"
-                                title="Confirm Delete"
+                                title={t.workflowInterface.sidebar.confirmDelete}
                               >
                                 <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -222,7 +224,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                                   setShowDeleteConfirm(null);
                                 }}
                                 className="p-1 hover:bg-accent rounded transition-colors"
-                                title="Cancel"
+                                title={t.common.cancel}
                               >
                                 <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -237,7 +239,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                                 setShowDeleteConfirm(workflow.id);
                               }}
                               className="p-1 hover:bg-red-50 rounded transition-colors"
-                              title="Delete Workflow"
+                              title={t.workflowInterface.sidebar.deleteWorkflow}
                             >
                               <svg className="w-3.5 h-3.5 text-muted-foreground hover:text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -259,9 +261,9 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
       {/* Footer Info */}
       <div className="px-4 py-3 border-t border-border bg-card">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{workflows.length} workflow{workflows.length !== 1 ? 's' : ''}</span>
+          <span>{t.workflowInterface.sidebar.workflowCount.replace('{count}', String(workflows.length))}</span>
           {activeWorkflowId && (
-            <span className="text-primary font-medium">Active</span>
+            <span className="text-primary font-medium">{t.workflowInterface.sidebar.active}</span>
           )}
         </div>
       </div>

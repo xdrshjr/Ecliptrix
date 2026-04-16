@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { WorkflowExecutionLog, WorkflowNodeExecutionState } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface WorkflowLogPanelProps {
   logs: WorkflowExecutionLog[];
@@ -22,6 +23,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
 }) => {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(true);
+  const { t } = useLocale();
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -85,7 +87,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
         const inputStr = JSON.stringify(details.input, null, 2);
         return (
           <div className="mt-1 text-xs">
-            <span className="font-semibold text-foreground">Input:</span>
+            <span className="font-semibold text-foreground">{t.workflowInterface.logPanel.input}:</span>
             <pre className="inline-block text-muted-foreground whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
               {inputStr}
             </pre>
@@ -96,7 +98,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
         const outputStr = JSON.stringify(details.output, null, 2);
         return (
           <div className="mt-1 text-xs">
-            <span className="font-semibold text-foreground">Output:</span>
+            <span className="font-semibold text-foreground">{t.workflowInterface.logPanel.output}:</span>
             <pre className="inline-block text-muted-foreground whitespace-pre-wrap break-words font-mono max-w-full overflow-hidden">
               {outputStr}
             </pre>
@@ -110,7 +112,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
         return (
           <details className="mt-1 group">
             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground font-medium transition-colors select-none">
-              View details
+              {t.workflowInterface.logPanel.viewDetails}
             </summary>
             <pre className="mt-2 text-xs bg-card p-3 rounded-md border border-border overflow-x-auto max-h-40 overflow-y-auto font-mono break-words max-w-full">
               {detailsStr}
@@ -139,7 +141,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1 hover:bg-accent rounded-md transition-colors"
-            title={isExpanded ? "Collapse" : "Expand"}
+            title={isExpanded ? t.workflowInterface.logPanel.collapse : t.workflowInterface.logPanel.expand}
           >
             <svg 
               className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} 
@@ -154,19 +156,19 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
           <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <h3 className="text-sm font-semibold text-foreground">Execution Logs</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t.workflowInterface.logPanel.title}</h3>
         </div>
         
         <div className="flex items-center space-x-3">
           {isRunning && (
             <div className="flex items-center space-x-2 px-3 py-1 bg-primary/10 border border-primary/30 rounded-full">
               <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-              <span className="text-xs text-primary font-medium">Running</span>
+              <span className="text-xs text-primary font-medium">{t.workflowInterface.logPanel.running}</span>
             </div>
           )}
           {currentNodeId && (
             <div className="text-xs text-muted-foreground">
-              Current: <span className="text-foreground font-medium">{nodeStates[currentNodeId]?.nodeId}</span>
+              {t.workflowInterface.logPanel.current}: <span className="text-foreground font-medium">{nodeStates[currentNodeId]?.nodeId}</span>
             </div>
           )}
         </div>
@@ -181,8 +183,8 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
                 <svg className="w-12 h-12 mx-auto mb-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-sm text-muted-foreground font-medium">No logs yet</p>
-                <p className="text-xs mt-1 text-muted-foreground">Click Run to start workflow execution</p>
+                <p className="text-sm text-muted-foreground font-medium">{t.workflowInterface.logPanel.noLogs}</p>
+                <p className="text-xs mt-1 text-muted-foreground">{t.workflowInterface.logPanel.clickRunToStart}</p>
               </div>
             </div>
           ) : (
@@ -236,19 +238,19 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
       {logs.length > 0 && isExpanded && (
         <div className="px-4 py-2 bg-muted border-t border-border text-xs text-muted-foreground">
           <div className="flex items-center justify-between">
-            <span className="font-medium">Total logs: {logs.length}</span>
+            <span className="font-medium">{t.workflowInterface.logPanel.totalLogs.replace('{count}', String(logs.length))}</span>
             <div className="flex items-center space-x-4">
               <span className="flex items-center space-x-1.5">
                 <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                <span>{logs.filter(l => l.level === 'error').length} errors</span>
+                <span>{t.workflowInterface.logPanel.errors.replace('{count}', String(logs.filter(l => l.level === 'error').length))}</span>
               </span>
               <span className="flex items-center space-x-1.5">
                 <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                <span>{logs.filter(l => l.level === 'warning').length} warnings</span>
+                <span>{t.workflowInterface.logPanel.warnings.replace('{count}', String(logs.filter(l => l.level === 'warning').length))}</span>
               </span>
               <span className="flex items-center space-x-1.5">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span>{logs.filter(l => l.level === 'success').length} success</span>
+                <span>{t.workflowInterface.logPanel.success.replace('{count}', String(logs.filter(l => l.level === 'success').length))}</span>
               </span>
             </div>
           </div>

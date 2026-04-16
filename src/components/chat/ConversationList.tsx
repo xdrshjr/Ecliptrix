@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Conversation } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -18,6 +19,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
   onDeleteConversation,
   onNewChatClick,
 }) => {
+  const { t } = useLocale();
   const handleDeleteClick = (e: React.MouseEvent, conversationId: string) => {
     e.stopPropagation();
     onDeleteConversation(conversationId);
@@ -27,11 +29,11 @@ const ConversationList: React.FC<ConversationListProps> = ({
     <div className="flex flex-col h-full">
       {/* Header - Aligned with ChatWindow header */}
       <div className="px-4 py-4 border-b border-border bg-card flex items-center justify-between h-[74px]">
-        <h2 className="text-sm font-semibold text-foreground">Conversations</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t.aiChat.conversationList.heading}</h2>
         <button
           onClick={onNewChatClick}
           className="w-8 h-8 bg-primary text-primary-foreground rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--primary-hover)] group"
-          title="New Chat"
+          title={t.aiChat.conversationList.newChat}
         >
           <svg className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -48,8 +50,8 @@ const ConversationList: React.FC<ConversationListProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-foreground">No conversations yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Start a new chat to begin</p>
+            <p className="text-sm font-medium text-foreground">{t.aiChat.conversationList.noConversations}</p>
+            <p className="text-xs text-muted-foreground mt-1">{t.aiChat.conversationList.startNewChat}</p>
           </div>
         ) : (
           <div className="p-2">
@@ -81,7 +83,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                           </svg>
                           <span className="text-xs text-primary font-medium">
-                            Chatbot
+                            {t.aiChat.conversationList.chatbot}
                           </span>
                         </>
                       )}
@@ -101,7 +103,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                           </svg>
                           <span className="text-xs text-green-500 font-medium">
-                            AI Agent
+                            {t.aiChat.conversationList.aiAgent}
                           </span>
                         </>
                       )}
@@ -124,7 +126,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
                           ? 'text-primary'
                           : 'text-muted-foreground'
                       }`}>
-                        {conversation.messages.length} messages
+                        {t.aiChat.conversationList.messages.replace('{count}', String(conversation.messages.length))}
                       </span>
                       <span className="text-xs text-muted-foreground">•</span>
                       <span className="text-xs text-muted-foreground">

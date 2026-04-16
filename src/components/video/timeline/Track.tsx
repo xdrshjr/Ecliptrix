@@ -61,6 +61,18 @@ const Track: React.FC<TrackProps> = ({
   // Guard: track not found
   if (!track) return null;
 
+  // Derived display name (locale-aware)
+  const trackDisplayName = (() => {
+    const id = track.id;
+    const match = id.match(/-(\d+)$/);
+    const num = match ? parseInt(match[1]) : 0;
+    if (id.startsWith('image-track')) return num > 0 ? `${t.timeline.track.imageTrack} ${num}` : t.timeline.track.imageTrack;
+    if (id.startsWith('video-track')) return num > 0 ? `${t.timeline.track.videoTrack} ${num}` : t.timeline.track.videoTrack;
+    if (id.startsWith('audio-track')) return num > 0 ? `${t.timeline.track.audioTrack} ${num}` : t.timeline.track.audioTrack;
+    if (id.startsWith('subtitle-track')) return num > 0 ? `${t.timeline.track.subtitleTrack} ${num}` : t.timeline.track.subtitleTrack;
+    return track.name;
+  })();
+
   // Derived
   const isDragOver = materialDragOver?.trackId === trackId;
   const allItemsSelected = track.items.length > 0 && track.items.every(item => selectedItems.includes(item.id));
@@ -229,8 +241,8 @@ const Track: React.FC<TrackProps> = ({
             <div className={`${getTrackColor()}`}>
               {getTrackIcon()}
             </div>
-            <span className="text-xs font-medium text-foreground truncate" title={track.name}>
-              {track.name}
+            <span className="text-xs font-medium text-foreground truncate" title={trackDisplayName}>
+              {trackDisplayName}
             </span>
           </div>
 
@@ -247,7 +259,7 @@ const Track: React.FC<TrackProps> = ({
                       ? 'bg-accent text-muted-foreground hover:bg-accent'
                       : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
-                  aria-label={`${t.timeline.toolbar.volumeControl} - ${track.name}`}
+                  aria-label={`${t.timeline.toolbar.volumeControl} - ${trackDisplayName}`}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     {track.volume === 0 ? (
@@ -461,7 +473,7 @@ const Track: React.FC<TrackProps> = ({
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                <span className="text-xs">{t.timeline.track.dropToTrack.replace('{trackName}', track.name)}</span>
+                <span className="text-xs">{t.timeline.track.dropToTrack.replace('{trackName}', trackDisplayName)}</span>
               </div>
             </div>
           </div>

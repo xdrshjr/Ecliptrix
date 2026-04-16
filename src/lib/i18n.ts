@@ -498,6 +498,112 @@ export interface Translations {
   workflowInterface: {
     chatInterfaceTab: string;
     workflowInterfaceTab: string;
+    sidebar: {
+      heading: string;
+      addNew: string;
+      subtitle: string;
+      emptyState: string;
+      editDetails: string;
+      confirmDelete: string;
+      deleteWorkflow: string;
+      workflowCount: string;
+      active: string;
+    };
+    canvas: {
+      contextMenu: {
+        addStartNode: string;
+        addEndNode: string;
+        addChatLLM: string;
+        addTextInput: string;
+        addPexelsVideoSearch: string;
+        addTavilySearch: string;
+        addVolcanoTTS: string;
+        addToArray: string;
+        addResultsCombine: string;
+        addAIVideoGenerate: string;
+        addVideoExport: string;
+      };
+      nodeDefaults: {
+        start: string;
+        end: string;
+        chatLLM: string;
+        textInput: string;
+        pexelsSearch: string;
+        tavilySearch: string;
+        volcanoTTS: string;
+        toArray: string;
+        resultsCombine: string;
+        aiVideoGenerate: string;
+        videoExport: string;
+      };
+      emptyState: {
+        title: string;
+        description: string;
+      };
+      toolbar: {
+        zoomOut: string;
+        zoomIn: string;
+        panMode: string;
+        exitPanMode: string;
+        resetView: string;
+      };
+      infoBar: {
+        nodes: string;
+        connections: string;
+        nodeSelected: string;
+        connectionSelected: string;
+      };
+    };
+    editor: {
+      save: string;
+      saving: string;
+      run: string;
+      stop: string;
+      loading: string;
+      noWorkflowSelected: string;
+      selectWorkflowPrompt: string;
+      description: string;
+      viewDescription: string;
+    };
+    notifications: {
+      loadedWorkflows: string;
+      failedToLoad: string;
+      pleaseLoginToCreate: string;
+      newWorkflowDefaultName: string;
+      workflowCreated: string;
+      workflowCreatedSaveFailed: string;
+      pleaseLoginToRename: string;
+      workflowRenamed: string;
+      workflowRenamedSaveFailed: string;
+      pleaseLoginToSaveChanges: string;
+      workflowNotFound: string;
+      workflowUpdated: string;
+      workflowUpdatedSaveFailed: string;
+      pleaseLoginToDelete: string;
+      cannotDeleteLast: string;
+      workflowDeleted: string;
+      failedToDelete: string;
+      pleaseLoginToSave: string;
+      noActiveWorkflow: string;
+      workflowSaved: string;
+      workflowSaveFailed: string;
+    };
+    logPanel: {
+      title: string;
+      collapse: string;
+      expand: string;
+      running: string;
+      current: string;
+      noLogs: string;
+      clickRunToStart: string;
+      input: string;
+      output: string;
+      viewDetails: string;
+      totalLogs: string;
+      errors: string;
+      warnings: string;
+      success: string;
+    };
   };
   welcome: {
     title: string;
@@ -580,6 +686,9 @@ export interface Translations {
       dropAudioHere: string;
       dropSubtitleHere: string;
       dropToTrack: string;
+      copyOf: string;
+      noTracks: string;
+      noTracksDescription: string;
     };
     messages: {
       noAudioItems: string;
@@ -1539,6 +1648,15 @@ export interface Translations {
     sendMessageTooltip: string;
     aiReplying: string;
     enterToSendHint: string;
+    conversationList: {
+      heading: string;
+      newChat: string;
+      noConversations: string;
+      startNewChat: string;
+      chatbot: string;
+      aiAgent: string;
+      messages: string;
+    };
   };
 }
 
@@ -2043,6 +2161,112 @@ export const translations: Record<string, Translations> = {
     workflowInterface: {
       chatInterfaceTab: 'Chat Interface',
       workflowInterfaceTab: 'Workflow Interface',
+      sidebar: {
+        heading: 'Workflows',
+        addNew: 'Add New Workflow',
+        subtitle: 'Select or create a workflow',
+        emptyState: 'No workflows yet',
+        editDetails: 'Edit Workflow Details',
+        confirmDelete: 'Confirm Delete',
+        deleteWorkflow: 'Delete Workflow',
+        workflowCount: '{count} workflow(s)',
+        active: 'Active',
+      },
+      canvas: {
+        contextMenu: {
+          addStartNode: 'Add Start Node',
+          addEndNode: 'Add End Node',
+          addChatLLM: 'Add Chat LLM',
+          addTextInput: 'Add Text Input',
+          addPexelsVideoSearch: 'Add Pexels Video Search',
+          addTavilySearch: 'Add Tavily Search',
+          addVolcanoTTS: 'Add Volcano TTS',
+          addToArray: 'Add To Array',
+          addResultsCombine: 'Add Results Combine',
+          addAIVideoGenerate: 'Add AI Video Generate',
+          addVideoExport: 'Add Video Export',
+        },
+        nodeDefaults: {
+          start: 'Start',
+          end: 'End',
+          chatLLM: 'Chat LLM',
+          textInput: 'Text Input',
+          pexelsSearch: 'Pexels Video Search',
+          tavilySearch: 'Tavily Search',
+          volcanoTTS: 'Volcano TTS',
+          toArray: 'To Array',
+          resultsCombine: 'Results Combine',
+          aiVideoGenerate: 'AI Video Generate',
+          videoExport: 'Video Export',
+        },
+        emptyState: {
+          title: 'Start Building Your Workflow',
+          description: 'Right-click anywhere on the canvas to add your first node',
+        },
+        toolbar: {
+          zoomOut: 'Zoom Out',
+          zoomIn: 'Zoom In',
+          panMode: 'Enter Pan Mode (Drag Canvas)',
+          exitPanMode: 'Exit Pan Mode (Switch to Node Drag Mode)',
+          resetView: 'Reset View',
+        },
+        infoBar: {
+          nodes: 'Nodes',
+          connections: 'Connections',
+          nodeSelected: 'Node Selected',
+          connectionSelected: 'Connection Selected',
+        },
+      },
+      editor: {
+        save: 'Save',
+        saving: 'Saving...',
+        run: 'Run',
+        stop: 'Stop',
+        loading: 'Loading workflow...',
+        noWorkflowSelected: 'No Workflow Selected',
+        selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
+        description: 'Description',
+        viewDescription: 'View description',
+      },
+      notifications: {
+        loadedWorkflows: 'Loaded {count} workflow(s)',
+        failedToLoad: 'Failed to load workflows',
+        pleaseLoginToCreate: 'Please login to create workflows',
+        newWorkflowDefaultName: 'New Workflow',
+        workflowCreated: 'Workflow "{name}" created successfully',
+        workflowCreatedSaveFailed: 'Workflow created but failed to save. Please save it manually.',
+        pleaseLoginToRename: 'Please login to rename workflows',
+        workflowRenamed: 'Workflow renamed to "{name}"',
+        workflowRenamedSaveFailed: 'Workflow renamed but failed to save. Please save it manually.',
+        pleaseLoginToSaveChanges: 'Please login to save workflow changes',
+        workflowNotFound: 'Workflow not found',
+        workflowUpdated: 'Workflow "{name}" updated successfully',
+        workflowUpdatedSaveFailed: 'Workflow updated locally but failed to save to database. Please save it manually.',
+        pleaseLoginToDelete: 'Please login to delete workflows',
+        cannotDeleteLast: 'Cannot delete the last workflow',
+        workflowDeleted: 'Workflow "{name}" deleted successfully',
+        failedToDelete: 'Failed to delete workflow',
+        pleaseLoginToSave: 'Please login to save workflows',
+        noActiveWorkflow: 'No active workflow to save',
+        workflowSaved: 'Workflow "{name}" saved successfully (v{version})',
+        workflowSaveFailed: 'Failed to save workflow',
+      },
+      logPanel: {
+        title: 'Execution Logs',
+        collapse: 'Collapse',
+        expand: 'Expand',
+        running: 'Running',
+        current: 'Current',
+        noLogs: 'No logs yet',
+        clickRunToStart: 'Click Run to start workflow execution',
+        input: 'Input',
+        output: 'Output',
+        viewDetails: 'View details',
+        totalLogs: 'Total logs: {count}',
+        errors: '{count} errors',
+        warnings: '{count} warnings',
+        success: '{count} success',
+      },
     },
     welcome: {
       title: 'Welcome to Ecliptrix',
@@ -2288,6 +2512,9 @@ export const translations: Record<string, Translations> = {
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
         dropToTrack: 'Drop to {trackName}',
+        copyOf: '{name} (Copy)',
+        noTracks: 'No tracks yet',
+        noTracksDescription: 'Start creating your first track by adding video, audio, or subtitle materials',
       },
       messages: {
         noAudioItems: 'No audio items found, please add audio to the timeline first.',
@@ -3099,6 +3326,15 @@ export const translations: Record<string, Translations> = {
       sendMessageTooltip: 'Send message',
       aiReplying: 'AI is replying...',
       enterToSendHint: 'Press Enter to send, Shift + Enter for new line',
+      conversationList: {
+        heading: 'Conversations',
+        newChat: 'New Chat',
+        noConversations: 'No conversations yet',
+        startNewChat: 'Start a new chat to begin',
+        chatbot: 'Chatbot',
+        aiAgent: 'AI Agent',
+        messages: '{count} message(s)',
+      },
     },
   },
   'zh-CN': {
@@ -3601,6 +3837,112 @@ export const translations: Record<string, Translations> = {
     workflowInterface: {
       chatInterfaceTab: '聊天界面',
       workflowInterfaceTab: '工作流界面',
+      sidebar: {
+        heading: '工作流',
+        addNew: '添加新工作流',
+        subtitle: '选择或创建一个工作流',
+        emptyState: '暂无工作流',
+        editDetails: '编辑工作流详情',
+        confirmDelete: '确认删除',
+        deleteWorkflow: '删除工作流',
+        workflowCount: '{count} 个工作流',
+        active: '活跃',
+      },
+      canvas: {
+        contextMenu: {
+          addStartNode: '添加开始节点',
+          addEndNode: '添加结束节点',
+          addChatLLM: '添加聊天 LLM',
+          addTextInput: '添加文本输入',
+          addPexelsVideoSearch: '添加 Pexels 视频搜索',
+          addTavilySearch: '添加 Tavily 搜索',
+          addVolcanoTTS: '添加火山 TTS',
+          addToArray: '添加转换为数组',
+          addResultsCombine: '添加结果合并',
+          addAIVideoGenerate: '添加 AI 视频生成',
+          addVideoExport: '添加视频导出',
+        },
+        nodeDefaults: {
+          start: '开始',
+          end: '结束',
+          chatLLM: '聊天 LLM',
+          textInput: '文本输入',
+          pexelsSearch: 'Pexels 视频搜索',
+          tavilySearch: 'Tavily 搜索',
+          volcanoTTS: '火山 TTS',
+          toArray: '转换为数组',
+          resultsCombine: '结果合并',
+          aiVideoGenerate: 'AI 视频生成',
+          videoExport: '视频导出',
+        },
+        emptyState: {
+          title: '开始构建您的工作流',
+          description: '右键点击画布任意位置添加您的第一个节点',
+        },
+        toolbar: {
+          zoomOut: '缩小',
+          zoomIn: '放大',
+          panMode: '平移模式（拖拽画布）',
+          exitPanMode: '退出平移模式（切换到节点拖拽）',
+          resetView: '重置视图',
+        },
+        infoBar: {
+          nodes: '节点',
+          connections: '连接',
+          nodeSelected: '已选中节点',
+          connectionSelected: '已选中连接',
+        },
+      },
+      editor: {
+        save: '保存',
+        saving: '保存中...',
+        run: '运行',
+        stop: '停止',
+        loading: '加载工作流...',
+        noWorkflowSelected: '未选择工作流',
+        selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
+        description: '描述',
+        viewDescription: '查看描述',
+      },
+      notifications: {
+        loadedWorkflows: '已加载 {count} 个工作流',
+        failedToLoad: '加载工作流失败',
+        pleaseLoginToCreate: '请先登录以创建工作流',
+        newWorkflowDefaultName: '新工作流',
+        workflowCreated: '工作流 "{name}" 创建成功',
+        workflowCreatedSaveFailed: '工作流已创建但保存失败，请手动保存。',
+        pleaseLoginToRename: '请先登录以重命名工作流',
+        workflowRenamed: '工作流已重命名为 "{name}"',
+        workflowRenamedSaveFailed: '工作流已重命名但保存失败，请手动保存。',
+        pleaseLoginToSaveChanges: '请先登录以保存工作流更改',
+        workflowNotFound: '未找到工作流',
+        workflowUpdated: '工作流 "{name}" 更新成功',
+        workflowUpdatedSaveFailed: '工作流已在本地更新但保存到数据库失败，请手动保存。',
+        pleaseLoginToDelete: '请先登录以删除工作流',
+        cannotDeleteLast: '无法删除最后一个工作流',
+        workflowDeleted: '工作流 "{name}" 已成功删除',
+        failedToDelete: '删除工作流失败',
+        pleaseLoginToSave: '请先登录以保存工作流',
+        noActiveWorkflow: '没有活跃的工作流可保存',
+        workflowSaved: '工作流 "{name}" 已成功保存 (v{version})',
+        workflowSaveFailed: '保存工作流失败',
+      },
+      logPanel: {
+        title: '执行日志',
+        collapse: '收起',
+        expand: '展开',
+        running: '运行中',
+        current: '当前',
+        noLogs: '暂无日志',
+        clickRunToStart: '点击运行按钮开始执行工作流',
+        input: '输入',
+        output: '输出',
+        viewDetails: '查看详情',
+        totalLogs: '总计日志: {count}',
+        errors: '{count} 个错误',
+        warnings: '{count} 个警告',
+        success: '{count} 个成功',
+      },
     },
     welcome: {
       title: '欢迎使用 Ecliptrix',
@@ -3846,6 +4188,9 @@ export const translations: Record<string, Translations> = {
         dropAudioHere: '拖拽音频素材到此轨道',
         dropSubtitleHere: '拖拽字幕素材到此轨道',
         dropToTrack: '放置到 {trackName}',
+        copyOf: '{name} (副本)',
+        noTracks: '暂无轨道',
+        noTracksDescription: '开始创建您的第一个轨道，添加视频、音频或字幕素材',
       },
               messages: {
           noAudioItems: '没有找到音频项目，请先添加音频到时间轴。',
@@ -4657,6 +5002,15 @@ export const translations: Record<string, Translations> = {
       sendMessageTooltip: '发送消息',
       aiReplying: 'AI 正在回复中...',
       enterToSendHint: '按 Enter 发送，Shift + Enter 换行',
+      conversationList: {
+        heading: '对话列表',
+        newChat: '新对话',
+        noConversations: '暂无对话',
+        startNewChat: '开始新对话',
+        chatbot: '聊天机器人',
+        aiAgent: 'AI 代理',
+        messages: '{count} 条消息',
+      },
     },
   },
 };

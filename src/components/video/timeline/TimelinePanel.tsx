@@ -470,7 +470,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         copies.push({
           ...original,
           id: newId,
-          name: `${original.name} (副本)`,
+          name: t.timeline.track.copyOf.replace('{name}', original.name),
           startTime: placementTime,
         });
         newSelectedIds.push(newId);

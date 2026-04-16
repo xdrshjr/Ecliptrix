@@ -23,6 +23,7 @@ import ToArrayConfigPanel from './ToArrayConfigPanel';
 import ResultsCombineConfigPanel from './ResultsCombineConfigPanel';
 import AIVideoGenerateConfigPanel from './AIVideoGenerateConfigPanel';
 import VideoExportConfigPanel from './VideoExportConfigPanel';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface WorkflowCanvasProps {
   nodes: WorkflowNode[];
@@ -51,6 +52,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   onNodesAndConnectionsChange,
   nodeExecutionStates = {},
 }) => {
+  const { t } = useLocale();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -196,7 +198,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Start',
+        label: t.workflowInterface.canvas.nodeDefaults.start,
         type: 'start',
       },
     };
@@ -220,7 +222,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'End',
+        label: t.workflowInterface.canvas.nodeDefaults.end,
         type: 'end',
       },
     };
@@ -244,7 +246,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Chat LLM',
+        label: t.workflowInterface.canvas.nodeDefaults.chatLLM,
         type: 'chat-llm',
         config: {
           model: 'gpt-4',
@@ -273,7 +275,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Text Input',
+        label: t.workflowInterface.canvas.nodeDefaults.textInput,
         type: 'text-input',
         config: {
           content: '',
@@ -300,7 +302,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Pexels Video Search',
+        label: t.workflowInterface.canvas.nodeDefaults.pexelsSearch,
         type: 'pexels-video-search',
         config: {
           keywords: '',
@@ -328,7 +330,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Tavily Search',
+        label: t.workflowInterface.canvas.nodeDefaults.tavilySearch,
         type: 'tavily-search',
         config: {
           keywords: '',
@@ -356,7 +358,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Volcano TTS',
+        label: t.workflowInterface.canvas.nodeDefaults.volcanoTTS,
         type: 'volcano-tts',
         config: {
           text: '',
@@ -385,7 +387,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'To Array',
+        label: t.workflowInterface.canvas.nodeDefaults.toArray,
         type: 'to-array',
         config: {
           systemPrompt: 'You are a data conversion assistant. Convert the input data into a clean JSON array format. Extract relevant items from the input and structure them as an array. Respond ONLY with a valid JSON array, no additional text or explanation.',
@@ -415,7 +417,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Results Combine',
+        label: t.workflowInterface.canvas.nodeDefaults.resultsCombine,
         type: 'results-combine',
         config: {
           systemPrompt: 'You are a data standardization assistant. Transform the input data into a standardized format according to the defined schema. Extract and normalize relevant information. Respond ONLY with a valid JSON object matching the schema, no additional text or explanation.',
@@ -446,7 +448,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'AI Video Generate',
+        label: t.workflowInterface.canvas.nodeDefaults.aiVideoGenerate,
         type: 'ai-video-generate',
         config: {
           textInput: '',
@@ -483,7 +485,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         y: contextMenu.y / scale - canvasOffset.y,
       },
       data: {
-        label: 'Video Export',
+        label: t.workflowInterface.canvas.nodeDefaults.videoExport,
         type: 'video-export',
         config: {
           videoUrls: '',
@@ -1303,7 +1305,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="text-sm text-foreground">Add Start Node</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addStartNode}</span>
             </button>
             
             <button
@@ -1314,7 +1316,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
               </svg>
-              <span className="text-sm text-foreground">Add End Node</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addEndNode}</span>
             </button>
             
             <div className="h-px bg-border my-1" />
@@ -1326,7 +1328,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
-              <span className="text-sm text-foreground">Add Chat LLM</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addChatLLM}</span>
             </button>
             
             <button
@@ -1336,7 +1338,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              <span className="text-sm text-foreground">Add Text Input</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addTextInput}</span>
             </button>
             
             <div className="h-px bg-border my-1" />
@@ -1348,7 +1350,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              <span className="text-sm text-foreground">Add Pexels Video Search</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addPexelsVideoSearch}</span>
             </button>
             
             <button
@@ -1358,7 +1360,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span className="text-sm text-foreground">Add Tavily Search</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addTavilySearch}</span>
             </button>
             
             <div className="h-px bg-border my-1" />
@@ -1370,7 +1372,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
-              <span className="text-sm text-foreground">Add Volcano TTS</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addVolcanoTTS}</span>
             </button>
             
             <div className="h-px bg-border my-1" />
@@ -1382,7 +1384,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
-              <span className="text-sm text-foreground">Add To Array</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addToArray}</span>
             </button>
             
             <button
@@ -1392,7 +1394,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
-              <span className="text-sm text-foreground">Add Results Combine</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addResultsCombine}</span>
             </button>
             
             <div className="h-px bg-border my-1" />
@@ -1405,7 +1407,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="text-sm text-foreground">Add AI Video Generate</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addAIVideoGenerate}</span>
             </button>
             
             <button
@@ -1415,7 +1417,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              <span className="text-sm text-foreground">Add Video Export</span>
+              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addVideoExport}</span>
             </button>
           </div>
         )}
@@ -1430,10 +1432,10 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">
-                Start Building Your Workflow
+                {t.workflowInterface.canvas.emptyState.title}
               </h3>
               <p className="text-sm text-muted-foreground">
-                Right-click anywhere on the canvas to add your first node
+                {t.workflowInterface.canvas.emptyState.description}
               </p>
             </div>
           </div>
@@ -1449,7 +1451,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             setScale(newScale);
           }}
           className="p-2 hover:bg-accent rounded transition-colors"
-          title="Zoom Out"
+          title={t.workflowInterface.canvas.toolbar.zoomOut}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
@@ -1467,7 +1469,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             setScale(newScale);
           }}
           className="p-2 hover:bg-accent rounded transition-colors"
-          title="Zoom In"
+          title={t.workflowInterface.canvas.toolbar.zoomIn}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
@@ -1483,7 +1485,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               ? 'bg-primary/15 text-primary hover:bg-primary/25'
               : 'hover:bg-accent text-foreground'
           }`}
-          title={isPanMode ? "Exit Pan Mode (Switch to Node Drag Mode)" : "Enter Pan Mode (Drag Canvas)"}
+          title={isPanMode ? t.workflowInterface.canvas.toolbar.exitPanMode : t.workflowInterface.canvas.toolbar.panMode}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
@@ -1499,7 +1501,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             setCanvasOffset({ x: 0, y: 0 });
           }}
           className="p-2 hover:bg-accent rounded transition-colors"
-          title="Reset View"
+          title={t.workflowInterface.canvas.toolbar.resetView}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1510,19 +1512,19 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       {/* Info Bar */}
       <div className="absolute bottom-4 left-4 bg-card rounded-md border border-border px-4 py-2 text-xs text-muted-foreground">
         <div className="flex items-center space-x-4">
-          <span>Nodes: {nodes.length}</span>
+          <span>{t.workflowInterface.canvas.infoBar.nodes}: {nodes.length}</span>
           <span>•</span>
-          <span>Connections: {connections.length}</span>
+          <span>{t.workflowInterface.canvas.infoBar.connections}: {connections.length}</span>
           {selectedNodeId && (
             <>
               <span>•</span>
-              <span className="text-primary font-medium">Node Selected</span>
+              <span className="text-primary font-medium">{t.workflowInterface.canvas.infoBar.nodeSelected}</span>
             </>
           )}
           {selectedConnectionId && (
             <>
               <span>•</span>
-              <span className="text-red-600 font-medium">Connection Selected</span>
+              <span className="text-red-600 font-medium">{t.workflowInterface.canvas.infoBar.connectionSelected}</span>
             </>
           )}
         </div>

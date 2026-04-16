@@ -184,14 +184,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           console.log('[WorkflowInterface] Setting loaded workflows as content');
           onUpdateContent(loadedContent);
           
-          notification.showSuccess(`Loaded ${workflows.length} workflow(s)`, 2000);
+          notification.showSuccess(t.workflowInterface.notifications.loadedWorkflows.replace('{count}', String(workflows.length)), 2000);
         } else {
           console.log('[WorkflowInterface] No workflows found, initializing default');
           initializeDefaultContent();
         }
       } catch (error) {
         console.error('[WorkflowInterface] Error loading workflows:', error);
-        notification.showError('Failed to load workflows', 3000);
+        notification.showError(t.workflowInterface.notifications.failedToLoad, 3000);
         initializeDefaultContent();
       }
     };
@@ -267,12 +267,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     
     // Check authentication
     if (!isAuthenticated || !user) {
-      notification.showWarning('Please login to create workflows', 3000);
+      notification.showWarning(t.workflowInterface.notifications.pleaseLoginToCreate, 3000);
       return;
     }
     
     const newWorkflowId = `workflow-${Date.now()}`;
-    const defaultName = 'New Workflow';
+    const defaultName = t.workflowInterface.notifications.newWorkflowDefaultName;
     
     console.log('[WorkflowInterface] Adding new workflow:', {
       workflowId: newWorkflowId,
@@ -327,12 +327,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           version: response.data.version,
         });
         
-        notification.showSuccess(`Workflow "${defaultName}" created successfully`, 2000);
+        notification.showSuccess(t.workflowInterface.notifications.workflowCreated.replace('{name}', defaultName), 2000);
       }
     } catch (error) {
       console.error('[WorkflowInterface] Error auto-saving new workflow:', error);
       notification.showError(
-        'Workflow created but failed to save. Please save it manually.',
+        t.workflowInterface.notifications.workflowCreatedSaveFailed,
         4000
       );
     }
@@ -344,7 +344,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     
     // Check authentication
     if (!isAuthenticated || !user) {
-      notification.showWarning('Please login to rename workflows', 3000);
+      notification.showWarning(t.workflowInterface.notifications.pleaseLoginToRename, 3000);
       return;
     }
     
@@ -406,12 +406,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           version: response.data.version,
         });
         
-        notification.showSuccess(`Workflow renamed to "${newName}"`, 2000);
+        notification.showSuccess(t.workflowInterface.notifications.workflowRenamed.replace('{name}', newName), 2000);
       }
     } catch (error) {
       console.error('[WorkflowInterface] Error auto-saving renamed workflow:', error);
       notification.showError(
-        'Workflow renamed but failed to save. Please save it manually.',
+        t.workflowInterface.notifications.workflowRenamedSaveFailed,
         4000
       );
     }
@@ -430,7 +430,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     
     // Check authentication
     if (!isAuthenticated || !user) {
-      notification.showWarning('Please login to save workflow changes', 3000);
+      notification.showWarning(t.workflowInterface.notifications.pleaseLoginToSaveChanges, 3000);
       return;
     }
     
@@ -444,7 +444,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     const workflowToUpdate = content.workflows.find(w => w.id === editingWorkflowId);
     if (!workflowToUpdate) {
       console.error('[WorkflowInterface] Workflow not found for saving:', editingWorkflowId);
-      notification.showError('Workflow not found', 3000);
+      notification.showError(t.workflowInterface.notifications.workflowNotFound, 3000);
       return;
     }
     
@@ -489,12 +489,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           version: response.data.version,
         });
         
-        notification.showSuccess(`Workflow "${name}" updated successfully`, 2000);
+        notification.showSuccess(t.workflowInterface.notifications.workflowUpdated.replace('{name}', name), 2000);
       }
     } catch (error) {
       console.error('[WorkflowInterface] Error saving workflow changes:', error);
       notification.showError(
-        'Workflow updated locally but failed to save to database. Please save it manually.',
+        t.workflowInterface.notifications.workflowUpdatedSaveFailed,
         4000
       );
     }
@@ -513,13 +513,13 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     
     // Check authentication
     if (!isAuthenticated || !user) {
-      notification.showWarning('Please login to delete workflows', 3000);
+      notification.showWarning(t.workflowInterface.notifications.pleaseLoginToDelete, 3000);
       return;
     }
 
     // Prevent deleting the last workflow
     if (content.workflows.length <= 1) {
-      notification.showWarning('Cannot delete the last workflow', 3000);
+      notification.showWarning(t.workflowInterface.notifications.cannotDeleteLast, 3000);
       return;
     }
 
@@ -572,14 +572,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         });
 
         notification.showSuccess(
-          `Workflow "${workflowToDelete.name}" deleted successfully`,
+          t.workflowInterface.notifications.workflowDeleted.replace('{name}', workflowToDelete.name),
           3000
         );
       }
     } catch (error) {
       console.error('[WorkflowInterface] Error deleting workflow:', error);
       notification.showError(
-        error instanceof Error ? error.message : 'Failed to delete workflow',
+        error instanceof Error ? error.message : t.workflowInterface.notifications.failedToDelete,
         4000
       );
     }
@@ -800,12 +800,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   // Handle workflow save
   const handleSaveWorkflow = useCallback(async () => {
     if (!isAuthenticated || !user) {
-      notification.showWarning('Please login to save workflows', 3000);
+      notification.showWarning(t.workflowInterface.notifications.pleaseLoginToSave, 3000);
       return;
     }
 
     if (!activeWorkflow) {
-      notification.showError('No active workflow to save', 3000);
+      notification.showError(t.workflowInterface.notifications.noActiveWorkflow, 3000);
       return;
     }
 
@@ -835,16 +835,16 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         });
         
         notification.showSuccess(
-          `Workflow "${activeWorkflow.name}" saved successfully (v${response.data.version})`,
+          t.workflowInterface.notifications.workflowSaved.replace('{name}', activeWorkflow.name).replace('{version}', String(response.data.version)),
           3000
         );
       } else {
-        throw new Error(response.message || 'Failed to save workflow');
+        throw new Error(response.message || t.workflowInterface.notifications.workflowSaveFailed);
       }
     } catch (error) {
       console.error('[WorkflowInterface] Error saving workflow:', error);
       notification.showError(
-        error instanceof Error ? error.message : 'Failed to save workflow',
+        error instanceof Error ? error.message : t.workflowInterface.notifications.workflowSaveFailed,
         5000
       );
     } finally {
@@ -862,7 +862,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
             </svg>
           </div>
-          <p className="text-sm text-muted-foreground">Loading workflow...</p>
+          <p className="text-sm text-muted-foreground">{t.workflowInterface.editor.loading}</p>
         </div>
       </div>
     );
@@ -953,7 +953,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                             onClick={() => setIsDescriptionTooltipOpen(!isDescriptionTooltipOpen)}
                             onBlur={() => setTimeout(() => setIsDescriptionTooltipOpen(false), 200)}
                             className="p-1 hover:bg-accent rounded-full transition-colors group"
-                            title="View description"
+                            title={t.workflowInterface.editor.viewDescription}
                           >
                             <svg 
                               className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" 
@@ -974,7 +974,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                           {isDescriptionTooltipOpen && (
                             <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-card rounded-md shadow-lg border border-border p-4">
                               <div className="flex items-start justify-between mb-2">
-                                <h3 className="text-sm font-semibold text-foreground">Description</h3>
+                                <h3 className="text-sm font-semibold text-foreground">{t.workflowInterface.editor.description}</h3>
                                 <button
                                   onClick={() => setIsDescriptionTooltipOpen(false)}
                                   className="p-0.5 hover:bg-accent rounded transition-colors"
@@ -1007,14 +1007,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <span>Saving...</span>
+                        <span>{t.workflowInterface.editor.saving}</span>
                       </>
                     ) : (
                       <>
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                         </svg>
-                        <span>Save</span>
+                        <span>{t.workflowInterface.editor.save}</span>
                       </>
                     )}
                   </button>
@@ -1029,7 +1029,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span>Run</span>
+                      <span>{t.workflowInterface.editor.run}</span>
                     </button>
                   ) : (
                     <button
@@ -1040,7 +1040,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
                       </svg>
-                      <span>Stop</span>
+                      <span>{t.workflowInterface.editor.stop}</span>
                     </button>
                   )}
                 </div>
