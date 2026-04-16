@@ -191,12 +191,13 @@ export class SSEStreamManager {
         this.config.onComplete();
         return;
       } catch (rawError: unknown) {
-        console.error('[SSEStreamManager] connectAndRead caught error:', rawError);
         // If cancelled by user, don't classify / retry.
         if (this._isCancelled) {
           console.log('[SSEStreamManager] cancelled, exiting');
           return;
         }
+
+        console.error('[SSEStreamManager] connectAndRead caught error:', rawError);
 
         const httpStatus = (rawError as Error & { httpStatus?: number })?.httpStatus;
         const streamError = classifyError({
