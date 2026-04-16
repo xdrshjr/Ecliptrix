@@ -32,6 +32,7 @@ export default function HomePage() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   // 用户资料页面状态
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [profileInitialSection, setProfileInitialSection] = useState<'userInfo' | 'otherSettings'>('userInfo');
   // 管理员设置页面状态
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   // Chat modal状态 - 用于模糊taskbar
@@ -97,10 +98,14 @@ export default function HomePage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Header - 固定在顶部 */}
-      <Header 
+      <Header
         onLoginClick={() => setIsLoginModalOpen(true)}
         onProfileClick={() => setIsProfileOpen(true)}
         onSettingsClick={() => setIsSettingsOpen(true)}
+        onAccountSettingsClick={() => {
+          setProfileInitialSection('otherSettings');
+          setIsProfileOpen(true);
+        }}
         onHomeClick={handleReturnHome}
       />
       
@@ -132,7 +137,13 @@ export default function HomePage() {
             <AdminSettingsPage onClose={() => setIsSettingsOpen(false)} />
           ) : isProfileOpen ? (
             /* User Profile Page - 占据右侧内容区域 */
-            <UserProfilePage onClose={() => setIsProfileOpen(false)} />
+            <UserProfilePage
+              onClose={() => {
+                setIsProfileOpen(false);
+                setProfileInitialSection('userInfo');
+              }}
+              initialSection={profileInitialSection}
+            />
           ) : (
             <>
               <Container 
