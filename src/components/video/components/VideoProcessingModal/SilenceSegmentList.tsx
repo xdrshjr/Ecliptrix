@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useMemo } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // ---- Types ----
 
@@ -45,6 +46,8 @@ const SilenceSegmentList: React.FC<SilenceSegmentListProps> = ({
   onFocus,
   onPlaySegment,
 }) => {
+  const { t } = useLocale();
+
   // Computed stats
   const stats = useMemo(() => {
     const total = segments.length;
@@ -62,7 +65,7 @@ const SilenceSegmentList: React.FC<SilenceSegmentListProps> = ({
   if (segments.length === 0) {
     return (
       <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
-        未检测到静音段
+        {t.videoProcessing.segments.empty}
       </div>
     );
   }
@@ -72,9 +75,7 @@ const SilenceSegmentList: React.FC<SilenceSegmentListProps> = ({
       {/* Stats bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground">
         <span>
-          共 <span className="font-medium text-foreground">{stats.total}</span> 个静音段，
-          已选 <span className="font-medium text-foreground">{stats.selected}</span> 个，
-          可节省 <span className="font-medium text-foreground">{stats.saveable.toFixed(1)}</span> 秒
+          {t.videoProcessing.segments.total.replace('{count}', String(stats.total))}，{t.videoProcessing.segments.selected.replace('{count}', String(stats.selected))}，{t.videoProcessing.segments.canSave.replace('{time}', stats.saveable.toFixed(1))}
         </span>
       </div>
 
@@ -85,21 +86,21 @@ const SilenceSegmentList: React.FC<SilenceSegmentListProps> = ({
           onClick={onToggleAll}
           className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-accent text-foreground transition-colors"
         >
-          全选
+          {t.videoProcessing.segments.selectAll}
         </button>
         <button
           type="button"
           onClick={onDeselectAll}
           className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-accent text-foreground transition-colors"
         >
-          全不选
+          {t.videoProcessing.segments.deselectAll}
         </button>
         <button
           type="button"
           onClick={onInvertSelection}
           className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-accent text-foreground transition-colors"
         >
-          反选
+          {t.videoProcessing.segments.invertSelection}
         </button>
       </div>
 
@@ -150,7 +151,7 @@ const SilenceSegmentList: React.FC<SilenceSegmentListProps> = ({
                   onPlaySegment(segment.id);
                 }}
                 className="w-5 h-5 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-                title="试听该段前后上下文"
+                title={t.videoProcessing.segments.playContext}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z" />

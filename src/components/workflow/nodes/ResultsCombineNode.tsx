@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { ResultsCombineNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Results Combine Node Component
@@ -12,6 +13,7 @@ import { ResultsCombineNodeConfig } from '@/types';
  */
 const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as ResultsCombineNodeConfig | undefined;
   const isConfigured = !!(
@@ -46,8 +48,8 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Array Input',
-        outputPortLabel: 'Combined',
+        inputPortLabel: t.workflowNodes.ports.arrayInput,
+        outputPortLabel: t.workflowNodes.ports.combined,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
@@ -55,7 +57,7 @@ const ResultsCombineNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {/* Model Information */}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">Model:</span>
-                <span className="text-foreground text-xs">{config?.model || 'Not set'}</span>
+                <span className="text-foreground text-xs">{config?.model || t.workflowNodes.status.notSet}</span>
               </div>
               
               {/* Temperature */}

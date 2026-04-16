@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { VideoExportNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Video Export Node Component
@@ -12,6 +13,7 @@ import { VideoExportNodeConfig } from '@/types';
  */
 const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as VideoExportNodeConfig | undefined;
   const isConfigured = !!(config?.videoUrls);
@@ -63,8 +65,8 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-gradient-to-r from-blue-400 to-blue-500',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Videos',
-        outputPortLabel: 'Materials',
+        inputPortLabel: t.workflowNodes.ports.videos,
+        outputPortLabel: t.workflowNodes.ports.materials,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
@@ -77,7 +79,7 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                     <span className="text-sm font-semibold text-blue-700">
-                      {videoCount} {videoCount === 1 ? 'Video' : 'Videos'}
+                      {videoCount} {videoCount === 1 ? t.workflowNodes.ports.video : t.workflowNodes.ports.videos}
                     </span>
                   </div>
                 </div>

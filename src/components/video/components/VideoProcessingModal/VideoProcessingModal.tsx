@@ -147,7 +147,7 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 bg-black/30 flex items-center justify-center z-[200] p-4 ${
+      className={`fixed top-14 inset-x-0 bottom-0 bg-black/30 flex items-center justify-center z-[200] p-4 ${
         !isOpen ? 'hidden' : ''
       }`}
       onClick={(e) => {
@@ -166,14 +166,14 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </div>
-            <h2 className="text-base font-semibold text-foreground">视频处理</h2>
+            <h2 className="text-base font-semibold text-foreground">{t.materialsPanel.videoProcessing}</h2>
           </div>
 
           <button
             type="button"
             onClick={handleClose}
             className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
-            title="关闭"
+            title={t.videoProcessing.buttons.close}
           >
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -195,7 +195,7 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
               }`}
             >
               {tab.icon}
-              {tab.labelKey === 'silenceRemoval' ? '切气口' : t.materialsPanel.watermarkRemovalTab}
+              {tab.labelKey === 'silenceRemoval' ? t.videoProcessing.tab : t.materialsPanel.watermarkRemovalTab}
             </button>
           ))}
         </div>

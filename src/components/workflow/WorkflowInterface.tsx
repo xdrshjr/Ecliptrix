@@ -204,10 +204,10 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         workflows: [
           {
             id: 'search-chat-agent',
-            name: 'Search Chat Agent',
+            name: t.workflowNodes.editor.newWorkflowDefaultName,
             data: {
-              name: 'Search Chat Agent',
-              description: 'AI agent for searching and chatting',
+              name: t.workflowNodes.editor.newWorkflowDefaultName,
+              description: t.workflowNodes.editor.newWorkflowDescription,
               nodes: [],
               connections: [],
             },
@@ -1115,10 +1115,10 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">
-                No Workflow Selected
+                {t.workflowNodes.editor.noWorkflowSelected}
               </h3>
               <p className="text-sm text-muted-foreground">
-                Select a workflow from the sidebar to start editing
+                {t.workflowNodes.editor.selectWorkflowPrompt}
               </p>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { TextInputNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Text Input Node Component
@@ -12,6 +13,7 @@ import { TextInputNodeConfig } from '@/types';
  */
 const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as TextInputNodeConfig | undefined;
   const isConfigured = !!(config?.content && config.content.trim().length > 0);
@@ -39,8 +41,8 @@ const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Input',
-        outputPortLabel: 'Output',
+        inputPortLabel: t.workflowNodes.ports.input,
+        outputPortLabel: t.workflowNodes.ports.output,
         isConfigured,
         renderContent: () => (
           isConfigured ? (

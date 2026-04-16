@@ -1658,6 +1658,165 @@ export interface Translations {
       messages: string;
     };
   };
+  videoProcessing: {
+    tab: string;
+    buttons: {
+      close: string;
+      next: string;
+      back: string;
+      done: string;
+      return: string;
+      minimize: string;
+      cancel: string;
+      retry: string;
+      startProcessing: string;
+      redetect: string;
+      restored: string;
+    };
+    presets: {
+      loose: string;
+      standard: string;
+      aggressive: string;
+      custom: string;
+    };
+    selectVideo: {
+      heading: string;
+      description: string;
+      noVideos: string;
+      noVideosHint: string;
+      tooLong: string;
+    };
+    params: {
+      detectionPreset: string;
+      volumeThreshold: string;
+      volumeThresholdHint: string;
+      minSilenceDuration: string;
+      minSilenceHint: string;
+      preservedGap: string;
+      preservedGapHint: string;
+    };
+    stats: {
+      originalDuration: string;
+      newDuration: string;
+      removedSegments: string;
+      segments: string;
+      savedTime: string;
+      saved: string;
+      estimatedNewDuration: string;
+    };
+    progress: {
+      preparing: string;
+      processing: string;
+      completed: string;
+      failed: string;
+      detecting: string;
+      detectSilence: string;
+      networkError: string;
+      networkErrorMsg: string;
+      timeout: string;
+      timeoutMsg: string;
+      estimatedRemaining: string;
+    };
+    errors: {
+      detectionFailed: string;
+      detectionFailedShort: string;
+      detectionError: string;
+      processFailed: string;
+      processFailedShort: string;
+      submitFailed: string;
+      unknownError: string;
+      queryFailed: string;
+      queryFailedShort: string;
+    };
+    segments: {
+      empty: string;
+      total: string;
+      segmentsUnit: string;
+      selected: string;
+      canSave: string;
+      selectAll: string;
+      deselectAll: string;
+      invertSelection: string;
+      playContext: string;
+    };
+    waveform: {
+      pause: string;
+      play: string;
+      previewEffect: string;
+      stopPreview: string;
+      preview: string;
+      zoomHint: string;
+    };
+    duration: {
+      minutes: string;
+      seconds: string;
+    };
+  };
+  workflowNodes: {
+    ports: {
+      input: string;
+      output: string;
+      keywords: string;
+      results: string;
+      arrayInput: string;
+      combined: string;
+      array: string;
+      videos: string;
+      materials: string;
+      textInput: string;
+      audioOutput: string;
+      timeline: string;
+      copy: string;
+      video: string;
+      audio: string;
+      image: string;
+    };
+    tooltips: {
+      configured: string;
+      deleteNode: string;
+      inputPort: string;
+      outputPort: string;
+    };
+    status: {
+      configured: string;
+      notSet: string;
+      notSelected: string;
+      ready: string;
+      success: string;
+      failed: string;
+    };
+    aiVideo: {
+      inputs: string;
+      status: string;
+      lastRun: string;
+      error: string;
+      prompt: string;
+      notConfigured: string;
+      doubleClickConfigure: string;
+    };
+    execution: {
+      title: string;
+      progress: string;
+      noNodes: string;
+      waiting: string;
+      executing: string;
+      completed: string;
+      failed: string;
+      executionTime: string;
+      systemPrompt: string;
+      userInput: string;
+      modelReply: string;
+      input: string;
+      output: string;
+      error: string;
+    };
+    editor: {
+      noWorkflowSelected: string;
+      selectWorkflowPrompt: string;
+      newWorkflowDefaultName: string;
+      newWorkflowDescription: string;
+    };
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -3336,6 +3495,165 @@ export const translations: Record<string, Translations> = {
         messages: '{count} message(s)',
       },
     },
+    videoProcessing: {
+      tab: 'Cut Silence',
+      buttons: {
+        close: 'Close',
+        next: 'Next',
+        back: 'Back',
+        done: 'Done',
+        return: 'Return',
+        minimize: 'Minimize',
+        cancel: 'Cancel',
+        retry: 'Retry',
+        startProcessing: 'Start Processing',
+        redetect: 'Re-detect',
+        restored: 'Click to restore',
+      },
+      presets: {
+        loose: 'Loose',
+        standard: 'Standard',
+        aggressive: 'Aggressive',
+        custom: 'Custom',
+      },
+      selectVideo: {
+        heading: 'Select Video',
+        description: 'Select a video to process (max 30 minutes)',
+        noVideos: 'No video materials',
+        noVideosHint: 'Please upload video materials first',
+        tooLong: 'Over 30 minutes',
+      },
+      params: {
+        detectionPreset: 'Detection Preset',
+        volumeThreshold: 'Volume Threshold: {value} dB',
+        volumeThresholdHint: 'Below this value is considered silence',
+        minSilenceDuration: 'Min Silence Duration: {value} ms',
+        minSilenceHint: 'Short pauses below this value will be ignored',
+        preservedGap: 'Preserved Gap: {value} ms',
+        preservedGapHint: 'Transition gap preserved at the beginning and end of each silence segment',
+      },
+      stats: {
+        originalDuration: 'Original Duration',
+        newDuration: 'New Duration',
+        removedSegments: 'Removed Segments',
+        segments: 'segments',
+        savedTime: 'Time Saved',
+        saved: 'saved',
+        estimatedNewDuration: 'Est. New Duration',
+      },
+      progress: {
+        preparing: 'Preparing...',
+        processing: 'Processing...',
+        completed: 'Processing Complete',
+        failed: 'Processing Failed',
+        detecting: 'Detecting...',
+        detectSilence: 'Detect Silence',
+        networkError: 'Network Error',
+        networkErrorMsg: 'Cannot connect to server, please check your network and retry',
+        timeout: 'Processing Timeout',
+        timeoutMsg: 'Waited over 30 minutes. The backend task may still be running. Please check the materials panel later.',
+        estimatedRemaining: 'Est. Remaining',
+      },
+      errors: {
+        detectionFailed: 'Detection failed ({status})',
+        detectionFailedShort: 'Detection failed',
+        detectionError: 'Failed to detect silence segments',
+        processFailed: 'Process failed ({status})',
+        processFailedShort: 'Process failed',
+        submitFailed: 'Failed to submit processing request',
+        unknownError: 'Unknown error',
+        queryFailed: 'Query progress failed ({status})',
+        queryFailedShort: 'Query progress failed',
+      },
+      segments: {
+        empty: 'No silence segments detected',
+        total: 'Total {count} segments',
+        segmentsUnit: 'segments',
+        selected: 'Selected {count}',
+        canSave: 'Can save {time}s',
+        selectAll: 'Select All',
+        deselectAll: 'Deselect All',
+        invertSelection: 'Invert',
+        playContext: 'Play context before and after this segment',
+      },
+      waveform: {
+        pause: 'Pause',
+        play: 'Play',
+        previewEffect: 'Preview overall effect (skip selected silence segments)',
+        stopPreview: 'Stop Preview',
+        preview: 'Preview Effect',
+        zoomHint: 'Ctrl+Scroll to zoom, double-click to fit',
+      },
+      duration: {
+        minutes: 'min',
+        seconds: 'sec',
+      },
+    },
+    workflowNodes: {
+      ports: {
+        input: 'Input',
+        output: 'Output',
+        keywords: 'Keywords',
+        results: 'Results',
+        arrayInput: 'Array Input',
+        combined: 'Combined',
+        array: 'Array',
+        videos: 'Videos',
+        materials: 'Materials',
+        textInput: 'Text Input',
+        audioOutput: 'Audio Output',
+        timeline: 'Timeline',
+        copy: 'Copy',
+        video: 'Video',
+        audio: 'Audio',
+        image: 'Image',
+      },
+      tooltips: {
+        configured: 'Configured',
+        deleteNode: 'Delete node',
+        inputPort: 'Input Port',
+        outputPort: 'Output Port',
+      },
+      status: {
+        configured: 'Configured',
+        notSet: 'Not set',
+        notSelected: 'Not selected',
+        ready: 'Ready',
+        success: 'Success',
+        failed: 'Failed',
+      },
+      aiVideo: {
+        inputs: 'Inputs',
+        status: 'Status',
+        lastRun: 'Last Run',
+        error: 'Error',
+        prompt: 'Prompt',
+        notConfigured: 'Not configured',
+        doubleClickConfigure: 'Double click to configure',
+      },
+      execution: {
+        title: 'Execution Process',
+        progress: 'Progress',
+        noNodes: 'No execution nodes',
+        waiting: 'Waiting',
+        executing: 'Executing',
+        completed: 'Completed',
+        failed: 'Failed',
+        executionTime: 'Execution Time',
+        systemPrompt: 'System Prompt',
+        userInput: 'Prompt (User Input)',
+        modelReply: 'Model Reply',
+        input: 'Input',
+        output: 'Output',
+        error: 'Error',
+      },
+      editor: {
+        noWorkflowSelected: 'No Workflow Selected',
+        selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
+        newWorkflowDefaultName: 'Search Chat Agent',
+        newWorkflowDescription: 'AI agent for searching and chatting',
+      },
+    },
   },
   'zh-CN': {
     common: {
@@ -3549,7 +3867,7 @@ export const translations: Record<string, Translations> = {
       modelAssignmentSaved: '分配已保存',
       modelAssignmentDeleted: '分配已删除',
       // Tab layout & provider enhancements
-      tabProviders: '提供商管理',
+      tabProviders: '供应商管理',
       tabAssignments: '模型分配',
       tabAdvanced: '高级设置',
       apiFormat: 'API 格式',
@@ -3577,16 +3895,16 @@ export const translations: Record<string, Translations> = {
       effectiveConfigDesc: '展示每个功能类型当前生效的配置，来源于数据库分配或环境变量回退。',
       effectiveConfigRefresh: '刷新',
       effectiveConfigLoading: '加载配置中...',
-      effectiveConfigUrl: '提供商 / URL',
+      effectiveConfigUrl: '供应商 / URL',
       effectiveConfigModel: '模型',
       effectiveConfigSource: '来源',
       effectiveConfigNotConfigured: '未配置',
       testConnectionFormat: '测试连接格式',
       modelInfo: '模型信息',
       formatUsed: '使用的格式',
-      providerCard: '提供商卡片',
+      providerCard: '供应商卡片',
       modelApiKeyRequired: 'API Key 不能为空',
-      modelDeleteProviderError: '删除提供商失败',
+      modelDeleteProviderError: '删除供应商失败',
       modelModelsFound: '个模型已获取',
       modelKeyNotSet: '未设置',
       modelRequestFailed: '请求失败',
@@ -5010,6 +5328,165 @@ export const translations: Record<string, Translations> = {
         chatbot: '聊天机器人',
         aiAgent: 'AI 代理',
         messages: '{count} 条消息',
+      },
+    },
+    videoProcessing: {
+      tab: '切气口',
+      buttons: {
+        close: '关闭',
+        next: '下一步',
+        back: '上一步',
+        done: '完成',
+        return: '返回',
+        minimize: '最小化',
+        cancel: '取消',
+        retry: '重试',
+        startProcessing: '开始处理',
+        redetect: '重新检测',
+        restored: '点击恢复弹窗',
+      },
+      presets: {
+        loose: '宽松',
+        standard: '标准',
+        aggressive: '激进',
+        custom: '自定义',
+      },
+      selectVideo: {
+        heading: '选择视频',
+        description: '选择一个需要处理的口播视频（最长30分钟）',
+        noVideos: '暂无视频素材',
+        noVideosHint: '请先上传视频素材到素材面板',
+        tooLong: '超过30分钟',
+      },
+      params: {
+        detectionPreset: '检测预设',
+        volumeThreshold: '音量阈值: {value} dB',
+        volumeThresholdHint: '低于此值视为静音',
+        minSilenceDuration: '最小静音时长: {value} ms',
+        minSilenceHint: '低于此值的短暂停顿将被忽略',
+        preservedGap: '保留间隔: {value} ms',
+        preservedGapHint: '每个静音段首尾保留的过渡间隔',
+      },
+      stats: {
+        originalDuration: '原时长',
+        newDuration: '新时长',
+        removedSegments: '移除静音段',
+        segments: '段',
+        savedTime: '节省时间',
+        saved: '节省',
+        estimatedNewDuration: '预计新时长',
+      },
+      progress: {
+        preparing: '准备中...',
+        processing: '处理中...',
+        completed: '处理完成',
+        failed: '处理失败',
+        detecting: '检测中...',
+        detectSilence: '检测静音段',
+        networkError: '网络异常',
+        networkErrorMsg: '无法连接服务器，请检查网络后重试',
+        timeout: '处理超时',
+        timeoutMsg: '已等待超过30分钟，后端任务可能仍在运行。请稍后检查素材面板。',
+        estimatedRemaining: '预计剩余',
+      },
+      errors: {
+        detectionFailed: '检测失败 ({status})',
+        detectionFailedShort: '检测失败',
+        detectionError: '检测静音段失败',
+        processFailed: '处理请求失败 ({status})',
+        processFailedShort: '处理请求失败',
+        submitFailed: '提交处理请求失败',
+        unknownError: '未知错误',
+        queryFailed: '查询进度失败 ({status})',
+        queryFailedShort: '查询进度失败',
+      },
+      segments: {
+        empty: '未检测到静音段',
+        total: '共 {count} 个静音段',
+        segmentsUnit: '段',
+        selected: '已选 {count} 个',
+        canSave: '可节省 {time} 秒',
+        selectAll: '全选',
+        deselectAll: '全不选',
+        invertSelection: '反选',
+        playContext: '试听该段前后上下文',
+      },
+      waveform: {
+        pause: '暂停',
+        play: '播放',
+        previewEffect: '试听整体效果（跳过已选静音段）',
+        stopPreview: '停止预览',
+        preview: '试听效果',
+        zoomHint: 'Ctrl+滚轮缩放，双击区域自适应缩放',
+      },
+      duration: {
+        minutes: '分',
+        seconds: '秒',
+      },
+    },
+    workflowNodes: {
+      ports: {
+        input: '输入',
+        output: '输出',
+        keywords: '关键词',
+        results: '结果',
+        arrayInput: '数组输入',
+        combined: '合并结果',
+        array: '数组',
+        videos: '视频',
+        materials: '素材',
+        textInput: '文本输入',
+        audioOutput: '音频输出',
+        timeline: '时间线',
+        copy: '文案',
+        video: '视频',
+        audio: '音频',
+        image: '图片',
+      },
+      tooltips: {
+        configured: '已配置',
+        deleteNode: '删除节点',
+        inputPort: '输入端口',
+        outputPort: '输出端口',
+      },
+      status: {
+        configured: '已配置',
+        notSet: '未设置',
+        notSelected: '未选择',
+        ready: '就绪',
+        success: '成功',
+        failed: '失败',
+      },
+      aiVideo: {
+        inputs: '输入',
+        status: '状态',
+        lastRun: '上次运行',
+        error: '错误',
+        prompt: '提示词',
+        notConfigured: '未配置',
+        doubleClickConfigure: '双击进行配置',
+      },
+      execution: {
+        title: '执行过程',
+        progress: '进度',
+        noNodes: '暂无执行节点',
+        waiting: '等待中',
+        executing: '执行中',
+        completed: '已完成',
+        failed: '失败',
+        executionTime: '执行时间',
+        systemPrompt: '系统提示词',
+        userInput: 'Prompt（用户输入）',
+        modelReply: '模型回复',
+        input: '输入',
+        output: '输出',
+        error: '错误',
+      },
+      editor: {
+        noWorkflowSelected: '未选择工作流',
+        selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
+        newWorkflowDefaultName: '搜索聊天代理',
+        newWorkflowDescription: '用于搜索和聊天的AI代理',
       },
     },
   },

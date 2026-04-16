@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { ToArrayNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * To Array Node Component
@@ -12,6 +13,7 @@ import { ToArrayNodeConfig } from '@/types';
  */
 const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as ToArrayNodeConfig | undefined;
   const isConfigured = !!(
@@ -48,8 +50,8 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Input',
-        outputPortLabel: 'Array',
+        inputPortLabel: t.workflowNodes.ports.input,
+        outputPortLabel: t.workflowNodes.ports.array,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
@@ -57,7 +59,7 @@ const ToArrayNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {/* Model Information */}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">Model:</span>
-                <span className="text-foreground text-xs">{config?.model || 'Not set'}</span>
+                <span className="text-foreground text-xs">{config?.model || t.workflowNodes.status.notSet}</span>
               </div>
               
               {/* Temperature */}

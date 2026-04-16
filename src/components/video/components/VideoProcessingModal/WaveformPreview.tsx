@@ -10,6 +10,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import type { SilenceSegment } from './SilenceSegmentList';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // wavesurfer.js v7+ imports
 import WaveSurfer from 'wavesurfer.js';
@@ -66,6 +67,7 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
     const regionsPluginRef = useRef<RegionsPlugin | null>(null);
+    const { t } = useLocale();
 
     // Suppress region-updated callbacks during bulk region syncs
     const isSyncingRegionsRef = useRef(false);
@@ -380,7 +382,7 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
             onClick={handlePlayPause}
             disabled={!isReady}
             className="w-8 h-8 flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            title={isPlaying ? '暂停' : '播放'}
+            title={isPlaying ? t.videoProcessing.waveform.pause : t.videoProcessing.waveform.play}
           >
             {isPlaying ? (
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -403,9 +405,9 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
                 ? 'bg-destructive text-destructive-foreground border-destructive'
                 : 'bg-muted text-foreground border-border hover:bg-accent'
             }`}
-            title="试听整体效果（跳过已选静音段）"
+            title={t.videoProcessing.waveform.previewEffect}
           >
-            {isPreviewingOverall ? '停止预览' : '试听效果'}
+            {isPreviewingOverall ? t.videoProcessing.waveform.stopPreview : t.videoProcessing.waveform.preview}
           </button>
 
           {/* Time display */}
@@ -416,7 +418,7 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
           {/* Zoom indicator */}
           <span
             className="text-xs text-muted-foreground"
-            title="Ctrl+滚轮缩放，双击区域自适应缩放"
+            title={t.videoProcessing.waveform.zoomHint}
           >
             {zoomLevel > 0 ? `${zoomLevel}x` : 'fit'}
           </span>

@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { ChatLLMNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Chat LLM Node Component
@@ -11,6 +12,7 @@ import { ChatLLMNodeConfig } from '@/types';
  */
 const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as ChatLLMNodeConfig | undefined;
   const isConfigured = !!(
@@ -42,15 +44,15 @@ const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Input',
-        outputPortLabel: 'Output',
+        inputPortLabel: t.workflowNodes.ports.input,
+        outputPortLabel: t.workflowNodes.ports.output,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">Model:</span>
-                <span className="text-foreground text-xs">{config?.model || 'Not set'}</span>
+                <span className="text-foreground text-xs">{config?.model || t.workflowNodes.status.notSet}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">Temp:</span>

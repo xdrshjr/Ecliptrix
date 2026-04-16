@@ -140,7 +140,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
   
   // 新增：视频比例状态
-  const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>(ASPECT_RATIOS[0]);
+  const [selectedAspectRatioId, setSelectedAspectRatioId] = useState<string>(ASPECT_RATIOS[0].id);
+  const selectedAspectRatio = ASPECT_RATIOS.find(ar => ar.id === selectedAspectRatioId) || ASPECT_RATIOS[0];
 
   // 新增：图片叠加相关状态
   const [selectedImageOverlay, setSelectedImageOverlay] = useState<string | null>(null);
@@ -608,7 +609,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     });
     
     // 设置新的宽高比
-    setSelectedAspectRatio(aspectRatio);
+    setSelectedAspectRatioId(aspectRatio.id);
     
     // 记录比例切换的详细信息
     logger.info('视频比例切换完成', {
@@ -620,7 +621,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       uiDesign: '两行布局：第一行显示视频信息，第二行显示比例选择器',
       timestamp: new Date().toISOString()
     });
-  }, [selectedAspectRatio, playbackMode, logger, isCompositionPlaying, compositionPlayback?.currentSequenceIndex]);
+  }, [selectedAspectRatioId, playbackMode, logger, isCompositionPlaying, compositionPlayback?.currentSequenceIndex]);
 
   // 处理视频导出（带比例信息记录）
   const handleVideoExport = useCallback(async () => {
@@ -645,7 +646,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
     // 调用实际的导出函数
     await videoExport.handleExport();
-  }, [selectedAspectRatio, playbackMode, timelineState, materials, videoExport.handleExport, logger]);
+  }, [selectedAspectRatioId, playbackMode, timelineState, materials, videoExport.handleExport, logger]);
 
   useEffect(() => {
     logger.info('组件初始化', {

@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { VolcanoTTSNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Volcano TTS Node Component
@@ -12,11 +13,12 @@ import { VolcanoTTSNodeConfig } from '@/types';
  */
 const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as VolcanoTTSNodeConfig | undefined;
   const isConfigured = !!(config?.text && config.text.trim().length > 0 && config?.voiceType);
   const displayText = config?.text || '';
-  const displayVoiceType = config?.voiceType || 'Not selected';
+  const displayVoiceType = config?.voiceType || t.workflowNodes.status.notSelected;
   
   console.log('[VolcanoTTSNode] Rendering node:', { 
     id, 
@@ -31,7 +33,7 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
   // Get voice type display name
   const getVoiceTypeName = (voiceTypeId: string): string => {
     // Extract a readable name from voice type ID
-    if (voiceTypeId === 'Not selected') return voiceTypeId;
+    if (voiceTypeId === t.workflowNodes.status.notSelected) return voiceTypeId;
     
     // Try to get the last part after underscore
     const parts = voiceTypeId.split('_');
@@ -57,8 +59,8 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Text Input',
-        outputPortLabel: 'Audio Output',
+        inputPortLabel: t.workflowNodes.ports.textInput,
+        outputPortLabel: t.workflowNodes.ports.audioOutput,
         isConfigured,
         renderContent: () => (
           isConfigured ? (

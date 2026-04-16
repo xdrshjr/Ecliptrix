@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { MaterialItem } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import type { SilenceSegment } from './SilenceSegmentList';
 import SilenceSegmentList from './SilenceSegmentList';
 import WaveformPreview from './WaveformPreview';
@@ -42,12 +43,7 @@ const PRESETS: Record<Exclude<Preset, 'custom'>, Omit<DetectionParams, 'preset'>
   aggressive: { noiseThreshold: -25, minSilenceDuration: 300, preservedGap: 100 },
 };
 
-const PRESET_LABELS: Record<Preset, string> = {
-  loose: '宽松',
-  standard: '标准',
-  aggressive: '激进',
-  custom: '自定义',
-};
+// PRESET_LABELS is now resolved inside components via useLocale — see t.videoProcessing.presets
 
 const DEFAULT_PARAMS: DetectionParams = {
   preset: 'standard',
@@ -56,11 +52,11 @@ const DEFAULT_PARAMS: DetectionParams = {
 
 // ---- Helpers ----
 
-function formatDuration(seconds: number): string {
+function formatDuration(seconds: number, minsLabel: string, secsLabel: string): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
-  if (mins > 0) return `${mins}分${secs}秒`;
-  return `${secs}秒`;
+  if (mins > 0) return `${mins}${minsLabel}${secs}${secsLabel}`;
+  return `${secs}${secsLabel}`;
 }
 
 function formatFileSize(bytes: number): string {
@@ -83,6 +79,7 @@ function VideoSelector({
   selectedVideo: MaterialItem | null;
   onSelect: (video: MaterialItem) => void;
 }) {
+  const { t } = useLocale();
   const videos = materials.filter((m) => m.type === 'video');
 
   if (videos.length === 0) {
@@ -91,8 +88,8 @@ function VideoSelector({
         <svg className="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
-        <p className="text-sm">暂无视频素材</p>
-        <p className="text-xs mt-1">请先上传视频素材到素材面板</p>
+        <p className="text-sm">{t.videoProcessing.selectVideo.noVideos}</p>
+        <p className="text-xs mt-1">{t.videoProcessing.selectVideo.noVideosHint}</p>
       </div>
     );
   }
@@ -135,7 +132,7 @@ function VideoSelector({
               {/* Duration badge */}
               {video.duration != null && (
                 <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 py-0.5 rounded">
-                  {formatDuration(video.duration)}
+                  {formatDuration(video.duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}
                 </span>
               )}
 
@@ -143,7 +140,7 @@ function VideoSelector({
               {tooLong && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                   <span className="text-xs text-white bg-destructive/80 px-2 py-0.5 rounded">
-                    超过30分钟
+                    {t.videoProcessing.selectVideo.tooLong}
                   </span>
                 </div>
               )}
@@ -184,6 +181,13 @@ function ParameterPanel({
   params: DetectionParams;
   onChange: (params: DetectionParams) => void;
 }) {
+  const { t } = useLocale();
+  const presetLabels: Record<Preset, string> = {
+    loose: t.videoProcessing.presets.loose,
+    standard: t.videoProcessing.presets.standard,
+    aggressive: t.videoProcessing.presets.aggressive,
+    custom: t.videoProcessing.presets.custom,
+  };
   const handlePresetChange = (preset: Preset) => {
     if (preset === 'custom') {
       onChange({ ...params, preset: 'custom' });
@@ -198,9 +202,9 @@ function ParameterPanel({
     <div className="space-y-4">
       {/* Preset buttons */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-2">检测预设</label>
+        <label className="block text-sm font-medium text-foreground mb-2">{t.videoProcessing.params.detectionPreset}</label>
         <div className="flex gap-2">
-          {(Object.keys(PRESET_LABELS) as Preset[]).map((preset) => (
+          {(Object.keys(presetLabels) as Preset[]).map((preset) => (
             <button
               key={preset}
               type="button"
@@ -211,7 +215,7 @@ function ParameterPanel({
                   : 'bg-muted text-foreground border-border hover:bg-accent'
               }`}
             >
-              {PRESET_LABELS[preset]}
+              {presetLabels[preset]}
             </button>
           ))}
         </div>
@@ -223,9 +227,9 @@ function ParameterPanel({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-medium text-foreground">
-              音量阈值: {params.noiseThreshold} dB
+              {t.videoProcessing.params.volumeThreshold.replace('{value}', String(params.noiseThreshold))}
             </label>
-            <span className="text-[10px] text-muted-foreground">低于此值视为静音</span>
+            <span className="text-[10px] text-muted-foreground">{t.videoProcessing.params.volumeThresholdHint}</span>
           </div>
           <input
             type="range"
@@ -248,9 +252,9 @@ function ParameterPanel({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-medium text-foreground">
-              最小静音时长: {params.minSilenceDuration} ms
+              {t.videoProcessing.params.minSilenceDuration.replace('{value}', String(params.minSilenceDuration))}
             </label>
-            <span className="text-[10px] text-muted-foreground">低于此值的短暂停顿将被忽略</span>
+            <span className="text-[10px] text-muted-foreground">{t.videoProcessing.params.minSilenceHint}</span>
           </div>
           <input
             type="range"
@@ -273,9 +277,9 @@ function ParameterPanel({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-medium text-foreground">
-              保留间隔: {params.preservedGap} ms
+              {t.videoProcessing.params.preservedGap.replace('{value}', String(params.preservedGap))}
             </label>
-            <span className="text-[10px] text-muted-foreground">每个静音段首尾保留的过渡间隔</span>
+            <span className="text-[10px] text-muted-foreground">{t.videoProcessing.params.preservedGapHint}</span>
           </div>
           <input
             type="range"
@@ -308,6 +312,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
   onProcessingStateChange,
   isModalVisible = true,
 }) => {
+  const { t } = useLocale();
   // ---- State ----
   const [phase, setPhase] = useState<Phase>('select');
   const [selectedVideo, setSelectedVideo] = useState<MaterialItem | null>(null);
@@ -371,13 +376,13 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
         });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
-          throw new Error(httpError.message || `检测失败 (${httpError.status})`);
+          throw new Error(httpError.message || t.videoProcessing.errors.detectionFailed.replace('{status}', String(httpError.status)));
         }
         throw httpError;
       }
 
       if (!json.success) {
-        throw new Error(json.message || `检测失败`);
+        throw new Error(json.message || t.videoProcessing.errors.detectionFailedShort);
       }
 
       const data = json.data;
@@ -396,7 +401,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
       setAudioUrl(data.audio_url || null);
       setPhase('preview');
     } catch (err) {
-      const message = err instanceof Error ? err.message : '检测静音段失败';
+      const message = err instanceof Error ? err.message : t.videoProcessing.errors.detectionError;
       setError(message);
     } finally {
       setIsDetecting(false);
@@ -429,13 +434,13 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
         });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
-          throw new Error(httpError.message || `处理请求失败 (${httpError.status})`);
+          throw new Error(httpError.message || t.videoProcessing.errors.processFailed.replace('{status}', String(httpError.status)));
         }
         throw httpError;
       }
 
       if (!json.success) {
-        throw new Error(json.message || `处理请求失败`);
+        throw new Error(json.message || t.videoProcessing.errors.processFailedShort);
       }
 
       // Capture task_id for polling by ProcessingProgress (TODO 04)
@@ -446,7 +451,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
       // polling and progress display. For now we show a placeholder.
       setPhase('processing');
     } catch (err) {
-      const message = err instanceof Error ? err.message : '提交处理请求失败';
+      const message = err instanceof Error ? err.message : t.videoProcessing.errors.submitFailed;
       setError(message);
     }
   }, [selectedVideo, silenceSegments, selectedSegmentIds, detectionParams.preservedGap]);
@@ -516,7 +521,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
             onClick={() => setError(null)}
             className="ml-2 underline hover:no-underline"
           >
-            关闭
+            {t.videoProcessing.buttons.close}
           </button>
         </div>
       )}
@@ -527,8 +532,8 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
         {phase === 'select' && (
           <div className="space-y-4">
             <div>
-              <h3 className="text-sm font-medium text-foreground mb-1">选择视频</h3>
-              <p className="text-xs text-muted-foreground">选择一个需要处理的口播视频（最长30分钟）</p>
+              <h3 className="text-sm font-medium text-foreground mb-1">{t.videoProcessing.selectVideo.heading}</h3>
+              <p className="text-xs text-muted-foreground">{t.videoProcessing.selectVideo.description}</p>
             </div>
             <VideoSelector
               materials={materials}
@@ -552,7 +557,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{selectedVideo.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {selectedVideo.duration != null ? formatDuration(selectedVideo.duration) : ''}
+                  {selectedVideo.duration != null ? formatDuration(selectedVideo.duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds) : ''}
                   {selectedVideo.width && selectedVideo.height ? ` · ${selectedVideo.width}x${selectedVideo.height}` : ''}
                 </p>
               </div>
@@ -570,8 +575,8 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground truncate">{selectedVideo?.name}</p>
                 <p className="text-[10px] text-muted-foreground">
-                  原时长: {formatDuration(videoDuration)} → 预计新时长: {formatDuration(Math.max(0, videoDuration - selectedDuration))}
-                  （节省 {selectedDuration.toFixed(1)} 秒）
+                  {t.videoProcessing.stats.originalDuration}: {formatDuration(videoDuration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)} → {t.videoProcessing.stats.estimatedNewDuration}: {formatDuration(Math.max(0, videoDuration - selectedDuration), t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}
+                  （{t.videoProcessing.stats.saved} {selectedDuration.toFixed(1)} {t.videoProcessing.duration.seconds}）
                 </p>
               </div>
             </div>
@@ -636,14 +641,14 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-1">处理完成</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-1">{t.videoProcessing.progress.completed}</h3>
             <p className="text-sm text-muted-foreground mb-6">{selectedVideo?.name}</p>
 
             {/* Stats card */}
             <div className="w-full max-w-sm bg-muted/50 rounded-lg border border-border p-4 space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">原时长</span>
-                <span className="font-medium text-foreground">{formatDuration(completedResult.original_duration)}</span>
+                <span className="text-muted-foreground">{t.videoProcessing.stats.originalDuration}</span>
+                <span className="font-medium text-foreground">{formatDuration(completedResult.original_duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}</span>
               </div>
               <div className="flex items-center justify-center">
                 <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -651,18 +656,18 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
                 </svg>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">新时长</span>
-                <span className="font-medium text-green-600 dark:text-green-400">{formatDuration(completedResult.new_duration)}</span>
+                <span className="text-muted-foreground">{t.videoProcessing.stats.newDuration}</span>
+                <span className="font-medium text-green-600 dark:text-green-400">{formatDuration(completedResult.new_duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}</span>
               </div>
               <div className="border-t border-border pt-3 space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">移除静音段</span>
-                  <span className="font-medium text-foreground">{completedResult.removed_count} 段</span>
+                  <span className="text-muted-foreground">{t.videoProcessing.stats.removedSegments}</span>
+                  <span className="font-medium text-foreground">{completedResult.removed_count} {t.videoProcessing.stats.segments}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">节省时间</span>
+                  <span className="text-muted-foreground">{t.videoProcessing.stats.savedTime}</span>
                   <span className="font-medium text-green-600 dark:text-green-400">
-                    {completedResult.time_saved.toFixed(1)}秒
+                    {completedResult.time_saved.toFixed(1)}{t.videoProcessing.duration.seconds}
                     ({completedResult.original_duration > 0
                       ? ((completedResult.time_saved / completedResult.original_duration) * 100).toFixed(1)
                       : '0'}%)
@@ -680,8 +685,8 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h3 className="text-base font-semibold text-foreground mb-1">处理失败</h3>
-            <p className="text-sm text-destructive">{error || '未知错误'}</p>
+            <h3 className="text-base font-semibold text-foreground mb-1">{t.videoProcessing.progress.failed}</h3>
+            <p className="text-sm text-destructive">{error || t.videoProcessing.errors.unknownError}</p>
           </div>
         )}
       </div>
@@ -696,7 +701,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
             onClick={() => setPhase('configure')}
             className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            下一步
+            {t.videoProcessing.buttons.next}
           </button>
         )}
 
@@ -708,7 +713,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
               onClick={() => setPhase('select')}
               className="px-4 py-2 text-sm rounded-md bg-muted text-foreground border border-border hover:bg-accent transition-colors"
             >
-              上一步
+              {t.videoProcessing.buttons.back}
             </button>
             <button
               type="button"
@@ -719,7 +724,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
               {isDetecting && (
                 <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
               )}
-              {isDetecting ? '检测中...' : '检测静音段'}
+              {isDetecting ? t.videoProcessing.progress.detecting : t.videoProcessing.progress.detectSilence}
             </button>
           </>
         )}
@@ -737,7 +742,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
               }}
               className="px-4 py-2 text-sm rounded-md bg-muted text-foreground border border-border hover:bg-accent transition-colors"
             >
-              重新检测
+              {t.videoProcessing.buttons.redetect}
             </button>
             <button
               type="button"
@@ -745,10 +750,10 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
               disabled={selectedSegmentIds.size === 0}
               className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              开始处理
+              {t.videoProcessing.buttons.startProcessing}
               {selectedSegmentIds.size > 0 && (
                 <span className="ml-1 text-xs opacity-80">
-                  ({selectedSegmentIds.size}段, 节省{selectedDuration.toFixed(1)}s)
+                  ({selectedSegmentIds.size}{t.videoProcessing.segments.segmentsUnit}, {t.videoProcessing.stats.saved}{selectedDuration.toFixed(1)}s)
                 </span>
               )}
             </button>
@@ -766,7 +771,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
             }}
             className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
-            完成
+            {t.videoProcessing.buttons.done}
           </button>
         )}
 
@@ -781,7 +786,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
             }}
             className="px-4 py-2 text-sm rounded-md bg-muted text-foreground border border-border hover:bg-accent transition-colors"
           >
-            返回
+            {t.videoProcessing.buttons.return}
           </button>
         )}
       </div>

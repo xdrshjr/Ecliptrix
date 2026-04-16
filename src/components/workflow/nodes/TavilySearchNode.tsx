@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { TavilySearchNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Tavily Search Node Component
@@ -13,6 +14,7 @@ import { TavilySearchNodeConfig } from '@/types';
  */
 const TavilySearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as TavilySearchNodeConfig | undefined;
   const isConfigured = !!(config?.keywords && config.keywords.trim().length > 0);
@@ -41,8 +43,8 @@ const TavilySearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Keywords',
-        outputPortLabel: 'Results',
+        inputPortLabel: t.workflowNodes.ports.keywords,
+        outputPortLabel: t.workflowNodes.ports.results,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
