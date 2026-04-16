@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { http, ApiError } from '@/lib/api/http-client';
+import { http, ApiError, MissingAuthError, SessionExpiredError } from '@/lib/api/http-client';
 
 // ── API response envelope types (loose-typed because the backend response
 //    shapes vary across the model-settings endpoints) ──
@@ -284,8 +284,14 @@ const ModelSettingsPanel: React.FC = () => {
         setAssignments(assignMap);
         setAssignmentForms(formUpdates);
       }
-    } catch {
-      showError(t.adminSettings.modelSaveError);
+    } catch (err) {
+      if (err instanceof MissingAuthError) {
+        showError(t.adminSettings.authRequiredError);
+      } else if (err instanceof SessionExpiredError) {
+        showError(t.adminSettings.sessionExpiredError);
+      } else {
+        showError(t.adminSettings.modelSaveError);
+      }
     } finally {
       setLoading(false);
     }

@@ -235,7 +235,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
                     <button
                       onClick={() => {
                         setIsUserDropdownOpen(false);
-                        onProfileClick();
+                        onSettingsClick?.();
                       }}
                       className="w-full px-3 py-2 text-left text-sm text-popover-foreground hover:bg-accent transition-colors flex items-center space-x-2"
                     >

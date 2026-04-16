@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { WorkflowExecutionState } from '@/types';
 import ExecutionProcessPanel from './ExecutionProcessPanel';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface WorkflowChatMessage {
   id: string;
@@ -53,6 +54,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
   onNavigateToVideoEditing,
 }) => {
   const { showConfirm } = useNotification();
+  const { t } = useLocale();
   const [inputValue, setInputValue] = useState('');
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -171,7 +173,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
             executionSessionId: currentExecutionId,
             timelineData: timelineData,
             actionButton: timelineData && onNavigateToVideoEditing ? {
-              label: '前往Video Editing查看结果',
+              label: t.workflowChat.goToVideoResult,
               variant: 'success' as const,
               onClick: () => {
                 console.log('[WorkflowChatInterface] Navigating to Video Editing with timeline data');
@@ -286,7 +288,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
     }
     
     // Confirm before clearing
-    showConfirm('确定要清空所有聊天记录吗？此操作不可撤销。', () => {
+    showConfirm(t.workflowChat.clearChatConfirm, () => {
       console.log('[WorkflowChatInterface] User confirmed clearing chat history');
       onClearChatHistory();
     });
@@ -299,7 +301,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
     });
     
     // Confirm before clearing
-    showConfirm('确定要清空当前工作流的上下文吗？聊天记录将保留。', () => {
+    showConfirm(t.workflowChat.clearContextConfirm, () => {
       console.log('[WorkflowChatInterface] User confirmed clearing context');
       onClearContext();
     });
@@ -343,15 +345,15 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">工作流助手</h2>
-              <p className="text-xs text-muted-foreground">与工作流实时交互</p>
+              <h2 className="text-lg font-semibold text-foreground">{t.workflowChat.title}</h2>
+              <p className="text-xs text-muted-foreground">{t.workflowChat.subtitle}</p>
             </div>
           </div>
           
           {executionState.isRunning && (
             <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-full">
               <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-              <span className="text-sm text-primary font-medium">执行中</span>
+              <span className="text-sm text-primary font-medium">{t.workflowChat.running}</span>
             </div>
           )}
         </div>

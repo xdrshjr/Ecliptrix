@@ -11,6 +11,7 @@ export interface Translations {
     operational: string;
     close: string;
     cancel: string;
+    underDevelopment: string;
   };
   header: {
     brandSubtitle: string;
@@ -173,6 +174,8 @@ export interface Translations {
     modelUsingDb: string;
     modelDomestic: string;
     modelInternational: string;
+    authRequiredError: string;
+    sessionExpiredError: string;
     modelResetToDefault: string;
     modelParameters: string;
     modelSelectProvider: string;
@@ -999,6 +1002,22 @@ export interface Translations {
       previousVideoNotGenerated: string;
       extractingFrame: string;
       autoTransitionMode: string;
+      modalTitle: string;
+      modalSubtitle: string;
+      promptLabel: string;
+      promptPlaceholder: string;
+      durationSeconds: string;
+      aspectRatioLabel: string;
+      landscape: string;
+      portrait: string;
+      square: string;
+      advancedOptions: string;
+      fixedCamera: string;
+      fixedCameraDesc: string;
+      addWatermark: string;
+      addWatermarkDesc: string;
+      resolutionLabel: string;
+      startGenerate: string;
     };
   };
   videoScript: {
@@ -1218,6 +1237,11 @@ export interface Translations {
     queued: string;
     queuedPosition: string;
     generationTimeout: string;
+    noPacks: string;
+    selectPackPlaceholder: string;
+    packInfoFrames: string;
+    packInfoSeparator: string;
+    refreshPackList: string;
   };
   storyboardPreviewPanel: {
     title: string;
@@ -1445,6 +1469,27 @@ export interface Translations {
     thinkingComplete: string;
     aiAnalyzingLabel: string;
   };
+  workflowChat: {
+    title: string;
+    subtitle: string;
+    inputPlaceholder: string;
+    send: string;
+    stop: string;
+    clearChat: string;
+    clearChatConfirm: string;
+    clearContext: string;
+    clearContextConfirm: string;
+    clearContextTooltip: string;
+    startConversation: string;
+    startConversationDesc: string;
+    running: string;
+    finalResult: string;
+    exportMaterials: string;
+    exportMaterialsHint: string;
+    goToVideoResult: string;
+    workflowExecuting: string;
+    inputHint: string;
+  };
   workflowConfigModal: {
     title: string;
     subtitle: string;
@@ -1498,6 +1543,7 @@ export const translations: Record<string, Translations> = {
       operational: 'Operational',
       close: 'Close',
       cancel: 'Cancel',
+      underDevelopment: 'Feature under development...',
     },
     header: {
       brandSubtitle: 'Where light and shadow collide',
@@ -1660,6 +1706,8 @@ export const translations: Record<string, Translations> = {
       modelUsingDb: 'Custom config active',
       modelDomestic: 'Domestic',
       modelInternational: 'International',
+      authRequiredError: 'Please log in to access Model Settings.',
+      sessionExpiredError: 'Your session has expired. Please log in again.',
       modelResetToDefault: 'Reset to Default',
       modelParameters: 'Parameters',
       modelSelectProvider: 'Select provider',
@@ -2486,6 +2534,22 @@ export const translations: Record<string, Translations> = {
          previousVideoNotGenerated: 'Please generate the previous scene video first',
          extractingFrame: 'Extracting frame...',
          autoTransitionMode: 'Auto Transition',
+         modalTitle: 'AI Video Generation',
+         modalSubtitle: 'Seedance \u00b7 ByteDance Ark Platform',
+         promptLabel: 'Prompt',
+         promptPlaceholder: 'Describe the video content you want to generate, e.g.: A cat playing in the sunlight, camera slowly moving...',
+         durationSeconds: 'sec',
+         aspectRatioLabel: 'Aspect Ratio',
+         landscape: 'Landscape',
+         portrait: 'Portrait',
+         square: 'Square',
+         advancedOptions: 'Advanced Options',
+         fixedCamera: 'Fixed Camera',
+         fixedCameraDesc: 'Lock camera position to reduce camera movement',
+         addWatermark: 'Add Watermark',
+         addWatermarkDesc: 'Add platform watermark on generated video',
+         resolutionLabel: 'Resolution',
+         startGenerate: 'Start Generating',
         },
      },
    videoScript: {
@@ -2705,6 +2769,11 @@ export const translations: Record<string, Translations> = {
       queued: 'Queued',
       queuedPosition: 'position',
       generationTimeout: 'Generation timed out',
+      noPacks: 'No storyboard packs',
+      selectPackPlaceholder: 'Select storyboard pack...',
+      packInfoFrames: '{frames} frames',
+      packInfoSeparator: ' - ',
+      refreshPackList: 'Refresh storyboard pack list',
     },
     storyboardPreviewPanel: {
       title: 'Storyboard Preview',
@@ -2947,6 +3016,27 @@ export const translations: Record<string, Translations> = {
       thinkingComplete: 'Thought Process',
       aiAnalyzingLabel: 'AI Analyzing...',
     },
+    workflowChat: {
+      title: 'Workflow Assistant',
+      subtitle: 'Interact with workflows in real-time',
+      inputPlaceholder: 'Enter a message to start a workflow... (Shift+Enter for new line)',
+      send: 'Send',
+      stop: 'Stop',
+      clearChat: 'Clear Chat History',
+      clearChatConfirm: 'Are you sure you want to clear all chat history? This cannot be undone.',
+      clearContext: 'Clear Context',
+      clearContextConfirm: 'Are you sure you want to clear the workflow context? Chat history will be preserved.',
+      clearContextTooltip: 'Clear context, keep chat history',
+      startConversation: 'Start Conversation',
+      startConversationDesc: 'Send a message to start a workflow. Execution progress and results will be displayed in real-time.',
+      running: 'Running',
+      finalResult: 'Final Result',
+      exportMaterials: 'Export Clips ({count} video materials)',
+      exportMaterialsHint: 'Click to import video materials into the Video Editing task materials panel',
+      goToVideoResult: 'Go to Video Editing to view results',
+      workflowExecuting: 'Workflow is executing...',
+      inputHint: 'Press Enter to send, Shift + Enter for new line',
+    },
     workflowConfigModal: {
       title: 'Workflow Configuration',
       subtitle: 'Select and configure workflows for video editing tasks',
@@ -2998,6 +3088,7 @@ export const translations: Record<string, Translations> = {
       operational: '正常运行',
       close: '关闭',
       cancel: '取消',
+      underDevelopment: '功能开发中...',
     },
     header: {
       brandSubtitle: '光与影之交汇',
@@ -3160,6 +3251,8 @@ export const translations: Record<string, Translations> = {
       modelUsingDb: '已自定义配置',
       modelDomestic: '国内',
       modelInternational: '国际',
+      authRequiredError: '请登录后访问模型设置。',
+      sessionExpiredError: '会话已过期，请重新登录。',
       modelResetToDefault: '恢复默认',
       modelParameters: '参数',
       modelSelectProvider: '选择供应商',
@@ -3986,6 +4079,22 @@ export const translations: Record<string, Translations> = {
          previousVideoNotGenerated: '请先生成前一个场景的视频',
          extractingFrame: '正在提取帧...',
          autoTransitionMode: '自动衔接',
+         modalTitle: 'AI 视频生成',
+         modalSubtitle: 'Seedance \u00b7 字节跳动 Ark 平台',
+         promptLabel: '提示词',
+         promptPlaceholder: '描述你想要生成的视频内容，例如：一只猫咪在阳光下玩耍，镜头缓缓移动...',
+         durationSeconds: '秒',
+         aspectRatioLabel: '视频比例',
+         landscape: '横屏',
+         portrait: '竖屏',
+         square: '方形',
+         advancedOptions: '高级选项',
+         fixedCamera: '固定镜头',
+         fixedCameraDesc: '锁定镜头位置，减少镜头移动',
+         addWatermark: '添加水印',
+         addWatermarkDesc: '在生成视频上添加平台水印',
+         resolutionLabel: '分辨率',
+         startGenerate: '开始生成',
         },
      },
    videoScript: {
@@ -4205,6 +4314,11 @@ export const translations: Record<string, Translations> = {
       queued: '排队中',
       queuedPosition: '位置',
       generationTimeout: '生成超时',
+      noPacks: '暂无分镜包',
+      selectPackPlaceholder: '选择分镜包...',
+      packInfoFrames: '{frames}帧',
+      packInfoSeparator: ' - ',
+      refreshPackList: '刷新分镜包列表',
     },
     storyboardPreviewPanel: {
       title: '分镜预览',
@@ -4446,6 +4560,27 @@ export const translations: Record<string, Translations> = {
       thinkingInProgress: '思考中...',
       thinkingComplete: '思考过程',
       aiAnalyzingLabel: 'AI 分析中...',
+    },
+    workflowChat: {
+      title: '工作流助手',
+      subtitle: '与工作流实时交互',
+      inputPlaceholder: '输入消息以启动工作流... (Shift+Enter 换行)',
+      send: '发送',
+      stop: '停止',
+      clearChat: '清空聊天记录',
+      clearChatConfirm: '确定要清空所有聊天记录吗？此操作不可撤销。',
+      clearContext: '清空上下文',
+      clearContextConfirm: '确定要清空当前工作流的上下文吗？聊天记录将保留。',
+      clearContextTooltip: '清空上下文，保留聊天记录',
+      startConversation: '开始对话',
+      startConversationDesc: '发送消息以启动工作流，我会实时显示执行过程和结果',
+      running: '执行中',
+      finalResult: '最终结果',
+      exportMaterials: '导出剪辑 ({count} 个视频素材)',
+      exportMaterialsHint: '点击将视频素材导入到 Video Editing 任务的素材管理面板',
+      goToVideoResult: '前往Video Editing查看结果',
+      workflowExecuting: '工作流正在执行中...',
+      inputHint: '按 Enter 发送，Shift + Enter 换行',
     },
     workflowConfigModal: {
       title: '工作流配置',

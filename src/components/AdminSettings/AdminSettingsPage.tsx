@@ -50,7 +50,7 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
                 {t.adminSettings.systemSettingsDesc}
               </p>
               <p className="text-sm text-muted-foreground mt-4">
-                功能开发中...
+                {t.common.underDevelopment}
               </p>
             </div>
           </div>

@@ -197,13 +197,13 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
                 key={tab.id}
                 className={`taskbar-tab ${tab.isActive ? 'active' : ''}`}
                 onClick={(e) => handleTabClick(e, tab)}
-                title={!isExpanded ? tab.title : undefined}
+                title={!isExpanded ? getTaskLabel(tab.type) : undefined}
               >
                 <div className="tab-icon">
                   {getTaskIcon(tab.type)}
                 </div>
                 <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
-                  <span className="tab-title">{tab.title}</span>
+                  <span className="tab-title">{getTaskLabel(tab.type)}</span>
                   <button
                     onClick={(e) => handleTabClose(e, tab.id)}
                     className="tab-close"
