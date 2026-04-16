@@ -38,7 +38,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     setToasts(prev => {
       const existingToast = prev.find(toast => toast.message === message && toast.type === type);
       if (existingToast) {
-        console.log(`[NotificationContext] 跳过重复通知`, {
+        console.log(`[NotificationContext] Skipping duplicate notification`, {
           message,
           type,
           existingId: existingToast.id,
@@ -56,7 +56,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       };
 
       // 记录通知日志
-      console.log(`[NotificationContext] 显示通知`, {
+      console.log(`[NotificationContext] Showing notification`, {
         id,
         message,
         type,

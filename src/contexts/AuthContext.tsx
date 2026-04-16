@@ -131,7 +131,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         // Show toast notification to user
         if (data.reason) {
-          notification.showWarning(data.reason, 6000);
+          const sessionReasonMap: Record<string, string> = {
+            '用户不存在': t.adminSettings.sessionInvalid,
+            '用户已被禁用': t.adminSettings.sessionInvalid,
+            '无活跃会话': t.adminSettings.sessionInvalid,
+            '您的账号已在另一台设备上登录': t.adminSettings.sessionInvalid,
+          };
+          const msg = sessionReasonMap[data.reason] || t.adminSettings.sessionInvalid;
+          notification.showWarning(msg, 6000);
         }
 
         return false;
@@ -275,7 +282,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                          user.userRole === 'admin' ? t.adminSettings.roleAdmin :
                          user.userRole === 'premium' ? t.adminSettings.rolePremium :
                          t.adminSettings.roleRegular;
-        notification.showSuccess(`${t.auth.welcomeBack}，${user.username}！(${roleLabel})`, 3000);
+        const msg = t.auth.welcomeBackMessage
+          .replace('{username}', user.username)
+          .replace('{role}', roleLabel);
+        notification.showSuccess(msg, 3000);
 
         return { success: true };
       } else {

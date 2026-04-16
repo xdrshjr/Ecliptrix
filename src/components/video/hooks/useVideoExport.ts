@@ -441,11 +441,11 @@ export const useVideoExport = ({
         });
         
         // 使用 toast 警告提示，而不是 alert 弹窗
-        showWarning(`${t.videoExport.noContentToExport}，${t.videoExport.noContentToExportDesc}`, 5000);
+        showWarning(t.videoExport.noContentToExportFull, 5000);
 
-        console.log(`[useVideoExport] 显示无内容警告提示`, {
+        console.log(`[useVideoExport] No content warning`, {
           taskId,
-          message: `${t.videoExport.noContentToExport}，${t.videoExport.noContentToExportDesc}`,
+          message: t.videoExport.noContentToExportFull,
           timestamp: new Date().toISOString()
         });
 

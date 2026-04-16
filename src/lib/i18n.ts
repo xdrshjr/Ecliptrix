@@ -11,6 +11,7 @@ export interface Translations {
     operational: string;
     close: string;
     cancel: string;
+    confirm: string;
     underDevelopment: string;
   };
   header: {
@@ -35,6 +36,7 @@ export interface Translations {
     loginButton: string;
     registerButton: string;
     welcomeBack: string;
+    welcomeBackMessage: string;
     welcomeTitle: string;
     welcomeSubtitle: string;
     loginSuccess: string;
@@ -493,6 +495,10 @@ export interface Translations {
     brainstorming: string;
     aiChat: string;
   };
+  workflowInterface: {
+    chatInterfaceTab: string;
+    workflowInterfaceTab: string;
+  };
   welcome: {
     title: string;
     subtitle: string;
@@ -864,6 +870,7 @@ export interface Translations {
   videoExport: {
     noContentToExport: string;
     noContentToExportDesc: string;
+    noContentToExportFull: string;
   };
   scriptPanel: {
     tabs: {
@@ -1549,6 +1556,7 @@ export const translations: Record<string, Translations> = {
       operational: 'Operational',
       close: 'Close',
       cancel: 'Cancel',
+      confirm: 'Confirm',
       underDevelopment: 'Feature under development...',
     },
     header: {
@@ -1573,6 +1581,7 @@ export const translations: Record<string, Translations> = {
       loginButton: 'Login',
       registerButton: 'Register',
       welcomeBack: 'Welcome Back',
+      welcomeBackMessage: 'Welcome Back, {username}! ({role})',
       welcomeTitle: 'Welcome to Ecliptrix',
       welcomeSubtitle: 'Where light and shadow collide to create extraordinary content',
       loginSuccess: 'Login successful',
@@ -2031,6 +2040,10 @@ export const translations: Record<string, Translations> = {
       brainstorming: 'Brainstorming',
       aiChat: 'AI Chat',
     },
+    workflowInterface: {
+      chatInterfaceTab: 'Chat Interface',
+      workflowInterfaceTab: 'Workflow Interface',
+    },
     welcome: {
       title: 'Welcome to Ecliptrix',
       subtitle: 'Where light and shadow collide',
@@ -2402,6 +2415,7 @@ export const translations: Record<string, Translations> = {
     videoExport: {
       noContentToExport: 'No content to export',
       noContentToExportDesc: 'Please add video materials to the timeline before exporting',
+      noContentToExportFull: 'No content to export. Please add video materials to the timeline before exporting.',
     },
          scriptPanel: {
        tabs: {
@@ -3100,6 +3114,7 @@ export const translations: Record<string, Translations> = {
       operational: '正常运行',
       close: '关闭',
       cancel: '取消',
+      confirm: '确定',
       underDevelopment: '功能开发中...',
     },
     header: {
@@ -3124,6 +3139,7 @@ export const translations: Record<string, Translations> = {
       loginButton: '登录',
       registerButton: '注册',
       welcomeBack: '欢迎回来',
+      welcomeBackMessage: '欢迎回来，{username}！({role})',
       welcomeTitle: '欢迎使用 Ecliptrix',
       welcomeSubtitle: '光与影之交汇，创造非凡内容',
       loginSuccess: '登录成功',
@@ -3582,6 +3598,10 @@ export const translations: Record<string, Translations> = {
       brainstorming: '头脑风暴',
       aiChat: 'AI对话',
     },
+    workflowInterface: {
+      chatInterfaceTab: '聊天界面',
+      workflowInterfaceTab: '工作流界面',
+    },
     welcome: {
       title: '欢迎使用 Ecliptrix',
       subtitle: '光与影之交汇',
@@ -3953,6 +3973,7 @@ export const translations: Record<string, Translations> = {
     videoExport: {
       noContentToExport: '没有视频内容可导出',
       noContentToExportDesc: '请先添加视频素材到时间轴',
+      noContentToExportFull: '没有视频内容可导出，请先添加视频素材到时间轴',
     },
          scriptPanel: {
        tabs: {
