@@ -37,7 +37,7 @@ const EndNode: React.FC<BaseNodeProps> = React.memo((props) => {
         isConfigured: true,
         renderContent: () => (
           <div className="text-xs text-muted-foreground text-center py-1">
-            Workflow End Point
+            {t.workflowNodes.status.workflowEndPoint}
           </div>
         ),
       }}

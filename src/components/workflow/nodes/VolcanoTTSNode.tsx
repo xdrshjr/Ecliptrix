@@ -66,13 +66,13 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
           isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div className="space-y-1">
-                <div className="text-muted-foreground font-medium text-xs">Voice:</div>
+                <div className="text-muted-foreground font-medium text-xs">{t.workflowNodes.status.voice}:</div>
                 <div className="text-orange-700 text-xs bg-orange-50 px-2 py-1 rounded border border-orange-200 font-medium truncate">
                   {getVoiceTypeName(displayVoiceType)}
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground font-medium text-xs">Text:</div>
+                <div className="text-muted-foreground font-medium text-xs">{t.workflowNodes.status.text}:</div>
                 <div className="text-foreground text-xs bg-muted p-2 rounded border border-border max-h-16 overflow-y-auto break-words whitespace-pre-wrap">
                   {displayText.length > 80 
                     ? `${displayText.substring(0, 80)}...` 
@@ -81,14 +81,14 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
               </div>
               {displayText.length > 80 && (
                 <div className="text-xs text-muted-foreground italic">
-                  Double click for full content
+                  {t.workflowNodes.status.doubleClickForFullContent}
                 </div>
               )}
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-muted-foreground italic">Not configured</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.status.notConfigured}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.status.doubleClickToConfigure}</div>
             </div>
           )
         ),

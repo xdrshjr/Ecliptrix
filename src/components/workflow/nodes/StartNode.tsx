@@ -37,7 +37,7 @@ const StartNode: React.FC<BaseNodeProps> = React.memo((props) => {
         isConfigured: true,
         renderContent: () => (
           <div className="text-xs text-muted-foreground text-center py-1">
-            Workflow Start Point
+            {t.workflowNodes.status.workflowStartPoint}
           </div>
         ),
       }}

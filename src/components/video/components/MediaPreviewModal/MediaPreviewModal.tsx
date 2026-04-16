@@ -249,7 +249,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             <button
               onClick={handleZoomOut}
               className="p-2 text-white hover:bg-accent rounded-md transition-colors"
-              title="缩小 (-)"
+              title={t.mediaPreview.zoomOut}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -261,7 +261,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             <button
               onClick={handleZoomIn}
               className="p-2 text-white hover:bg-accent rounded-md transition-colors"
-              title="放大 (+)"
+              title={t.mediaPreview.zoomIn}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -270,7 +270,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             <button
               onClick={handleResetZoom}
               className="p-2 text-white hover:bg-accent rounded-md transition-colors"
-              title="重置 (0)"
+              title={t.mediaPreview.reset}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -285,7 +285,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
             <button
               onClick={handlePlayPause}
               className="p-2 text-white hover:bg-accent rounded-md transition-colors"
-              title={isPlaying ? '暂停 (空格)' : '播放 (空格)'}
+              title={isPlaying ? t.mediaPreview.pause : t.mediaPreview.play}
             >
               {isPlaying ? (
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -324,7 +324,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
         <button
           onClick={onClose}
           className="p-2 text-white hover:bg-accent rounded-md transition-colors"
-          title="关闭 (ESC)"
+          title={t.mediaPreview.close}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -429,12 +429,12 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
         <div className="text-white text-xs text-center space-y-1">
           {material.type === 'image' && (
             <>
-              <div>快捷键: <span className="font-semibold">+/-</span> 缩放 | <span className="font-semibold">0</span> 重置 | <span className="font-semibold">ESC</span> 关闭</div>
-              <div>鼠标: <span className="font-semibold">滚轮</span> 缩放 | <span className="font-semibold">拖拽</span> 移动图片</div>
+              <div>{t.mediaPreview.imageShortcutsLine1}</div>
+              <div>{t.mediaPreview.imageShortcutsLine2}</div>
             </>
           )}
           {(material.type === 'video' || material.type === 'audio') && (
-            <div>快捷键: <span className="font-semibold">空格</span> 播放/暂停 | <span className="font-semibold">ESC</span> 关闭</div>
+            <div>{t.mediaPreview.mediaShortcutsLine}</div>
           )}
         </div>
       </div>
