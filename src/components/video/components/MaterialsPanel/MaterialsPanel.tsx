@@ -14,11 +14,16 @@ import type { SilenceRemoveResult, MinimizedTaskState } from '../VideoProcessing
 import { useNotification } from '@/contexts/NotificationContext';
 import AiVideoModal from '../AiVideoModal/AiVideoModal';
 import AiImageModal from '../AiImageModal/AiImageModal';
+import AiAudioModal from '../AiAudioModal/AiAudioModal';
 import StoryboardPackCard from './StoryboardPackCard';
+import GridPackCard from './GridPackCard';
+import GridPackModal from './GridPackModal';
 import StoryboardPackView from './StoryboardPackView';
 import StoryboardPackModal from './StoryboardPackModal';
+import CreateStoryboardPackModal from './CreateStoryboardPackModal';
 import { StoryboardPack, StoryboardFrame } from '@/types';
 import { listPacks, deletePack } from '@/lib/api/storyboard';
+import { listImagePacks, deleteImagePack, ImagePack } from '@/lib/api/imagePack';
 import { http, ApiError } from '@/lib/api/http-client';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
@@ -73,7 +78,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   handleStoryboardGenerate,
   handleClearAllMaterials,
 }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { showSuccess, showError } = useNotification();
   const logger = new VideoEditingLogger({
     taskId,
@@ -118,6 +123,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const [aiVideoInitialImage, setAiVideoInitialImage] = useState<{ url: string; name: string } | null>(null);
   // AI图像生成弹窗状态
   const [isAiImageModalOpen, setIsAiImageModalOpen] = useState(false);
+  // AI音频弹窗状态
+  const [isAiAudioModalOpen, setIsAiAudioModalOpen] = useState(false);
 
   // 视频处理弹窗状态
   const [isVideoProcessingOpen, setIsVideoProcessingOpen] = useState(false);
@@ -126,6 +133,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 分镜包状态
   const [storyboardPacks, setStoryboardPacks] = useState<StoryboardPack[]>([]);
+  // 人物/场景建模包状态
+  const [characterPacks, setCharacterPacks] = useState<ImagePack[]>([]);
+  const [scenePacks, setScenePacks] = useState<ImagePack[]>([]);
+  // Ref 镜像：在"清除所有素材"确认回调里读取最新快照，避免闭包捕获造成漏删/重复删
+  const storyboardPacksRef = useRef<StoryboardPack[]>([]);
+  const characterPacksRef = useRef<ImagePack[]>([]);
+  const scenePacksRef = useRef<ImagePack[]>([]);
+  useEffect(() => { storyboardPacksRef.current = storyboardPacks; }, [storyboardPacks]);
+  useEffect(() => { characterPacksRef.current = characterPacks; }, [characterPacks]);
+  useEffect(() => { scenePacksRef.current = scenePacks; }, [scenePacks]);
+  const [gridPackModal, setGridPackModal] = useState<{ isOpen: boolean; pack: ImagePack | null }>({
+    isOpen: false,
+    pack: null,
+  });
   const [currentStoryboardPack, setCurrentStoryboardPack] = useState<StoryboardPack | null>(null);
   const [storyboardPackModal, setStoryboardPackModal] = useState<{
     isOpen: boolean;
@@ -135,6 +156,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     isOpen: boolean;
     packId: string | null;
   }>({ isOpen: false, packId: null });
+  const [createStoryboardModalOpen, setCreateStoryboardModalOpen] = useState(false);
+  const [imagePackDeleteConfirm, setImagePackDeleteConfirm] = useState<{
+    isOpen: boolean;
+    packType: 'character' | 'scene' | null;
+    packId: string | null;
+  }>({ isOpen: false, packType: null, packId: null });
 
   // 图片转视频弹出菜单状态
   const [imageToVideoPopover, setImageToVideoPopover] = useState<{
@@ -180,8 +207,29 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   }, [logger]);
 
+  // 加载人物/场景建模包列表
+  const refreshCharacterPacks = useCallback(async () => {
+    try {
+      const packs = await listImagePacks('character');
+      setCharacterPacks(packs);
+    } catch (error) {
+      logger.error('加载人物建模包列表失败', error instanceof Error ? error : new Error(String(error)));
+    }
+  }, [logger]);
+
+  const refreshScenePacks = useCallback(async () => {
+    try {
+      const packs = await listImagePacks('scene');
+      setScenePacks(packs);
+    } catch (error) {
+      logger.error('加载场景建模包列表失败', error instanceof Error ? error : new Error(String(error)));
+    }
+  }, [logger]);
+
   useEffect(() => {
     refreshStoryboardPacks();
+    refreshCharacterPacks();
+    refreshScenePacks();
   }, []);
 
   // 删除分镜包
@@ -208,6 +256,26 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       logger.error('删除分镜包失败', error instanceof Error ? error : new Error(msg));
     }
   }, [storyboardPackDeleteConfirm.packId, currentStoryboardPack, showSuccess, showError, logger]);
+
+  // 确认删除 人物/场景 建模包
+  const handleConfirmDeleteImagePack = useCallback(async () => {
+    const { packType, packId } = imagePackDeleteConfirm;
+    if (!packType || !packId) return;
+    setImagePackDeleteConfirm({ isOpen: false, packType: null, packId: null });
+    try {
+      await deleteImagePack(packType, packId);
+      if (packType === 'character') {
+        await refreshCharacterPacks();
+      } else {
+        await refreshScenePacks();
+      }
+      logger.info('建模包删除成功', { packType, packId });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`删除建模包失败: ${msg}`);
+      logger.error('删除建模包失败', error instanceof Error ? error : new Error(msg));
+    }
+  }, [imagePackDeleteConfirm, refreshCharacterPacks, refreshScenePacks, showError, logger]);
 
   // 将所有帧添加为独立素材
   const handleAddAllFramesToMaterials = useCallback((pack: StoryboardPack) => {
@@ -402,18 +470,64 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
   }, []);
 
-  // Handle clear all materials with storyboard packs
+  // Handle clear all materials with storyboard/character/scene packs (含远程 DELETE)
   const handleClearAllWithStoryboards = useCallback(() => {
     setIsMenuOpen(false);
-    if (allMaterials.length === 0) {
+    // 直接使用 state 值判断，避免 ref 同步延迟导致误判
+    const packExtra = storyboardPacks.length + characterPacks.length + scenePacks.length;
+
+    if (allMaterials.length === 0 && packExtra === 0) {
       showSuccess(t.materialsPanel.noMaterialsToClear);
       return;
     }
-    handleClearAllMaterials(() => {
+
+    handleClearAllMaterials(async () => {
+      // 再次读取最新 ref 快照，避免在弹窗展示期间 packs 发生变化
+      const sb = storyboardPacksRef.current;
+      const ch = characterPacksRef.current;
+      const sc = scenePacksRef.current;
+
+      const tasks: Promise<unknown>[] = [
+        ...sb.map(p => deletePack(p.packId)),
+        ...ch.map(p => deleteImagePack('character', p.pack_id)),
+        ...sc.map(p => deleteImagePack('scene', p.pack_id)),
+      ];
+      const results = await Promise.allSettled(tasks);
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      // 乐观先清空本地
       setStoryboardPacks([]);
-      showSuccess(t.materialsPanel.clearAllSuccess);
-    });
-  }, [handleClearAllMaterials, allMaterials.length, showSuccess, t]);
+      setCharacterPacks([]);
+      setScenePacks([]);
+      setCurrentStoryboardPack(null);
+
+      if (failed > 0) {
+        // 失败兜底：重新拉取真实列表，修正漂移
+        await Promise.allSettled([
+          refreshStoryboardPacks(),
+          refreshCharacterPacks(),
+          refreshScenePacks(),
+        ]);
+        const tpl = (t.materialsPanel as { clearAllPartialFail?: string }).clearAllPartialFail
+          ?? '部分素材包删除失败（{failed} 项），请稍后重试';
+        showError(tpl.replace('{failed}', String(failed)));
+      } else {
+        showSuccess(t.materialsPanel.clearAllSuccess);
+      }
+    }, packExtra);
+  }, [
+    handleClearAllMaterials,
+    allMaterials.length,
+    storyboardPacks.length,
+    characterPacks.length,
+    scenePacks.length,
+    showSuccess,
+    showError,
+    t,
+    refreshStoryboardPacks,
+    refreshCharacterPacks,
+    refreshScenePacks,
+  ]);
 
   // Click outside menu bar dropdown
   useEffect(() => {
@@ -1534,7 +1648,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <div className="materials-panel-content">
         {/* 素材类型筛选标签 */}
         <div className="flex space-x-1 mb-4 p-1 bg-muted rounded-md">
-          {(['all', 'video', 'audio', 'image', 'subtitle', 'storyboard_pack'] as const).map((type) => (
+          {(['all', 'video', 'audio', 'image', 'subtitle', 'storyboard_pack', 'character_pack', 'scene_pack'] as const).map((type) => (
             <button
               key={type}
               onClick={() => handleTypeFilter(type)}
@@ -1548,10 +1662,27 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                type === 'video' ? t.materialsPanel.filterVideo :
                type === 'audio' ? t.materialsPanel.filterAudio :
                type === 'image' ? t.materialsPanel.filterImage :
-               type === 'storyboard_pack' ? '分镜包' : t.materialsPanel.filterSubtitle}
+               type === 'storyboard_pack' ? '分镜包' :
+               type === 'character_pack' ? '人物包' :
+               type === 'scene_pack' ? '场景包' : t.materialsPanel.filterSubtitle}
             </button>
           ))}
         </div>
+
+        {/* AI 创建分镜包入口 — 在分镜包筛选下显示 primary 按钮 */}
+        {selectedMaterialType === 'storyboard_pack' && !currentStoryboardPack && (
+          <div className="mb-3">
+            <button
+              onClick={() => setCreateStoryboardModalOpen(true)}
+              className="w-full px-3 py-2 text-xs font-medium rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>{locale === 'zh-CN' ? 'AI 创建分镜包' : 'AI Storyboard Pack'}</span>
+            </button>
+          </div>
+        )}
 
         {/* 分镜包内部视图 — 当 currentStoryboardPack 非空时显示 */}
         {currentStoryboardPack ? (
@@ -1606,7 +1737,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 点击AI图像生成创建分镜包
               </p>
             </div>
-          ) : materials.length === 0 && storyboardPacks.length === 0 ? (
+          ) : materials.length === 0 && storyboardPacks.length === 0 && characterPacks.length === 0 && scenePacks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1632,6 +1763,28 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     onClick={(p) => setStoryboardPackModal({ isOpen: true, pack: p })}
                     onDoubleClick={(p) => setCurrentStoryboardPack(p)}
                     onDelete={handleDeleteStoryboardPack}
+                  />
+                ))
+              }
+              {/* 人物建模包 */}
+              {(selectedMaterialType === 'all' || selectedMaterialType === 'character_pack') &&
+                characterPacks.map((pack) => (
+                  <GridPackCard
+                    key={`cp_${pack.pack_id}`}
+                    pack={pack}
+                    onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
+                    onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'character', packId: p.pack_id })}
+                  />
+                ))
+              }
+              {/* 场景建模包 */}
+              {(selectedMaterialType === 'all' || selectedMaterialType === 'scene_pack') &&
+                scenePacks.map((pack) => (
+                  <GridPackCard
+                    key={`scn_${pack.pack_id}`}
+                    pack={pack}
+                    onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
+                    onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'scene', packId: p.pack_id })}
                   />
                 ))
               }
@@ -2177,6 +2330,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 <span>{t.materialsPanel.aiVideo}</span>
               </button>
 
+              <button
+                onClick={() => setIsAiAudioModalOpen(true)}
+                className="flex items-center space-x-1 text-accent-foreground hover:text-foreground bg-accent hover:bg-accent/80 px-2 py-1 rounded transition-colors"
+                title={t.materialsPanel.aiAudioTitle}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+                <span>{t.materialsPanel.aiAudio}</span>
+              </button>
+
             </div>
             <div className="text-muted-foreground">
               {materials.length}{t.materialsPanel.materialsCount}
@@ -2205,6 +2369,24 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onCancel={() => setStoryboardPackDeleteConfirm({ isOpen: false, packId: null })}
       />
 
+      {/* 人物/场景 建模包删除确认对话框 */}
+      <ConfirmationDialog
+        isOpen={imagePackDeleteConfirm.isOpen}
+        title={
+          imagePackDeleteConfirm.packType === 'scene'
+            ? (t.materialsPanel.deleteScenePack || 'Delete Scene Pack')
+            : (t.materialsPanel.deleteCharacterPack || 'Delete Character Pack')
+        }
+        message={
+          imagePackDeleteConfirm.packType === 'scene'
+            ? (t.materialsPanel.deleteScenePackConfirm || '')
+            : (t.materialsPanel.deleteCharacterPackConfirm || '')
+        }
+        type="danger"
+        onConfirm={handleConfirmDeleteImagePack}
+        onCancel={() => setImagePackDeleteConfirm({ isOpen: false, packType: null, packId: null })}
+      />
+
       {/* 分镜包预览弹窗 */}
       <StoryboardPackModal
         isOpen={storyboardPackModal.isOpen}
@@ -2220,6 +2402,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         }}
         onFrameClick={handleFramePreviewClick}
         onAddAllFramesToMaterials={handleAddAllFramesToMaterials}
+      />
+
+      <CreateStoryboardPackModal
+        isOpen={createStoryboardModalOpen}
+        imageMaterials={materials.filter((m) => m.type === 'image')}
+        onClose={() => setCreateStoryboardModalOpen(false)}
+        onCreated={(pack) => {
+          setStoryboardPacks((prev) => [pack, ...prev.filter((p) => p.packId !== pack.packId)]);
+          setCreateStoryboardModalOpen(false);
+          showSuccess(locale === 'zh-CN' ? '分镜包创建成功' : 'Storyboard pack created');
+        }}
       />
 
       {/* 图片转视频方式选择弹出菜单 */}
@@ -2442,21 +2635,68 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         materials={materials}
       />
 
+      {/* AI音频弹窗 */}
+      <AiAudioModal
+        isOpen={isAiAudioModalOpen}
+        onClose={() => setIsAiAudioModalOpen(false)}
+        onConfirm={async (params) => {
+          setIsAiAudioModalOpen(false);
+          try {
+            const { aiAudioSynthesize } = await import('@/lib/api/voiceClone');
+            const result = await aiAudioSynthesize({
+              text: params.text,
+              voice_type: params.voice_type,
+              speed_ratio: params.speed_ratio,
+              is_cloned_voice: false,
+            });
+            if (result.success && result.data?.audio_url) {
+              addOrReplaceMaterial({
+                id: `ai-audio-synth-${Date.now()}`,
+                type: 'audio' as const,
+                name: result.data.file_name || 'synthesized-audio.mp3',
+                format: 'mp3',
+                size: result.data.file_size || 0,
+                url: result.data.audio_url,
+                duration: result.data.duration || 0,
+                createdAt: new Date(),
+              });
+              showSuccess(t.materialsPanel.aiAudioSuccess || 'AI音频生成成功');
+            } else {
+              showError(result.message || t.materialsPanel.aiAudioFailed || 'AI音频生成失败');
+            }
+          } catch (err: any) {
+            showError(err?.message || t.materialsPanel.aiAudioFailed || 'AI音频生成失败');
+          }
+        }}
+      />
+
       {/* AI图像生成弹窗 */}
       <AiImageModal
         isOpen={isAiImageModalOpen}
         onClose={() => setIsAiImageModalOpen(false)}
         onConfirm={(params) => {
           setIsAiImageModalOpen(false);
-          handleAiImageGenerate(params).catch((err: Error) => {
-            showError(err.message || 'AI图像生成失败');
-          });
+          handleAiImageGenerate(params)
+            .then((pack) => {
+              if (pack?.pack_type === 'character') refreshCharacterPacks();
+              else if (pack?.pack_type === 'scene') refreshScenePacks();
+            })
+            .catch((err: Error) => {
+              showError(err.message || 'AI图像生成失败');
+            });
         }}
         onStoryboardGenerate={async (params) => {
           const pack = await handleStoryboardGenerate(params);
           await refreshStoryboardPacks();
           return pack;
         }}
+      />
+
+      {/* 人物/场景建模包详情弹窗 */}
+      <GridPackModal
+        isOpen={gridPackModal.isOpen}
+        pack={gridPackModal.pack}
+        onClose={() => setGridPackModal({ isOpen: false, pack: null })}
       />
 
       {/* 视频处理弹窗 */}

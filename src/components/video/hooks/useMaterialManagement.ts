@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { extractVideoThumbnail } from '../utils/extractVideoThumbnail';
 import { useLocale } from '@/contexts/LocaleContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
-import { generateArkImages, ArkImageGenerateParams } from '@/lib/api/arkImage';
+import { generateArkImages, generateArkImagesWithPack, ArkImageGenerateParams } from '@/lib/api/arkImage';
 import { generateStoryboard } from '@/lib/api/storyboard';
 import { useVideoEditingStore } from '@/stores';
 import { http, ApiError } from '@/lib/api/http-client';
@@ -961,9 +961,46 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     }
 
     try {
-      const images = await generateArkImages(params);
+      const { images, pack } = await generateArkImagesWithPack(params);
 
-      // Replace placeholders with actual results
+      // Grid pack mode (character/scene): single composite material + pack
+      // handled by the MaterialsPanel pack list. Replace first placeholder
+      // with the composite and drop any extras.
+      if (pack) {
+        const [first, ...rest] = placeholderIds;
+        const composite = images[0];
+        if (first && composite) {
+          const finalMaterial: MaterialItem = {
+            id: first,
+            name: `${namePrefix}_${timeStr}`,
+            type: 'image',
+            format: 'png',
+            size: 0,
+            url: composite.image_url,
+            serverUrl: composite.image_url,
+            thumbnailUrl: composite.image_url,
+            width: composite.width,
+            height: composite.height,
+            createdAt,
+            downloadStatus: undefined,
+            downloadProgress: undefined,
+            metadata: {
+              source: 'ark-ai-image',
+              prompt: params.prompt,
+              mode,
+              packId: pack.pack_id,
+              packType: pack.pack_type,
+            },
+          };
+          addOrReplaceMaterial(finalMaterial);
+        }
+        if (rest.length) {
+          setMaterials(prev => prev.filter(m => !rest.includes(m.id)));
+        }
+        return pack;
+      }
+
+      // Legacy / basic mode: replace placeholders with per-image results.
       for (let i = 0; i < placeholderIds.length; i++) {
         const placeholderId = placeholderIds[i];
         const image = images[i];
@@ -991,6 +1028,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           setMaterials(prev => prev.filter(m => m.id !== placeholderId));
         }
       }
+      return null;
     } catch (error) {
       logger.error('AI图像生成失败', error as Error);
       // Remove all placeholders on failure
@@ -1013,25 +1051,34 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   }, [logger]);
 
   // 清除所有素材
-  const handleClearAllMaterials = useCallback((onAfterClear?: () => void) => {
+  const handleClearAllMaterials = useCallback((
+    onAfterClear?: () => void | Promise<void>,
+    extraCount: number = 0,
+  ) => {
     if (isUploading) {
       return;
     }
-    const count = materials.length;
-    if (count === 0) return;
+    const total = materials.length + extraCount;
+    if (total === 0) return;
 
     setConfirmationDialog({
       isOpen: true,
       title: t.materialsPanel.clearAllConfirmTitle,
-      message: t.materialsPanel.clearAllConfirmMessage.replace('{count}', String(count)),
+      message: t.materialsPanel.clearAllConfirmMessage.replace('{count}', String(total)),
       type: 'danger',
-      onConfirm: () => {
-        logger.info('用户确认清除所有素材', { count });
-        setMaterials([]);
-        setSelectedMaterials(new Set());
-        clearMaterials();
-        onAfterClear?.();
+      onConfirm: async () => {
+        logger.info('用户确认清除所有素材', { materials: materials.length, extraCount });
+        if (materials.length > 0) {
+          setMaterials([]);
+          setSelectedMaterials(new Set());
+          clearMaterials();
+        }
         setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          await onAfterClear?.();
+        } catch (e) {
+          logger.error('onAfterClear 执行异常', e instanceof Error ? e : new Error(String(e)));
+        }
       },
     });
   }, [materials.length, isUploading, clearMaterials, t, logger]);

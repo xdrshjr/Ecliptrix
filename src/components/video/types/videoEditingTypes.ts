@@ -155,11 +155,11 @@ export interface UseMaterialManagementReturn {
   // AI视频生成
   handleAiVideoGenerate: (params: { prompt: string; duration: number; camera_fixed: boolean; watermark: boolean; image_url?: string }) => Promise<void>;
   // AI图像生成
-  handleAiImageGenerate: (params: { prompt: string; size: ArkImageSize; count: number; watermark: boolean }) => Promise<void>;
+  handleAiImageGenerate: (params: import('@/lib/api/arkImage').ArkImageGenerateParams) => Promise<import('@/lib/api/arkImage').ArkImagePack | null>;
   // 分镜包生成
   handleStoryboardGenerate: (params: import('@/types').StoryboardGenerateParams) => Promise<import('@/types').StoryboardPack>;
   // 清除所有素材
-  handleClearAllMaterials: (onAfterClear?: () => void) => void;
+  handleClearAllMaterials: (onAfterClear?: () => void | Promise<void>, extraCount?: number) => void;
 }
 
 // 新增：Youtube视频搜索结果接口
