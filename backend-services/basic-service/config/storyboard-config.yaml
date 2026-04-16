@@ -1,0 +1,26 @@
+# Storyboard video generation queue configuration.
+#
+# Controls the concurrency/timeout of ARK video generation tasks spawned from
+# the "AI storyboard" feature (both "batch generate all" and individual
+# "generate video" buttons).
+
+video_generation:
+  # Maximum number of video generation jobs in flight simultaneously.
+  # Jobs beyond this limit are queued (status = "queued") until a slot frees up.
+  # Default: 3. Raising too high may trigger ARK-side rate limiting.
+  max_concurrent: 3
+
+  # Per-job hard timeout, in seconds. If ARK has not returned success/failed
+  # within this window, the local job is marked "timeout" and its slot freed.
+  # Should be >= 1.25x typical ARK generation time (5-8 min) to avoid false
+  # timeouts. NOTE: we do NOT cancel the ARK task on local timeout (ARK SDK
+  # has no cancel method); the remote job runs to completion on its own.
+  timeout_seconds: 600
+
+  # Interval (seconds) between ARK get_status polls inside a running job.
+  poll_interval_seconds: 5
+
+  # Retention window (seconds) after a job reaches terminal state before the
+  # in-memory jobs table cleans it up. Must be long enough for the frontend
+  # to read the final state.
+  job_retention_seconds: 3600

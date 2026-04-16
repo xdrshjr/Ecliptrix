@@ -8,11 +8,15 @@ from fastapi import APIRouter, HTTPException
 from app.logger import get_logger
 from app.models.base_models import BaseResponse
 from app.models.storyboard_models import (
+    GenerateScriptRequest,
+    GenerateScriptResponse,
+    ReviseScriptRequest,
     StoryboardBatchVideoRequest,
     StoryboardBatchVideoResponse,
     StoryboardBatchVideoStatusResponse,
     StoryboardComposeRequest,
     StoryboardComposeResponse,
+    StoryboardCreateFromShotsRequest,
     StoryboardDescribeRequest,
     StoryboardDescribeResponse,
     StoryboardGenerateRequest,
@@ -46,6 +50,93 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardG
     except Exception as e:
         logger.error(f"Failed to generate storyboard: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate storyboard: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Script drafting (LLM-driven, pre-image step)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/generate-script", response_model=GenerateScriptResponse)
+async def generate_storyboard_script(
+    request: GenerateScriptRequest,
+) -> GenerateScriptResponse:
+    """Generate an initial N-shot storyboard script from a user prompt."""
+    try:
+        shots, raw = await storyboard_service.generate_storyboard_script_initial(
+            request
+        )
+        if len(shots) != request.frame_count:
+            raise HTTPException(
+                status_code=422,
+                detail=f"LLM returned {len(shots)} shots, expected {request.frame_count}",
+            )
+        return GenerateScriptResponse(
+            success=True,
+            message=f"Generated {len(shots)} shots",
+            shots=shots,
+            raw_response=raw,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"generate-script validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to generate storyboard script: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate script: {e}")
+
+
+@router.post("/revise-script", response_model=GenerateScriptResponse)
+async def revise_storyboard_script(
+    request: ReviseScriptRequest,
+) -> GenerateScriptResponse:
+    """Revise an existing storyboard script given chat history + new user instruction."""
+    try:
+        shots, raw = await storyboard_service.revise_storyboard_script(request)
+        if len(shots) != request.frame_count:
+            raise HTTPException(
+                status_code=422,
+                detail=f"LLM returned {len(shots)} shots, expected {request.frame_count}",
+            )
+        return GenerateScriptResponse(
+            success=True,
+            message=f"Revised to {len(shots)} shots",
+            shots=shots,
+            raw_response=raw,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"revise-script validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to revise storyboard script: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to revise script: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Script-bound pack creation (AI scripted storyboard)
+# ---------------------------------------------------------------------------
+
+@router.post("/packs/create-from-shots", response_model=StoryboardGenerateResponse)
+async def create_pack_from_shots(
+    request: StoryboardCreateFromShotsRequest,
+) -> StoryboardGenerateResponse:
+    """Create a storyboard pack from client-provided, script-bound shots."""
+    try:
+        pack = await storyboard_service.create_pack_from_shots(request)
+        return StoryboardGenerateResponse(
+            success=True,
+            message=f"Storyboard pack created from {pack.frame_count} shots",
+            data=pack,
+        )
+    except ValueError as e:
+        logger.warning(f"create-from-shots validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to create pack from shots: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create pack: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +235,30 @@ async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> Storybo
     except Exception as e:
         logger.error(f"Failed to submit batch video tasks for pack {request.pack_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to submit video tasks: {str(e)}")
+
+
+@router.get("/queue/status")
+async def get_queue_status() -> dict:
+    """Return the storyboard video generation queue's current state.
+
+    Useful for diagnosing backlog (current_processing / queued_count) and
+    verifying that the configured max_concurrent limit is in effect.
+    """
+    from app.services.queue_manager import queue_manager
+    from app.services.storyboard_video_queue import QUEUE_NAME
+
+    info = await queue_manager.get_queue_status(QUEUE_NAME, include_tasks=True)
+    if info is None:
+        return {
+            "success": False,
+            "message": f"Queue '{QUEUE_NAME}' is not initialized",
+        }
+    return {
+        "success": True,
+        "message": "OK",
+        "queue_info": info.queue_info.model_dump(),
+        "tasks": [t.model_dump(mode="json") for t in (info.tasks or [])],
+    }
 
 
 @router.get("/batch-video/status/{pack_id}", response_model=StoryboardBatchVideoStatusResponse)

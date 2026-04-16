@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ArkImageGenerateParams, ArkImageMode } from '@/lib/api/arkImage';
-import { StoryboardGenerateParams, StoryboardPack } from '@/types';
+import { StoryboardGenerateParams, StoryboardPack, MentionedImage, ScriptMessage } from '@/types';
 import BasicGenerationTab, { BasicGenerationState } from './BasicGenerationTab';
 import CharacterModelingTab, { CharacterModelingState } from './CharacterModelingTab';
 import SceneModelingTab, { SceneModelingState } from './SceneModelingTab';
@@ -33,20 +33,20 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     size: '2048x2048',
     count: 1,
     watermark: true,
-    referenceImage: null,
+    referenceImages: [],
   });
 
   const [characterState, setCharacterState] = useState<CharacterModelingState>({
     prompt: '',
     watermark: true,
-    referenceImage: null,
+    referenceImages: [],
     selectedTemplateId: null,
   });
 
   const [sceneState, setSceneState] = useState<SceneModelingState>({
     prompt: '',
     watermark: true,
-    referenceImage: null,
+    referenceImages: [],
     selectedTemplateId: null,
   });
 
@@ -54,25 +54,19 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     prompt: '',
     frameCount: 9,
     aspectRatio: '16:9',
-    referenceImage: null,
+    referenceImages: [],
   });
 
-  // Reset form state whenever the modal opens, so previous submitted/state
-  // does not leak across open/close cycles (parent may close without calling handleClose).
-  useEffect(() => {
-    if (isOpen) {
-      resetForm();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
-
+  // Reset is intentionally only on handleClose — the previous useEffect([isOpen])
+  // reset would wipe user-selected reference images whenever the parent toggled
+  // isOpen, causing the "reference images disappear" regression.
   const resetForm = () => {
     setActiveTab('basic');
     setSubmitted(false);
-    setBasicState({ prompt: '', size: '2048x2048', count: 1, watermark: true, referenceImage: null });
-    setCharacterState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
-    setSceneState({ prompt: '', watermark: true, referenceImage: null, selectedTemplateId: null });
-    setStoryboardState({ prompt: '', frameCount: 9, aspectRatio: '16:9', referenceImage: null });
+    setBasicState({ prompt: '', size: '2048x2048', count: 1, watermark: true, referenceImages: [] });
+    setCharacterState({ prompt: '', watermark: true, referenceImages: [], selectedTemplateId: null });
+    setSceneState({ prompt: '', watermark: true, referenceImages: [], selectedTemplateId: null });
+    setStoryboardState({ prompt: '', frameCount: 9, aspectRatio: '16:9', referenceImages: [] });
   };
 
   const handleClose = () => {
@@ -89,17 +83,39 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     }
   };
 
-  const handleStoryboardGenerate = useCallback(async (tabState: StoryboardTabState): Promise<StoryboardPack> => {
+  const buildMultiImageParams = useCallback((images: MentionedImage[], prompt: string) => {
+    const reference_images = images.length > 0 ? images.map(img => img.url) : undefined;
+    const mentioned_images: Record<string, string> = {};
+    for (const img of images) {
+      const tag = `@[${img.name}]`;
+      if (prompt.includes(tag)) {
+        mentioned_images[tag] = img.url;
+      }
+    }
+    const reference_image = images.length === 1 ? images[0].url : undefined;
+    return { reference_images, mentioned_images: Object.keys(mentioned_images).length > 0 ? mentioned_images : undefined, reference_image };
+  }, []);
+
+  const handleStoryboardGenerate = useCallback(async (
+    tabState: StoryboardTabState,
+    opts?: { frameScripts?: string[]; scriptHistory?: ScriptMessage[]; locale?: 'zh' | 'en' },
+  ): Promise<StoryboardPack> => {
     if (!onStoryboardGenerate) {
       throw new Error('分镜生成功能未配置');
     }
+    const { reference_images, mentioned_images, reference_image } = buildMultiImageParams(tabState.referenceImages, tabState.prompt);
     return onStoryboardGenerate({
       prompt: tabState.prompt,
       frameCount: tabState.frameCount,
       aspectRatio: tabState.aspectRatio,
-      referenceImage: tabState.referenceImage || undefined,
+      referenceImage: reference_image,
+      referenceImages: reference_images,
+      mentionedImages: mentioned_images,
+      frameScripts: opts?.frameScripts,
+      scriptHistory: opts?.scriptHistory,
+      locale: opts?.locale,
     });
-  }, [onStoryboardGenerate]);
+  }, [onStoryboardGenerate, buildMultiImageParams]);
 
   const handleSubmit = () => {
     // Storyboard tab has its own generate flow; this handler is only for image generation tabs
@@ -112,36 +128,52 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     let params: ArkImageGenerateParams;
 
     switch (activeTab) {
-      case 'basic':
+      case 'basic': {
+        const { reference_images, mentioned_images, reference_image } = buildMultiImageParams(basicState.referenceImages, prompt);
         params = {
           prompt,
           size: basicState.size,
           count: basicState.count,
           watermark: basicState.watermark,
           mode: 'basic',
-          reference_image: basicState.referenceImage || undefined,
+          reference_image,
+          reference_images,
+          mentioned_images,
         };
         break;
-      case 'character':
+      }
+      case 'character': {
+        const { reference_images, mentioned_images, reference_image } = buildMultiImageParams(characterState.referenceImages, prompt);
         params = {
           prompt,
           size: '2048x2048',
           count: 1,
           watermark: characterState.watermark,
           mode: 'character',
-          reference_image: characterState.referenceImage || undefined,
+          grid_mode: true,
+          aspect_ratio: '1:1',
+          reference_image,
+          reference_images,
+          mentioned_images,
         };
         break;
-      case 'scene':
+      }
+      case 'scene': {
+        const { reference_images, mentioned_images, reference_image } = buildMultiImageParams(sceneState.referenceImages, prompt);
         params = {
           prompt,
           size: '2048x2048',
           count: 1,
           watermark: sceneState.watermark,
           mode: 'scene',
-          reference_image: sceneState.referenceImage || undefined,
+          grid_mode: true,
+          aspect_ratio: '1:1',
+          reference_image,
+          reference_images,
+          mentioned_images,
         };
         break;
+      }
     }
 
     onConfirm(params);
@@ -154,7 +186,13 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
     >
-      <div className="bg-card rounded-md border border-border w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+      <div
+        className={`bg-card rounded-md border border-border w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 ${
+          activeTab === 'storyboard'
+            ? 'max-w-4xl h-[85vh] max-h-[90vh]'
+            : 'max-w-4xl h-[80vh] max-h-[90vh]'
+        }`}
+      >
         {/* Header */}
         <div className="px-8 py-6 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
@@ -192,7 +230,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="flex-1 px-8 py-6 min-h-0 overflow-hidden">
           {activeTab === 'basic' && (
             <BasicGenerationTab state={basicState} onChange={setBasicState} />
           )}

@@ -111,6 +111,7 @@ Complex services load YAML configs from `backend-services/basic-service/config/`
 - `upload-config.yaml` — File upload limits
 - `watermark_removal_config.yaml` — Watermark removal
 - `video-download.yaml` — Video download settings
+- `storyboard-config.yaml` — AI storyboard video generation queue (max_concurrent, 10-min timeout, poll interval). Overridable via `STORYBOARD_VIDEO_MAX_CONCURRENT`, `STORYBOARD_VIDEO_TIMEOUT_SECONDS`, etc. Legacy `STORYBOARD_MAX_CONCURRENT_VIDEO` is honoured for backward compatibility. NOTE: on local timeout, we do NOT call ARK cancel (ARK SDK has no cancel method); the remote task runs to completion on its own and its result is discarded.
 
 ### External API Integrations
 
@@ -149,7 +150,7 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-03-20
+- **Last Updated:** 2026-04-16
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.

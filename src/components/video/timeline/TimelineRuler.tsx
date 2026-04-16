@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback, RefObject } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
+import { TIMELINE_PADDING_SECONDS } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 
 interface TimelineRulerProps {
@@ -36,6 +37,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const setZoomLevel = useTimelineStore((state) => state.setZoomLevel);
 
   const pixelsPerSecond = zoomLevel * 50;
+
+  // Use padded duration for visual width
+  const paddedDuration = totalDuration + TIMELINE_PADDING_SECONDS;
 
   // 使用ref跟踪最新值，避免拖拽过程中的闭包陈旧问题
   const scrollLeftRef = useRef(scrollLeft);
@@ -98,7 +102,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     const marks = [];
     const interval = zoomLevel < 0.5 ? 10 : zoomLevel < 1 ? 5 : zoomLevel < 2 ? 1 : 0.5;
 
-    for (let time = 0; time <= totalDuration; time += interval) {
+    for (let time = 0; time <= paddedDuration; time += interval) {
       const left = time * pixelsPerSecond;
       const isMajor = time % (interval * 5) === 0;
 
@@ -250,7 +254,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         <div
           className="relative bg-card"
           style={{
-            minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px`,
+            minWidth: `${Math.max(paddedDuration * pixelsPerSecond, 800)}px`,
             height: '100%'
           }}
         >
@@ -293,7 +297,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           {/* 时间网格线延伸到刻度尺 */}
           <div className="absolute inset-0 pointer-events-none">
             {(() => {
-              const containerWidth = Math.max(totalDuration * pixelsPerSecond, 800);
+              const containerWidth = Math.max(paddedDuration * pixelsPerSecond, 800);
               const maxTimeForGrid = Math.ceil(containerWidth / pixelsPerSecond);
 
               return [...Array(maxTimeForGrid)].map((_, i) => (

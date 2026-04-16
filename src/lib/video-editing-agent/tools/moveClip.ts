@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, findTrack } from './index';
+import { findClip, findTrack, checkTrackDurationConstraint, formatDurationWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to move' }),
@@ -51,6 +51,9 @@ export function createMoveClipTool(context: ToolContext): AgentTool<typeof param
         newStartTime: params.newStartTime,
       });
 
+      const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+      const warning = formatDurationWarning(constraintCheck);
+
       const result = {
         success: true,
         clip: {
@@ -58,6 +61,7 @@ export function createMoveClipTool(context: ToolContext): AgentTool<typeof param
           trackId: targetTrackId,
           startTime: params.newStartTime,
         },
+        ...(warning ? { warning } : {}),
       };
 
       return {

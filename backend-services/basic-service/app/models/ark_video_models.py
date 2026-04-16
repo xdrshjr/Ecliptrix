@@ -16,10 +16,12 @@ class ArkVideoGenerateRequest(BaseModel):
       Reference images are sent as first_frame/last_frame roles to the ARK API.
       When images are present, ratio is automatically set to "adaptive".
     - "keyframe": Text prompt with explicit first/last frame images (first_frame_url required,
-      last_frame_url optional). Ratio is always forced to "adaptive".
-      In this mode, image_url/image_urls are ignored even if provided.
+      last_frame_url optional). Additional images from image_urls are included
+      beyond first/last frame, up to 4 images total.
+      Ratio is always forced to "adaptive".
     - "reference": Text prompt with reference images (image_url/image_urls).
-      Images are sent with role="reference_image" per official ARK API spec.
+      Images are sent with first_frame/last_frame roles (not reference_image)
+      to avoid triggering unsupported task_type=r2v on doubao-seedance-1-5-pro.
       Supports 1-4 reference images. When images are present, ratio is
       automatically set to "adaptive".
     """
@@ -27,7 +29,7 @@ class ArkVideoGenerateRequest(BaseModel):
     prompt: str = Field(..., description="Text prompt describing the video to generate")
     mode: Literal["description", "keyframe", "reference"] = Field(
         default="description",
-        description="Generation mode: 'description' for text+reference images (first/last frame roles), 'keyframe' for explicit first/last frame images, 'reference' for reference images using role='reference_image' per official ARK API spec",
+        description="Generation mode: 'description' for text+reference images (first/last frame roles), 'keyframe' for explicit first/last frame images, 'reference' for reference images using first_frame/last_frame roles",
     )
     duration: int = Field(
         default=5, ge=4, le=12, description="Video duration in seconds (4-12)"
@@ -44,7 +46,7 @@ class ArkVideoGenerateRequest(BaseModel):
     )
     image_urls: Optional[List[str]] = Field(
         default=None,
-        description="Optional list of reference image URLs for multi-image reference (used in description mode)",
+        description="Optional list of reference image URLs for multi-image reference (used in description, reference, and keyframe modes)",
     )
 
     # Mode "keyframe" fields
@@ -77,8 +79,13 @@ class ArkVideoGenerateResponse(BaseResponse):
 class ArkVideoStatusResponse(BaseResponse):
     """Response model for video generation task status."""
 
-    status: Literal["running", "succeeded", "failed"] = Field(
-        default="running", description="Task status"
+    status: Literal["running", "succeeded", "failed", "queued", "timeout"] = Field(
+        default="running",
+        description="Task status (queued/timeout only returned by storyboard job queue)",
+    )
+    position_in_queue: Optional[int] = Field(
+        default=None,
+        description="1-based position in queue; only set when status='queued'",
     )
     video_url: Optional[str] = Field(
         default=None,

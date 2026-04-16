@@ -118,6 +118,8 @@ function buildUsageHints(categoryId: string): string {
       return (
         'TTS tools convert text to speech audio. Use generate_tts for a single piece of text (sync, ~2-5s), ' +
         'or batch_generate_tts for multiple sentences/paragraphs. Generated audio is auto-added to the material library.\n\n' +
+        'When generating narration for a video script: use the narration_text from generate_video_script results as TTS input. ' +
+        'Never fabricate or write your own narration text.\n\n' +
         'Popular voice types:\n' +
         '  - zh_female_shuangkuaisisi_moon_bigtts  — 双快丝丝 (female, Chinese)\n' +
         '  - zh_male_chunhou_moon_bigtts            — 醇厚 (male, Chinese)\n' +

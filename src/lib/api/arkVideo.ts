@@ -22,13 +22,15 @@ export interface ArkVideoGenerateResult {
 }
 
 export interface ArkVideoStatusResult {
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'running' | 'succeeded' | 'failed' | 'queued' | 'timeout';
   video_url?: string;
   thumbnail_url?: string;
   duration?: number;
   width?: number;
   height?: number;
   error?: string;
+  /** 1-based position; only set when status='queued'. */
+  position_in_queue?: number;
 }
 
 interface ArkVideoGenerateEnvelope {
@@ -47,6 +49,7 @@ interface ArkVideoStatusEnvelope {
   width?: number;
   height?: number;
   error?: string;
+  position_in_queue?: number;
 }
 
 export async function createArkVideoTask(params: ArkVideoGenerateParams): Promise<ArkVideoGenerateResult> {
@@ -65,17 +68,21 @@ export async function createArkVideoTask(params: ArkVideoGenerateParams): Promis
 export async function getArkVideoStatus(arkTaskId: string): Promise<ArkVideoStatusResult> {
   const data = await http.get<ArkVideoStatusEnvelope>(`/api/ark-video/status/${arkTaskId}`);
 
-  if (!data.success) {
+  // For queued/timeout statuses, backend sets success=false|true inconsistently;
+  // surface the status even when success=false so the UI can display it.
+  const status = data.status as ArkVideoStatusResult['status'];
+  if (!status && !data.success) {
     throw new Error(data.message || 'Failed to query Ark video status');
   }
 
   return {
-    status: data.status as ArkVideoStatusResult['status'],
+    status,
     video_url: data.video_url,
     thumbnail_url: data.thumbnail_url,
     duration: data.duration,
     width: data.width,
     height: data.height,
     error: data.error,
+    position_in_queue: data.position_in_queue,
   };
 }

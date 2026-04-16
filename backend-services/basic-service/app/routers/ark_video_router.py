@@ -44,10 +44,51 @@ async def get_video_status(ark_task_id: str) -> ArkVideoStatusResponse:
     """
     Query the status of an Ark video generation task.
 
-    Returns status (running | succeeded | failed) and video_url when succeeded.
+    Returns status (queued | running | succeeded | failed | timeout) and
+    video_url when succeeded. If the identifier is a storyboard video-queue
+    job_id (prefix "sbv-"), the aggregated job state is returned; otherwise
+    the request is forwarded to the native ARK status endpoint.
     """
     try:
+        if ark_task_id.startswith("sbv-"):
+            from app.services.storyboard_video_queue import storyboard_video_queue
+
+            job = await storyboard_video_queue.get_job(ark_task_id)
+            if job is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Storyboard video job not found: {ark_task_id}",
+                )
+            # Map internal job status to the response shape expected by the
+            # frontend. The legacy ARK values are "running | succeeded | failed";
+            # queued and timeout are new.
+            status_map = {
+                "queued": ("queued", True, "Task queued"),
+                "generating": ("running", True, "Task in progress"),
+                "success": ("succeeded", True, "Video generation succeeded"),
+                "failed": ("failed", False, "Task failed"),
+                "timeout": ("timeout", False, "Task timed out"),
+            }
+            mapped_status, ok, msg = status_map.get(
+                job.status, ("failed", False, "Unknown status")
+            )
+            position = None
+            if mapped_status == "queued":
+                position = await storyboard_video_queue.position_in_queue(ark_task_id)
+            return ArkVideoStatusResponse(
+                success=ok,
+                message=msg,
+                status=mapped_status,
+                video_url=job.video_url,
+                thumbnail_url=job.thumbnail_url,
+                duration=job.duration,
+                error=job.error,
+                position_in_queue=position,
+            )
+
         return await ark_video_service.get_status(ark_task_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get Ark video task status for {ark_task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to query task status: {str(e)}")

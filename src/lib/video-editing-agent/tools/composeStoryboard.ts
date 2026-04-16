@@ -7,6 +7,8 @@ import {
   getDefaultTrackForType,
   getTrackEndTime,
   generateClipId,
+  checkTrackDurationConstraint,
+  formatDurationWarning,
 } from './index';
 
 // ---------------------------------------------------------------------------
@@ -137,7 +139,10 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
 
-      const totalDuration = currentStartTime - transitionGap; // Remove trailing gap
+      const totalDuration = currentStartTime - transitionGap;
+
+      const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+      const warning = formatDurationWarning(constraintCheck);
 
       const result = {
         success: true,
@@ -147,9 +152,9 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
         skipped_scenes: params.video_materials.length - clipsAdded,
         total_duration: totalDuration,
         include_transitions: params.include_transitions ?? false,
-        // Include all operations so the client can apply them all.
         operations: allOperations,
         message: `Added ${clipsAdded}/${params.video_materials.length} scene clips to the timeline. Total duration: ${totalDuration.toFixed(1)}s.`,
+        ...(warning ? { warning } : {}),
       };
 
       return {

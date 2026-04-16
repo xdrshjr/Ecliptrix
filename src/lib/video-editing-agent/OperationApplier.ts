@@ -273,6 +273,20 @@ export class OperationApplier {
         });
         break;
       }
+      case 'set_script_with_narration': {
+        this.nonTimelineRecords.push({
+          toolCallId,
+          operation,
+          undoable: true,
+          undoData: {
+            previousScriptSegmentsData: store.scriptSegmentsData
+              ? deepClone(store.scriptSegmentsData)
+              : null,
+            previousType: store.scriptType,
+          },
+        });
+        break;
+      }
       case 'append_script': {
         this.nonTimelineRecords.push({
           toolCallId,
@@ -355,6 +369,10 @@ export class OperationApplier {
       }
       case 'set_script':
         store.setScriptContent(data.previousContent as string);
+        store.setScriptType(data.previousType as 'video' | 'understanding' | 'ai_generated');
+        break;
+      case 'set_script_with_narration':
+        store.setScriptSegmentsData(data.previousScriptSegmentsData as import('@/stores/slices/scriptSlice').ScriptSegmentData[] | null);
         store.setScriptType(data.previousType as 'video' | 'understanding' | 'ai_generated');
         break;
       case 'append_script':

@@ -114,29 +114,29 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
-        // Build segments with narration text (fallback to scriptText if missing)
-        const segments = data.segments.map(seg => ({
+        const hasRealNarration = data.segments.every(seg => !!seg.narrationText);
+
+        const segmentsForDisplay = data.segments.map(seg => ({
           title: seg.title,
           scriptText: seg.scriptText,
           narrationText: seg.narrationText || seg.scriptText,
         }));
 
-        // Build full script content from segments (markdown for display)
-        const fullContent = segments
+        const fullContent = segmentsForDisplay
           .map((seg, i) => `## ${i + 1}. ${seg.title}\n\n${seg.scriptText}`)
           .join('\n\n');
 
-        // Record structured operation with narration data
         // NOTE: only one recordOperation per toolCallId — Map.set overwrites previous entries.
         // The AgentEventRouter handles building markdown content from structured segments.
+        // For UI display, we use scriptText fallback when narrationText is missing
+        // so the ScriptPanel always shows meaningful content.
         context.recordOperation(toolCallId, {
           type: 'set_script_with_narration',
-          segments,
+          segments: segmentsForDisplay,
           scriptType: 'ai_generated',
         });
 
-        // Compute summary metrics using narration text for duration estimation
-        const narrationContent = segments.map(s => s.narrationText).join(' ');
+        const narrationContent = segmentsForDisplay.map(s => s.narrationText).join(' ');
         const wordCount = fullContent.length;
         const estimatedDuration = estimateDuration(narrationContent);
         const preview =
@@ -148,10 +148,17 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
             content_preview: preview,
             word_count: wordCount,
             estimated_duration: estimatedDuration,
-            segment_count: segments.length,
-            has_narration: segments.every(s => !!s.narrationText),
+            segment_count: segmentsForDisplay.length,
+            has_narration: hasRealNarration,
           },
-          message: `Generated ${segments.length}-scene script with narration (${wordCount} chars, ~${estimatedDuration}s)`,
+          segments: data.segments.map((seg, i) => ({
+            index: i + 1,
+            title: seg.title,
+            narration_text: seg.narrationText || '',
+          })),
+          message: hasRealNarration
+            ? `Generated ${segmentsForDisplay.length}-scene script with narration. Use the narration_text from each segment for TTS generation.`
+            : `Generated ${segmentsForDisplay.length}-scene script. Note: narration text is empty — ask the user if they want to add narration.`,
         };
 
         return {

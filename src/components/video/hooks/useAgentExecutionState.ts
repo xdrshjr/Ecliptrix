@@ -60,6 +60,8 @@ export interface AgentExecutionState {
   pendingMessage: string;
   /** The error that ended execution, if status is 'error'. */
   error: StreamError | null;
+  /** Whether the agent is in the thinking phase. */
+  isThinking: boolean;
 }
 
 const INITIAL_STATE: AgentExecutionState = {
@@ -71,6 +73,7 @@ const INITIAL_STATE: AgentExecutionState = {
   currentTool: null,
   pendingMessage: '',
   error: null,
+  isThinking: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -137,6 +140,14 @@ export function useAgentExecutionState() {
   const handleEvent = useCallback(
     (event: SSEEvent, externalOnEvent?: (event: SSEEvent) => void) => {
       switch (event.type) {
+        case 'thinking_start':
+          updateState({ isThinking: true });
+          break;
+
+        case 'thinking_end':
+          updateState({ isThinking: false });
+          break;
+
         case 'tool_call':
           updateState({
             currentTool: {

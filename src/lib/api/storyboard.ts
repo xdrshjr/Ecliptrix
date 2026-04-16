@@ -1,5 +1,12 @@
 import { http } from '@/lib/api/http-client';
-import { StoryboardGenerateParams, StoryboardPack, StoryboardFrame, StoryboardAspectRatio } from '@/types';
+import {
+  StoryboardGenerateParams,
+  StoryboardPack,
+  StoryboardFrame,
+  StoryboardAspectRatio,
+  ScriptShot,
+  ScriptMessage,
+} from '@/types';
 
 /** Raw backend frame shape (snake_case). */
 interface RawFrame {
@@ -9,6 +16,10 @@ interface RawFrame {
   row: number;
   col: number;
   description?: string;
+  shot_id?: string;
+  script?: string;
+  visual_prompt?: string;
+  reference_image_url?: string;
 }
 
 /** Raw backend pack shape (snake_case). */
@@ -22,6 +33,8 @@ interface RawPack {
   original_image_url: string;
   reference_image_url?: string;
   frames?: RawFrame[];
+  script_title?: string;
+  script_history?: { role: 'user' | 'assistant' | 'system'; content: string }[];
 }
 
 interface StoryboardEnvelope<T> {
@@ -39,6 +52,10 @@ function toFrame(f: RawFrame): StoryboardFrame {
     row: f.row,
     col: f.col,
     description: f.description,
+    shotId: f.shot_id,
+    script: f.script,
+    visualPrompt: f.visual_prompt,
+    referenceImageUrl: f.reference_image_url,
   };
 }
 
@@ -54,7 +71,58 @@ function toPack(d: RawPack): StoryboardPack {
     originalImageUrl: d.original_image_url,
     referenceImageUrl: d.reference_image_url,
     frames: (d.frames || []).map(toFrame),
+    scriptTitle: d.script_title,
+    scriptHistory: d.script_history,
   };
+}
+
+// ========================
+// Script-bound pack creation
+// ========================
+
+export interface CreatePackFromShotsShot {
+  shotId: string;
+  script: string;
+  visualPrompt?: string;
+  referenceImageUrl?: string;
+  generatedImageUrl: string;
+}
+
+export interface CreatePackFromShotsPayload {
+  title?: string;
+  aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+  shots: CreatePackFromShotsShot[];
+  scriptHistory?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+}
+
+/**
+ * Create a storyboard pack from AI-scripted shots. Each shot binds a script
+ * paragraph to a generated image.
+ */
+export async function createPackFromShots(
+  payload: CreatePackFromShotsPayload,
+): Promise<StoryboardPack> {
+  const data = await http.post<StoryboardEnvelope<RawPack>>(
+    '/api/storyboard/packs/create-from-shots',
+    {
+      title: payload.title,
+      aspect_ratio: payload.aspectRatio || '1:1',
+      shots: payload.shots.map((s) => ({
+        shot_id: s.shotId,
+        script: s.script,
+        visual_prompt: s.visualPrompt,
+        reference_image_url: s.referenceImageUrl,
+        generated_image_url: s.generatedImageUrl,
+      })),
+      script_history: payload.scriptHistory,
+    },
+    { timeoutMs: 300_000 },
+  );
+
+  if (!data.success || !data.data) {
+    throw new Error(data.message || '分镜包创建失败');
+  }
+  return toPack(data.data);
 }
 
 /**
@@ -69,8 +137,14 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
       frame_count: params.frameCount,
       aspect_ratio: params.aspectRatio || '1:1',
       reference_image: params.referenceImage,
+      reference_images: params.referenceImages,
+      mentioned_images: params.mentionedImages,
+      frame_scripts: params.frameScripts,
+      script_history: params.scriptHistory,
+      locale: params.locale,
+      pack_id: params.packId,
     },
-    { timeoutMs: 180_000 },
+    { timeoutMs: 300_000 },
   );
 
   if (!data.success || !data.data) {
@@ -78,6 +152,80 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
   }
 
   return toPack(data.data);
+}
+
+// ========================
+// Script drafting (two-step flow)
+// ========================
+
+interface ScriptEnvelope {
+  success?: boolean;
+  message?: string;
+  shots?: { index: number; script: string }[];
+  raw_response?: string;
+}
+
+export interface GenerateScriptPayload {
+  prompt: string;
+  frameCount: number;
+  aspectRatio?: StoryboardAspectRatio;
+  locale?: 'zh' | 'en';
+  referenceImages?: string[];
+}
+
+export interface ReviseScriptPayload {
+  frameCount: number;
+  aspectRatio?: StoryboardAspectRatio;
+  locale?: 'zh' | 'en';
+  currentDraft: ScriptShot[];
+  history: ScriptMessage[];
+  userMessage: string;
+}
+
+/** Request an initial N-shot script from the backend LLM. */
+export async function generateStoryboardScript(
+  payload: GenerateScriptPayload,
+): Promise<ScriptShot[]> {
+  const data = await http.post<ScriptEnvelope>(
+    '/api/storyboard/generate-script',
+    {
+      prompt: payload.prompt,
+      frame_count: payload.frameCount,
+      aspect_ratio: payload.aspectRatio || '1:1',
+      locale: payload.locale || 'zh',
+      reference_images: payload.referenceImages,
+    },
+    { timeoutMs: 180_000 },
+  );
+  if (!data.success || !data.shots) {
+    throw new Error(data.message || '剧本生成失败');
+  }
+  return data.shots.map((s) => ({ index: s.index, script: s.script }));
+}
+
+/** Ask the backend LLM to revise the current script given chat context. */
+export async function reviseStoryboardScript(
+  payload: ReviseScriptPayload,
+): Promise<ScriptShot[]> {
+  const data = await http.post<ScriptEnvelope>(
+    '/api/storyboard/revise-script',
+    {
+      frame_count: payload.frameCount,
+      aspect_ratio: payload.aspectRatio || '1:1',
+      locale: payload.locale || 'zh',
+      current_draft: payload.currentDraft.map((s) => ({
+        index: s.index,
+        script: s.script,
+      })),
+      history: payload.history.map((m) => ({ role: m.role, content: m.content })),
+      user_message: payload.userMessage,
+    },
+    { timeoutMs: 180_000 },
+  );
+  if (!data.success || !data.shots) {
+    throw new Error(data.message || '剧本修改失败');
+  }
+  return data.shots.map((s) => ({ index: s.index, script: s.script }));
 }
 
 /**
@@ -151,7 +299,14 @@ export async function describeFrames(
 interface BatchVideoEnvelope {
   success?: boolean;
   message?: string;
-  tasks?: { ark_task_id?: string; frame_index: number }[];
+  tasks?: {
+    ark_task_id?: string;
+    job_id?: string;
+    frame_index: number;
+    repeat_index?: number;
+    status?: 'queued' | 'generating' | 'success' | 'failed' | 'timeout';
+    error?: string;
+  }[];
 }
 
 /**

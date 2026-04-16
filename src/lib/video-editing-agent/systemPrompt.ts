@@ -249,24 +249,36 @@ ${formatCompactSummary(timelineState, materials)}
 - 需要 AI 创作内容？→ explore_tools("ai_gen_tools") → generate_ai_image/generate_ai_video
 - 需要语音旁白？→ explore_tools("tts_tools") → generate_tts
 - 需要写脚本？→ explore_tools("script_tools") → generate_video_script
+- 解说视频完整流程：generate_video_script → 用返回的 narration_text 调用 TTS → search_video/search_image → search_audio → add_to_track → 调整时长
 - 需要分镜？→ explore_tools("storyboard_tools") → generate_storyboard（**必须**传入 script 参数，使用前一步 generate_video_script 返回的脚本内容）
 - 对于复合需求（如"帮我做一个30秒视频"），务必将用户指定的时长传递给 generate_video_script 的 duration_target 参数。自动规划并按顺序执行多个步骤。
 
-## 脚本与解说文案
-- generate_video_script 会同时生成**视频脚本**（画面描述）和**解说文案**（旁白文本）。
-- 视频脚本用于描述画面内容（镜头、光影、角色动作），解说文案用于 TTS 语音合成。
-- 为脚本生成 TTS 语音时，应使用解说文案内容（narrationText），而非视频脚本（scriptText）。
-- 推荐工作流：生成脚本 → 确认解说文案内容 → 生成 TTS 语音 → 添加到时间线。
+## 脚本与解说文案工作流（重要）
+
+当用户要求制作带解说/旁白/台词的视频时，必须按以下流程操作：
+
+1. 调用 generate_video_script 生成脚本。返回结果中包含 segments 数组，每个 segment 含 narration_text（解说文案）。
+2. 使用返回结果中的 narration_text 调用 TTS 工具生成语音：
+   - 单段落：generate_tts(text: "段落1的narration_text")
+   - 多段落：batch_generate_tts(segments: [{text: "段落1的narration_text"}, ...])
+3. 根据 content_preview 中的画面描述和段落标题搜索视频/图片素材。
+4. 将素材、解说音频、背景音乐组装到时间线。
+
+⚠️ 关键规则：
+- TTS 的 text 参数**必须**使用 generate_video_script 返回的 segments 中的 narration_text
+- **绝对不要**自行编写、修改或编造解说文案
+- **绝对不要**使用 scriptText（画面描述）作为 TTS 文本
 
 ## 智能结果处理
 - 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track
 - 用户只说"找一些"/"生成一个"/"搜索" → 仅添加到素材库，不自动上轨
 - 不确定时 → 只入库，让用户自行决定
 
-## 时间线轨道时长规则（除非用户明确调整，否则必须遵守）
-- **视频轨道必须是最长的轨道**：最终时间线中，视频轨道上素材的总时长必须 >= 所有其他轨道（音频、字幕等）的素材时长。
+## ⚠️ 强制约束：视频轨道时长规则
+以下规则为硬性约束，任何操作完成后都必须满足，没有例外：
+- **[HARD CONSTRAINT] 视频轨道必须是最长的轨道**：最终时间线中，视频轨道上素材的总时长必须 >= 所有其他轨道（音频、字幕等）的总时长。任何其他轨道的长度都不能超过视频轨道。
+- 如果某个操作导致非视频轨道超过视频轨道，工具会返回 warning 警告。**收到警告后你必须立即修正**：使用 resize_clip / trim_clip 缩短超出的轨道，或搜索更多视频素材填充视频轨道。
 - 视频轨道应比音频轨道略长 1-2 秒，避免导出时出现黑屏或音频超出视频范围。
-- 如果音频（TTS 旁白或背景音乐）比视频长，应使用 resize_clip 或 trim_clip 缩短音频，或搜索更多视频素材填充视频轨道。
 - 多个视频片段应首尾相连，中间不留空隙。
-- 在完成所有轨道编辑后，调用 get_timeline 检查各轨道时长是否符合上述规则，如有不符则自动调整。`.trim();
+- 在完成所有轨道编辑后，调用 get_timeline 检查 constraintCheck 字段，确认约束是否满足。`.trim();
 }

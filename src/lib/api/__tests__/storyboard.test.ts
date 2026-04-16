@@ -9,6 +9,7 @@ import {
   describeFrames,
   batchGenerateVideos,
   composeVideo,
+  createPackFromShots,
 } from '../storyboard';
 import type { StoryboardGenerateParams } from '@/types';
 
@@ -126,5 +127,77 @@ describe('storyboard API client', () => {
     const err = new ApiError(500, 'INTERNAL', 'storyboard down');
     vi.spyOn(httpModule.http, 'get').mockRejectedValue(err);
     await expect(listPacks()).rejects.toBe(err);
+  });
+
+  it('createPackFromShots posts snake_case shots and unwraps pack', async () => {
+    const fakePackWithShots = {
+      ...fakePack,
+      pack_id: 'sbpk_abc',
+      script_title: 'Demo',
+      frames: [
+        {
+          index: 0,
+          filename: 'frame_000.png',
+          url: '/api/storage/files/storyboard/2026-04-15/sbpk_abc/frame_000.png',
+          row: 0,
+          col: 0,
+          shot_id: 'shot-1',
+          script: 'Opening shot',
+          visual_prompt: 'a sunrise',
+          reference_image_url: 'https://r.png',
+        },
+      ],
+    };
+    const spy = vi.spyOn(httpModule.http, 'post').mockResolvedValue({
+      success: true,
+      data: fakePackWithShots,
+    } as never);
+
+    const pack = await createPackFromShots({
+      title: 'Demo',
+      aspectRatio: '16:9',
+      shots: [
+        {
+          shotId: 'shot-1',
+          script: 'Opening shot',
+          visualPrompt: 'a sunrise',
+          referenceImageUrl: 'https://r.png',
+          generatedImageUrl: 'https://g.png',
+        },
+      ],
+    });
+    expect(spy).toHaveBeenCalledWith(
+      '/api/storyboard/packs/create-from-shots',
+      expect.objectContaining({
+        title: 'Demo',
+        aspect_ratio: '16:9',
+        shots: [
+          expect.objectContaining({
+            shot_id: 'shot-1',
+            script: 'Opening shot',
+            visual_prompt: 'a sunrise',
+            reference_image_url: 'https://r.png',
+            generated_image_url: 'https://g.png',
+          }),
+        ],
+      }),
+      expect.any(Object),
+    );
+    expect(pack.packId).toBe('sbpk_abc');
+    expect(pack.scriptTitle).toBe('Demo');
+    expect(pack.frames[0].shotId).toBe('shot-1');
+    expect(pack.frames[0].script).toBe('Opening shot');
+    expect(pack.frames[0].visualPrompt).toBe('a sunrise');
+    expect(pack.frames[0].referenceImageUrl).toBe('https://r.png');
+  });
+
+  it('createPackFromShots throws on backend failure', async () => {
+    vi.spyOn(httpModule.http, 'post').mockResolvedValue({
+      success: false,
+      message: 'boom',
+    } as never);
+    await expect(
+      createPackFromShots({ shots: [{ shotId: 's', script: 'a', generatedImageUrl: 'u' }] }),
+    ).rejects.toThrow(/boom|创建/);
   });
 });

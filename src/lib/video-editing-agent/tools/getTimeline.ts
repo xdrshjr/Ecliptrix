@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findMaterial } from './index';
+import { findMaterial, checkTrackDurationConstraint } from './index';
 
 const parameters = Type.Object({});
 type Params = Static<typeof parameters>;
@@ -38,9 +38,17 @@ export function createGetTimelineTool(context: ToolContext): AgentTool<typeof pa
         }),
       }));
 
+      const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+
       const result = {
         success: true,
         totalDuration: context.timelineState.totalDuration,
+        constraintCheck: {
+          valid: constraintCheck.valid,
+          videoDuration: constraintCheck.videoDuration,
+          maxOtherDuration: constraintCheck.maxOtherDuration,
+          violatingTracks: constraintCheck.violatingTracks,
+        },
         tracks,
       };
 

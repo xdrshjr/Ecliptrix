@@ -24,11 +24,17 @@ async def generate_images(request: ArkImageGenerateRequest) -> ArkImageGenerateR
     Returns a list of generated image URLs.
     """
     try:
-        images = await ark_image_service.generate_images(request)
+        images, pack = await ark_image_service.generate_images_with_pack(request)
+        message = (
+            f"Generated {pack.pack_type} grid pack ({pack.frame_count} frames)"
+            if pack
+            else f"Generated {len(images)} image(s)"
+        )
         return ArkImageGenerateResponse(
             success=True,
-            message=f"Generated {len(images)} image(s)",
+            message=message,
             images=images,
+            pack=pack,
         )
     except Exception as e:
         logger.error(f"Failed to generate Ark images: {e}", exc_info=True)

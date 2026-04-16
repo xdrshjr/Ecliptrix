@@ -27,6 +27,12 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    env: {
+      // Force React to load the development build so `React.act` is exposed
+      // for @testing-library/react's renderHook. Vitest 4 on Windows does not
+      // reliably propagate NODE_ENV=test on its own.
+      NODE_ENV: 'test',
+    },
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: [
       'node_modules',

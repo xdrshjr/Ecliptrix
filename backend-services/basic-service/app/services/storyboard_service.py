@@ -25,17 +25,33 @@ from PIL import Image
 
 from app.config import settings
 from app.logger import get_logger
+from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 from app.models.ark_video_models import ArkVideoGenerateRequest
 from app.models.storyboard_models import (
+    GenerateScriptRequest,
+    ReviseScriptRequest,
+    ScriptMessage,
+    ScriptShot,
     StoryboardBatchVideoRequest,
     StoryboardComposeRequest,
+    StoryboardCreateFromShotsRequest,
     StoryboardFrame,
     StoryboardGenerateRequest,
     StoryboardPack,
     compute_optimal_grid,
 )
-from app.services import ark_video_service
+from app.services import ark_video_service, grid_pack_service
+from app.services.grid_pack_service import (
+    ASPECT_RATIOS as _GRID_ASPECT_RATIOS,
+    GRID_CROP_PADDING as _GRID_CROP_PADDING,
+    PACK_TYPE_STORYBOARD,
+)
 from app.services.oss_client import get_oss_client
+from app.services.reference_compositor import (
+    composite_references,
+    position_labels,
+    replace_mention_tags,
+)
 
 logger = get_logger(__name__)
 
@@ -48,8 +64,10 @@ ARK_IMAGE_MODEL = "doubao-seedream-5-0-260128"
 
 STORYBOARD_IMAGE_SIZE = "2048x2048"
 STORYBOARD_CROP_PADDING = 4  # pixels inward per edge to remove separator lines
-STORYBOARD_MAX_CONCURRENT_DESCRIBE = int(os.getenv('STORYBOARD_MAX_CONCURRENT_DESCRIBE', '5'))
-STORYBOARD_MAX_CONCURRENT_VIDEO = int(os.getenv('STORYBOARD_MAX_CONCURRENT_VIDEO', '3'))
+STORYBOARD_MAX_CONCURRENT_DESCRIBE = int(
+    os.getenv("STORYBOARD_MAX_CONCURRENT_DESCRIBE", "5")
+)
+STORYBOARD_MAX_CONCURRENT_VIDEO = int(os.getenv("STORYBOARD_MAX_CONCURRENT_VIDEO", "3"))
 STORYBOARD_STORAGE_DIR = "storyboard"
 
 ASPECT_RATIOS = {
@@ -60,7 +78,10 @@ ASPECT_RATIOS = {
     "3:4": (3, 4),
 }
 
-# In-memory cache: pack_id -> { frame_index -> [ark_task_id, ...] }
+# In-memory cache: pack_id -> { frame_index -> [job_id, ...] }
+# After the queue refactor, the second-level list holds storyboard_video_queue
+# job_ids (one per repeat). The field name keeps the term "tasks" for legacy
+# reasons. The old ark_task_id identifiers are looked up via the job state.
 _pack_video_tasks: Dict[str, Dict[int, List[str]]] = {}
 _PACK_CACHE_MAX_SIZE = 100
 
@@ -74,6 +95,7 @@ VL_SYSTEM_PROMPT = (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _storage_root() -> str:
     """Return the configured storage root (e.g. 'static/uploads')."""
@@ -109,7 +131,9 @@ def _pack_dir(pack_id: str) -> Optional[str]:
 
 def _frame_url(date_str: str, pack_id: str, filename: str) -> str:
     """Build a serving URL for a storyboard frame image."""
-    return f"/api/storage/files/{STORYBOARD_STORAGE_DIR}/{date_str}/{pack_id}/{filename}"
+    return (
+        f"/api/storage/files/{STORYBOARD_STORAGE_DIR}/{date_str}/{pack_id}/{filename}"
+    )
 
 
 def _parse_grid_size(grid_size: str) -> tuple[int, int]:
@@ -122,35 +146,20 @@ def _parse_grid_size(grid_size: str) -> tuple[int, int]:
 # Prompt construction
 # ---------------------------------------------------------------------------
 
+
 def build_storyboard_prompt(
     user_prompt: str, rows: int, cols: int, aspect_ratio: str = "1:1"
 ) -> str:
-    """Build the system prompt instructing Seedream to generate an NxN grid."""
-    ratio_instruction = ""
-    if aspect_ratio != "1:1" and aspect_ratio in ASPECT_RATIOS:
-        w, h = ASPECT_RATIOS[aspect_ratio]
-        orientation = "横屏/landscape" if w > h else "竖屏/portrait"
-        ratio_instruction = (
-            f"- Each cell's content should be composed for a {aspect_ratio} ({orientation}) viewing format, "
-            "with subjects and key elements centered accordingly\n"
-        )
+    """Build the system prompt instructing Seedream to generate an NxN grid.
 
-    return (
-        f"Create a {rows}x{cols} grid storyboard image.\n\n"
-        "LAYOUT REQUIREMENTS:\n"
-        f"- The image must be divided into exactly {rows} rows and {cols} columns\n"
-        "- Each cell must be exactly the same size\n"
-        "- There must be thin white separator lines (about 2-3 pixels wide) between each cell\n"
-        "- The cells must fill the entire image with no margins\n"
-        f"{ratio_instruction}\n"
-        "STRICT VISUAL-ONLY REQUIREMENTS:\n"
-        "- Each cell must contain ONLY visual imagery — absolutely NO text, subtitles, captions, watermarks, or any written characters\n"
-        "- Do NOT include any numbers, numerical labels, or index annotations in any cell\n"
-        "- Every cell must be pure visual content with no overlaid text or symbols of any kind\n\n"
-        "CONTENT:\n"
-        f"{user_prompt}\n\n"
-        "Each cell should contain a distinct scene or frame as described above.\n"
-        "The overall style should be consistent across all cells.\n"
+    Delegates to :func:`grid_pack_service.build_grid_prompt`; retained as a
+    thin wrapper for backward compatibility with tests and callers.
+    """
+    return grid_pack_service.build_grid_prompt(
+        user_prompt=user_prompt,
+        rows=rows,
+        cols=cols,
+        aspect_ratio=aspect_ratio,
     )
 
 
@@ -158,74 +167,224 @@ def build_storyboard_prompt(
 # Image cropping
 # ---------------------------------------------------------------------------
 
+
 def _crop_cell_to_aspect_ratio(cell: Image.Image, aspect_ratio: str) -> Image.Image:
-    """Center-crop a cell image to match the target aspect ratio."""
-    if aspect_ratio == "1:1" or aspect_ratio not in ASPECT_RATIOS:
-        return cell
-    target_w, target_h = ASPECT_RATIOS[aspect_ratio]
-    w, h = cell.size
-    target_ratio = target_w / target_h
-    current_ratio = w / h
-    if current_ratio > target_ratio:
-        # Too wide — crop width
-        new_w = int(h * target_ratio)
-        left = (w - new_w) // 2
-        return cell.crop((left, 0, left + new_w, h))
-    elif current_ratio < target_ratio:
-        # Too tall — crop height
-        new_h = int(w / target_ratio)
-        top = (h - new_h) // 2
-        return cell.crop((0, top, w, top + new_h))
-    return cell
+    """Back-compat shim — delegates to grid_pack_service."""
+    return grid_pack_service.crop_cell_to_aspect_ratio(cell, aspect_ratio)
 
 
 def crop_storyboard(
-    image_path: str, rows: int, cols: int, output_dir: str,
+    image_path: str,
+    rows: int,
+    cols: int,
+    output_dir: str,
     aspect_ratio: str = "1:1",
 ) -> List[dict]:
     """Crop a storyboard grid image into individual frame PNGs.
 
-    Each cell is cropped with *STORYBOARD_CROP_PADDING* pixels inward on every
-    edge to discard white separator lines produced by Seedream.
-
-    Returns a list of frame-info dicts suitable for metadata.json.
+    Back-compat wrapper around :func:`grid_pack_service.crop_grid`.
     """
-    img = Image.open(image_path)
-    width, height = img.size
+    return grid_pack_service.crop_grid(
+        image_path=image_path,
+        rows=rows,
+        cols=cols,
+        output_dir=output_dir,
+        aspect_ratio=aspect_ratio,
+    )
 
-    cell_width = width // cols
-    cell_height = height // rows
-    padding = STORYBOARD_CROP_PADDING
 
-    frames: List[dict] = []
-    index = 0
-    for row in range(rows):
-        for col in range(cols):
-            left = col * cell_width + padding
-            upper = row * cell_height + padding
-            right = (col + 1) * cell_width - padding
-            lower = (row + 1) * cell_height - padding
+# ---------------------------------------------------------------------------
+# Storyboard script generation (LLM)
+# ---------------------------------------------------------------------------
 
-            cell = img.crop((left, upper, right, lower))
-            cell = _crop_cell_to_aspect_ratio(cell, aspect_ratio)
-            filename = f"frame_{index + 1:03d}.png"
-            cell.save(os.path.join(output_dir, filename))
 
-            frames.append({
-                "index": index,
-                "filename": filename,
-                "row": row,
-                "col": col,
-            })
-            index += 1
+_SCRIPT_MAX_CONCURRENT = int(os.getenv("STORYBOARD_SCRIPT_MAX_CONCURRENT", "3"))
+_script_semaphore: Optional[asyncio.Semaphore] = None
 
-    logger.info(f"Cropped storyboard into {len(frames)} frames at {output_dir}")
-    return frames
+
+def _get_script_semaphore() -> asyncio.Semaphore:
+    global _script_semaphore
+    if _script_semaphore is None:
+        _script_semaphore = asyncio.Semaphore(_SCRIPT_MAX_CONCURRENT)
+    return _script_semaphore
+
+
+def build_storyboard_script_system_prompt(
+    frame_count: int, aspect_ratio: str, locale: str
+) -> str:
+    """System prompt that instructs the LLM to output N scripted shots as JSON."""
+    lang = "Chinese (中文)" if locale == "zh" else "English"
+    example = (
+        '{"shots":[{"index":0,"script":"..."},{"index":1,"script":"..."}]}'
+    )
+    return (
+        "You are a professional screenwriter crafting a short storyboard script.\n"
+        f"You must produce EXACTLY {frame_count} sequential scenes (shots) that tell a coherent story.\n"
+        f"Target aspect ratio per shot: {aspect_ratio}. Output language: {lang}.\n\n"
+        "REQUIREMENTS:\n"
+        "1. Return ONLY valid JSON, no markdown fences, no commentary.\n"
+        f"2. The JSON must have a single top-level key 'shots' with exactly {frame_count} items.\n"
+        "3. Each item: {\"index\": <0-based int>, \"script\": \"<scene paragraph>\"}.\n"
+        "4. Each script paragraph: 2-4 sentences, ~40-120 characters, visually concrete\n"
+        "   (subject + action + setting + mood). No numbering inside the script text.\n"
+        "5. Scenes must progress logically (beginning → middle → end).\n"
+        "6. Indexes must be unique and cover 0.." + str(frame_count - 1) + ".\n\n"
+        f"Example schema: {example}"
+    )
+
+
+_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _extract_shots_from_text(text: str, frame_count: int) -> List[ScriptShot]:
+    """Best-effort parse of an LLM response into ScriptShot list."""
+    if not text:
+        return []
+
+    # Try fenced ```json {...} ```
+    candidate_blocks: List[str] = []
+    m = _JSON_BLOCK_RE.search(text)
+    if m:
+        candidate_blocks.append(m.group(1))
+    # Try raw first/last braces
+    first = text.find("{")
+    last = text.rfind("}")
+    if first >= 0 and last > first:
+        candidate_blocks.append(text[first : last + 1])
+
+    for block in candidate_blocks:
+        try:
+            obj = json.loads(block)
+            shots_raw = obj.get("shots") if isinstance(obj, dict) else None
+            if isinstance(shots_raw, list) and shots_raw:
+                parsed: List[ScriptShot] = []
+                for i, s in enumerate(shots_raw):
+                    if not isinstance(s, dict):
+                        continue
+                    idx = s.get("index")
+                    script_text = s.get("script") or s.get("content") or ""
+                    if not isinstance(script_text, str):
+                        continue
+                    if not isinstance(idx, int):
+                        idx = i
+                    parsed.append(ScriptShot(index=idx, script=script_text.strip()))
+                if parsed:
+                    # Normalize indexes and trim/pad to frame_count
+                    parsed.sort(key=lambda x: x.index)
+                    normalized = [
+                        ScriptShot(index=i, script=parsed[i].script)
+                        for i in range(min(len(parsed), frame_count))
+                    ]
+                    return normalized
+        except Exception:
+            continue
+
+    # Fallback: split by blank lines / numbered lines
+    paragraphs = [
+        p.strip().lstrip("0123456789.、)） :：-").strip()
+        for p in re.split(r"\n\s*\n|\n(?=\s*\d+[\.:、)])", text)
+        if p.strip()
+    ]
+    if len(paragraphs) >= frame_count:
+        return [
+            ScriptShot(index=i, script=paragraphs[i])
+            for i in range(frame_count)
+        ]
+    return []
+
+
+async def _call_llm_for_shots(
+    messages: List[Dict[str, str]],
+    frame_count: int,
+    max_tokens: Optional[int] = None,
+) -> tuple[List[ScriptShot], str]:
+    """Call the general LLM (OpenAI- or Anthropic-compatible) and parse shots."""
+    llm_config = LLMCallConfig(
+        api_url=settings.llm_api_url,
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+        api_type=normalize_api_type(settings.llm_api_type),
+    )
+
+    async with _get_script_semaphore():
+        raw_text = await call_chat(
+            messages,
+            config=llm_config,
+            temperature=0.7,
+            max_tokens=max_tokens,
+            timeout=90.0,
+        )
+
+    logger.info(
+        f"Storyboard script LLM raw response ({len(raw_text)} chars): {raw_text[:400]!r}"
+    )
+    shots = _extract_shots_from_text(raw_text, frame_count)
+    if len(shots) != frame_count:
+        logger.warning(
+            f"Script parsing yielded {len(shots)} shots, expected {frame_count}"
+        )
+    return shots, raw_text
+
+
+async def generate_storyboard_script_initial(
+    request: GenerateScriptRequest,
+) -> tuple[List[ScriptShot], str]:
+    """First-pass script generation from prompt + frame count."""
+    system_prompt = build_storyboard_script_system_prompt(
+        request.frame_count, request.aspect_ratio, request.locale
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                f"Theme / subject: {request.prompt}\n"
+                f"Return a JSON object with exactly {request.frame_count} shots."
+            ),
+        },
+    ]
+    max_tokens = request.frame_count * 200 + 500
+    return await _call_llm_for_shots(messages, request.frame_count, max_tokens)
+
+
+async def revise_storyboard_script(
+    request: ReviseScriptRequest,
+) -> tuple[List[ScriptShot], str]:
+    """Revise an existing script given chat history + user instruction."""
+    system_prompt = build_storyboard_script_system_prompt(
+        request.frame_count, request.aspect_ratio, request.locale
+    )
+    current_json = json.dumps(
+        {"shots": [s.model_dump() for s in request.current_draft]},
+        ensure_ascii=False,
+    )
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages.append(
+        {
+            "role": "assistant",
+            "content": f"Current draft: {current_json}",
+        }
+    )
+    for m in request.history:
+        messages.append({"role": m.role, "content": m.content})
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                f"{request.user_message}\n\n"
+                f"Return the ENTIRE revised shot list as JSON with exactly "
+                f"{request.frame_count} shots."
+            ),
+        }
+    )
+    max_tokens = request.frame_count * 200 + 500
+    return await _call_llm_for_shots(messages, request.frame_count, max_tokens)
 
 
 # ---------------------------------------------------------------------------
 # Storyboard generation (ARK Seedream)
 # ---------------------------------------------------------------------------
+
 
 async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardPack:
     """Generate a storyboard image, crop it, and persist the pack."""
@@ -237,9 +396,67 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
 
     # grid_size is guaranteed to be set by model_validator (from frame_count or default)
     rows, cols = _parse_grid_size(request.grid_size)
-    requested_frame_count = request.frame_count  # may be None if grid_size was provided directly
+    requested_frame_count = (
+        request.frame_count
+    )  # may be None if grid_size was provided directly
     aspect_ratio = getattr(request, "aspect_ratio", "1:1") or "1:1"
-    final_prompt = build_storyboard_prompt(request.prompt, rows, cols, aspect_ratio)
+
+    resolved_prompt = request.prompt
+    normalized_reference: Optional[str] = None
+
+    if request.reference_images and len(request.reference_images) > 1:
+        composite_data_uri, position_desc = await composite_references(
+            request.reference_images
+        )
+        normalized_reference = composite_data_uri
+        if request.mentioned_images:
+            labels = position_labels(len(request.reference_images))
+            resolved_prompt = replace_mention_tags(
+                resolved_prompt, request.mentioned_images, labels
+            )
+        if position_desc:
+            if request.mentioned_images:
+                resolved_prompt = f"{resolved_prompt}\n{position_desc}"
+            else:
+                resolved_prompt = (
+                    f"{resolved_prompt}\n{position_desc} "
+                    "Please synthesize elements from all reference areas."
+                )
+    elif request.reference_images and len(request.reference_images) == 1:
+        normalized_reference = (
+            await grid_pack_service.resolve_reference_to_base64_or_url(
+                request.reference_images[0]
+            )
+        )
+    elif request.reference_image:
+        normalized_reference = (
+            await grid_pack_service.resolve_reference_to_base64_or_url(
+                request.reference_image
+            )
+        )
+
+    # If caller provided a per-frame script (new two-step flow), fold the shot
+    # list into the prompt so Seedream can tell frame-by-frame stories.
+    effective_prompt = resolved_prompt
+    if request.frame_scripts:
+        expected = request.frame_count or (rows * cols)
+        if len(request.frame_scripts) != expected:
+            raise ValueError(
+                f"frame_scripts length ({len(request.frame_scripts)}) "
+                f"does not match frame_count ({expected})"
+            )
+        scene_prefix = "第" if request.locale == "zh" else "Scene "
+        scene_suffix = "幕：" if request.locale == "zh" else ": "
+        scene_lines = [
+            f"{scene_prefix}{i + 1}{scene_suffix}{script}"
+            for i, script in enumerate(request.frame_scripts)
+        ]
+        effective_prompt = (
+            f"{resolved_prompt}\n\nSHOT LIST (render each cell in row-major order):\n"
+            + "\n".join(scene_lines)
+        )
+
+    final_prompt = build_storyboard_prompt(effective_prompt, rows, cols, aspect_ratio)
 
     # Prepare ARK request payload
     payload: dict = {
@@ -251,16 +468,10 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         "watermark": False,
     }
 
-    # Handle optional reference image. ARK Doubao Seedream's image-generation
-    # endpoint reads `image` (singular, base64 data URI or HTTPS URL), NOT
-    # `image_urls`. Passing the wrong key silently degrades to text-to-image,
-    # which is exactly the bug we are fixing here. `image_urls` is the *video*
-    # API field — do not confuse the two.
-    if request.reference_image:
-        payload["image"] = request.reference_image  # base64 data URI is accepted
+    if normalized_reference:
+        payload["image"] = normalized_reference
         logger.info(
-            f"Storyboard reference image attached "
-            f"({len(request.reference_image)} chars, key='image')"
+            f"Storyboard reference image attached (normalized, {len(normalized_reference)} chars)"
         )
 
     headers = {
@@ -305,7 +516,9 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         raise ValueError(f"Failed to download generated image: {exc}") from exc
 
     # Crop into individual frames
-    frame_dicts = crop_storyboard(original_path, rows, cols, pack_directory, aspect_ratio)
+    frame_dicts = crop_storyboard(
+        original_path, rows, cols, pack_directory, aspect_ratio
+    )
 
     # Truncate to requested frame_count (discard excess cells)
     if requested_frame_count and requested_frame_count < len(frame_dicts):
@@ -316,17 +529,30 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
                 os.remove(excess_path)
         frame_dicts = frame_dicts[:requested_frame_count]
 
-    # Build frame metadata with URLs
+    # Build frame metadata with URLs — attach bound scripts if provided.
     original_image_url = _frame_url(today_str, pack_id, "original.png")
+    frame_scripts = request.frame_scripts or []
     frames: List[StoryboardFrame] = []
     for fd in frame_dicts:
-        frames.append(StoryboardFrame(
-            index=fd["index"],
-            filename=fd["filename"],
-            url=_frame_url(today_str, pack_id, fd["filename"]),
-            row=fd["row"],
-            col=fd["col"],
-        ))
+        script_text = (
+            frame_scripts[fd["index"]]
+            if fd["index"] < len(frame_scripts)
+            else None
+        )
+        if script_text:
+            fd["script"] = script_text
+            fd["description"] = script_text  # mirror for legacy consumers
+        frames.append(
+            StoryboardFrame(
+                index=fd["index"],
+                filename=fd["filename"],
+                url=_frame_url(today_str, pack_id, fd["filename"]),
+                row=fd["row"],
+                col=fd["col"],
+                description=script_text,
+                script=script_text,
+            )
+        )
 
     # Save reference image alongside pack if provided. Two cases:
     #   1) base64 data URI — decode and persist locally so the frontend can
@@ -336,11 +562,19 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
     # In both cases the resulting URL is exposed via StoryboardPack.reference_image_url
     # so the response always reflects "yes, a reference was used".
     saved_reference_url: Optional[str] = None
-    if request.reference_image:
-        if request.reference_image.startswith("data:"):
+    request_reference_image = (
+        request.reference_images[0]
+        if request.reference_images and len(request.reference_images) >= 1
+        else request.reference_image
+    )
+    if request_reference_image:
+        raw = request_reference_image
+        if raw.startswith("data:") or (
+            normalized_reference and normalized_reference.startswith("data:")
+        ):
             try:
-                # Extract base64 payload from data URI
-                header, b64_data = request.reference_image.split(",", 1)
+                source = normalized_reference or raw
+                header, b64_data = source.split(",", 1)
                 ref_bytes = base64.b64decode(b64_data)
                 ref_path = os.path.join(pack_directory, "reference.png")
                 async with aiofiles.open(ref_path, "wb") as f:
@@ -351,12 +585,16 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         else:
             # HTTPS URL — pass through to the response so the frontend still
             # knows a reference was attached.
-            saved_reference_url = request.reference_image
+            saved_reference_url = raw
 
     # Write metadata.json
     now_iso = datetime.now(timezone.utc).isoformat()
+    script_history_dump: Optional[List[dict]] = None
+    if request.script_history:
+        script_history_dump = [m.model_dump() for m in request.script_history]
     metadata = {
         "pack_id": pack_id,
+        "pack_type": PACK_TYPE_STORYBOARD,
         "prompt": request.prompt,
         "grid_size": request.grid_size,
         "aspect_ratio": aspect_ratio,
@@ -366,6 +604,8 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         "reference_image": saved_reference_url,
         "original_image_url": original_image_url,
         "frames": [fd for fd in frame_dicts],
+        "script_history": script_history_dump,
+        "locale": request.locale,
     }
     metadata_path = os.path.join(pack_directory, "metadata.json")
     async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
@@ -379,11 +619,15 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
                 if filename.endswith((".png", ".json")):
                     local_file = os.path.join(pack_directory, filename)
                     rel = f"{STORYBOARD_STORAGE_DIR}/{today_str}/{pack_id}/{filename}"
-                    content_type = "image/png" if filename.endswith(".png") else "application/json"
+                    content_type = (
+                        "image/png" if filename.endswith(".png") else "application/json"
+                    )
                     await oss_client.upload_file(local_file, rel, content_type)
             logger.info(f"Storyboard pack {pack_id} uploaded to OSS")
         except Exception as oss_exc:
-            logger.warning(f"OSS upload failed for storyboard pack {pack_id}: {oss_exc}")
+            logger.warning(
+                f"OSS upload failed for storyboard pack {pack_id}: {oss_exc}"
+            )
 
     pack = StoryboardPack(
         pack_id=pack_id,
@@ -395,6 +639,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
         original_image_url=original_image_url,
         reference_image_url=saved_reference_url,
         frames=frames,
+        script_history=script_history_dump,
     )
 
     logger.info(f"Storyboard pack created: {pack_id}, {len(frames)} frames")
@@ -404,6 +649,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
 # ---------------------------------------------------------------------------
 # VL_LLM frame description generation
 # ---------------------------------------------------------------------------
+
 
 async def generate_frame_descriptions(
     pack_id: str, frame_indices: Optional[List[int]] = None
@@ -432,7 +678,9 @@ async def generate_frame_descriptions(
 
     # Validate VL LLM configuration
     if not settings.vl_llm_api_key or not settings.vl_llm_api_url:
-        raise ValueError("VL_LLM_API_KEY and VL_LLM_API_URL must be configured for frame descriptions")
+        raise ValueError(
+            "VL_LLM_API_KEY and VL_LLM_API_URL must be configured for frame descriptions"
+        )
 
     vl_client = OpenAI(
         api_key=settings.vl_llm_api_key,
@@ -468,7 +716,10 @@ async def generate_frame_descriptions(
                         {
                             "role": "user",
                             "content": [
-                                {"type": "image_url", "image_url": {"url": image_data_uri}},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": image_data_uri},
+                                },
                                 {"type": "text", "text": "请描述这个分镜画面"},
                             ],
                         },
@@ -495,7 +746,9 @@ async def generate_frame_descriptions(
                 fr["description"] = desc_map[fr["index"]]
         async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
             await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
-        logger.info(f"Updated metadata for pack {pack_id} with {len(desc_map)} descriptions")
+        logger.info(
+            f"Updated metadata for pack {pack_id} with {len(desc_map)} descriptions"
+        )
 
     return results
 
@@ -504,12 +757,17 @@ async def generate_frame_descriptions(
 # Batch video generation
 # ---------------------------------------------------------------------------
 
-async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[dict]:
-    """Submit video generation tasks for storyboard frames via ark_video_service.
 
-    Each segment uses description mode with the frame image as reference.
-    Concurrency is limited to STORYBOARD_MAX_CONCURRENT_VIDEO.
+async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[dict]:
+    """Enqueue ARK video generation jobs for storyboard frames.
+
+    Each (segment, repeat_index) tuple produces one independent queue job;
+    the queue enforces a global concurrency cap (``storyboard.video_generation.
+    max_concurrent``) and a per-job timeout. Jobs whose slot is not yet free
+    are returned with status="queued" and no ``ark_task_id``.
     """
+    from app.services.storyboard_video_queue import storyboard_video_queue
+
     pack_directory = _pack_dir(request.pack_id)
     if not pack_directory:
         raise FileNotFoundError(f"Storyboard pack not found: {request.pack_id}")
@@ -521,123 +779,168 @@ async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[di
     # Build a lookup: index -> frame info
     frame_map = {fr["index"]: fr for fr in metadata.get("frames", [])}
 
-    # Determine the date directory for URL construction
-    # pack_directory looks like: .../storyboard/{date}/{pack_id}
-    date_str = Path(pack_directory).parent.name
-
-    semaphore = asyncio.Semaphore(STORYBOARD_MAX_CONCURRENT_VIDEO)
-    task_results: List[dict] = []
-
-    async def _submit_one(segment, repeat_index: int = 0, frame_data_uri: str = None) -> dict:
-        async with semaphore:
-            frame_info = frame_map.get(segment.frame_index)
-            if not frame_info:
-                logger.warning(f"Frame index {segment.frame_index} not found in pack {request.pack_id}")
-                return {"frame_index": segment.frame_index, "ark_task_id": None, "repeat_index": repeat_index, "error": "Frame not found"}
-
-            # Read frame image if not already provided (reuse for repeat calls)
-            if frame_data_uri is None:
-                frame_path = os.path.join(pack_directory, frame_info["filename"])
-                try:
-                    async with aiofiles.open(frame_path, "rb") as img_file:
-                        img_bytes = await img_file.read()
-                    frame_data_uri = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
-                except Exception as exc:
-                    logger.error(f"Failed to read frame image {frame_path}: {exc}")
-                    return {"frame_index": segment.frame_index, "ark_task_id": None, "repeat_index": repeat_index, "error": f"Cannot read frame image: {exc}"}
-
-            try:
-                ark_request = ArkVideoGenerateRequest(
-                    prompt=segment.description,
-                    mode="description",
-                    image_urls=[frame_data_uri],
-                    duration=segment.duration,
-                )
-                ark_task_id = await ark_video_service.create_task(ark_request)
-                logger.info(f"Video task created for frame {segment.frame_index} repeat {repeat_index}: {ark_task_id}")
-                return {"frame_index": segment.frame_index, "ark_task_id": ark_task_id, "repeat_index": repeat_index}
-            except Exception as exc:
-                logger.error(f"Failed to create video task for frame {segment.frame_index} repeat {repeat_index}: {exc}")
-                return {"frame_index": segment.frame_index, "ark_task_id": None, "repeat_index": repeat_index, "error": str(exc)}
-
-    # Pre-read frame images for segments with repeat > 1 to avoid re-reading
+    # Pre-read frame images once per frame_index (shared across repeats).
     frame_data_cache: Dict[int, str] = {}
+
+    async def _frame_data_uri(frame_index: int) -> Optional[str]:
+        if frame_index in frame_data_cache:
+            return frame_data_cache[frame_index]
+        frame_info = frame_map.get(frame_index)
+        if not frame_info:
+            return None
+        frame_path = os.path.join(pack_directory, frame_info["filename"])
+        try:
+            async with aiofiles.open(frame_path, "rb") as img_file:
+                img_bytes = await img_file.read()
+            uri = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
+            frame_data_cache[frame_index] = uri
+            return uri
+        except Exception as exc:
+            logger.error(f"Failed to read frame image {frame_path}: {exc}")
+            return None
+
+    results: List[dict] = []
+    # Each segment × repeat_index gets its own independent job slot.
     for seg in request.segments:
-        if seg.repeat > 1:
-            frame_info = frame_map.get(seg.frame_index)
-            if frame_info:
-                frame_path = os.path.join(pack_directory, frame_info["filename"])
-                try:
-                    async with aiofiles.open(frame_path, "rb") as img_file:
-                        img_bytes = await img_file.read()
-                    frame_data_cache[seg.frame_index] = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
-                except Exception:
-                    pass  # Will be handled in _submit_one
+        data_uri = await _frame_data_uri(seg.frame_index)
+        for ri in range(seg.repeat):
+            if not frame_map.get(seg.frame_index):
+                logger.warning(
+                    f"Frame index {seg.frame_index} not found in pack {request.pack_id}"
+                )
+                results.append(
+                    {
+                        "frame_index": seg.frame_index,
+                        "ark_task_id": None,
+                        "job_id": None,
+                        "repeat_index": ri,
+                        "status": "failed",
+                        "error": "Frame not found",
+                    }
+                )
+                continue
+            if data_uri is None:
+                results.append(
+                    {
+                        "frame_index": seg.frame_index,
+                        "ark_task_id": None,
+                        "job_id": None,
+                        "repeat_index": ri,
+                        "status": "failed",
+                        "error": "Cannot read frame image",
+                    }
+                )
+                continue
+            try:
+                job_id = await storyboard_video_queue.enqueue(
+                    pack_id=request.pack_id,
+                    frame_index=seg.frame_index,
+                    repeat_index=ri,
+                    description=seg.description,
+                    duration=seg.duration,
+                    frame_data_uri=data_uri,
+                )
+                results.append(
+                    {
+                        "frame_index": seg.frame_index,
+                        # Keep ark_task_id populated with job_id so existing
+                        # frontend callers that treat ark_task_id as the polling
+                        # handle continue to work. Real ARK id is exposed later
+                        # once the worker submits, via the status endpoint.
+                        "ark_task_id": job_id,
+                        "job_id": job_id,
+                        "repeat_index": ri,
+                        "status": "queued",
+                    }
+                )
+            except Exception as exc:
+                logger.error(
+                    f"Failed to enqueue video job for frame {seg.frame_index} repeat {ri}: {exc}",
+                    exc_info=True,
+                )
+                results.append(
+                    {
+                        "frame_index": seg.frame_index,
+                        "ark_task_id": None,
+                        "job_id": None,
+                        "repeat_index": ri,
+                        "status": "failed",
+                        "error": str(exc),
+                    }
+                )
 
-    # Build task list: each segment may produce multiple tasks based on repeat
-    tasks = []
-    for seg in request.segments:
-        repeat_count = seg.repeat
-        cached_uri = frame_data_cache.get(seg.frame_index)
-        for ri in range(repeat_count):
-            tasks.append(_submit_one(seg, repeat_index=ri, frame_data_uri=cached_uri))
-
-    task_results = await asyncio.gather(*tasks)
-
-    # Cache task mappings: frame_index -> [ark_task_id, ...]
+    # Update per-pack job_id mapping.
     if len(_pack_video_tasks) >= _PACK_CACHE_MAX_SIZE:
         oldest = next(iter(_pack_video_tasks))
         del _pack_video_tasks[oldest]
 
-    cache_map: Dict[int, List[str]] = {}
-    for r in task_results:
-        if r.get("ark_task_id"):
-            fi = r["frame_index"]
-            if fi not in cache_map:
-                cache_map[fi] = []
-            cache_map[fi].append(r["ark_task_id"])
-
-    # Merge with existing cache for this pack (in case of incremental generation)
     existing = _pack_video_tasks.get(request.pack_id, {})
-    for fi, ids in cache_map.items():
-        existing[fi] = ids
+    for r in results:
+        jid = r.get("job_id")
+        if not jid:
+            continue
+        fi = r["frame_index"]
+        existing.setdefault(fi, []).append(jid)
     _pack_video_tasks[request.pack_id] = existing
 
-    logger.info(f"Batch video: {len(task_results)} tasks submitted for pack {request.pack_id}")
-    return task_results
+    logger.info(
+        f"Batch video: {len(results)} jobs enqueued for pack {request.pack_id} "
+        f"(queue={sum(1 for r in results if r.get('status') == 'queued')}, "
+        f"failed={sum(1 for r in results if r.get('status') == 'failed')})"
+    )
+    return results
 
 
 async def get_batch_video_status(pack_id: str) -> List[dict]:
-    """Query the current status of all video tasks associated with a pack."""
-    task_map = _pack_video_tasks.get(pack_id)
-    if not task_map:
+    """Query the current status of all video jobs associated with a pack.
+
+    Returns one entry per (frame_index, repeat_index). Each entry carries the
+    internal job_id (stable identifier returned from batch-video), and when
+    available the real ARK task id, the video URL, thumbnail, and queue
+    position.
+    """
+    from app.services.storyboard_video_queue import storyboard_video_queue
+
+    job_map = _pack_video_tasks.get(pack_id)
+    if not job_map:
         return []
 
     statuses: List[dict] = []
-    for frame_index, ark_task_ids in task_map.items():
-        for repeat_index, ark_task_id in enumerate(ark_task_ids):
-            try:
-                status_resp = await ark_video_service.get_status(ark_task_id)
-                statuses.append({
+    for frame_index, job_ids in job_map.items():
+        for repeat_index, job_id in enumerate(job_ids):
+            job = await storyboard_video_queue.get_job(job_id)
+            if job is None:
+                # Entry was evicted by TTL; surface unknown state rather than failing.
+                statuses.append(
+                    {
+                        "frame_index": frame_index,
+                        "repeat_index": repeat_index,
+                        "job_id": job_id,
+                        "ark_task_id": None,
+                        "status": "failed",
+                        "video_url": None,
+                        "thumbnail_url": None,
+                        "error": "Job state expired",
+                        "position_in_queue": None,
+                    }
+                )
+                continue
+            position = None
+            if job.status == "queued":
+                position = await storyboard_video_queue.position_in_queue(job_id)
+            statuses.append(
+                {
                     "frame_index": frame_index,
-                    "ark_task_id": ark_task_id,
                     "repeat_index": repeat_index,
-                    "status": status_resp.status,
-                    "video_url": status_resp.video_url,
-                    "thumbnail_url": status_resp.thumbnail_url,
-                    "error": status_resp.error,
-                })
-            except Exception as exc:
-                logger.error(f"Failed to query status for task {ark_task_id}: {exc}")
-                statuses.append({
-                    "frame_index": frame_index,
-                    "ark_task_id": ark_task_id,
-                    "repeat_index": repeat_index,
-                    "status": "failed",
-                    "video_url": None,
-                    "thumbnail_url": None,
-                    "error": str(exc),
-                })
+                    "job_id": job_id,
+                    "ark_task_id": job.ark_task_id,
+                    "status": job.status,
+                    "video_url": job.video_url,
+                    "thumbnail_url": job.thumbnail_url,
+                    "error": job.error,
+                    "position_in_queue": position,
+                }
+            )
 
     return statuses
 
@@ -645,6 +948,7 @@ async def get_batch_video_status(pack_id: str) -> List[dict]:
 # ---------------------------------------------------------------------------
 # Video composition (FFmpeg concat)
 # ---------------------------------------------------------------------------
+
 
 async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
     """Concatenate storyboard videos into a single video using FFmpeg.
@@ -666,7 +970,7 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
         for i, video_url in enumerate(request.video_urls):
             # Convert serving URL to local filesystem path
             if video_url.startswith("/api/storage/files/"):
-                relative = video_url[len("/api/storage/files/"):]
+                relative = video_url[len("/api/storage/files/") :]
                 # Prevent path traversal via ".." segments
                 if ".." in relative:
                     raise ValueError(f"Invalid video URL (path traversal): {video_url}")
@@ -680,7 +984,9 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
             else:
                 # Download remote URL
                 local_path = os.path.join(tmp_dir, f"input_{i:03d}.mp4")
-                async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as dl:
+                async with httpx.AsyncClient(
+                    timeout=120.0, follow_redirects=True
+                ) as dl:
                     resp = await dl.get(video_url)
                     resp.raise_for_status()
                     async with aiofiles.open(local_path, "wb") as f:
@@ -688,7 +994,9 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
                 logger.info(f"Downloaded video {i} to {local_path}")
 
             if not os.path.exists(local_path):
-                raise FileNotFoundError(f"Video file not found: {local_path} (url={video_url})")
+                raise FileNotFoundError(
+                    f"Video file not found: {local_path} (url={video_url})"
+                )
             local_videos.append(local_path)
 
         # Build FFmpeg concat list
@@ -703,27 +1011,59 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
 
         # Try stream copy first (fast, lossless)
         copy_cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", concat_list_path,
-            "-c", "copy",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_list_path,
+            "-c",
+            "copy",
             output_path,
         ]
         success = await _run_ffmpeg(copy_cmd, timeout=300)
 
         # Fallback: re-encode if stream copy failed
-        if not success or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+        if (
+            not success
+            or not os.path.exists(output_path)
+            or os.path.getsize(output_path) == 0
+        ):
             logger.warning("Stream copy failed, falling back to re-encode")
             encode_cmd = [
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", concat_list_path,
-                "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-                "-c:a", "aac", "-b:a", "128k",
-                "-movflags", "+faststart",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                concat_list_path,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "23",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
                 output_path,
             ]
             success = await _run_ffmpeg(encode_cmd, timeout=600)
-            if not success or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-                raise RuntimeError("FFmpeg composition failed (both stream copy and re-encode)")
+            if (
+                not success
+                or not os.path.exists(output_path)
+                or os.path.getsize(output_path) == 0
+            ):
+                raise RuntimeError(
+                    "FFmpeg composition failed (both stream copy and re-encode)"
+                )
 
         # Move composed video to pack directory
         final_video = os.path.join(pack_directory, "composed.mp4")
@@ -737,10 +1077,18 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
         thumbnail_url: Optional[str] = None
         thumb_path = os.path.join(pack_directory, "composed_thumb.jpg")
         thumb_cmd = [
-            "ffmpeg", "-y", "-ss", "1",
-            "-i", final_video,
-            "-vframes", "1", "-q:v", "2",
-            "-vf", "scale=320:-1",
+            "ffmpeg",
+            "-y",
+            "-ss",
+            "1",
+            "-i",
+            final_video,
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            "-vf",
+            "scale=320:-1",
             thumb_path,
         ]
         if await _run_ffmpeg(thumb_cmd, timeout=30):
@@ -752,14 +1100,20 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
         if oss_client:
             try:
                 rel_video = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{request.pack_id}/composed.mp4"
-                video_url = await oss_client.upload_file(final_video, rel_video, "video/mp4")
+                video_url = await oss_client.upload_file(
+                    final_video, rel_video, "video/mp4"
+                )
                 if thumbnail_url and os.path.exists(thumb_path):
                     rel_thumb = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{request.pack_id}/composed_thumb.jpg"
-                    thumbnail_url = await oss_client.upload_file(thumb_path, rel_thumb, "image/jpeg")
+                    thumbnail_url = await oss_client.upload_file(
+                        thumb_path, rel_thumb, "image/jpeg"
+                    )
             except Exception as oss_exc:
                 logger.warning(f"OSS upload failed for composed video: {oss_exc}")
 
-        logger.info(f"Storyboard video composed for pack {request.pack_id}: {video_url}")
+        logger.info(
+            f"Storyboard video composed for pack {request.pack_id}: {video_url}"
+        )
         return {"video_url": video_url, "thumbnail_url": thumbnail_url}
 
     finally:
@@ -804,6 +1158,7 @@ async def _run_ffmpeg(cmd: List[str], timeout: int = 300) -> bool:
 # Pack CRUD
 # ---------------------------------------------------------------------------
 
+
 async def list_packs() -> List[StoryboardPack]:
     """Scan storage directories and return all storyboard packs sorted by creation date."""
     base = _storyboard_base_dir()
@@ -833,24 +1188,32 @@ async def list_packs() -> List[StoryboardPack]:
                         row=fr["row"],
                         col=fr["col"],
                         description=fr.get("description"),
+                        shot_id=fr.get("shot_id"),
+                        script=fr.get("script"),
+                        visual_prompt=fr.get("visual_prompt"),
+                        reference_image_url=fr.get("reference_image_url"),
                     )
                     for fr in meta.get("frames", [])
                 ]
 
-                packs.append(StoryboardPack(
-                    pack_id=meta["pack_id"],
-                    prompt=meta.get("prompt", ""),
-                    grid_size=meta.get("grid_size", ""),
-                    aspect_ratio=meta.get("aspect_ratio", "1:1"),
-                    frame_count=meta.get("frame_count", len(frames)),
-                    created_at=meta.get("created_at", ""),
-                    original_image_url=meta.get(
-                        "original_image_url",
-                        _frame_url(date_dir_name, pack_id, "original.png"),
-                    ),
-                    reference_image_url=meta.get("reference_image"),
-                    frames=frames,
-                ))
+                packs.append(
+                    StoryboardPack(
+                        pack_id=meta["pack_id"],
+                        prompt=meta.get("prompt", ""),
+                        grid_size=meta.get("grid_size", ""),
+                        aspect_ratio=meta.get("aspect_ratio", "1:1"),
+                        frame_count=meta.get("frame_count", len(frames)),
+                        created_at=meta.get("created_at", ""),
+                        original_image_url=meta.get(
+                            "original_image_url",
+                            _frame_url(date_dir_name, pack_id, "original.png"),
+                        ),
+                        reference_image_url=meta.get("reference_image"),
+                        frames=frames,
+                        script_title=meta.get("script_title"),
+                        script_history=meta.get("script_history"),
+                    )
+                )
             except Exception as exc:
                 logger.warning(f"Failed to read storyboard pack at {pack_path}: {exc}")
 
@@ -882,6 +1245,10 @@ async def get_pack(pack_id: str) -> StoryboardPack:
             row=fr["row"],
             col=fr["col"],
             description=fr.get("description"),
+            shot_id=fr.get("shot_id"),
+            script=fr.get("script"),
+            visual_prompt=fr.get("visual_prompt"),
+            reference_image_url=fr.get("reference_image_url"),
         )
         for fr in meta.get("frames", [])
     ]
@@ -899,6 +1266,8 @@ async def get_pack(pack_id: str) -> StoryboardPack:
         ),
         reference_image_url=meta.get("reference_image"),
         frames=frames,
+        script_title=meta.get("script_title"),
+        script_history=meta.get("script_history"),
     )
 
 
@@ -929,11 +1298,153 @@ async def delete_pack(pack_id: str) -> None:
             logger.warning(f"Failed to delete OSS objects for pack {pack_id}: {exc}")
 
 
+async def _download_to_local(src_url: str, dest_path: str) -> None:
+    """Download a URL to a local path. Supports data:, http(s):, /api/storage/... URLs."""
+    if src_url.startswith("data:"):
+        try:
+            _, b64_data = src_url.split(",", 1)
+            data = base64.b64decode(b64_data)
+        except Exception as exc:
+            raise ValueError(f"Invalid data URI: {exc}")
+        async with aiofiles.open(dest_path, "wb") as f:
+            await f.write(data)
+        return
+
+    if src_url.startswith("/api/storage/files/"):
+        # Local file — resolve to storage root and copy.
+        # Reject path traversal: the resolved absolute path must stay inside the storage root.
+        rel = src_url[len("/api/storage/files/"):]
+        storage_root = os.path.realpath(_storage_root())
+        local = os.path.realpath(os.path.join(storage_root, rel))
+        try:
+            common = os.path.commonpath([storage_root, local])
+        except ValueError:
+            # Different drives on Windows
+            raise ValueError(f"Path traversal rejected: {src_url}")
+        if common != storage_root:
+            raise ValueError(f"Path traversal rejected: {src_url}")
+        if os.path.isfile(local):
+            shutil.copyfile(local, dest_path)
+            return
+        raise FileNotFoundError(f"Local storage file missing: {local}")
+
+    if src_url.startswith("http://") or src_url.startswith("https://"):
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.get(src_url)
+            resp.raise_for_status()
+            async with aiofiles.open(dest_path, "wb") as f:
+                await f.write(resp.content)
+        return
+
+    raise ValueError(f"Unsupported image URL scheme: {src_url[:32]}")
+
+
+async def create_pack_from_shots(
+    request: StoryboardCreateFromShotsRequest,
+) -> StoryboardPack:
+    """Create a storyboard pack from script-bound shots (no cropping, no Seedream).
+
+    Each shot's generated image is downloaded/copied to the pack directory so the
+    pack is self-contained. The bound script text is persisted into frame.script.
+    """
+    pack_id = f"sbpk_{uuid4().hex[:12]}"
+    today_str = date.today().isoformat()
+    pack_directory = os.path.join(_storyboard_base_dir(), today_str, pack_id)
+    os.makedirs(pack_directory, exist_ok=True)
+
+    frames: List[StoryboardFrame] = []
+    frame_dicts: List[dict] = []
+
+    for idx, shot in enumerate(request.shots):
+        filename = f"frame_{idx:03d}.png"
+        dest_path = os.path.join(pack_directory, filename)
+        try:
+            await _download_to_local(shot.generated_image_url, dest_path)
+        except Exception as exc:
+            # Atomic: roll back the partially-created pack so callers can retry cleanly.
+            logger.error(
+                f"Failed to localize shot image for pack {pack_id} idx={idx}: {exc}"
+            )
+            shutil.rmtree(pack_directory, ignore_errors=True)
+            raise RuntimeError(
+                f"Shot {idx} image download failed: {exc}"
+            ) from exc
+        frame_url = _frame_url(today_str, pack_id, filename)
+
+        frame_dict = {
+            "index": idx,
+            "filename": filename,
+            "url": frame_url,
+            "row": 0,
+            "col": 0,
+            "description": shot.script,  # legacy description mirrors script for old consumers
+            "shot_id": shot.shot_id,
+            "script": shot.script,
+            "visual_prompt": shot.visual_prompt,
+            "reference_image_url": shot.reference_image_url,
+        }
+        frame_dicts.append(frame_dict)
+        frames.append(
+            StoryboardFrame(
+                index=idx,
+                filename=filename,
+                url=frame_url,
+                row=0,
+                col=0,
+                description=shot.script,
+                shot_id=shot.shot_id,
+                script=shot.script,
+                visual_prompt=shot.visual_prompt,
+                reference_image_url=shot.reference_image_url,
+            )
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # Grid size is trivial (single column) for scripted packs
+    grid_size = f"{len(frames)}x1" if len(frames) > 0 else "1x1"
+    original_image_url = frames[0].url if frames else ""
+
+    metadata = {
+        "pack_id": pack_id,
+        "pack_type": PACK_TYPE_STORYBOARD,
+        "prompt": request.title or "",
+        "grid_size": grid_size,
+        "aspect_ratio": request.aspect_ratio,
+        "frame_count": len(frames),
+        "created_at": now_iso,
+        "reference_image": None,
+        "original_image_url": original_image_url,
+        "script_title": request.title,
+        "script_history": request.script_history,
+        "frames": frame_dicts,
+    }
+    metadata_path = os.path.join(pack_directory, "metadata.json")
+    async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
+        await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+
+    return StoryboardPack(
+        pack_id=pack_id,
+        prompt=request.title or "",
+        grid_size=grid_size,
+        aspect_ratio=request.aspect_ratio,
+        frame_count=len(frames),
+        created_at=now_iso,
+        original_image_url=original_image_url,
+        reference_image_url=None,
+        frames=frames,
+        script_title=request.title,
+        script_history=request.script_history,
+    )
+
+
 def _oss_delete_prefix(oss_client, prefix: str) -> None:
     """Delete all OSS objects under a given prefix (synchronous)."""
     try:
         import oss2
-        for obj in oss2.ObjectIterator(oss_client.bucket, prefix=oss_client.cfg.key_prefix + prefix):
+
+        for obj in oss2.ObjectIterator(
+            oss_client.bucket, prefix=oss_client.cfg.key_prefix + prefix
+        ):
             oss_client.bucket.delete_object(obj.key)
     except Exception as exc:
         logger.warning(f"OSS prefix deletion error: {exc}")

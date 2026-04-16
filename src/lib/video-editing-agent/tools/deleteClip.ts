@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip } from './index';
+import { findClip, checkTrackDurationConstraint, formatDurationWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to delete' }),
@@ -29,10 +29,14 @@ export function createDeleteClipTool(context: ToolContext): AgentTool<typeof par
         trackId: found.trackId,
       });
 
+      const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+      const warning = formatDurationWarning(constraintCheck);
+
       const result = {
         success: true,
         message: 'Clip deleted successfully',
         deletedClipId: params.clipId,
+        ...(warning ? { warning } : {}),
       };
 
       return {

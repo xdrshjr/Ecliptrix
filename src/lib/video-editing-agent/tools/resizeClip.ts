@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip } from './index';
+import { findClip, checkTrackDurationConstraint, formatDurationWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to resize' }),
@@ -37,6 +37,9 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
         newDuration: params.newDuration,
       });
 
+      const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+      const warning = formatDurationWarning(constraintCheck);
+
       const result = {
         success: true,
         clip: {
@@ -44,6 +47,7 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
           previousDuration,
           newDuration: params.newDuration,
         },
+        ...(warning ? { warning } : {}),
       };
 
       return {

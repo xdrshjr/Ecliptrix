@@ -97,6 +97,9 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
       const segmentIndex = segments.findIndex((s) => s.id === segmentId);
       const segment = segments[segmentIndex];
       if (!segment) return;
+      // Skip expansion for script-bound segments — they already carry the canonical
+      // script from the pack, and expanding would overwrite user-authored content.
+      if (segment.boundFromPack) return;
 
       setExpandingSegmentId(segmentId);
       try {

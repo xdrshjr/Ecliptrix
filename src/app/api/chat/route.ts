@@ -170,21 +170,26 @@ export async function POST(request: NextRequest) {
 
               try {
                 const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content
+                const delta = parsed.choices?.[0]?.delta
+                const content = delta?.content
+                const reasoning = delta?.reasoning_content
 
-                if (content) {
+                if (content || reasoning) {
                   totalChunks++
                   const currentTime = Date.now()
                   const timeSinceLastChunk = currentTime - lastChunkTime
                   lastChunkTime = currentTime
 
-                  const responseData = { content }
+                  const responseData: { content?: string; reasoning?: string } = {}
+                  if (content) responseData.content = content
+                  if (reasoning) responseData.reasoning = reasoning
                   controller.enqueue(
                     encoder.encode(`data: ${JSON.stringify(responseData)}\n\n`),
                   )
 
                   if (totalChunks % 10 === 0 || totalChunks <= 3) {
-                    console.log(`[Chat API] 已发送第 ${totalChunks} 个数据块 (间隔 ${timeSinceLastChunk}ms, 内容长度: ${content.length})`)
+                    const lens = `content:${content?.length || 0},reasoning:${reasoning?.length || 0}`
+                    console.log(`[Chat API] 已发送第 ${totalChunks} 个数据块 (间隔 ${timeSinceLastChunk}ms, ${lens})`)
                   }
                 }
               } catch (e) {

@@ -49,15 +49,19 @@ class LLMService:
             api_key_env = f"AGENT_LLM_API_{number}_KEY"
             api_url_env = f"AGENT_LLM_API_{number}_URL"
             model_name_env = f"AGENT_LLM_{number}_MODEL"
-            
+            api_type_env = f"AGENT_LLM_API_{number}_TYPE"
+
             api_key = os.getenv(api_key_env, "")
             api_url = os.getenv(api_url_env, "")
             model_name = os.getenv(model_name_env, "")
-            
+            api_type = (os.getenv(api_type_env, "openai") or "openai").strip().lower()
+            if api_type not in ("openai", "anthropic"):
+                api_type = "openai"
+
             if api_key and api_url and model_name:
                 # Mask API key for security (show only first 8 and last 4 characters)
                 masked_key = self._mask_api_key(api_key)
-                
+
                 # Create model info
                 model_info = LLMModelInfo(
                     id=f"agent_llm_{number}",
@@ -65,7 +69,8 @@ class LLMService:
                     api_url=api_url,
                     api_key=masked_key,
                     display_name=f"{model_name} (Agent {number})",
-                    description=f"Agent LLM configuration {number}"
+                    description=f"Agent LLM configuration {number}",
+                    api_type=api_type,
                 )
                 
                 models.append(model_info)

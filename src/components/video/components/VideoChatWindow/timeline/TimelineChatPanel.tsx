@@ -47,6 +47,7 @@ function getConnectorState(
 ): ConnectorState {
   // If the next node is an active execution or thinking → active line
   if (nextNode.kind === 'thinking' && nextNode.isStreaming) return 'active';
+  if (nextNode.kind === 'thinking' && nextNode.isThinkingPhase) return 'active';
   if (nextNode.kind === 'execution' && nextNode.isActive) return 'active';
 
   // If the next node is an undone response → undone line

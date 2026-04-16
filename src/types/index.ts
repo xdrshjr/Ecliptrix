@@ -47,6 +47,9 @@ export interface ChatMessage {
   timelineSnapshot?: TimelineState;
   pendingOperations?: Array<AgentTimelineOperation | { type: string; [key: string]: unknown }>;
   isUndone?: boolean;
+  // Agent thinking mode fields
+  thinkingContent?: string;
+  isThinking?: boolean;
 }
 
 export interface AgentToolCallRecord {
@@ -474,6 +477,24 @@ export interface ScriptGenerationConfig {
 }
 
 // ========================
+// AI Image Generation multi-reference types
+// ========================
+
+export interface MentionedImage {
+  id: string;
+  name: string;
+  url: string;
+  source?: {
+    type: 'material' | 'storyboard' | 'character' | 'scene';
+    packId?: string;
+    frameIndex?: number;
+    subView?: string | null;
+  } | null;
+}
+
+export type ImageMentionMap = Record<string, string>;
+
+// ========================
 // Storyboard Generation types
 // ========================
 
@@ -491,6 +512,11 @@ export interface StoryboardFrame {
   row: number;
   col: number;
   description?: string;  // VL_LLM generated description (filled later)
+  // ── AI-scripted pack fields (optional, backward compatible) ──
+  shotId?: string;                   // Stable client-generated UUID
+  script?: string;                   // Bound script paragraph (source of truth)
+  visualPrompt?: string;             // Prompt passed to ARK for this shot
+  referenceImageUrl?: string;        // https / /api/storage/files/... / data:
 }
 
 /** A storyboard pack containing the original image and its cropped frames */
@@ -504,6 +530,29 @@ export interface StoryboardPack {
   originalImageUrl: string;   // Original full grid image URL
   referenceImageUrl?: string; // Reference image URL (if provided)
   frames: StoryboardFrame[];
+  // ── AI-scripted pack fields (optional) ──
+  scriptTitle?: string;
+  scriptHistory?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+}
+
+/** A single LLM-produced script shot bound to a frame index. */
+export interface ScriptShot {
+  index: number;
+  script: string;
+}
+
+/** A chat message in the script-drafting dialogue. */
+export interface ScriptMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+/** Transient in-memory script draft owned by the StoryboardTab wizard. */
+export interface StoryboardScriptDraft {
+  frameCount: number;
+  shots: ScriptShot[];
+  messages: ScriptMessage[];
+  locale: 'zh' | 'en';
 }
 
 /** Parameters for generating a storyboard */
@@ -511,18 +560,26 @@ export interface StoryboardGenerateParams {
   prompt: string;
   frameCount: number;
   aspectRatio?: StoryboardAspectRatio;
-  referenceImage?: string;    // base64 data URI
+  referenceImage?: string;
+  referenceImages?: string[];
+  mentionedImages?: Record<string, string>;
+  // ── Two-step script-bound flow (optional) ──
+  frameScripts?: string[];
+  scriptHistory?: ScriptMessage[];
+  locale?: 'zh' | 'en';
+  packId?: string;
 }
 
 /** A single candidate video generated for a storyboard segment */
 export interface StoryboardVideoCandidate {
   id: string;                    // unique ID (frontend-generated UUID)
   arkTaskId: string;             // ARK task ID
-  status: 'generating' | 'succeeded' | 'failed';
+  status: 'generating' | 'succeeded' | 'failed' | 'queued' | 'timeout';
   progress: number;              // 0-100
   videoUrl?: string;
   thumbnailUrl?: string;
   error?: string;
+  queuePosition?: number;
 }
 
 /** A storyboard script segment for AI video generation from storyboard frames */
@@ -534,20 +591,24 @@ export interface StoryboardScriptSegment {
   frameThumbnailUrl?: string;
   description: string;
   duration: number;            // seconds (4-12)
-  generationStatus: 'idle' | 'generating' | 'succeeded' | 'failed';
+  generationStatus: 'idle' | 'generating' | 'succeeded' | 'failed' | 'queued' | 'timeout';
   generationProgress?: number;
   arkTaskId?: string;
   generatedVideoUrl?: string;
   generatedVideoThumbnailUrl?: string;
   generationError?: string;
+  /** Queue position when status='queued' (1-based). */
+  queuePosition?: number;
   // Multi-video candidates (only present for multi-video generation)
   videoCandidates?: StoryboardVideoCandidate[];
   // User-selected candidate video ID
   selectedCandidateId?: string;
+  // Marks that description came from a script-bound pack (skip expand)
+  boundFromPack?: boolean;
 }
 
 // Materials Management related types
-export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle' | 'storyboard_pack';
+export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle' | 'storyboard_pack' | 'character_pack' | 'scene_pack';
 
 // 下载状态类型
 export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'completed' | 'error';

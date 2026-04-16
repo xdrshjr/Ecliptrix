@@ -27,6 +27,7 @@
 - src/lib/api/
 - src/contexts/
 - src/types/
+- src/stores/
 - backend-services/basic-service/app/routers/
 - backend-services/basic-service/app/services/
 - backend-services/basic-service/app/models/
@@ -36,9 +37,11 @@
 - Backend: FastAPI, Python 3.10+, async SQLAlchemy + asyncpg
 - Database: PostgreSQL 13+
 - UI: shadcn/ui (new-york style)
-- State: React Context API
+- State: React Context API + Zustand stores
+- Deployment: systemd + nginx
 
 ## Index Settings
-- Generated: 2026-03-20
+- Generated: 2026-04-16
 - Project Root: G:/projects/takoAI/Ecliptrix
-- Index Version: 1.0
+- Index Version: 2.0
+- Environments Configured: No

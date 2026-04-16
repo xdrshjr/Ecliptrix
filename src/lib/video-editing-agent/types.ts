@@ -117,6 +117,9 @@ export type AgentOperation =
 // --- SSE Events (sent from API route to frontend) ---
 
 export type SSEEvent =
+  | { type: 'thinking_start' }
+  | { type: 'thinking_delta'; content: string }
+  | { type: 'thinking_end' }
   | { type: 'agent_start' }
   | { type: 'agent_end' }
   | { type: 'turn_start' }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { backendConfig } from '@/lib/config/backend';
 import { createVideoEditingAgent, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
 import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
+import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
 
 // SWEEP-EXCEPTION: third-party LLM Agent SDK with custom SSE/heartbeat lifecycle
 // ─────────────────────────────────────────────────────────────────────────
@@ -13,6 +14,149 @@ import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types
 // backend call was migrated to `backendConfig.baseUrl`.
 
 const AGENT_TIMEOUT = 600_000; // 10 minutes — storyboard generation can take 4+ minutes
+
+const THINKING_TIMEOUT = 30_000;
+const THINKING_HEARTBEAT_INTERVAL = 15_000;
+
+function buildThinkingPrompt(
+  userMessage: string,
+  timelineState: TimelineState | null,
+  materials: MaterialItem[],
+): string {
+  const trackSummary = timelineState?.tracks?.map(t => {
+    const itemCount = t.items?.length ?? 0;
+    return `${t.name} (${t.type}): ${itemCount} clips`;
+  }).join('\n') ?? 'No tracks';
+
+  const materialSummary = materials.length > 0
+    ? materials.slice(0, 20).map(m => `- ${m.name} (${m.type}, ${m.format}${m.duration ? `, ${m.duration.toFixed(1)}s` : ''})`).join('\n')
+    : 'No materials';
+
+  const totalDuration = timelineState?.totalDuration ?? 0;
+
+  return `You are a professional video editing assistant. Before executing the user's editing task, analyze the request and plan the execution approach.
+
+## Current Project State
+- Timeline tracks:
+${trackSummary}
+- Materials library:
+${materialSummary}
+- Total duration: ${totalDuration.toFixed(1)}s
+
+## User Request
+${userMessage}
+
+## Please Consider
+1. What is the user's goal?
+2. How many steps are needed? Which tools for each step?
+3. Are there any constraints to be aware of?
+
+Output your analysis concisely in bullet points, no more than 300 characters.`;
+}
+
+async function performThinkingPhase(
+  send: (data: SSEEvent | string) => void,
+  encoder: TextEncoder,
+  controller: ReadableStreamDefaultController,
+  userMessage: string,
+  conversationHistory: ChatMessage[],
+  timelineState: TimelineState | null,
+  materials: MaterialItem[],
+  config: { apiUrl: string; apiKey: string; model: string; providerType?: string },
+  signal: AbortSignal,
+): Promise<void> {
+  let thinkingHeartbeatId: ReturnType<typeof setInterval> | null = null;
+
+  try {
+    send({ type: 'thinking_start' });
+
+    thinkingHeartbeatId = setInterval(() => {
+      try {
+        controller.enqueue(encoder.encode(': heartbeat\n\n'));
+      } catch {
+        if (thinkingHeartbeatId !== null) {
+          clearInterval(thinkingHeartbeatId);
+          thinkingHeartbeatId = null;
+        }
+      }
+    }, THINKING_HEARTBEAT_INTERVAL);
+
+    const recentHistory = conversationHistory.slice(-6, -1);
+    const thinkingPrompt = buildThinkingPrompt(userMessage, timelineState, materials);
+
+    const thinkingController = new AbortController();
+    const timeoutId = setTimeout(() => thinkingController.abort(), THINKING_TIMEOUT);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const combinedSignal = typeof AbortSignal !== 'undefined' && 'any' in AbortSignal
+      ? (AbortSignal as any).any([thinkingController.signal, signal])
+      : thinkingController.signal;
+
+    const response = await fetch(`${config.apiUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: 'system', content: thinkingPrompt },
+          ...recentHistory.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+          { role: 'user', content: userMessage },
+        ],
+        stream: true,
+        max_tokens: 800,
+      }),
+      signal: combinedSignal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn('[ThinkingPhase] LLM call failed:', response.status);
+      send({ type: 'thinking_end' });
+      return;
+    }
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+          try {
+            const data = JSON.parse(line.slice(6));
+            const content = data.choices?.[0]?.delta?.content;
+            if (content) {
+              send({ type: 'thinking_delta', content });
+            }
+          } catch { /* skip unparseable lines */ }
+        }
+      }
+    }
+
+    send({ type: 'thinking_end' });
+  } catch (error) {
+    console.warn('[ThinkingPhase] Error (continuing to execution):', error);
+    try { send({ type: 'thinking_end' }); } catch { /* already closed */ }
+  } finally {
+    if (thinkingHeartbeatId !== null) {
+      clearInterval(thinkingHeartbeatId);
+    }
+  }
+}
 
 export const maxDuration = 600; // 10 minutes (for Vercel/serverless platforms)
 
@@ -206,6 +350,21 @@ export async function POST(request: NextRequest) {
         }
 
         try {
+          // Thinking phase: analyze the task before executing
+          // Uses the request's AbortSignal via combined signal for cancellation support
+          const requestSignal = (request as unknown as { [key: string]: unknown }).signal as AbortSignal || new AbortController().signal;
+          await performThinkingPhase(
+            send,
+            encoder,
+            controller,
+            lastUserMessage,
+            messages,
+            effectiveTimelineState,
+            effectiveMaterials,
+            config,
+            requestSignal,
+          );
+
           // Use loopback, NOT new URL(request.url).origin — in production the
           // origin is the public HTTPS domain which the server-side container
           // cannot reliably reach back through nginx (see diagnosis report

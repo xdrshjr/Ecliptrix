@@ -48,9 +48,11 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const splitBtnRef = useRef<HTMLDivElement>(null);
 
-  const isGenerating = segment.generationStatus === 'generating';
+  const isQueued = segment.generationStatus === 'queued';
+  const isGenerating = segment.generationStatus === 'generating' || isQueued;
   const isSucceeded = segment.generationStatus === 'succeeded';
   const isFailed = segment.generationStatus === 'failed';
+  const isTimeout = segment.generationStatus === 'timeout';
   const hasCandidates = segment.videoCandidates && segment.videoCandidates.length > 1;
 
   const updateMenuPos = useCallback(() => {
@@ -159,9 +161,9 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
               </button>
               <button
                 onClick={() => { setExpandGoal(''); setShowExpandDialog(true); }}
-                disabled={isExpanding || isGenerating}
+                disabled={isExpanding || isGenerating || Boolean(segment.boundFromPack)}
                 className="flex items-center space-x-1 px-2 py-1 text-xs text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:text-teal-400 dark:hover:text-teal-300 dark:hover:bg-teal-900/20 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title={segment.description.trim() ? 'AI扩展描述' : 'AI生成描述'}
+                title={segment.boundFromPack ? '剧本已与分镜绑定，无需扩展' : segment.description.trim() ? 'AI扩展描述' : 'AI生成描述'}
               >
                 {isExpanding ? (
                   <>
@@ -221,12 +223,18 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
           {isGenerating ? (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs text-teal-600 font-medium">
-                  {hasCandidates
-                    ? `${t.storyboardScriptTab.candidateGenerating} (${segment.videoCandidates!.filter(c => c.status === 'succeeded').length}/${segment.videoCandidates!.length})`
-                    : t.storyboardScriptTab.candidateGenerating + '...'}
+                <span className={`text-xs font-medium ${isQueued ? 'text-amber-600' : 'text-teal-600'}`}>
+                  {isQueued
+                    ? (segment.queuePosition
+                        ? `${t.storyboardScriptTab.queued || '排队中'}… (${t.storyboardScriptTab.queuedPosition || '位置'} ${segment.queuePosition})`
+                        : (t.storyboardScriptTab.queued || '排队中') + '…')
+                    : hasCandidates
+                      ? `${t.storyboardScriptTab.candidateGenerating} (${segment.videoCandidates!.filter(c => c.status === 'succeeded').length}/${segment.videoCandidates!.length})`
+                      : t.storyboardScriptTab.candidateGenerating + '...'}
                 </span>
-                <span className="text-xs text-muted-foreground">{segment.generationProgress || 0}%</span>
+                <span className="text-xs text-muted-foreground">
+                  {isQueued ? '' : `${segment.generationProgress || 0}%`}
+                </span>
               </div>
               <div className="w-full bg-accent rounded-full h-1.5">
                 <div
@@ -271,10 +279,12 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
                 取消生成
               </button>
             </div>
-          ) : isFailed ? (
+          ) : isFailed || isTimeout ? (
             <div className="flex items-center justify-between">
               <span className="text-xs text-destructive truncate mr-2">
-                生成失败: {segment.generationError}
+                {isTimeout
+                  ? `${t.storyboardScriptTab.generationTimeout || '生成超时'}${segment.generationError ? ': ' + segment.generationError : ''}`
+                  : `生成失败: ${segment.generationError}`}
               </span>
               <button
                 onClick={onGenerateVideo}

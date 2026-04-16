@@ -6,7 +6,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { StoryboardPack } from '@/types';
+import type { StoryboardFrame, StoryboardPack } from '@/types';
 import type { VideoEditingStore } from '../videoEditingStore';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,11 @@ export interface StoryboardSlice {
     patch: Partial<StoryboardPack>,
   ) => void;
   removeStoryboardPack: (packId: string) => void;
+  updatePackFrame: (
+    packId: string,
+    frameIndex: number,
+    patch: Partial<StoryboardFrame>,
+  ) => void;
 
   // Actions — generation state
   setStoryboardGenerating: (generating: boolean) => void;
@@ -126,6 +131,19 @@ export const createStoryboardSlice: StateCreator<
       storyboardPacks: state.storyboardPacks.filter(
         (p) => p.packId !== packId,
       ),
+    })),
+
+  updatePackFrame: (packId, frameIndex, patch) =>
+    set((state) => ({
+      storyboardPacks: state.storyboardPacks.map((p) => {
+        if (p.packId !== packId) return p;
+        return {
+          ...p,
+          frames: p.frames.map((f) =>
+            f.index === frameIndex ? { ...f, ...patch } : f,
+          ),
+        };
+      }),
     })),
 
   // --- Generation state ---

@@ -56,15 +56,30 @@ export class AgentEventRouter {
    * Route a single SSE event to the appropriate handler(s).
    *
    * Event routing:
-   *   text_delta   -> StateManager.appendText()
-   *   tool_call    -> StateManager.addToolCall()
-   *   tool_result  -> StateManager.updateToolStatus() + OperationApplier.apply()
-   *   error        -> StateManager.setError()
-   *   agent_end    -> StateManager.finalize()
-   *   others       -> no-op (lifecycle markers forwarded but no state change)
+   *   thinking_start -> StateManager.setThinkingPhase('thinking')
+   *   thinking_delta -> StateManager.appendThinkingContent()
+   *   thinking_end   -> StateManager.setThinkingPhase('executing')
+   *   text_delta     -> StateManager.appendText()
+   *   tool_call      -> StateManager.addToolCall()
+   *   tool_result    -> StateManager.updateToolStatus() + OperationApplier.apply()
+   *   error          -> StateManager.setError()
+   *   agent_end      -> StateManager.finalize()
+   *   others         -> no-op (lifecycle markers forwarded but no state change)
    */
   async handleEvent(event: SSEEvent): Promise<void> {
     switch (event.type) {
+      case 'thinking_start':
+        this.stateManager.setThinkingPhase('thinking');
+        break;
+
+      case 'thinking_delta':
+        this.stateManager.appendThinkingContent(event.content);
+        break;
+
+      case 'thinking_end':
+        this.stateManager.setThinkingPhase('executing');
+        break;
+
       case 'text_delta':
         this.stateManager.appendText(event.content);
         break;

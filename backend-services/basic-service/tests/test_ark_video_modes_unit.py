@@ -140,7 +140,7 @@ async def test_description_mode_with_image_url():
 
 @pytest.mark.asyncio
 async def test_description_mode_with_image_urls():
-    """Description mode with image_urls: content has text + two image entries."""
+    """Description mode with image_urls: content has text + up to 4 image entries."""
     request = ArkVideoGenerateRequest(
         prompt="Transition effect",
         mode="description",
@@ -154,6 +154,29 @@ async def test_description_mode_with_image_urls():
     assert payload["content"][1]["image_url"]["url"] == "https://example.com/a.jpg"
     assert payload["content"][2]["role"] == "last_frame"
     assert payload["content"][2]["image_url"]["url"] == "https://example.com/b.jpg"
+    assert payload["ratio"] == "adaptive"
+
+
+@pytest.mark.asyncio
+async def test_description_mode_with_four_image_urls():
+    """Description mode with 4 image_urls: all 4 images included."""
+    request = ArkVideoGenerateRequest(
+        prompt="Multi reference",
+        mode="description",
+        image_urls=[
+            "https://example.com/a.jpg",
+            "https://example.com/b.jpg",
+            "https://example.com/c.jpg",
+            "https://example.com/d.jpg",
+        ],
+    )
+    payload = await _capture_payload(request)
+
+    assert len(payload["content"]) == 5
+    assert payload["content"][1]["role"] == "first_frame"
+    assert payload["content"][2]["role"] == "last_frame"
+    assert payload["content"][3]["role"] == "first_frame"
+    assert payload["content"][4]["role"] == "first_frame"
     assert payload["ratio"] == "adaptive"
 
 
@@ -256,9 +279,9 @@ async def test_backward_compatibility_no_mode():
 
 @pytest.mark.asyncio
 async def test_keyframe_mode_ignores_description_images():
-    """Keyframe mode should ignore image_url/image_urls even if provided."""
+    """Keyframe mode should ignore image_url but include extra images from image_urls."""
     request = ArkVideoGenerateRequest(
-        prompt="Keyframe with extra images that should be ignored",
+        prompt="Keyframe with extra images",
         mode="keyframe",
         first_frame_url="https://example.com/first.jpg",
         image_url="https://example.com/should-be-ignored.jpg",
@@ -266,16 +289,15 @@ async def test_keyframe_mode_ignores_description_images():
     )
     payload = await _capture_payload(request)
 
-    # Should only have text + first_frame, no description-mode images
-    assert len(payload["content"]) == 2
+    # Should have text + first_frame + extra from image_urls
     urls_in_payload = [
         item["image_url"]["url"]
         for item in payload["content"]
         if item.get("type") == "image_url"
     ]
-    assert "https://example.com/should-be-ignored.jpg" not in urls_in_payload
-    assert "https://example.com/also-ignored.jpg" not in urls_in_payload
     assert "https://example.com/first.jpg" in urls_in_payload
+    assert "https://example.com/should-be-ignored.jpg" not in urls_in_payload
+    assert "https://example.com/also-ignored.jpg" in urls_in_payload
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +327,47 @@ async def test_description_mode_ignores_keyframe_fields():
     assert "https://example.com/ref.jpg" in urls_in_payload
     assert "https://example.com/first-ignored.jpg" not in urls_in_payload
     assert "https://example.com/last-ignored.jpg" not in urls_in_payload
+
+
+# ---------------------------------------------------------------------------
+# Test 9b: Keyframe mode with extra images from image_urls
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_keyframe_mode_with_extra_images():
+    """Keyframe mode with first_frame, last_frame, and extra images from image_urls."""
+    request = ArkVideoGenerateRequest(
+        prompt="Keyframe with extras",
+        mode="keyframe",
+        first_frame_url="https://example.com/first.jpg",
+        last_frame_url="https://example.com/last.jpg",
+        image_urls=[
+            "https://example.com/first.jpg",
+            "https://example.com/last.jpg",
+            "https://example.com/extra1.jpg",
+            "https://example.com/extra2.jpg",
+        ],
+    )
+    payload = await _capture_payload(request)
+
+    urls_in_payload = [
+        item["image_url"]["url"]
+        for item in payload["content"]
+        if item.get("type") == "image_url"
+    ]
+    assert "https://example.com/first.jpg" in urls_in_payload
+    assert "https://example.com/last.jpg" in urls_in_payload
+    assert "https://example.com/extra1.jpg" in urls_in_payload
+    assert "https://example.com/extra2.jpg" in urls_in_payload
+
+    roles = [
+        item["role"] for item in payload["content"] if item.get("type") == "image_url"
+    ]
+    assert roles[0] == "first_frame"
+    assert roles[1] == "last_frame"
+    assert roles[2] == "first_frame"
+    assert roles[3] == "first_frame"
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +425,7 @@ async def test_router_returns_400_for_keyframe_validation():
 
 @pytest.mark.asyncio
 async def test_reference_mode_single_image_url():
-    """Reference mode with image_url: content has text + one image with reference_image role."""
+    """Reference mode with image_url: content has text + one image with first_frame role."""
     request = ArkVideoGenerateRequest(
         prompt="A cat on a sofa",
         mode="reference",
@@ -374,7 +437,7 @@ async def test_reference_mode_single_image_url():
     assert payload["content"][0] == {"type": "text", "text": "A cat on a sofa"}
     assert payload["content"][1]["type"] == "image_url"
     assert payload["content"][1]["image_url"]["url"] == "https://example.com/ref.jpg"
-    assert payload["content"][1]["role"] == "reference_image"
+    assert payload["content"][1]["role"] == "first_frame"
     assert payload["ratio"] == "adaptive"
 
 
@@ -385,7 +448,7 @@ async def test_reference_mode_single_image_url():
 
 @pytest.mark.asyncio
 async def test_reference_mode_two_image_urls():
-    """Reference mode with image_urls: content has text + two images with reference_image role."""
+    """Reference mode with image_urls: content has text + two images with first_frame/last_frame roles."""
     request = ArkVideoGenerateRequest(
         prompt="Transition from day to night",
         mode="reference",
@@ -397,10 +460,10 @@ async def test_reference_mode_two_image_urls():
     assert payload["content"][0]["type"] == "text"
     assert payload["content"][1]["type"] == "image_url"
     assert payload["content"][1]["image_url"]["url"] == "https://example.com/day.jpg"
-    assert payload["content"][1]["role"] == "reference_image"
+    assert payload["content"][1]["role"] == "first_frame"
     assert payload["content"][2]["type"] == "image_url"
     assert payload["content"][2]["image_url"]["url"] == "https://example.com/night.jpg"
-    assert payload["content"][2]["role"] == "reference_image"
+    assert payload["content"][2]["role"] == "last_frame"
     assert payload["ratio"] == "adaptive"
 
 
@@ -444,8 +507,8 @@ async def test_reference_mode_merges_image_url_and_image_urls():
     assert (
         payload["content"][1]["image_url"]["url"] == "https://example.com/primary.jpg"
     )
-    assert payload["content"][1]["role"] == "reference_image"
+    assert payload["content"][1]["role"] == "first_frame"
     assert (
         payload["content"][2]["image_url"]["url"] == "https://example.com/secondary.jpg"
     )
-    assert payload["content"][2]["role"] == "reference_image"
+    assert payload["content"][2]["role"] == "last_frame"

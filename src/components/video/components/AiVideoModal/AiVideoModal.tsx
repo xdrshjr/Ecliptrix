@@ -28,23 +28,19 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('720p');
 
-  // Mode A (description) state
-  const [characterImageUrl, setCharacterImageUrl] = useState('');
-  const [characterImageName, setCharacterImageName] = useState('');
-  const [sceneImageUrl, setSceneImageUrl] = useState('');
-  const [sceneImageName, setSceneImageName] = useState('');
+  // Mode A (description) state — up to 4 reference images
+  const [descImageUrls, setDescImageUrls] = useState<string[]>(['', '', '', '']);
+  const [descImageNames, setDescImageNames] = useState<string[]>(['', '', '', '']);
 
-  // Mode B (keyframe) state
+  // Mode B (keyframe) state — first frame required + up to 3 additional reference images
   const [firstFrameUrl, setFirstFrameUrl] = useState('');
   const [firstFrameName, setFirstFrameName] = useState('');
-  const [lastFrameUrl, setLastFrameUrl] = useState('');
-  const [lastFrameName, setLastFrameName] = useState('');
+  const [keyframeRefUrls, setKeyframeRefUrls] = useState<string[]>(['', '', '']);
+  const [keyframeRefNames, setKeyframeRefNames] = useState<string[]>(['', '', '']);
 
-  // Mode C (reference) state
-  const [referenceImageUrl, setReferenceImageUrl] = useState('');
-  const [referenceImageName, setReferenceImageName] = useState('');
-  const [referenceImage2Url, setReferenceImage2Url] = useState('');
-  const [referenceImage2Name, setReferenceImage2Name] = useState('');
+  // Mode C (reference) state — up to 4 reference images
+  const [refImageUrls, setRefImageUrls] = useState<string[]>(['', '', '', '']);
+  const [refImageNames, setRefImageNames] = useState<string[]>(['', '', '', '']);
 
   // Pre-fill from MaterialsPanel: set keyframe mode + fill firstFrameUrl
   useEffect(() => {
@@ -55,6 +51,26 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     }
   }, [isOpen, initialImageUrl]);
 
+  const descLabels = [
+    t.scriptPanel.aiVideoScript.characterImage || '角色形象',
+    t.scriptPanel.aiVideoScript.sceneImage || '场景形象',
+    t.scriptPanel.aiVideoScript.referenceImage3 || '参考图3',
+    t.scriptPanel.aiVideoScript.referenceImage4 || '参考图4',
+  ];
+
+  const keyframeRefLabels = [
+    `${t.scriptPanel.aiVideoScript.lastFrameImage || '尾帧图片'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
+    t.scriptPanel.aiVideoScript.referenceImage3 || '参考图3',
+    t.scriptPanel.aiVideoScript.referenceImage4 || '参考图4',
+  ];
+
+  const refLabels = [
+    `${t.scriptPanel.aiVideoScript.referenceImage1 || '参考图1'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage2 || '参考图2'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage3 || '参考图3'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage4 || '参考图4'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
+  ];
+
   const resetForm = () => {
     setMode('description');
     setPrompt('');
@@ -64,18 +80,14 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     setShowAdvanced(false);
     setAspectRatio('16:9');
     setResolution('720p');
-    setCharacterImageUrl('');
-    setCharacterImageName('');
-    setSceneImageUrl('');
-    setSceneImageName('');
+    setDescImageUrls(['', '', '', '']);
+    setDescImageNames(['', '', '', '']);
     setFirstFrameUrl('');
     setFirstFrameName('');
-    setLastFrameUrl('');
-    setLastFrameName('');
-    setReferenceImageUrl('');
-    setReferenceImageName('');
-    setReferenceImage2Url('');
-    setReferenceImage2Name('');
+    setKeyframeRefUrls(['', '', '']);
+    setKeyframeRefNames(['', '', '']);
+    setRefImageUrls(['', '', '', '']);
+    setRefImageNames(['', '', '', '']);
   };
 
   const handleClose = () => {
@@ -86,18 +98,14 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   const handleModeSwitch = (newMode: GenerationMode) => {
     if (newMode === mode) return;
     setMode(newMode);
-    setCharacterImageUrl('');
-    setCharacterImageName('');
-    setSceneImageUrl('');
-    setSceneImageName('');
+    setDescImageUrls(['', '', '', '']);
+    setDescImageNames(['', '', '', '']);
     setFirstFrameUrl('');
     setFirstFrameName('');
-    setLastFrameUrl('');
-    setLastFrameName('');
-    setReferenceImageUrl('');
-    setReferenceImageName('');
-    setReferenceImage2Url('');
-    setReferenceImage2Name('');
+    setKeyframeRefUrls(['', '', '']);
+    setKeyframeRefNames(['', '', '']);
+    setRefImageUrls(['', '', '', '']);
+    setRefImageNames(['', '', '', '']);
   };
 
   const handleSubmit = () => {
@@ -106,18 +114,20 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     if (mode === 'keyframe') {
       if (!firstFrameUrl.trim()) return;
 
+      const imageUrls = [firstFrameUrl.trim(), ...keyframeRefUrls.map(u => u.trim()).filter(Boolean)];
       onConfirm({
         prompt: prompt.trim(),
         mode: 'keyframe',
         first_frame_url: firstFrameUrl.trim(),
-        last_frame_url: lastFrameUrl.trim() || undefined,
+        last_frame_url: keyframeRefUrls[0].trim() || undefined,
+        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
         duration,
         resolution,
         camera_fixed: cameraFixed,
         watermark,
       });
     } else if (mode === 'reference') {
-      const imageUrls = [referenceImageUrl.trim(), referenceImage2Url.trim()].filter(Boolean);
+      const imageUrls = refImageUrls.map(u => u.trim()).filter(Boolean);
       if (imageUrls.length === 0) return;
 
       onConfirm({
@@ -131,7 +141,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
         watermark,
       });
     } else {
-      const imageUrls = [characterImageUrl.trim(), sceneImageUrl.trim()].filter(Boolean);
+      const imageUrls = descImageUrls.map(u => u.trim()).filter(Boolean);
 
       onConfirm({
         prompt: prompt.trim(),
@@ -147,7 +157,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   };
 
   const isKeyframeMissingFirstFrame = mode === 'keyframe' && !firstFrameUrl.trim();
-  const isReferenceMissingImage = mode === 'reference' && !referenceImageUrl.trim();
+  const isReferenceMissingImage = mode === 'reference' && refImageUrls.every(u => !u.trim());
   const isSubmitDisabled = !prompt.trim() || isKeyframeMissingFirstFrame || isReferenceMissingImage;
 
   if (!isOpen) return null;
@@ -296,28 +306,37 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           {/* Image inputs — conditional on mode, using ImagePickerSlot */}
           {mode === 'description' ? (
             <div className="space-y-4">
-              <div className="flex gap-3">
-                <ImagePickerSlot
-                  label={`${t.scriptPanel.aiVideoScript.characterImage || '角色形象'}`}
-                  imageUrl={characterImageUrl || undefined}
-                  imageName={characterImageName || undefined}
-                  onSelect={(url, name) => { setCharacterImageUrl(url); setCharacterImageName(name); }}
-                  onRemove={() => { setCharacterImageUrl(''); setCharacterImageName(''); }}
-                  materials={materials}
-                />
-                <ImagePickerSlot
-                  label={`${t.scriptPanel.aiVideoScript.sceneImage || '场景形象'}`}
-                  imageUrl={sceneImageUrl || undefined}
-                  imageName={sceneImageName || undefined}
-                  onSelect={(url, name) => { setSceneImageUrl(url); setSceneImageName(name); }}
-                  onRemove={() => { setSceneImageUrl(''); setSceneImageName(''); }}
-                  materials={materials}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                {descImageUrls.map((url, i) => (
+                  <ImagePickerSlot
+                    key={i}
+                    label={descLabels[i]}
+                    imageUrl={url || undefined}
+                    imageName={descImageNames[i] || undefined}
+                    onSelect={(url, name) => {
+                      const newUrls = [...descImageUrls];
+                      const newNames = [...descImageNames];
+                      newUrls[i] = url;
+                      newNames[i] = name;
+                      setDescImageUrls(newUrls);
+                      setDescImageNames(newNames);
+                    }}
+                    onRemove={() => {
+                      const newUrls = [...descImageUrls];
+                      const newNames = [...descImageNames];
+                      newUrls[i] = '';
+                      newNames[i] = '';
+                      setDescImageUrls(newUrls);
+                      setDescImageNames(newNames);
+                    }}
+                    materials={materials}
+                  />
+                ))}
               </div>
             </div>
           ) : mode === 'keyframe' ? (
             <div className="space-y-4">
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <ImagePickerSlot
                   label={`${t.scriptPanel.aiVideoScript.firstFrameImage || '首帧图片'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`}
                   imageUrl={firstFrameUrl || undefined}
@@ -326,35 +345,61 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                   onRemove={() => { setFirstFrameUrl(''); setFirstFrameName(''); }}
                   materials={materials}
                 />
-                <ImagePickerSlot
-                  label={`${t.scriptPanel.aiVideoScript.lastFrameImage || '尾帧图片'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`}
-                  imageUrl={lastFrameUrl || undefined}
-                  imageName={lastFrameName || undefined}
-                  onSelect={(url, name) => { setLastFrameUrl(url); setLastFrameName(name); }}
-                  onRemove={() => { setLastFrameUrl(''); setLastFrameName(''); }}
-                  materials={materials}
-                />
+                {keyframeRefUrls.map((url, i) => (
+                  <ImagePickerSlot
+                    key={i}
+                    label={keyframeRefLabels[i]}
+                    imageUrl={url || undefined}
+                    imageName={keyframeRefNames[i] || undefined}
+                    onSelect={(url, name) => {
+                      const newUrls = [...keyframeRefUrls];
+                      const newNames = [...keyframeRefNames];
+                      newUrls[i] = url;
+                      newNames[i] = name;
+                      setKeyframeRefUrls(newUrls);
+                      setKeyframeRefNames(newNames);
+                    }}
+                    onRemove={() => {
+                      const newUrls = [...keyframeRefUrls];
+                      const newNames = [...keyframeRefNames];
+                      newUrls[i] = '';
+                      newNames[i] = '';
+                      setKeyframeRefUrls(newUrls);
+                      setKeyframeRefNames(newNames);
+                    }}
+                    materials={materials}
+                  />
+                ))}
               </div>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex gap-3">
-                <ImagePickerSlot
-                  label={`${t.scriptPanel.aiVideoScript.referenceImage1 || '参考图1'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`}
-                  imageUrl={referenceImageUrl || undefined}
-                  imageName={referenceImageName || undefined}
-                  onSelect={(url, name) => { setReferenceImageUrl(url); setReferenceImageName(name); }}
-                  onRemove={() => { setReferenceImageUrl(''); setReferenceImageName(''); }}
-                  materials={materials}
-                />
-                <ImagePickerSlot
-                  label={`${t.scriptPanel.aiVideoScript.referenceImage2 || '参考图2'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`}
-                  imageUrl={referenceImage2Url || undefined}
-                  imageName={referenceImage2Name || undefined}
-                  onSelect={(url, name) => { setReferenceImage2Url(url); setReferenceImage2Name(name); }}
-                  onRemove={() => { setReferenceImage2Url(''); setReferenceImage2Name(''); }}
-                  materials={materials}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                {refImageUrls.map((url, i) => (
+                  <ImagePickerSlot
+                    key={i}
+                    label={refLabels[i]}
+                    imageUrl={url || undefined}
+                    imageName={refImageNames[i] || undefined}
+                    onSelect={(url, name) => {
+                      const newUrls = [...refImageUrls];
+                      const newNames = [...refImageNames];
+                      newUrls[i] = url;
+                      newNames[i] = name;
+                      setRefImageUrls(newUrls);
+                      setRefImageNames(newNames);
+                    }}
+                    onRemove={() => {
+                      const newUrls = [...refImageUrls];
+                      const newNames = [...refImageNames];
+                      newUrls[i] = '';
+                      newNames[i] = '';
+                      setRefImageUrls(newUrls);
+                      setRefImageNames(newNames);
+                    }}
+                    materials={materials}
+                  />
+                ))}
               </div>
             </div>
           )}

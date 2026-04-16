@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, RefObject, useRef } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
+import { TIMELINE_PADDING_SECONDS } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import Track from './Track';
 
@@ -231,7 +232,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
           {/* 滚动内容容器 */}
           <div
             className="relative"
-            style={{ minWidth: `${Math.max(totalDuration * pixelsPerSecond, 800)}px` }}
+            style={{ minWidth: `${Math.max((totalDuration + TIMELINE_PADDING_SECONDS) * pixelsPerSecond, 800)}px` }}
           >
             {/* 垂直对齐线 */}
             {sortedTracks.length > 0 && (

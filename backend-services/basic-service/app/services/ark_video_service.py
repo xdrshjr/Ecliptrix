@@ -323,10 +323,12 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     - "description": Uses image_url/image_urls as reference images (first_frame/last_frame roles).
       Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
     - "keyframe": Uses first_frame_url (required) and last_frame_url (optional).
-      Ratio is always forced to "adaptive". image_url/image_urls are ignored.
-    - "reference": Uses image_url/image_urls as reference images with role="reference_image".
+      Ratio is always forced to "adaptive". Additional images from image_urls
+      are included beyond first/last frame, up to 4 images total.
+    - "reference": Uses image_url/image_urls as reference images with first_frame/last_frame roles.
       Supports 1-4 images. Ratio is "adaptive" when images are present.
-      Follows the official ARK content_generation API spec for reference image generation.
+      Uses first_frame/last_frame roles (not reference_image) to avoid task_type=r2v
+      which is unsupported by doubao-seedance-1-5-pro.
 
     Returns the ark_task_id string.
     Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
@@ -343,13 +345,15 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     if request.mode == "keyframe":
         # --- Keyframe mode ---
         # first_frame_url is required; last_frame_url is optional.
-        # image_url / image_urls are intentionally ignored in this mode.
+        # Additional images from image_urls are included beyond first/last frame,
+        # up to 4 images total, with "first_frame" role for extras.
         if not request.first_frame_url:
             raise ValueError(
                 "first_frame_url is required when mode is 'keyframe'. "
                 "Provide a URL or base64 data URI for the first frame image."
             )
 
+        used_urls = set()
         resolved_first = await _resolve_image_url(request.first_frame_url)
         content.append(
             {
@@ -358,6 +362,7 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
                 "role": "first_frame",
             }
         )
+        used_urls.add(request.first_frame_url.strip())
 
         if request.last_frame_url:
             resolved_last = await _resolve_image_url(request.last_frame_url)
@@ -368,27 +373,45 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
                     "role": "last_frame",
                 }
             )
+            used_urls.add(request.last_frame_url.strip())
 
-        # Keyframe mode always uses adaptive ratio (API requirement when images are present)
+        extra_images = [
+            url
+            for url in (request.image_urls or [])
+            if url.strip() and url.strip() not in used_urls
+        ]
+        for extra_url in extra_images[: 4 - len(used_urls)]:
+            resolved = await _resolve_image_url(extra_url)
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": resolved},
+                    "role": "first_frame",
+                }
+            )
+
         ratio = "adaptive"
-        image_count = 1 + (1 if request.last_frame_url else 0)
+        image_count = len([c for c in content if c.get("type") == "image_url"])
 
     elif request.mode == "reference":
         # --- Reference mode ---
-        # Per official ARK API docs (image-video-ref-doubao), reference images
-        # use role="reference_image" (not first_frame/last_frame).
-        # Supports 1-4 reference images. Each image is sent with the same role.
+        # Use first_frame/last_frame roles so the API infers task_type=i2v
+        # (supported by doubao-seedance-1-5-pro). role="reference_image" would
+        # cause the API to infer task_type=r2v, which that model does NOT support.
+        # Supports 1-4 reference images.
         all_images = list(request.image_urls or [])
         if request.image_url and request.image_url not in all_images:
             all_images.insert(0, request.image_url)
 
-        for img_url in all_images[:4]:
+        image_roles = ["first_frame", "last_frame"]
+        for i, img_url in enumerate(all_images[:4]):
             resolved_url = await _resolve_image_url(img_url)
+            role = image_roles[i] if i < len(image_roles) else "first_frame"
             content.append(
                 {
                     "type": "image_url",
                     "image_url": {"url": resolved_url},
-                    "role": "reference_image",
+                    "role": role,
                 }
             )
 
@@ -403,21 +426,20 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
         if request.image_url and request.image_url not in all_images:
             all_images.insert(0, request.image_url)
 
-        # Ark API requires role for each image: first_frame for first, last_frame for second
         image_roles = ["first_frame", "last_frame"]
-        for i, img_url in enumerate(all_images[:2]):
+        for i, img_url in enumerate(all_images[:4]):
             resolved_url = await _resolve_image_url(img_url)
+            role = image_roles[i] if i < len(image_roles) else "first_frame"
             content.append(
                 {
                     "type": "image_url",
                     "image_url": {"url": resolved_url},
-                    "role": image_roles[i],
+                    "role": role,
                 }
             )
 
-        # When images are present, ratio must be "adaptive" (API requirement)
         ratio = "adaptive" if all_images else request.aspect_ratio
-        image_count = len(all_images[:2])
+        image_count = len(all_images[:4])
 
     # duration, ratio, resolution are top-level payload fields (not prompt flags)
     payload: dict = {

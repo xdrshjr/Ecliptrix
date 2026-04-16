@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId } from './index';
+import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, checkTrackDurationConstraint, formatDurationWarning } from './index';
 
 const parameters = Type.Object({
   materialId: Type.String({ description: 'The ID of the material to add' }),
@@ -133,6 +133,9 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
         },
       });
 
+      const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+      const warning = formatDurationWarning(constraintCheck);
+
       const result = {
         success: true,
         clip: {
@@ -142,6 +145,7 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
           startTime,
           duration: newClip.duration,
         },
+        ...(warning ? { warning } : {}),
       };
 
       return {

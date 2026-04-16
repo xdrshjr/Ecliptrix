@@ -168,10 +168,24 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
     return nodes;
   }
 
-  // --- Agent message: may produce thinking + execution + response ---
+  // --- Agent message: may produce agent_thinking + thinking + execution + response ---
 
   const hasToolCalls = (message.agentToolCalls?.length ?? 0) > 0;
   const isStreaming = !!message.isStreaming;
+  const hasThinkingContent = !!message.thinkingContent;
+
+  // 0. Agent thinking-phase node: shows the pre-execution analysis
+  if (hasThinkingContent || message.isThinking) {
+    nodes.push({
+      kind: 'thinking',
+      id: `${message.id}-agent-thinking`,
+      timestamp: message.timestamp,
+      content: message.thinkingContent ?? '',
+      isStreaming: !!message.isThinking,
+      thinkingContent: message.thinkingContent,
+      isThinkingPhase: true,
+    });
+  }
 
   // 1. Thinking node: streaming text with no tool calls yet
   if (isStreaming && !hasToolCalls && message.content) {

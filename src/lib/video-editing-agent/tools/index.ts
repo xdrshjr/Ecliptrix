@@ -73,6 +73,52 @@ export function getTrackEndTime(track: Track): number {
   return maxEnd;
 }
 
+export function getVideoTrackMaxDuration(state: TimelineState): number {
+  return Math.max(
+    ...state.tracks
+      .filter(t => t.type === 'video')
+      .map(t => getTrackEndTime(t)),
+    0
+  );
+}
+
+export function getNonVideoTrackMaxDuration(state: TimelineState): number {
+  return Math.max(
+    ...state.tracks
+      .filter(t => t.type !== 'video')
+      .map(t => getTrackEndTime(t)),
+    0
+  );
+}
+
+export function checkTrackDurationConstraint(state: TimelineState) {
+  const videoDuration = getVideoTrackMaxDuration(state);
+  const violatingTracks: Array<{ trackId: string; type: string; duration: number }> = [];
+
+  for (const track of state.tracks) {
+    if (track.type === 'video') continue;
+    const duration = getTrackEndTime(track);
+    if (duration > videoDuration && duration > 0) {
+      violatingTracks.push({ trackId: track.id, type: track.type, duration });
+    }
+  }
+
+  return {
+    valid: violatingTracks.length === 0,
+    videoDuration,
+    maxOtherDuration: getNonVideoTrackMaxDuration(state),
+    violatingTracks,
+  };
+}
+
+export function formatDurationWarning(check: ReturnType<typeof checkTrackDurationConstraint>): string | null {
+  if (check.valid) return null;
+  const tracks = check.violatingTracks
+    .map(t => `${t.type}轨道(${t.duration.toFixed(1)}s)`)
+    .join(', ');
+  return `⚠️ 约束违规：${tracks} 超过了视频轨道时长(${check.videoDuration.toFixed(1)}s)。请缩短超出的轨道或补充视频素材，确保视频轨道是所有轨道中最长的。`;
+}
+
 export function generateClipId(): string {
   return `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }

@@ -14,6 +14,10 @@ class LLMModelInfo(BaseModel):
     api_key: str = Field(..., description="API key (masked for security)")
     display_name: str = Field(..., description="User-friendly display name")
     description: Optional[str] = Field(None, description="Model description")
+    api_type: str = Field(
+        default="openai",
+        description="API protocol: 'openai' (default) or 'anthropic'",
+    )
 
 
 class LLMModelsResponse(BaseModel):

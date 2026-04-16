@@ -226,12 +226,13 @@ def test_scenario_e_keyframe_missing_first_frame(mock_ark_api, captured_payloads
 
 
 def test_scenario_f_keyframe_ignores_image_urls(mock_ark_api, captured_payloads):
-    """Keyframe mode should ignore image_urls field."""
+    """Keyframe mode should include extra images from image_urls but ignore image_url."""
     request = ArkVideoGenerateRequest(
         prompt="test",
         mode="keyframe",
         first_frame_url="http://first.jpg",
-        image_urls=["http://should-ignore.jpg"],
+        image_url="http://should-ignore.jpg",
+        image_urls=["http://extra.jpg"],
     )
     task_id = _run(ark_video_svc.create_task(request))
 
@@ -241,17 +242,14 @@ def test_scenario_f_keyframe_ignores_image_urls(mock_ark_api, captured_payloads)
     payload = captured_payloads[0]
     content = payload["content"]
 
-    # Verify "http://should-ignore.jpg" is NOT in any content item
     all_urls = [
         item.get("image_url", {}).get("url", "")
         for item in content
         if item.get("type") == "image_url"
     ]
     assert "http://should-ignore.jpg" not in all_urls
-
-    # Should only have text + first_frame
-    assert len(content) == 2
-    assert content[1]["image_url"]["url"] == "http://first.jpg"
+    assert "http://first.jpg" in all_urls
+    assert "http://extra.jpg" in all_urls
 
 
 # ---- Scenario G: Description mode ignores first_frame_url ----
@@ -356,11 +354,11 @@ def test_pydantic_model_accepts_all_frontend_fields():
     assert request.last_frame_url == "http://last.jpg"
 
 
-# ---- Scenario I: Reference mode - images get reference_image role ----
+# ---- Scenario I: Reference mode - images get first_frame/last_frame roles ----
 
 
 def test_scenario_i_reference_mode_with_images(mock_ark_api, captured_payloads):
-    """Reference mode images must use role='reference_image' per official ARK API spec."""
+    """Reference mode images use first_frame/last_frame roles (avoids unsupported task_type=r2v)."""
     request = ArkVideoGenerateRequest(
         prompt="test",
         mode="reference",
@@ -374,23 +372,23 @@ def test_scenario_i_reference_mode_with_images(mock_ark_api, captured_payloads):
     payload = captured_payloads[0]
     content = payload["content"]
 
-    # Should have text + 2 images with reference_image role
+    # Should have text + 2 images with first_frame/last_frame roles
     assert len(content) == 3
     assert content[0]["type"] == "text"
 
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"] == "http://ref1.jpg"
-    assert content[1]["role"] == "reference_image"
+    assert content[1]["role"] == "first_frame"
 
     assert content[2]["type"] == "image_url"
     assert content[2]["image_url"]["url"] == "http://ref2.jpg"
-    assert content[2]["role"] == "reference_image"
+    assert content[2]["role"] == "last_frame"
 
     assert payload["ratio"] == "adaptive"
 
 
 def test_scenario_j_reference_mode_single_image(mock_ark_api, captured_payloads):
-    """Reference mode with single image should use reference_image role."""
+    """Reference mode with single image should use first_frame role."""
     request = ArkVideoGenerateRequest(
         prompt="test",
         mode="reference",
@@ -407,7 +405,7 @@ def test_scenario_j_reference_mode_single_image(mock_ark_api, captured_payloads)
     assert len(content) == 2
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"] == "http://ref.jpg"
-    assert content[1]["role"] == "reference_image"
+    assert content[1]["role"] == "first_frame"
 
     assert payload["ratio"] == "adaptive"
 

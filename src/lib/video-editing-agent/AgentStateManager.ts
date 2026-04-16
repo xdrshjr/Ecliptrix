@@ -46,6 +46,10 @@ export interface AgentStateManagerSnapshot {
   isFinalized: boolean;
   /** Error message, if any. */
   errorMessage: string | null;
+  /** Accumulated thinking content from thinking_delta events. */
+  thinkingContent: string;
+  /** Whether the agent is currently in the thinking phase. */
+  isThinking: boolean;
 }
 
 export type StateChangeListener = (snapshot: AgentStateManagerSnapshot) => void;
@@ -61,6 +65,8 @@ export class AgentStateManager {
   private pendingOperations: AgentOperation[] = [];
   private isFinalized = false;
   private errorMessage: string | null = null;
+  private thinkingContent = '';
+  private isThinking = false;
 
   // -- Subscription --
   private listeners = new Set<StateChangeListener>();
@@ -80,6 +86,18 @@ export class AgentStateManager {
   /** Append text content from a text_delta event. */
   appendText(content: string): void {
     this.accumulatedContent += content;
+    this.scheduleFlush();
+  }
+
+  /** Append thinking content from a thinking_delta event. */
+  appendThinkingContent(content: string): void {
+    this.thinkingContent += content;
+    this.scheduleFlush();
+  }
+
+  /** Set the thinking phase state. */
+  setThinkingPhase(phase: 'thinking' | 'executing'): void {
+    this.isThinking = phase === 'thinking';
     this.scheduleFlush();
   }
 
@@ -120,6 +138,7 @@ export class AgentStateManager {
   /** Set an error and append it to accumulated content. */
   setError(message: string): void {
     this.errorMessage = message;
+    this.isThinking = false;
     this.accumulatedContent += `\n\nError: ${message}`;
     this.scheduleFlush();
   }
@@ -127,6 +146,7 @@ export class AgentStateManager {
   /** Mark the execution as finalized (stream ended normally). */
   finalize(): void {
     this.isFinalized = true;
+    this.isThinking = false;
     // Flush immediately on finalize — don't defer since the stream is done
     this.flushNow();
   }
@@ -143,6 +163,8 @@ export class AgentStateManager {
       pendingOperations: [...this.pendingOperations],
       isFinalized: this.isFinalized,
       errorMessage: this.errorMessage,
+      thinkingContent: this.thinkingContent,
+      isThinking: this.isThinking,
     };
   }
 
@@ -250,6 +272,8 @@ export class AgentStateManager {
       agentToolCalls,
       timelineSnapshot,
       pendingOperations: [...this.pendingOperations],
+      thinkingContent: this.thinkingContent || undefined,
+      isThinking: this.isThinking,
     };
   }
 

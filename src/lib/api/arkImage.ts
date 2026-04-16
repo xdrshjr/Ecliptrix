@@ -10,6 +10,10 @@ export interface ArkImageGenerateParams {
   watermark: boolean;
   mode?: ArkImageMode;
   reference_image?: string;
+  reference_images?: string[];
+  mentioned_images?: Record<string, string>;
+  grid_mode?: boolean;
+  aspect_ratio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
 }
 
 export interface ArkImageResult {
@@ -19,22 +23,60 @@ export interface ArkImageResult {
   height: number;
 }
 
+export interface ArkImagePackFrame {
+  index: number;
+  filename: string;
+  url: string;
+  row: number;
+  col: number;
+  sub_view?: string | null;
+}
+
+export interface ArkImagePack {
+  pack_id: string;
+  pack_type: 'character' | 'scene';
+  prompt: string;
+  grid_size: string;
+  aspect_ratio: string;
+  frame_count: number;
+  created_at: string;
+  original_image_url: string;
+  reference_image_url?: string | null;
+  frames: ArkImagePackFrame[];
+}
+
 interface ArkImageGenerateEnvelope {
   success?: boolean;
   message?: string;
   images?: ArkImageResult[];
+  pack?: ArkImagePack | null;
+}
+
+export interface ArkImageGenerateResult {
+  images: ArkImageResult[];
+  pack: ArkImagePack | null;
 }
 
 export async function generateArkImages(params: ArkImageGenerateParams): Promise<ArkImageResult[]> {
+  const { images } = await generateArkImagesWithPack(params);
+  return images;
+}
+
+export async function generateArkImagesWithPack(
+  params: ArkImageGenerateParams,
+): Promise<ArkImageGenerateResult> {
   const data = await http.post<ArkImageGenerateEnvelope>(
     '/api/ark-image/generate',
     params,
-    { timeoutMs: 120_000 },
+    { timeoutMs: 300_000 },
   );
 
   if (!data.success) {
     throw new Error(data.message || 'Failed to generate Ark images');
   }
 
-  return data.images || [];
+  return {
+    images: data.images || [],
+    pack: data.pack || null,
+  };
 }

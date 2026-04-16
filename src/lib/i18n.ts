@@ -665,6 +665,17 @@ export interface Translations {
     aiImage: string;
     aiVideoTitle: string;
     aiVideo: string;
+    aiAudioTitle: string;
+    aiAudio: string;
+    aiAudioText: string;
+    aiAudioTextPlaceholder: string;
+    aiAudioSpeed: string;
+    aiAudioSelectVoice: string;
+    aiAudioLoadingVoices: string;
+    aiAudioCancel: string;
+    aiAudioStartSynthesis: string;
+    aiAudioSuccess: string;
+    aiAudioFailed: string;
     videoProcessingTitle: string;
     videoProcessing: string;
     watermarkRemovalTab: string;
@@ -673,6 +684,35 @@ export interface Translations {
     deleteStoryboardPack: string;
     deleteStoryboardPackConfirm: string;
     storyboardPack: string;
+    characterPack?: string;
+    scenePack?: string;
+    filterCharacterPack?: string;
+    filterScenePack?: string;
+    deleteCharacterPack?: string;
+    deleteCharacterPackConfirm?: string;
+    deleteScenePack?: string;
+    deleteScenePackConfirm?: string;
+    materialLibraryTab?: string;
+    materialLibraryEmpty?: string;
+    materialLibraryLoading?: string;
+    materialLibrarySearchPlaceholder?: string;
+    materialLibraryPage?: string;
+    materialLibraryLoginRequired?: string;
+    materialLibraryError?: string;
+    referencePickerLocalUpload?: string;
+    referencePickerStoryboardPack?: string;
+    referencePickerCharacterPack?: string;
+    referencePickerScenePack?: string;
+    referencePickerLoading?: string;
+    referencePickerEmpty?: string;
+    referencePickerLoadFailed?: string;
+    referencePickerSelectPackHint?: string;
+    referencePickerClear?: string;
+    mentionSelectImage?: string;
+    mentionRefImages?: string;
+    mentionAddRef?: string;
+    gridPackOriginal?: string;
+    gridPackCroppedFrames?: string;
     frames: string;
     generating: string;
     fluxGenerating: string;
@@ -687,6 +727,7 @@ export interface Translations {
     clearAllConfirmMessage: string;
     clearAllSuccess: string;
     noMaterialsToClear: string;
+    clearAllPartialFail: string;
   };
   aiMixingModal: {
     title: string;
@@ -945,6 +986,8 @@ export interface Translations {
       firstFrameMissing: string;
       referenceImage1: string;
       referenceImage2: string;
+      referenceImage3: string;
+      referenceImage4: string;
       referenceImageMissing: string;
       invalidImageUrl: string;
       durationLabel: string;
@@ -1172,6 +1215,9 @@ export interface Translations {
     expandGoalHint: string;
     expandStart: string;
     expandCancel: string;
+    queued: string;
+    queuedPosition: string;
+    generationTimeout: string;
   };
   welcomeGuide: {
     title: string;
@@ -1387,6 +1433,9 @@ export interface Translations {
     agentUndoButton: string;
     agentUndoneLabel: string;
     agentOperations: string;
+    thinkingInProgress: string;
+    thinkingComplete: string;
+    aiAnalyzingLabel: string;
   };
   workflowConfigModal: {
     title: string;
@@ -1996,6 +2045,17 @@ export const translations: Record<string, Translations> = {
       aiImage: 'AI Image',
       aiVideoTitle: 'AI Video Generation (Seedance)',
       aiVideo: 'AI Video',
+      aiAudioTitle: 'AI Audio Generation',
+      aiAudio: 'AI Audio',
+      aiAudioText: 'Text to convert',
+      aiAudioTextPlaceholder: 'Enter text to convert to audio...',
+      aiAudioSpeed: 'Speed',
+      aiAudioSelectVoice: 'Select Voice',
+      aiAudioLoadingVoices: 'Loading voices...',
+      aiAudioCancel: 'Cancel',
+      aiAudioStartSynthesis: 'Start Synthesis',
+      aiAudioSuccess: 'AI audio generated successfully',
+      aiAudioFailed: 'AI audio generation failed',
       videoProcessingTitle: 'Video Processing (cut silences, etc.)',
       videoProcessing: 'Video Processing',
       watermarkRemovalTab: 'Watermark Removal',
@@ -2004,6 +2064,35 @@ export const translations: Record<string, Translations> = {
       deleteStoryboardPack: 'Delete Storyboard Pack',
       deleteStoryboardPackConfirm: 'Are you sure you want to delete this storyboard pack? All frames and related data will be permanently deleted.',
       storyboardPack: 'Storyboard Pack',
+      characterPack: 'Character Pack',
+      scenePack: 'Scene Pack',
+      filterCharacterPack: 'Character',
+      filterScenePack: 'Scene',
+      deleteCharacterPack: 'Delete Character Pack',
+      deleteCharacterPackConfirm: 'Are you sure you want to delete this character pack? All frames and related data will be permanently deleted. References to its frames elsewhere will become invalid.',
+      deleteScenePack: 'Delete Scene Pack',
+      deleteScenePackConfirm: 'Are you sure you want to delete this scene pack? All frames and related data will be permanently deleted. References to its frames elsewhere will become invalid.',
+      materialLibraryTab: 'Materials',
+      materialLibraryEmpty: 'No materials — please upload in Materials panel first',
+      materialLibraryLoading: 'Loading...',
+      materialLibrarySearchPlaceholder: 'Search materials',
+      materialLibraryPage: 'Page {page}/{total}',
+      materialLibraryLoginRequired: 'Please log in to view materials',
+      materialLibraryError: 'Load failed — click to retry',
+      referencePickerLocalUpload: 'Local upload',
+      referencePickerStoryboardPack: 'Storyboard',
+      referencePickerCharacterPack: 'Character',
+      referencePickerScenePack: 'Scene',
+      referencePickerLoading: 'Loading…',
+      referencePickerEmpty: 'No packs available',
+      referencePickerLoadFailed: 'Failed to load',
+      referencePickerSelectPackHint: 'Select a pack to view its frames',
+      referencePickerClear: 'Clear',
+      mentionSelectImage: 'Select image to link',
+      mentionRefImages: 'Reference images',
+      mentionAddRef: 'Add more',
+      gridPackOriginal: 'Original (3×3 composite)',
+      gridPackCroppedFrames: 'Cropped frames',
       frames: 'frames',
       generating: 'Generating...',
       fluxGenerating: 'FLUX Generating...',
@@ -2018,6 +2107,7 @@ export const translations: Record<string, Translations> = {
       clearAllConfirmMessage: 'Are you sure you want to clear all {count} materials? This action cannot be undone.',
       clearAllSuccess: 'All materials cleared',
       noMaterialsToClear: 'No materials to clear',
+      clearAllPartialFail: 'Failed to delete {failed} pack(s). Please retry.',
     },
     aiMixingModal: {
       title: 'Select AI Mixing Mode',
@@ -2374,9 +2464,11 @@ export const translations: Record<string, Translations> = {
           lastFrameOptional: '(Optional)',
           firstFrameMissing: 'Please upload a first frame image first',
           invalidImageUrl: 'Please enter a valid HTTP/HTTPS URL',
-          referenceImage1: 'Reference Image 1',
-          referenceImage2: 'Reference Image 2',
-          referenceImageMissing: 'Please upload a reference image first',
+           referenceImage1: 'Reference Image 1',
+           referenceImage2: 'Reference Image 2',
+           referenceImage3: 'Reference Image 3',
+           referenceImage4: 'Reference Image 4',
+           referenceImageMissing: 'Please upload a reference image first',
          durationLabel: 'Duration:',
          expandScript: 'AI Expand',
          expandingScript: 'Expanding...',
@@ -2602,6 +2694,9 @@ export const translations: Record<string, Translations> = {
       expandGoalHint: 'Leave empty for default expansion, or specify a direction such as: add more environmental details, emphasize character emotions, etc.',
       expandStart: 'Start Expand',
       expandCancel: 'Cancel',
+      queued: 'Queued',
+      queuedPosition: 'position',
+      generationTimeout: 'Generation timed out',
     },
    welcomeGuide: {
      title: 'AI Video Editing Assistant',
@@ -2832,6 +2927,9 @@ export const translations: Record<string, Translations> = {
       agentUndoButton: 'Undo',
       agentUndoneLabel: 'Operations undone',
       agentOperations: 'operations',
+      thinkingInProgress: 'Thinking...',
+      thinkingComplete: 'Thought Process',
+      aiAnalyzingLabel: 'AI Analyzing...',
     },
     workflowConfigModal: {
       title: 'Workflow Configuration',
@@ -3439,6 +3537,17 @@ export const translations: Record<string, Translations> = {
       aiImage: 'AI图像',
       aiVideoTitle: 'AI 视频生成（Seedance）',
       aiVideo: 'AI视频',
+      aiAudioTitle: 'AI 音频生成',
+      aiAudio: 'AI音频',
+      aiAudioText: '转换文本',
+      aiAudioTextPlaceholder: '请输入需要转换为音频的文本...',
+      aiAudioSpeed: '语速',
+      aiAudioSelectVoice: '选择音色',
+      aiAudioLoadingVoices: '加载音色列表...',
+      aiAudioCancel: '取消',
+      aiAudioStartSynthesis: '开始合成',
+      aiAudioSuccess: 'AI音频生成成功',
+      aiAudioFailed: 'AI音频生成失败',
       videoProcessingTitle: '视频处理（切气口等）',
       videoProcessing: '视频处理',
       watermarkRemovalTab: '去除水印',
@@ -3447,6 +3556,35 @@ export const translations: Record<string, Translations> = {
       deleteStoryboardPack: '删除分镜包',
       deleteStoryboardPackConfirm: '确定要删除此分镜包吗？所有帧和相关数据将被永久删除。',
       storyboardPack: '分镜包',
+      characterPack: '人物建模包',
+      scenePack: '场景建模包',
+      filterCharacterPack: '人物包',
+      filterScenePack: '场景包',
+      deleteCharacterPack: '删除人物建模包',
+      deleteCharacterPackConfirm: '确定要删除此人物建模包吗？所有帧和相关数据将被永久删除，其他地方对这些帧的引用将失效。',
+      deleteScenePack: '删除场景建模包',
+      deleteScenePackConfirm: '确定要删除此场景建模包吗？所有帧和相关数据将被永久删除，其他地方对这些帧的引用将失效。',
+      materialLibraryTab: '素材库',
+      materialLibraryEmpty: '暂无素材，请前往素材管理上传',
+      materialLibraryLoading: '加载中...',
+      materialLibrarySearchPlaceholder: '搜索素材名称',
+      materialLibraryPage: '第 {page}/{total} 页',
+      materialLibraryLoginRequired: '请先登录以查看素材库',
+      materialLibraryError: '加载失败，点击重试',
+      referencePickerStoryboardPack: '分镜包',
+      referencePickerCharacterPack: '人物包',
+      referencePickerLocalUpload: '本地上传',
+      referencePickerScenePack: '场景包',
+      referencePickerLoading: '加载中…',
+      referencePickerEmpty: '暂无可用包',
+      referencePickerLoadFailed: '加载失败',
+      referencePickerSelectPackHint: '选择一个包查看帧',
+      referencePickerClear: '清除',
+      mentionSelectImage: '选择参考图关联',
+      mentionRefImages: '参考图',
+      mentionAddRef: '添加更多',
+      gridPackOriginal: '原图（3×3 合成）',
+      gridPackCroppedFrames: '裁切帧',
       frames: '帧',
       generating: '生成中...',
       fluxGenerating: 'FLUX生成中...',
@@ -3461,6 +3599,7 @@ export const translations: Record<string, Translations> = {
       clearAllConfirmMessage: '确定要清除所有 {count} 个素材吗？此操作不可撤销。',
       clearAllSuccess: '已清除所有素材',
       noMaterialsToClear: '没有可清除的素材',
+      clearAllPartialFail: '部分素材包删除失败（{failed} 项），请稍后重试',
     },
     aiMixingModal: {
       title: '选择AI混剪模式',
@@ -3817,9 +3956,11 @@ export const translations: Record<string, Translations> = {
           lastFrameOptional: '(可选)',
           firstFrameMissing: '请先上传首帧图片',
           invalidImageUrl: '请输入有效的 HTTP/HTTPS 链接',
-          referenceImage1: '参考图1',
-          referenceImage2: '参考图2',
-          referenceImageMissing: '请先上传参考图片',
+           referenceImage1: '参考图1',
+           referenceImage2: '参考图2',
+           referenceImage3: '参考图3',
+           referenceImage4: '参考图4',
+           referenceImageMissing: '请先上传参考图片',
          durationLabel: '时长:',
          expandScript: 'AI 扩写',
          expandingScript: '扩写中...',
@@ -4045,6 +4186,9 @@ export const translations: Record<string, Translations> = {
       expandGoalHint: '留空则默认扩展，也可以指定方向，如：增加环境细节描写、强调人物情绪等。',
       expandStart: '开始扩展',
       expandCancel: '取消',
+      queued: '排队中',
+      queuedPosition: '位置',
+      generationTimeout: '生成超时',
     },
    welcomeGuide: {
      title: 'AI视频编辑助手',
@@ -4275,6 +4419,9 @@ export const translations: Record<string, Translations> = {
       agentUndoButton: '撤销',
       agentUndoneLabel: '操作已撤销',
       agentOperations: '个操作',
+      thinkingInProgress: '思考中...',
+      thinkingComplete: '思考过程',
+      aiAnalyzingLabel: 'AI 分析中...',
     },
     workflowConfigModal: {
       title: '工作流配置',

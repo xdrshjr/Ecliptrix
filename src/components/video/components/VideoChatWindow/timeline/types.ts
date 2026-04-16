@@ -34,6 +34,10 @@ export interface AgentThinkingNodeData {
   timestamp: Date;
   content: string;
   isStreaming: boolean;
+  /** Pre-execution thinking content from the thinking phase. */
+  thinkingContent?: string;
+  /** Whether the thinking phase is still active (streaming thinking content). */
+  isThinkingPhase?: boolean;
 }
 
 export interface AgentExecutionNodeData {

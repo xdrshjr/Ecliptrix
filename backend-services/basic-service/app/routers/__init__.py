@@ -17,10 +17,11 @@ from . import ai_mixed_editing_router
 from . import ai_video_generate_router
 from . import auth_router
 from . import user_router
+from . import voice_clone_router
 
 __all__ = [
     "api_router",
-    "video_router", 
+    "video_router",
     "tts_router",
     "storage_router",
     "audio_router",
@@ -33,5 +34,6 @@ __all__ = [
     "ai_mixed_editing_router",
     "ai_video_generate_router",
     "auth_router",
-    "user_router"
-] 
+    "user_router",
+    "voice_clone_router",
+]
