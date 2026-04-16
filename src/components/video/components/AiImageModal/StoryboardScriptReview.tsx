@@ -82,11 +82,11 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
         )}
       </div>
 
-      {/* Chat panel — max-h-[30%] keeps it from squeezing the confirm button on many messages */}
-      <div className="shrink-0 max-h-[30%] overflow-y-auto border border-border rounded-md p-3 space-y-2 bg-card/60">
-        <div className="text-xs font-medium text-foreground">与 AI 对话修改剧本</div>
+      {/* Chat panel — max-h-[28%] keeps it from squeezing the confirm button on many messages */}
+      <div className="shrink-0 max-h-[28%] overflow-hidden border border-border rounded-md p-3 bg-card/60 flex flex-col gap-2">
+        <div className="text-xs font-medium text-foreground shrink-0">与 AI 对话修改剧本</div>
         {messages.length > 0 && (
-          <div className="space-y-1 max-h-32 overflow-y-auto text-xs">
+          <div className="space-y-1 overflow-y-auto text-xs min-h-0 flex-1">
             {messages.map((m, i) => (
               <div
                 key={i}
@@ -104,7 +104,7 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
             ))}
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <input
             type="text"
             value={chatInput}

@@ -271,18 +271,18 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
     return (
       <div className="h-full flex flex-col md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-6 gap-4 min-h-0">
         {/* Left column: config */}
-        <div className="flex flex-col min-h-0 flex-1 md:flex-none md:h-full">
+        <div className="flex flex-col min-h-0 flex-1 md:flex-none md:h-full overflow-hidden">
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-border shrink-0">
             <h3 className="text-sm font-semibold text-foreground">分镜设置</h3>
             <span className="text-xs text-muted-foreground">已锁定</span>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          <div className="flex-1 min-h-0 overflow-y-auto pl-2 pr-1">
             {renderConfigSection({ compact: true })}
           </div>
         </div>
 
         {/* Right column: script review */}
-        <div className="flex flex-col min-h-0 flex-1 md:flex-none md:h-full">
+        <div className="flex flex-col min-h-0 flex-1 md:flex-none md:h-full overflow-hidden">
           <StoryboardScriptReview
             frameCount={frameCount}
             locale={locale}

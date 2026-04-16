@@ -60,7 +60,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
   return (
     <div className="flex gap-6 h-full">
       {/* Left column: Prompt & settings */}
-      <div className="flex-1 min-w-0 space-y-5 overflow-y-auto pr-1">
+      <div className="flex-1 min-w-0 space-y-5 overflow-y-auto pl-2 pr-1">
         {/* Prompt */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
