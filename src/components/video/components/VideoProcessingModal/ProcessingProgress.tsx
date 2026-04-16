@@ -29,11 +29,11 @@ interface ProcessingProgressProps {
 
 // ---- Helpers ----
 
-function formatDuration(seconds: number, t: any): string {
+function formatDuration(seconds: number, minsLabel: string, secsLabel: string): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
-  if (mins > 0) return `${mins}${t.videoProcessing.duration.minutes}${secs}${t.videoProcessing.duration.seconds}`;
-  return `${secs}${t.videoProcessing.duration.seconds}`;
+  if (mins > 0) return `${mins}${minsLabel}${secs}${secsLabel}`;
+  return `${secs}${secsLabel}`;
 }
 
 function formatTime(seconds: number): string {
@@ -217,7 +217,7 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
         <div className="w-full max-w-sm bg-muted/50 rounded-lg border border-border p-4 space-y-3 mb-6">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{t.videoProcessing.stats.originalDuration}</span>
-            <span className="font-medium text-foreground">{formatDuration(result.original_duration, t)}</span>
+            <span className="font-medium text-foreground">{formatDuration(result.original_duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}</span>
           </div>
           <div className="flex items-center justify-center">
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,7 +226,7 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{t.videoProcessing.stats.newDuration}</span>
-            <span className="font-medium text-green-600 dark:text-green-400">{formatDuration(result.new_duration, t)}</span>
+            <span className="font-medium text-green-600 dark:text-green-400">{formatDuration(result.new_duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}</span>
           </div>
           <div className="border-t border-border pt-3 space-y-2">
             <div className="flex items-center justify-between text-sm">

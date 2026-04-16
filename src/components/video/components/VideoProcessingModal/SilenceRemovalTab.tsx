@@ -406,7 +406,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
     } finally {
       setIsDetecting(false);
     }
-  }, [selectedVideo, detectionParams]);
+  }, [selectedVideo, detectionParams, t]);
 
   /** Start silence removal via backend (returns task_id for polling) */
   const removeSilence = useCallback(async () => {
@@ -454,7 +454,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
       const message = err instanceof Error ? err.message : t.videoProcessing.errors.submitFailed;
       setError(message);
     }
-  }, [selectedVideo, silenceSegments, selectedSegmentIds, detectionParams.preservedGap]);
+  }, [selectedVideo, silenceSegments, selectedSegmentIds, detectionParams.preservedGap, t]);
 
   // ---- Segment interaction callbacks ----
 
@@ -576,7 +576,7 @@ const SilenceRemovalTab: React.FC<SilenceRemovalTabProps> = ({
                 <p className="text-xs font-medium text-foreground truncate">{selectedVideo?.name}</p>
                 <p className="text-[10px] text-muted-foreground">
                   {t.videoProcessing.stats.originalDuration}: {formatDuration(videoDuration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)} → {t.videoProcessing.stats.estimatedNewDuration}: {formatDuration(Math.max(0, videoDuration - selectedDuration), t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}
-                  （{t.videoProcessing.stats.saved} {selectedDuration.toFixed(1)} {t.videoProcessing.duration.seconds}）
+                  ({t.videoProcessing.stats.saved} {selectedDuration.toFixed(1)} {t.videoProcessing.duration.seconds})
                 </p>
               </div>
             </div>

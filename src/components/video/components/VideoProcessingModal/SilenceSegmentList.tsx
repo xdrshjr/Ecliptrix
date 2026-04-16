@@ -75,7 +75,7 @@ const SilenceSegmentList: React.FC<SilenceSegmentListProps> = ({
       {/* Stats bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground">
         <span>
-          {t.videoProcessing.segments.total.replace('{count}', String(stats.total))}，{t.videoProcessing.segments.selected.replace('{count}', String(stats.selected))}，{t.videoProcessing.segments.canSave.replace('{time}', stats.saveable.toFixed(1))}
+          {t.videoProcessing.segments.total.replace('{count}', String(stats.total))}, {t.videoProcessing.segments.selected.replace('{count}', String(stats.selected))}, {t.videoProcessing.segments.canSave.replace('{time}', stats.saveable.toFixed(1))}
         </span>
       </div>
 

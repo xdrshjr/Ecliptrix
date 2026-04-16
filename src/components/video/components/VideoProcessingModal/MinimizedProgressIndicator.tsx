@@ -72,7 +72,7 @@ const MinimizedProgressIndicator: React.FC<MinimizedProgressIndicatorProps> = ({
         clearPolling();
       }
     }
-  }, [task.taskId, clearPolling, onTaskUpdate]);
+  }, [task.taskId, clearPolling, onTaskUpdate, t]);
 
   // Start polling when the task is not terminal
   useEffect(() => {
