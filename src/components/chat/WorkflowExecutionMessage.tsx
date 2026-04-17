@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { WorkflowExecutionState } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import ExecutionProcessPanel from '@/components/workflow/ExecutionProcessPanel';
 import MarkdownRenderer from './MarkdownRenderer';
 import { copyToClipboard, showCopyFeedback } from '@/lib/clipboard';
@@ -30,6 +31,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
   onNavigateToVideoEditing,
   onConvertToScript,
 }) => {
+  const { t } = useLocale();
   const [isCopying, setIsCopying] = useState(false);
   const [showCopySuccess, setShowCopySuccess] = useState(false);
 
@@ -176,7 +178,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
-                  <span className="text-sm font-semibold text-foreground">最终结果</span>
+                  <span className="text-sm font-semibold text-foreground">{t.chatWorkflowExecution.finalResult}</span>
                   <span className="text-xs text-green-500">· {workflowName}</span>
                 </div>
                 
@@ -187,7 +189,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
                     onClick={handleCopyFinalResult}
                     disabled={isCopying}
                     className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-card hover:bg-accent text-muted-foreground hover:text-foreground border-2 border-border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={showCopySuccess ? '已复制!' : '复制最终结果'}
+                    title={showCopySuccess ? t.chatWorkflowExecution.copiedTitle : t.chatWorkflowExecution.copyTitle}
                     aria-label="复制最终结果"
                   >
                     {showCopySuccess ? (
@@ -211,7 +213,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
                     <button
                       onClick={handleConvertToScript}
                       className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground border-2 border-card cursor-pointer"
-                      title="转换视频脚本"
+                      title={t.chatWorkflowExecution.convertToScriptTitle}
                       aria-label="将最终结果转换为视频脚本"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -239,10 +241,10 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <span>导出剪辑 ({videoExportMaterials.length} 个视频素材)</span>
+                    <span>{t.chatWorkflowExecution.exportClip.replace('{count}', String(videoExportMaterials.length))}</span>
                   </button>
                   <p className="text-xs text-muted-foreground text-center mt-2">
-                    点击将视频素材导入到 Video Editing 任务的素材管理面板
+                    {t.chatWorkflowExecution.exportClipHint}
                   </p>
                 </div>
               )}
@@ -268,7 +270,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
           <div className="px-5 py-3 bg-primary/10 border border-primary/30 rounded-md">
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-primary font-medium">工作流执行中...</span>
+              <span className="text-sm text-primary font-medium">{t.chatWorkflowExecution.executing}</span>
             </div>
           </div>
         )}

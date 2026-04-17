@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ScriptShot, ScriptMessage } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface StoryboardScriptReviewProps {
   frameCount: number;
@@ -34,16 +35,18 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
   canConfirm,
   error,
 }) => {
+  const { t } = useLocale();
+
   return (
     <div className="h-full flex flex-col gap-3 min-h-0">
       {/* Header badge */}
       <div className="flex items-center justify-between text-xs shrink-0">
         <div className="flex items-center gap-2">
           <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground border border-border font-medium">
-            剧本预览（共 {frameCount} 幕）
+            {t.storyboardTab.scriptPreviewLabel.replace('{count}', String(frameCount))}
           </span>
           <span className="px-2 py-0.5 rounded-full bg-secondary text-foreground border border-border">
-            {locale === 'zh' ? '中文' : 'English'}
+            {t.storyboardTab.languageLabel.replace('{lang}', locale === 'zh' ? '中文' : 'English')}
           </span>
         </div>
         <button
@@ -51,7 +54,7 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
           disabled={isBusy}
           className="text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
-          ← 返回修改输入
+          {t.storyboardTab.backToInput}
         </button>
       </div>
 
@@ -63,7 +66,7 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
             className="border border-border rounded-md p-3 bg-card"
           >
             <div className="text-xs font-medium text-muted-foreground mb-1">
-              第 {shot.index + 1} 幕
+              {t.storyboardTab.shotNumber.replace('{number}', String(shot.index + 1))}
             </div>
             <textarea
               value={shot.script}
@@ -71,20 +74,20 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
               disabled={isBusy}
               rows={Math.max(2, Math.ceil(shot.script.length / 60))}
               className="w-full text-sm text-foreground bg-background border border-border rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-              placeholder={`第 ${shot.index + 1} 幕剧本...`}
+              placeholder={t.storyboardTab.shotPlaceholder.replace('{number}', String(shot.index + 1))}
             />
           </div>
         ))}
         {shots.length === 0 && (
           <div className="text-sm text-muted-foreground text-center py-6">
-            剧本为空，请返回上一步重新生成
+            {t.storyboardTab.emptyScript}
           </div>
         )}
       </div>
 
       {/* Chat panel — max-h-[28%] keeps it from squeezing the confirm button on many messages */}
       <div className="shrink-0 max-h-[28%] overflow-hidden border border-border rounded-md p-3 bg-card/60 flex flex-col gap-2">
-        <div className="text-xs font-medium text-foreground shrink-0">与 AI 对话修改剧本</div>
+        <div className="text-xs font-medium text-foreground shrink-0">{t.storyboardTab.chatTitle}</div>
         {messages.length > 0 && (
           <div className="space-y-1 overflow-y-auto text-xs min-h-0 flex-1">
             {messages.map((m, i) => (
@@ -97,7 +100,7 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
                 }
               >
                 <span className="font-medium mr-1">
-                  {m.role === 'user' ? '你：' : 'AI：'}
+                  {m.role === 'user' ? t.storyboardTab.chatYou : t.storyboardTab.chatAI}
                 </span>
                 {m.content}
               </div>
@@ -116,7 +119,7 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
               }
             }}
             disabled={isBusy}
-            placeholder="例如：把第 3 幕改为夜晚雨天"
+            placeholder={t.storyboardTab.chatPlaceholder}
             className="flex-1 text-sm bg-background border border-border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
           />
           <button
@@ -124,7 +127,7 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
             disabled={isBusy || !chatInput.trim()}
             className="px-3 py-1.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isBusy ? '...' : '发送'}
+            {isBusy ? '...' : t.storyboardTab.chatSend}
           </button>
         </div>
       </div>
@@ -134,10 +137,10 @@ const StoryboardScriptReview: React.FC<StoryboardScriptReviewProps> = ({
       <button
         onClick={onConfirm}
         disabled={!canConfirm || isBusy}
-        title={!canConfirm ? '请确保所有剧本不少于 5 个字符' : undefined}
+        title={!canConfirm ? t.storyboardTab.scriptMinLengthHint : undefined}
         className="shrink-0 w-full py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        确认并生成分镜
+        {t.storyboardTab.confirmGenerate}
       </button>
     </div>
   );

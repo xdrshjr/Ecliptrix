@@ -2178,6 +2178,8 @@ export interface Translations {
     scriptReviseFailed: string;
     scriptUpdated: string;
     backConfirm: string;
+    generateFailed: string;
+    storyboardImageAlt: string;
   };
   gridSizeSelectorTab: {
     frameCountLabel: string;
@@ -2205,6 +2207,8 @@ export interface Translations {
     loadingTitle: string;
     loadingDesc: string;
     videoLabel: string;
+    secondsUnit: string;
+    framesUnit: string;
   };
   videoScriptProgressModal: {
     titleWithVideo: string;
@@ -4550,6 +4554,8 @@ export const translations: Record<string, Translations> = {
       scriptReviseFailed: 'Script revision failed',
       scriptUpdated: 'Script updated ({count} shots).',
       backConfirm: 'Going back will clear the current script draft. Continue?',
+      generateFailed: 'Storyboard generation failed, please retry',
+      storyboardImageAlt: 'Storyboard full image',
     },
     gridSizeSelectorTab: {
       frameCountLabel: 'Storyboard Count',
@@ -4577,6 +4583,8 @@ export const translations: Record<string, Translations> = {
       loadingTitle: 'Loading Analysis Results',
       loadingDesc: 'Please wait...',
       videoLabel: 'Video:',
+      secondsUnit: 's',
+      framesUnit: 'frames',
     },
     videoScriptProgressModal: {
       titleWithVideo: 'Video Understanding Script Generation',
@@ -6920,6 +6928,8 @@ export const translations: Record<string, Translations> = {
       scriptReviseFailed: '剧本修改失败',
       scriptUpdated: '已更新剧本（{count} 幕）。',
       backConfirm: '返回修改输入将清空当前剧本草稿，是否继续？',
+      generateFailed: '分镜生成失败，请重试',
+      storyboardImageAlt: '分镜大图',
     },
     gridSizeSelectorTab: {
       frameCountLabel: '分镜数量',
@@ -6947,6 +6957,8 @@ export const translations: Record<string, Translations> = {
       loadingTitle: '正在加载解析结果',
       loadingDesc: '请稍候...',
       videoLabel: '视频:',
+      secondsUnit: '秒',
+      framesUnit: '帧',
     },
     videoScriptProgressModal: {
       titleWithVideo: '视频理解生成脚本',

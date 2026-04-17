@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { VideoUnderstandingScriptProgress } from '../../types/videoEditingTypes';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoUnderstandingScriptProgressModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
   progress,
   onCancel,
 }) => {
+  const { t } = useLocale();
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -34,24 +36,24 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
   const getStepTitle = () => {
     switch (progress.currentStep) {
       case 'mode-selection':
-        return '准备中...';
+        return t.videoScriptProgressModal.stepPreparing;
       case 'video-analysis':
-        return '正在分析视频内容...';
+        return t.videoScriptProgressModal.stepAnalyzing;
       case 'script-generation':
-        return '正在生成脚本...';
+        return t.videoScriptProgressModal.stepGenerating;
       default:
-        return '处理中...';
+        return t.videoScriptProgressModal.stepProcessing;
     }
   };
 
   const getStepDescription = () => {
     switch (progress.currentStep) {
       case 'video-analysis':
-        return `正在分析视频 (${progress.analyzedVideos}/${progress.totalVideos})`;
+        return t.videoScriptProgressModal.descAnalyzing.replace('{analyzed}', String(progress.analyzedVideos)).replace('{total}', String(progress.totalVideos));
       case 'script-generation':
-        return hasVideos ? '基于视频分析结果生成脚本内容' : '基于对话内容生成脚本';
+        return hasVideos ? t.videoScriptProgressModal.descGeneratingWithVideo : t.videoScriptProgressModal.descGeneratingWithoutVideo;
       default:
-        return '请稍候...';
+        return t.videoScriptProgressModal.descPleaseWait;
     }
   };
 
@@ -90,7 +92,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
             </div>
             <div>
               <h3 id="progress-title" className="text-lg font-semibold text-foreground">
-                {hasVideos ? '视频理解生成脚本' : '生成脚本'}
+                {hasVideos ? t.videoScriptProgressModal.titleWithVideo : t.videoScriptProgressModal.titleWithoutVideo}
               </h3>
               <p id="progress-description" className="text-sm text-muted-foreground">
                 {getStepTitle()}
@@ -138,19 +140,19 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
                 <div className="text-lg font-semibold text-primary">
                   {progress.analyzedVideos}
                 </div>
-                <div className="text-xs text-muted-foreground">已完成</div>
+                <div className="text-xs text-muted-foreground">{t.videoScriptProgressModal.statCompleted}</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-muted-foreground">
                   {progress.totalVideos - progress.analyzedVideos - progress.failedVideos}
                 </div>
-                <div className="text-xs text-muted-foreground">处理中</div>
+                <div className="text-xs text-muted-foreground">{t.videoScriptProgressModal.statProcessing}</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-destructive">
                   {progress.failedVideos}
                 </div>
-                <div className="text-xs text-muted-foreground">失败</div>
+                <div className="text-xs text-muted-foreground">{t.videoScriptProgressModal.statFailed}</div>
               </div>
             </div>
           )}
@@ -163,7 +165,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="text-sm text-destructive">
-                  <div className="font-medium">处理过程中遇到问题</div>
+                  <div className="font-medium">{t.videoScriptProgressModal.errorTitle}</div>
                   <div className="mt-1">{progress.errorMessage}</div>
                 </div>
               </div>
@@ -195,7 +197,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
                 onClick={onCancel}
                 className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors"
               >
-                取消
+                {t.videoScriptProgressModal.cancelButton}
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { VideoCacheState } from '../hooks/useVideoCache';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoCacheIndicatorProps {
   cacheState: VideoCacheState;
@@ -18,6 +19,7 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
   showText = false,
   size = 'sm'
 }) => {
+  const { t } = useLocale();
   const sizeClasses = {
     sm: 'w-3 h-3',
     md: 'w-4 h-4', 
@@ -33,7 +35,7 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           ),
-          text: '预加载中...',
+          text: t.videoCacheIndicator.loading,
           bgColor: 'bg-primary/10',
           textColor: 'text-primary'
         };
@@ -45,7 +47,7 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           ),
-          text: '已缓存',
+          text: t.videoCacheIndicator.loaded,
           bgColor: 'bg-green-50',
           textColor: 'text-green-700'
         };
@@ -57,7 +59,7 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           ),
-          text: '加载失败',
+          text: t.videoCacheIndicator.error,
           bgColor: 'bg-destructive/10',
           textColor: 'text-destructive'
         };
@@ -70,7 +72,7 @@ const VideoCacheIndicator: React.FC<VideoCacheIndicatorProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12m-9 0a9 9 0 1018 0 9 9 0 10-18 0" />
             </svg>
           ),
-          text: '未缓存',
+          text: t.videoCacheIndicator.notCached,
           bgColor: 'bg-muted',
           textColor: 'text-muted-foreground'
         };
