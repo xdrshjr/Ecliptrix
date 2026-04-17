@@ -38,12 +38,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     setToasts(prev => {
       const existingToast = prev.find(toast => toast.message === message && toast.type === type);
       if (existingToast) {
-        console.log(`[NotificationContext] Skipping duplicate notification`, {
-          message,
-          type,
-          existingId: existingToast.id,
-          timestamp: new Date().toISOString()
-        });
         return prev; // 不添加重复的toast
       }
 
@@ -54,15 +48,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         type,
         duration
       };
-
-      // 记录通知日志
-      console.log(`[NotificationContext] Showing notification`, {
-        id,
-        message,
-        type,
-        duration,
-        timestamp: new Date().toISOString()
-      });
 
       return [...prev, newToast];
     });

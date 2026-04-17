@@ -87,7 +87,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       const user: User = JSON.parse(storedUser);
-      console.log('[AuthContext] Validating session for user:', user.username);
 
       const data = (await authValidateSession({
         user_id: user.id,
@@ -101,8 +100,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
 
       if (data.success && data.valid) {
-        console.log('[AuthContext] Session is valid');
-
         // If the validation response carries updated user fields (e.g. is_root),
         // merge them into the stored user so permissions stay in sync.
         if (data.user) {
@@ -159,7 +156,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (storedUser && storedToken) {
           const user: User = JSON.parse(storedUser);
-          console.log('[AuthContext] Restored user session:', user.username);
 
           // Validate the session
           const isValid = await validateSession();
@@ -207,7 +203,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!authState.isAuthenticated) return;
 
     const interval = setInterval(() => {
-      console.log('[AuthContext] Periodic session validation');
       validateSession();
     }, 5 * 60 * 1000); // 5 minutes
 
@@ -222,7 +217,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // proved the session is invalid server-side.
   useEffect(() => {
     const handleSessionExpired = () => {
-      console.log('[AuthContext] Received ecliptrix:session-expired event');
       // Defensive: ensure localStorage is cleared even if the event fires
       // outside the wrapper's normal path.
       try {
@@ -247,8 +241,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> => {
     try {
-      console.log('[AuthContext] Login attempt for user:', credentials.username);
-
       // The auth client (`src/lib/api/auth.ts`) owns the
       // `result.user → frontend User` reshape that previously lived in
       // `src/app/api/auth/login/route.ts` (delegated by T04 / T05).
@@ -259,13 +251,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         // Reset session expiry flag so future expirations trigger redirect
         resetSessionExpiryFlag();
-
-        console.log('[AuthContext] Login successful:', user.username, {
-          hasSessionToken: !!result.sessionToken,
-          userRole: user.userRole,
-          isRoot: user.isRoot,
-          isAdmin: user.isAdmin,
-        });
 
         // Store user and session token in localStorage
         localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
@@ -303,8 +288,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
-    console.log('[AuthContext] User logout');
-
     // Clear localStorage
     localStorage.removeItem(SESSION_USER_KEY);
     localStorage.removeItem(SESSION_TOKEN_KEY);
@@ -319,8 +302,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const updateUserProfile = async (updatedUser: User) => {
-    console.log('[AuthContext] Updating user profile:', updatedUser.username);
-
     // Update localStorage
     localStorage.setItem(SESSION_USER_KEY, JSON.stringify(updatedUser));
 

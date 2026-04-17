@@ -44,19 +44,8 @@ export default function HomePage() {
   // 检查当前是否有活跃任务（活跃任务时隐藏Footer以最大化工作区域）
   const hasActiveTask = !!activeTask;
 
-  console.log('[HomePage] Rendering with layout:', {
-    showLandingPage,
-    activeTask: activeTask?.type,
-    tabsCount: tabs.length,
-    hasActiveTask,
-    isSettingsOpen,
-    isProfileOpen,
-    timestamp: new Date().toISOString()
-  });
-
   // 包装selectTab函数，在选择任务时关闭设置和个人资料页面
   const handleSelectTab = (tabId: string) => {
-    console.log('[HomePage] Tab selected, closing settings/profile pages:', { tabId });
     setIsSettingsOpen(false);
     setIsProfileOpen(false);
     selectTab(tabId);
@@ -64,23 +53,14 @@ export default function HomePage() {
 
   // 处理创建任务
   const handleCreateTask = (type: any) => {
-    console.log('[HomePage] Creating task from landing page:', {
-      taskType: type,
-      timestamp: new Date().toISOString()
-    });
     createTask(type);
   };
 
   // 处理返回主页（关闭所有任务）
   const handleReturnHome = () => {
-    console.log('[HomePage] Returning to home, closing all tabs:', {
-      currentTabsCount: tabs.length,
-      timestamp: new Date().toISOString()
-    });
-    
     // 关闭所有标签页，返回着陆页
     closeAllTabs();
-    
+
     // 关闭设置和个人资料页面
     setIsSettingsOpen(false);
     setIsProfileOpen(false);
@@ -88,10 +68,6 @@ export default function HomePage() {
 
   // 处理Chat模态框状态变化
   const handleChatModalStateChange = (isOpen: boolean) => {
-    console.log('[HomePage] Chat modal state changed:', {
-      isOpen,
-      timestamp: new Date().toISOString()
-    });
     setIsChatModalOpen(isOpen);
   };
 
@@ -103,6 +79,7 @@ export default function HomePage() {
         onProfileClick={() => setIsProfileOpen(true)}
         onSettingsClick={() => setIsSettingsOpen(true)}
         onAccountSettingsClick={() => {
+          setIsSettingsOpen(false);
           setProfileInitialSection('otherSettings');
           setIsProfileOpen(true);
         }}

@@ -51,13 +51,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('[LoginModal] Login attempt started:', {
-      username: formData.username,
-      hasPassword: !!formData.password,
-      timestamp: new Date().toISOString()
-    });
-    
+
     if (!formData.username || !formData.password) {
       console.warn('[LoginModal] Login validation failed:', {
         hasUsername: !!formData.username,
@@ -72,21 +66,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     setIsLoading(true);
     setError('');
 
-    console.log('[LoginModal] Login loading state activated:', {
-      username: formData.username,
-      loadingState: true,
-      timestamp: new Date().toISOString()
-    });
-
     try {
       const result = await login(formData);
       
       if (result.success) {
-        console.log('[LoginModal] Login successful, closing modal:', {
-          username: formData.username,
-          success: true,
-          timestamp: new Date().toISOString()
-        });
         onClose();
       } else {
         console.warn('[LoginModal] Login failed:', {
@@ -108,11 +91,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       notification.showError(t.auth.loginFailed, 4000);
     } finally {
       setIsLoading(false);
-      console.log('[LoginModal] Login loading state deactivated:', {
-        username: formData.username,
-        loadingState: false,
-        timestamp: new Date().toISOString()
-      });
     }
   };
 

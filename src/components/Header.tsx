@@ -87,9 +87,6 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
   };
 
   const handleLogoClick = () => {
-    console.log('[Header] Logo clicked, returning to home:', {
-      timestamp: new Date().toISOString()
-    });
     if (onHomeClick) {
       onHomeClick();
     }

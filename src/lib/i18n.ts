@@ -2561,7 +2561,7 @@ export const translations: Record<string, Translations> = {
       avatarUrlPlaceholder: 'Enter avatar image URL (optional)',
       userRole: 'User Role',
       userRoleAdmin: 'Admin',
-      userRoleRegular: 'Regular',
+      userRoleRegular: 'User',
       userRolePremium: 'Premium',
       isAdmin: 'Admin User',
       isAdminDesc: 'Grant administrator privileges',
