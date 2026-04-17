@@ -3002,7 +3002,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
       {/* 左侧区域 - AI Chat 面板贯穿上下，占20%宽度 */}
-      <div className="video-editing-left-sidebar flex flex-col border-r border-border bg-card">
+      <div className="video-editing-left-sidebar flex flex-col border-r border-border bg-card relative z-[10000]">
         <VideoChatWindow
           conversation={activeConversation}
           onSendMessage={handleSendChatMessage}

@@ -780,32 +780,47 @@ class UserService:
             logger.error("Force logout exception", {"user_id": user_id, "error": str(e)})
             return {"success": False, "message": "强制下线失败", "error_code": "LOGOUT_ERROR"}
 
-    async def get_user_stats(self, db: AsyncSession) -> Dict[str, Any]:
+    async def get_user_stats(self, db: AsyncSession, current_user: Optional[User] = None) -> Dict[str, Any]:
         """
         Get aggregated user statistics.
-
-        Returns:
-            Dict containing counts: total, by role, by status, online
+        Permission-filtered to match get_all_users() behavior.
         """
         try:
-            total = (await db.execute(select(func.count(User.id)))).scalar() or 0
+            # Build permission filter conditions matching get_all_users
+            def apply_perm_filter(stmt):
+                if current_user is not None:
+                    if current_user.is_root:
+                        stmt = stmt.where(User.id != current_user.id)
+                    else:
+                        stmt = stmt.where(User.is_admin == False, User.is_root == False)
+                return stmt
+
+            total = (await db.execute(
+                apply_perm_filter(select(func.count(User.id)))
+            )).scalar() or 0
+
             admin_count = (await db.execute(
-                select(func.count(User.id)).where(User.user_role == "admin")
+                apply_perm_filter(select(func.count(User.id)).where(User.user_role == "admin"))
             )).scalar() or 0
+
             premium_count = (await db.execute(
-                select(func.count(User.id)).where(User.user_role == "premium")
+                apply_perm_filter(select(func.count(User.id)).where(User.user_role == "premium"))
             )).scalar() or 0
+
             regular_count = (await db.execute(
-                select(func.count(User.id)).where(User.user_role == "regular")
+                apply_perm_filter(select(func.count(User.id)).where(User.user_role == "regular"))
             )).scalar() or 0
+
             active_count = (await db.execute(
-                select(func.count(User.id)).where(User.is_active == True)
+                apply_perm_filter(select(func.count(User.id)).where(User.is_active == True))
             )).scalar() or 0
+
             disabled_count = (await db.execute(
-                select(func.count(User.id)).where(User.is_active == False)
+                apply_perm_filter(select(func.count(User.id)).where(User.is_active == False))
             )).scalar() or 0
+
             online_count = (await db.execute(
-                select(func.count(User.id)).where(User.active_session_token.isnot(None))
+                apply_perm_filter(select(func.count(User.id)).where(User.active_session_token.isnot(None)))
             )).scalar() or 0
 
             return {

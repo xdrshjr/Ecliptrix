@@ -94,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
   };
 
   return (
-    <header className="h-14 bg-card border-b border-border sticky top-0 z-50">
+    <header className="h-14 bg-card border-b border-border sticky top-0 z-[10000]">
       <div className="h-full px-6 flex items-center justify-between">
         {/* Logo and Brand - Clickable to return home */}
         <div 
@@ -144,7 +144,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
             
             {/* Language Dropdown */}
             {isLanguageDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-32 bg-popover rounded-md shadow-lg border border-border py-1 z-50">
+              <div className="absolute right-0 mt-2 w-32 bg-popover rounded-md shadow-lg border border-border py-1 z-[10001]">
                 <button
                   onClick={() => handleLanguageChange('en')}
                   className={`w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors flex items-center space-x-2 ${
@@ -213,7 +213,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
 
                 {/* User Dropdown */}
                 {isUserDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-popover rounded-md shadow-lg border border-border py-1 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-popover rounded-md shadow-lg border border-border py-1 z-[10001]">
                     <div className="px-3 py-2 border-b border-border">
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium text-foreground">{user?.username}</p>
