@@ -20,11 +20,13 @@ function useTheme() {
       html.classList.replace('dark', 'light');
       html.style.colorScheme = 'light';
       localStorage.setItem('ecliptrix-theme', 'light');
+      localStorage.setItem('ecliptrix-theme-pref', 'light');
       setIsDark(false);
     } else {
       html.classList.replace('light', 'dark');
       html.style.colorScheme = 'dark';
       localStorage.setItem('ecliptrix-theme', 'dark');
+      localStorage.setItem('ecliptrix-theme-pref', 'dark');
       setIsDark(true);
     }
   }, []);

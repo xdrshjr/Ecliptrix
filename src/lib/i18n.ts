@@ -2526,7 +2526,7 @@ export const translations: Record<string, Translations> = {
       registeredUsers: 'Registered Users',
       totalUsers: 'Total Users',
       adminUsers: 'Admin Users',
-      regularUsers: 'Regular Users',
+      regularUsers: 'Users',
       premiumUsers: 'Premium Users',
       userId: 'User ID',
       role: 'Role',
