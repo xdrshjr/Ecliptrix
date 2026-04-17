@@ -25,6 +25,7 @@ export interface Translations {
   };
   landing: {
     description: string;
+    heroDescription: string;
     startCreating: string;
     loading: string;
     exploreWorkflows: string;
@@ -1723,6 +1724,40 @@ export interface Translations {
       aiAgent: string;
       messages: string;
     };
+    chatTypeModal: {
+      title: string;
+      subtitle: string;
+      chatbotTab: string;
+      workflowTab: string;
+      agentTab: string;
+      basicChatbot: string;
+      chatbotDesc: string;
+      startChatbot: string;
+      fastResponse: string;
+      quickAnswers: string;
+      naturalChat: string;
+      conversational: string;
+      easyToUse: string;
+      noSetupNeeded: string;
+      loadingWorkflows: string;
+      failedToLoadWorkflows: string;
+      retry: string;
+      noWorkflows: string;
+      createWorkflowFirst: string;
+      active: string;
+      nodes: string;
+      aiAgentTitle: string;
+      agentDesc: string;
+      comingSoon: string;
+      taskPlanning: string;
+      multiStepTasks: string;
+      webSearch: string;
+      realtimeInfo: string;
+      codeExecution: string;
+      runCodeSafely: string;
+      cancel: string;
+      workflowsAvailable: string;
+    };
   };
   videoProcessing: {
     tab: string;
@@ -2404,13 +2439,14 @@ export const translations: Record<string, Translations> = {
     },
     landing: {
       description: 'AI-Powered Creative Platform',
+      heroDescription: 'Where creativity meets AI. Create stunning videos, build intelligent workflows, and unleash your creative potential with our powerful suite of tools.',
       startCreating: 'Start Creating',
       loading: 'Loading...',
       exploreWorkflows: 'Explore Workflows',
-      videoEditingDesc: 'Professional video editing tools',
-      workflowDesc: 'Automated workflow builder',
-      aiChatDesc: 'AI-powered chat assistant',
-      brainstormingDesc: 'Creative brainstorming tools',
+      videoEditingDesc: 'Professional video editing with AI-powered tools and intuitive timeline interface',
+      workflowDesc: 'Build powerful AI workflows with visual node-based editor',
+      aiChatDesc: 'Intelligent AI conversations for content creation and assistance',
+      brainstormingDesc: 'Generate creative ideas and concepts for your projects',
       aiModels: 'AI Models',
       workflowTemplates: 'Workflow Templates',
       creativePossibilities: 'Creative Possibilities',
@@ -4117,6 +4153,40 @@ export const translations: Record<string, Translations> = {
         aiAgent: 'AI Agent',
         messages: '{count} message(s)',
       },
+      chatTypeModal: {
+        title: 'New Chat',
+        subtitle: 'Choose a chat type to begin',
+        chatbotTab: 'Chatbot',
+        workflowTab: 'Workflow',
+        agentTab: 'Agent',
+        basicChatbot: 'Basic Chatbot',
+        chatbotDesc: 'Start a conversation with a basic AI chatbot. Perfect for quick questions and general discussions.',
+        startChatbot: 'Start Chatbot Conversation',
+        fastResponse: 'Fast Response',
+        quickAnswers: 'Quick answers',
+        naturalChat: 'Natural Chat',
+        conversational: 'Conversational',
+        easyToUse: 'Easy to Use',
+        noSetupNeeded: 'No setup needed',
+        loadingWorkflows: 'Loading workflows...',
+        failedToLoadWorkflows: 'Failed to load workflows',
+        retry: 'Retry',
+        noWorkflows: 'No workflows available',
+        createWorkflowFirst: 'Create a workflow in the Workflow task first, then start a new conversation',
+        active: 'Active',
+        nodes: 'nodes',
+        aiAgentTitle: 'AI Agent',
+        agentDesc: 'Intelligent agents with advanced capabilities. This feature is coming soon.',
+        comingSoon: 'Coming Soon',
+        taskPlanning: 'Task Planning',
+        multiStepTasks: 'Multi-step tasks',
+        webSearch: 'Web Search',
+        realtimeInfo: 'Real-time info',
+        codeExecution: 'Code Execution',
+        runCodeSafely: 'Run code safely',
+        cancel: 'Cancel',
+        workflowsAvailable: '{count} workflow(s) available',
+      },
     },
     videoProcessing: {
       tab: 'Cut Silence',
@@ -4802,13 +4872,14 @@ export const translations: Record<string, Translations> = {
     },
     landing: {
       description: 'AI驱动的创意平台',
+      heroDescription: '创意与AI的交汇。创作精彩视频，构建智能工作流，用我们强大的工具套件释放您的创造潜力。',
       startCreating: '开始创作',
       loading: '加载中...',
       exploreWorkflows: '探索工作流',
-      videoEditingDesc: '专业视频编辑工具',
-      workflowDesc: '自动化工作流构建',
-      aiChatDesc: 'AI智能聊天助手',
-      brainstormingDesc: '创意头脑风暴工具',
+      videoEditingDesc: 'AI驱动的专业视频编辑工具与直观时间线界面',
+      workflowDesc: '可视化节点编辑器构建强大AI工作流',
+      aiChatDesc: '智能AI对话助力内容创作与辅助',
+      brainstormingDesc: '为您的项目生成创意想法和概念',
       aiModels: 'AI模型',
       workflowTemplates: '工作流模板',
       creativePossibilities: '创意无限可能',
@@ -6514,6 +6585,40 @@ export const translations: Record<string, Translations> = {
         chatbot: '聊天机器人',
         aiAgent: 'AI 代理',
         messages: '{count} 条消息',
+      },
+      chatTypeModal: {
+        title: '新对话',
+        subtitle: '选择聊天类型开始',
+        chatbotTab: '聊天机器人',
+        workflowTab: '工作流',
+        agentTab: '智能体',
+        basicChatbot: '基础聊天机器人',
+        chatbotDesc: '与基础AI聊天机器人对话。适合快速提问和日常讨论。',
+        startChatbot: '开始聊天机器人对话',
+        fastResponse: '快速响应',
+        quickAnswers: '快速回答',
+        naturalChat: '自然对话',
+        conversational: '对话式交流',
+        easyToUse: '简单易用',
+        noSetupNeeded: '无需设置',
+        loadingWorkflows: '加载工作流中...',
+        failedToLoadWorkflows: '加载工作流失败',
+        retry: '重试',
+        noWorkflows: '暂无可用工作流',
+        createWorkflowFirst: '请先在工作流任务中创建工作流，然后开始新对话',
+        active: '活跃',
+        nodes: '个节点',
+        aiAgentTitle: 'AI 智能体',
+        agentDesc: '具有高级功能的智能代理。此功能即将推出。',
+        comingSoon: '即将推出',
+        taskPlanning: '任务规划',
+        multiStepTasks: '多步骤任务',
+        webSearch: '网页搜索',
+        realtimeInfo: '实时信息',
+        codeExecution: '代码执行',
+        runCodeSafely: '安全运行代码',
+        cancel: '取消',
+        workflowsAvailable: '{count} 个工作流可用',
       },
     },
     videoProcessing: {

@@ -7,6 +7,7 @@ import ChatWindow from './ChatWindow';
 import ChatTypeSelectionModal from './ChatTypeSelectionModal';
 import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 import { http, ApiError } from '@/lib/api/http-client';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ChatInterfaceProps {
   taskId: string;
@@ -23,6 +24,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onModalStateChange,
   onNavigateToVideoEditing,
 }) => {
+  const { t } = useLocale();
   // Initialize content if null
   const chatContent: ChatTaskContent = content || {
     conversations: [],
@@ -104,13 +106,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
     
     // Determine conversation title based on chat type
-    let title = 'New Chat';
+    let title = t.aiChat.conversationList.newChat;
     if (chatType === 'workflow' && workflowName) {
       title = `${workflowName} Chat`;
     } else if (chatType === 'chatbot') {
-      title = 'Chatbot';
+      title = t.aiChat.conversationList.chatbot;
     } else if (chatType === 'agent') {
-      title = 'AI Agent';
+      title = t.aiChat.conversationList.aiAgent;
     }
     
     const newConversation: Conversation = {
@@ -187,7 +189,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       
       const defaultConversation: Conversation = {
         id: conversationId,
-        title: 'Chatbot',
+        title: t.aiChat.conversationList.chatbot,
         messages: [],
         createdAt: now,
         updatedAt: now,
