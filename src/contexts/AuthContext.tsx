@@ -9,6 +9,7 @@ import {
   login as authLogin,
   validateSession as authValidateSession,
 } from '@/lib/api/auth';
+import { resetSessionExpiryFlag } from '@/lib/api/http-client';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -255,6 +256,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (result.success) {
         const user = result.user;
+
+        // Reset session expiry flag so future expirations trigger redirect
+        resetSessionExpiryFlag();
 
         console.log('[AuthContext] Login successful:', user.username, {
           hasSessionToken: !!result.sessionToken,

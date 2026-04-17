@@ -2173,7 +2173,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       });
       showError(`AI混剪失败: ${error instanceof Error ? error.message : String(error)}`, 8000);
     }
-  }, [taskId, materialManagement.materials, showSuccess, showError]);
+  }, [taskId, materialManagement.materials, showSuccess, showError, handleImportComplete]);
 
   // 处理AI混剪模式选择弹窗的确认
   const handleAIMixingModeConfirm = useCallback((mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {

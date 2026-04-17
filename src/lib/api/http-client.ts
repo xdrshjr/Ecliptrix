@@ -120,6 +120,11 @@ export function __resetSessionExpiryFlagForTests(): void {
   sessionExpiryHandled = false;
 }
 
+/** Reset the session expiry flag after successful re-authentication. */
+export function resetSessionExpiryFlag(): void {
+  sessionExpiryHandled = false;
+}
+
 /** Paths whose pathname must NOT trigger a redirect when 401 fires. */
 const NO_REDIRECT_PATHS = new Set(['/login', '/register']);
 

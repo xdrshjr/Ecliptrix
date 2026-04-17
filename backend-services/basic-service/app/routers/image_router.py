@@ -4,6 +4,7 @@ Image search API routes.
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
+from datetime import datetime, timezone
 
 from app.models.image_search_models import ImageSearchRequest, ImageSearchResponse
 from app.services.image_search_service import ImageSearchService
@@ -144,7 +145,7 @@ async def health_check():
                     "status": "unhealthy",
                     "message": "Unsplash API keys not configured",
                     "service": "image_search",
-                    "timestamp": logger._get_timestamp()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
         
@@ -156,7 +157,7 @@ async def health_check():
                 "message": "Image search service is operational",
                 "service": "image_search",
                 "api_keys_count": len(image_search_service.api_keys),
-                "timestamp": logger._get_timestamp()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
         
@@ -170,6 +171,6 @@ async def health_check():
                 "status": "unhealthy",
                 "message": error_message,
                 "service": "image_search",
-                "timestamp": logger._get_timestamp()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ) 
