@@ -160,9 +160,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       return;
     }
 
-    // 查找对应的音频材料
-    const audioMaterial = onAddMaterial ? null : null; // 需要从材料中找到对应的音频文件
-    
     // 由于我们需要找到对应segment的音频文件路径，我们需要从本地音频管理器中获取
     // 根据segment的文本内容生成的音频文件
     const segment = segments.find(seg => seg.id === segmentId);
@@ -306,7 +303,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
            generate_srt_file: true
          });
        } else {
-         throw new Error('未找到对应的音频文件，请确保已完成语音转换');
+         throw new Error(t.scriptPanel.errors.audioFileNotFound);
        }
 
              if (transcriptionResult.success) {
@@ -347,14 +344,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
              // 创建字幕材料项
              const subtitleMaterial: MaterialItem = {
                id: `subtitle_${segmentId}_${Date.now()}`,
-               name: `${segment.title || `段落${segments.indexOf(segment) + 1}`} - 字幕`,
+               name: `${segment.title || t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segments.indexOf(segment) + 1))}${t.scriptPanel.segments.subtitleSuffix}`,
                type: 'subtitle',
                format: 'srt',
                size: subtitleBlob.size,
                duration: totalDuration,
                url: subtitleUrl,
                createdAt: new Date(),
-               description: `从"${segment.title || `段落${segments.indexOf(segment) + 1}`}"语音识别生成的字幕`,
+               description: t.scriptPanel.segments.generatedFrom.replace('{index}', segment.title || String(segments.indexOf(segment) + 1)),
                metadata: {
                  segment_id: segmentId,
                  task_id: taskId,
@@ -365,7 +362,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                  srt_content: srtContent,
                  subtitles: response.subtitles,
                  isLocalFile: true,
-                 fileName: `${segment.title || `段落${segments.indexOf(segment) + 1}`}_字幕.srt`
+                 fileName: `${segment.title || t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segments.indexOf(segment) + 1))}_subtitle.srt`
                }
              };
 
@@ -388,7 +385,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       } else {
         // The backend returned `success: false` inside a 200 envelope. Surface
         // the message via the same error sink that the catch block uses.
-        const fallbackMsg = transcriptionResult.message || '字幕识别失败';
+        const fallbackMsg = transcriptionResult.message || t.scriptPanel.errors.subtitleRecognitionFailed;
         logger.error('字幕识别失败', new Error(fallbackMsg), {
           segmentId,
         });
@@ -407,7 +404,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
       setSubtitleErrors(prev => ({
         ...prev,
-        [segmentId]: `字幕识别异常: ${errorMessage}`
+        [segmentId]: `${t.scriptPanel.errors.subtitleRecognitionFailed}: ${errorMessage}`
       }));
     } finally {
              setTranscribingSegments(prev => {
@@ -416,7 +413,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
          return newSet;
        });
     }
-  }, [segments, taskId, logger, transcribingSegments]);
+  }, [segments, taskId, logger, transcribingSegments, materials, onAddMaterial]);
 
   // 新增：视频播放/暂停处理
   const handleVideoPlayPause = useCallback(async (videoElement: HTMLVideoElement, video: MaterialItem, segmentId: string) => {
@@ -519,7 +516,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   }, [logger]);
 
   const handleStartEdit = (sentence: ScriptSentence) => {
-    console.log('[ScriptPanel] 开始编辑句子', {
+    logger.info('开始编辑句子', {
       sentenceId: sentence.id,
       originalText: sentence.text,
       timestamp: new Date().toISOString()
@@ -529,7 +526,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   };
 
   const handleCancelEdit = () => {
-    console.log('[ScriptPanel] 取消编辑句子', {
+    logger.info('取消编辑句子', {
       sentenceId: editingSentenceId,
       timestamp: new Date().toISOString()
     });
@@ -539,7 +536,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   const handleSaveEdit = () => {
     if (!editingSentenceId || !onUpdateSegments) {
-      console.warn('[ScriptPanel] 无法保存编辑：缺少必要参数', {
+      logger.warn('无法保存编辑：缺少必要参数', {
         editingSentenceId,
         hasUpdateCallback: !!onUpdateSegments,
         timestamp: new Date().toISOString()
@@ -549,14 +546,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     const trimmedText = editingText.trim();
     if (!trimmedText) {
-      console.warn('[ScriptPanel] 无法保存编辑：文本为空', {
+      logger.warn('无法保存编辑：文本为空', {
         sentenceId: editingSentenceId,
         timestamp: new Date().toISOString()
       });
       return;
     }
 
-    console.log('[ScriptPanel] 保存句子编辑', {
+    logger.info('保存句子编辑', {
       sentenceId: editingSentenceId,
       newText: trimmedText,
       timestamp: new Date().toISOString()
@@ -638,7 +635,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   const handleGenerateScript = () => {
     if (onGenerateScript && !isGenerating) {
-      console.log('[ScriptPanel] 用户点击生成脚本按钮', {
+      logger.info('用户点击生成脚本按钮', {
         timestamp: new Date().toISOString()
       });
       onGenerateScript();
@@ -686,8 +683,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         // 创建带有段落信息的视频副本
         const videoWithSegmentInfo: MaterialItem = {
           ...video,
-          name: `段落${segmentNumber} - ${video.name}`,
-          description: `段落${segmentNumber}"${segment?.title || ''}"的关联视频 - ${video.description || video.name}`,
+          name: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segmentNumber))} - ${video.name}`,
+          description: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segmentNumber))} "${segment?.title || ''}" - ${video.description || video.name}`,
           metadata: {
             ...video.metadata,
             segment_id: segmentId,
@@ -819,7 +816,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         segmentId,
         hasGetVideoAnalysisResult: !!getVideoAnalysisResult
       });
-      showError('AI匹配视频功能未正确配置');
+      showError(t.scriptPanel.actions.aiMatchNotConfigured);
       return;
     }
 
@@ -827,7 +824,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     const segment = segments.find(s => s.id === segmentId);
     if (!segment) {
       logger.error('AI匹配视频失败', new Error('Segment not found'), { segmentId });
-      showError('找不到指定的脚本段落');
+      showError(t.scriptPanel.errors.segmentTextEmpty);
       return;
     }
 
@@ -835,7 +832,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     const scriptText = segment.sentences.map(s => s.text).join(' ');
     if (!scriptText.trim()) {
       logger.warn('AI匹配视频跳过', { segmentId, reason: 'empty_script_text' });
-      showError('脚本段落内容为空');
+      showError(t.scriptPanel.errors.segmentTextEmpty);
       return;
     }
 
@@ -1121,14 +1118,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   // 句子级TTS转换处理
   const handleConvertToSpeech = async (segment: ScriptSegment) => {
     if (convertingSegments.has(segment.id)) {
-      console.warn('[ScriptPanel] 该片段正在转换中，忽略重复请求', {
+      logger.warn('该片段正在转换中，忽略重复请求', {
         segmentId: segment.id
       });
       return;
     }
 
     try {
-      console.log('[ScriptPanel] 开始句子级语音转换', {
+      logger.info('开始句子级语音转换', {
         segmentId: segment.id,
         segmentTitle: segment.title,
         sentencesCount: segment.sentences.length,
@@ -1145,7 +1142,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       const hasValidSentences = segment.sentences && segment.sentences.length > 0 &&
         segment.sentences.some(sentence => sentence.text.trim());
       if (!hasNarration && !hasValidSentences) {
-        throw new Error('片段中没有有效的文本内容');
+        throw new Error(t.scriptPanel.errors.segmentTextEmpty);
       }
 
       // 模拟进度更新
@@ -1165,7 +1162,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         3 // 并发线程数
       );
 
-      console.log('[ScriptPanel] 发送句子级TTS请求', {
+      logger.info('发送句子级TTS请求', {
         segmentId: request.segment_id,
         sentencesCount: request.sentences.length,
         concurrentThreads: request.concurrent_threads
@@ -1194,7 +1191,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         const cleanAudioUrl = audioUrl.includes('/object/sign/') ? audioUrl : audioUrl.split('?')[0];
         const fileName = audioUrl.split('/').pop()?.split('?')[0] || `audio_${segment.id}_${Date.now()}.mp3`;
         
-        console.log('[ScriptPanel] 句子级语音转换成功，开始下载拼接音频到本地', {
+        logger.info('句子级语音转换成功，开始下载拼接音频到本地', {
           segmentId: segment.id,
           originalAudioUrl: audioUrl,
           cleanAudioUrl: cleanAudioUrl,
@@ -1209,14 +1206,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
         try {
           // 直接从存储服务URL下载拼接音频文件到本地
-          console.log('[ScriptPanel] 开始从存储服务下载拼接音频', {
+          logger.info('开始从存储服务下载拼接音频', {
             url: cleanAudioUrl,
             segmentId: segment.id
           });
           
           const fetchResponse = await fetch(cleanAudioUrl);
           if (!fetchResponse.ok) {
-            console.error('[ScriptPanel] 存储服务拼接音频下载失败', {
+            logger.error('存储服务拼接音频下载失败', {
               url: cleanAudioUrl,
               status: fetchResponse.status,
               statusText: fetchResponse.statusText,
@@ -1227,7 +1224,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           const audioBlob = await fetchResponse.blob();
           const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
 
-          console.log('[ScriptPanel] 拼接音频文件下载并存储成功', {
+          logger.info('拼接音频文件下载并存储成功', {
             segmentId: segment.id,
             fileName: fileName,
             localUrl: localUrl,
@@ -1252,7 +1249,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             segment_id: segment.id
           };
 
-          console.log('[ScriptPanel] 创建句子时间信息用于时间轴可视化', {
+          logger.info('创建句子时间信息用于时间轴可视化', {
             segmentId: segment.id,
             sentencesCount: sentenceTimingInfo.length,
             totalDuration: sentenceSegments.total_duration,
@@ -1269,7 +1266,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           const segmentNumber = getSegmentNumber(segment.id);
           const audioMaterial: MaterialItem = {
             id: `audio_${segment.id}_${Date.now()}`,
-            name: `段落${segmentNumber} - ${segment.title} - 语音`,
+            name: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segmentNumber))} - ${segment.title}${t.scriptPanel.segments.speechSuffix}`,
             type: 'audio',
             format: 'mp3',
             size: response.concatenated_file_size || audioBlob.size,
@@ -1277,7 +1274,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             url: localUrl, // 使用本地URL
             serverUrl: response.concatenated_audio_url, // 保存服务器URL，用于导出合成
             createdAt: new Date(),
-            description: `由段落${segmentNumber}"${segment.title}"的${response.successful_sentences}个句子并发转换并拼接生成的语音`,
+            description: t.scriptPanel.messages.speechConvertDescription
+              .replace('{index}', String(segmentNumber))
+              .replace('{title}', segment.title)
+              .replace('{count}', String(response.successful_sentences)),
             sentenceSegments: sentenceSegments, // 新增：句子段落信息，用于时间轴可视化
             metadata: {
               voice_type: selectedVoiceId,
@@ -1303,7 +1303,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           if (response.total_duration && onUpdateSegments) {
             const updatedSegments = segments.map(seg => {
               if (seg.id === segment.id) {
-                console.log('[ScriptPanel] 更新脚本段落音频时长', {
+                logger.info('更新脚本段落音频时长', {
                   segmentId: seg.id,
                   segmentTitle: seg.title,
                   oldDuration: seg.duration,
@@ -1320,7 +1320,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             });
             onUpdateSegments(updatedSegments);
             
-            console.log('[ScriptPanel] 脚本段落时长更新完成', {
+            logger.info('脚本段落时长更新完成', {
               segmentId: segment.id,
               updatedDuration: response.total_duration,
               totalSegments: updatedSegments.length,
@@ -1328,7 +1328,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             });
           }
 
-          console.log('[ScriptPanel] 句子级音频材料添加成功', {
+          logger.info('句子级音频材料添加成功', {
             materialId: audioMaterial.id,
             materialName: audioMaterial.name,
             materialSize: audioMaterial.size,
@@ -1341,20 +1341,24 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           });
 
           // 显示成功消息，包含时间信息
-          showSuccess(`语音转换完成！成功转换 ${response.successful_sentences}/${response.total_sentences} 个句子，总时长 ${response.total_duration?.toFixed(1)}秒`);
+          showSuccess(t.scriptPanel.messages.speechConvertComplete
+            .replace('{success}', String(response.successful_sentences))
+            .replace('{total}', String(response.total_sentences))
+            .replace('{duration}', response.total_duration?.toFixed(1) || '0')
+          );
 
         } catch (downloadError) {
-          console.error('[ScriptPanel] 拼接音频下载或存储失败', {
+          logger.error('拼接音频下载或存储失败', {
             segmentId: segment.id,
             fileName: fileName,
             error: downloadError instanceof Error ? downloadError.message : String(downloadError)
           });
-          throw new Error(`拼接音频下载失败: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
+          throw new Error(`${t.scriptPanel.errors.audioDownloadFailed}: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
         }
 
       } else {
-        const errorMsg = response.message || '句子级语音转换失败';
-        console.error('[ScriptPanel] 句子级语音转换失败', {
+        const errorMsg = response.message || t.scriptPanel.errors.speechConversionFailed;
+        logger.error('句子级语音转换失败', {
           segmentId: segment.id,
           success: response.success,
           message: response.message,
@@ -1366,14 +1370,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[ScriptPanel] 句子级语音转换失败', {
+      logger.error('句子级语音转换失败', {
         segmentId: segment.id,
         error: errorMessage,
         taskId
       });
 
       // 显示错误提示
-      showError(`句子级语音转换失败: ${errorMessage}`);
+      showError(t.scriptPanel.errors.speechConvertFailed.replace('{error}', errorMessage));
 
     } finally {
       // 清理状态
@@ -1426,11 +1430,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       onUpdateSegments(updatedSegments);
       
       logger.info('句子删除成功', { segmentId, sentenceId });
-      showSuccess('句子删除成功');
+      showSuccess(t.scriptPanel.messages.sentenceDeleted);
 
     } catch (error) {
       logger.error('删除句子失败', error as Error, { segmentId, sentenceId });
-      showError('删除句子失败');
+      showError(t.scriptPanel.errors.sentenceDeleteFailed);
     }
   }, [segments, onUpdateSegments, logger, showSuccess, showError]);
 
@@ -1446,7 +1450,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
       const newSentence: ScriptSentence = {
         id: `sentence-${Date.now()}`,
-        text: '请输入新的句子内容...'
+        text: t.scriptPanel.messages.newSentencePlaceholder
       };
 
       const updatedSegments = segments.map(segment => {
@@ -1462,7 +1466,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       onUpdateSegments(updatedSegments);
       
       logger.info('句子添加成功', { segmentId, newSentenceId: newSentence.id });
-      showSuccess('句子添加成功');
+      showSuccess(t.scriptPanel.messages.sentenceAdded);
 
       // 自动开始编辑新添加的句子
       setTimeout(() => {
@@ -1472,7 +1476,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     } catch (error) {
       logger.error('添加句子失败', error as Error, { segmentId });
-      showError('添加句子失败');
+      showError(t.scriptPanel.errors.sentenceAddFailed);
     }
   }, [segments, onUpdateSegments, logger, showSuccess, showError]);
 
@@ -1565,11 +1569,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
       // 显示完成提示
       if (failCount === 0) {
-        showSuccess(`批量语音转换完成！成功转换 ${successCount} 个片段`);
+        showSuccess(t.scriptPanel.errors.batchConversionComplete.replace('{success}', String(successCount)));
       } else if (successCount > 0) {
-        showSuccess(`批量语音转换完成！成功: ${successCount}/${segments.length} 个片段，失败: ${failCount} 个片段`);
+        showSuccess(t.scriptPanel.errors.batchConversionPartial.replace('{success}', String(successCount)).replace('{total}', String(segments.length)).replace('{failed}', String(failCount)));
       } else {
-        showError(`批量语音转换失败！所有 ${segments.length} 个片段都转换失败`);
+        showError(t.scriptPanel.errors.batchConversionFailed.replace('{total}', String(segments.length)));
       }
 
       logger.info('批量语音转换处理完成', {
@@ -1586,7 +1590,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         taskId
       });
 
-      showError(`批量语音转换失败: ${errorMessage}`);
+      showError(t.scriptPanel.errors.speechConvertFailed.replace('{error}', errorMessage));
 
     } finally {
       setIsBatchConverting(false);
@@ -1612,7 +1616,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     setConfirmationDialog({
       isOpen: true,
       title: t.scriptPanel.actions.deleteSegment,
-      message: `确定要删除段落"${segmentTitle}"吗？此操作不可撤销。`,
+      message: t.scriptPanel.messages.confirmDeleteSegment.replace('{title}', segmentTitle),
       type: 'danger',
       onConfirm: () => {
         logger.userAction('删除脚本段落', 'segmentEditor', {
@@ -1635,7 +1639,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           remainingSegments: updatedSegments.length
         });
 
-        showSuccess(`段落"${segmentTitle}"已删除`);
+        showSuccess(t.scriptPanel.messages.segmentDeleted.replace('{title}', segmentTitle));
         
         // 关闭对话框
         handleCloseConfirmationDialog();
@@ -1932,7 +1936,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {ttsProgress[segment.id] !== undefined && (
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-muted-foreground">转换进度</span>
+                  <span className="text-xs text-muted-foreground">{t.scriptPanel.progress.conversionProgress}</span>
                   <span className="text-xs text-muted-foreground">{ttsProgress[segment.id]}%</span>
                 </div>
                 <div className="w-full bg-accent rounded-full h-1.5">
@@ -1949,13 +1953,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               <div className="mb-3 p-2.5 bg-primary/5 border border-primary/20 rounded-md">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-medium text-primary">
-                    解说文案
+                    {t.scriptPanel.narration.label}
                   </span>
                   {editingNarrationSegmentId !== segment.id && (
                     <button
                       onClick={() => handleStartNarrationEdit(segment.id, segment.narrationText || '')}
                       className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
-                      title="编辑解说文案"
+                      title={t.scriptPanel.narration.editTooltip}
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1978,15 +1982,15 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                         onClick={handleSaveNarrationEdit}
                         className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
                       >
-                        保存
+                        {t.scriptPanel.editing.save}
                       </button>
                       <button
                         onClick={handleCancelNarrationEdit}
                         className="px-2 py-1 text-xs bg-muted-foreground text-primary-foreground rounded hover:bg-muted-foreground/80 transition-colors"
                       >
-                        取消
+                        {t.scriptPanel.editing.cancel}
                       </button>
-                      <span className="text-xs text-muted-foreground">Enter 保存, Esc 取消</span>
+                      <span className="text-xs text-muted-foreground">{t.scriptPanel.editing.saveHint}</span>
                     </div>
                   </div>
                 ) : (
@@ -2074,7 +2078,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                                     {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
                                   </span>
                                   <span className="text-xs text-muted-foreground">
-                                    时长: {sentenceTiming.duration.toFixed(1)}s
+                                    {t.scriptPanel.video.duration}: {sentenceTiming.duration.toFixed(1)}s
                                   </span>
                                 </div>
                               );
@@ -2140,10 +2144,10 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               <div className="mt-4 p-3 bg-muted rounded-md border border-border">
                 <div className="flex items-center justify-between mb-2">
                   <h5 className="text-xs font-medium text-muted-foreground flex items-center">
-                    关联视频
+                    {t.scriptPanel.video.associatedVideos}
                     {segment.videos.length > 1 && (
                       <span className="ml-1 text-xs text-primary bg-primary/10 px-1 py-0.5 rounded">
-                        多个
+                        {t.scriptPanel.video.multipleVideos}
                       </span>
                     )}
                   </h5>
@@ -2257,7 +2261,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                                 src={currentVideo.url} 
                                 type={currentVideo.format ? `video/${currentVideo.format}` : 'video/mp4'} 
                               />
-                              您的浏览器不支持视频播放。
+                              {t.scriptPanel.video.browserNotSupported}
                             </video>
                           )
                         ) : currentVideo.thumbnailUrl ? (
@@ -2291,7 +2295,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                                 <div className="flex flex-col items-center space-y-2">
                                   <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                  <div className="text-white text-xs">加载中...</div>
+                                  <div className="text-white text-xs">{t.scriptPanel.video.loading}</div>
                                 </div>
                               </div>
                             );
@@ -2304,8 +2308,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
                                     </svg>
                                   </div>
-                                  <div className="text-white text-sm font-medium">视频加载失败</div>
-                                  <div className="text-muted-foreground text-xs mt-1">请检查网络连接或视频URL</div>
+                                  <div className="text-white text-sm font-medium">{t.scriptPanel.video.loadingFailed}</div>
+                                  <div className="text-muted-foreground text-xs mt-1">{t.scriptPanel.video.checkNetwork}</div>
                                   <button 
                                     className="mt-2 px-3 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs rounded transition-colors"
                                     onClick={() => {
@@ -2323,7 +2327,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                                       }
                                     }}
                                   >
-                                    重试
+                                    {t.scriptPanel.video.retry}
                                   </button>
                                 </div>
                               </div>
@@ -2337,7 +2341,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       <div className="text-xs text-muted-foreground">
                         <div className="font-medium truncate">{currentVideo.name}</div>
                         <div className="text-muted-foreground mt-1">
-                          {currentVideo.duration && `${Math.ceil(currentVideo.duration)}秒`}
+                          {currentVideo.duration && `${Math.ceil(currentVideo.duration)}${t.scriptPanel.video.seconds}`}
                           {currentVideo.width && currentVideo.height && ` · ${currentVideo.width}x${currentVideo.height}`}
                         </div>
                       </div>
@@ -2401,8 +2405,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         title={confirmationDialog.title}
         message={confirmationDialog.message}
         type={confirmationDialog.type}
-        confirmText="删除"
-        cancelText="取消"
+        confirmText={t.scriptPanel.messages.confirmDelete}
+        cancelText={t.scriptPanel.messages.cancelDelete}
         onConfirm={confirmationDialog.onConfirm}
         onCancel={handleCloseConfirmationDialog}
       />

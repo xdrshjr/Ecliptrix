@@ -1076,6 +1076,10 @@ export interface Translations {
       aiMatchNotConfigured: string;
       noAvailableAnalyzedVideos: string;
     };
+    narration: {
+      label: string;
+      editTooltip: string;
+    };
     progress: {
       conversionProgress: string;
       progressStatus: string;
@@ -1100,6 +1104,10 @@ export interface Translations {
       browserNotSupported: string;
       seconds: string;
       duration: string;
+      loading: string;
+      checkNetwork: string;
+      retry: string;
+      multipleVideos: string;
     };
     errors: {
       speechConversionFailed: string;
@@ -1110,6 +1118,21 @@ export interface Translations {
       videoDurationInsufficient: string;
       audioFileNotFound: string;
       segmentTextEmpty: string;
+      sentenceDeleteFailed: string;
+      sentenceAddFailed: string;
+      speechConvertFailed: string;
+      subtitleRecognitionFailed: string;
+    };
+    messages: {
+      segmentDeleted: string;
+      sentenceDeleted: string;
+      sentenceAdded: string;
+      speechConvertComplete: string;
+      confirmDeleteSegment: string;
+      newSentencePlaceholder: string;
+      confirmDelete: string;
+      cancelDelete: string;
+      speechConvertDescription: string;
     };
     segments: {
       segmentPrefix: string;
@@ -3527,12 +3550,20 @@ export const translations: Record<string, Translations> = {
          clickGenerate: 'Click "Generate Script" button to generate script based on left content',
          scriptWillAppear: 'Text script will be displayed here',
        },
+       narration: {
+         label: 'Narration',
+         editTooltip: 'Edit Narration',
+       },
        video: {
          associatedVideos: 'Associated Videos',
          loadingFailed: 'Loading failed',
          browserNotSupported: 'Your browser does not support video playback.',
          seconds: 's',
          duration: 'Duration',
+         loading: 'Loading...',
+         checkNetwork: 'Check network connection or video URL',
+         retry: 'Retry',
+         multipleVideos: 'Multiple',
        },
        errors: {
          speechConversionFailed: 'Speech conversion failed',
@@ -3543,6 +3574,21 @@ export const translations: Record<string, Translations> = {
          videoDurationInsufficient: 'Video total duration ({videoDuration}s) needs to be greater than current audio duration ({audioDuration}s)',
          audioFileNotFound: 'No corresponding audio file found, please ensure speech conversion is completed',
          segmentTextEmpty: 'Segment text is empty',
+         sentenceDeleteFailed: 'Failed to delete sentence',
+         sentenceAddFailed: 'Failed to add sentence',
+         speechConvertFailed: 'Speech conversion failed: {error}',
+         subtitleRecognitionFailed: 'Subtitle recognition failed',
+       },
+       messages: {
+         segmentDeleted: 'Segment "{title}" has been deleted',
+         sentenceDeleted: 'Sentence deleted',
+         sentenceAdded: 'Sentence added',
+         speechConvertComplete: 'Speech conversion complete! Successfully converted {success}/{total} sentences, total duration {duration}s',
+         confirmDeleteSegment: 'Are you sure you want to delete segment "{title}"? This action cannot be undone.',
+         newSentencePlaceholder: 'Enter new sentence content...',
+         confirmDelete: 'Delete',
+         cancelDelete: 'Cancel',
+         speechConvertDescription: 'Speech generated from Segment{index} "{title}" — {count} sentences converted and concatenated',
        },
        segments: {
          segmentPrefix: 'Segment{index}',
@@ -5979,12 +6025,20 @@ export const translations: Record<string, Translations> = {
          clickGenerate: '点击"生成脚本"按钮根据左侧内容生成脚本',
          scriptWillAppear: '文本脚本将显示在这里',
        },
+       narration: {
+         label: '解说文案',
+         editTooltip: '编辑解说文案',
+       },
        video: {
          associatedVideos: '关联视频',
          loadingFailed: '加载失败',
          browserNotSupported: '您的浏览器不支持视频播放。',
          seconds: 's',
          duration: '时长',
+         loading: '加载中...',
+         checkNetwork: '请检查网络连接或视频URL',
+         retry: '重试',
+         multipleVideos: '多个',
        },
        errors: {
          speechConversionFailed: '语音转换失败',
@@ -5995,6 +6049,21 @@ export const translations: Record<string, Translations> = {
          videoDurationInsufficient: '视频总时长 ({videoDuration}秒) 需要大于当前音频时长 ({audioDuration}秒)',
          audioFileNotFound: '未找到对应的音频文件，请确保已完成语音转换',
          segmentTextEmpty: '片段文本为空',
+         sentenceDeleteFailed: '删除句子失败',
+         sentenceAddFailed: '添加句子失败',
+         speechConvertFailed: '语音转换失败: {error}',
+         subtitleRecognitionFailed: '字幕识别失败',
+       },
+       messages: {
+         segmentDeleted: '段落"{title}"已删除',
+         sentenceDeleted: '句子删除成功',
+         sentenceAdded: '句子添加成功',
+         speechConvertComplete: '语音转换完成！成功转换 {success}/{total} 个句子，总时长 {duration}秒',
+         confirmDeleteSegment: '确定要删除段落"{title}"吗？此操作不可撤销。',
+         newSentencePlaceholder: '请输入新的句子内容...',
+         confirmDelete: '删除',
+         cancelDelete: '取消',
+         speechConvertDescription: '由段落{index}"{title}"的{count}个句子并发转换并拼接生成的语音',
        },
        segments: {
          segmentPrefix: '段落{index}',
