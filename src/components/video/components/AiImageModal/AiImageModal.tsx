@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { ArkImageGenerateParams, ArkImageMode } from '@/lib/api/arkImage';
 import { StoryboardGenerateParams, StoryboardPack, MentionedImage, ScriptMessage } from '@/types';
 import BasicGenerationTab, { BasicGenerationState } from './BasicGenerationTab';
@@ -17,16 +18,19 @@ interface AiImageModalProps {
 
 type TabKey = ArkImageMode | 'storyboard';
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'basic', label: '基础生成' },
-  { key: 'character', label: '人物建模' },
-  { key: 'scene', label: '场景建模' },
-  { key: 'storyboard', label: '分镜生成' },
-];
+const TAB_KEYS: TabKey[] = ['basic', 'character', 'scene', 'storyboard'];
 
 const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm, onStoryboardGenerate }) => {
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabKey>('basic');
   const [submitted, setSubmitted] = useState(false);
+
+  const TAB_LABELS: Record<TabKey, string> = {
+    basic: t.aiImageModal.tabBasic,
+    character: t.aiImageModal.tabCharacter,
+    scene: t.aiImageModal.tabScene,
+    storyboard: t.aiImageModal.tabStoryboard,
+  };
 
   const [basicState, setBasicState] = useState<BasicGenerationState>({
     prompt: '',
@@ -101,7 +105,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     opts?: { frameScripts?: string[]; scriptHistory?: ScriptMessage[]; locale?: 'zh' | 'en' },
   ): Promise<StoryboardPack> => {
     if (!onStoryboardGenerate) {
-      throw new Error('分镜生成功能未配置');
+      throw new Error(t.storyboardTab.scriptGenerateFailed);
     }
     const { reference_images, mentioned_images, reference_image } = buildMultiImageParams(tabState.referenceImages, tabState.prompt);
     return onStoryboardGenerate({
@@ -197,8 +201,8 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
         <div className="px-8 py-6 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-foreground">AI 图像生成</h2>
-              <p className="text-sm text-muted-foreground mt-1">Seedream · 字节跳动 Ark 平台</p>
+              <h2 className="text-2xl font-semibold text-foreground">{t.aiImageModal.title}</h2>
+              <p className="text-sm text-muted-foreground mt-1">{t.aiImageModal.subtitle}</p>
             </div>
             <button
               onClick={handleClose}
@@ -213,17 +217,17 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
 
           {/* Tab Bar */}
           <div className="flex gap-1 mt-4 bg-background/50 rounded-md p-1">
-            {TABS.map((tab) => (
+            {TAB_KEYS.map((key) => (
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                key={key}
+                onClick={() => setActiveTab(key)}
                 className={`flex-1 py-2 text-sm font-medium rounded transition-colors ${
-                  activeTab === tab.key
+                  activeTab === key
                     ? 'bg-card text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {tab.label}
+                {TAB_LABELS[key]}
               </button>
             ))}
           </div>
@@ -256,14 +260,14 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
               onClick={handleClose}
               className="px-6 py-2.5 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
             >
-              取消
+              {t.aiImageModal.cancelButton}
             </button>
             <button
               onClick={handleSubmit}
               disabled={!getCurrentPrompt().trim() || submitted}
               className="px-6 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {submitted ? '生成中...' : '开始生成'}
+              {submitted ? t.aiImageModal.generatingButton : t.aiImageModal.generateButton}
             </button>
           </div>
         )}

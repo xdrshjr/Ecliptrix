@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { PexelsVideoSearchNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Pexels Video Search Node Component
@@ -13,6 +14,7 @@ import { PexelsVideoSearchNodeConfig } from '@/types';
  */
 const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as PexelsVideoSearchNodeConfig | undefined;
   const isConfigured = !!(config?.keywords && config.keywords.trim().length > 0);
@@ -41,14 +43,14 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Keywords',
-        outputPortLabel: 'Videos',
+        inputPortLabel: t.workflowNodes.ports.keywords,
+        outputPortLabel: t.workflowNodes.ports.videos,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div>
-                <div className="text-muted-foreground font-medium mb-0.5">Keywords:</div>
+                <div className="text-muted-foreground font-medium mb-0.5">{t.workflowNodes.status.keywords}:</div>
                 <div className="text-foreground text-xs bg-indigo-50/50 p-1.5 rounded border border-indigo-200 max-h-16 overflow-y-auto">
                   {displayKeywords.length > 60 
                     ? `${displayKeywords.substring(0, 60)}...` 
@@ -56,7 +58,7 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-medium">Count:</span>
+                <span className="text-muted-foreground font-medium">{t.workflowNodes.status.count}:</span>
                 <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-semibold">
                   {videoCount}
                 </span>
@@ -64,8 +66,8 @@ const PexelsVideoSearchNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-muted-foreground italic">Not configured</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.status.notConfigured}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.status.doubleClickToConfigure}</div>
             </div>
           )
         ),

@@ -20,11 +20,13 @@ function useTheme() {
       html.classList.replace('dark', 'light');
       html.style.colorScheme = 'light';
       localStorage.setItem('ecliptrix-theme', 'light');
+      localStorage.setItem('ecliptrix-theme-pref', 'light');
       setIsDark(false);
     } else {
       html.classList.replace('light', 'dark');
       html.style.colorScheme = 'dark';
       localStorage.setItem('ecliptrix-theme', 'dark');
+      localStorage.setItem('ecliptrix-theme-pref', 'dark');
       setIsDark(true);
     }
   }, []);
@@ -36,10 +38,11 @@ interface HeaderProps {
   onLoginClick: () => void;
   onProfileClick: () => void;
   onSettingsClick?: () => void;
+  onAccountSettingsClick?: () => void;
   onHomeClick?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSettingsClick, onHomeClick }) => {
+const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSettingsClick, onAccountSettingsClick, onHomeClick }) => {
   const { locale, setLocale, t } = useLocale();
   const { user, isAuthenticated, logout, canManageUsers } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -84,16 +87,13 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
   };
 
   const handleLogoClick = () => {
-    console.log('[Header] Logo clicked, returning to home:', {
-      timestamp: new Date().toISOString()
-    });
     if (onHomeClick) {
       onHomeClick();
     }
   };
 
   return (
-    <header className="h-14 bg-card border-b border-border sticky top-0 z-50">
+    <header className="h-14 bg-card border-b border-border sticky top-0 z-[10000]">
       <div className="h-full px-6 flex items-center justify-between">
         {/* Logo and Brand - Clickable to return home */}
         <div 
@@ -143,7 +143,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
             
             {/* Language Dropdown */}
             {isLanguageDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-32 bg-popover rounded-md shadow-lg border border-border py-1 z-50">
+              <div className="absolute right-0 mt-2 w-32 bg-popover rounded-md shadow-lg border border-border py-1 z-[10001]">
                 <button
                   onClick={() => handleLanguageChange('en')}
                   className={`w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors flex items-center space-x-2 ${
@@ -212,7 +212,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
 
                 {/* User Dropdown */}
                 {isUserDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-popover rounded-md shadow-lg border border-border py-1 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-popover rounded-md shadow-lg border border-border py-1 z-[10001]">
                     <div className="px-3 py-2 border-b border-border">
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium text-foreground">{user?.username}</p>
@@ -235,7 +235,7 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
                     <button
                       onClick={() => {
                         setIsUserDropdownOpen(false);
-                        onProfileClick();
+                        onAccountSettingsClick?.();
                       }}
                       className="w-full px-3 py-2 text-left text-sm text-popover-foreground hover:bg-accent transition-colors flex items-center space-x-2"
                     >

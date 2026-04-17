@@ -8,6 +8,7 @@ import {
   ScriptShot,
   ScriptMessage,
 } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import MentionedImageInput from './MentionedImageInput';
 import GridSizeSelector from './GridSizeSelector';
 import StoryboardScriptReview from './StoryboardScriptReview';
@@ -18,12 +19,12 @@ import {
   reviseStoryboardScript,
 } from '@/lib/api/storyboard';
 
-const ASPECT_RATIO_PRESETS: { value: StoryboardAspectRatio; label: string; icon: 'square' | 'landscape' | 'portrait' }[] = [
-  { value: '1:1', label: '1:1 方形', icon: 'square' },
-  { value: '16:9', label: '16:9 横屏', icon: 'landscape' },
-  { value: '9:16', label: '9:16 竖屏', icon: 'portrait' },
-  { value: '4:3', label: '4:3 横屏', icon: 'landscape' },
-  { value: '3:4', label: '3:4 竖屏', icon: 'portrait' },
+const ASPECT_RATIO_VALUES: { value: StoryboardAspectRatio; icon: 'square' | 'landscape' | 'portrait' }[] = [
+  { value: '1:1', icon: 'square' },
+  { value: '16:9', icon: 'landscape' },
+  { value: '9:16', icon: 'portrait' },
+  { value: '4:3', icon: 'landscape' },
+  { value: '3:4', icon: 'portrait' },
 ];
 
 export interface StoryboardTabState {
@@ -74,6 +75,16 @@ const ConfigSection: React.FC<ConfigSectionProps> = ({
   disabled,
   compact,
 }) => {
+  const { t } = useLocale();
+
+  const ASPECT_RATIO_LABELS: Record<StoryboardAspectRatio, string> = {
+    '1:1': t.storyboardTab.aspectRatio11,
+    '16:9': t.storyboardTab.aspectRatio169,
+    '9:16': t.storyboardTab.aspectRatio916,
+    '4:3': t.storyboardTab.aspectRatio43,
+    '3:4': t.storyboardTab.aspectRatio34,
+  };
+
   return (
     <div className={compact ? 'space-y-5' : 'space-y-6'}>
       <GridSizeSelector
@@ -83,9 +94,9 @@ const ConfigSection: React.FC<ConfigSectionProps> = ({
       />
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-2">画面比例</label>
+        <label className="block text-sm font-medium text-foreground mb-2">{t.storyboardTab.aspectRatioLabel}</label>
         <div className="flex flex-wrap gap-2">
-          {ASPECT_RATIO_PRESETS.map((preset) => {
+          {ASPECT_RATIO_VALUES.map((preset) => {
             const active = aspectRatio === preset.value;
             return (
               <button
@@ -100,7 +111,7 @@ const ConfigSection: React.FC<ConfigSectionProps> = ({
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <AspectRatioIcon variant={preset.icon} active={active} />
-                {preset.label}
+                {ASPECT_RATIO_LABELS[preset.value]}
               </button>
             );
           })}
@@ -109,14 +120,14 @@ const ConfigSection: React.FC<ConfigSectionProps> = ({
 
       <div>
         <label className="block text-sm font-medium text-foreground mb-2">
-          提示词 <span className="text-destructive">*</span>
+          {t.storyboardTab.promptLabel} <span className="text-destructive">*</span>
         </label>
         <MentionedImageInput
           value={prompt}
           onValueChange={(val) => onChange((prev) => ({ ...prev, prompt: val.slice(0, MAX_PROMPT_LENGTH) }))}
           referenceImages={referenceImages}
           onReferenceImagesChange={(imgs) => onChange((prev) => ({ ...prev, referenceImages: imgs }))}
-          placeholder="描述您想要生成的分镜内容... 输入 @ 关联参考图"
+          placeholder={t.storyboardTab.promptPlaceholder}
           maxLength={MAX_PROMPT_LENGTH}
         />
       </div>
@@ -125,6 +136,7 @@ const ConfigSection: React.FC<ConfigSectionProps> = ({
 };
 
 const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenerate }) => {
+  const { t } = useLocale();
   const { prompt, frameCount, aspectRatio, referenceImages } = state;
 
   const [step, setStep] = useState<WizardStep>('input');
@@ -170,12 +182,12 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
       setMessages([]);
       setStep('script');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '剧本生成失败';
+      const msg = err instanceof Error ? err.message : t.storyboardTab.scriptGenerateFailed;
       setScriptError(msg);
     } finally {
       setIsScriptLoading(false);
     }
-  }, [canStartScript, prompt, frameCount, aspectRatio, locale]);
+  }, [canStartScript, prompt, frameCount, aspectRatio, locale, t]);
 
   const handleSendChat = useCallback(async () => {
     const text = chatInput.trim();
@@ -197,28 +209,28 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
       setShots(revised);
       setMessages([
         ...nextHistory,
-        { role: 'assistant', content: `已更新剧本（${revised.length} 幕）。` },
+        { role: 'assistant', content: t.storyboardTab.scriptUpdated.replace('{count}', String(revised.length)) },
       ]);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '剧本修改失败';
+      const msg = err instanceof Error ? err.message : t.storyboardTab.scriptReviseFailed;
       setScriptError(msg);
     } finally {
       setIsScriptLoading(false);
     }
-  }, [chatInput, isScriptLoading, messages, shots, frameCount, aspectRatio, locale]);
+  }, [chatInput, isScriptLoading, messages, shots, frameCount, aspectRatio, locale, t]);
 
   const handleEditShot = useCallback((index: number, script: string) => {
     setShots((prev) => prev.map((s) => (s.index === index ? { ...s, script } : s)));
   }, []);
 
   const handleBackToInput = useCallback(() => {
-    const ok = window.confirm('返回修改输入将清空当前剧本草稿，是否继续？');
+    const ok = window.confirm(t.storyboardTab.backConfirm);
     if (!ok) return;
     setShots([]);
     setMessages([]);
     setScriptError('');
     setStep('input');
-  }, []);
+  }, [t]);
 
   const handleConfirmAndGenerate = useCallback(async () => {
     if (!canGenerateImages) return;
@@ -238,11 +250,11 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
       setResultPack(pack);
       setStep('success');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '分镜生成失败，请重试';
+      const msg = err instanceof Error ? err.message : t.storyboardTab.generateFailed;
       setErrorMessage(msg);
       setStep('error');
     }
-  }, [canGenerateImages, shots, state, messages, locale, onGenerate]);
+  }, [canGenerateImages, shots, state, messages, locale, onGenerate, t]);
 
   // "Skip script" advanced fallback preserves the old one-step flow.
   const handleSkipScript = useCallback(async () => {
@@ -254,11 +266,11 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
       setResultPack(pack);
       setStep('success');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '分镜生成失败，请重试';
+      const msg = err instanceof Error ? err.message : t.storyboardTab.generateFailed;
       setErrorMessage(msg);
       setStep('error');
     }
-  }, [onGenerate, state]);
+  }, [onGenerate, state, t]);
 
   const inputsDisabled =
     step === 'script' || step === 'generating' || isScriptLoading;
@@ -270,8 +282,8 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
         {/* Left column: config */}
         <div className="flex flex-col min-h-0 flex-1 md:flex-none md:h-full overflow-hidden">
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-border shrink-0">
-            <h3 className="text-sm font-semibold text-foreground">分镜设置</h3>
-            <span className="text-xs text-muted-foreground">已锁定</span>
+            <h3 className="text-sm font-semibold text-foreground">{t.storyboardTab.settingsTitle}</h3>
+            <span className="text-xs text-muted-foreground">{t.storyboardTab.settingsLocked}</span>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto pl-2 pr-1">
             <ConfigSection
@@ -329,20 +341,20 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
                 disabled={!canStartScript}
                 className="w-full py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isScriptLoading ? '正在生成剧本...' : '下一步：生成分镜剧本'}
+                {isScriptLoading ? t.storyboardTab.generatingScript : t.storyboardTab.nextStepGenerate}
               </button>
               <p className="text-xs text-muted-foreground text-center">
-                将先生成 {frameCount} 幕剧本供确认，画面比例 {aspectRatio}（语言：{locale === 'zh' ? '中文' : 'English'}）
+                {t.storyboardTab.scriptInfo.replace('{count}', String(frameCount)).replace('{ratio}', aspectRatio).replace('{lang}', locale === 'zh' ? '中文' : 'English')}
               </p>
               <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer hover:text-foreground">高级选项</summary>
+                <summary className="cursor-pointer hover:text-foreground">{t.storyboardTab.advancedOptions}</summary>
                 <button
                   type="button"
                   onClick={handleSkipScript}
                   disabled={!prompt.trim() || inputsDisabled}
                   className="mt-2 w-full py-2 text-xs text-foreground bg-secondary border border-border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  跳过剧本，直接生成分镜（旧流程）
+                  {t.storyboardTab.skipScript}
                 </button>
               </details>
               {scriptError && (
@@ -355,8 +367,8 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
         {step === 'generating' && (
           <div className="flex flex-col items-center justify-center gap-3 h-full min-h-[120px]">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground">正在生成 {frameCount} 格分镜...</p>
-            <p className="text-xs text-muted-foreground">AI 正在根据剧本绘制并自动裁剪</p>
+            <p className="text-sm text-muted-foreground">{t.storyboardTab.generatingFrames.replace('{count}', String(frameCount))}</p>
+            <p className="text-xs text-muted-foreground">{t.storyboardTab.generatingFramesDesc}</p>
           </div>
         )}
 
@@ -366,18 +378,18 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
               <div className="flex items-start gap-3">
                 <img
                   src={resultPack.originalImageUrl}
-                  alt="分镜大图"
+                  alt={t.storyboardTab.storyboardImageAlt}
                   className="w-20 h-20 rounded-md border border-border object-cover flex-shrink-0"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    已裁剪为 {resultPack.frameCount} 张分镜，并绑定剧本
+                    {t.storyboardTab.croppedFrames.replace('{count}', String(resultPack.frameCount))}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1 truncate">
                     {resultPack.prompt}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    宫格: {resultPack.gridSize}
+                    {t.storyboardTab.gridLabel} {resultPack.gridSize}
                   </p>
                 </div>
               </div>
@@ -385,7 +397,7 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
                 onClick={resetAll}
                 className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
               >
-                继续生成新分镜
+                {t.storyboardTab.generateNew}
               </button>
             </div>
           </div>
@@ -399,7 +411,7 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
                 onClick={resetAll}
                 className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
               >
-                重试
+                {t.storyboardTab.retryButton}
               </button>
             </div>
           </div>

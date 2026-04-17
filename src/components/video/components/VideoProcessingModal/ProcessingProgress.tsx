@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { http, ApiError } from '@/lib/api/http-client';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // ---- Types ----
 
@@ -28,11 +29,11 @@ interface ProcessingProgressProps {
 
 // ---- Helpers ----
 
-function formatDuration(seconds: number): string {
+function formatDuration(seconds: number, minsLabel: string, secsLabel: string): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
-  if (mins > 0) return `${mins}分${secs}秒`;
-  return `${secs}秒`;
+  if (mins > 0) return `${mins}${minsLabel}${secs}${secsLabel}`;
+  return `${secs}${secsLabel}`;
 }
 
 function formatTime(seconds: number): string {
@@ -56,9 +57,10 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
   onCancel,
   isVisible = true,
 }) => {
+  const { t } = useLocale();
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending');
-  const [stageMessage, setStageMessage] = useState('准备中...');
+  const [stageMessage, setStageMessage] = useState(t.videoProcessing.progress.preparing);
   const [result, setResult] = useState<SilenceRemoveResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState(false);
@@ -98,13 +100,13 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
         json = await http.get<any>(`/api/silence/status/${taskId}`);
       } catch (httpError) {
         if (httpError instanceof ApiError) {
-          throw new Error(httpError.message || `查询进度失败 (${httpError.status})`);
+          throw new Error(httpError.message || t.videoProcessing.errors.queryFailed.replace('{status}', String(httpError.status)));
         }
         throw httpError;
       }
 
       if (!json.success) {
-        throw new Error(json.message || `查询进度失败`);
+        throw new Error(json.message || t.videoProcessing.errors.queryFailedShort);
       }
 
       const data = json.data;
@@ -113,7 +115,7 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
 
       setProgress(data.progress ?? 0);
       setStatus(data.status);
-      setStageMessage(data.stage_message || '处理中...');
+      setStageMessage(data.stage_message || t.videoProcessing.progress.processing);
 
       if (data.status === 'completed' && data.result && !hasCompletedRef.current) {
         hasCompletedRef.current = true;
@@ -122,7 +124,7 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
         onCompleteRef.current(data.result);
       } else if (data.status === 'failed') {
         clearPolling();
-        const errMsg = data.error || '处理失败';
+        const errMsg = data.error || t.videoProcessing.progress.failed;
         setErrorMessage(errMsg);
         onErrorRef.current(errMsg);
       }
@@ -133,7 +135,7 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
         clearPolling();
       }
     }
-  }, [taskId, clearPolling]);
+  }, [taskId, clearPolling, t]);
 
   // Start polling on mount
   useEffect(() => {
@@ -208,14 +210,14 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-1">处理完成</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-1">{t.videoProcessing.progress.completed}</h3>
         <p className="text-sm text-muted-foreground mb-6">{videoName}</p>
 
         {/* Stats card */}
         <div className="w-full max-w-sm bg-muted/50 rounded-lg border border-border p-4 space-y-3 mb-6">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">原时长</span>
-            <span className="font-medium text-foreground">{formatDuration(result.original_duration)}</span>
+            <span className="text-muted-foreground">{t.videoProcessing.stats.originalDuration}</span>
+            <span className="font-medium text-foreground">{formatDuration(result.original_duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}</span>
           </div>
           <div className="flex items-center justify-center">
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,18 +225,18 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
             </svg>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">新时长</span>
-            <span className="font-medium text-green-600 dark:text-green-400">{formatDuration(result.new_duration)}</span>
+            <span className="text-muted-foreground">{t.videoProcessing.stats.newDuration}</span>
+            <span className="font-medium text-green-600 dark:text-green-400">{formatDuration(result.new_duration, t.videoProcessing.duration.minutes, t.videoProcessing.duration.seconds)}</span>
           </div>
           <div className="border-t border-border pt-3 space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">移除静音段</span>
-              <span className="font-medium text-foreground">{result.removed_count} 段</span>
+              <span className="text-muted-foreground">{t.videoProcessing.stats.removedSegments}</span>
+              <span className="font-medium text-foreground">{result.removed_count} {t.videoProcessing.stats.segments}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">节省时间</span>
+              <span className="text-muted-foreground">{t.videoProcessing.stats.savedTime}</span>
               <span className="font-medium text-green-600 dark:text-green-400">
-                {result.time_saved.toFixed(1)}秒 ({savingPct}%)
+                {result.time_saved.toFixed(1)}{t.videoProcessing.duration.seconds} ({savingPct}%)
               </span>
             </div>
           </div>
@@ -254,8 +256,8 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-1">处理失败</h3>
-        <p className="text-sm text-destructive mb-4">{errorMessage || '未知错误'}</p>
+        <h3 className="text-lg font-semibold text-foreground mb-1">{t.videoProcessing.progress.failed}</h3>
+        <p className="text-sm text-destructive mb-4">{errorMessage || t.videoProcessing.errors.unknownError}</p>
       </div>
     );
   }
@@ -269,14 +271,14 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-1">网络异常</h3>
-        <p className="text-sm text-muted-foreground mb-4">无法连接服务器，请检查网络后重试</p>
+        <h3 className="text-lg font-semibold text-foreground mb-1">{t.videoProcessing.progress.networkError}</h3>
+        <p className="text-sm text-muted-foreground mb-4">{t.videoProcessing.progress.networkErrorMsg}</p>
         <button
           type="button"
           onClick={handleRetry}
           className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          重试
+          {t.videoProcessing.buttons.retry}
         </button>
       </div>
     );
@@ -291,9 +293,9 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-1">处理超时</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-1">{t.videoProcessing.progress.timeout}</h3>
         <p className="text-sm text-muted-foreground mb-4">
-          已等待超过30分钟，后端任务可能仍在运行。请稍后检查素材面板。
+          {t.videoProcessing.progress.timeoutMsg}
         </p>
       </div>
     );
@@ -326,7 +328,7 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
       {/* Estimated remaining time */}
       {estimatedRemaining > 0 && progress > 5 && (
         <p className="text-xs text-muted-foreground mb-6">
-          预计剩余 {formatTime(estimatedRemaining)}
+          {t.videoProcessing.progress.estimatedRemaining} {formatTime(estimatedRemaining)}
         </p>
       )}
 
@@ -340,14 +342,14 @@ const ProcessingProgress: React.FC<ProcessingProgressProps> = ({
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
           </svg>
-          最小化
+          {t.videoProcessing.buttons.minimize}
         </button>
         <button
           type="button"
           onClick={handleCancel}
           className="px-3 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
-          取消
+          {t.videoProcessing.buttons.cancel}
         </button>
       </div>
     </div>

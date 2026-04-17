@@ -11,6 +11,8 @@ export interface Translations {
     operational: string;
     close: string;
     cancel: string;
+    confirm: string;
+    underDevelopment: string;
   };
   header: {
     brandSubtitle: string;
@@ -20,6 +22,20 @@ export interface Translations {
     returnToHomepage: string;
     switchToLightMode: string;
     switchToDarkMode: string;
+  };
+  landing: {
+    description: string;
+    heroDescription: string;
+    startCreating: string;
+    loading: string;
+    exploreWorkflows: string;
+    videoEditingDesc: string;
+    workflowDesc: string;
+    aiChatDesc: string;
+    brainstormingDesc: string;
+    aiModels: string;
+    workflowTemplates: string;
+    creativePossibilities: string;
   };
   auth: {
     login: string;
@@ -34,6 +50,7 @@ export interface Translations {
     loginButton: string;
     registerButton: string;
     welcomeBack: string;
+    welcomeBackMessage: string;
     welcomeTitle: string;
     welcomeSubtitle: string;
     loginSuccess: string;
@@ -84,6 +101,7 @@ export interface Translations {
     saveSettings: string;
     settingsSaveSuccess: string;
     settingsSaveError: string;
+    autoSaveNote: string;
   };
   adminSettings: {
     title: string;
@@ -173,6 +191,8 @@ export interface Translations {
     modelUsingDb: string;
     modelDomestic: string;
     modelInternational: string;
+    authRequiredError: string;
+    sessionExpiredError: string;
     modelResetToDefault: string;
     modelParameters: string;
     modelSelectProvider: string;
@@ -490,6 +510,116 @@ export interface Translations {
     brainstorming: string;
     aiChat: string;
   };
+  workflowInterface: {
+    chatInterfaceTab: string;
+    workflowInterfaceTab: string;
+    sidebar: {
+      heading: string;
+      addNew: string;
+      subtitle: string;
+      emptyState: string;
+      editDetails: string;
+      confirmDelete: string;
+      deleteWorkflow: string;
+      workflowCount: string;
+      active: string;
+    };
+    canvas: {
+      contextMenu: {
+        addStartNode: string;
+        addEndNode: string;
+        addChatLLM: string;
+        addTextInput: string;
+        addPexelsVideoSearch: string;
+        addTavilySearch: string;
+        addVolcanoTTS: string;
+        addToArray: string;
+        addResultsCombine: string;
+        addAIVideoGenerate: string;
+        addVideoExport: string;
+      };
+      nodeDefaults: {
+        start: string;
+        end: string;
+        chatLLM: string;
+        textInput: string;
+        pexelsSearch: string;
+        tavilySearch: string;
+        volcanoTTS: string;
+        toArray: string;
+        resultsCombine: string;
+        aiVideoGenerate: string;
+        videoExport: string;
+      };
+      emptyState: {
+        title: string;
+        description: string;
+      };
+      toolbar: {
+        zoomOut: string;
+        zoomIn: string;
+        panMode: string;
+        exitPanMode: string;
+        resetView: string;
+      };
+      infoBar: {
+        nodes: string;
+        connections: string;
+        nodeSelected: string;
+        connectionSelected: string;
+      };
+    };
+    editor: {
+      save: string;
+      saving: string;
+      run: string;
+      stop: string;
+      loading: string;
+      noWorkflowSelected: string;
+      selectWorkflowPrompt: string;
+      description: string;
+      viewDescription: string;
+    };
+    notifications: {
+      loadedWorkflows: string;
+      failedToLoad: string;
+      pleaseLoginToCreate: string;
+      newWorkflowDefaultName: string;
+      workflowCreated: string;
+      workflowCreatedSaveFailed: string;
+      pleaseLoginToRename: string;
+      workflowRenamed: string;
+      workflowRenamedSaveFailed: string;
+      pleaseLoginToSaveChanges: string;
+      workflowNotFound: string;
+      workflowUpdated: string;
+      workflowUpdatedSaveFailed: string;
+      pleaseLoginToDelete: string;
+      cannotDeleteLast: string;
+      workflowDeleted: string;
+      failedToDelete: string;
+      pleaseLoginToSave: string;
+      noActiveWorkflow: string;
+      workflowSaved: string;
+      workflowSaveFailed: string;
+    };
+    logPanel: {
+      title: string;
+      collapse: string;
+      expand: string;
+      running: string;
+      current: string;
+      noLogs: string;
+      clickRunToStart: string;
+      input: string;
+      output: string;
+      viewDetails: string;
+      totalLogs: string;
+      errors: string;
+      warnings: string;
+      success: string;
+    };
+  };
   welcome: {
     title: string;
     subtitle: string;
@@ -571,6 +701,9 @@ export interface Translations {
       dropAudioHere: string;
       dropSubtitleHere: string;
       dropToTrack: string;
+      copyOf: string;
+      noTracks: string;
+      noTracksDescription: string;
     };
     messages: {
       noAudioItems: string;
@@ -794,6 +927,35 @@ export interface Translations {
     confirmAddButton: string;
     validationErrorTitle: string;
     validationErrorDesc: string;
+    officialLibrary: string;
+    youtubeLibrary: string;
+    youtubeSearchPlaceholder: string;
+    durationLabel: string;
+    durationUnder1: string;
+    durationUnder3: string;
+    durationUnder5: string;
+    durationUnder10: string;
+    durationCustom: string;
+    durationMinPlaceholder: string;
+    durationMaxPlaceholder: string;
+    seconds: string;
+    videoPreview: string;
+    channel: string;
+    searchResults: string;
+    resultsInfo: string;
+    pageInfo: string;
+    searchingLibrary: string;
+    startSearchLibrary: string;
+    searchHint: string;
+    added: string;
+    addToComposition: string;
+    prevPage: string;
+    nextPage: string;
+    noPreview: string;
+    itemsUnit: string;
+    noSelectionHint: string;
+    validationErrorHint: string;
+    views: string;
   };
   videoPlayerPanel: {
     aspectRatios: {
@@ -861,6 +1023,25 @@ export interface Translations {
   videoExport: {
     noContentToExport: string;
     noContentToExportDesc: string;
+    noContentToExportFull: string;
+    videoTrackTooShort: string;
+    videoTrackDuration: string;
+    audioTrackDuration: string;
+    needToAdd: string;
+    exportCompletedButDownloadFailed: string;
+    exportTimeout: string;
+    exportFailed: string;
+    exportFailedWithError: string;
+    failedVideos: string;
+    recoverySuggestions: string;
+  };
+  videoSearch: {
+    enterKeyword: string;
+    searchFailed: string;
+    networkError: string;
+    selectVideoFirst: string;
+    selectYoutubeVideoFirst: string;
+    videoDurationValidationFailed: string;
   };
   scriptPanel: {
     tabs: {
@@ -895,6 +1076,10 @@ export interface Translations {
       aiMatchNotConfigured: string;
       noAvailableAnalyzedVideos: string;
     };
+    narration: {
+      label: string;
+      editTooltip: string;
+    };
     progress: {
       conversionProgress: string;
       progressStatus: string;
@@ -919,6 +1104,10 @@ export interface Translations {
       browserNotSupported: string;
       seconds: string;
       duration: string;
+      loading: string;
+      checkNetwork: string;
+      retry: string;
+      multipleVideos: string;
     };
     errors: {
       speechConversionFailed: string;
@@ -929,6 +1118,21 @@ export interface Translations {
       videoDurationInsufficient: string;
       audioFileNotFound: string;
       segmentTextEmpty: string;
+      sentenceDeleteFailed: string;
+      sentenceAddFailed: string;
+      speechConvertFailed: string;
+      subtitleRecognitionFailed: string;
+    };
+    messages: {
+      segmentDeleted: string;
+      sentenceDeleted: string;
+      sentenceAdded: string;
+      speechConvertComplete: string;
+      confirmDeleteSegment: string;
+      newSentencePlaceholder: string;
+      confirmDelete: string;
+      cancelDelete: string;
+      speechConvertDescription: string;
     };
     segments: {
       segmentPrefix: string;
@@ -999,6 +1203,22 @@ export interface Translations {
       previousVideoNotGenerated: string;
       extractingFrame: string;
       autoTransitionMode: string;
+      modalTitle: string;
+      modalSubtitle: string;
+      promptLabel: string;
+      promptPlaceholder: string;
+      durationSeconds: string;
+      aspectRatioLabel: string;
+      landscape: string;
+      portrait: string;
+      square: string;
+      advancedOptions: string;
+      fixedCamera: string;
+      fixedCameraDesc: string;
+      addWatermark: string;
+      addWatermarkDesc: string;
+      resolutionLabel: string;
+      startGenerate: string;
     };
   };
   videoScript: {
@@ -1218,6 +1438,35 @@ export interface Translations {
     queued: string;
     queuedPosition: string;
     generationTimeout: string;
+    noPacks: string;
+    selectPackPlaceholder: string;
+    packInfoFrames: string;
+    packInfoSeparator: string;
+    refreshPackList: string;
+    segmentLabel: string;
+    describingTitle: string;
+    describeAllTitle: string;
+    describing: string;
+    describeAll: string;
+    generatingInProgress: string;
+    allVideosGenerated: string;
+    batchGenerateAll: string;
+    batchGenerate: string;
+    generateAllVideosFirst: string;
+    composing: string;
+    composeAllVideos: string;
+    composeVideo: string;
+    loadingPack: string;
+    describingFrames: string;
+    composeFailed: string;
+    retry: string;
+    addFrame: string;
+    generatedStatus: string;
+    estimatedDuration: string;
+    confirmDelete: string;
+    deleteConfirmMessage: string;
+    cancel: string;
+    delete: string;
   };
   storyboardPreviewPanel: {
     title: string;
@@ -1445,6 +1694,27 @@ export interface Translations {
     thinkingComplete: string;
     aiAnalyzingLabel: string;
   };
+  workflowChat: {
+    title: string;
+    subtitle: string;
+    inputPlaceholder: string;
+    send: string;
+    stop: string;
+    clearChat: string;
+    clearChatConfirm: string;
+    clearContext: string;
+    clearContextConfirm: string;
+    clearContextTooltip: string;
+    startConversation: string;
+    startConversationDesc: string;
+    running: string;
+    finalResult: string;
+    exportMaterials: string;
+    exportMaterialsHint: string;
+    goToVideoResult: string;
+    workflowExecuting: string;
+    inputHint: string;
+  };
   workflowConfigModal: {
     title: string;
     subtitle: string;
@@ -1481,6 +1751,705 @@ export interface Translations {
       title: string;
       subtitle: string;
     };
+    messagesLabel: string;
+    replying: string;
+    clearChatTooltip: string;
+    sendMessageTooltip: string;
+    aiReplying: string;
+    enterToSendHint: string;
+    conversationList: {
+      heading: string;
+      newChat: string;
+      noConversations: string;
+      startNewChat: string;
+      chatbot: string;
+      aiAgent: string;
+      messages: string;
+    };
+    chatTypeModal: {
+      title: string;
+      subtitle: string;
+      chatbotTab: string;
+      workflowTab: string;
+      agentTab: string;
+      basicChatbot: string;
+      chatbotDesc: string;
+      startChatbot: string;
+      fastResponse: string;
+      quickAnswers: string;
+      naturalChat: string;
+      conversational: string;
+      easyToUse: string;
+      noSetupNeeded: string;
+      loadingWorkflows: string;
+      failedToLoadWorkflows: string;
+      retry: string;
+      noWorkflows: string;
+      createWorkflowFirst: string;
+      active: string;
+      nodes: string;
+      aiAgentTitle: string;
+      agentDesc: string;
+      comingSoon: string;
+      taskPlanning: string;
+      multiStepTasks: string;
+      webSearch: string;
+      realtimeInfo: string;
+      codeExecution: string;
+      runCodeSafely: string;
+      cancel: string;
+      workflowsAvailable: string;
+    };
+  };
+  videoProcessing: {
+    tab: string;
+    buttons: {
+      close: string;
+      next: string;
+      back: string;
+      done: string;
+      return: string;
+      minimize: string;
+      cancel: string;
+      retry: string;
+      startProcessing: string;
+      redetect: string;
+      restored: string;
+    };
+    presets: {
+      loose: string;
+      standard: string;
+      aggressive: string;
+      custom: string;
+    };
+    selectVideo: {
+      heading: string;
+      description: string;
+      noVideos: string;
+      noVideosHint: string;
+      tooLong: string;
+    };
+    params: {
+      detectionPreset: string;
+      volumeThreshold: string;
+      volumeThresholdHint: string;
+      minSilenceDuration: string;
+      minSilenceHint: string;
+      preservedGap: string;
+      preservedGapHint: string;
+    };
+    stats: {
+      originalDuration: string;
+      newDuration: string;
+      removedSegments: string;
+      segments: string;
+      savedTime: string;
+      saved: string;
+      estimatedNewDuration: string;
+    };
+    progress: {
+      preparing: string;
+      processing: string;
+      completed: string;
+      failed: string;
+      detecting: string;
+      detectSilence: string;
+      networkError: string;
+      networkErrorMsg: string;
+      timeout: string;
+      timeoutMsg: string;
+      estimatedRemaining: string;
+    };
+    errors: {
+      detectionFailed: string;
+      detectionFailedShort: string;
+      detectionError: string;
+      processFailed: string;
+      processFailedShort: string;
+      submitFailed: string;
+      unknownError: string;
+      queryFailed: string;
+      queryFailedShort: string;
+    };
+    segments: {
+      empty: string;
+      total: string;
+      segmentsUnit: string;
+      selected: string;
+      canSave: string;
+      selectAll: string;
+      deselectAll: string;
+      invertSelection: string;
+      playContext: string;
+    };
+    waveform: {
+      pause: string;
+      play: string;
+      previewEffect: string;
+      stopPreview: string;
+      preview: string;
+      zoomHint: string;
+    };
+    duration: {
+      minutes: string;
+      seconds: string;
+    };
+  };
+  workflowNodes: {
+    ports: {
+      input: string;
+      output: string;
+      keywords: string;
+      results: string;
+      arrayInput: string;
+      combined: string;
+      array: string;
+      videos: string;
+      materials: string;
+      textInput: string;
+      audioOutput: string;
+      timeline: string;
+      copy: string;
+      video: string;
+      audio: string;
+      image: string;
+    };
+    tooltips: {
+      configured: string;
+      deleteNode: string;
+      inputPort: string;
+      outputPort: string;
+    };
+    status: {
+      configured: string;
+      notSet: string;
+      notSelected: string;
+      ready: string;
+      success: string;
+      failed: string;
+      notConfigured: string;
+      noContent: string;
+      doubleClickToConfigure: string;
+      doubleClickForFullContent: string;
+      model: string;
+      temperature: string;
+      systemPrompt: string;
+      keywords: string;
+      count: string;
+      voice: string;
+      text: string;
+      content: string;
+      format: string;
+      statusLabel: string;
+      videoUrls: string;
+      moreCount: string;
+      exportToMaterials: string;
+      exportVideos: string;
+      inputType: string;
+      arrayBadge: string;
+      schema: string;
+      schemaDefined: string;
+      combinesStandardizes: string;
+      combinesResults: string;
+      transformPrompt: string;
+      conversionPrompt: string;
+      fields: string;
+      fieldsCount: string;
+      outputsArray: string;
+      typeLabel: string;
+      workflowStartPoint: string;
+      workflowEndPoint: string;
+    };
+    aiVideo: {
+      inputs: string;
+      status: string;
+      lastRun: string;
+      error: string;
+      prompt: string;
+      notConfigured: string;
+      doubleClickConfigure: string;
+    };
+    execution: {
+      title: string;
+      progress: string;
+      noNodes: string;
+      waiting: string;
+      executing: string;
+      completed: string;
+      failed: string;
+      executionTime: string;
+      systemPrompt: string;
+      userInput: string;
+      modelReply: string;
+      input: string;
+      output: string;
+      error: string;
+    };
+    editor: {
+      noWorkflowSelected: string;
+      selectWorkflowPrompt: string;
+      newWorkflowDefaultName: string;
+      newWorkflowDescription: string;
+    };
+    configPanels: {
+      volcanoTTS: {
+        title: string;
+        nodeId: string;
+        dataFormat: string;
+        inputFormat: string;
+        outputFormat: string;
+        inputFormatHelp: string;
+        outputFormatHelp: string;
+        language: string;
+        chinese: string;
+        english: string;
+        voiceType: string;
+        loadingVoices: string;
+        speedRatio: string;
+        slower: string;
+        normal: string;
+        faster: string;
+        textContent: string;
+        clear: string;
+        placeholder: string;
+        characters: string;
+        words: string;
+        hasContent: string;
+        empty: string;
+        audioPreview: string;
+        pause: string;
+        playAudio: string;
+        download: string;
+        downloadAudio: string;
+        howToUse: string;
+        howToUseSteps: string[];
+        cancel: string;
+        save: string;
+        saving: string;
+      };
+      aiVideoGenerate: {
+        title: string;
+        subtitle: string;
+        inputConfiguration: string;
+        llmSettings: string;
+        executionResults: string;
+        inputConfigDesc: string;
+        textInput: string;
+        videoInput: string;
+        audioInput: string;
+        imageInput: string;
+        enterTextPlaceholder: string;
+        enterVideoPlaceholder: string;
+        enterAudioPlaceholder: string;
+        enterImagePlaceholder: string;
+        stringFormat: string;
+        jsonFormat: string;
+        arrayFormat: string;
+        llmConfigDesc: string;
+        systemPrompt: string;
+        systemPromptPlaceholder: string;
+        temperature: string;
+        temperatureHint: string;
+        maxTokens: string;
+        llmInfoTitle: string;
+        llmInfoDesc: string;
+        executionSuccessful: string;
+        executionFailed: string;
+        lastExecuted: string;
+        errorMessage: string;
+        executionResult: string;
+        noResultsYet: string;
+        cancel: string;
+        saveConfiguration: string;
+      };
+    };
+  };
+  mediaPreview: {
+    zoomOut: string;
+    zoomIn: string;
+    reset: string;
+    pause: string;
+    play: string;
+    close: string;
+    imageShortcuts: string;
+    imageShortcutsZoom: string;
+    imageShortcutsReset: string;
+    imageShortcutsClose: string;
+    imageMouseWheel: string;
+    imageMouseDrag: string;
+    mediaShortcutsSpace: string;
+    mediaShortcutsClose: string;
+    imageShortcutsLine1: string;
+    imageShortcutsLine2: string;
+    mediaShortcutsLine: string;
+  };
+  storyboardPack: {
+    defaultTitle: string;
+    frames: string;
+    close: string;
+    originalImage: string;
+    noFrames: string;
+    frame: string;
+    position: string;
+    row: string;
+    column: string;
+    noDescription: string;
+    deletePack: string;
+    addToMaterials: string;
+    useInScript: string;
+    materials: string;
+    prompt: string;
+    gridSizeLabel: string;
+    frameCountLabel: string;
+    gridWillGenerate: string;
+    gridWillUse: string;
+  };
+  mobileWarning: {
+    tablet: string;
+    mobile: string;
+    mobileDevice: string;
+    title: string;
+    description: string;
+    useDesktop: string;
+  };
+  gridSizeSelector: {
+    frameCount: string;
+    gridLabel: string;
+    custom: string;
+    placeholder: string;
+    willGenerate: string;
+    willUse: string;
+  };
+  creativeBrainstorming: {
+    inputPlaceholder: string;
+    sendHint: string;
+  };
+  audioSearchModal: {
+    title: string;
+    searchPlaceholder: string;
+    searchButton: string;
+    searching: string;
+    audioTypeLabel: string;
+    audioTypeAll: string;
+    audioTypeMusic: string;
+    audioTypeSoundEffect: string;
+    audioTypeSpeech: string;
+    audioTypeAmbient: string;
+    audioTypeNature: string;
+    sortByLabel: string;
+    sortByScore: string;
+    sortByDownloads: string;
+    sortByRating: string;
+    sortByDurationDesc: string;
+    sortByDurationAsc: string;
+    sortByCreatedDesc: string;
+    sortByCreatedAsc: string;
+    durationFilterLabel: string;
+    durationMinPlaceholder: string;
+    durationMaxPlaceholder: string;
+    durationTo: string;
+    resultsTitle: string;
+    resultsCount: string;
+    selectedCount: string;
+    clearSelection: string;
+    noResults: string;
+    noResultsHint: string;
+    noQueryTitle: string;
+    noQueryHint: string;
+    previewTitle: string;
+    descriptionLabel: string;
+    audioInfoLabel: string;
+    durationLabel: string;
+    licenseLabel: string;
+    sizeLabel: string;
+    formatLabel: string;
+    channelsLabel: string;
+    sampleRateLabel: string;
+    tagsLabel: string;
+    addingAudios: string;
+    addedCount: string;
+    cancelButton: string;
+    addingButton: string;
+    addSelectedButton: string;
+  };
+  imageSearchModal: {
+    title: string;
+    searchPlaceholder: string;
+    searchButton: string;
+    searching: string;
+    orientationLabel: string;
+    orientationAll: string;
+    orientationLandscape: string;
+    orientationPortrait: string;
+    orientationSquarish: string;
+    colorLabel: string;
+    colorAll: string;
+    colorBlackAndWhite: string;
+    colorBlack: string;
+    colorWhite: string;
+    colorYellow: string;
+    colorOrange: string;
+    colorRed: string;
+    colorPurple: string;
+    colorMagenta: string;
+    colorGreen: string;
+    colorTeal: string;
+    colorBlue: string;
+    orderByLabel: string;
+    orderByRelevant: string;
+    orderByLatest: string;
+    orderByPopular: string;
+    selectedCount: string;
+    clearSelection: string;
+    addingImages: string;
+    addSelectedButton: string;
+    deselect: string;
+    select: string;
+    addToMaterials: string;
+    noDescription: string;
+    noResultsTitle: string;
+    noResultsHint: string;
+    imagePreview: string;
+    prevPage: string;
+    nextPage: string;
+    pageInfo: string;
+  };
+  aiImageModal: {
+    title: string;
+    subtitle: string;
+    tabBasic: string;
+    tabCharacter: string;
+    tabScene: string;
+    tabStoryboard: string;
+    cancelButton: string;
+    generatingButton: string;
+    generateButton: string;
+  };
+  basicGenerationTab: {
+    promptLabel: string;
+    promptPlaceholder: string;
+    sizeLabel: string;
+    size1kSquare: string;
+    size2kSquare: string;
+    size169Landscape: string;
+    size916Portrait: string;
+    size169Wide: string;
+    size916Wide: string;
+    countLabel: string;
+    countUnit: string;
+    watermarkLabel: string;
+    watermarkDesc: string;
+  };
+  storyboardTab: {
+    aspectRatioLabel: string;
+    aspectRatio11: string;
+    aspectRatio169: string;
+    aspectRatio916: string;
+    aspectRatio43: string;
+    aspectRatio34: string;
+    promptLabel: string;
+    promptPlaceholder: string;
+    settingsTitle: string;
+    settingsLocked: string;
+    scriptPreviewLabel: string;
+    languageLabel: string;
+    backToInput: string;
+    shotNumber: string;
+    shotPlaceholder: string;
+    emptyScript: string;
+    chatTitle: string;
+    chatYou: string;
+    chatAI: string;
+    chatPlaceholder: string;
+    chatSend: string;
+    confirmGenerate: string;
+    scriptMinLengthHint: string;
+    nextStepGenerate: string;
+    generatingScript: string;
+    scriptInfo: string;
+    advancedOptions: string;
+    skipScript: string;
+    generatingFrames: string;
+    generatingFramesDesc: string;
+    croppedFrames: string;
+    gridLabel: string;
+    generateNew: string;
+    retryButton: string;
+    scriptGenerateFailed: string;
+    scriptReviseFailed: string;
+    scriptUpdated: string;
+    backConfirm: string;
+    generateFailed: string;
+    storyboardImageAlt: string;
+  };
+  gridSizeSelectorTab: {
+    frameCountLabel: string;
+    gridUnit: string;
+    custom: string;
+    placeholder: string;
+    willGenerate: string;
+    willUse: string;
+  };
+  videoAnalysisModal: {
+    title: string;
+    subtitle: string;
+    closeTooltip: string;
+    videoDuration: string;
+    framesExtracted: string;
+    processingTime: string;
+    analysisTime: string;
+    frameAnalysisTitle: string;
+    frameLabel: string;
+    timePoint: string;
+    summaryTitle: string;
+    errorTitle: string;
+    errorDefaultMessage: string;
+    closeButton: string;
+    loadingTitle: string;
+    loadingDesc: string;
+    videoLabel: string;
+    secondsUnit: string;
+    framesUnit: string;
+  };
+  videoScriptProgressModal: {
+    titleWithVideo: string;
+    titleWithoutVideo: string;
+    stepPreparing: string;
+    stepAnalyzing: string;
+    stepGenerating: string;
+    stepProcessing: string;
+    descAnalyzing: string;
+    descGeneratingWithVideo: string;
+    descGeneratingWithoutVideo: string;
+    descPleaseWait: string;
+    analyzingVideo: string;
+    statCompleted: string;
+    statProcessing: string;
+    statFailed: string;
+    errorTitle: string;
+    cancelButton: string;
+  };
+  videoCacheIndicator: {
+    loading: string;
+    loaded: string;
+    error: string;
+    notCached: string;
+  };
+  chatMessageBubble: {
+    thinking: string;
+    thoughtProcess: string;
+    analyzingIntent: string;
+    detectingWorkflow: string;
+    willCallWorkflow: string;
+    normalChat: string;
+    copiedTitle: string;
+    copyMessageTitle: string;
+    convertToScriptTitle: string;
+    generating: string;
+    copied: string;
+  };
+  chatWorkflowExecution: {
+    finalResult: string;
+    copiedTitle: string;
+    copyTitle: string;
+    convertToScriptTitle: string;
+    exportClip: string;
+    exportClipHint: string;
+    executing: string;
+  };
+  chatWorkflowSelection: {
+    title: string;
+    subtitle: string;
+    loading: string;
+    errorTitle: string;
+    retryButton: string;
+    emptyTitle: string;
+    emptyHint: string;
+    activeBadge: string;
+    nodesLabel: string;
+    totalWorkflows: string;
+    cancelButton: string;
+  };
+  videoCut: {
+    title: string;
+    timelineControl: string;
+    selectRange: string;
+    dragGreenStart: string;
+    dragRedEnd: string;
+    blueCurrentPos: string;
+    setStart: string;
+    setEnd: string;
+    createClip: string;
+    preview: string;
+    selectToPreview: string;
+    clipList: string;
+    clip: string;
+    clipCount: string;
+    exportClips: string;
+    noClips: string;
+    startBeforeEnd: string;
+    minDuration: string;
+    clipCreated: string;
+    clipDeleted: string;
+    noClipsToExport: string;
+    noMaterial: string;
+    clipsExported: string;
+    exportUnavailable: string;
+    startTimeLabel: string;
+    endTimeLabel: string;
+  };
+  convertToScript: {
+    title: string;
+    subtitle: string;
+    parameterSettings: string;
+    scriptLanguage: string;
+    chinese: string;
+    english: string;
+    mixed: string;
+    segmentCount: string;
+    segments: string;
+    analysisDepth: string;
+    basic: string;
+    quickGen: string;
+    detailed: string;
+    balancedQuality: string;
+    comprehensive: string;
+    deepAnalysis: string;
+    additionalOptions: string;
+    includeVisual: string;
+    visualDesc: string;
+    includeAudio: string;
+    audioDesc: string;
+    videoUnderstanding: string;
+    enabledDesc: string;
+    disabledDesc: string;
+    analysisMode: string;
+    quickAnalysis: string;
+    coverOnly: string;
+    proAnalysis: string;
+    multiFrame: string;
+    selectVideoDesc: string;
+    videoStatsPrefix: string;
+    videoStatsTotal: string;
+    videoStatsAnalyzed: string;
+    videoStatsPending: string;
+    selectedUnanalyzedPrefix: string;
+    selectedUnanalyzed: string;
+    noVideos: string;
+    pleaseUpload: string;
+    selectedCountPrefix: string;
+    selectedCount: string;
+    selectAll: string;
+    deselectAll: string;
+    analyzed: string;
+    pending: string;
+    unknownDuration: string;
+    chatPreview: string;
+    footerWithVideo: string;
+    footerWithAnalysis: string;
+    footerNoVideo: string;
+    generating: string;
+    startGenerate: string;
   };
 }
 
@@ -1498,6 +2467,8 @@ export const translations: Record<string, Translations> = {
       operational: 'Operational',
       close: 'Close',
       cancel: 'Cancel',
+      confirm: 'Confirm',
+      underDevelopment: 'Feature under development...',
     },
     header: {
       brandSubtitle: 'Where light and shadow collide',
@@ -1507,6 +2478,20 @@ export const translations: Record<string, Translations> = {
       returnToHomepage: 'Return to homepage',
       switchToLightMode: 'Switch to light mode',
       switchToDarkMode: 'Switch to dark mode',
+    },
+    landing: {
+      description: 'AI-Powered Creative Platform',
+      heroDescription: 'Where creativity meets AI. Create stunning videos, build intelligent workflows, and unleash your creative potential with our powerful suite of tools.',
+      startCreating: 'Start Creating',
+      loading: 'Loading...',
+      exploreWorkflows: 'Explore Workflows',
+      videoEditingDesc: 'Professional video editing with AI-powered tools and intuitive timeline interface',
+      workflowDesc: 'Build powerful AI workflows with visual node-based editor',
+      aiChatDesc: 'Intelligent AI conversations for content creation and assistance',
+      brainstormingDesc: 'Generate creative ideas and concepts for your projects',
+      aiModels: 'AI Models',
+      workflowTemplates: 'Workflow Templates',
+      creativePossibilities: 'Creative Possibilities',
     },
     auth: {
       login: 'Login',
@@ -1521,6 +2506,7 @@ export const translations: Record<string, Translations> = {
       loginButton: 'Login',
       registerButton: 'Register',
       welcomeBack: 'Welcome Back',
+      welcomeBackMessage: 'Welcome Back, {username}! ({role})',
       welcomeTitle: 'Welcome to Ecliptrix',
       welcomeSubtitle: 'Where light and shadow collide to create extraordinary content',
       loginSuccess: 'Login successful',
@@ -1571,6 +2557,7 @@ export const translations: Record<string, Translations> = {
       saveSettings: 'Save Settings',
       settingsSaveSuccess: 'Settings saved successfully',
       settingsSaveError: 'Failed to save settings',
+      autoSaveNote: 'Changes are saved automatically.',
     },
     adminSettings: {
       title: 'Admin Settings',
@@ -1582,7 +2569,7 @@ export const translations: Record<string, Translations> = {
       registeredUsers: 'Registered Users',
       totalUsers: 'Total Users',
       adminUsers: 'Admin Users',
-      regularUsers: 'Regular Users',
+      regularUsers: 'Users',
       premiumUsers: 'Premium Users',
       userId: 'User ID',
       role: 'Role',
@@ -1617,7 +2604,7 @@ export const translations: Record<string, Translations> = {
       avatarUrlPlaceholder: 'Enter avatar image URL (optional)',
       userRole: 'User Role',
       userRoleAdmin: 'Admin',
-      userRoleRegular: 'Regular',
+      userRoleRegular: 'User',
       userRolePremium: 'Premium',
       isAdmin: 'Admin User',
       isAdminDesc: 'Grant administrator privileges',
@@ -1660,6 +2647,8 @@ export const translations: Record<string, Translations> = {
       modelUsingDb: 'Custom config active',
       modelDomestic: 'Domestic',
       modelInternational: 'International',
+      authRequiredError: 'Please log in to access Model Settings.',
+      sessionExpiredError: 'Your session has expired. Please log in again.',
       modelResetToDefault: 'Reset to Default',
       modelParameters: 'Parameters',
       modelSelectProvider: 'Select provider',
@@ -1977,6 +2966,116 @@ export const translations: Record<string, Translations> = {
       brainstorming: 'Brainstorming',
       aiChat: 'AI Chat',
     },
+    workflowInterface: {
+      chatInterfaceTab: 'Chat Interface',
+      workflowInterfaceTab: 'Workflow Interface',
+      sidebar: {
+        heading: 'Workflows',
+        addNew: 'Add New Workflow',
+        subtitle: 'Select or create a workflow',
+        emptyState: 'No workflows yet',
+        editDetails: 'Edit Workflow Details',
+        confirmDelete: 'Confirm Delete',
+        deleteWorkflow: 'Delete Workflow',
+        workflowCount: '{count} workflow(s)',
+        active: 'Active',
+      },
+      canvas: {
+        contextMenu: {
+          addStartNode: 'Add Start Node',
+          addEndNode: 'Add End Node',
+          addChatLLM: 'Add Chat LLM',
+          addTextInput: 'Add Text Input',
+          addPexelsVideoSearch: 'Add Pexels Video Search',
+          addTavilySearch: 'Add Tavily Search',
+          addVolcanoTTS: 'Add Volcano TTS',
+          addToArray: 'Add To Array',
+          addResultsCombine: 'Add Results Combine',
+          addAIVideoGenerate: 'Add AI Video Generate',
+          addVideoExport: 'Add Video Export',
+        },
+        nodeDefaults: {
+          start: 'Start',
+          end: 'End',
+          chatLLM: 'Chat LLM',
+          textInput: 'Text Input',
+          pexelsSearch: 'Pexels Video Search',
+          tavilySearch: 'Tavily Search',
+          volcanoTTS: 'Volcano TTS',
+          toArray: 'To Array',
+          resultsCombine: 'Results Combine',
+          aiVideoGenerate: 'AI Video Generate',
+          videoExport: 'Video Export',
+        },
+        emptyState: {
+          title: 'Start Building Your Workflow',
+          description: 'Right-click anywhere on the canvas to add your first node',
+        },
+        toolbar: {
+          zoomOut: 'Zoom Out',
+          zoomIn: 'Zoom In',
+          panMode: 'Enter Pan Mode (Drag Canvas)',
+          exitPanMode: 'Exit Pan Mode (Switch to Node Drag Mode)',
+          resetView: 'Reset View',
+        },
+        infoBar: {
+          nodes: 'Nodes',
+          connections: 'Connections',
+          nodeSelected: 'Node Selected',
+          connectionSelected: 'Connection Selected',
+        },
+      },
+      editor: {
+        save: 'Save',
+        saving: 'Saving...',
+        run: 'Run',
+        stop: 'Stop',
+        loading: 'Loading workflow...',
+        noWorkflowSelected: 'No Workflow Selected',
+        selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
+        description: 'Description',
+        viewDescription: 'View description',
+      },
+      notifications: {
+        loadedWorkflows: 'Loaded {count} workflow(s)',
+        failedToLoad: 'Failed to load workflows',
+        pleaseLoginToCreate: 'Please login to create workflows',
+        newWorkflowDefaultName: 'New Workflow',
+        workflowCreated: 'Workflow "{name}" created successfully',
+        workflowCreatedSaveFailed: 'Workflow created but failed to save. Please save it manually.',
+        pleaseLoginToRename: 'Please login to rename workflows',
+        workflowRenamed: 'Workflow renamed to "{name}"',
+        workflowRenamedSaveFailed: 'Workflow renamed but failed to save. Please save it manually.',
+        pleaseLoginToSaveChanges: 'Please login to save workflow changes',
+        workflowNotFound: 'Workflow not found',
+        workflowUpdated: 'Workflow "{name}" updated successfully',
+        workflowUpdatedSaveFailed: 'Workflow updated locally but failed to save to database. Please save it manually.',
+        pleaseLoginToDelete: 'Please login to delete workflows',
+        cannotDeleteLast: 'Cannot delete the last workflow',
+        workflowDeleted: 'Workflow "{name}" deleted successfully',
+        failedToDelete: 'Failed to delete workflow',
+        pleaseLoginToSave: 'Please login to save workflows',
+        noActiveWorkflow: 'No active workflow to save',
+        workflowSaved: 'Workflow "{name}" saved successfully (v{version})',
+        workflowSaveFailed: 'Failed to save workflow',
+      },
+      logPanel: {
+        title: 'Execution Logs',
+        collapse: 'Collapse',
+        expand: 'Expand',
+        running: 'Running',
+        current: 'Current',
+        noLogs: 'No logs yet',
+        clickRunToStart: 'Click Run to start workflow execution',
+        input: 'Input',
+        output: 'Output',
+        viewDetails: 'View details',
+        totalLogs: 'Total logs: {count}',
+        errors: '{count} errors',
+        warnings: '{count} warnings',
+        success: '{count} success',
+      },
+    },
     welcome: {
       title: 'Welcome to Ecliptrix',
       subtitle: 'Where light and shadow collide',
@@ -2221,6 +3320,9 @@ export const translations: Record<string, Translations> = {
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
         dropToTrack: 'Drop to {trackName}',
+        copyOf: '{name} (Copy)',
+        noTracks: 'No tracks yet',
+        noTracksDescription: 'Start creating your first track by adding video, audio, or subtitle materials',
       },
       messages: {
         noAudioItems: 'No audio items found, please add audio to the timeline first.',
@@ -2281,6 +3383,35 @@ export const translations: Record<string, Translations> = {
       confirmAddButton: 'Confirm Add',
       validationErrorTitle: 'Video duration insufficient',
       validationErrorDesc: 'Please select more videos or videos with longer duration.',
+      officialLibrary: 'Official Library',
+      youtubeLibrary: 'YouTube Library',
+      youtubeSearchPlaceholder: 'Search YouTube videos, e.g.: nature landscape, city night, timelapse...',
+      durationLabel: 'Duration:',
+      durationUnder1: 'Under 1 min',
+      durationUnder3: 'Under 3 min',
+      durationUnder5: 'Under 5 min',
+      durationUnder10: 'Under 10 min',
+      durationCustom: 'Custom',
+      durationMinPlaceholder: 'Min seconds',
+      durationMaxPlaceholder: 'Max seconds',
+      seconds: 'sec',
+      videoPreview: 'Video Preview',
+      channel: 'Channel:',
+      searchResults: 'Search Results',
+      resultsInfo: 'Found {count} {libraryType} videos, {selected} selected',
+      pageInfo: 'Page {current} / {total}',
+      searchingLibrary: 'Searching {libraryType} videos...',
+      startSearchLibrary: 'Start searching {libraryType} videos',
+      searchHint: 'Enter keywords and click search',
+      added: 'Added',
+      addToComposition: 'Add',
+      prevPage: 'Previous',
+      nextPage: 'Next',
+      noPreview: 'No preview available',
+      itemsUnit: 'items',
+      noSelectionHint: 'Click "Add" button to select videos',
+      validationErrorHint: 'Please select more videos or videos with longer duration.',
+      views: 'views',
     },
     videoPlayerPanel: {
       aspectRatios: {
@@ -2348,6 +3479,25 @@ export const translations: Record<string, Translations> = {
     videoExport: {
       noContentToExport: 'No content to export',
       noContentToExportDesc: 'Please add video materials to the timeline before exporting',
+      noContentToExportFull: 'No content to export. Please add video materials to the timeline before exporting.',
+      videoTrackTooShort: 'Video track is too short!',
+      videoTrackDuration: 'Video track duration:',
+      audioTrackDuration: 'Audio track duration:',
+      needToAdd: 'Need to add more video content.',
+      exportCompletedButDownloadFailed: 'Video export completed but download failed. Please refresh the page and try again, or contact support.',
+      exportTimeout: 'Video export timed out: processing exceeded the 10-minute limit. Try reducing video duration or complexity, or try again later.',
+      exportFailed: 'Video export failed',
+      exportFailedWithError: 'Video export failed:',
+      failedVideos: 'Failed videos:',
+      recoverySuggestions: 'Suggested solutions:',
+    },
+    videoSearch: {
+      enterKeyword: 'Please enter a search keyword',
+      searchFailed: 'Search failed, please try again later',
+      networkError: 'Search failed, please check your network connection',
+      selectVideoFirst: 'Please select videos to add first',
+      selectYoutubeVideoFirst: 'Please select YouTube videos to add first',
+      videoDurationValidationFailed: 'Total video duration must exceed the voice segment duration. Please add more videos.',
     },
          scriptPanel: {
        tabs: {
@@ -2400,12 +3550,20 @@ export const translations: Record<string, Translations> = {
          clickGenerate: 'Click "Generate Script" button to generate script based on left content',
          scriptWillAppear: 'Text script will be displayed here',
        },
+       narration: {
+         label: 'Narration',
+         editTooltip: 'Edit Narration',
+       },
        video: {
          associatedVideos: 'Associated Videos',
          loadingFailed: 'Loading failed',
          browserNotSupported: 'Your browser does not support video playback.',
          seconds: 's',
          duration: 'Duration',
+         loading: 'Loading...',
+         checkNetwork: 'Check network connection or video URL',
+         retry: 'Retry',
+         multipleVideos: 'Multiple',
        },
        errors: {
          speechConversionFailed: 'Speech conversion failed',
@@ -2416,6 +3574,21 @@ export const translations: Record<string, Translations> = {
          videoDurationInsufficient: 'Video total duration ({videoDuration}s) needs to be greater than current audio duration ({audioDuration}s)',
          audioFileNotFound: 'No corresponding audio file found, please ensure speech conversion is completed',
          segmentTextEmpty: 'Segment text is empty',
+         sentenceDeleteFailed: 'Failed to delete sentence',
+         sentenceAddFailed: 'Failed to add sentence',
+         speechConvertFailed: 'Speech conversion failed: {error}',
+         subtitleRecognitionFailed: 'Subtitle recognition failed',
+       },
+       messages: {
+         segmentDeleted: 'Segment "{title}" has been deleted',
+         sentenceDeleted: 'Sentence deleted',
+         sentenceAdded: 'Sentence added',
+         speechConvertComplete: 'Speech conversion complete! Successfully converted {success}/{total} sentences, total duration {duration}s',
+         confirmDeleteSegment: 'Are you sure you want to delete segment "{title}"? This action cannot be undone.',
+         newSentencePlaceholder: 'Enter new sentence content...',
+         confirmDelete: 'Delete',
+         cancelDelete: 'Cancel',
+         speechConvertDescription: 'Speech generated from Segment{index} "{title}" — {count} sentences converted and concatenated',
        },
        segments: {
          segmentPrefix: 'Segment{index}',
@@ -2486,6 +3659,22 @@ export const translations: Record<string, Translations> = {
          previousVideoNotGenerated: 'Please generate the previous scene video first',
          extractingFrame: 'Extracting frame...',
          autoTransitionMode: 'Auto Transition',
+         modalTitle: 'AI Video Generation',
+         modalSubtitle: 'Seedance \u00b7 ByteDance Ark Platform',
+         promptLabel: 'Prompt',
+         promptPlaceholder: 'Describe the video content you want to generate, e.g.: A cat playing in the sunlight, camera slowly moving...',
+         durationSeconds: 'sec',
+         aspectRatioLabel: 'Aspect Ratio',
+         landscape: 'Landscape',
+         portrait: 'Portrait',
+         square: 'Square',
+         advancedOptions: 'Advanced Options',
+         fixedCamera: 'Fixed Camera',
+         fixedCameraDesc: 'Lock camera position to reduce camera movement',
+         addWatermark: 'Add Watermark',
+         addWatermarkDesc: 'Add platform watermark on generated video',
+         resolutionLabel: 'Resolution',
+         startGenerate: 'Start Generating',
         },
      },
    videoScript: {
@@ -2705,6 +3894,35 @@ export const translations: Record<string, Translations> = {
       queued: 'Queued',
       queuedPosition: 'position',
       generationTimeout: 'Generation timed out',
+      noPacks: 'No storyboard packs',
+      selectPackPlaceholder: 'Select storyboard pack...',
+      packInfoFrames: '{frames} frames',
+      packInfoSeparator: ' - ',
+      refreshPackList: 'Refresh storyboard pack list',
+      segmentLabel: 'Segment #',
+      describingTitle: 'Generating descriptions...',
+      describeAllTitle: 'Generate AI descriptions for all storyboard frames',
+      describing: 'Generating...',
+      describeAll: 'Generate Descriptions',
+      generatingInProgress: 'Videos are currently being generated',
+      allVideosGenerated: 'All videos have been generated',
+      batchGenerateAll: 'Batch generate all ungenerated videos',
+      batchGenerate: 'Batch Generate',
+      generateAllVideosFirst: 'Please generate all storyboard videos first',
+      composing: 'Composing...',
+      composeAllVideos: 'Compose all storyboard videos',
+      composeVideo: 'Compose Video',
+      loadingPack: 'Loading storyboard pack...',
+      describingFrames: 'Generating descriptions for storyboard frames...',
+      composeFailed: 'Composition failed: ',
+      retry: 'Retry',
+      addFrame: 'Add Frame',
+      generatedStatus: 'Generated {completed}/{total} videos',
+      estimatedDuration: 'Estimated total duration: {duration}s',
+      confirmDelete: 'Confirm Delete',
+      deleteConfirmMessage: 'Are you sure you want to delete this storyboard frame? Generated videos will not be removed from the materials panel.',
+      cancel: 'Cancel',
+      delete: 'Delete',
     },
     storyboardPreviewPanel: {
       title: 'Storyboard Preview',
@@ -2947,6 +4165,27 @@ export const translations: Record<string, Translations> = {
       thinkingComplete: 'Thought Process',
       aiAnalyzingLabel: 'AI Analyzing...',
     },
+    workflowChat: {
+      title: 'Workflow Assistant',
+      subtitle: 'Interact with workflows in real-time',
+      inputPlaceholder: 'Enter a message to start a workflow... (Shift+Enter for new line)',
+      send: 'Send',
+      stop: 'Stop',
+      clearChat: 'Clear Chat History',
+      clearChatConfirm: 'Are you sure you want to clear all chat history? This cannot be undone.',
+      clearContext: 'Clear Context',
+      clearContextConfirm: 'Are you sure you want to clear the workflow context? Chat history will be preserved.',
+      clearContextTooltip: 'Clear context, keep chat history',
+      startConversation: 'Start Conversation',
+      startConversationDesc: 'Send a message to start a workflow. Execution progress and results will be displayed in real-time.',
+      running: 'Running',
+      finalResult: 'Final Result',
+      exportMaterials: 'Export Clips ({count} video materials)',
+      exportMaterialsHint: 'Click to import video materials into the Video Editing task materials panel',
+      goToVideoResult: 'Go to Video Editing to view results',
+      workflowExecuting: 'Workflow is executing...',
+      inputHint: 'Press Enter to send, Shift + Enter for new line',
+    },
     workflowConfigModal: {
       title: 'Workflow Configuration',
       subtitle: 'Select and configure workflows for video editing tasks',
@@ -2983,6 +4222,711 @@ export const translations: Record<string, Translations> = {
         title: 'Ready to Chat',
         subtitle: 'Send a message to start the conversation',
       },
+      messagesLabel: 'messages',
+      replying: 'Replying...',
+      clearChatTooltip: 'Clear chat history',
+      sendMessageTooltip: 'Send message',
+      aiReplying: 'AI is replying...',
+      enterToSendHint: 'Press Enter to send, Shift + Enter for new line',
+      conversationList: {
+        heading: 'Conversations',
+        newChat: 'New Chat',
+        noConversations: 'No conversations yet',
+        startNewChat: 'Start a new chat to begin',
+        chatbot: 'Chatbot',
+        aiAgent: 'AI Agent',
+        messages: '{count} message(s)',
+      },
+      chatTypeModal: {
+        title: 'New Chat',
+        subtitle: 'Choose a chat type to begin',
+        chatbotTab: 'Chatbot',
+        workflowTab: 'Workflow',
+        agentTab: 'Agent',
+        basicChatbot: 'Basic Chatbot',
+        chatbotDesc: 'Start a conversation with a basic AI chatbot. Perfect for quick questions and general discussions.',
+        startChatbot: 'Start Chatbot Conversation',
+        fastResponse: 'Fast Response',
+        quickAnswers: 'Quick answers',
+        naturalChat: 'Natural Chat',
+        conversational: 'Conversational',
+        easyToUse: 'Easy to Use',
+        noSetupNeeded: 'No setup needed',
+        loadingWorkflows: 'Loading workflows...',
+        failedToLoadWorkflows: 'Failed to load workflows',
+        retry: 'Retry',
+        noWorkflows: 'No workflows available',
+        createWorkflowFirst: 'Create a workflow in the Workflow task first, then start a new conversation',
+        active: 'Active',
+        nodes: 'nodes',
+        aiAgentTitle: 'AI Agent',
+        agentDesc: 'Intelligent agents with advanced capabilities. This feature is coming soon.',
+        comingSoon: 'Coming Soon',
+        taskPlanning: 'Task Planning',
+        multiStepTasks: 'Multi-step tasks',
+        webSearch: 'Web Search',
+        realtimeInfo: 'Real-time info',
+        codeExecution: 'Code Execution',
+        runCodeSafely: 'Run code safely',
+        cancel: 'Cancel',
+        workflowsAvailable: '{count} workflow(s) available',
+      },
+    },
+    videoProcessing: {
+      tab: 'Cut Silence',
+      buttons: {
+        close: 'Close',
+        next: 'Next',
+        back: 'Back',
+        done: 'Done',
+        return: 'Return',
+        minimize: 'Minimize',
+        cancel: 'Cancel',
+        retry: 'Retry',
+        startProcessing: 'Start Processing',
+        redetect: 'Re-detect',
+        restored: 'Click to restore',
+      },
+      presets: {
+        loose: 'Loose',
+        standard: 'Standard',
+        aggressive: 'Aggressive',
+        custom: 'Custom',
+      },
+      selectVideo: {
+        heading: 'Select Video',
+        description: 'Select a video to process (max 30 minutes)',
+        noVideos: 'No video materials',
+        noVideosHint: 'Please upload video materials first',
+        tooLong: 'Over 30 minutes',
+      },
+      params: {
+        detectionPreset: 'Detection Preset',
+        volumeThreshold: 'Volume Threshold: {value} dB',
+        volumeThresholdHint: 'Below this value is considered silence',
+        minSilenceDuration: 'Min Silence Duration: {value} ms',
+        minSilenceHint: 'Short pauses below this value will be ignored',
+        preservedGap: 'Preserved Gap: {value} ms',
+        preservedGapHint: 'Transition gap preserved at the beginning and end of each silence segment',
+      },
+      stats: {
+        originalDuration: 'Original Duration',
+        newDuration: 'New Duration',
+        removedSegments: 'Removed Segments',
+        segments: 'segments',
+        savedTime: 'Time Saved',
+        saved: 'saved',
+        estimatedNewDuration: 'Est. New Duration',
+      },
+      progress: {
+        preparing: 'Preparing...',
+        processing: 'Processing...',
+        completed: 'Processing Complete',
+        failed: 'Processing Failed',
+        detecting: 'Detecting...',
+        detectSilence: 'Detect Silence',
+        networkError: 'Network Error',
+        networkErrorMsg: 'Cannot connect to server, please check your network and retry',
+        timeout: 'Processing Timeout',
+        timeoutMsg: 'Waited over 30 minutes. The backend task may still be running. Please check the materials panel later.',
+        estimatedRemaining: 'Est. Remaining',
+      },
+      errors: {
+        detectionFailed: 'Detection failed ({status})',
+        detectionFailedShort: 'Detection failed',
+        detectionError: 'Failed to detect silence segments',
+        processFailed: 'Process failed ({status})',
+        processFailedShort: 'Process failed',
+        submitFailed: 'Failed to submit processing request',
+        unknownError: 'Unknown error',
+        queryFailed: 'Query progress failed ({status})',
+        queryFailedShort: 'Query progress failed',
+      },
+      segments: {
+        empty: 'No silence segments detected',
+        total: 'Total {count} segments',
+        segmentsUnit: 'segments',
+        selected: 'Selected {count}',
+        canSave: 'Can save {time}s',
+        selectAll: 'Select All',
+        deselectAll: 'Deselect All',
+        invertSelection: 'Invert',
+        playContext: 'Play context before and after this segment',
+      },
+      waveform: {
+        pause: 'Pause',
+        play: 'Play',
+        previewEffect: 'Preview overall effect (skip selected silence segments)',
+        stopPreview: 'Stop Preview',
+        preview: 'Preview Effect',
+        zoomHint: 'Ctrl+Scroll to zoom, double-click to fit',
+      },
+      duration: {
+        minutes: 'min',
+        seconds: 'sec',
+      },
+    },
+    workflowNodes: {
+      ports: {
+        input: 'Input',
+        output: 'Output',
+        keywords: 'Keywords',
+        results: 'Results',
+        arrayInput: 'Array Input',
+        combined: 'Combined',
+        array: 'Array',
+        videos: 'Videos',
+        materials: 'Materials',
+        textInput: 'Text Input',
+        audioOutput: 'Audio Output',
+        timeline: 'Timeline',
+        copy: 'Copy',
+        video: 'Video',
+        audio: 'Audio',
+        image: 'Image',
+      },
+      tooltips: {
+        configured: 'Configured',
+        deleteNode: 'Delete node',
+        inputPort: 'Input Port',
+        outputPort: 'Output Port',
+      },
+      status: {
+        configured: 'Configured',
+        notSet: 'Not set',
+        notSelected: 'Not selected',
+        ready: 'Ready',
+        success: 'Success',
+        failed: 'Failed',
+        notConfigured: 'Not configured',
+        noContent: 'No content',
+        doubleClickToConfigure: 'Double click to configure',
+        doubleClickForFullContent: 'Double click for full content',
+        model: 'Model',
+        temperature: 'Temp',
+        systemPrompt: 'System Prompt',
+        keywords: 'Keywords',
+        count: 'Count',
+        voice: 'Voice',
+        text: 'Text',
+        content: 'Content',
+        format: 'Format',
+        statusLabel: 'Status',
+        videoUrls: 'Video URLs',
+        moreCount: 'more...',
+        exportToMaterials: 'Export to Materials',
+        exportVideos: 'Export Videos',
+        inputType: 'Input Type',
+        arrayBadge: 'Array[]',
+        schema: 'Schema',
+        schemaDefined: 'Defined',
+        combinesStandardizes: 'Combines & Standardizes',
+        combinesResults: 'Combines Results',
+        transformPrompt: 'Transform Prompt',
+        conversionPrompt: 'Conversion Prompt',
+        fields: 'Fields',
+        fieldsCount: '{count} field(s)',
+        outputsArray: 'Outputs Array',
+        typeLabel: 'Type',
+        workflowStartPoint: 'Workflow Start Point',
+        workflowEndPoint: 'Workflow End Point',
+      },
+      aiVideo: {
+        inputs: 'Inputs',
+        status: 'Status',
+        lastRun: 'Last Run',
+        error: 'Error',
+        prompt: 'Prompt',
+        notConfigured: 'Not configured',
+        doubleClickConfigure: 'Double click to configure',
+      },
+      execution: {
+        title: 'Execution Process',
+        progress: 'Progress',
+        noNodes: 'No execution nodes',
+        waiting: 'Waiting',
+        executing: 'Executing',
+        completed: 'Completed',
+        failed: 'Failed',
+        executionTime: 'Execution Time',
+        systemPrompt: 'System Prompt',
+        userInput: 'Prompt (User Input)',
+        modelReply: 'Model Reply',
+        input: 'Input',
+        output: 'Output',
+        error: 'Error',
+      },
+      editor: {
+        noWorkflowSelected: 'No Workflow Selected',
+        selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
+        newWorkflowDefaultName: 'Search Chat Agent',
+        newWorkflowDescription: 'AI agent for searching and chatting',
+      },
+      configPanels: {
+        volcanoTTS: {
+          title: 'Volcano TTS Configuration',
+          nodeId: 'Node ID',
+          dataFormat: 'Data Format',
+          inputFormat: 'Input Format',
+          outputFormat: 'Output Format',
+          inputFormatHelp: 'Format of data received from the previous node.',
+          outputFormatHelp: 'Format of data sent to the next node.',
+          language: 'Language',
+          chinese: 'Chinese',
+          english: 'English',
+          voiceType: 'Voice Type',
+          loadingVoices: 'Loading voices...',
+          speedRatio: 'Speed Ratio',
+          slower: '0.5x (Slower)',
+          normal: '1.0x (Normal)',
+          faster: '2.0x (Faster)',
+          textContent: 'Text Content',
+          clear: 'Clear',
+          placeholder: 'Enter the text you want to convert to speech...',
+          characters: 'characters',
+          words: 'words',
+          hasContent: 'Has content',
+          empty: 'Empty',
+          audioPreview: 'Audio Preview',
+          pause: 'Pause',
+          playAudio: 'Play Audio',
+          download: 'Download',
+          downloadAudio: 'Download Audio',
+          howToUse: 'How to use',
+          howToUseSteps: [
+            'Select your preferred voice type from the list',
+            'Enter the text you want to convert to speech',
+            'Adjust the speed ratio if needed (0.5x - 2.0x)',
+            'Use the Test & Debug panel to preview the audio',
+            'Connect the output to other nodes to use the generated audio',
+          ],
+          cancel: 'Cancel',
+          save: 'Save Configuration',
+          saving: 'Saving...',
+        },
+        aiVideoGenerate: {
+          title: 'AI Video Generate Configuration',
+          subtitle: 'Configure inputs and parameters',
+          inputConfiguration: 'Input Configuration',
+          llmSettings: 'LLM Settings',
+          executionResults: 'Execution Results',
+          inputConfigDesc: 'Configure optional inputs. Each input supports string, JSON, or array format.',
+          textInput: 'Text Input',
+          videoInput: 'Video Input',
+          audioInput: 'Audio Input',
+          imageInput: 'Image Input',
+          enterTextPlaceholder: 'Enter text content, JSON object, or array...',
+          enterVideoPlaceholder: 'Enter video URL, JSON object, or array...',
+          enterAudioPlaceholder: 'Enter audio URL, JSON object, or array...',
+          enterImagePlaceholder: 'Enter image URL, JSON object, or array...',
+          stringFormat: 'String',
+          jsonFormat: 'JSON',
+          arrayFormat: 'Array',
+          llmConfigDesc: 'Configure LLM parameters. Uses VIDEO_CUT_LLM from backend environment.',
+          systemPrompt: 'System Prompt (Optional)',
+          systemPromptPlaceholder: 'Override default system prompt for video timeline generation...',
+          temperature: 'Temperature',
+          temperatureHint: 'Lower values make output more focused and deterministic',
+          maxTokens: 'Max Tokens',
+          llmInfoTitle: 'LLM Configuration',
+          llmInfoDesc: 'This node uses the VIDEO_CUT_LLM configured in the backend environment. The LLM will merge all inputs and generate a timeline JSON in the Video Editing format.',
+          executionSuccessful: 'Execution Successful',
+          executionFailed: 'Execution Failed',
+          lastExecuted: 'Last executed',
+          errorMessage: 'Error Message',
+          executionResult: 'Execution Result (Timeline JSON)',
+          noResultsYet: 'No execution results yet. Run the workflow to see results.',
+          cancel: 'Cancel',
+          saveConfiguration: 'Save Configuration',
+        },
+      },
+    },
+    mediaPreview: {
+      zoomOut: 'Zoom out (-)',
+      zoomIn: 'Zoom in (+)',
+      reset: 'Reset (0)',
+      pause: 'Pause (Space)',
+      play: 'Play (Space)',
+      close: 'Close (ESC)',
+      imageShortcuts: 'Shortcuts:',
+      imageShortcutsZoom: '+/-',
+      imageShortcutsReset: '0',
+      imageShortcutsClose: 'ESC',
+      imageMouseWheel: 'Scroll',
+      imageMouseDrag: 'Drag',
+      mediaShortcutsSpace: 'Space',
+      mediaShortcutsClose: 'ESC',
+      imageShortcutsLine1: 'Shortcuts: +/- zoom | 0 reset | ESC close',
+      imageShortcutsLine2: 'Mouse: scroll zoom | drag to pan',
+      mediaShortcutsLine: 'Shortcuts: Space play/pause | ESC close',
+    },
+    storyboardPack: {
+      defaultTitle: 'Storyboard Pack',
+      frames: 'frames',
+      close: 'Close',
+      originalImage: 'Original Storyboard Image',
+      noFrames: 'No frame data yet',
+      frame: 'Frame',
+      position: 'Position',
+      row: 'Row',
+      column: 'Column',
+      noDescription: 'No description generated',
+      deletePack: 'Delete Pack',
+      addToMaterials: 'Add All to Materials',
+      useInScript: 'Use in Script',
+      materials: 'Materials',
+      prompt: 'Prompt',
+      gridSizeLabel: 'Grid Size',
+      frameCountLabel: 'Frames',
+      gridWillGenerate: 'Will generate {rows}x{cols} = {total} frame grid',
+      gridWillUse: 'Will generate {rows}x{cols} = {total} grid, using first {value} frames',
+    },
+    mobileWarning: {
+      tablet: 'Tablet',
+      mobile: 'Mobile',
+      mobileDevice: 'Mobile Device',
+      title: '{device} is not supported yet',
+      description: 'For a better experience, please access this app on a computer.',
+      useDesktop: 'Recommended: use a computer',
+    },
+    gridSizeSelector: {
+      frameCount: 'Storyboard Count',
+      gridLabel: 'grid',
+      custom: 'Custom',
+      placeholder: 'Enter storyboard count (1-64)',
+      willGenerate: 'Will generate {rows}x{cols} = {total} frame grid',
+      willUse: 'Will generate {rows}x{cols} = {total} grid, using first {value} frames',
+    },
+    creativeBrainstorming: {
+      inputPlaceholder: 'Enter your thoughts or questions...',
+      sendHint: 'Press Enter to send, Shift+Enter for new line',
+    },
+    audioSearchModal: {
+      title: 'Search Audio',
+      searchPlaceholder: 'Enter audio search keywords, e.g.: ambient music, nature sounds...',
+      searchButton: 'Search',
+      searching: 'Searching...',
+      audioTypeLabel: 'Audio Type:',
+      audioTypeAll: 'All',
+      audioTypeMusic: 'Music',
+      audioTypeSoundEffect: 'Sound Effect',
+      audioTypeSpeech: 'Speech',
+      audioTypeAmbient: 'Ambient',
+      audioTypeNature: 'Nature',
+      sortByLabel: 'Sort By:',
+      sortByScore: 'Relevance',
+      sortByDownloads: 'Popularity (Downloads)',
+      sortByRating: 'Rating',
+      sortByDurationDesc: 'Duration (Long to Short)',
+      sortByDurationAsc: 'Duration (Short to Long)',
+      sortByCreatedDesc: 'Newest',
+      sortByCreatedAsc: 'Oldest',
+      durationFilterLabel: 'Duration Filter:',
+      durationMinPlaceholder: 'Min (sec)',
+      durationMaxPlaceholder: 'Max (sec)',
+      durationTo: 'to',
+      resultsTitle: 'Search Results',
+      resultsCount: '({count} audios)',
+      selectedCount: 'Selected: {count}',
+      clearSelection: 'Clear Selection',
+      noResults: 'No audio found',
+      noResultsHint: 'Try different keywords or adjust filters',
+      noQueryTitle: 'Enter keywords to search audio',
+      noQueryHint: 'Search ambient sounds, sound effects, music and more',
+      previewTitle: 'Audio Preview',
+      descriptionLabel: 'Description',
+      audioInfoLabel: 'Audio Info',
+      durationLabel: 'Duration:',
+      licenseLabel: 'License:',
+      sizeLabel: 'Size:',
+      formatLabel: 'Format:',
+      channelsLabel: 'Channels',
+      sampleRateLabel: 'Sample Rate:',
+      tagsLabel: 'Tags',
+      addingAudios: 'Adding {count} audios, please wait...',
+      addedCount: '{count} audios selected',
+      cancelButton: 'Cancel',
+      addingButton: 'Adding...',
+      addSelectedButton: 'Add Selected Audio ({count})',
+    },
+    imageSearchModal: {
+      title: 'Search Images',
+      searchPlaceholder: 'Enter search keywords, e.g.: landscape, portrait, architecture...',
+      searchButton: 'Search',
+      searching: 'Searching...',
+      orientationLabel: 'Orientation:',
+      orientationAll: 'All',
+      orientationLandscape: 'Landscape',
+      orientationPortrait: 'Portrait',
+      orientationSquarish: 'Square',
+      colorLabel: 'Color:',
+      colorAll: 'All',
+      colorBlackAndWhite: 'Black & White',
+      colorBlack: 'Black',
+      colorWhite: 'White',
+      colorYellow: 'Yellow',
+      colorOrange: 'Orange',
+      colorRed: 'Red',
+      colorPurple: 'Purple',
+      colorMagenta: 'Magenta',
+      colorGreen: 'Green',
+      colorTeal: 'Teal',
+      colorBlue: 'Blue',
+      orderByLabel: 'Sort:',
+      orderByRelevant: 'Relevance',
+      orderByLatest: 'Latest',
+      orderByPopular: 'Popular',
+      selectedCount: '{count} images selected',
+      clearSelection: 'Clear Selection',
+      addingImages: 'Adding...',
+      addSelectedButton: 'Add Selected Images ({count})',
+      deselect: 'Deselect',
+      select: 'Select',
+      addToMaterials: 'Add to Materials',
+      noDescription: 'No description',
+      noResultsTitle: 'No search results',
+      noResultsHint: 'Enter keywords to search images',
+      imagePreview: 'Image Preview',
+      prevPage: 'Previous',
+      nextPage: 'Next',
+      pageInfo: 'Page {current} of {total}',
+    },
+    aiImageModal: {
+      title: 'AI Image Generation',
+      subtitle: 'Seedream · ByteDance Ark Platform',
+      tabBasic: 'Basic Generation',
+      tabCharacter: 'Character Modeling',
+      tabScene: 'Scene Modeling',
+      tabStoryboard: 'Storyboard',
+      cancelButton: 'Cancel',
+      generatingButton: 'Generating...',
+      generateButton: 'Start Generating',
+    },
+    basicGenerationTab: {
+      promptLabel: 'Prompt',
+      promptPlaceholder: 'Describe the image you want to generate... Select reference images from the right panel, or type @[image name] to reference',
+      sizeLabel: 'Image Size',
+      size1kSquare: '1K Square',
+      size2kSquare: '2K Square',
+      size169Landscape: '16:9 Landscape',
+      size916Portrait: '9:16 Portrait',
+      size169Wide: '16:9 Wide',
+      size916Wide: '9:16 Wide',
+      countLabel: 'Generation Count',
+      countUnit: 'images',
+      watermarkLabel: 'Add Watermark',
+      watermarkDesc: 'Add platform watermark to generated images',
+    },
+    storyboardTab: {
+      aspectRatioLabel: 'Aspect Ratio',
+      aspectRatio11: '1:1 Square',
+      aspectRatio169: '16:9 Landscape',
+      aspectRatio916: '9:16 Portrait',
+      aspectRatio43: '4:3 Landscape',
+      aspectRatio34: '3:4 Portrait',
+      promptLabel: 'Prompt',
+      promptPlaceholder: 'Describe the storyboard content... Type @ to link reference images',
+      settingsTitle: 'Storyboard Settings',
+      settingsLocked: 'Locked',
+      scriptPreviewLabel: 'Script Preview ({count} shots)',
+      languageLabel: '{lang}',
+      backToInput: '← Back to input',
+      shotNumber: 'Shot {number}',
+      shotPlaceholder: 'Shot {number} script...',
+      emptyScript: 'Script is empty, please go back to regenerate',
+      chatTitle: 'Chat with AI to modify script',
+      chatYou: 'You:',
+      chatAI: 'AI:',
+      chatPlaceholder: 'e.g.: Change shot 3 to rainy night',
+      chatSend: 'Send',
+      confirmGenerate: 'Confirm & Generate Storyboard',
+      scriptMinLengthHint: 'Please ensure all scripts have at least 5 characters',
+      nextStepGenerate: 'Next: Generate Storyboard Script',
+      generatingScript: 'Generating script...',
+      scriptInfo: 'Will generate {count} shot scripts for confirmation, aspect ratio {ratio} (Language: {lang})',
+      advancedOptions: 'Advanced Options',
+      skipScript: 'Skip script, generate storyboard directly (legacy)',
+      generatingFrames: 'Generating {count} storyboard frames...',
+      generatingFramesDesc: 'AI is drawing and auto-cropping based on the script',
+      croppedFrames: 'Cropped to {count} storyboard frames with script binding',
+      gridLabel: 'Grid:',
+      generateNew: 'Generate New Storyboard',
+      retryButton: 'Retry',
+      scriptGenerateFailed: 'Script generation failed',
+      scriptReviseFailed: 'Script revision failed',
+      scriptUpdated: 'Script updated ({count} shots).',
+      backConfirm: 'Going back will clear the current script draft. Continue?',
+      generateFailed: 'Storyboard generation failed, please retry',
+      storyboardImageAlt: 'Storyboard full image',
+    },
+    gridSizeSelectorTab: {
+      frameCountLabel: 'Storyboard Count',
+      gridUnit: 'grid',
+      custom: 'Custom',
+      placeholder: 'Enter storyboard count (1-64)',
+      willGenerate: 'Will generate {rows}x{cols} = {total} frame grid',
+      willUse: 'Will generate {rows}x{cols} = {total} grid, using first {value} frames',
+    },
+    videoAnalysisModal: {
+      title: 'AI Video Analysis Result',
+      subtitle: 'Intelligent video content analysis',
+      closeTooltip: 'Close',
+      videoDuration: 'Video Duration',
+      framesExtracted: 'Frames Extracted',
+      processingTime: 'Processing Time',
+      analysisTime: 'Analysis Time',
+      frameAnalysisTitle: 'Frame-by-Frame Analysis',
+      frameLabel: 'Frame {number}',
+      timePoint: 'Time Point',
+      summaryTitle: 'Analysis Summary',
+      errorTitle: 'Analysis Failed',
+      errorDefaultMessage: 'An error occurred during video analysis',
+      closeButton: 'Close',
+      loadingTitle: 'Loading Analysis Results',
+      loadingDesc: 'Please wait...',
+      videoLabel: 'Video:',
+      secondsUnit: 's',
+      framesUnit: 'frames',
+    },
+    videoScriptProgressModal: {
+      titleWithVideo: 'Video Understanding Script Generation',
+      titleWithoutVideo: 'Script Generation',
+      stepPreparing: 'Preparing...',
+      stepAnalyzing: 'Analyzing video content...',
+      stepGenerating: 'Generating script...',
+      stepProcessing: 'Processing...',
+      descAnalyzing: 'Analyzing video ({analyzed}/{total})',
+      descGeneratingWithVideo: 'Generating script based on video analysis',
+      descGeneratingWithoutVideo: 'Generating script based on conversation',
+      descPleaseWait: 'Please wait...',
+      analyzingVideo: 'Analyzing: {name}',
+      statCompleted: 'Completed',
+      statProcessing: 'Processing',
+      statFailed: 'Failed',
+      errorTitle: 'Issues encountered during processing',
+      cancelButton: 'Cancel',
+    },
+    videoCacheIndicator: {
+      loading: 'Preloading...',
+      loaded: 'Cached',
+      error: 'Load Failed',
+      notCached: 'Not Cached',
+    },
+    chatMessageBubble: {
+      thinking: 'Thinking...',
+      thoughtProcess: 'Thought Process',
+      analyzingIntent: 'Analyzing Intent',
+      detectingWorkflow: 'Detecting if your question requires workflow...',
+      willCallWorkflow: 'Will call workflow: {name}',
+      normalChat: 'Normal Chat',
+      copiedTitle: 'Copied!',
+      copyMessageTitle: 'Copy Message',
+      convertToScriptTitle: 'Convert to Video Script',
+      generating: 'Generating',
+      copied: 'Copied',
+    },
+    chatWorkflowExecution: {
+      finalResult: 'Final Result',
+      copiedTitle: 'Copied!',
+      copyTitle: 'Copy Final Result',
+      convertToScriptTitle: 'Convert to Video Script',
+      exportClip: 'Export Clips ({count} video materials)',
+      exportClipHint: 'Click to import video materials into the Video Editing materials panel',
+      executing: 'Workflow executing...',
+    },
+    chatWorkflowSelection: {
+      title: 'Select Workflow',
+      subtitle: 'Select a workflow to start a new conversation',
+      loading: 'Loading workflows...',
+      errorTitle: 'Loading Failed',
+      retryButton: 'Retry',
+      emptyTitle: 'No Workflows',
+      emptyHint: 'Please create a workflow in the "Workflows" task first, then start a new conversation',
+      activeBadge: 'Active',
+      nodesLabel: '{count} nodes',
+      totalWorkflows: '{count} workflows available',
+      cancelButton: 'Cancel',
+    },
+    videoCut: {
+      title: 'Cut Material',
+      timelineControl: 'Timeline Control',
+      selectRange: 'Select Range:',
+      dragGreenStart: 'Drag the green control bar to adjust start time',
+      dragRedEnd: 'Drag the red control bar to adjust end time',
+      blueCurrentPos: 'The blue line indicates current playback position',
+      setStart: 'Set Start',
+      setEnd: 'Set End',
+      createClip: 'Create Clip',
+      preview: 'Preview:',
+      selectToPreview: 'Select a clip to preview',
+      clipList: 'Clip List',
+      clip: 'Clip',
+      clipCount: 'clips',
+      exportClips: 'Export Clips',
+      noClips: 'No clips created yet',
+      startBeforeEnd: 'Start time must be before end time',
+      minDuration: 'Clip duration must be at least 0.5 seconds',
+      clipCreated: 'Clip created: ',
+      clipDeleted: 'Clip deleted',
+      noClipsToExport: 'No clips to export',
+      noMaterial: 'Original material not found',
+      clipsExported: ' clips exported to material panel',
+      exportUnavailable: 'Export function is not available',
+      startTimeLabel: 'Start Time:',
+      endTimeLabel: 'End Time:',
+    },
+    convertToScript: {
+      title: 'Generate Script',
+      subtitle: 'Convert conversation content to video script',
+      parameterSettings: 'Parameter Settings',
+      scriptLanguage: 'Script Language',
+      chinese: 'Chinese',
+      english: 'English',
+      mixed: 'Mixed (Chinese & English)',
+      segmentCount: 'Script Segment Count:',
+      segments: 'segments',
+      analysisDepth: 'Analysis Depth',
+      basic: 'Basic',
+      quickGen: 'Quick Generation',
+      detailed: 'Detailed',
+      balancedQuality: 'Balanced Quality',
+      comprehensive: 'Comprehensive',
+      deepAnalysis: 'Deep Analysis',
+      additionalOptions: 'Additional Options',
+      includeVisual: 'Include Visual Element Analysis',
+      visualDesc: 'Analyze scenes, objects, people and other visual info in the video',
+      includeAudio: 'Include Audio Analysis',
+      audioDesc: 'Analyze speech, music, sound effects and other audio info in the video',
+      videoUnderstanding: 'Video Understanding',
+      enabledDesc: 'Video understanding enabled. Selected videos will be automatically analyzed to generate scripts.',
+      disabledDesc: 'Video understanding is off. Scripts will be generated from conversation content only.',
+      analysisMode: 'Analysis Mode',
+      quickAnalysis: 'Quick Analysis',
+      coverOnly: 'Cover Only',
+      proAnalysis: 'Professional Analysis',
+      multiFrame: 'Multi-frame Deep Analysis',
+      selectVideoDesc: 'Select video materials to participate in script generation',
+      videoStatsPrefix: 'Total ',
+      videoStatsTotal: ' videos, ',
+      videoStatsAnalyzed: ' analyzed, ',
+      videoStatsPending: ' pending',
+      selectedUnanalyzedPrefix: '',
+      selectedUnanalyzed: ' unanalyzed videos selected — will be analyzed during generation',
+      noVideos: 'No video materials available',
+      pleaseUpload: 'Please upload or search for video materials first',
+      selectedCountPrefix: 'Selected ',
+      selectedCount: ' videos',
+      selectAll: 'Select All',
+      deselectAll: 'Deselect All',
+      analyzed: 'Analyzed',
+      pending: 'Pending',
+      unknownDuration: 'Unknown duration',
+      chatPreview: 'Chat Content Preview:',
+      footerWithVideo: 'Will use {count} videos to generate script',
+      footerWithAnalysis: ' ({count} need analysis first)',
+      footerNoVideo: 'Will generate script from conversation content',
+      generating: 'Generating...',
+      startGenerate: 'Start Generating',
     },
   },
   'zh-CN': {
@@ -2998,6 +4942,8 @@ export const translations: Record<string, Translations> = {
       operational: '正常运行',
       close: '关闭',
       cancel: '取消',
+      confirm: '确定',
+      underDevelopment: '功能开发中...',
     },
     header: {
       brandSubtitle: '光与影之交汇',
@@ -3007,6 +4953,20 @@ export const translations: Record<string, Translations> = {
       returnToHomepage: '返回首页',
       switchToLightMode: '切换到亮色模式',
       switchToDarkMode: '切换到暗色模式',
+    },
+    landing: {
+      description: 'AI驱动的创意平台',
+      heroDescription: '创意与AI的交汇。创作精彩视频，构建智能工作流，用我们强大的工具套件释放您的创造潜力。',
+      startCreating: '开始创作',
+      loading: '加载中...',
+      exploreWorkflows: '探索工作流',
+      videoEditingDesc: 'AI驱动的专业视频编辑工具与直观时间线界面',
+      workflowDesc: '可视化节点编辑器构建强大AI工作流',
+      aiChatDesc: '智能AI对话助力内容创作与辅助',
+      brainstormingDesc: '为您的项目生成创意想法和概念',
+      aiModels: 'AI模型',
+      workflowTemplates: '工作流模板',
+      creativePossibilities: '创意无限可能',
     },
     auth: {
       login: '登录',
@@ -3021,6 +4981,7 @@ export const translations: Record<string, Translations> = {
       loginButton: '登录',
       registerButton: '注册',
       welcomeBack: '欢迎回来',
+      welcomeBackMessage: '欢迎回来，{username}！({role})',
       welcomeTitle: '欢迎使用 Ecliptrix',
       welcomeSubtitle: '光与影之交汇，创造非凡内容',
       loginSuccess: '登录成功',
@@ -3071,6 +5032,7 @@ export const translations: Record<string, Translations> = {
       saveSettings: '保存设置',
       settingsSaveSuccess: '设置保存成功',
       settingsSaveError: '设置保存失败',
+      autoSaveNote: '更改会自动保存。',
     },
     adminSettings: {
       title: '管理员设置',
@@ -3160,6 +5122,8 @@ export const translations: Record<string, Translations> = {
       modelUsingDb: '已自定义配置',
       modelDomestic: '国内',
       modelInternational: '国际',
+      authRequiredError: '请登录后访问模型设置。',
+      sessionExpiredError: '会话已过期，请重新登录。',
       modelResetToDefault: '恢复默认',
       modelParameters: '参数',
       modelSelectProvider: '选择供应商',
@@ -3192,7 +5156,7 @@ export const translations: Record<string, Translations> = {
       modelAssignmentSaved: '分配已保存',
       modelAssignmentDeleted: '分配已删除',
       // Tab layout & provider enhancements
-      tabProviders: '提供商管理',
+      tabProviders: '供应商管理',
       tabAssignments: '模型分配',
       tabAdvanced: '高级设置',
       apiFormat: 'API 格式',
@@ -3220,16 +5184,16 @@ export const translations: Record<string, Translations> = {
       effectiveConfigDesc: '展示每个功能类型当前生效的配置，来源于数据库分配或环境变量回退。',
       effectiveConfigRefresh: '刷新',
       effectiveConfigLoading: '加载配置中...',
-      effectiveConfigUrl: '提供商 / URL',
+      effectiveConfigUrl: '供应商 / URL',
       effectiveConfigModel: '模型',
       effectiveConfigSource: '来源',
       effectiveConfigNotConfigured: '未配置',
       testConnectionFormat: '测试连接格式',
       modelInfo: '模型信息',
       formatUsed: '使用的格式',
-      providerCard: '提供商卡片',
+      providerCard: '供应商卡片',
       modelApiKeyRequired: 'API Key 不能为空',
-      modelDeleteProviderError: '删除提供商失败',
+      modelDeleteProviderError: '删除供应商失败',
       modelModelsFound: '个模型已获取',
       modelKeyNotSet: '未设置',
       modelRequestFailed: '请求失败',
@@ -3477,6 +5441,116 @@ export const translations: Record<string, Translations> = {
       brainstorming: '头脑风暴',
       aiChat: 'AI对话',
     },
+    workflowInterface: {
+      chatInterfaceTab: '聊天界面',
+      workflowInterfaceTab: '工作流界面',
+      sidebar: {
+        heading: '工作流',
+        addNew: '添加新工作流',
+        subtitle: '选择或创建一个工作流',
+        emptyState: '暂无工作流',
+        editDetails: '编辑工作流详情',
+        confirmDelete: '确认删除',
+        deleteWorkflow: '删除工作流',
+        workflowCount: '{count} 个工作流',
+        active: '活跃',
+      },
+      canvas: {
+        contextMenu: {
+          addStartNode: '添加开始节点',
+          addEndNode: '添加结束节点',
+          addChatLLM: '添加聊天 LLM',
+          addTextInput: '添加文本输入',
+          addPexelsVideoSearch: '添加 Pexels 视频搜索',
+          addTavilySearch: '添加 Tavily 搜索',
+          addVolcanoTTS: '添加火山 TTS',
+          addToArray: '添加转换为数组',
+          addResultsCombine: '添加结果合并',
+          addAIVideoGenerate: '添加 AI 视频生成',
+          addVideoExport: '添加视频导出',
+        },
+        nodeDefaults: {
+          start: '开始',
+          end: '结束',
+          chatLLM: '聊天 LLM',
+          textInput: '文本输入',
+          pexelsSearch: 'Pexels 视频搜索',
+          tavilySearch: 'Tavily 搜索',
+          volcanoTTS: '火山 TTS',
+          toArray: '转换为数组',
+          resultsCombine: '结果合并',
+          aiVideoGenerate: 'AI 视频生成',
+          videoExport: '视频导出',
+        },
+        emptyState: {
+          title: '开始构建您的工作流',
+          description: '右键点击画布任意位置添加您的第一个节点',
+        },
+        toolbar: {
+          zoomOut: '缩小',
+          zoomIn: '放大',
+          panMode: '平移模式（拖拽画布）',
+          exitPanMode: '退出平移模式（切换到节点拖拽）',
+          resetView: '重置视图',
+        },
+        infoBar: {
+          nodes: '节点',
+          connections: '连接',
+          nodeSelected: '已选中节点',
+          connectionSelected: '已选中连接',
+        },
+      },
+      editor: {
+        save: '保存',
+        saving: '保存中...',
+        run: '运行',
+        stop: '停止',
+        loading: '加载工作流...',
+        noWorkflowSelected: '未选择工作流',
+        selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
+        description: '描述',
+        viewDescription: '查看描述',
+      },
+      notifications: {
+        loadedWorkflows: '已加载 {count} 个工作流',
+        failedToLoad: '加载工作流失败',
+        pleaseLoginToCreate: '请先登录以创建工作流',
+        newWorkflowDefaultName: '新工作流',
+        workflowCreated: '工作流 "{name}" 创建成功',
+        workflowCreatedSaveFailed: '工作流已创建但保存失败，请手动保存。',
+        pleaseLoginToRename: '请先登录以重命名工作流',
+        workflowRenamed: '工作流已重命名为 "{name}"',
+        workflowRenamedSaveFailed: '工作流已重命名但保存失败，请手动保存。',
+        pleaseLoginToSaveChanges: '请先登录以保存工作流更改',
+        workflowNotFound: '未找到工作流',
+        workflowUpdated: '工作流 "{name}" 更新成功',
+        workflowUpdatedSaveFailed: '工作流已在本地更新但保存到数据库失败，请手动保存。',
+        pleaseLoginToDelete: '请先登录以删除工作流',
+        cannotDeleteLast: '无法删除最后一个工作流',
+        workflowDeleted: '工作流 "{name}" 已成功删除',
+        failedToDelete: '删除工作流失败',
+        pleaseLoginToSave: '请先登录以保存工作流',
+        noActiveWorkflow: '没有活跃的工作流可保存',
+        workflowSaved: '工作流 "{name}" 已成功保存 (v{version})',
+        workflowSaveFailed: '保存工作流失败',
+      },
+      logPanel: {
+        title: '执行日志',
+        collapse: '收起',
+        expand: '展开',
+        running: '运行中',
+        current: '当前',
+        noLogs: '暂无日志',
+        clickRunToStart: '点击运行按钮开始执行工作流',
+        input: '输入',
+        output: '输出',
+        viewDetails: '查看详情',
+        totalLogs: '总计日志: {count}',
+        errors: '{count} 个错误',
+        warnings: '{count} 个警告',
+        success: '{count} 个成功',
+      },
+    },
     welcome: {
       title: '欢迎使用 Ecliptrix',
       subtitle: '光与影之交汇',
@@ -3721,6 +5795,9 @@ export const translations: Record<string, Translations> = {
         dropAudioHere: '拖拽音频素材到此轨道',
         dropSubtitleHere: '拖拽字幕素材到此轨道',
         dropToTrack: '放置到 {trackName}',
+        copyOf: '{name} (副本)',
+        noTracks: '暂无轨道',
+        noTracksDescription: '开始创建您的第一个轨道，添加视频、音频或字幕素材',
       },
               messages: {
           noAudioItems: '没有找到音频项目，请先添加音频到时间轴。',
@@ -3781,6 +5858,35 @@ export const translations: Record<string, Translations> = {
       confirmAddButton: '确认添加',
       validationErrorTitle: '视频时长不足',
       validationErrorDesc: '请选择更多视频或时长更长的视频素材。',
+      officialLibrary: '官方视频库',
+      youtubeLibrary: 'Youtube视频库',
+      youtubeSearchPlaceholder: '搜索Youtube视频，如：自然风景、城市夜景、延时摄影...',
+      durationLabel: '时长:',
+      durationUnder1: '1分钟内',
+      durationUnder3: '3分钟内',
+      durationUnder5: '5分钟内',
+      durationUnder10: '10分钟内',
+      durationCustom: '自定义',
+      durationMinPlaceholder: '最小秒数',
+      durationMaxPlaceholder: '最大秒数',
+      seconds: '秒',
+      videoPreview: '视频预览',
+      channel: '频道:',
+      searchResults: '搜索结果',
+      resultsInfo: '找到 {count} 个{libraryType}视频，已选择 {selected} 个',
+      pageInfo: '第 {current} / {total} 页',
+      searchingLibrary: '正在搜索{libraryType}视频...',
+      startSearchLibrary: '开始搜索{libraryType}视频',
+      searchHint: '输入关键词并点击搜索按钮',
+      added: '已添加',
+      addToComposition: '添加合成',
+      prevPage: '上一页',
+      nextPage: '下一页',
+      noPreview: '无预览视频',
+      itemsUnit: '个',
+      noSelectionHint: '点击"添加合成"按钮选择视频',
+      validationErrorHint: '请选择更多视频或时长更长的视频素材。',
+      views: '次观看',
     },
     videoPlayerPanel: {
       aspectRatios: {
@@ -3848,6 +5954,25 @@ export const translations: Record<string, Translations> = {
     videoExport: {
       noContentToExport: '没有视频内容可导出',
       noContentToExportDesc: '请先添加视频素材到时间轴',
+      noContentToExportFull: '没有视频内容可导出，请先添加视频素材到时间轴',
+      videoTrackTooShort: '视频轨道长度不足！',
+      videoTrackDuration: '视频轨道时长',
+      audioTrackDuration: '音频轨道时长',
+      needToAdd: '需要增加的视频内容。',
+      exportCompletedButDownloadFailed: '视频导出已完成但下载失败。请刷新页面后重试，或联系技术支持。',
+      exportTimeout: '视频导出超时：处理时间超过10分钟限制。请尝试减少视频时长或复杂度，降低输出分辨率，或稍后重试。',
+      exportFailed: '视频导出失败',
+      exportFailedWithError: '视频导出失败：',
+      failedVideos: '失败的视频：',
+      recoverySuggestions: '建议解决方案：',
+    },
+    videoSearch: {
+      enterKeyword: '请输入搜索关键词',
+      searchFailed: '搜索失败，请稍后重试',
+      networkError: '搜索失败，请检查网络连接',
+      selectVideoFirst: '请先选择要添加的视频',
+      selectYoutubeVideoFirst: '请先选择要添加的Youtube视频',
+      videoDurationValidationFailed: '当前所有添加的视频总长度必须大于语音段落的时间长度，请继续添加视频',
     },
          scriptPanel: {
        tabs: {
@@ -3900,12 +6025,20 @@ export const translations: Record<string, Translations> = {
          clickGenerate: '点击"生成脚本"按钮根据左侧内容生成脚本',
          scriptWillAppear: '文本脚本将显示在这里',
        },
+       narration: {
+         label: '解说文案',
+         editTooltip: '编辑解说文案',
+       },
        video: {
          associatedVideos: '关联视频',
          loadingFailed: '加载失败',
          browserNotSupported: '您的浏览器不支持视频播放。',
          seconds: 's',
          duration: '时长',
+         loading: '加载中...',
+         checkNetwork: '请检查网络连接或视频URL',
+         retry: '重试',
+         multipleVideos: '多个',
        },
        errors: {
          speechConversionFailed: '语音转换失败',
@@ -3916,6 +6049,21 @@ export const translations: Record<string, Translations> = {
          videoDurationInsufficient: '视频总时长 ({videoDuration}秒) 需要大于当前音频时长 ({audioDuration}秒)',
          audioFileNotFound: '未找到对应的音频文件，请确保已完成语音转换',
          segmentTextEmpty: '片段文本为空',
+         sentenceDeleteFailed: '删除句子失败',
+         sentenceAddFailed: '添加句子失败',
+         speechConvertFailed: '语音转换失败: {error}',
+         subtitleRecognitionFailed: '字幕识别失败',
+       },
+       messages: {
+         segmentDeleted: '段落"{title}"已删除',
+         sentenceDeleted: '句子删除成功',
+         sentenceAdded: '句子添加成功',
+         speechConvertComplete: '语音转换完成！成功转换 {success}/{total} 个句子，总时长 {duration}秒',
+         confirmDeleteSegment: '确定要删除段落"{title}"吗？此操作不可撤销。',
+         newSentencePlaceholder: '请输入新的句子内容...',
+         confirmDelete: '删除',
+         cancelDelete: '取消',
+         speechConvertDescription: '由段落{index}"{title}"的{count}个句子并发转换并拼接生成的语音',
        },
        segments: {
          segmentPrefix: '段落{index}',
@@ -3986,6 +6134,22 @@ export const translations: Record<string, Translations> = {
          previousVideoNotGenerated: '请先生成前一个场景的视频',
          extractingFrame: '正在提取帧...',
          autoTransitionMode: '自动衔接',
+         modalTitle: 'AI 视频生成',
+         modalSubtitle: 'Seedance \u00b7 字节跳动 Ark 平台',
+         promptLabel: '提示词',
+         promptPlaceholder: '描述你想要生成的视频内容，例如：一只猫咪在阳光下玩耍，镜头缓缓移动...',
+         durationSeconds: '秒',
+         aspectRatioLabel: '视频比例',
+         landscape: '横屏',
+         portrait: '竖屏',
+         square: '方形',
+         advancedOptions: '高级选项',
+         fixedCamera: '固定镜头',
+         fixedCameraDesc: '锁定镜头位置，减少镜头移动',
+         addWatermark: '添加水印',
+         addWatermarkDesc: '在生成视频上添加平台水印',
+         resolutionLabel: '分辨率',
+         startGenerate: '开始生成',
         },
      },
    videoScript: {
@@ -4205,6 +6369,35 @@ export const translations: Record<string, Translations> = {
       queued: '排队中',
       queuedPosition: '位置',
       generationTimeout: '生成超时',
+      noPacks: '暂无分镜包',
+      selectPackPlaceholder: '选择分镜包...',
+      packInfoFrames: '{frames}帧',
+      packInfoSeparator: ' - ',
+      refreshPackList: '刷新分镜包列表',
+      segmentLabel: '分镜 #',
+      describingTitle: '正在生成描述...',
+      describeAllTitle: '为所有分镜帧生成AI描述',
+      describing: '生成中...',
+      describeAll: '生成描述',
+      generatingInProgress: '有视频正在生成中',
+      allVideosGenerated: '所有视频已生成',
+      batchGenerateAll: '一键批量生成所有未生成的视频',
+      batchGenerate: '一键批量生成',
+      generateAllVideosFirst: '请先生成所有分镜视频',
+      composing: '正在合成...',
+      composeAllVideos: '一键合成所有分镜视频',
+      composeVideo: '一键合成视频',
+      loadingPack: '正在加载分镜包...',
+      describingFrames: '正在为分镜帧生成描述...',
+      composeFailed: '合成失败: ',
+      retry: '重试',
+      addFrame: '添加帧',
+      generatedStatus: '已生成 {completed}/{total} 个视频',
+      estimatedDuration: '预计总时长: {duration}s',
+      confirmDelete: '确认删除',
+      deleteConfirmMessage: '确定要删除此分镜帧吗？已生成的视频不会从素材面板中移除。',
+      cancel: '取消',
+      delete: '删除',
     },
     storyboardPreviewPanel: {
       title: '分镜预览',
@@ -4447,6 +6640,27 @@ export const translations: Record<string, Translations> = {
       thinkingComplete: '思考过程',
       aiAnalyzingLabel: 'AI 分析中...',
     },
+    workflowChat: {
+      title: '工作流助手',
+      subtitle: '与工作流实时交互',
+      inputPlaceholder: '输入消息以启动工作流... (Shift+Enter 换行)',
+      send: '发送',
+      stop: '停止',
+      clearChat: '清空聊天记录',
+      clearChatConfirm: '确定要清空所有聊天记录吗？此操作不可撤销。',
+      clearContext: '清空上下文',
+      clearContextConfirm: '确定要清空当前工作流的上下文吗？聊天记录将保留。',
+      clearContextTooltip: '清空上下文，保留聊天记录',
+      startConversation: '开始对话',
+      startConversationDesc: '发送消息以启动工作流，我会实时显示执行过程和结果',
+      running: '执行中',
+      finalResult: '最终结果',
+      exportMaterials: '导出剪辑 ({count} 个视频素材)',
+      exportMaterialsHint: '点击将视频素材导入到 Video Editing 任务的素材管理面板',
+      goToVideoResult: '前往Video Editing查看结果',
+      workflowExecuting: '工作流正在执行中...',
+      inputHint: '按 Enter 发送，Shift + Enter 换行',
+    },
     workflowConfigModal: {
       title: '工作流配置',
       subtitle: '选择并配置用于视频编辑任务的工作流',
@@ -4483,6 +6697,711 @@ export const translations: Record<string, Translations> = {
         title: '准备开始聊天',
         subtitle: '发送消息以开始对话',
       },
+      messagesLabel: '条消息',
+      replying: '回复中',
+      clearChatTooltip: '清空聊天记录',
+      sendMessageTooltip: '发送消息',
+      aiReplying: 'AI 正在回复中...',
+      enterToSendHint: '按 Enter 发送，Shift + Enter 换行',
+      conversationList: {
+        heading: '对话列表',
+        newChat: '新对话',
+        noConversations: '暂无对话',
+        startNewChat: '开始新对话',
+        chatbot: '聊天机器人',
+        aiAgent: 'AI 代理',
+        messages: '{count} 条消息',
+      },
+      chatTypeModal: {
+        title: '新对话',
+        subtitle: '选择聊天类型开始',
+        chatbotTab: '聊天机器人',
+        workflowTab: '工作流',
+        agentTab: '智能体',
+        basicChatbot: '基础聊天机器人',
+        chatbotDesc: '与基础AI聊天机器人对话。适合快速提问和日常讨论。',
+        startChatbot: '开始聊天机器人对话',
+        fastResponse: '快速响应',
+        quickAnswers: '快速回答',
+        naturalChat: '自然对话',
+        conversational: '对话式交流',
+        easyToUse: '简单易用',
+        noSetupNeeded: '无需设置',
+        loadingWorkflows: '加载工作流中...',
+        failedToLoadWorkflows: '加载工作流失败',
+        retry: '重试',
+        noWorkflows: '暂无可用工作流',
+        createWorkflowFirst: '请先在工作流任务中创建工作流，然后开始新对话',
+        active: '活跃',
+        nodes: '个节点',
+        aiAgentTitle: 'AI 智能体',
+        agentDesc: '具有高级功能的智能代理。此功能即将推出。',
+        comingSoon: '即将推出',
+        taskPlanning: '任务规划',
+        multiStepTasks: '多步骤任务',
+        webSearch: '网页搜索',
+        realtimeInfo: '实时信息',
+        codeExecution: '代码执行',
+        runCodeSafely: '安全运行代码',
+        cancel: '取消',
+        workflowsAvailable: '{count} 个工作流可用',
+      },
+    },
+    videoProcessing: {
+      tab: '切气口',
+      buttons: {
+        close: '关闭',
+        next: '下一步',
+        back: '上一步',
+        done: '完成',
+        return: '返回',
+        minimize: '最小化',
+        cancel: '取消',
+        retry: '重试',
+        startProcessing: '开始处理',
+        redetect: '重新检测',
+        restored: '点击恢复弹窗',
+      },
+      presets: {
+        loose: '宽松',
+        standard: '标准',
+        aggressive: '激进',
+        custom: '自定义',
+      },
+      selectVideo: {
+        heading: '选择视频',
+        description: '选择一个需要处理的口播视频（最长30分钟）',
+        noVideos: '暂无视频素材',
+        noVideosHint: '请先上传视频素材到素材面板',
+        tooLong: '超过30分钟',
+      },
+      params: {
+        detectionPreset: '检测预设',
+        volumeThreshold: '音量阈值: {value} dB',
+        volumeThresholdHint: '低于此值视为静音',
+        minSilenceDuration: '最小静音时长: {value} ms',
+        minSilenceHint: '低于此值的短暂停顿将被忽略',
+        preservedGap: '保留间隔: {value} ms',
+        preservedGapHint: '每个静音段首尾保留的过渡间隔',
+      },
+      stats: {
+        originalDuration: '原时长',
+        newDuration: '新时长',
+        removedSegments: '移除静音段',
+        segments: '段',
+        savedTime: '节省时间',
+        saved: '节省',
+        estimatedNewDuration: '预计新时长',
+      },
+      progress: {
+        preparing: '准备中...',
+        processing: '处理中...',
+        completed: '处理完成',
+        failed: '处理失败',
+        detecting: '检测中...',
+        detectSilence: '检测静音段',
+        networkError: '网络异常',
+        networkErrorMsg: '无法连接服务器，请检查网络后重试',
+        timeout: '处理超时',
+        timeoutMsg: '已等待超过30分钟，后端任务可能仍在运行。请稍后检查素材面板。',
+        estimatedRemaining: '预计剩余',
+      },
+      errors: {
+        detectionFailed: '检测失败 ({status})',
+        detectionFailedShort: '检测失败',
+        detectionError: '检测静音段失败',
+        processFailed: '处理请求失败 ({status})',
+        processFailedShort: '处理请求失败',
+        submitFailed: '提交处理请求失败',
+        unknownError: '未知错误',
+        queryFailed: '查询进度失败 ({status})',
+        queryFailedShort: '查询进度失败',
+      },
+      segments: {
+        empty: '未检测到静音段',
+        total: '共 {count} 个静音段',
+        segmentsUnit: '段',
+        selected: '已选 {count} 个',
+        canSave: '可节省 {time} 秒',
+        selectAll: '全选',
+        deselectAll: '全不选',
+        invertSelection: '反选',
+        playContext: '试听该段前后上下文',
+      },
+      waveform: {
+        pause: '暂停',
+        play: '播放',
+        previewEffect: '试听整体效果（跳过已选静音段）',
+        stopPreview: '停止预览',
+        preview: '试听效果',
+        zoomHint: 'Ctrl+滚轮缩放，双击区域自适应缩放',
+      },
+      duration: {
+        minutes: '分',
+        seconds: '秒',
+      },
+    },
+    workflowNodes: {
+      ports: {
+        input: '输入',
+        output: '输出',
+        keywords: '关键词',
+        results: '结果',
+        arrayInput: '数组输入',
+        combined: '合并结果',
+        array: '数组',
+        videos: '视频',
+        materials: '素材',
+        textInput: '文本输入',
+        audioOutput: '音频输出',
+        timeline: '时间线',
+        copy: '文案',
+        video: '视频',
+        audio: '音频',
+        image: '图片',
+      },
+      tooltips: {
+        configured: '已配置',
+        deleteNode: '删除节点',
+        inputPort: '输入端口',
+        outputPort: '输出端口',
+      },
+      status: {
+        configured: '已配置',
+        notSet: '未设置',
+        notSelected: '未选择',
+        ready: '就绪',
+        success: '成功',
+        failed: '失败',
+        notConfigured: '未配置',
+        noContent: '暂无内容',
+        doubleClickToConfigure: '双击以配置',
+        doubleClickForFullContent: '双击查看完整内容',
+        model: '模型',
+        temperature: '温度',
+        systemPrompt: '系统提示词',
+        keywords: '关键词',
+        count: '数量',
+        voice: '音色',
+        text: '文本',
+        content: '内容',
+        format: '格式',
+        statusLabel: '状态',
+        videoUrls: '视频链接',
+        moreCount: '更多...',
+        exportToMaterials: '导出到素材',
+        exportVideos: '导出视频',
+        inputType: '输入类型',
+        arrayBadge: '数组[]',
+        schema: '结构',
+        schemaDefined: '已定义',
+        combinesStandardizes: '合并与标准化',
+        combinesResults: '合并结果',
+        transformPrompt: '转换提示词',
+        conversionPrompt: '转换提示词',
+        fields: '字段',
+        fieldsCount: '{count} 个字段',
+        outputsArray: '输出数组',
+        typeLabel: '类型',
+        workflowStartPoint: '工作流起点',
+        workflowEndPoint: '工作流终点',
+      },
+      aiVideo: {
+        inputs: '输入',
+        status: '状态',
+        lastRun: '上次运行',
+        error: '错误',
+        prompt: '提示词',
+        notConfigured: '未配置',
+        doubleClickConfigure: '双击进行配置',
+      },
+      execution: {
+        title: '执行过程',
+        progress: '进度',
+        noNodes: '暂无执行节点',
+        waiting: '等待中',
+        executing: '执行中',
+        completed: '已完成',
+        failed: '失败',
+        executionTime: '执行时间',
+        systemPrompt: '系统提示词',
+        userInput: 'Prompt（用户输入）',
+        modelReply: '模型回复',
+        input: '输入',
+        output: '输出',
+        error: '错误',
+      },
+      editor: {
+        noWorkflowSelected: '未选择工作流',
+        selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
+        newWorkflowDefaultName: '搜索聊天代理',
+        newWorkflowDescription: '用于搜索和聊天的AI代理',
+      },
+      configPanels: {
+        volcanoTTS: {
+          title: '火山TTS配置',
+          nodeId: '节点ID',
+          dataFormat: '数据格式',
+          inputFormat: '输入格式',
+          outputFormat: '输出格式',
+          inputFormatHelp: '从前一个节点接收的数据格式。',
+          outputFormatHelp: '发送到下一个节点的数据格式。',
+          language: '语言',
+          chinese: '中文',
+          english: '英文',
+          voiceType: '音色类型',
+          loadingVoices: '正在加载音色...',
+          speedRatio: '语速',
+          slower: '0.5x (较慢)',
+          normal: '1.0x (正常)',
+          faster: '2.0x (较快)',
+          textContent: '文本内容',
+          clear: '清空',
+          placeholder: '输入要转换为语音的文本...',
+          characters: '字符',
+          words: '词',
+          hasContent: '已有内容',
+          empty: '空',
+          audioPreview: '音频预览',
+          pause: '暂停',
+          playAudio: '播放音频',
+          download: '下载',
+          downloadAudio: '下载音频',
+          howToUse: '使用说明',
+          howToUseSteps: [
+            '从列表中选择您喜欢的音色',
+            '输入要转换为语音的文本',
+            '如需调整语速 (0.5x - 2.0x)',
+            '使用测试面板预览音频',
+            '将输出连接到其他节点以使用生成的音频',
+          ],
+          cancel: '取消',
+          save: '保存配置',
+          saving: '保存中...',
+        },
+        aiVideoGenerate: {
+          title: 'AI视频生成配置',
+          subtitle: '配置输入和参数',
+          inputConfiguration: '输入配置',
+          llmSettings: 'LLM设置',
+          executionResults: '执行结果',
+          inputConfigDesc: '配置可选输入。每个输入支持字符串、JSON或数组格式。',
+          textInput: '文案输入',
+          videoInput: '视频输入',
+          audioInput: '音频输入',
+          imageInput: '图片输入',
+          enterTextPlaceholder: '输入文本内容、JSON对象或数组...',
+          enterVideoPlaceholder: '输入视频URL、JSON对象或数组...',
+          enterAudioPlaceholder: '输入音频URL、JSON对象或数组...',
+          enterImagePlaceholder: '输入图片URL、JSON对象或数组...',
+          stringFormat: '字符串',
+          jsonFormat: 'JSON',
+          arrayFormat: '数组',
+          llmConfigDesc: '配置LLM参数。使用后端环境的VIDEO_CUT_LLM。',
+          systemPrompt: '系统提示词（可选）',
+          systemPromptPlaceholder: '覆盖默认的视频时间轴生成系统提示词...',
+          temperature: '温度',
+          temperatureHint: '较低的值使输出更加集中和确定',
+          maxTokens: '最大令牌数',
+          llmInfoTitle: 'LLM配置',
+          llmInfoDesc: '此节点使用后端环境配置的VIDEO_CUT_LLM（与AI混剪相同）。LLM将合并所有输入并生成视频编辑格式的时间轴JSON。',
+          executionSuccessful: '执行成功',
+          executionFailed: '执行失败',
+          lastExecuted: '上次执行',
+          errorMessage: '错误信息',
+          executionResult: '执行结果（时间轴JSON）',
+          noResultsYet: '暂无执行结果。运行工作流以查看结果。',
+          cancel: '取消',
+          saveConfiguration: '保存配置',
+        },
+      },
+    },
+    mediaPreview: {
+      zoomOut: '缩小 (-)',
+      zoomIn: '放大 (+)',
+      reset: '重置 (0)',
+      pause: '暂停 (空格)',
+      play: '播放 (空格)',
+      close: '关闭 (ESC)',
+      imageShortcuts: '快捷键:',
+      imageShortcutsZoom: '+/-',
+      imageShortcutsReset: '0',
+      imageShortcutsClose: 'ESC',
+      imageMouseWheel: '滚轮',
+      imageMouseDrag: '拖拽',
+      mediaShortcutsSpace: '空格',
+      mediaShortcutsClose: 'ESC',
+      imageShortcutsLine1: '快捷键: +/- 缩放 | 0 重置 | ESC 关闭',
+      imageShortcutsLine2: '鼠标: 滚轮 缩放 | 拖拽 移动图片',
+      mediaShortcutsLine: '快捷键: 空格 播放/暂停 | ESC 关闭',
+    },
+    storyboardPack: {
+      defaultTitle: '分镜包',
+      frames: '帧',
+      close: '关闭',
+      originalImage: '原始分镜大图',
+      noFrames: '暂无帧数据',
+      frame: '帧',
+      position: '位置',
+      row: '行',
+      column: '列',
+      noDescription: '未生成描述',
+      deletePack: '删除分镜包',
+      addToMaterials: '全部添加到素材',
+      useInScript: '在分镜脚本中使用',
+      materials: '素材',
+      prompt: '提示词',
+      gridSizeLabel: '宫格规格',
+      frameCountLabel: '帧数',
+      gridWillGenerate: '将生成 {rows}x{cols} = {total} 格分镜',
+      gridWillUse: '将生成 {rows}x{cols} = {total} 格，使用前 {value} 帧',
+    },
+    mobileWarning: {
+      tablet: '平板设备',
+      mobile: '手机设备',
+      mobileDevice: '移动设备',
+      title: '暂不支持{device}',
+      description: '为了提供更好的使用体验，请在电脑上访问本应用。',
+      useDesktop: '建议使用电脑访问',
+    },
+    gridSizeSelector: {
+      frameCount: '分镜数量',
+      gridLabel: '格',
+      custom: '自定义',
+      placeholder: '输入分镜数量 (1-64)',
+      willGenerate: '将生成 {rows}x{cols} = {total} 格分镜',
+      willUse: '将生成 {rows}x{cols} = {total} 格，使用前 {value} 帧',
+    },
+    creativeBrainstorming: {
+      inputPlaceholder: '输入您的想法或问题...',
+      sendHint: '按 Enter 发送，Shift+Enter 换行',
+    },
+    audioSearchModal: {
+      title: '搜索音频',
+      searchPlaceholder: '输入音频搜索关键词，如：ambient music, nature sounds...',
+      searchButton: '搜索',
+      searching: '搜索中...',
+      audioTypeLabel: '音频类型：',
+      audioTypeAll: '全部',
+      audioTypeMusic: '音乐',
+      audioTypeSoundEffect: '音效',
+      audioTypeSpeech: '语音',
+      audioTypeAmbient: '环境音',
+      audioTypeNature: '自然音',
+      sortByLabel: '排序方式：',
+      sortByScore: '相关度',
+      sortByDownloads: '热度(下载量)',
+      sortByRating: '评分',
+      sortByDurationDesc: '时长(长到短)',
+      sortByDurationAsc: '时长(短到长)',
+      sortByCreatedDesc: '最新',
+      sortByCreatedAsc: '最早',
+      durationFilterLabel: '时长过滤：',
+      durationMinPlaceholder: '最小(秒)',
+      durationMaxPlaceholder: '最大(秒)',
+      durationTo: '至',
+      resultsTitle: '搜索结果',
+      resultsCount: '({count} 个音频)',
+      selectedCount: '已选择: {count}',
+      clearSelection: '清空选择',
+      noResults: '未找到相关音频',
+      noResultsHint: '尝试使用不同的关键词或调整过滤器',
+      noQueryTitle: '输入关键词开始搜索音频',
+      noQueryHint: '支持搜索环境音、音效、音乐等各类音频',
+      previewTitle: '音频预览',
+      descriptionLabel: '描述',
+      audioInfoLabel: '音频信息',
+      durationLabel: '时长:',
+      licenseLabel: '许可证:',
+      sizeLabel: '大小:',
+      formatLabel: '格式:',
+      channelsLabel: '声道',
+      sampleRateLabel: '采样率:',
+      tagsLabel: '标签',
+      addingAudios: '正在添加 {count} 个音频，请稍候...',
+      addedCount: '已选择 {count} 个音频',
+      cancelButton: '取消',
+      addingButton: '正在添加...',
+      addSelectedButton: '添加选中音频 ({count})',
+    },
+    imageSearchModal: {
+      title: '搜索图片',
+      searchPlaceholder: '输入搜索关键词，如：风景、人物、建筑...',
+      searchButton: '搜索',
+      searching: '搜索中...',
+      orientationLabel: '方向:',
+      orientationAll: '全部',
+      orientationLandscape: '横向',
+      orientationPortrait: '纵向',
+      orientationSquarish: '方形',
+      colorLabel: '颜色:',
+      colorAll: '全部',
+      colorBlackAndWhite: '黑白',
+      colorBlack: '黑色',
+      colorWhite: '白色',
+      colorYellow: '黄色',
+      colorOrange: '橙色',
+      colorRed: '红色',
+      colorPurple: '紫色',
+      colorMagenta: '洋红',
+      colorGreen: '绿色',
+      colorTeal: '青色',
+      colorBlue: '蓝色',
+      orderByLabel: '排序:',
+      orderByRelevant: '相关度',
+      orderByLatest: '最新',
+      orderByPopular: '热门',
+      selectedCount: '已选择 {count} 张图片',
+      clearSelection: '清空选择',
+      addingImages: '添加中...',
+      addSelectedButton: '添加选中图片 ({count})',
+      deselect: '取消选择',
+      select: '选择',
+      addToMaterials: '添加到素材',
+      noDescription: '无描述',
+      noResultsTitle: '暂无搜索结果',
+      noResultsHint: '输入关键词开始搜索图片',
+      imagePreview: '图片预览',
+      prevPage: '上一页',
+      nextPage: '下一页',
+      pageInfo: '第 {current} 页，共 {total} 页',
+    },
+    aiImageModal: {
+      title: 'AI 图像生成',
+      subtitle: 'Seedream · 字节跳动 Ark 平台',
+      tabBasic: '基础生成',
+      tabCharacter: '人物建模',
+      tabScene: '场景建模',
+      tabStoryboard: '分镜生成',
+      cancelButton: '取消',
+      generatingButton: '生成中...',
+      generateButton: '开始生成',
+    },
+    basicGenerationTab: {
+      promptLabel: '提示词',
+      promptPlaceholder: '描述你想要生成的图片内容... 从右侧选择参考图，或直接在提示词中输入 @[图片名] 引用',
+      sizeLabel: '图片尺寸',
+      size1kSquare: '1K 方形',
+      size2kSquare: '2K 方形',
+      size169Landscape: '16:9 横屏',
+      size916Portrait: '9:16 竖屏',
+      size169Wide: '16:9 宽屏',
+      size916Wide: '9:16 竖屏宽',
+      countLabel: '生成数量',
+      countUnit: '张',
+      watermarkLabel: '添加水印',
+      watermarkDesc: '在生成图片上添加平台水印',
+    },
+    storyboardTab: {
+      aspectRatioLabel: '画面比例',
+      aspectRatio11: '1:1 方形',
+      aspectRatio169: '16:9 横屏',
+      aspectRatio916: '9:16 竖屏',
+      aspectRatio43: '4:3 横屏',
+      aspectRatio34: '3:4 竖屏',
+      promptLabel: '提示词',
+      promptPlaceholder: '描述您想要生成的分镜内容... 输入 @ 关联参考图',
+      settingsTitle: '分镜设置',
+      settingsLocked: '已锁定',
+      scriptPreviewLabel: '剧本预览（共 {count} 幕）',
+      languageLabel: '{lang}',
+      backToInput: '← 返回修改输入',
+      shotNumber: '第 {number} 幕',
+      shotPlaceholder: '第 {number} 幕剧本...',
+      emptyScript: '剧本为空，请返回上一步重新生成',
+      chatTitle: '与 AI 对话修改剧本',
+      chatYou: '你：',
+      chatAI: 'AI：',
+      chatPlaceholder: '例如：把第 3 幕改为夜晚雨天',
+      chatSend: '发送',
+      confirmGenerate: '确认并生成分镜',
+      scriptMinLengthHint: '请确保所有剧本不少于 5 个字符',
+      nextStepGenerate: '下一步：生成分镜剧本',
+      generatingScript: '正在生成剧本...',
+      scriptInfo: '将先生成 {count} 幕剧本供确认，画面比例 {ratio}（语言：{lang}）',
+      advancedOptions: '高级选项',
+      skipScript: '跳过剧本，直接生成分镜（旧流程）',
+      generatingFrames: '正在生成 {count} 格分镜...',
+      generatingFramesDesc: 'AI 正在根据剧本绘制并自动裁剪',
+      croppedFrames: '已裁剪为 {count} 张分镜，并绑定剧本',
+      gridLabel: '宫格:',
+      generateNew: '继续生成新分镜',
+      retryButton: '重试',
+      scriptGenerateFailed: '剧本生成失败',
+      scriptReviseFailed: '剧本修改失败',
+      scriptUpdated: '已更新剧本（{count} 幕）。',
+      backConfirm: '返回修改输入将清空当前剧本草稿，是否继续？',
+      generateFailed: '分镜生成失败，请重试',
+      storyboardImageAlt: '分镜大图',
+    },
+    gridSizeSelectorTab: {
+      frameCountLabel: '分镜数量',
+      gridUnit: '格',
+      custom: '自定义',
+      placeholder: '输入分镜数量 (1-64)',
+      willGenerate: '将生成 {rows}x{cols} = {total} 格分镜',
+      willUse: '将生成 {rows}x{cols} = {total} 格，使用前 {value} 帧',
+    },
+    videoAnalysisModal: {
+      title: 'AI视频解析结果',
+      subtitle: '智能分析视频内容',
+      closeTooltip: '关闭',
+      videoDuration: '视频时长',
+      framesExtracted: '提取帧数',
+      processingTime: '处理时间',
+      analysisTime: '分析时间',
+      frameAnalysisTitle: '逐帧分析结果',
+      frameLabel: '第{number}帧',
+      timePoint: '时间点',
+      summaryTitle: '分析总结',
+      errorTitle: '解析失败',
+      errorDefaultMessage: '视频解析过程中出现错误',
+      closeButton: '关闭',
+      loadingTitle: '正在加载解析结果',
+      loadingDesc: '请稍候...',
+      videoLabel: '视频:',
+      secondsUnit: '秒',
+      framesUnit: '帧',
+    },
+    videoScriptProgressModal: {
+      titleWithVideo: '视频理解生成脚本',
+      titleWithoutVideo: '生成脚本',
+      stepPreparing: '准备中...',
+      stepAnalyzing: '正在分析视频内容...',
+      stepGenerating: '正在生成脚本...',
+      stepProcessing: '处理中...',
+      descAnalyzing: '正在分析视频 ({analyzed}/{total})',
+      descGeneratingWithVideo: '基于视频分析结果生成脚本内容',
+      descGeneratingWithoutVideo: '基于对话内容生成脚本',
+      descPleaseWait: '请稍候...',
+      analyzingVideo: '正在分析: {name}',
+      statCompleted: '已完成',
+      statProcessing: '处理中',
+      statFailed: '失败',
+      errorTitle: '处理过程中遇到问题',
+      cancelButton: '取消',
+    },
+    videoCacheIndicator: {
+      loading: '预加载中...',
+      loaded: '已缓存',
+      error: '加载失败',
+      notCached: '未缓存',
+    },
+    chatMessageBubble: {
+      thinking: '思考中...',
+      thoughtProcess: '思考过程',
+      analyzingIntent: '正在分析意图',
+      detectingWorkflow: '检测您的问题是否需要调用工作流...',
+      willCallWorkflow: '将调用工作流: {name}',
+      normalChat: '普通对话',
+      copiedTitle: '已复制!',
+      copyMessageTitle: '复制消息',
+      convertToScriptTitle: '转换视频脚本',
+      generating: '生成中',
+      copied: '已复制',
+    },
+    chatWorkflowExecution: {
+      finalResult: '最终结果',
+      copiedTitle: '已复制!',
+      copyTitle: '复制最终结果',
+      convertToScriptTitle: '转换视频脚本',
+      exportClip: '导出剪辑 ({count} 个视频素材)',
+      exportClipHint: '点击将视频素材导入到 Video Editing 任务的素材管理面板',
+      executing: '工作流执行中...',
+    },
+    chatWorkflowSelection: {
+      title: '选择工作流',
+      subtitle: '选择一个工作流来开始新的对话',
+      loading: '加载工作流中...',
+      errorTitle: '加载失败',
+      retryButton: '重试',
+      emptyTitle: '暂无工作流',
+      emptyHint: '请先在"工作流"任务中创建工作流，然后再开始新的对话',
+      activeBadge: '活跃',
+      nodesLabel: '{count} 节点',
+      totalWorkflows: '共 {count} 个工作流可用',
+      cancelButton: '取消',
+    },
+    videoCut: {
+      title: '剪切素材',
+      timelineControl: '时间轴控制',
+      selectRange: '选择范围:',
+      dragGreenStart: '拖拽绿色控制条调整开始时间',
+      dragRedEnd: '拖拽红色控制条调整结束时间',
+      blueCurrentPos: '蓝色线条表示当前播放位置',
+      setStart: '设为开始',
+      setEnd: '设为结束',
+      createClip: '创建切片',
+      preview: '预览:',
+      selectToPreview: '选择切片进行预览',
+      clipList: '切片列表',
+      clip: '切片',
+      clipCount: '个切片',
+      exportClips: '导出切片',
+      noClips: '还没有创建任何切片',
+      startBeforeEnd: '开始时间必须小于结束时间',
+      minDuration: '切片时长至少需要0.5秒',
+      clipCreated: '已创建切片：',
+      clipDeleted: '切片已删除',
+      noClipsToExport: '没有可导出的切片',
+      noMaterial: '原始素材不存在',
+      clipsExported: '已导出 ',
+      exportUnavailable: '导出功能不可用',
+      startTimeLabel: '开始时间:',
+      endTimeLabel: '结束时间:',
+    },
+    convertToScript: {
+      title: '生成脚本',
+      subtitle: '将对话内容转换为视频脚本',
+      parameterSettings: '参数设置',
+      scriptLanguage: '脚本语言',
+      chinese: '中文',
+      english: '英文',
+      mixed: '中英混合',
+      segmentCount: '脚本段落数量:',
+      segments: '段',
+      analysisDepth: '分析深度',
+      basic: '基础',
+      quickGen: '快速生成',
+      detailed: '详细',
+      balancedQuality: '平衡质量',
+      comprehensive: '全面',
+      deepAnalysis: '深度分析',
+      additionalOptions: '附加选项',
+      includeVisual: '包含视觉元素分析',
+      visualDesc: '分析视频中的场景、物体、人物等视觉信息',
+      includeAudio: '包含音频分析',
+      audioDesc: '分析视频中的语音、音乐、音效等音频信息',
+      videoUnderstanding: '视频理解',
+      enabledDesc: '已启用视频理解，选择视频后将自动分析并生成脚本',
+      disabledDesc: '视频理解已关闭，将仅根据对话内容生成脚本',
+      analysisMode: '分析模式',
+      quickAnalysis: '快速分析',
+      coverOnly: '仅分析封面',
+      proAnalysis: '专业分析',
+      multiFrame: '多帧深度分析',
+      selectVideoDesc: '选择视频素材参与脚本生成',
+      videoStatsPrefix: '共 ',
+      videoStatsTotal: ' 个视频，其中 ',
+      videoStatsAnalyzed: ' 个已解析，',
+      videoStatsPending: ' 个待解析',
+      selectedUnanalyzedPrefix: '已选中 ',
+      selectedUnanalyzed: ' 个待解析视频，生成时将自动进行分析',
+      noVideos: '暂无可用的视频素材',
+      pleaseUpload: '请先上传或搜索视频素材',
+      selectedCountPrefix: '已选 ',
+      selectedCount: ' 个视频',
+      selectAll: '全选',
+      deselectAll: '取消全选',
+      analyzed: '已解析',
+      pending: '待解析',
+      unknownDuration: '未知时长',
+      chatPreview: '对话内容预览：',
+      footerWithVideo: '将使用 {count} 个视频生成脚本',
+      footerWithAnalysis: '（{count} 个需先分析）',
+      footerNoVideo: '将根据对话内容生成脚本',
+      generating: '生成中...',
+      startGenerate: '开始生成',
     },
   },
 };

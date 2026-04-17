@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { SilenceRemoveResult } from './ProcessingProgress';
 import { http } from '@/lib/api/http-client';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // ---- Types ----
 
@@ -31,6 +32,7 @@ const MinimizedProgressIndicator: React.FC<MinimizedProgressIndicatorProps> = ({
   onRestore,
   onTaskUpdate,
 }) => {
+  const { t } = useLocale();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryCountRef = useRef(0);
 
@@ -60,7 +62,7 @@ const MinimizedProgressIndicator: React.FC<MinimizedProgressIndicatorProps> = ({
         update.result = data.result;
       } else if (data.status === 'failed') {
         clearPolling();
-        update.error = data.error || '处理失败';
+        update.error = data.error || t.videoProcessing.progress.failed;
       }
 
       onTaskUpdate(update);
@@ -70,7 +72,7 @@ const MinimizedProgressIndicator: React.FC<MinimizedProgressIndicatorProps> = ({
         clearPolling();
       }
     }
-  }, [task.taskId, clearPolling, onTaskUpdate]);
+  }, [task.taskId, clearPolling, onTaskUpdate, t]);
 
   // Start polling when the task is not terminal
   useEffect(() => {
@@ -105,16 +107,16 @@ const MinimizedProgressIndicator: React.FC<MinimizedProgressIndicatorProps> = ({
     : 'border-border';
 
   const statusText = isCompleted
-    ? '处理完成'
+    ? t.videoProcessing.progress.completed
     : isFailed
-    ? '处理失败'
+    ? t.videoProcessing.progress.failed
     : `${Math.round(task.progress)}%`;
 
   return (
     <div
       className={`fixed bottom-4 right-4 z-50 w-[260px] bg-card border ${borderColor} rounded-lg shadow-lg cursor-pointer hover:shadow-xl transition-shadow`}
       onClick={onRestore}
-      title="点击恢复弹窗"
+      title={t.videoProcessing.buttons.restored}
     >
       <div className="px-3 py-2.5">
         {/* Header row */}

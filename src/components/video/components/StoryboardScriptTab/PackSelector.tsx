@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { StoryboardPack } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface PackSelectorProps {
   packs: StoryboardPack[];
@@ -18,10 +19,11 @@ const PackSelector: React.FC<PackSelectorProps> = ({
   isLoading,
   onRefresh,
 }) => {
+  const { locale, t } = useLocale();
   const formatTime = (isoStr: string) => {
     try {
       const d = new Date(isoStr);
-      return d.toLocaleTimeString('zh-CN', {
+      return d.toLocaleTimeString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
@@ -44,11 +46,11 @@ const PackSelector: React.FC<PackSelectorProps> = ({
         className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed truncate"
       >
         <option value="">
-          {packs.length === 0 ? '暂无分镜包' : '选择分镜包...'}
+          {packs.length === 0 ? t.storyboardScriptTab.noPacks : t.storyboardScriptTab.selectPackPlaceholder}
         </option>
         {packs.map((pack) => (
           <option key={pack.packId} value={pack.packId}>
-            {pack.gridSize}分镜 - {formatTime(pack.createdAt)} ({pack.frameCount}帧)
+            {pack.gridSize}{t.storyboardScriptTab.packInfoSeparator}{formatTime(pack.createdAt)} ({pack.frameCount}{t.storyboardScriptTab.packInfoFrames})
           </option>
         ))}
       </select>
@@ -57,7 +59,7 @@ const PackSelector: React.FC<PackSelectorProps> = ({
         onClick={onRefresh}
         disabled={isLoading}
         className="p-1.5 text-muted-foreground hover:text-foreground bg-muted border border-border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-        title="刷新分镜包列表"
+        title={t.storyboardScriptTab.refreshPackList}
       >
         <svg
           className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`}

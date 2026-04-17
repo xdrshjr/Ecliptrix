@@ -106,7 +106,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
         const otherSegments = segments
           .map((s, i) => ({
             index: i,
-            title: `分镜 #${i + 1}`,
+            title: `${t.storyboardScriptTab.segmentLabel}${i + 1}`,
             scriptText:
               s.description.length > 200
                 ? s.description.slice(0, 200)
@@ -119,7 +119,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
           data = await http.post<any>('/api/ai-video-script-expand', {
             taskId: taskId || 'unknown',
             segmentIndex,
-            segmentTitle: `分镜 #${segmentIndex + 1}`,
+            segmentTitle: `${t.storyboardScriptTab.segmentLabel}${segmentIndex + 1}`,
             segmentText: segment.description,
             otherSegments,
             expandGoal: goal || '',
@@ -226,7 +226,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             onClick={generateAllDescriptions}
             disabled={isDescribing || segments.length === 0}
             className="flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 rounded-md hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            title={isDescribing ? '正在生成描述...' : '为所有分镜帧生成AI描述'}
+            title={isDescribing ? t.storyboardScriptTab.describingTitle : t.storyboardScriptTab.describeAllTitle}
           >
             {isDescribing ? (
               <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -238,7 +238,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             )}
-            <span>{isDescribing ? '生成中...' : '生成描述'}</span>
+            <span>{isDescribing ? t.storyboardScriptTab.describing : t.storyboardScriptTab.describeAll}</span>
           </button>
 
           {/* Batch repeat count selector */}
@@ -261,16 +261,16 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-teal-500 to-cyan-500 rounded-md hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             title={
               hasAnyGenerating
-                ? '有视频正在生成中'
+                ? t.storyboardScriptTab.generatingInProgress
                 : !hasIdleOrFailed
-                  ? '所有视频已生成'
-                  : '一键批量生成所有未生成的视频'
+                  ? t.storyboardScriptTab.allVideosGenerated
+                  : t.storyboardScriptTab.batchGenerateAll
             }
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
-            <span>{batchRepeat > 1 ? t.storyboardScriptTab.batchGenerateMultiple : '一键批量生成'}</span>
+            <span>{batchRepeat > 1 ? t.storyboardScriptTab.batchGenerateMultiple : t.storyboardScriptTab.batchGenerate}</span>
           </button>
 
           {/* Compose */}
@@ -280,10 +280,10 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
             className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-md hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             title={
               !allVideosGenerated
-                ? '请先生成所有分镜视频'
+                ? t.storyboardScriptTab.generateAllVideosFirst
                 : isComposing
-                  ? '正在合成...'
-                  : '一键合成所有分镜视频'
+                  ? t.storyboardScriptTab.composing
+                  : t.storyboardScriptTab.composeAllVideos
             }
           >
             {isComposing ? (
@@ -296,7 +296,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2m0 2a2 2 0 00-2 2v1h10V6a2 2 0 00-2-2H7zm-4 6h14M5 10v10a2 2 0 002 2h6a2 2 0 002-2V10" />
               </svg>
             )}
-            <span>{isComposing ? '正在合成...' : '一键合成视频'}</span>
+            <span>{isComposing ? t.storyboardScriptTab.composing : t.storyboardScriptTab.composeVideo}</span>
           </button>
         </div>
       </div>
@@ -309,7 +309,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <span>正在加载分镜包...</span>
+            <span>{t.storyboardScriptTab.loadingPack}</span>
           </div>
         </div>
       )}
@@ -322,7 +322,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <span>正在为分镜帧生成描述...</span>
+            <span>{t.storyboardScriptTab.describingFrames}</span>
           </div>
         </div>
       )}
@@ -332,14 +332,14 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
         <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 shrink-0">
           <div className="flex items-center justify-between">
             <span className="text-xs text-destructive">
-              合成失败: {compositionError}
+              {t.storyboardScriptTab.composeFailed}{compositionError}
             </span>
             <button
               onClick={composeAllVideos}
               disabled={isComposing}
               className="text-xs text-destructive hover:text-destructive/80 underline"
             >
-              重试
+              {t.storyboardScriptTab.retry}
             </button>
           </div>
         </div>
@@ -376,7 +376,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
-          <span>添加帧</span>
+          <span>{t.storyboardScriptTab.addFrame}</span>
         </button>
       </div>
 
@@ -384,9 +384,9 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
       {segments.length > 0 && (
         <div className="px-3 py-2 bg-muted/50 border-t border-border flex items-center justify-between text-xs text-muted-foreground shrink-0">
           <span>
-            已生成 {overallProgress.completed}/{overallProgress.total} 个视频
+            {t.storyboardScriptTab.generatedStatus.replace('{completed}', String(overallProgress.completed)).replace('{total}', String(overallProgress.total))}
           </span>
-          <span>预计总时长: {totalDuration}s</span>
+          <span>{t.storyboardScriptTab.estimatedDuration.replace('{duration}', String(totalDuration))}</span>
         </div>
       )}
 
@@ -395,23 +395,23 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-card border border-border rounded-lg p-5 shadow-xl max-w-sm mx-4">
             <h3 className="text-sm font-semibold text-foreground mb-2">
-              确认删除
+              {t.storyboardScriptTab.confirmDelete}
             </h3>
             <p className="text-xs text-muted-foreground mb-4">
-              确定要删除此分镜帧吗？已生成的视频不会从素材面板中移除。
+              {t.storyboardScriptTab.deleteConfirmMessage}
             </p>
             <div className="flex justify-end space-x-2">
               <button
                 onClick={() => setDeleteConfirmId(null)}
                 className="px-3 py-1.5 text-xs text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent transition-colors"
               >
-                取消
+                {t.storyboardScriptTab.cancel}
               </button>
               <button
                 onClick={() => handleDeleteSegment(deleteConfirmId)}
                 className="px-3 py-1.5 text-xs text-white bg-destructive rounded-md hover:bg-destructive/90 transition-colors"
               >
-                删除
+                {t.storyboardScriptTab.delete}
               </button>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { computeOptimalGrid } from './gridUtils';
+import { useLocale } from '@/contexts/LocaleContext';
 
 const PRESET_OPTIONS: { label: string; frameCount: number }[] = [
   { label: '2x2', frameCount: 4 },
@@ -18,6 +19,7 @@ interface GridSizeSelectorProps {
 }
 
 const GridSizeSelector: React.FC<GridSizeSelectorProps> = ({ value, onChange, disabled }) => {
+  const { t } = useLocale();
   const isPreset = PRESET_OPTIONS.some((o) => o.frameCount === value);
   const [customMode, setCustomMode] = useState(!isPreset);
   const [customInput, setCustomInput] = useState(String(value));
@@ -44,7 +46,7 @@ const GridSizeSelector: React.FC<GridSizeSelectorProps> = ({ value, onChange, di
   return (
     <div>
       <label className="block text-sm font-medium text-foreground mb-2">
-        分镜数量
+        {t.gridSizeSelector.frameCount}
       </label>
       <div className="flex gap-2 flex-wrap">
         {PRESET_OPTIONS.map((option) => (
@@ -61,7 +63,7 @@ const GridSizeSelector: React.FC<GridSizeSelectorProps> = ({ value, onChange, di
                 : 'bg-card text-foreground border-border hover:border-muted-foreground'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {option.label} ({option.frameCount}格)
+            {option.label} ({option.frameCount}{t.gridSizeSelector.gridLabel})
           </button>
         ))}
         <button
@@ -76,7 +78,7 @@ const GridSizeSelector: React.FC<GridSizeSelectorProps> = ({ value, onChange, di
               : 'bg-card text-foreground border-border hover:border-muted-foreground'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          自定义
+          {t.gridSizeSelector.custom}
         </button>
       </div>
 
@@ -90,15 +92,15 @@ const GridSizeSelector: React.FC<GridSizeSelectorProps> = ({ value, onChange, di
             onChange={(e) => handleCustomChange(e.target.value)}
             disabled={disabled}
             className="w-full border border-border rounded-md px-3 py-2 text-sm text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-            placeholder="输入分镜数量 (1-64)"
+            placeholder={t.gridSizeSelector.placeholder}
           />
         </div>
       )}
 
       <p className="text-xs text-muted-foreground mt-2">
         {totalCells === value
-          ? `将生成 ${rows}×${cols} = ${totalCells} 格分镜`
-          : `将生成 ${rows}×${cols} = ${totalCells} 格，使用前 ${value} 帧`}
+          ? t.gridSizeSelector.willGenerate.replace('{rows}', String(rows)).replace('{cols}', String(cols)).replace('{total}', String(totalCells))
+          : t.gridSizeSelector.willUse.replace('{rows}', String(rows)).replace('{cols}', String(cols)).replace('{total}', String(totalCells)).replace('{value}', String(value))}
       </p>
     </div>
   );

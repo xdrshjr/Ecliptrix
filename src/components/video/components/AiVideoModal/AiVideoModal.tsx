@@ -52,23 +52,23 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   }, [isOpen, initialImageUrl]);
 
   const descLabels = [
-    t.scriptPanel.aiVideoScript.characterImage || '角色形象',
-    t.scriptPanel.aiVideoScript.sceneImage || '场景形象',
-    t.scriptPanel.aiVideoScript.referenceImage3 || '参考图3',
-    t.scriptPanel.aiVideoScript.referenceImage4 || '参考图4',
+    t.scriptPanel.aiVideoScript.characterImage,
+    t.scriptPanel.aiVideoScript.sceneImage,
+    t.scriptPanel.aiVideoScript.referenceImage3,
+    t.scriptPanel.aiVideoScript.referenceImage4,
   ];
 
   const keyframeRefLabels = [
-    `${t.scriptPanel.aiVideoScript.lastFrameImage || '尾帧图片'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
-    t.scriptPanel.aiVideoScript.referenceImage3 || '参考图3',
-    t.scriptPanel.aiVideoScript.referenceImage4 || '参考图4',
+    `${t.scriptPanel.aiVideoScript.lastFrameImage} ${t.scriptPanel.aiVideoScript.lastFrameOptional}`,
+    t.scriptPanel.aiVideoScript.referenceImage3,
+    t.scriptPanel.aiVideoScript.referenceImage4,
   ];
 
   const refLabels = [
-    `${t.scriptPanel.aiVideoScript.referenceImage1 || '参考图1'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`,
-    `${t.scriptPanel.aiVideoScript.referenceImage2 || '参考图2'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
-    `${t.scriptPanel.aiVideoScript.referenceImage3 || '参考图3'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
-    `${t.scriptPanel.aiVideoScript.referenceImage4 || '参考图4'} ${t.scriptPanel.aiVideoScript.lastFrameOptional || '(可选)'}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage1} ${t.scriptPanel.aiVideoScript.firstFrameRequired}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage2} ${t.scriptPanel.aiVideoScript.lastFrameOptional}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage3} ${t.scriptPanel.aiVideoScript.lastFrameOptional}`,
+    `${t.scriptPanel.aiVideoScript.referenceImage4} ${t.scriptPanel.aiVideoScript.lastFrameOptional}`,
   ];
 
   const resetForm = () => {
@@ -172,8 +172,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
         <div className="px-8 py-6 border-b border-border bg-muted">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-foreground">AI 视频生成</h2>
-              <p className="text-sm text-muted-foreground mt-1">Seedance · 字节跳动 Ark 平台</p>
+              <h2 className="text-2xl font-semibold text-foreground">{t.scriptPanel.aiVideoScript.modalTitle}</h2>
+              <p className="text-sm text-muted-foreground mt-1">{t.scriptPanel.aiVideoScript.modalSubtitle}</p>
             </div>
             <button
               onClick={handleClose}
@@ -226,7 +226,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           {/* Prompt */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              提示词 <span className="text-red-500">*</span>
+              {t.scriptPanel.aiVideoScript.promptLabel} <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <textarea
@@ -234,7 +234,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                 onChange={(e) => setPrompt(e.target.value.slice(0, 500))}
                 rows={4}
                 autoFocus
-                placeholder="描述你想要生成的视频内容，例如：一只猫咪在阳光下玩耍，镜头缓缓移动..."
+                placeholder={t.scriptPanel.aiVideoScript.promptPlaceholder}
                 className="w-full border border-border rounded-md px-4 py-3 text-sm text-foreground bg-card resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
               <span className="absolute bottom-2.5 right-3 text-xs text-muted-foreground">
@@ -246,7 +246,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           {/* Duration */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              视频时长
+              {t.scriptPanel.aiVideoScript.durationLabel}
             </label>
             <div className="flex gap-3">
               {[5, 7, 10, 12].map((d) => (
@@ -259,7 +259,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                       : 'bg-card text-foreground border-border hover:border-border'
                   }`}
                 >
-                  {d} 秒
+                  {d} {t.scriptPanel.aiVideoScript.durationSeconds}
                 </button>
               ))}
             </div>
@@ -269,17 +269,17 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           {mode !== 'keyframe' && (
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                视频比例
+                {t.scriptPanel.aiVideoScript.aspectRatioLabel}
               </label>
               <div className="flex gap-3">
                 {([
-                  { value: '16:9' as const, label: '16:9', desc: '横屏', icon: (
+                  { value: '16:9' as const, label: '16:9', desc: t.scriptPanel.aiVideoScript.landscape, icon: (
                     <rect x="1" y="4" width="22" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
                   )},
-                  { value: '9:16' as const, label: '9:16', desc: '竖屏', icon: (
+                  { value: '9:16' as const, label: '9:16', desc: t.scriptPanel.aiVideoScript.portrait, icon: (
                     <rect x="7" y="1" width="10" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
                   )},
-                  { value: '1:1' as const, label: '1:1', desc: '方形', icon: (
+                  { value: '1:1' as const, label: '1:1', desc: t.scriptPanel.aiVideoScript.square, icon: (
                     <rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
                   )},
                 ]).map(({ value, label, desc, icon }) => (
@@ -338,7 +338,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <ImagePickerSlot
-                  label={`${t.scriptPanel.aiVideoScript.firstFrameImage || '首帧图片'} ${t.scriptPanel.aiVideoScript.firstFrameRequired || '*必填'}`}
+                  label={`${t.scriptPanel.aiVideoScript.firstFrameImage} ${t.scriptPanel.aiVideoScript.firstFrameRequired}`}
                   imageUrl={firstFrameUrl || undefined}
                   imageName={firstFrameName || undefined}
                   onSelect={(url, name) => { setFirstFrameUrl(url); setFirstFrameName(name); }}
@@ -416,7 +416,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              <span>高级选项</span>
+              <span>{t.scriptPanel.aiVideoScript.advancedOptions}</span>
             </button>
 
             {showAdvanced && (
@@ -424,8 +424,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                 {/* Camera Fixed */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-foreground">固定镜头</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">锁定镜头位置，减少镜头移动</p>
+                    <p className="text-sm font-medium text-foreground">{t.scriptPanel.aiVideoScript.fixedCamera}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t.scriptPanel.aiVideoScript.fixedCameraDesc}</p>
                   </div>
                   <div
                     onClick={() => setCameraFixed(!cameraFixed)}
@@ -442,8 +442,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                 {/* Watermark */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-foreground">添加水印</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">在生成视频上添加平台水印</p>
+                    <p className="text-sm font-medium text-foreground">{t.scriptPanel.aiVideoScript.addWatermark}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t.scriptPanel.aiVideoScript.addWatermarkDesc}</p>
                   </div>
                   <div
                     onClick={() => setWatermark(!watermark)}
@@ -459,7 +459,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
 
                 {/* Resolution */}
                 <div>
-                  <p className="text-sm font-medium text-foreground mb-2">分辨率</p>
+                  <p className="text-sm font-medium text-foreground mb-2">{t.scriptPanel.aiVideoScript.resolutionLabel}</p>
                   <div className="flex gap-2">
                     {(['480p', '720p', '1080p'] as const).map((r) => (
                       <button
@@ -487,14 +487,14 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
             onClick={handleClose}
             className="px-6 py-2.5 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
           >
-            取消
+            {t.scriptPanel.aiVideoScript.cancel}
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitDisabled}
             className="px-6 py-2.5 text-sm font-medium text-primary-foreground rounded-md bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            开始生成
+            {t.scriptPanel.aiVideoScript.startGenerate}
           </button>
         </div>
       </div>

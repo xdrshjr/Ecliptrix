@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { UseAudioSearchReturn } from '../../types';
 import AudioPlayer from './AudioPlayer';
 import { VideoEditingLogger } from '../../utils/logger';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface AudioSearchModalProps extends UseAudioSearchReturn {
 }
@@ -39,6 +40,8 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
     taskId,
     component: 'AudioSearchModal'
   });
+
+  const { t } = useLocale();
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playingAudioId, setPlayingAudioId] = useState<number | null>(null);
@@ -162,7 +165,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
       <div className="bg-card rounded-md border border-border w-full max-w-6xl h-5/6 flex flex-col">
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-xl font-semibold text-foreground">搜索音频</h2>
+          <h2 className="text-xl font-semibold text-foreground">{t.audioSearchModal.title}</h2>
           <button
             onClick={handleClose}
             disabled={isAddingAudios}
@@ -185,7 +188,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入音频搜索关键词，如：ambient music, nature sounds..."
+                placeholder={t.audioSearchModal.searchPlaceholder}
                 className="flex-1 px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 disabled={isSearching}
               />
@@ -197,10 +200,10 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
                 {isSearching ? (
                   <div className="flex items-center space-x-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>搜索中...</span>
+                    <span>{t.audioSearchModal.searching}</span>
                   </div>
                 ) : (
-                  '搜索'
+                  t.audioSearchModal.searchButton
                 )}
               </button>
             </div>
@@ -209,7 +212,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
             <div className="flex items-center space-x-6">
               {/* 音频类型选择器 */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">音频类型：</span>
+                <span className="text-sm text-muted-foreground">{t.audioSearchModal.audioTypeLabel}</span>
                 <select
                   value={audioType}
                   onChange={(e) => setAudioType(e.target.value as any)}

@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { TextInputNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Text Input Node Component
@@ -12,6 +13,7 @@ import { TextInputNodeConfig } from '@/types';
  */
 const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as TextInputNodeConfig | undefined;
   const isConfigured = !!(config?.content && config.content.trim().length > 0);
@@ -39,13 +41,13 @@ const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Input',
-        outputPortLabel: 'Output',
+        inputPortLabel: t.workflowNodes.ports.input,
+        outputPortLabel: t.workflowNodes.ports.output,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
             <div className="text-xs space-y-1">
-              <div className="text-muted-foreground font-medium text-xs">Content:</div>
+              <div className="text-muted-foreground font-medium text-xs">{t.workflowNodes.status.content}:</div>
               <div className="text-foreground text-xs bg-muted p-2 rounded border border-border max-h-20 overflow-y-auto break-words whitespace-pre-wrap">
                 {displayContent.length > 100 
                   ? `${displayContent.substring(0, 100)}...` 
@@ -53,14 +55,14 @@ const TextInputNode: React.FC<BaseNodeProps> = React.memo((props) => {
               </div>
               {displayContent.length > 100 && (
                 <div className="text-xs text-muted-foreground italic">
-                  Double click for full content
+                  {t.workflowNodes.status.doubleClickForFullContent}
                 </div>
               )}
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-muted-foreground italic">No content</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.status.noContent}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.status.doubleClickToConfigure}</div>
             </div>
           )
         ),

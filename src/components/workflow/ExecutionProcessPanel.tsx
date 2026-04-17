@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { WorkflowNodeExecutionState } from '@/types';
 import NodeExecutionCard from './NodeExecutionCard';
 
@@ -23,6 +24,7 @@ const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
   nodeNames,
   isCompleted,
 }) => {
+  const { t } = useLocale();
   // 折叠状态：执行时展开，完成后折叠
   const [isCollapsed, setIsCollapsed] = useState(isCompleted);
   
@@ -99,7 +101,7 @@ const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
             <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            <span className="text-sm font-semibold text-foreground">执行过程</span>
+            <span className="text-sm font-semibold text-foreground">{t.workflowNodes.execution.title}</span>
           </div>
         </div>
         
@@ -107,7 +109,7 @@ const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
         {!isCollapsed && stats.total > 0 && (
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-              <span>进度</span>
+              <span>{t.workflowNodes.execution.progress}</span>
               <span className="font-medium">
                 {stats.completed + stats.error} / {stats.total}
               </span>
@@ -137,7 +139,7 @@ const ExecutionProcessPanel: React.FC<ExecutionProcessPanelProps> = ({
               <svg className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
-              <p className="text-sm">暂无执行节点</p>
+              <p className="text-sm">{t.workflowNodes.execution.noNodes}</p>
             </div>
           ) : (
             executionOrder.map((nodeId, index) => {

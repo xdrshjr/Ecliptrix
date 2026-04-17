@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { ChatMessage } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import MarkdownRenderer from './MarkdownRenderer';
 import WorkflowExecutionMessage from './WorkflowExecutionMessage';
 import { copyToClipboard, showCopyFeedback } from '@/lib/clipboard';
@@ -13,6 +14,7 @@ interface MessageBubbleProps {
 }
 
 const ThinkingPanel: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
+  const { t } = useLocale();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -26,7 +28,7 @@ const ThinkingPanel: React.FC<{ content: string; isStreaming: boolean }> = ({ co
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
         <span className="text-xs font-medium text-primary flex-1">
-          {isStreaming ? 'Thinking...' : 'Thought Process'}
+          {isStreaming ? t.chatMessageBubble.thinking : t.chatMessageBubble.thoughtProcess}
         </span>
         <svg className={`w-3 h-3 text-muted-foreground transition-transform ${collapsed ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -43,6 +45,7 @@ const ThinkingPanel: React.FC<{ content: string; isStreaming: boolean }> = ({ co
 };
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVideoEditing, onConvertToScript }) => {
+  const { t } = useLocale();
   const [isHovered, setIsHovered] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [showCopySuccess, setShowCopySuccess] = useState(false);
@@ -105,9 +108,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                 <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1s' }}></span>
                 <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1s' }}></span>
               </div>
-              <span className="text-sm font-semibold text-foreground">正在分析意图</span>
+              <span className="text-sm font-semibold text-foreground">{t.chatMessageBubble.analyzingIntent}</span>
             </div>
-            <p className="text-xs text-primary leading-relaxed">检测您的问题是否需要调用工作流...</p>
+            <p className="text-xs text-primary leading-relaxed">{t.chatMessageBubble.detectingWorkflow}</p>
           </div>
         </div>
       </div>
@@ -130,7 +133,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   <span className="text-sm font-semibold text-foreground">
-                    将调用工作流: {intention.workflow_name}
+                    {t.chatMessageBubble.willCallWorkflow.replace('{name}', intention.workflow_name)}
                   </span>
                 </div>
                 <span className="text-xs text-green-500 bg-green-500/20 px-2.5 py-1 rounded-full font-medium">
@@ -149,7 +152,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
           <div className="max-w-[95%] animate-fadeIn opacity-75">
             <div className="bg-muted rounded-md px-5 py-3 border border-border">
               <p className="text-xs text-muted-foreground leading-relaxed">
-                <span className="font-medium">普通对话</span> · {intention.reasoning}
+                <span className="font-medium">{t.chatMessageBubble.normalChat}</span> · {intention.reasoning}
               </p>
             </div>
           </div>
@@ -197,8 +200,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                     ? 'bg-primary text-primary-foreground border-2 border-card'
                     : 'bg-card hover:bg-accent text-muted-foreground hover:text-foreground border-2 border-border'
                 } ${isCopying ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                title={showCopySuccess ? '已复制!' : '复制消息'}
-                aria-label="复制消息内容"
+                title={showCopySuccess ? t.chatMessageBubble.copiedTitle : t.chatMessageBubble.copyMessageTitle}
+                aria-label={t.chatMessageBubble.copyMessageTitle}
               >
                 {showCopySuccess ? (
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,8 +225,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                   onClick={handleConvertToScript}
                   disabled={message.isStreaming}
                   className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground border-2 border-card cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="转换视频脚本"
-                  aria-label="将此消息内容转换为视频脚本"
+                  title={t.chatMessageBubble.convertToScriptTitle}
+                  aria-label={t.chatMessageBubble.convertToScriptTitle}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -261,11 +264,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span className="text-xs font-medium">生成中</span>
+                <span className="text-xs font-medium">{t.chatMessageBubble.generating}</span>
               </div>
             )}
             {showCopySuccess && (
-              <span className="text-green-500 text-xs font-medium">✓ 已复制</span>
+              <span className="text-green-500 text-xs font-medium">✓ {t.chatMessageBubble.copied}</span>
             )}
           </div>
         </div>

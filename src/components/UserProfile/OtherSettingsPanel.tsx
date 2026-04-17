@@ -1,101 +1,123 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useNotification } from '@/contexts/NotificationContext';
+
+const STORAGE_KEY_TOGGLES = 'ecliptrix-other-settings';
+const STORAGE_KEY_THEME_PREF = 'ecliptrix-theme-pref';
+
+function loadToggles(): { notifications: { email: boolean; push: boolean; marketing: boolean }; privacy: { profileVisible: boolean; activityVisible: boolean } } {
+  if (typeof window === 'undefined') {
+    return { notifications: { email: true, push: false, marketing: false }, privacy: { profileVisible: true, activityVisible: false } };
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TOGGLES);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { notifications: { email: true, push: false, marketing: false }, privacy: { profileVisible: true, activityVisible: false } };
+}
+
+function applyTheme(theme: 'light' | 'dark' | 'auto') {
+  if (typeof window === 'undefined') return;
+  const html = document.documentElement;
+  let resolved: 'light' | 'dark';
+  if (theme === 'auto') {
+    resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } else {
+    resolved = theme;
+  }
+  html.classList.remove('dark', 'light');
+  html.classList.add(resolved);
+  html.style.colorScheme = resolved;
+  // Store resolved value for layout.tsx inline script compatibility
+  localStorage.setItem('ecliptrix-theme', resolved);
+  // Store raw preference (including 'auto') for dropdown state
+  localStorage.setItem(STORAGE_KEY_THEME_PREF, theme);
+}
+
+function readCurrentTheme(): 'light' | 'dark' | 'auto' {
+  if (typeof window === 'undefined') return 'dark';
+  const pref = localStorage.getItem(STORAGE_KEY_THEME_PREF);
+  if (pref === 'auto' || pref === 'light' || pref === 'dark') return pref;
+  // Fallback: read resolved value (no preference stored yet)
+  const stored = localStorage.getItem('ecliptrix-theme');
+  if (stored === 'light' || stored === 'dark') return stored;
+  return 'dark';
+}
 
 interface SettingsData {
-  notifications: {
-    email: boolean;
-    push: boolean;
-    marketing: boolean;
-  };
-  privacy: {
-    profileVisible: boolean;
-    activityVisible: boolean;
-  };
-  preferences: {
-    theme: 'light' | 'dark' | 'auto';
-    language: 'en' | 'zh-CN';
-  };
+  notifications: { email: boolean; push: boolean; marketing: boolean };
+  privacy: { profileVisible: boolean; activityVisible: boolean };
+  preferences: { theme: 'light' | 'dark' | 'auto'; language: 'en' | 'zh-CN' };
 }
 
 const OtherSettingsPanel: React.FC = () => {
   const { t, locale, setLocale } = useLocale();
-  const { showSuccess, showError } = useNotification();
 
-  const [settings, setSettings] = useState<SettingsData>({
-    notifications: {
-      email: true,
-      push: false,
-      marketing: false,
-    },
-    privacy: {
-      profileVisible: true,
-      activityVisible: false,
-    },
+  const [settings, setSettings] = useState<SettingsData>(() => ({
+    ...loadToggles(),
     preferences: {
-      theme: 'light',
+      theme: readCurrentTheme(),
       language: locale as 'en' | 'zh-CN',
     },
-  });
-  const [isLoading, setSaving] = useState(false);
+  }));
 
-  const handleToggle = (section: keyof SettingsData, key: string, value: boolean) => {
+  // Sync language when locale changes externally
+  useEffect(() => {
     setSettings(prev => ({
       ...prev,
-      [section]: {
-        ...prev[section],
-        [key]: value
-      }
+      preferences: { ...prev.preferences, language: locale as 'en' | 'zh-CN' },
     }));
+  }, [locale]);
+
+  const handleToggle = (section: 'notifications' | 'privacy', key: string, value: boolean) => {
+    setSettings(prev => {
+      const next = {
+        ...prev,
+        [section]: { ...prev[section], [key]: value },
+      };
+      // Persist toggles to localStorage
+      try {
+        localStorage.setItem(STORAGE_KEY_TOGGLES, JSON.stringify({ notifications: next.notifications, privacy: next.privacy }));
+      } catch { /* ignore */ }
+      return next;
+    });
   };
 
   const handleLanguageChange = (language: 'en' | 'zh-CN') => {
     setSettings(prev => ({
       ...prev,
-      preferences: {
-        ...prev.preferences,
-        language
-      }
+      preferences: { ...prev.preferences, language },
     }));
     setLocale(language);
   };
 
-  const handleThemeChange = (theme: 'light' | 'dark' | 'auto') => {
+  const handleThemeChange = useCallback((theme: 'light' | 'dark' | 'auto') => {
     setSettings(prev => ({
       ...prev,
-      preferences: {
-        ...prev.preferences,
-        theme
-      }
+      preferences: { ...prev.preferences, theme },
     }));
-  };
+    applyTheme(theme);
+  }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      showSuccess(t.profile.settingsSaveSuccess);
-    } catch (error) {
-      showError(t.profile.settingsSaveError);
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Listen for system color scheme changes when in auto mode
+  useEffect(() => {
+    if (settings.preferences.theme !== 'auto') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => applyTheme('auto');
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [settings.preferences.theme]);
 
-  const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void; disabled?: boolean }> = ({
-    enabled,
-    onChange,
-    disabled = false
-  }) => (
+  const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void; label?: string }> = ({ enabled, onChange, label }) => (
     <button
-      onClick={() => !disabled && onChange(!enabled)}
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
+      onClick={() => onChange(!enabled)}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
         enabled ? 'bg-primary' : 'bg-muted'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-      disabled={disabled}
+      }`}
     >
       <span
         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -242,19 +264,15 @@ const OtherSettingsPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Save Button */}
+        {/* Auto-save note */}
         <div className="pt-6 border-t border-border">
-          <button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? t.profile.saving : t.profile.saveSettings}
-          </button>
+          <p className="text-xs text-muted-foreground">
+            {t.profile.autoSaveNote || 'Changes are saved automatically.'}
+          </p>
         </div>
       </div>
     </div>
   );
 };
 
-export default OtherSettingsPanel; 
+export default OtherSettingsPanel;

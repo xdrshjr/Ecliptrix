@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Base props for all workflow nodes
@@ -48,6 +49,7 @@ export const BaseWorkflowNode: React.FC<BaseNodeProps & { config: NodeConfig }> 
   executionStatus = 'pending',
   config
 }) => {
+  const { t } = useLocale();
   console.log('[BaseWorkflowNode] Rendering node:', { 
     id, 
     label: data.label, 
@@ -125,7 +127,7 @@ export const BaseWorkflowNode: React.FC<BaseNodeProps & { config: NodeConfig }> 
           </div>
           <span className="text-sm font-medium">{data.label}</span>
           {config.isConfigured && (
-            <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground/80" title="Configured" />
+            <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground/80" title={t.workflowNodes.tooltips.configured} />
           )}
         </div>
         {onDelete && (
@@ -140,7 +142,7 @@ export const BaseWorkflowNode: React.FC<BaseNodeProps & { config: NodeConfig }> 
               onDelete();
             }}
             className="hover:bg-white/20 rounded p-0.5 transition-colors"
-            title="Delete node"
+            title={t.workflowNodes.tooltips.deleteNode}
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -156,13 +158,13 @@ export const BaseWorkflowNode: React.FC<BaseNodeProps & { config: NodeConfig }> 
           <div className="flex items-center space-x-2">
             <div 
               className="w-3 h-3 rounded-full bg-primary border-2 border-card cursor-pointer hover:scale-110 transition-transform" 
-              title={config.inputPortLabel || "Input Port"}
+              title={config.inputPortLabel || t.workflowNodes.tooltips.inputPort}
               onMouseDown={handleInputPortMouseDown}
               data-port-type="input"
               data-port-id="input-1"
               data-node-id={id}
             />
-            <span className="text-xs text-muted-foreground select-none">{config.inputPortLabel || 'Input'}</span>
+            <span className="text-xs text-muted-foreground select-none">{config.inputPortLabel || t.workflowNodes.ports.input}</span>
           </div>
         )}
 
@@ -174,10 +176,10 @@ export const BaseWorkflowNode: React.FC<BaseNodeProps & { config: NodeConfig }> 
         {/* Output Port */}
         {config.hasOutputPort && (
           <div className="flex items-center justify-end space-x-2">
-            <span className="text-xs text-muted-foreground select-none">{config.outputPortLabel || 'Output'}</span>
+            <span className="text-xs text-muted-foreground select-none">{config.outputPortLabel || t.workflowNodes.ports.output}</span>
             <div 
               className="w-3 h-3 rounded-full bg-primary border-2 border-card cursor-pointer hover:scale-110 transition-transform" 
-              title={config.outputPortLabel || "Output Port"}
+              title={config.outputPortLabel || t.workflowNodes.tooltips.outputPort}
               onMouseDown={handleOutputPortMouseDown}
               data-port-type="output"
               data-port-id="output-1"

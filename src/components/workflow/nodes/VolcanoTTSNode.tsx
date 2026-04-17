@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { VolcanoTTSNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Volcano TTS Node Component
@@ -12,11 +13,12 @@ import { VolcanoTTSNodeConfig } from '@/types';
  */
 const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as VolcanoTTSNodeConfig | undefined;
   const isConfigured = !!(config?.text && config.text.trim().length > 0 && config?.voiceType);
   const displayText = config?.text || '';
-  const displayVoiceType = config?.voiceType || 'Not selected';
+  const displayVoiceType = config?.voiceType || t.workflowNodes.status.notSelected;
   
   console.log('[VolcanoTTSNode] Rendering node:', { 
     id, 
@@ -31,7 +33,7 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
   // Get voice type display name
   const getVoiceTypeName = (voiceTypeId: string): string => {
     // Extract a readable name from voice type ID
-    if (voiceTypeId === 'Not selected') return voiceTypeId;
+    if (voiceTypeId === t.workflowNodes.status.notSelected) return voiceTypeId;
     
     // Try to get the last part after underscore
     const parts = voiceTypeId.split('_');
@@ -57,20 +59,20 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Text Input',
-        outputPortLabel: 'Audio Output',
+        inputPortLabel: t.workflowNodes.ports.textInput,
+        outputPortLabel: t.workflowNodes.ports.audioOutput,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div className="space-y-1">
-                <div className="text-muted-foreground font-medium text-xs">Voice:</div>
+                <div className="text-muted-foreground font-medium text-xs">{t.workflowNodes.status.voice}:</div>
                 <div className="text-orange-700 text-xs bg-orange-50 px-2 py-1 rounded border border-orange-200 font-medium truncate">
                   {getVoiceTypeName(displayVoiceType)}
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground font-medium text-xs">Text:</div>
+                <div className="text-muted-foreground font-medium text-xs">{t.workflowNodes.status.text}:</div>
                 <div className="text-foreground text-xs bg-muted p-2 rounded border border-border max-h-16 overflow-y-auto break-words whitespace-pre-wrap">
                   {displayText.length > 80 
                     ? `${displayText.substring(0, 80)}...` 
@@ -79,14 +81,14 @@ const VolcanoTTSNode: React.FC<BaseNodeProps> = React.memo((props) => {
               </div>
               {displayText.length > 80 && (
                 <div className="text-xs text-muted-foreground italic">
-                  Double click for full content
+                  {t.workflowNodes.status.doubleClickForFullContent}
                 </div>
               )}
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-muted-foreground italic">Not configured</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.status.notConfigured}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.status.doubleClickToConfigure}</div>
             </div>
           )
         ),

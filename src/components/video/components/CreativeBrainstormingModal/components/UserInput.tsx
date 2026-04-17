@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface UserInputProps {
   value: string;
@@ -17,8 +18,9 @@ const UserInput: React.FC<UserInputProps> = ({
   onSend,
   onKeyPress,
   disabled = false,
-  placeholder = "输入您的想法或问题..."
+  placeholder,
 }) => {
+  const { t } = useLocale();
   return (
     <div className="p-4 border-t border-border bg-card">
       <div className="flex items-end space-x-3">
@@ -28,7 +30,7 @@ const UserInput: React.FC<UserInputProps> = ({
             onChange={(e) => onChange(e.target.value)}
             onKeyPress={onKeyPress}
             disabled={disabled}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t.creativeBrainstorming.inputPlaceholder}
             rows={2}
             className={`
               w-full px-4 py-3 border border-border rounded-md resize-none focus:ring-2
@@ -40,7 +42,7 @@ const UserInput: React.FC<UserInputProps> = ({
             `}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            按 Enter 发送，Shift+Enter 换行
+            {t.creativeBrainstorming.sendHint}
           </p>
         </div>
         

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface ToastProps {
   id: string;
@@ -23,6 +24,7 @@ const Toast: React.FC<ToastProps> = ({
   onClose,
   confirmAction
 }) => {
+  const { t } = useLocale();
   const [isVisible, setIsVisible] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
 
@@ -141,13 +143,13 @@ const Toast: React.FC<ToastProps> = ({
               }}
               className="px-3 py-1 text-xs font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors duration-200"
             >
-              {confirmAction.confirmLabel || '确定'}
+              {confirmAction.confirmLabel || t.common.confirm}
             </button>
             <button
               onClick={handleClose}
               className="px-3 py-1 text-xs font-medium rounded-md bg-accent text-accent-foreground hover:bg-accent/80 transition-colors duration-200"
             >
-              {confirmAction.cancelLabel || '取消'}
+              {confirmAction.cancelLabel || t.common.cancel}
             </button>
           </div>
         )}
@@ -157,7 +159,7 @@ const Toast: React.FC<ToastProps> = ({
         <button
           onClick={handleClose}
           className="ml-2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200"
-          aria-label="关闭通知"
+          aria-label={t.common.close}
         >
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />

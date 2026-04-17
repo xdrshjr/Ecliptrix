@@ -4,6 +4,7 @@ import React, { useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { VideoAnalysisResponse, FrameAnalysis } from '../../services/videoAnalysisService';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VideoAnalysisModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
   analysisResult,
   videoUrl
 }) => {
+  const { t } = useLocale();
 
 
   const formatTimestamp = useCallback((seconds: number): string => {
@@ -77,14 +79,14 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-foreground">AI视频解析结果</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">智能分析视频内容</p>
+              <h2 className="text-xl font-semibold text-foreground">{t.videoAnalysisModal.title}</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">{t.videoAnalysisModal.subtitle}</p>
             </div>
           </div>
           <button
             onClick={handleClose}
             className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
-            title="关闭"
+            title={t.videoAnalysisModal.closeTooltip}
           >
             <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -101,19 +103,19 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                 <div className="bg-muted rounded-md p-4 mb-6">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                      <span className="text-muted-foreground">视频时长</span>
-                      <p className="font-medium text-foreground">{analysisResult.video_duration.toFixed(1)}秒</p>
+                      <span className="text-muted-foreground">{t.videoAnalysisModal.videoDuration}</span>
+                      <p className="font-medium text-foreground">{analysisResult.video_duration.toFixed(1)}{t.videoAnalysisModal.secondsUnit}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">提取帧数</span>
-                      <p className="font-medium text-foreground">{analysisResult.total_frames_extracted}帧</p>
+                      <span className="text-muted-foreground">{t.videoAnalysisModal.framesExtracted}</span>
+                      <p className="font-medium text-foreground">{analysisResult.total_frames_extracted}{t.videoAnalysisModal.framesUnit}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">处理时间</span>
-                      <p className="font-medium text-foreground">{analysisResult.processing_time.toFixed(1)}秒</p>
+                      <span className="text-muted-foreground">{t.videoAnalysisModal.processingTime}</span>
+                      <p className="font-medium text-foreground">{analysisResult.processing_time.toFixed(1)}{t.videoAnalysisModal.secondsUnit}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">分析时间</span>
+                      <span className="text-muted-foreground">{t.videoAnalysisModal.analysisTime}</span>
                       <p className="font-medium text-foreground">{new Date(analysisResult.timestamp).toLocaleTimeString()}</p>
                     </div>
                   </div>
@@ -121,14 +123,14 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
 
                 {/* Frame Analysis Results */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-foreground mb-4">逐帧分析结果</h3>
+                  <h3 className="text-lg font-medium text-foreground mb-4">{t.videoAnalysisModal.frameAnalysisTitle}</h3>
                   {analysisResult.frame_analyses.map((frame: FrameAnalysis, index: number) => (
                     <div key={index} className="bg-card border border-border rounded-md p-5 transition-colors">
                       <div className="flex items-start space-x-4">
                         {/* Frame Info */}
                         <div className="flex-shrink-0">
                           <div className="w-16 h-16 bg-primary/10 rounded-md flex flex-col items-center justify-center">
-                            <span className="text-xs text-primary font-medium">第{frame.frame_number + 1}帧</span>
+                            <span className="text-xs text-primary font-medium">{t.videoAnalysisModal.frameLabel.replace('{number}', String(frame.frame_number + 1))}</span>
                             <span className="text-xs text-primary">{formatTimestamp(frame.timestamp)}</span>
                           </div>
                         </div>
@@ -139,7 +141,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                             <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
                               {formatTimestamp(frame.timestamp)}
                             </span>
-                            <span className="text-xs text-muted-foreground">时间点</span>
+                            <span className="text-xs text-muted-foreground">{t.videoAnalysisModal.timePoint}</span>
                           </div>
                           {/* 使用ReactMarkdown渲染分析内容 */}
                           <div className="prose prose-sm max-w-none text-foreground">
@@ -179,7 +181,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                         </svg>
                       </div>
                       <div>
-                        <h4 className="text-sm font-medium text-primary">分析总结</h4>
+                        <h4 className="text-sm font-medium text-primary">{t.videoAnalysisModal.summaryTitle}</h4>
                         <div className="text-sm text-primary mt-1">
                           <ReactMarkdown 
                             remarkPlugins={[remarkGfm]}
@@ -205,13 +207,13 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">解析失败</h3>
-                <p className="text-muted-foreground mb-4">{analysisResult.message || '视频解析过程中出现错误'}</p>
+                <h3 className="text-lg font-medium text-foreground mb-2">{t.videoAnalysisModal.errorTitle}</h3>
+                <p className="text-muted-foreground mb-4">{analysisResult.message || t.videoAnalysisModal.errorDefaultMessage}</p>
                 <button
                   onClick={handleClose}
                   className="px-4 py-2 bg-muted hover:bg-accent text-foreground rounded-md transition-colors"
                 >
-                  关闭
+                  {t.videoAnalysisModal.closeButton}
                 </button>
               </div>
             )
@@ -224,8 +226,8 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">正在加载解析结果</h3>
-              <p className="text-muted-foreground">请稍候...</p>
+              <h3 className="text-lg font-medium text-foreground mb-2">{t.videoAnalysisModal.loadingTitle}</h3>
+              <p className="text-muted-foreground">{t.videoAnalysisModal.loadingDesc}</p>
             </div>
           )}
         </div>
@@ -236,14 +238,14 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="text-xs text-muted-foreground">
                 {videoUrl && (
-                  <span>视频: {videoUrl.length > 50 ? `${videoUrl.substring(0, 50)}...` : videoUrl}</span>
+                  <span>{t.videoAnalysisModal.videoLabel} {videoUrl.length > 50 ? `${videoUrl.substring(0, 50)}...` : videoUrl}</span>
                 )}
               </div>
               <button
                 onClick={handleClose}
                 className="px-4 py-2 bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-md transition-colors"
               >
-                关闭
+                {t.videoAnalysisModal.closeButton}
               </button>
             </div>
           </div>

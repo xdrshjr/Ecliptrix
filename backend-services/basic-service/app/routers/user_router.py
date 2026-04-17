@@ -777,7 +777,7 @@ async def get_user_stats(
     })
 
     try:
-        result = await user_service.get_user_stats(db=db)
+        result = await user_service.get_user_stats(db=db, current_user=current_user)
 
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result.get("message", "统计获取失败"))

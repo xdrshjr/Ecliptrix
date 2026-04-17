@@ -225,10 +225,10 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               </div>
               <div>
                 <h3 id="modal-title" className="text-xl font-semibold text-foreground">
-                  生成脚本
+                  {t.convertToScript.title}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  将对话内容转换为视频脚本
+                  {t.convertToScript.subtitle}
                 </p>
               </div>
             </div>
@@ -252,18 +252,18 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               <svg className="w-5 h-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
-              参数设置
+              {t.convertToScript.parameterSettings}
             </h4>
 
             <div className="space-y-6">
               {/* Language Selection */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-3">脚本语言</label>
+                <label className="block text-sm font-medium text-foreground mb-3">{t.convertToScript.scriptLanguage}</label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'chinese', label: '中文' },
-                    { value: 'english', label: '英文' },
-                    { value: 'mixed', label: '中英混合' }
+                    { value: 'chinese', label: t.convertToScript.chinese },
+                    { value: 'english', label: t.convertToScript.english },
+                    { value: 'mixed', label: t.convertToScript.mixed }
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -283,7 +283,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               {/* Segment Count */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-3">
-                  脚本段落数量: {parameters.segmentCount}
+                  {t.convertToScript.segmentCount} {parameters.segmentCount}
                 </label>
                 <input
                   type="range"
@@ -294,19 +294,19 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                   className="w-full h-2 bg-accent rounded-md appearance-none cursor-pointer slider-thumb"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>3段</span>
-                  <span>10段</span>
+                  <span>3{t.convertToScript.segments}</span>
+                  <span>10{t.convertToScript.segments}</span>
                 </div>
               </div>
 
               {/* Analysis Depth */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-3">分析深度</label>
+                <label className="block text-sm font-medium text-foreground mb-3">{t.convertToScript.analysisDepth}</label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'basic', label: '基础', desc: '快速生成' },
-                    { value: 'detailed', label: '详细', desc: '平衡质量' },
-                    { value: 'comprehensive', label: '全面', desc: '深度分析' }
+                    { value: 'basic', label: t.convertToScript.basic, desc: t.convertToScript.quickGen },
+                    { value: 'detailed', label: t.convertToScript.detailed, desc: t.convertToScript.balancedQuality },
+                    { value: 'comprehensive', label: t.convertToScript.comprehensive, desc: t.convertToScript.deepAnalysis }
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -326,7 +326,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
 
               {/* Additional Options */}
               <div className="space-y-4">
-                <label className="block text-sm font-medium text-foreground">附加选项</label>
+                <label className="block text-sm font-medium text-foreground">{t.convertToScript.additionalOptions}</label>
                 
                 <div className="space-y-3">
                   <label className="flex items-center space-x-3 cursor-pointer">
@@ -337,8 +337,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
                     />
                     <div>
-                      <div className="text-sm font-medium text-foreground">包含视觉元素分析</div>
-                      <div className="text-xs text-muted-foreground">分析视频中的场景、物体、人物等视觉信息</div>
+                      <div className="text-sm font-medium text-foreground">{t.convertToScript.includeVisual}</div>
+                      <div className="text-xs text-muted-foreground">{t.convertToScript.visualDesc}</div>
                     </div>
                   </label>
 
@@ -350,8 +350,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
                     />
                     <div>
-                      <div className="text-sm font-medium text-foreground">包含音频分析</div>
-                      <div className="text-xs text-muted-foreground">分析视频中的语音、音乐、音效等音频信息</div>
+                      <div className="text-sm font-medium text-foreground">{t.convertToScript.includeAudio}</div>
+                      <div className="text-xs text-muted-foreground">{t.convertToScript.audioDesc}</div>
                     </div>
                   </label>
                 </div>
@@ -368,7 +368,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                   <svg className="w-5 h-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  视频理解
+                  {t.convertToScript.videoUnderstanding}
                 </h4>
 
                 {/* Toggle Switch */}
@@ -398,15 +398,15 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               <div className="text-sm text-muted-foreground mb-4">
                 <p>
                   {enableVideoUnderstanding
-                    ? '已启用视频理解，选择视频后将自动分析并生成脚本'
-                    : '视频理解已关闭，将仅根据对话内容生成脚本'}
+                    ? t.convertToScript.enabledDesc
+                    : t.convertToScript.disabledDesc}
                 </p>
               </div>
 
               {/* 分析模式选择器 - 仅当启用视频理解且有未分析视频时显示 */}
               {enableVideoUnderstanding && allVideoMaterials.length - analyzedVideoCount > 0 && (
                 <div className="mb-4">
-                  <label className="block text-xs font-medium text-muted-foreground mb-2">分析模式</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-2">{t.convertToScript.analysisMode}</label>
                   <div className="flex space-x-2">
                     <button
                       onClick={() => setAnalysisMode('quick')}
@@ -416,8 +416,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                           : 'border-border bg-card text-muted-foreground hover:border-border'
                       }`}
                     >
-                      <div className="font-medium">快速分析</div>
-                      <div className="text-[10px] opacity-75 mt-0.5">仅分析封面</div>
+                      <div className="font-medium">{t.convertToScript.quickAnalysis}</div>
+                      <div className="text-[10px] opacity-75 mt-0.5">{t.convertToScript.coverOnly}</div>
                     </button>
                     <button
                       onClick={() => setAnalysisMode('professional')}
@@ -427,8 +427,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                           : 'border-border bg-card text-muted-foreground hover:border-border'
                       }`}
                     >
-                      <div className="font-medium">专业分析</div>
-                      <div className="text-[10px] opacity-75 mt-0.5">多帧深度分析</div>
+                      <div className="font-medium">{t.convertToScript.proAnalysis}</div>
+                      <div className="text-[10px] opacity-75 mt-0.5">{t.convertToScript.multiFrame}</div>
                     </button>
                   </div>
                 </div>
@@ -445,16 +445,16 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       </svg>
                       <div className="text-sm">
                         <p className="text-primary font-medium">
-                          选择视频素材参与脚本生成
+                          {t.convertToScript.selectVideoDesc}
                         </p>
                         <p className="text-primary mt-1">
-                          共 <span className="font-semibold">{allVideoMaterials.length}</span> 个视频，其中{' '}
-                          <span className="font-semibold">{analyzedVideoCount}</span> 个已解析，{' '}
-                          <span className="font-semibold">{allVideoMaterials.length - analyzedVideoCount}</span> 个待解析
+                          {t.convertToScript.videoStatsPrefix}<span className="font-semibold">{allVideoMaterials.length}</span>{t.convertToScript.videoStatsTotal}
+                          <span className="font-semibold">{analyzedVideoCount}</span>{t.convertToScript.videoStatsAnalyzed}
+                          <span className="font-semibold">{allVideoMaterials.length - analyzedVideoCount}</span>{t.convertToScript.videoStatsPending}
                         </p>
                         {selectedUnanalyzedCount > 0 && (
                           <p className="text-amber-600 text-xs mt-1">
-                            已选中 {selectedUnanalyzedCount} 个待解析视频，生成时将自动进行分析
+                            {t.convertToScript.selectedUnanalyzedPrefix}{selectedUnanalyzedCount}{t.convertToScript.selectedUnanalyzed}
                           </p>
                         )}
                       </div>
@@ -466,29 +466,29 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                       <svg className="mx-auto h-12 w-12 text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      <p className="text-muted-foreground text-sm">暂无可用的视频素材</p>
-                      <p className="text-muted-foreground text-xs mt-1">请先上传或搜索视频素材</p>
+                      <p className="text-muted-foreground text-sm">{t.convertToScript.noVideos}</p>
+                      <p className="text-muted-foreground text-xs mt-1">{t.convertToScript.pleaseUpload}</p>
                     </div>
                   ) : (
                     <>
                       {/* 全选/取消全选栏 */}
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-sm text-muted-foreground">
-                          已选 <span className="font-semibold">{selectedVideos.size}</span> / {videoMaterials.length} 个视频
+                          {t.convertToScript.selectedCountPrefix}<span className="font-semibold">{selectedVideos.size}</span> / {videoMaterials.length}{t.convertToScript.selectedCount}
                         </span>
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={handleSelectAll}
                             className="text-xs text-primary hover:text-primary/80 font-medium"
                           >
-                            全选
+                            {t.convertToScript.selectAll}
                           </button>
                           <span className="text-muted-foreground">|</span>
                           <button
                             onClick={handleDeselectAll}
                             className="text-xs text-muted-foreground hover:text-foreground font-medium"
                           >
-                            取消全选
+                            {t.convertToScript.deselectAll}
                           </button>
                         </div>
                       </div>
@@ -526,14 +526,14 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                                     ? 'bg-primary/10 text-primary'
                                     : 'bg-muted text-muted-foreground'
                                 }`}>
-                                  {analyzed ? '已解析' : '待解析'}
+                                  {analyzed ? t.convertToScript.analyzed : t.convertToScript.pending}
                                 </span>
                               </div>
 
                               <div className="p-3">
                                 <p className="text-sm font-medium text-foreground truncate">{video.name}</p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {video.duration ? `${Math.round(video.duration)}s` : '未知时长'}
+                                  {video.duration ? `${Math.round(video.duration)}s` : t.convertToScript.unknownDuration}
                                 </p>
                               </div>
 
@@ -556,7 +556,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               {/* Chat Content Preview */}
               {!enableVideoUnderstanding && (
                 <div className="bg-card rounded-md border border-border p-4">
-                  <h5 className="text-sm font-medium text-foreground mb-2">对话内容预览：</h5>
+                  <h5 className="text-sm font-medium text-foreground mb-2">{t.convertToScript.chatPreview}</h5>
                   <div className="text-sm text-muted-foreground max-h-64 overflow-y-auto p-3 bg-muted rounded-md border border-border">
                     {chatContent}
                   </div>
@@ -570,8 +570,8 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
         <div className="px-6 py-4 bg-muted border-t border-border flex items-center justify-between flex-shrink-0 rounded-b-md">
           <div className="text-sm text-muted-foreground">
             {enableVideoUnderstanding && selectedVideos.size > 0
-              ? `将使用 ${selectedVideos.size} 个视频生成脚本${selectedUnanalyzedCount > 0 ? `（${selectedUnanalyzedCount} 个需先分析）` : ''}`
-              : '将根据对话内容生成脚本'}
+              ? `${t.convertToScript.footerWithVideo.replace('{count}', String(selectedVideos.size))}${selectedUnanalyzedCount > 0 ? t.convertToScript.footerWithAnalysis.replace('{count}', String(selectedUnanalyzedCount)) : ''}`
+              : t.convertToScript.footerNoVideo}
           </div>
           
           <div className="flex items-center space-x-3">
@@ -580,7 +580,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
               disabled={isGenerating}
               className="px-4 py-2 text-sm font-medium text-secondary-foreground bg-secondary border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
-              取消
+              {t.common.cancel}
             </button>
             
             <button
@@ -594,7 +594,7 @@ const ConvertToScriptModal: React.FC<ConvertToScriptModalProps> = ({
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
               )}
-              <span>{isGenerating ? '生成中...' : '开始生成'}</span>
+              <span>{isGenerating ? t.convertToScript.generating : t.convertToScript.startGenerate}</span>
             </button>
           </div>
         </div>

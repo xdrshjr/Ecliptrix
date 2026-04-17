@@ -1,18 +1,28 @@
 'use client';
 
 import React from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { ArkImageSize } from '@/lib/api/arkImage';
 import { MentionedImage } from '@/types';
 import ReferenceImagePanel from './ReferenceImagePanel';
 
 const SIZE_PRESETS = [
-  { value: '1024x1024', label: '1K 方形', icon: 'square' },
-  { value: '2048x2048', label: '2K 方形', icon: 'square' },
-  { value: '1280x720', label: '16:9 横屏', icon: 'landscape' },
-  { value: '720x1280', label: '9:16 竖屏', icon: 'portrait' },
-  { value: '1024x576', label: '16:9 宽屏', icon: 'landscape' },
-  { value: '576x1024', label: '9:16 竖屏宽', icon: 'portrait' },
+  { value: '1024x1024', icon: 'square' },
+  { value: '2048x2048', icon: 'square' },
+  { value: '1280x720', icon: 'landscape' },
+  { value: '720x1280', icon: 'portrait' },
+  { value: '1024x576', icon: 'landscape' },
+  { value: '576x1024', icon: 'portrait' },
 ] as const;
+
+const SIZE_LABEL_KEYS: Record<string, string> = {
+  '1024x1024': 'size1kSquare',
+  '2048x2048': 'size2kSquare',
+  '1280x720': 'size169Landscape',
+  '720x1280': 'size916Portrait',
+  '1024x576': 'size169Wide',
+  '576x1024': 'size916Wide',
+};
 
 const sizeIcon = (icon: string, active: boolean) => {
   const cls = active ? 'text-white' : 'text-muted-foreground';
@@ -54,6 +64,7 @@ interface BasicGenerationTabProps {
 }
 
 const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange }) => {
+  const { t } = useLocale();
   const { prompt, size, count, watermark, referenceImages } = state;
   const MAX_PROMPT_LENGTH = 500;
 
@@ -64,7 +75,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
         {/* Prompt */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            提示词 <span className="text-destructive">*</span>
+            {t.basicGenerationTab.promptLabel} <span className="text-destructive">*</span>
           </label>
           <div className="relative">
             <textarea
@@ -72,7 +83,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
               onChange={(e) => onChange(prev => ({ ...prev, prompt: e.target.value.slice(0, MAX_PROMPT_LENGTH) }))}
               rows={5}
               autoFocus
-              placeholder="描述你想要生成的图片内容... 从右侧选择参考图，或直接在提示词中输入 @[图片名] 引用"
+              placeholder={t.basicGenerationTab.promptPlaceholder}
               className="w-full border border-border rounded-md px-4 py-3 text-sm text-foreground bg-card resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
             />
             <span className="absolute bottom-2.5 right-3 text-xs text-muted-foreground">
@@ -83,7 +94,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
 
         {/* Size */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-2">图片尺寸</label>
+          <label className="block text-sm font-medium text-foreground mb-2">{t.basicGenerationTab.sizeLabel}</label>
           <div className="grid grid-cols-3 gap-2">
             {SIZE_PRESETS.map((preset) => (
               <button
@@ -96,7 +107,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
                 }`}
               >
                 {sizeIcon(preset.icon, size === preset.value)}
-                <span>{preset.label}</span>
+                <span>{t.basicGenerationTab[SIZE_LABEL_KEYS[preset.value] as keyof typeof t.basicGenerationTab]}</span>
               </button>
             ))}
           </div>
@@ -104,7 +115,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
 
         {/* Count */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-2">生成数量</label>
+          <label className="block text-sm font-medium text-foreground mb-2">{t.basicGenerationTab.countLabel}</label>
           <div className="flex gap-3">
             {([1, 2, 3, 4] as const).map((n) => (
               <button
@@ -116,7 +127,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
                     : 'bg-card text-foreground border-border hover:border-border'
                 }`}
               >
-                {n} 张
+                {n} {t.basicGenerationTab.countUnit}
               </button>
             ))}
           </div>
@@ -125,8 +136,8 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
         {/* Watermark */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-foreground">添加水印</p>
-            <p className="text-xs text-muted-foreground mt-0.5">在生成图片上添加平台水印</p>
+            <p className="text-sm font-medium text-foreground">{t.basicGenerationTab.watermarkLabel}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t.basicGenerationTab.watermarkDesc}</p>
           </div>
           <div
             onClick={() => onChange(prev => ({ ...prev, watermark: !prev.watermark }))}

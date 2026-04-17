@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { UseImageSearchReturn, ImageSearchResult } from '../../types';
 import { VideoEditingLogger } from '../../utils/logger';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface ImageSearchModalProps extends UseImageSearchReturn {
 }
@@ -35,6 +36,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
   setValidationError,
   taskId
 }) => {
+  const { t } = useLocale();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'ImageSearchModal'
@@ -136,7 +138,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
         disabled={currentPage === 1}
         className="px-3 py-1 mx-1 text-sm rounded-md border border-border bg-card text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        上一页
+        {t.imageSearchModal.prevPage}
       </button>
     );
 
@@ -165,7 +167,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
         disabled={currentPage === totalPages}
         className="px-3 py-1 mx-1 text-sm rounded-md border border-border bg-card text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        下一页
+        {t.imageSearchModal.nextPage}
       </button>
     );
 
@@ -173,7 +175,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
       <div className="flex justify-center items-center mt-4">
         {pages}
         <span className="ml-4 text-sm text-muted-foreground">
-          第 {currentPage} 页，共 {totalPages} 页
+          {t.imageSearchModal.pageInfo.replace('{current}', String(currentPage)).replace('{total}', String(totalPages))}
         </span>
       </div>
     );
@@ -187,12 +189,12 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
         <div className="bg-card rounded-md border border-border w-full max-w-7xl h-5/6 flex flex-col">
           {/* 标题栏 */}
           <div className="flex items-center justify-between p-6 border-b border-border">
-            <h2 className="text-2xl font-semibold text-foreground">搜索图片</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t.imageSearchModal.title}</h2>
             <button
               onClick={handleClose}
               disabled={isAddingImages}
               className="w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="关闭"
+              aria-label={t.common.close}
             >
               <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -214,7 +216,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                       if (validationError) setValidationError(null);
                     }}
                     onKeyPress={handleKeyPress}
-                    placeholder="输入搜索关键词，如：风景、人物、建筑..."
+                    placeholder={t.imageSearchModal.searchPlaceholder}
                     className="w-full px-4 py-3 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-base"
                     disabled={isSearching || isAddingImages}
                   />
@@ -227,10 +229,10 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                   {isSearching ? (
                     <div className="flex items-center space-x-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>搜索中...</span>
+                      <span>{t.imageSearchModal.searching}</span>
                     </div>
                   ) : (
-                    '搜索'
+                    t.imageSearchModal.searchButton
                   )}
                 </button>
               </div>
@@ -239,56 +241,56 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
               <div className="flex flex-wrap gap-4 text-sm">
                 {/* 方向筛选 */}
                 <div className="flex items-center space-x-2">
-                  <label className="text-muted-foreground font-medium">方向:</label>
+                  <label className="text-muted-foreground font-medium">{t.imageSearchModal.orientationLabel}</label>
                   <select
                     value={orientation}
                     onChange={(e) => setOrientation(e.target.value as any)}
                     className="px-3 py-1 border border-border rounded-md focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                     disabled={isSearching || isAddingImages}
                   >
-                    <option value="all">全部</option>
-                    <option value="landscape">横向</option>
-                    <option value="portrait">纵向</option>
-                    <option value="squarish">方形</option>
+                    <option value="all">{t.imageSearchModal.orientationAll}</option>
+                    <option value="landscape">{t.imageSearchModal.orientationLandscape}</option>
+                    <option value="portrait">{t.imageSearchModal.orientationPortrait}</option>
+                    <option value="squarish">{t.imageSearchModal.orientationSquarish}</option>
                   </select>
                 </div>
 
                 {/* 颜色筛选 */}
                 <div className="flex items-center space-x-2">
-                  <label className="text-muted-foreground font-medium">颜色:</label>
+                  <label className="text-muted-foreground font-medium">{t.imageSearchModal.colorLabel}</label>
                   <select
                     value={color}
                     onChange={(e) => setColor(e.target.value as any)}
                     className="px-3 py-1 border border-border rounded-md focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                     disabled={isSearching || isAddingImages}
                   >
-                    <option value="all">全部</option>
-                    <option value="black_and_white">黑白</option>
-                    <option value="black">黑色</option>
-                    <option value="white">白色</option>
-                    <option value="yellow">黄色</option>
-                    <option value="orange">橙色</option>
-                    <option value="red">红色</option>
-                    <option value="purple">紫色</option>
-                    <option value="magenta">洋红</option>
-                    <option value="green">绿色</option>
-                    <option value="teal">青色</option>
-                    <option value="blue">蓝色</option>
+                    <option value="all">{t.imageSearchModal.colorAll}</option>
+                    <option value="black_and_white">{t.imageSearchModal.colorBlackAndWhite}</option>
+                    <option value="black">{t.imageSearchModal.colorBlack}</option>
+                    <option value="white">{t.imageSearchModal.colorWhite}</option>
+                    <option value="yellow">{t.imageSearchModal.colorYellow}</option>
+                    <option value="orange">{t.imageSearchModal.colorOrange}</option>
+                    <option value="red">{t.imageSearchModal.colorRed}</option>
+                    <option value="purple">{t.imageSearchModal.colorPurple}</option>
+                    <option value="magenta">{t.imageSearchModal.colorMagenta}</option>
+                    <option value="green">{t.imageSearchModal.colorGreen}</option>
+                    <option value="teal">{t.imageSearchModal.colorTeal}</option>
+                    <option value="blue">{t.imageSearchModal.colorBlue}</option>
                   </select>
                 </div>
 
                 {/* 排序方式 */}
                 <div className="flex items-center space-x-2">
-                  <label className="text-muted-foreground font-medium">排序:</label>
+                  <label className="text-muted-foreground font-medium">{t.imageSearchModal.orderByLabel}</label>
                   <select
                     value={orderBy}
                     onChange={(e) => setOrderBy(e.target.value as any)}
                     className="px-3 py-1 border border-border rounded-md focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                     disabled={isSearching || isAddingImages}
                   >
-                    <option value="relevant">相关度</option>
-                    <option value="latest">最新</option>
-                    <option value="popular">热门</option>
+                    <option value="relevant">{t.imageSearchModal.orderByRelevant}</option>
+                    <option value="latest">{t.imageSearchModal.orderByLatest}</option>
+                    <option value="popular">{t.imageSearchModal.orderByPopular}</option>
                   </select>
                 </div>
               </div>
@@ -308,7 +310,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
             {searchResults.length > 0 && (
               <div className="flex items-center justify-between p-4 border-b border-border bg-card">
                 <div className="text-sm text-muted-foreground">
-                  已选择 {selectedResults.size} 张图片
+                  {t.imageSearchModal.selectedCount.replace('{count}', String(selectedResults.size))}
                 </div>
                 <div className="flex space-x-3">
                   {selectedResults.size > 0 && (
@@ -317,7 +319,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                       disabled={isAddingImages}
                       className="px-4 py-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors text-sm disabled:opacity-50"
                     >
-                      清空选择
+                      {t.imageSearchModal.clearSelection}
                     </button>
                   )}
                   <button
@@ -328,10 +330,10 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                     {isAddingImages ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>添加中...</span>
+                        <span>{t.imageSearchModal.addingImages}</span>
                       </div>
                     ) : (
-                      `添加选中图片 (${selectedResults.size})`
+                      t.imageSearchModal.addSelectedButton.replace('{count}', String(selectedResults.size))
                     )}
                   </button>
                 </div>
@@ -354,7 +356,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                         <div className="aspect-square relative overflow-hidden">
                           <img
                             src={image.small_url}
-                            alt={image.alt_description || image.description || '图片'}
+                            alt={image.alt_description || image.description || t.imageSearchModal.title}
                             className="w-full h-full object-cover transition-transform group-hover:scale-105"
                             onClick={() => handleImageClick(image)}
                             loading="lazy"
@@ -373,7 +375,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                     ? 'bg-primary text-primary-foreground'
                                     : 'bg-card text-foreground hover:bg-accent'
                                 }`}
-                                title={selectedResults.has(image.id) ? '取消选择' : '选择'}
+                                title={selectedResults.has(image.id) ? t.imageSearchModal.deselect : t.imageSearchModal.select}
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -385,7 +387,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                   handleAddToMaterials(image);
                                 }}
                                 className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
-                                title="添加到素材"
+                                title={t.imageSearchModal.addToMaterials}
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -401,7 +403,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             {image.width} × {image.height}
                           </div>
                           <div className="text-sm text-foreground font-medium truncate">
-                            {image.description || image.alt_description || '无描述'}
+                            {image.description || image.alt_description || t.imageSearchModal.noDescription}
                           </div>
                           <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between">
                             <span>@{image.user_username}</span>
@@ -427,8 +429,8 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                   <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <p className="text-lg mb-2">暂无搜索结果</p>
-                  <p className="text-sm">输入关键词开始搜索图片</p>
+                  <p className="text-lg mb-2">{t.imageSearchModal.noResultsTitle}</p>
+                  <p className="text-sm">{t.imageSearchModal.noResultsHint}</p>
                 </div>
               )}
             </div>
@@ -443,7 +445,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
             <div className="flex items-center justify-between p-4 border-b">
               <div>
                 <h3 className="text-lg font-medium">
-                  {previewImage.description || previewImage.alt_description || '图片预览'}
+                  {previewImage.description || previewImage.alt_description || t.imageSearchModal.imagePreview}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {previewImage.width} × {previewImage.height} • @{previewImage.user_username}
@@ -461,7 +463,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
             <div className="p-4">
               <img
                 src={previewImage.regular_url}
-                alt={previewImage.alt_description || previewImage.description || '图片'}
+                alt={previewImage.alt_description || previewImage.description || t.imageSearchModal.title}
                 className="max-w-full max-h-96 object-contain mx-auto"
               />
             </div>
@@ -477,7 +479,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                     : 'bg-accent text-foreground hover:bg-accent/80'
                 }`}
               >
-                {selectedResults.has(previewImage.id) ? '取消选择' : '选择'}
+                {selectedResults.has(previewImage.id) ? t.imageSearchModal.deselect : t.imageSearchModal.select}
               </button>
               <button
                 onClick={() => {
@@ -486,7 +488,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                 }}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
               >
-                添加到素材
+                {t.imageSearchModal.addToMaterials}
               </button>
             </div>
           </div>

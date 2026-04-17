@@ -5,6 +5,7 @@ import { VolcanoTTSNodeConfig, DataFormat } from '@/types';
 import NodeTestPanel from './NodeTestPanel';
 import FormatSelector from './FormatSelector';
 import { http } from '@/lib/api/http-client';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface VolcanoTTSConfigPanelProps {
   nodeId: string;
@@ -33,11 +34,13 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
   onSave,
   onClose,
 }) => {
-  console.log('[VolcanoTTSConfigPanel] Rendering panel:', { 
-    nodeId, 
+  console.log('[VolcanoTTSConfigPanel] Rendering panel:', {
+    nodeId,
     config,
     initialTextLength: config.text?.length || 0
   });
+
+  const { t } = useLocale();
 
   // State management
   const [text, setText] = useState(config.text || '');
@@ -183,8 +186,8 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Volcano TTS Configuration</h2>
-            <p className="text-xs text-muted-foreground">Node ID: {nodeId}</p>
+            <h2 className="text-lg font-semibold text-foreground">{t.workflowNodes.configPanels.volcanoTTS.title}</h2>
+            <p className="text-xs text-muted-foreground">{t.workflowNodes.configPanels.volcanoTTS.nodeId}: {nodeId}</p>
           </div>
         </div>
         <button
@@ -221,30 +224,30 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
             <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
             </svg>
-            <h3 className="text-sm font-semibold text-foreground">Data Format</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t.workflowNodes.configPanels.volcanoTTS.dataFormat}</h3>
           </div>
 
           <FormatSelector
-            label="Input Format"
+            label={t.workflowNodes.configPanels.volcanoTTS.inputFormat}
             value={inputFormat}
             onChange={setInputFormat}
             type="input"
-            helpText="Format of data received from the previous node."
+            helpText={t.workflowNodes.configPanels.volcanoTTS.inputFormatHelp}
           />
 
           <FormatSelector
-            label="Output Format"
+            label={t.workflowNodes.configPanels.volcanoTTS.outputFormat}
             value={outputFormat}
             onChange={setOutputFormat}
             type="output"
-            helpText="Format of data sent to the next node."
+            helpText={t.workflowNodes.configPanels.volcanoTTS.outputFormatHelp}
           />
         </div>
 
         {/* Language Selection */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            Language
+            {t.workflowNodes.configPanels.volcanoTTS.language}
           </label>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -255,7 +258,7 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
                   : 'bg-accent text-foreground hover:bg-secondary'
               }`}
             >
-              Chinese (中文)
+              {t.workflowNodes.configPanels.volcanoTTS.chinese}
             </button>
             <button
               onClick={() => setLocale('en')}
@@ -265,7 +268,7 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
                   : 'bg-accent text-foreground hover:bg-secondary'
               }`}
             >
-              English
+              {t.workflowNodes.configPanels.volcanoTTS.english}
             </button>
           </div>
         </div>
@@ -273,13 +276,13 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
         {/* Voice Type Selection */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            Voice Type
+            {t.workflowNodes.configPanels.volcanoTTS.voiceType}
           </label>
           
           {isLoadingVoices ? (
             <div className="flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading voices...</span>
+              <span className="ml-2 text-sm text-muted-foreground">{t.workflowNodes.configPanels.volcanoTTS.loadingVoices}</span>
             </div>
           ) : (
             <div className="space-y-4 max-h-64 overflow-y-auto bg-muted border border-border rounded-md p-3">
@@ -331,7 +334,7 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-foreground">
-              Speed Ratio
+              {t.workflowNodes.configPanels.volcanoTTS.speedRatio}
             </label>
             <span className="text-sm font-semibold text-primary">{speedRatio.toFixed(1)}x</span>
           </div>

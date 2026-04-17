@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseNodeProps } from './BaseWorkflowNode';
 import { AIVideoGenerateNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * AI Video Generate Node Component
@@ -20,6 +21,7 @@ import { AIVideoGenerateNodeConfig } from '@/types';
  */
 const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as AIVideoGenerateNodeConfig | undefined;
   
@@ -132,7 +134,7 @@ const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
           </div>
           <span className="text-sm font-medium">{data.label}</span>
           {isConfigured && (
-            <div className="w-1.5 h-1.5 rounded-full bg-white/80" title="Configured" />
+            <div className="w-1.5 h-1.5 rounded-full bg-white/80" title={t.workflowNodes.tooltips.configured} />
           )}
         </div>
         {onDelete && (
@@ -147,7 +149,7 @@ const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
               onDelete();
             }}
             className="hover:bg-white/20 rounded p-0.5 transition-colors"
-            title="Delete node"
+            title={t.workflowNodes.tooltips.deleteNode}
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -160,11 +162,11 @@ const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
       <div className="p-3 flex items-start justify-between">
         {/* Left Side: Input Ports */}
         <div className="flex-shrink-0 w-24">
-          <div className="text-xs font-medium text-muted-foreground mb-2">Inputs</div>
-          {renderInputPort('input-text', '文案', 'textInput')}
-          {renderInputPort('input-video', '视频', 'videoInput')}
-          {renderInputPort('input-audio', '音频', 'audioInput')}
-          {renderInputPort('input-image', '图片', 'imageInput')}
+          <div className="text-xs font-medium text-muted-foreground mb-2">{t.workflowNodes.aiVideo.inputs}</div>
+          {renderInputPort('input-text', t.workflowNodes.ports.copy, 'textInput')}
+          {renderInputPort('input-video', t.workflowNodes.ports.video, 'videoInput')}
+          {renderInputPort('input-audio', t.workflowNodes.ports.audio, 'audioInput')}
+          {renderInputPort('input-image', t.workflowNodes.ports.image, 'imageInput')}
         </div>
 
         {/* Center: Content Display */}
@@ -172,16 +174,16 @@ const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
           {isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-medium">Status:</span>
+                <span className="text-muted-foreground font-medium">{`${t.workflowNodes.aiVideo.status}:`}</span>
                 <span className="text-foreground text-xs">
                   {config?.lastExecutionSuccess !== undefined 
-                    ? (config.lastExecutionSuccess ? '✓ Success' : '✗ Failed')
-                    : 'Ready'}
+                    ? (config.lastExecutionSuccess ? `✓ ${t.workflowNodes.status.success}` : `✗ ${t.workflowNodes.status.failed}`)
+                    : t.workflowNodes.status.ready}
                 </span>
               </div>
               {config?.lastExecutionTime && (
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground font-medium">Last Run:</span>
+                  <span className="text-muted-foreground font-medium">{`${t.workflowNodes.aiVideo.lastRun}:`}</span>
                   <span className="text-foreground text-xs">
                     {new Date(config.lastExecutionTime).toLocaleTimeString()}
                   </span>
@@ -190,14 +192,14 @@ const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {config?.lastExecutionError && (
                 <div className="pt-1 border-t border-border">
                   <div className="text-red-600 text-xs">
-                    Error: {config.lastExecutionError.substring(0, 60)}
+                    {`${t.workflowNodes.aiVideo.error}:`} {config.lastExecutionError.substring(0, 60)}
                     {config.lastExecutionError.length > 60 && '...'}
                   </div>
                 </div>
               )}
               {config?.systemPrompt && (
                 <div className="pt-1 border-t border-border">
-                  <div className="text-muted-foreground font-medium mb-0.5">Prompt:</div>
+                  <div className="text-muted-foreground font-medium mb-0.5">{`${t.workflowNodes.aiVideo.prompt}:`}</div>
                   <div className="text-foreground text-xs bg-muted p-1.5 rounded max-h-12 overflow-y-auto">
                     {config.systemPrompt.substring(0, 80)}
                     {config.systemPrompt.length > 80 && '...'}
@@ -207,20 +209,20 @@ const AIVideoGenerateNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-2">
-              <div className="text-muted-foreground italic">Not configured</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.aiVideo.notConfigured}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.aiVideo.doubleClickConfigure}</div>
             </div>
           )}
         </div>
 
         {/* Right Side: Output Port */}
         <div className="flex-shrink-0 w-24 flex flex-col items-end">
-          <div className="text-xs font-medium text-muted-foreground mb-2">Output</div>
+          <div className="text-xs font-medium text-muted-foreground mb-2">{t.workflowNodes.ports.output}</div>
           <div className="flex items-center space-x-1.5">
-            <span className="text-xs text-foreground font-medium select-none">Timeline</span>
+            <span className="text-xs text-foreground font-medium select-none">{t.workflowNodes.ports.timeline}</span>
             <div 
               className="w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white cursor-pointer hover:scale-110 transition-transform" 
-              title="Output Port"
+              title={t.workflowNodes.tooltips.outputPort}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 if (onPortMouseDown) {

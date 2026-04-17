@@ -4,6 +4,7 @@ Database engine, session management, and connection pool for the application.
 
 from typing import AsyncGenerator
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from app.config import settings
@@ -48,6 +49,19 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Ensure api_format column exists on model_providers (added in migration 005)
+        try:
+            await conn.execute(sa.text(
+                "ALTER TABLE model_providers ADD COLUMN api_format VARCHAR(20) NOT NULL DEFAULT 'auto'"
+            ))
+            logger.info("Added missing api_format column to model_providers")
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                logger.debug("api_format column already exists in model_providers")
+            else:
+                logger.warning(f"Could not add api_format column: {e}")
+
     logger.info("Database tables created/verified")
 
     # Sync root user from .env configuration

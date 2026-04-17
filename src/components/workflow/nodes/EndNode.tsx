@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * End Node Component
@@ -10,6 +11,7 @@ import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
  */
 const EndNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   console.log('[EndNode] Rendering node:', { 
     id, 
@@ -31,11 +33,11 @@ const EndNode: React.FC<BaseNodeProps> = React.memo((props) => {
         gradientColors: 'bg-red-600',
         hasInputPort: true,
         hasOutputPort: false,
-        inputPortLabel: 'Input',
+        inputPortLabel: t.workflowNodes.ports.input,
         isConfigured: true,
         renderContent: () => (
           <div className="text-xs text-muted-foreground text-center py-1">
-            Workflow End Point
+            {t.workflowNodes.status.workflowEndPoint}
           </div>
         ),
       }}

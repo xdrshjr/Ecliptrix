@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocale } from '@/contexts/LocaleContext';
 import { loadAgentWorkflows, WorkflowRecord } from '@/lib/api/workflow';
 
 interface WorkflowSelectionModalProps {
@@ -25,6 +26,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
   onClose,
   onSelectWorkflow,
 }) => {
+  const { t } = useLocale();
   const { user, isAuthenticated } = useAuth();
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,8 +111,8 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                 </svg>
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-foreground">选择工作流</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">选择一个工作流来开始新的对话</p>
+                <h2 className="text-2xl font-semibold text-foreground">{t.chatWorkflowSelection.title}</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">{t.chatWorkflowSelection.subtitle}</p>
               </div>
             </div>
             
@@ -136,7 +138,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                 </svg>
               </div>
-              <p className="text-sm text-muted-foreground">加载工作流中...</p>
+              <p className="text-sm text-muted-foreground">{t.chatWorkflowSelection.loading}</p>
             </div>
           ) : error ? (
             // Error State
@@ -146,7 +148,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-foreground mb-2">加载失败</p>
+              <p className="text-sm font-medium text-foreground mb-2">{t.chatWorkflowSelection.errorTitle}</p>
               <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
               <button
                 onClick={() => {
@@ -157,7 +159,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                 }}
                 className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-[var(--primary-hover)] transition-colors text-sm font-medium"
               >
-                重试
+                {t.chatWorkflowSelection.retryButton}
               </button>
             </div>
           ) : workflows.length === 0 ? (
@@ -168,9 +170,9 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-foreground mb-2">暂无工作流</p>
+              <p className="text-sm font-medium text-foreground mb-2">{t.chatWorkflowSelection.emptyTitle}</p>
               <p className="text-sm text-muted-foreground text-center max-w-md">
-                请先在"工作流"任务中创建工作流，然后再开始新的对话
+                {t.chatWorkflowSelection.emptyHint}
               </p>
             </div>
           ) : (
@@ -193,7 +195,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                     {/* Active Badge */}
                     {workflow.is_active && (
                       <span className="px-2 py-1 bg-green-500/15 text-green-500 text-xs font-medium rounded-lg">
-                        活跃
+                        {t.chatWorkflowSelection.activeBadge}
                       </span>
                     )}
                   </div>
@@ -216,7 +218,7 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                         </svg>
-                        <span>{workflow.nodes?.length || 0} 节点</span>
+                        <span>{t.chatWorkflowSelection.nodesLabel.replace('{count}', String(workflow.nodes?.length || 0))}</span>
                       </div>
                       
                       <div className="flex items-center space-x-1">
@@ -241,14 +243,14 @@ const WorkflowSelectionModal: React.FC<WorkflowSelectionModalProps> = ({
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
               {!isLoading && !error && workflows.length > 0 && (
-                `共 ${workflows.length} 个工作流可用`
+                t.chatWorkflowSelection.totalWorkflows.replace('{count}', String(workflows.length))
               )}
             </p>
             <button
               onClick={onClose}
               className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent transition-colors text-sm font-medium"
             >
-              取消
+              {t.chatWorkflowSelection.cancelButton}
             </button>
           </div>
         </div>

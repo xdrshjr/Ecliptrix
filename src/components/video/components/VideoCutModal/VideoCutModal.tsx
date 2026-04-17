@@ -172,19 +172,19 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
   // 创建切片
   const handleCreateClip = useCallback(() => {
     if (startTime >= endTime) {
-      showError('开始时间必须小于结束时间');
+      showError(t.videoCut.startBeforeEnd);
       return;
     }
 
     const clipDuration = endTime - startTime;
     if (clipDuration < 0.5) {
-      showError('切片时长至少需要0.5秒');
+      showError(t.videoCut.minDuration);
       return;
     }
 
     const newClip: VideoClip = {
       id: `clip_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: `切片 ${clips.length + 1}`,
+      name: `${t.videoCut.clip} ${clips.length + 1}`,
       startTime,
       endTime,
       duration: clipDuration,
@@ -201,7 +201,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
       totalClips: clips.length + 1
     });
 
-    showSuccess(`已创建切片：${newClip.name}`);
+    showSuccess(`${t.videoCut.clipCreated}${newClip.name}`);
     
     if (onClipCreated) {
       onClipCreated(newClip);
@@ -247,18 +247,18 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
       clipId
     });
     
-    showSuccess('切片已删除');
+    showSuccess(t.videoCut.clipDeleted);
   }, [selectedClipId, logger, showSuccess]);
 
   // 导出所有切片到素材管理面板
   const handleExportClips = useCallback(() => {
     if (clips.length === 0) {
-      showError('没有可导出的切片');
+      showError(t.videoCut.noClipsToExport);
       return;
     }
 
     if (!material) {
-      showError('原始素材不存在');
+      showError(t.videoCut.noMaterial);
       return;
     }
 
@@ -277,7 +277,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
 
     if (onExportClips) {
       onExportClips(clips, material);
-      showSuccess(`已导出 ${clips.length} 个切片到素材管理面板`);
+      showSuccess(`${t.videoCut.clipsExported}${clips.length} ${t.videoCut.clipCount}`);
       
       // 自动关闭弹窗
       logger.userAction('自动关闭剪切素材弹窗', 'autoCloseModal', {
@@ -286,7 +286,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
       });
       onClose();
     } else {
-      showError('导出功能不可用');
+      showError(t.videoCut.exportUnavailable);
     }
   }, [clips, material, logger, showSuccess, showError, onExportClips, onClose]);
 
@@ -414,7 +414,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-foreground">剪切素材</h2>
+              <h2 className="text-xl font-semibold text-foreground">{t.videoCut.title}</h2>
               <p className="text-sm text-muted-foreground font-medium">{material.name}</p>
             </div>
           </div>
@@ -501,9 +501,9 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
             <div className="h-[50%] bg-muted p-6">
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold text-foreground">时间轴控制</h3>
+                  <h3 className="text-base font-semibold text-foreground">{t.videoCut.timelineControl}</h3>
                   <div className="text-sm text-muted-foreground bg-primary/10 px-3 py-1 rounded-md font-medium">
-                    选择范围: {formatTime(startTime)} - {formatTime(endTime)} ({formatTime(endTime - startTime)})
+                    {t.videoCut.selectRange} {formatTime(startTime)} - {formatTime(endTime)} ({formatTime(endTime - startTime)})
                   </div>
                 </div>
                 
@@ -512,15 +512,15 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                   <div className="text-sm text-primary space-y-2">
                     <div className="flex items-center space-x-3">
                       <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                      <span>拖拽绿色控制条调整开始时间</span>
+                      <span>{t.videoCut.dragGreenStart}</span>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="w-3 h-3 bg-destructive rounded-full"></div>
-                      <span>拖拽红色控制条调整结束时间</span>
+                      <span>{t.videoCut.dragRedEnd}</span>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="w-3 h-3 bg-primary/100 rounded-full"></div>
-                      <span>蓝色线条表示当前播放位置</span>
+                      <span>{t.videoCut.blueCurrentPos}</span>
                     </div>
                   </div>
                 </div>
@@ -531,20 +531,20 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                     onClick={handleSetStartTime}
                     className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 border border-primary/20"
                   >
-                    设为开始 ({formatTime(currentTime)})
+                    {t.videoCut.setStart} ({formatTime(currentTime)})
                   </button>
                   <button
                     onClick={handleSetEndTime}
                     className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 border border-destructive/20"
                   >
-                    设为结束 ({formatTime(currentTime)})
+                    {t.videoCut.setEnd} ({formatTime(currentTime)})
                   </button>
                   <button
                     onClick={handleCreateClip}
                     disabled={startTime >= endTime}
                     className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:bg-accent disabled:cursor-not-allowed text-primary-foreground text-sm font-semibold rounded-md transition-all duration-200 hover:scale-105 disabled:hover:scale-100 hover:shadow-lg"
                   >
-                    创建切片
+                    {t.videoCut.createClip}
                   </button>
                 </div>
 
@@ -583,7 +583,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                       }`}
                       style={{ left: `${(startTime / duration) * 100}%`, transform: 'translateX(-50%)' }}
                       onMouseDown={(e) => handleDragStart('start', e)}
-                      title={`开始时间: ${formatTime(startTime)}`}
+                      title={`${t.videoCut.startTimeLabel} ${formatTime(startTime)}`}
                     >
                       <div className="w-1.5 h-6 bg-card rounded opacity-90"></div>
                     </div>
@@ -595,7 +595,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                       }`}
                       style={{ left: `${(endTime / duration) * 100}%`, transform: 'translateX(-50%)' }}
                       onMouseDown={(e) => handleDragStart('end', e)}
-                      title={`结束时间: ${formatTime(endTime)}`}
+                      title={`${t.videoCut.endTimeLabel} ${formatTime(endTime)}`}
                     >
                       <div className="w-1.5 h-6 bg-card rounded opacity-90"></div>
                     </div>
@@ -652,7 +652,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-3">
                             <span className="text-white text-sm font-semibold bg-black/20 px-3 py-1 rounded-md">
-                              预览: {previewClip.name}
+                              {t.videoCut.preview} {previewClip.name}
                             </span>
                             <span className="text-white text-xs font-medium bg-black/20 px-2 py-1 rounded">
                               {formatTime(Math.max(0, previewCurrentTime - previewClip.startTime))} / {formatTime(previewClip.duration)}
@@ -680,7 +680,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                     <svg className="w-20 h-20 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-base font-medium">选择切片进行预览</p>
+                    <p className="text-base font-medium">{t.videoCut.selectToPreview}</p>
                   </div>
                 </div>
               )}
@@ -690,9 +690,9 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
             <div className="h-[50%] bg-muted p-6">
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold text-foreground">切片列表</h3>
+                  <h3 className="text-base font-semibold text-foreground">{t.videoCut.clipList}</h3>
                   <div className="flex items-center space-x-4">
-                    <span className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-md font-medium">{clips.length} 个切片</span>
+                    <span className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-md font-medium">{clips.length} {t.videoCut.clipCount}</span>
                     <button
                       onClick={handleExportClips}
                       disabled={clips.length === 0}
@@ -701,13 +701,13 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                           ? 'bg-muted text-muted-foreground cursor-not-allowed'
                           : 'bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 hover:shadow-lg'
                       }`}
-                      title={clips.length === 0 ? '没有可导出的切片' : `导出 ${clips.length} 个切片到素材管理面板`}
+                      title={clips.length === 0 ? t.videoCut.noClipsToExport : `${t.videoCut.exportClips} ${clips.length} ${t.videoCut.clipCount}`}
                     >
                       <div className="flex items-center space-x-2">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span>导出切片</span>
+                        <span>{t.videoCut.exportClips}</span>
                       </div>
                     </button>
                   </div>
@@ -720,7 +720,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                         <svg className="w-16 h-16 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <p className="text-base font-medium">还没有创建任何切片</p>
+                        <p className="text-base font-medium">{t.videoCut.noClips}</p>
                       </div>
                     </div>
                   ) : (

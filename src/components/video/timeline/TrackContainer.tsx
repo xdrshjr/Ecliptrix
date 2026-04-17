@@ -271,9 +271,9 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                     </svg>
                   </div>
-                  <h3 className="text-lg font-medium text-foreground mb-2">暂无轨道</h3>
+                  <h3 className="text-lg font-medium text-foreground mb-2">{t.timeline.track.noTracks}</h3>
                   <p className="text-muted-foreground mb-6 max-w-sm">
-                    开始创建您的第一个轨道，添加视频、音频或字幕素材
+                    {t.timeline.track.noTracksDescription}
                   </p>
                   <div className="flex items-center justify-center space-x-3">
                     <button
@@ -283,7 +283,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
                       </svg>
-                      <span>视频轨道</span>
+                      <span>{t.timeline.trackBar.addVideoTrack}</span>
                     </button>
                     <button
                       onClick={() => handleAddTrack('audio')}
@@ -292,7 +292,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                       </svg>
-                      <span>音频轨道</span>
+                      <span>{t.timeline.trackBar.addAudioTrack}</span>
                     </button>
                     <button
                       onClick={() => handleAddTrack('subtitle')}
@@ -301,7 +301,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                       </svg>
-                      <span>字幕轨道</span>
+                      <span>{t.timeline.trackBar.addSubtitleTrack}</span>
                     </button>
                   </div>
                 </div>

@@ -1662,9 +1662,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                type === 'video' ? t.materialsPanel.filterVideo :
                type === 'audio' ? t.materialsPanel.filterAudio :
                type === 'image' ? t.materialsPanel.filterImage :
-               type === 'storyboard_pack' ? '分镜包' :
-               type === 'character_pack' ? '人物包' :
-               type === 'scene_pack' ? '场景包' : t.materialsPanel.filterSubtitle}
+               type === 'storyboard_pack' ? t.materialsPanel.storyboardPack :
+               type === 'character_pack' ? t.materialsPanel.filterCharacterPack :
+               type === 'scene_pack' ? t.materialsPanel.filterScenePack : t.materialsPanel.filterSubtitle}
             </button>
           ))}
         </div>

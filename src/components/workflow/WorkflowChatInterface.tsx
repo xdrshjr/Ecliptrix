@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { WorkflowExecutionState } from '@/types';
 import ExecutionProcessPanel from './ExecutionProcessPanel';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface WorkflowChatMessage {
   id: string;
@@ -53,6 +54,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
   onNavigateToVideoEditing,
 }) => {
   const { showConfirm } = useNotification();
+  const { t, locale } = useLocale();
   const [inputValue, setInputValue] = useState('');
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -171,7 +173,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
             executionSessionId: currentExecutionId,
             timelineData: timelineData,
             actionButton: timelineData && onNavigateToVideoEditing ? {
-              label: '前往Video Editing查看结果',
+              label: t.workflowChat.goToVideoResult,
               variant: 'success' as const,
               onClick: () => {
                 console.log('[WorkflowChatInterface] Navigating to Video Editing with timeline data');
@@ -286,7 +288,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
     }
     
     // Confirm before clearing
-    showConfirm('确定要清空所有聊天记录吗？此操作不可撤销。', () => {
+    showConfirm(t.workflowChat.clearChatConfirm, () => {
       console.log('[WorkflowChatInterface] User confirmed clearing chat history');
       onClearChatHistory();
     });
@@ -299,7 +301,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
     });
     
     // Confirm before clearing
-    showConfirm('确定要清空当前工作流的上下文吗？聊天记录将保留。', () => {
+    showConfirm(t.workflowChat.clearContextConfirm, () => {
       console.log('[WorkflowChatInterface] User confirmed clearing context');
       onClearContext();
     });
@@ -343,15 +345,15 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">工作流助手</h2>
-              <p className="text-xs text-muted-foreground">与工作流实时交互</p>
+              <h2 className="text-lg font-semibold text-foreground">{t.workflowChat.title}</h2>
+              <p className="text-xs text-muted-foreground">{t.workflowChat.subtitle}</p>
             </div>
           </div>
           
           {executionState.isRunning && (
             <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-full">
               <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-              <span className="text-sm text-primary font-medium">执行中</span>
+              <span className="text-sm text-primary font-medium">{t.workflowChat.running}</span>
             </div>
           )}
         </div>
@@ -368,10 +370,10 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">
-                开始对话
+                {t.workflowChat.startConversation}
               </h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                发送消息以启动工作流，我会实时显示执行过程和结果
+                {t.workflowChat.startConversationDesc}
               </p>
             </div>
           </div>
@@ -387,7 +389,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                         {message.content}
                       </div>
                       <div className="text-xs mt-2 text-primary-foreground/80 opacity-90">
-                        {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
+                        {new Date(message.timestamp).toLocaleTimeString(locale, {
                           hour: '2-digit',
                           minute: '2-digit',
                           second: '2-digit',
@@ -428,7 +430,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
-                      <span className="text-sm font-semibold text-foreground">最终结果</span>
+                      <span className="text-sm font-semibold text-foreground">{t.workflowChat.finalResult}</span>
                     </div>
                   </div>
                   
@@ -498,10 +500,10 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                             </svg>
-                            <span>导出剪辑 ({materials.length} 个视频素材)</span>
+                            <span>{t.workflowChat.exportMaterials.replace('{count}', String(materials.length))}</span>
                           </button>
                           <p className="text-xs text-muted-foreground text-center mt-2">
-                            点击将视频素材导入到 Video Editing 任务的素材管理面板
+                            {t.workflowChat.exportMaterialsHint}
                           </p>
                         </div>
                       );
@@ -511,7 +513,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                           {/* 时间戳 */}
                           <div className="px-5 py-2 bg-muted border-t border-border">
                             <div className="text-xs text-muted-foreground">
-                              {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
+                              {new Date(message.timestamp).toLocaleTimeString(locale, {
                                 hour: '2-digit',
                                 minute: '2-digit',
                                 second: '2-digit',
@@ -555,24 +557,24 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
             onClick={handleClearChatHistoryClick}
             disabled={executionState.isRunning || messages.length === 0}
             className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 text-sm font-medium"
-            title="清空聊天记录"
+            title={t.workflowChat.clearChat}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            <span>清空聊天记录</span>
+            <span>{t.workflowChat.clearChat}</span>
           </button>
           
           <button
             onClick={handleClearContextClick}
             disabled={executionState.isRunning}
             className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 text-sm font-medium"
-            title="清空上下文，保留聊天记录"
+            title={t.workflowChat.clearContextTooltip}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>清空上下文</span>
+            <span>{t.workflowChat.clearContext}</span>
           </button>
         </div>
 
@@ -592,7 +594,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                 setIsInputFocused(false);
                 console.log('[WorkflowChatInterface] Input blurred, textarea will collapse to minimum');
               }}
-              placeholder="输入消息以启动工作流... (Shift+Enter 换行)"
+              placeholder={t.workflowChat.inputPlaceholder}
               className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none text-sm transition-colors"
               rows={1}
               style={{
@@ -612,7 +614,7 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
-              <span>发送</span>
+              <span>{t.workflowChat.send}</span>
             </button>
           ) : (
             <button
@@ -623,13 +625,13 @@ const WorkflowChatInterface: React.FC<WorkflowChatInterfaceProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
               </svg>
-              <span>停止</span>
+              <span>{t.workflowChat.stop}</span>
             </button>
           )}
         </div>
         
         <div className="mt-2 text-xs text-muted-foreground text-center">
-          {executionState.isRunning ? '工作流正在执行中...' : '按 Enter 发送，Shift + Enter 换行'}
+          {executionState.isRunning ? t.workflowChat.workflowExecuting : t.workflowChat.inputHint}
         </div>
       </div>
     </div>

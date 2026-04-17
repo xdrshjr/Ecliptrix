@@ -20,39 +20,15 @@ const LandingPage: React.FC<LandingPageProps> = ({
   const { t } = useLocale();
 
   const handleGetStarted = (taskType: TaskType) => {
-    console.log('[LandingPage] Get started clicked:', {
-      taskType,
-      isAuthenticated,
-      isAuthLoading,
-      timestamp: new Date().toISOString()
-    });
-
-    // 检查认证状态是否正在加载中
     if (isAuthLoading) {
-      console.log('[LandingPage] Authentication still loading, please wait:', {
-        taskType,
-        timestamp: new Date().toISOString()
-      });
       return;
     }
 
-    // 检查用户是否已登录
     if (!isAuthenticated) {
-      console.log('[LandingPage] User not authenticated, showing login modal:', {
-        taskType,
-        isAuthenticated: false,
-        timestamp: new Date().toISOString()
-      });
       onLoginRequired();
       return;
     }
 
-    // 用户已登录，创建任务
-    console.log('[LandingPage] User authenticated, creating task:', {
-      taskType,
-      isAuthenticated: true,
-      timestamp: new Date().toISOString()
-    });
     onCreateTask(taskType);
   };
 
@@ -64,7 +40,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </svg>
       ),
       title: t.tasks.videoEditing,
-      description: 'Professional video editing with AI-powered tools and intuitive timeline interface',
+      description: t.landing.videoEditingDesc,
       type: 'video' as TaskType
     },
     {
@@ -74,7 +50,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </svg>
       ),
       title: t.tasks.workflow,
-      description: 'Build powerful AI workflows with visual node-based editor',
+      description: t.landing.workflowDesc,
       type: 'workflow' as TaskType
     },
     {
@@ -84,7 +60,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </svg>
       ),
       title: t.tasks.aiChat,
-      description: 'Intelligent AI conversations for content creation and assistance',
+      description: t.landing.aiChatDesc,
       type: 'chat' as TaskType
     },
     {
@@ -94,7 +70,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </svg>
       ),
       title: t.tasks.brainstorming,
-      description: 'Generate creative ideas and concepts for your projects',
+      description: t.landing.brainstormingDesc,
       type: 'brainstorm' as TaskType
     }
   ];
@@ -113,27 +89,28 @@ const LandingPage: React.FC<LandingPageProps> = ({
               {t.header.brandSubtitle}
             </p>
             <p className="landing-description">
-              Where creativity meets AI. Create stunning videos, build intelligent workflows,
-              and unleash your creative potential with our powerful suite of tools.
+              {t.landing.heroDescription}
             </p>
             
             {/* CTA Buttons */}
             <div className="landing-cta-group">
-              <button 
+              <button
                 onClick={() => handleGetStarted('video')}
-                className="landing-cta-primary"
+                disabled={isAuthLoading}
+                className={`landing-cta-primary ${isAuthLoading ? 'opacity-60 cursor-wait' : ''}`}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>Start Creating</span>
+                <span>{isAuthLoading ? t.landing.loading : t.landing.startCreating}</span>
               </button>
-              <button 
+              <button
                 onClick={() => handleGetStarted('workflow')}
-                className="landing-cta-secondary"
+                disabled={isAuthLoading}
+                className={`landing-cta-secondary ${isAuthLoading ? 'opacity-60 cursor-wait' : ''}`}
               >
-                <span>Explore Workflows</span>
+                <span>{t.landing.exploreWorkflows}</span>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                 </svg>
@@ -146,9 +123,9 @@ const LandingPage: React.FC<LandingPageProps> = ({
         <section className="landing-features">
           <div className="landing-features-grid">
             {features.map((feature, index) => (
-              <div 
-                key={index} 
-                className="landing-feature-card"
+              <div
+                key={index}
+                className={`landing-feature-card ${isAuthLoading ? 'opacity-60 cursor-wait pointer-events-none' : ''}`}
                 onClick={() => handleGetStarted(feature.type)}
               >
                 <div className="landing-feature-icon bg-primary/10 text-primary">
@@ -166,15 +143,15 @@ const LandingPage: React.FC<LandingPageProps> = ({
           <div className="landing-stats-grid">
             <div className="landing-stat-item">
               <div className="landing-stat-value">100+</div>
-              <div className="landing-stat-label">AI Models</div>
+              <div className="landing-stat-label">{t.landing.aiModels}</div>
             </div>
             <div className="landing-stat-item">
               <div className="landing-stat-value">50+</div>
-              <div className="landing-stat-label">Workflow Templates</div>
+              <div className="landing-stat-label">{t.landing.workflowTemplates}</div>
             </div>
             <div className="landing-stat-item">
               <div className="landing-stat-value">∞</div>
-              <div className="landing-stat-label">Creative Possibilities</div>
+              <div className="landing-stat-label">{t.landing.creativePossibilities}</div>
             </div>
           </div>
         </section>

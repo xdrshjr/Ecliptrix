@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { StoryboardPack, StoryboardFrame } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface StoryboardPackModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
   onFrameClick,
   onAddAllFramesToMaterials,
 }) => {
+  const { t } = useLocale();
   const [originalImgExpanded, setOriginalImgExpanded] = useState(false);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState<number | null>(null);
 
@@ -85,12 +87,12 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
               </svg>
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-foreground truncate" title={pack.prompt || '分镜包'}>
-                {pack.prompt || '分镜包'}
+              <h3 className="text-sm font-semibold text-foreground truncate" title={pack.prompt || t.storyboardPack.defaultTitle}>
+                {pack.prompt || t.storyboardPack.defaultTitle}
               </h3>
               <div className="flex items-center space-x-3 text-xs text-muted-foreground mt-0.5">
                 <span>{pack.gridSize}</span>
-                <span>{pack.frameCount} 帧</span>
+                <span>{pack.frameCount} {t.storyboardPack.frames}</span>
                 <span>{new Date(pack.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
@@ -100,7 +102,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
           <button
             onClick={onClose}
             className="flex-shrink-0 w-8 h-8 rounded-md hover:bg-muted flex items-center justify-center transition-colors"
-            title="关闭"
+            title={t.storyboardPack.close}
           >
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -124,7 +126,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              <span className="font-medium">原始分镜大图</span>
+              <span className="font-medium">{t.storyboardPack.originalImage}</span>
             </button>
             {originalImgExpanded && pack.originalImageUrl && (
               <div className="mt-2 rounded-md overflow-hidden border border-border max-h-80">
@@ -132,7 +134,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
                   src={pack.originalImageUrl}
                   alt="Original storyboard"
                   className="w-full object-contain cursor-pointer"
-                  onClick={() => onFrameClick({ index: -1, filename: 'original', url: pack.originalImageUrl, row: 0, col: 0, description: '原始分镜大图' })}
+                  onClick={() => onFrameClick({ index: -1, filename: 'original', url: pack.originalImageUrl, row: 0, col: 0, description: t.storyboardPack.originalImage })}
                 />
               </div>
             )}
@@ -144,7 +146,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
               <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <p className="text-sm">暂无帧数据</p>
+              <p className="text-sm">{t.storyboardPack.noFrames}</p>
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-3">
@@ -187,7 +189,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground italic">
-                      未生成描述
+                      {t.storyboardPack.noDescription}
                     </p>
                   )}
                 </div>
@@ -202,7 +204,7 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
             onClick={() => onDelete(pack.packId)}
             className="px-3 py-1.5 text-xs text-destructive border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors"
           >
-            删除分镜包
+            {t.storyboardPack.deletePack}
           </button>
           <div className="flex items-center space-x-2">
             {onAddAllFramesToMaterials && pack.frames.length > 0 && (

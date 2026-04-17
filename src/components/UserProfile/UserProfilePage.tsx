@@ -11,12 +11,13 @@ export type ProfileSection = 'userInfo' | 'otherSettings';
 
 interface UserProfilePageProps {
   onClose: () => void;
+  initialSection?: ProfileSection;
 }
 
-const UserProfilePage: React.FC<UserProfilePageProps> = ({ onClose }) => {
+const UserProfilePage: React.FC<UserProfilePageProps> = ({ onClose, initialSection = 'userInfo' }) => {
   const { t } = useLocale();
   const { user } = useAuth();
-  const [activeSection, setActiveSection] = useState<ProfileSection>('userInfo');
+  const [activeSection, setActiveSection] = useState<ProfileSection>(initialSection);
 
   if (!user) {
     return null;

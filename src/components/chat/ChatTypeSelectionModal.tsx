@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocale } from '@/contexts/LocaleContext';
 import { loadAgentWorkflows, WorkflowRecord } from '@/lib/api/workflow';
 
 interface ChatTypeSelectionModalProps {
@@ -30,6 +31,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
   onSelectAgent,
 }) => {
   const { user, isAuthenticated } = useAuth();
+  const { t } = useLocale();
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([]);
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
@@ -136,8 +138,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                 </svg>
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-foreground">New Chat</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">Choose a chat type to begin</p>
+                <h2 className="text-2xl font-semibold text-foreground">{t.aiChat.chatTypeModal.title}</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">{t.aiChat.chatTypeModal.subtitle}</p>
               </div>
             </div>
             
@@ -168,7 +170,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                 </svg>
-                <span>Chatbot</span>
+                <span>{t.aiChat.chatTypeModal.chatbotTab}</span>
               </div>
             </button>
             
@@ -184,7 +186,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                 </svg>
-                <span>Workflow</span>
+                <span>{t.aiChat.chatTypeModal.workflowTab}</span>
               </div>
             </button>
             
@@ -200,7 +202,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
-                <span>Agent</span>
+                <span>{t.aiChat.chatTypeModal.agentTab}</span>
               </div>
             </button>
           </div>
@@ -217,15 +219,15 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Basic Chatbot</h3>
+                <h3 className="text-xl font-semibold text-foreground mb-2">{t.aiChat.chatTypeModal.basicChatbot}</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-                  Start a conversation with a basic AI chatbot. Perfect for quick questions and general discussions.
+                  {t.aiChat.chatTypeModal.chatbotDesc}
                 </p>
                 <button
                   onClick={handleSelectChatbot}
                   className="px-8 py-3 bg-primary text-primary-foreground rounded-md hover:bg-[var(--primary-hover)] transition-colors font-medium"
                 >
-                  Start Chatbot Conversation
+                  {t.aiChat.chatTypeModal.startChatbot}
                 </button>
               </div>
               
@@ -237,8 +239,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   </div>
-                  <p className="text-xs font-medium text-foreground">Fast Response</p>
-                  <p className="text-xs text-muted-foreground mt-1">Quick answers</p>
+                  <p className="text-xs font-medium text-foreground">{t.aiChat.chatTypeModal.fastResponse}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.aiChat.chatTypeModal.quickAnswers}</p>
                 </div>
 
                 <div className="text-center p-4">
@@ -247,8 +249,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                     </svg>
                   </div>
-                  <p className="text-xs font-medium text-foreground">Natural Chat</p>
-                  <p className="text-xs text-muted-foreground mt-1">Conversational</p>
+                  <p className="text-xs font-medium text-foreground">{t.aiChat.chatTypeModal.naturalChat}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.aiChat.chatTypeModal.conversational}</p>
                 </div>
 
                 <div className="text-center p-4">
@@ -257,8 +259,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <p className="text-xs font-medium text-foreground">Easy to Use</p>
-                  <p className="text-xs text-muted-foreground mt-1">No setup needed</p>
+                  <p className="text-xs font-medium text-foreground">{t.aiChat.chatTypeModal.easyToUse}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.aiChat.chatTypeModal.noSetupNeeded}</p>
                 </div>
               </div>
             </div>
@@ -275,7 +277,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                     </svg>
                   </div>
-                  <p className="text-sm text-muted-foreground">Loading workflows...</p>
+                  <p className="text-sm text-muted-foreground">{t.aiChat.chatTypeModal.loadingWorkflows}</p>
                 </div>
               ) : workflowError ? (
                 // Error State
@@ -285,7 +287,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <p className="text-sm font-medium text-foreground mb-2">Failed to load workflows</p>
+                  <p className="text-sm font-medium text-foreground mb-2">{t.aiChat.chatTypeModal.failedToLoadWorkflows}</p>
                   <p className="text-sm text-muted-foreground text-center max-w-md">{workflowError}</p>
                   <button
                     onClick={() => {
@@ -295,7 +297,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                     }}
                     className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-[var(--primary-hover)] transition-colors text-sm font-medium"
                   >
-                    Retry
+                    {t.aiChat.chatTypeModal.retry}
                   </button>
                 </div>
               ) : workflows.length === 0 ? (
@@ -306,9 +308,9 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                     </svg>
                   </div>
-                  <p className="text-sm font-medium text-foreground mb-2">No workflows available</p>
+                  <p className="text-sm font-medium text-foreground mb-2">{t.aiChat.chatTypeModal.noWorkflows}</p>
                   <p className="text-sm text-muted-foreground text-center max-w-md">
-                    Create a workflow in the Workflow task first, then start a new conversation
+                    {t.aiChat.chatTypeModal.createWorkflowFirst}
                   </p>
                 </div>
               ) : (
@@ -331,7 +333,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                         {/* Active Badge */}
                         {workflow.is_active && (
                           <span className="px-2 py-1 bg-green-500/15 text-green-500 text-xs font-medium rounded-lg">
-                            Active
+                            {t.aiChat.chatTypeModal.active}
                           </span>
                         )}
                       </div>
@@ -354,7 +356,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                             </svg>
-                            <span>{workflow.nodes?.length || 0} nodes</span>
+                            <span>{workflow.nodes?.length || 0} {t.aiChat.chatTypeModal.nodes}</span>
                           </div>
                           
                           <div className="flex items-center space-x-1">
@@ -384,9 +386,9 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">AI Agent</h3>
+                <h3 className="text-xl font-semibold text-foreground mb-2">{t.aiChat.chatTypeModal.aiAgentTitle}</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-                  Intelligent agents with advanced capabilities. This feature is coming soon.
+                  {t.aiChat.chatTypeModal.agentDesc}
                 </p>
                 
                 {/* Coming Soon Badge */}
@@ -394,7 +396,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                   <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-sm font-medium text-foreground">Coming Soon</span>
+                  <span className="text-sm font-medium text-foreground">{t.aiChat.chatTypeModal.comingSoon}</span>
                 </div>
               </div>
               
@@ -406,8 +408,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                   </div>
-                  <p className="text-xs font-medium text-foreground">Task Planning</p>
-                  <p className="text-xs text-muted-foreground mt-1">Multi-step tasks</p>
+                  <p className="text-xs font-medium text-foreground">{t.aiChat.chatTypeModal.taskPlanning}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.aiChat.chatTypeModal.multiStepTasks}</p>
                 </div>
 
                 <div className="text-center p-4">
@@ -416,8 +418,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  <p className="text-xs font-medium text-foreground">Web Search</p>
-                  <p className="text-xs text-muted-foreground mt-1">Real-time info</p>
+                  <p className="text-xs font-medium text-foreground">{t.aiChat.chatTypeModal.webSearch}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.aiChat.chatTypeModal.realtimeInfo}</p>
                 </div>
 
                 <div className="text-center p-4">
@@ -426,8 +428,8 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                     </svg>
                   </div>
-                  <p className="text-xs font-medium text-foreground">Code Execution</p>
-                  <p className="text-xs text-muted-foreground mt-1">Run code safely</p>
+                  <p className="text-xs font-medium text-foreground">{t.aiChat.chatTypeModal.codeExecution}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.aiChat.chatTypeModal.runCodeSafely}</p>
                 </div>
               </div>
             </div>
@@ -439,14 +441,14 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
               {selectedSection === 'workflow' && !isLoadingWorkflows && !workflowError && workflows.length > 0 && (
-                `${workflows.length} workflow${workflows.length > 1 ? 's' : ''} available`
+                t.aiChat.chatTypeModal.workflowsAvailable.replace('{count}', String(workflows.length))
               )}
             </p>
             <button
               onClick={onClose}
               className="px-4 py-2 bg-card border border-border text-foreground rounded-md hover:bg-accent transition-colors text-sm font-medium"
             >
-              Cancel
+              {t.aiChat.chatTypeModal.cancel}
             </button>
           </div>
         </div>

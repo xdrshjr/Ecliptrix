@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { VideoExportNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Video Export Node Component
@@ -12,6 +13,7 @@ import { VideoExportNodeConfig } from '@/types';
  */
 const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as VideoExportNodeConfig | undefined;
   const isConfigured = !!(config?.videoUrls);
@@ -63,8 +65,8 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-gradient-to-r from-blue-400 to-blue-500',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Videos',
-        outputPortLabel: 'Materials',
+        inputPortLabel: t.workflowNodes.ports.videos,
+        outputPortLabel: t.workflowNodes.ports.materials,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
@@ -77,7 +79,7 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                     <span className="text-sm font-semibold text-blue-700">
-                      {videoCount} {videoCount === 1 ? 'Video' : 'Videos'}
+                      {videoCount} {videoCount === 1 ? t.workflowNodes.ports.video : t.workflowNodes.ports.videos}
                     </span>
                   </div>
                 </div>
@@ -85,7 +87,7 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
               
               {/* Input Format */}
               <div className="flex items-center justify-between pt-1 border-t border-border">
-                <span className="text-muted-foreground font-medium">Format:</span>
+                <span className="text-muted-foreground font-medium">{t.workflowNodes.status.format}:</span>
                 <span className="text-foreground text-xs capitalize">
                   {config?.inputFormat || 'auto'}
                 </span>
@@ -98,7 +100,7 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
                     <svg className="w-3 h-3 text-blue-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <span className="text-xs font-medium text-blue-600">Export to Materials</span>
+                    <span className="text-xs font-medium text-blue-600">{t.workflowNodes.status.exportToMaterials}</span>
                   </div>
                 </div>
               </div>
@@ -106,7 +108,7 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {/* Video URLs Preview */}
               {videoCount > 0 && (
                 <div className="pt-1 border-t border-border">
-                  <div className="text-muted-foreground font-medium mb-0.5">Video URLs:</div>
+                  <div className="text-muted-foreground font-medium mb-0.5">{t.workflowNodes.status.videoUrls}:</div>
                   <div className="text-foreground text-xs bg-muted p-1.5 rounded max-h-16 overflow-y-auto">
                     {videoUrlsArray.slice(0, 3).map((url, index) => (
                       <div key={index} className="truncate" title={url}>
@@ -115,7 +117,7 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
                     ))}
                     {videoCount > 3 && (
                       <div className="text-muted-foreground italic mt-0.5">
-                        +{videoCount - 3} more...
+                        +{videoCount - 3} {t.workflowNodes.status.moreCount}
                       </div>
                     )}
                   </div>
@@ -126,11 +128,11 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
               {config?.lastExecutionTime && (
                 <div className="pt-1 border-t border-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground font-medium">Status:</span>
+                    <span className="text-muted-foreground font-medium">{t.workflowNodes.status.statusLabel}:</span>
                     <span className={`text-xs font-semibold ${
                       config.lastExecutionSuccess ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {config.lastExecutionSuccess ? '✓ Success' : '✗ Failed'}
+                      {config.lastExecutionSuccess ? `\u2713 ${t.workflowNodes.status.success}` : `\u2717 ${t.workflowNodes.status.failed}`}
                     </span>
                   </div>
                 </div>
@@ -138,14 +140,14 @@ const VideoExportNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-muted-foreground italic">Not configured</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.status.notConfigured}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.status.doubleClickToConfigure}</div>
               <div className="mt-2 flex items-center justify-center">
                 <div className="inline-flex items-center px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                   <svg className="w-3 h-3 text-blue-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
-                  <span className="text-xs font-medium text-blue-500">Export Videos</span>
+                  <span className="text-xs font-medium text-blue-500">{t.workflowNodes.status.exportVideos}</span>
                 </div>
               </div>
             </div>

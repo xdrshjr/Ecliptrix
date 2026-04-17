@@ -3,6 +3,7 @@
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
 import { ChatLLMNodeConfig } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Chat LLM Node Component
@@ -11,6 +12,7 @@ import { ChatLLMNodeConfig } from '@/types';
  */
 const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   const config = data.config as ChatLLMNodeConfig | undefined;
   const isConfigured = !!(
@@ -42,23 +44,23 @@ const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
           : 'bg-muted',
         hasInputPort: true,
         hasOutputPort: true,
-        inputPortLabel: 'Input',
-        outputPortLabel: 'Output',
+        inputPortLabel: t.workflowNodes.ports.input,
+        outputPortLabel: t.workflowNodes.ports.output,
         isConfigured,
         renderContent: () => (
           isConfigured ? (
             <div className="text-xs space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-medium">Model:</span>
-                <span className="text-foreground text-xs">{config?.model || 'Not set'}</span>
+                <span className="text-muted-foreground font-medium">{t.workflowNodes.status.model}:</span>
+                <span className="text-foreground text-xs">{config?.model || t.workflowNodes.status.notSet}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-medium">Temp:</span>
+                <span className="text-muted-foreground font-medium">{t.workflowNodes.status.temperature}:</span>
                 <span className="text-foreground text-xs">{config?.temperature?.toFixed(1) ?? 'N/A'}</span>
               </div>
               {config?.systemPrompt && (
                 <div className="pt-1 border-t border-border">
-                  <div className="text-muted-foreground font-medium mb-0.5">System Prompt:</div>
+                  <div className="text-muted-foreground font-medium mb-0.5">{t.workflowNodes.status.systemPrompt}:</div>
                   <div className="text-foreground text-xs bg-muted p-1.5 rounded max-h-16 overflow-y-auto line-clamp-3">
                     {config.systemPrompt.substring(0, 80)}
                     {config.systemPrompt.length > 80 && '...'}
@@ -68,8 +70,8 @@ const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
             </div>
           ) : (
             <div className="text-xs text-center py-1">
-              <div className="text-muted-foreground italic">Not configured</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Double click to configure</div>
+              <div className="text-muted-foreground italic">{t.workflowNodes.status.notConfigured}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t.workflowNodes.status.doubleClickToConfigure}</div>
             </div>
           )
         ),

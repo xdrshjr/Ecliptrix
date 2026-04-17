@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * Start Node Component
@@ -10,6 +11,7 @@ import { BaseWorkflowNode, BaseNodeProps } from './BaseWorkflowNode';
  */
 const StartNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { id, data, selected, onDelete, onPortMouseDown, executionStatus } = props;
+  const { t } = useLocale();
   
   console.log('[StartNode] Rendering node:', { 
     id, 
@@ -31,11 +33,11 @@ const StartNode: React.FC<BaseNodeProps> = React.memo((props) => {
         gradientColors: 'bg-gradient-to-r from-green-500 to-emerald-600',
         hasInputPort: false,
         hasOutputPort: true,
-        outputPortLabel: 'Output',
+        outputPortLabel: t.workflowNodes.ports.output,
         isConfigured: true,
         renderContent: () => (
           <div className="text-xs text-muted-foreground text-center py-1">
-            Workflow Start Point
+            {t.workflowNodes.status.workflowStartPoint}
           </div>
         ),
       }}

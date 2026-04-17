@@ -79,7 +79,6 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     }
     
     setIsExpanded(!isExpanded);
-    console.log('[VerticalTaskbar] Taskbar clicked, toggling expansion:', !isExpanded);
   };
 
   const handleMouseEnter = () => {
@@ -88,7 +87,6 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
       clearTimeout(collapseTimeoutRef.current);
       collapseTimeoutRef.current = null;
     }
-    console.log('[VerticalTaskbar] Mouse entered, canceling auto-collapse');
   };
 
   const handleMouseLeave = () => {
@@ -96,7 +94,6 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     if (isExpanded) {
       collapseTimeoutRef.current = setTimeout(() => {
         setIsExpanded(false);
-        console.log('[VerticalTaskbar] Mouse left, auto-collapsing taskbar');
         collapseTimeoutRef.current = null;
       }, 300); // 300ms 延迟，给用户足够时间操作
     }
@@ -113,7 +110,6 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
         }
         
         setIsExpanded(false);
-        console.log('[VerticalTaskbar] Clicked outside, collapsing taskbar');
       }
     };
 
@@ -130,51 +126,20 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   const handleTabClose = (e: React.MouseEvent, tabId: string) => {
     e.stopPropagation();
     onCloseTab(tabId);
-    console.log('[VerticalTaskbar] Tab closed:', {
-      tabId,
-      timestamp: new Date().toISOString()
-    });
   };
 
   const handleTabClick = (e: React.MouseEvent, tab: Tab) => {
     e.stopPropagation();
-    
-    console.log('[VerticalTaskbar] Tab click attempted:', {
-      tabId: tab.id,
-      tabTitle: tab.title,
-      tabType: tab.type,
-      isAuthenticated,
-      username: user?.username || 'not logged in',
-      timestamp: new Date().toISOString()
-    });
 
     // 检查用户是否已登录
     if (!isAuthenticated) {
-      console.warn('[VerticalTaskbar] Unauthorized task access attempt:', {
-        tabId: tab.id,
-        tabTitle: tab.title,
-        tabType: tab.type,
-        action: 'blocked - user not authenticated',
-        timestamp: new Date().toISOString()
-      });
-
       showWarning('请先登录后再使用任务功能', 4000);
       return;
     }
 
-    console.log('[VerticalTaskbar] Task access authorized:', {
-      tabId: tab.id,
-      tabTitle: tab.title,
-      tabType: tab.type,
-      username: user?.username,
-      action: 'proceeding with task selection',
-      timestamp: new Date().toISOString()
-    });
-
     // 如果任务栏未展开，先展开任务栏
     if (!isExpanded) {
       setIsExpanded(true);
-      console.log('[VerticalTaskbar] Tab clicked, expanding taskbar first');
     }
     onSelectTab(tab.id);
   };
@@ -197,13 +162,13 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
                 key={tab.id}
                 className={`taskbar-tab ${tab.isActive ? 'active' : ''}`}
                 onClick={(e) => handleTabClick(e, tab)}
-                title={!isExpanded ? tab.title : undefined}
+                title={!isExpanded ? getTaskLabel(tab.type) : undefined}
               >
                 <div className="tab-icon">
                   {getTaskIcon(tab.type)}
                 </div>
                 <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
-                  <span className="tab-title">{tab.title}</span>
+                  <span className="tab-title">{getTaskLabel(tab.type)}</span>
                   <button
                     onClick={(e) => handleTabClose(e, tab.id)}
                     className="tab-close"
