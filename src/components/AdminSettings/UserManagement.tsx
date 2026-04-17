@@ -67,11 +67,11 @@ function formatRelativeTime(dateString?: string): string {
   }
 }
 
-function formatDateTime(dateString?: string): string {
+function formatDateTime(dateString?: string, locale?: string): string {
   if (!dateString) return '-';
   try {
     const date = new Date(dateString);
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
@@ -531,6 +531,7 @@ interface LoginHistoryPanelProps {
 }
 
 function LoginHistoryPanel({ open, user, onClose, t }: LoginHistoryPanelProps) {
+  const { locale } = useLocale();
   const [records, setRecords] = useState<LoginHistoryRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -588,7 +589,7 @@ function LoginHistoryPanel({ open, user, onClose, t }: LoginHistoryPanelProps) {
               {records.map((r) => (
                 <div key={r.id} className="p-3 bg-background rounded-md border border-border">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-muted-foreground">{formatDateTime(r.loginAt)}</span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(r.loginAt, locale)}</span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded ${r.loginResult === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}`}>
                       {r.loginResult === 'success' ? t.adminSettings.loginSuccess : t.adminSettings.loginFailed}
                     </span>
@@ -768,7 +769,7 @@ function ActionDropdown({ user, isRoot: currentIsRoot, canManageAdmins, onEdit, 
 // ---------------------------------------------------------------------------
 
 const UserManagement: React.FC = () => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const notification = useNotification();
   const { isRoot, canManageAdmins } = useAuth();
 
@@ -1089,12 +1090,12 @@ const UserManagement: React.FC = () => {
                         </span>
                       </td>
                       {/* Last Login */}
-                      <td className="px-4 py-3 text-sm text-muted-foreground" title={formatDateTime(user.lastLoginAt)}>
+                      <td className="px-4 py-3 text-sm text-muted-foreground" title={formatDateTime(user.lastLoginAt, locale)}>
                         {formatRelativeTime(user.lastLoginAt)}
                       </td>
                       {/* Created */}
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {formatDateTime(user.createdAt)}
+                        {formatDateTime(user.createdAt, locale)}
                       </td>
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">

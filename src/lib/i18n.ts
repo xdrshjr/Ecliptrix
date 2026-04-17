@@ -101,6 +101,7 @@ export interface Translations {
     saveSettings: string;
     settingsSaveSuccess: string;
     settingsSaveError: string;
+    autoSaveNote: string;
   };
   adminSettings: {
     title: string;
@@ -1023,6 +1024,24 @@ export interface Translations {
     noContentToExport: string;
     noContentToExportDesc: string;
     noContentToExportFull: string;
+    videoTrackTooShort: string;
+    videoTrackDuration: string;
+    audioTrackDuration: string;
+    needToAdd: string;
+    exportCompletedButDownloadFailed: string;
+    exportTimeout: string;
+    exportFailed: string;
+    exportFailedWithError: string;
+    failedVideos: string;
+    recoverySuggestions: string;
+  };
+  videoSearch: {
+    enterKeyword: string;
+    searchFailed: string;
+    networkError: string;
+    selectVideoFirst: string;
+    selectYoutubeVideoFirst: string;
+    videoDurationValidationFailed: string;
   };
   scriptPanel: {
     tabs: {
@@ -2515,6 +2534,7 @@ export const translations: Record<string, Translations> = {
       saveSettings: 'Save Settings',
       settingsSaveSuccess: 'Settings saved successfully',
       settingsSaveError: 'Failed to save settings',
+      autoSaveNote: 'Changes are saved automatically.',
     },
     adminSettings: {
       title: 'Admin Settings',
@@ -3437,6 +3457,24 @@ export const translations: Record<string, Translations> = {
       noContentToExport: 'No content to export',
       noContentToExportDesc: 'Please add video materials to the timeline before exporting',
       noContentToExportFull: 'No content to export. Please add video materials to the timeline before exporting.',
+      videoTrackTooShort: 'Video track is too short!',
+      videoTrackDuration: 'Video track duration:',
+      audioTrackDuration: 'Audio track duration:',
+      needToAdd: 'Need to add more video content.',
+      exportCompletedButDownloadFailed: 'Video export completed but download failed. Please refresh the page and try again, or contact support.',
+      exportTimeout: 'Video export timed out: processing exceeded the 10-minute limit. Try reducing video duration or complexity, or try again later.',
+      exportFailed: 'Video export failed',
+      exportFailedWithError: 'Video export failed:',
+      failedVideos: 'Failed videos:',
+      recoverySuggestions: 'Suggested solutions:',
+    },
+    videoSearch: {
+      enterKeyword: 'Please enter a search keyword',
+      searchFailed: 'Search failed, please try again later',
+      networkError: 'Search failed, please check your network connection',
+      selectVideoFirst: 'Please select videos to add first',
+      selectYoutubeVideoFirst: 'Please select YouTube videos to add first',
+      videoDurationValidationFailed: 'Total video duration must exceed the voice segment duration. Please add more videos.',
     },
          scriptPanel: {
        tabs: {
@@ -4948,6 +4986,7 @@ export const translations: Record<string, Translations> = {
       saveSettings: '保存设置',
       settingsSaveSuccess: '设置保存成功',
       settingsSaveError: '设置保存失败',
+      autoSaveNote: '更改会自动保存。',
     },
     adminSettings: {
       title: '管理员设置',
@@ -5870,6 +5909,24 @@ export const translations: Record<string, Translations> = {
       noContentToExport: '没有视频内容可导出',
       noContentToExportDesc: '请先添加视频素材到时间轴',
       noContentToExportFull: '没有视频内容可导出，请先添加视频素材到时间轴',
+      videoTrackTooShort: '视频轨道长度不足！',
+      videoTrackDuration: '视频轨道时长',
+      audioTrackDuration: '音频轨道时长',
+      needToAdd: '需要增加的视频内容。',
+      exportCompletedButDownloadFailed: '视频导出已完成但下载失败。请刷新页面后重试，或联系技术支持。',
+      exportTimeout: '视频导出超时：处理时间超过10分钟限制。请尝试减少视频时长或复杂度，降低输出分辨率，或稍后重试。',
+      exportFailed: '视频导出失败',
+      exportFailedWithError: '视频导出失败：',
+      failedVideos: '失败的视频：',
+      recoverySuggestions: '建议解决方案：',
+    },
+    videoSearch: {
+      enterKeyword: '请输入搜索关键词',
+      searchFailed: '搜索失败，请稍后重试',
+      networkError: '搜索失败，请检查网络连接',
+      selectVideoFirst: '请先选择要添加的视频',
+      selectYoutubeVideoFirst: '请先选择要添加的Youtube视频',
+      videoDurationValidationFailed: '当前所有添加的视频总长度必须大于语音段落的时间长度，请继续添加视频',
     },
          scriptPanel: {
        tabs: {

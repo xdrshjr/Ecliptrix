@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
-import { http } from '@/lib/api/http-client';
+import { http, ApiError } from '@/lib/api/http-client';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -136,7 +136,7 @@ export const useVideoExport = ({
     const validation = validateVideoExport(timelineState, taskId);
     
     if (!validation.isValid) {
-      const errorMessage = `视频轨道长度不足！视频轨道时长 ${validation.videoDuration.toFixed(1)}秒，音频轨道时长 ${validation.audioDuration.toFixed(1)}秒，需要增加 ${validation.deficit.toFixed(1)}秒 的视频内容。`;
+      const errorMessage = `${t.videoExport.videoTrackTooShort} ${t.videoExport.videoTrackDuration} ${validation.videoDuration.toFixed(1)}s, ${t.videoExport.audioTrackDuration} ${validation.audioDuration.toFixed(1)}s, ${t.videoExport.needToAdd} ${validation.deficit.toFixed(1)}s`;
       
       console.error(`[useVideoExport] 导出验证失败`, {
         taskId,
@@ -630,7 +630,7 @@ export const useVideoExport = ({
             blobError: blobError?.message,
           });
           showError(
-            `视频导出已完成但下载失败：${blobError?.message || '未知错误'}。请刷新页面后重试，或联系技术支持。`,
+            `${t.videoExport.exportCompletedButDownloadFailed} ${blobError?.message || ''}`,
             10000,
           );
         }
@@ -649,41 +649,35 @@ export const useVideoExport = ({
           timeout: '10 minutes',
           error: error.message 
         });
-        showError(`视频导出超时：处理时间超过10分钟限制。请尝试减少视频时长或复杂度，降低输出分辨率，减少同时处理的轨道数量，或稍后重试。`, 10000);
+        showError(t.videoExport.exportTimeout, 10000);
       } else {
-        // 尝试解析详细错误信息
-        let errorMessage = '视频导出失败';
-        
-        if (error?.response) {
-          try {
-            const errorData = await error.response.json();
-            if (errorData.error_details) {
-              const details = errorData.error_details;
-              errorMessage = `${details.error_summary}`;
-              
-              // 如果有失败的视频，显示具体信息
-              if (details.failed_videos && details.failed_videos.length > 0) {
-                const failedVideos = details.failed_videos.map((v: any) => 
-                  `• ${v.video_name} (${v.stage}阶段): ${v.error_message}`
-                ).join('\n');
-                errorMessage += `\n\n失败的视频:\n${failedVideos}`;
-                
-                // 添加恢复建议
-                if (details.recovery_suggestions && details.recovery_suggestions.length > 0) {
-                  errorMessage += `\n\n建议解决方案:\n${details.recovery_suggestions.map((s: string) => `• ${s}`).join('\n')}`;
-                }
+        // Parse error details from ApiError
+        let errorMessage = t.videoExport.exportFailed;
+
+        if (error instanceof ApiError) {
+          const details = error.details as any;
+          if (details?.error_details) {
+            const errDetails = details.error_details;
+            errorMessage = `${errDetails.error_summary}`;
+
+            if (errDetails.failed_videos && errDetails.failed_videos.length > 0) {
+              const failedVideos = errDetails.failed_videos.map((v: any) =>
+                `• ${v.video_name} (${v.stage}${t.videoExport.exportFailedWithError}): ${v.error_message}`
+              ).join('\n');
+              errorMessage += `\n\n${t.videoExport.failedVideos}\n${failedVideos}`;
+
+              if (errDetails.recovery_suggestions && errDetails.recovery_suggestions.length > 0) {
+                errorMessage += `\n\n${t.videoExport.recoverySuggestions}\n${errDetails.recovery_suggestions.map((s: string) => `• ${s}`).join('\n')}`;
               }
-            } else if (errorData.message) {
-              errorMessage = errorData.message;
             }
-          } catch (parseError) {
-            console.warn('Failed to parse error details, using fallback message');
+          } else {
+            errorMessage = `${t.videoExport.exportFailedWithError} ${error.message}`;
           }
         } else if (error instanceof Error) {
-          errorMessage = `视频导出失败: ${error.message}`;
+          errorMessage = `${t.videoExport.exportFailedWithError} ${error.message}`;
         }
-        
-        showError(errorMessage, 15000); // 显示15秒以便用户阅读详细信息
+
+        showError(errorMessage, 15000);
       }
     } finally {
       // 重置导出状态

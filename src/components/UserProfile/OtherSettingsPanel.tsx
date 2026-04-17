@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useNotification } from '@/contexts/NotificationContext';
 
 const STORAGE_KEY_TOGGLES = 'ecliptrix-other-settings';
 const STORAGE_KEY_THEME_PREF = 'ecliptrix-theme-pref';
@@ -54,7 +53,6 @@ interface SettingsData {
 
 const OtherSettingsPanel: React.FC = () => {
   const { t, locale, setLocale } = useLocale();
-  const { showSuccess } = useNotification();
 
   const [settings, setSettings] = useState<SettingsData>(() => ({
     ...loadToggles(),
@@ -63,7 +61,6 @@ const OtherSettingsPanel: React.FC = () => {
       language: locale as 'en' | 'zh-CN',
     },
   }));
-  const [isSaving, setSaving] = useState(false);
 
   // Sync language when locale changes externally
   useEffect(() => {
@@ -112,24 +109,11 @@ const OtherSettingsPanel: React.FC = () => {
     return () => mq.removeEventListener('change', handler);
   }, [settings.preferences.theme]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      // Persist current state
-      try {
-        localStorage.setItem(STORAGE_KEY_TOGGLES, JSON.stringify({ notifications: settings.notifications, privacy: settings.privacy }));
-      } catch { /* ignore */ }
-      await new Promise(resolve => setTimeout(resolve, 300));
-      showSuccess(t.profile.settingsSaveSuccess);
-    } catch {
-      /* handleSave error path — toggles are already persisted on change */
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void }> = ({ enabled, onChange }) => (
+  const ToggleSwitch: React.FC<{ enabled: boolean; onChange: (enabled: boolean) => void; label?: string }> = ({ enabled, onChange, label }) => (
     <button
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
       onClick={() => onChange(!enabled)}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
         enabled ? 'bg-primary' : 'bg-muted'
@@ -280,15 +264,11 @@ const OtherSettingsPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Save Button */}
+        {/* Auto-save note */}
         <div className="pt-6 border-t border-border">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSaving ? t.profile.saving : t.profile.saveSettings}
-          </button>
+          <p className="text-xs text-muted-foreground">
+            {t.profile.autoSaveNote || 'Changes are saved automatically.'}
+          </p>
         </div>
       </div>
     </div>

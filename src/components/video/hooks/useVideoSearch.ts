@@ -7,6 +7,7 @@ import { createYoutubeVideoSearchService, YoutubeVideoSearchService } from '../s
 import { getMaxConcurrentDownloads } from '@/lib/api/config';
 import { useNotification } from '@/contexts/NotificationContext';
 import { http, ApiError } from '@/lib/api/http-client';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export const useVideoSearch = (
   taskId: string,
@@ -21,6 +22,7 @@ export const useVideoSearch = (
   }), [taskId]);
 
   const { showError } = useNotification();
+  const { t } = useLocale();
 
   const videoSearchService = useMemo(() => createVideoSearchService(taskId), [taskId]);
   const youtubeVideoSearchService = useMemo(() => createYoutubeVideoSearchService(taskId), [taskId]);
@@ -140,7 +142,7 @@ export const useVideoSearch = (
     });
 
     if (!isValid) {
-      const errorMessage = '当前所有添加的视频总长度必须大于语音段落的时间长度，请继续添加视频';
+      const errorMessage = t.videoSearch.videoDurationValidationFailed;
       showError(errorMessage);
       
       logger.userAction('视频时长验证失败', 'videoDurationValidation', {
@@ -154,7 +156,7 @@ export const useVideoSearch = (
     }
 
     return isValid;
-  }, [currentSegmentId, segments, materials, logger, showError]);
+  }, [currentSegmentId, segments, materials, logger, showError, t]);
 
   // 处理YouTube时间预设变化
   const handleYoutubeDurationPresetChange = useCallback((preset: YoutubeDurationPreset) => {
@@ -284,7 +286,7 @@ export const useVideoSearch = (
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
-      alert('请输入搜索关键词');
+      showError(t.videoSearch.enterKeyword);
       return;
     }
 
@@ -308,7 +310,7 @@ export const useVideoSearch = (
           videosCount: result.videos.length
         });
       } else {
-        alert(result.error || result.message || '搜索失败，请稍后重试');
+        showError(result.error || t.videoSearch.searchFailed);
         logger.warn('官方视频搜索无结果', {
           error: result.error,
           message: result.message
@@ -316,15 +318,15 @@ export const useVideoSearch = (
       }
     } catch (error) {
       logger.error('官方视频搜索异常', error as Error);
-      alert('搜索失败，请检查网络连接');
+      showError(t.videoSearch.networkError);
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery, searchOrientation, logger, videoSearchService]);
+  }, [searchQuery, searchOrientation, logger, videoSearchService, showError, t]);
 
   const handleYoutubeSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
-      alert('请输入搜索关键词');
+      showError(t.videoSearch.enterKeyword);
       return;
     }
 
@@ -351,7 +353,7 @@ export const useVideoSearch = (
           isMockData: true
         });
       } else {
-        alert(result.error || result.message || '搜索失败，请稍后重试');
+        showError(result.error || result.message || t.videoSearch.searchFailed);
         logger.warn('Youtube视频搜索无结果', {
           error: result.error,
           message: result.message
@@ -359,11 +361,11 @@ export const useVideoSearch = (
       }
     } catch (error) {
       logger.error('Youtube视频搜索异常', error as Error);
-      alert('搜索失败，请检查网络连接');
+      showError(t.videoSearch.networkError);
     } finally {
       setIsYoutubeSearching(false);
     }
-  }, [searchQuery, searchOrientation, youtubeDurationRange, logger, youtubeVideoSearchService]);
+  }, [searchQuery, searchOrientation, youtubeDurationRange, logger, youtubeVideoSearchService, showError, t]);
 
   const handleSearchResultSelect = useCallback((videoId: number | string, isSelected: boolean) => {
     if (typeof videoId === 'number') {
@@ -410,7 +412,7 @@ export const useVideoSearch = (
       const selectedVideos = searchResults.filter(video => selectedResults.has(video.id));
       
       if (selectedVideos.length === 0) {
-        alert('请先选择要添加的视频');
+        showError(t.videoSearch.selectVideoFirst);
         return;
       }
 
@@ -446,13 +448,13 @@ export const useVideoSearch = (
     } else {
       handleAddSelectedYoutubeVideos();
     }
-  }, [activeLibrary, searchResults, selectedResults, logger, videoSearchService, onAddMaterials, closeSearchModal, validateVideoDuration]);
+  }, [activeLibrary, searchResults, selectedResults, logger, videoSearchService, onAddMaterials, closeSearchModal, validateVideoDuration, showError, t]);
 
   const handleAddSelectedYoutubeVideos = useCallback(async () => {
     const selectedVideos = youtubeSearchResults.filter(video => youtubeSelectedResults.has(video.id));
     
     if (selectedVideos.length === 0) {
-      alert('请先选择要添加的Youtube视频');
+      showError(t.videoSearch.selectYoutubeVideoFirst);
       return;
     }
 
@@ -501,7 +503,7 @@ export const useVideoSearch = (
         attemptedCount: materials.length
       });
     }
-  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal, taskId, maxConcurrentDownloads, validateVideoDuration]);
+  }, [youtubeSearchResults, youtubeSelectedResults, logger, youtubeVideoSearchService, onAddMaterials, closeSearchModal, taskId, maxConcurrentDownloads, validateVideoDuration, showError, t]);
 
   // 下载单个视频的函数
   const downloadSingleVideo = useCallback(async (material: MaterialItem): Promise<void> => {
