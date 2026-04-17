@@ -147,6 +147,7 @@ const Track: React.FC<TrackProps> = ({
   // ---------------------------------------------------------------------------
 
   const handleVolumeClick = () => {
+    if (track.isLocked) return;
     if (volumeSliderOpen) {
       hideVolumeSlider();
     } else if (volumeButtonRef.current) {
@@ -254,10 +255,13 @@ const Track: React.FC<TrackProps> = ({
                 <button
                   ref={volumeButtonRef}
                   onClick={handleVolumeClick}
+                  disabled={track.isLocked}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                    volumeSliderOpen
-                      ? 'bg-accent text-muted-foreground hover:bg-accent'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
+                    track.isLocked
+                      ? 'opacity-50 cursor-not-allowed'
+                      : volumeSliderOpen
+                        ? 'bg-accent text-muted-foreground hover:bg-accent'
+                        : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
                   aria-label={`${t.timeline.toolbar.volumeControl} - ${trackDisplayName}`}
                 >
@@ -384,10 +388,13 @@ const Track: React.FC<TrackProps> = ({
             <div className="relative group">
               <button
                 onClick={handleVisibilityClick}
+                disabled={track.isLocked}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  track.isVisible
-                    ? 'bg-muted text-muted-foreground hover:bg-accent'
-                    : 'bg-accent text-muted-foreground hover:bg-accent'
+                  track.isLocked
+                    ? 'opacity-50 cursor-not-allowed'
+                    : track.isVisible
+                      ? 'bg-muted text-muted-foreground hover:bg-accent'
+                      : 'bg-accent text-muted-foreground hover:bg-accent'
                 }`}
                 aria-label={track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
               >

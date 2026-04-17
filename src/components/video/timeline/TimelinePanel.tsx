@@ -378,24 +378,60 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
     const state = useTimelineStore.getState();
-    const sameTypeCount = state.tracks.filter(tr => tr.type === type && !tr.id.startsWith('image-track')).length;
-    const trackNumber = sameTypeCount + 1;
-    // Use unique counter to avoid ID conflicts after delete+re-add
     const existingIds = state.tracks.map(tr => tr.id);
+
+    // Count tracks of the same type for naming (exclude image tracks, matching original logic)
+    const sameTypeCount = state.tracks.filter(
+      tr => tr.type === type && !tr.id.startsWith('image-track')
+    ).length;
+    const trackNumber = sameTypeCount + 1;
+
+    // Generate unique ID
     let counter = sameTypeCount + 1;
     let trackId = `${type}-track-${counter}`;
     while (existingIds.includes(trackId)) {
       counter++;
       trackId = `${type}-track-${counter}`;
     }
+
     const baseTrackName = type === 'video' ? t.timeline.track.videoTrack :
                           type === 'audio' ? t.timeline.track.audioTrack :
                           t.timeline.track.subtitleTrack;
     const trackName = `${baseTrackName} ${trackNumber}`;
 
-    // Use aggregate's initTimeline or directly set tracks
-    // For now, we directly use the store's internal aggregate
     const currentData = state.exportToData();
+
+    // Find insertion point: after the last track of the same type
+    const typeOrder = { video: 0, audio: 1, subtitle: 2 };
+    // Include image tracks (type='video') for insertion positioning
+    const sameTypeTracks = currentData.tracks.filter(tr => tr.type === type);
+
+    let insertIndex = currentData.tracks.length; // default: end
+    let orderValue: number;
+
+    if (sameTypeTracks.length > 0) {
+      const lastSameTypeTrack = sameTypeTracks[sameTypeTracks.length - 1];
+      const lastSameTypeIndex = currentData.tracks.indexOf(lastSameTypeTrack);
+      insertIndex = lastSameTypeIndex + 1;
+      orderValue = lastSameTypeTrack.order + 1;
+    } else {
+      // No tracks of this type — insert at correct group boundary
+      const typePriority = typeOrder[type];
+      let insertBeforeIndex = currentData.tracks.length;
+      for (let i = 0; i < currentData.tracks.length; i++) {
+        if (typeOrder[currentData.tracks[i].type as keyof typeof typeOrder] > typePriority) {
+          insertBeforeIndex = i;
+          break;
+        }
+      }
+      insertIndex = insertBeforeIndex;
+      if (insertBeforeIndex < currentData.tracks.length) {
+        orderValue = currentData.tracks[insertBeforeIndex].order;
+      } else {
+        orderValue = currentData.tracks.length;
+      }
+    }
+
     const newTrack = {
       id: trackId,
       name: trackName,
@@ -405,12 +441,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       isMuted: false,
       isVisible: true,
       volume: 100,
-      order: currentData.tracks.length,
+      order: orderValue,
       items: [],
     };
+
+    // Insert at calculated position and re-index orders
+    const updatedTracks = [...currentData.tracks];
+    updatedTracks.splice(insertIndex, 0, newTrack);
+    updatedTracks.forEach((tr, i) => { tr.order = i; });
+
     state.importFromData({
       ...currentData,
-      tracks: [...currentData.tracks, newTrack],
+      tracks: updatedTracks,
     });
   }, [t]);
 

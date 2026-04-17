@@ -3275,7 +3275,7 @@ export const translations: Record<string, Translations> = {
         extractingSubtitles: 'Extracting Subtitles...',
         invalidJsonFile: 'Please select a JSON format project file',
         volumeControl: 'Volume Control',
-        trackVolumeControl: '{type} Track Volume Control ({volume}%)',
+        trackVolumeControl: '{type} Volume Control ({volume}%)',
       },
       shortcuts: {
         selectShortcut: 'V',
@@ -3591,10 +3591,10 @@ export const translations: Record<string, Translations> = {
          speechConvertDescription: 'Speech generated from Segment{index} "{title}" — {count} sentences converted and concatenated',
        },
        segments: {
-         segmentPrefix: 'Segment{index}',
+         segmentPrefix: 'Segment {index}',
          speechSuffix: ' - Speech',
          subtitleSuffix: ' - Subtitle',
-         generatedFrom: 'Speech recognition generated subtitle from "Segment{index}"',
+         generatedFrom: 'Speech recognition generated subtitle from "Segment {index}"',
          associatedVideo: 'Segment{index} - {videoName}',
        },
        voiceSelector: {
@@ -5750,7 +5750,7 @@ export const translations: Record<string, Translations> = {
         extractingSubtitles: '提取字幕中...',
         invalidJsonFile: '请选择JSON格式的项目文件',
         volumeControl: '音量控制',
-        trackVolumeControl: '{type}轨道音量控制 ({volume}%)',
+        trackVolumeControl: '{type}音量控制 ({volume}%)',
       },
       shortcuts: {
         selectShortcut: 'V',
