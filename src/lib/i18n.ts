@@ -1400,6 +1400,30 @@ export interface Translations {
     packInfoFrames: string;
     packInfoSeparator: string;
     refreshPackList: string;
+    segmentLabel: string;
+    describingTitle: string;
+    describeAllTitle: string;
+    describing: string;
+    describeAll: string;
+    generatingInProgress: string;
+    allVideosGenerated: string;
+    batchGenerateAll: string;
+    batchGenerate: string;
+    generateAllVideosFirst: string;
+    composing: string;
+    composeAllVideos: string;
+    composeVideo: string;
+    loadingPack: string;
+    describingFrames: string;
+    composeFailed: string;
+    retry: string;
+    addFrame: string;
+    generatedStatus: string;
+    estimatedDuration: string;
+    confirmDelete: string;
+    deleteConfirmMessage: string;
+    cancel: string;
+    delete: string;
   };
   storyboardPreviewPanel: {
     title: string;
@@ -3755,6 +3779,30 @@ export const translations: Record<string, Translations> = {
       packInfoFrames: '{frames} frames',
       packInfoSeparator: ' - ',
       refreshPackList: 'Refresh storyboard pack list',
+      segmentLabel: 'Segment #',
+      describingTitle: 'Generating descriptions...',
+      describeAllTitle: 'Generate AI descriptions for all storyboard frames',
+      describing: 'Generating...',
+      describeAll: 'Generate Descriptions',
+      generatingInProgress: 'Videos are currently being generated',
+      allVideosGenerated: 'All videos have been generated',
+      batchGenerateAll: 'Batch generate all ungenerated videos',
+      batchGenerate: 'Batch Generate',
+      generateAllVideosFirst: 'Please generate all storyboard videos first',
+      composing: 'Composing...',
+      composeAllVideos: 'Compose all storyboard videos',
+      composeVideo: 'Compose Video',
+      loadingPack: 'Loading storyboard pack...',
+      describingFrames: 'Generating descriptions for storyboard frames...',
+      composeFailed: 'Composition failed: ',
+      retry: 'Retry',
+      addFrame: 'Add Frame',
+      generatedStatus: 'Generated {completed}/{total} videos',
+      estimatedDuration: 'Estimated total duration: {duration}s',
+      confirmDelete: 'Confirm Delete',
+      deleteConfirmMessage: 'Are you sure you want to delete this storyboard frame? Generated videos will not be removed from the materials panel.',
+      cancel: 'Cancel',
+      delete: 'Delete',
     },
     storyboardPreviewPanel: {
       title: 'Storyboard Preview',
@@ -6129,6 +6177,30 @@ export const translations: Record<string, Translations> = {
       packInfoFrames: '{frames}帧',
       packInfoSeparator: ' - ',
       refreshPackList: '刷新分镜包列表',
+      segmentLabel: '分镜 #',
+      describingTitle: '正在生成描述...',
+      describeAllTitle: '为所有分镜帧生成AI描述',
+      describing: '生成中...',
+      describeAll: '生成描述',
+      generatingInProgress: '有视频正在生成中',
+      allVideosGenerated: '所有视频已生成',
+      batchGenerateAll: '一键批量生成所有未生成的视频',
+      batchGenerate: '一键批量生成',
+      generateAllVideosFirst: '请先生成所有分镜视频',
+      composing: '正在合成...',
+      composeAllVideos: '一键合成所有分镜视频',
+      composeVideo: '一键合成视频',
+      loadingPack: '正在加载分镜包...',
+      describingFrames: '正在为分镜帧生成描述...',
+      composeFailed: '合成失败: ',
+      retry: '重试',
+      addFrame: '添加帧',
+      generatedStatus: '已生成 {completed}/{total} 个视频',
+      estimatedDuration: '预计总时长: {duration}s',
+      confirmDelete: '确认删除',
+      deleteConfirmMessage: '确定要删除此分镜帧吗？已生成的视频不会从素材面板中移除。',
+      cancel: '取消',
+      delete: '删除',
     },
     storyboardPreviewPanel: {
       title: '分镜预览',

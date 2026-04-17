@@ -201,7 +201,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                     : 'bg-card hover:bg-accent text-muted-foreground hover:text-foreground border-2 border-border'
                 } ${isCopying ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 title={showCopySuccess ? t.chatMessageBubble.copiedTitle : t.chatMessageBubble.copyMessageTitle}
-                aria-label="复制消息内容"
+                aria-label={t.chatMessageBubble.copyMessageTitle}
               >
                 {showCopySuccess ? (
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,7 +226,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
                   disabled={message.isStreaming}
                   className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground border-2 border-card cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   title={t.chatMessageBubble.convertToScriptTitle}
-                  aria-label="将此消息内容转换为视频脚本"
+                  aria-label={t.chatMessageBubble.convertToScriptTitle}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />

@@ -190,7 +190,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
                     disabled={isCopying}
                     className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-card hover:bg-accent text-muted-foreground hover:text-foreground border-2 border-border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     title={showCopySuccess ? t.chatWorkflowExecution.copiedTitle : t.chatWorkflowExecution.copyTitle}
-                    aria-label="复制最终结果"
+                    aria-label={t.chatWorkflowExecution.copyTitle}
                   >
                     {showCopySuccess ? (
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -214,7 +214,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
                       onClick={handleConvertToScript}
                       className="w-7 h-7 rounded-full transition-colors duration-200 flex items-center justify-center bg-primary hover:bg-[var(--primary-hover)] text-primary-foreground border-2 border-card cursor-pointer"
                       title={t.chatWorkflowExecution.convertToScriptTitle}
-                      aria-label="将最终结果转换为视频脚本"
+                      aria-label={t.chatWorkflowExecution.convertToScriptTitle}
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -254,7 +254,7 @@ const WorkflowExecutionMessage: React.FC<WorkflowExecutionMessageProps> = ({
             {executionState?.endTime && (
               <div className="px-5 py-2 bg-muted border-t border-border">
                 <div className="text-xs text-muted-foreground">
-                  {executionState.endTime.toLocaleTimeString('zh-CN', {
+                  {executionState.endTime.toLocaleTimeString(undefined, {
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',

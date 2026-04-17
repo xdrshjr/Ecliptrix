@@ -127,7 +127,7 @@ const VideoUnderstandingScriptProgressModal: React.FC<VideoUnderstandingScriptPr
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
                 <span className="text-sm text-primary font-medium">
-                  正在分析: {progress.currentVideoName}
+                  {t.videoScriptProgressModal.analyzingVideo.replace('{name}', progress.currentVideoName)}
                 </span>
               </div>
             </div>
