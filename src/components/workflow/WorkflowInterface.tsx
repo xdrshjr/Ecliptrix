@@ -336,7 +336,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         4000
       );
     }
-  }, [content, onUpdateContent, isAuthenticated, user, notification]);
+  }, [content, onUpdateContent, isAuthenticated, user, notification, t]);
 
   // Handle rename workflow
   const handleRenameWorkflow = useCallback(async (workflowId: string, newName: string) => {
