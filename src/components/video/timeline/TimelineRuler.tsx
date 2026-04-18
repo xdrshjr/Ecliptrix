@@ -322,10 +322,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           {/* 播放状态指示器 */}
           {isPlaying && (
             <div
-              className="absolute top-1 right-2 flex items-center space-x-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full"
+              className="absolute top-1 right-2 flex items-center space-x-1 text-xs text-green-700 bg-green-50 dark:bg-emerald-500/20 dark:text-emerald-300 px-2 py-0.5 rounded-full"
             >
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span>播放中</span>
+              <div className="w-1.5 h-1.5 bg-green-500 dark:bg-emerald-400 rounded-full animate-pulse" />
+              <span>{t.timeline.ruler.playing}</span>
             </div>
           )}
 

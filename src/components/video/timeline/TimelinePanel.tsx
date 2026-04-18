@@ -611,11 +611,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         }, { timeoutMs: 600_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
-          throw new Error(`批量转录请求失败: ${httpError.status}`);
+          throw new Error(
+            t.timeline.messages.batchTranscriptionRequestFailed.replace('{status}', String(httpError.status))
+          );
         }
         throw httpError;
       }
-      if (!result.success) throw new Error(`批量转录失败: ${result.error || '未知错误'}`);
+      if (!result.success) {
+        const reason = result.error || t.timeline.messages.subtitleExtractionUnknownError;
+        throw new Error(
+          t.timeline.messages.batchTranscriptionFailed.replace('{error}', reason)
+        );
+      }
 
       const subtitleTrack = state.tracks.find(t => t.type === 'subtitle');
       if (!subtitleTrack) {
@@ -670,7 +677,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           .replace('{count}', newSubtitleItems.length.toString())
       );
     } catch (error) {
-      showError(t.timeline.messages.subtitleExtractionError.replace('{error}', error instanceof Error ? error.message : '未知错误'));
+      const msg = error instanceof Error ? error.message : t.timeline.messages.subtitleExtractionUnknownError;
+      showError(t.timeline.messages.subtitleExtractionError.replace('{error}', msg));
     } finally {
       useTimelineStore.getState().setExtractingSubtitles(false);
     }

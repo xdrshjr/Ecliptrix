@@ -145,7 +145,12 @@ const Track: React.FC<TrackProps> = ({
         });
       }
     } catch (error) {
-      console.error('[Track] 拖拽数据解析失败:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.debug('[Track] drop-data parse failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   };
 
@@ -414,7 +419,7 @@ const Track: React.FC<TrackProps> = ({
                 onClick={handleLockClick}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isLocked
-                    ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                    ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-200 dark:hover:bg-yellow-500/30'
                     : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
                 aria-label={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}

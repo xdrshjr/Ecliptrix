@@ -736,6 +736,9 @@ export interface Translations {
         importProjectSuccess: string;
         importProjectError: string;
         importProjectInvalidData: string;
+        batchTranscriptionRequestFailed: string;
+        batchTranscriptionFailed: string;
+        subtitleExtractionUnknownError: string;
     };
     subtitleEditModal: {
       title: string;
@@ -753,6 +756,7 @@ export interface Translations {
       zoomOut: string;
       resetZoom: string;
       timelineTooltip: string;
+      playing: string;
     };
   };
   materialsPanel: {
@@ -3375,6 +3379,9 @@ export const translations: Record<string, Translations> = {
         importProjectSuccess: 'Project file imported successfully! Imported {trackCount} tracks and {materialCount} materials.',
         importProjectError: 'Project import failed: {error}',
         importProjectInvalidData: 'Imported data format is invalid',
+        batchTranscriptionRequestFailed: 'Batch transcription request failed: {status}',
+        batchTranscriptionFailed: 'Batch transcription failed: {error}',
+        subtitleExtractionUnknownError: 'Unknown error',
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -3392,6 +3399,7 @@ export const translations: Record<string, Translations> = {
         zoomOut: 'Zoom Out',
         resetZoom: 'Reset Zoom',
         timelineTooltip: 'Timeline',
+        playing: 'Playing',
       },
     },
     videoSearchModal: {
@@ -5870,6 +5878,9 @@ export const translations: Record<string, Translations> = {
           importProjectSuccess: '项目文件导入成功！导入了 {trackCount} 个轨道和 {materialCount} 个素材。',
           importProjectError: '项目导入失败: {error}',
           importProjectInvalidData: '导入数据格式不正确',
+          batchTranscriptionRequestFailed: '批量转录请求失败: {status}',
+          batchTranscriptionFailed: '批量转录失败: {error}',
+          subtitleExtractionUnknownError: '未知错误',
         },
       subtitleEditModal: {
         title: '编辑字幕',
@@ -5887,6 +5898,7 @@ export const translations: Record<string, Translations> = {
         zoomOut: '缩小',
         resetZoom: '重置缩放',
         timelineTooltip: '时间轴',
+        playing: '播放中',
       },
     },
     videoSearchModal: {

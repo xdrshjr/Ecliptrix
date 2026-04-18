@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
 import type { TimelineItemData } from './domain/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
@@ -25,6 +26,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   trackHeight,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
+  const { t } = useLocale();
 
   // ---------------------------------------------------------------------------
   // Store reads (selector pattern for render perf)
@@ -335,7 +337,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                     fontSize: `${fontSize}px`,
                   }}
                   autoFocus
-                  placeholder="输入字幕内容..."
+                  placeholder={t.timeline.subtitleEditModal.placeholder}
                 />
               </div>
             ) : (
