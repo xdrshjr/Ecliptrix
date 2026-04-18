@@ -19,7 +19,7 @@ interface TrackContainerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
   onScroll?: (scrollLeft: number) => void;
   onEditSubtitles?: (trackId: string) => void;
-  onAddTrack: (type: 'video' | 'audio' | 'subtitle') => void;
+  onAddTrack: (type: 'video' | 'image' | 'audio' | 'subtitle') => void;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -202,7 +202,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   }, [zoomLevel, setZoomLevel]);
 
   // 处理添加轨道
-  const handleAddTrack = (type: 'video' | 'audio' | 'subtitle') => {
+  const handleAddTrack = (type: 'video' | 'image' | 'audio' | 'subtitle') => {
     onAddTrack(type);
   };
 
@@ -286,6 +286,15 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                       <span>{t.timeline.trackBar.addVideoTrack}</span>
                     </button>
                     <button
+                      onClick={() => handleAddTrack('image')}
+                      className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                      </svg>
+                      <span>{t.timeline.trackBar.addImageTrack}</span>
+                    </button>
+                    <button
                       onClick={() => handleAddTrack('audio')}
                       className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                     >
@@ -358,6 +367,27 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addVideoTrack}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* 图片轨道按钮 */}
+            <div className="relative group">
+              <button
+                onClick={() => handleAddTrack('image')}
+                className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
+                aria-label={t.timeline.trackBar.addImageTrack}
+              >
+                <svg className="w-3 h-3 text-purple-600 group-hover:text-purple-700" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                </svg>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
+                    {t.timeline.trackBar.addImageTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>

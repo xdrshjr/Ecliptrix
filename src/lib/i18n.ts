@@ -681,6 +681,7 @@ export interface Translations {
       duration: string;
       addTrack: string;
       addVideoTrack: string;
+      addImageTrack: string;
       addAudioTrack: string;
       addSubtitleTrack: string;
     };
@@ -3303,6 +3304,7 @@ export const translations: Record<string, Translations> = {
         duration: 'Duration',
         addTrack: 'Add Track',
         addVideoTrack: 'Add Video Track',
+        addImageTrack: 'Add Image Track',
         addAudioTrack: 'Add Audio Track',
         addSubtitleTrack: 'Add Subtitle Track',
       },
@@ -5781,6 +5783,7 @@ export const translations: Record<string, Translations> = {
         duration: '时长',
         addTrack: '添加轨道',
         addVideoTrack: '添加视频轨道',
+        addImageTrack: '添加图片轨道',
         addAudioTrack: '添加音频轨道',
         addSubtitleTrack: '添加字幕轨道',
       },
