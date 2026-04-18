@@ -326,9 +326,13 @@ const Track: React.FC<TrackProps> = ({
                   {/* Hover tooltip */}
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {t.timeline.toolbar.trackVolumeControl
-                        .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
-                        .replace('{volume}', String(track.volume))}
+                      {track.isLocked
+                        ? `${t.timeline.toolbar.trackVolumeControl
+                            .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
+                            .replace('{volume}', String(track.volume))} — ${t.timeline.track.trackLocked}`
+                        : t.timeline.toolbar.trackVolumeControl
+                            .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
+                            .replace('{volume}', String(track.volume))}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
@@ -481,7 +485,9 @@ const Track: React.FC<TrackProps> = ({
 
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
+                    {track.isLocked
+                      ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
+                      : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>

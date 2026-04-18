@@ -183,9 +183,12 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   };
 
   // Derived boundary flags used by both handlers (defensive early-return)
-  // and button disabled state/styling.
+  // and button disabled state/styling. atZoomMin uses the ladder floor
+  // (0.25) rather than ZOOM_MIN (0.1) because ladder buttons step through
+  // named stops — ctrl+wheel still scrubs to ZOOM_MIN on the analog path.
   const atZoomMax = zoomLevel >= ZOOM_MAX - ZOOM_EPSILON;
-  const atZoomMin = zoomLevel <= ZOOM_MIN + ZOOM_EPSILON;
+  const atZoomMin = zoomLevel <= ZOOM_LADDER[0] + ZOOM_EPSILON;
+  const atZoomDefault = Math.abs(zoomLevel - 1.0) < ZOOM_EPSILON;
 
   const handleZoomIn = () => {
     if (atZoomMax) return;
@@ -199,7 +202,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     for (const z of ZOOM_LADDER) {
       if (z < zoomLevel - ZOOM_EPSILON) next = z;
     }
-    setZoomLevel(next ?? ZOOM_MIN);
+    setZoomLevel(next ?? ZOOM_LADDER[0]);
   };
 
   const handleZoomReset = () => {
@@ -270,7 +273,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
           <button
             onClick={handleZoomReset}
-            className="px-2 py-0.5 text-xs bg-card border border-border rounded hover:bg-muted transition-colors"
+            disabled={atZoomDefault}
+            className={`px-2 py-0.5 text-xs bg-card border border-border rounded transition-colors ${
+              atZoomDefault ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted'
+            }`}
             title={t.timeline.ruler.resetZoom}
             aria-label={t.timeline.ruler.resetZoomAriaLabel.replace('{percent}', String(Math.round(zoomLevel * 100)))}
           >

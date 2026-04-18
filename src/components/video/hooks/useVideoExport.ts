@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { http, ApiError } from '@/lib/api/http-client';
+import { VideoEditingLogger } from '../utils/logger';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -65,13 +66,13 @@ const calculateAudioTrackDuration = (timelineState: TimelineState): number => {
 /**
  * 验证视频轨道长度是否满足导出要求
  * @param timelineState 时间轴状态
- * @param taskId 任务ID（用于日志）
+ * @param logger VideoEditingLogger 实例（承载 taskId/component 上下文）
  * @returns 验证结果和详细信息
  */
-const validateVideoExport = (timelineState: TimelineState, taskId: string) => {
+const validateVideoExport = (timelineState: TimelineState, logger: VideoEditingLogger) => {
   const videoDuration = calculateVideoTrackDuration(timelineState);
   const audioDuration = calculateAudioTrackDuration(timelineState);
-  
+
   const validationResult = {
     isValid: videoDuration >= audioDuration,
     videoDuration,
@@ -79,8 +80,7 @@ const validateVideoExport = (timelineState: TimelineState, taskId: string) => {
     deficit: audioDuration > videoDuration ? audioDuration - videoDuration : 0
   };
 
-  console.log(`[useVideoExport] 导出验证结果`, {
-    taskId,
+  logger.info('导出验证结果', {
     isValid: validationResult.isValid,
     videoDuration: videoDuration.toFixed(2),
     audioDuration: audioDuration.toFixed(2),
@@ -88,7 +88,6 @@ const validateVideoExport = (timelineState: TimelineState, taskId: string) => {
     timelineTracksCount: timelineState.tracks.length,
     videoTracksCount: timelineState.tracks.filter(t => t.type === 'video').length,
     audioTracksCount: timelineState.tracks.filter(t => t.type === 'audio').length,
-    timestamp: new Date().toISOString()
   });
 
   return validationResult;
@@ -110,43 +109,48 @@ export const useVideoExport = ({
   const { showError, showWarning } = useNotification();
   const { t } = useLocale();
 
+  // Logger is memoized on taskId — stable across renders, safe to include in
+  // handleExport's useCallback deps. Replaces 34 raw console.* sites below
+  // so production builds emit only warn/error (info/debug are gated in
+  // VideoEditingLogger when NODE_ENV==='production' without explicit opt-in
+  // via NEXT_PUBLIC_VIDEO_EDIT_DEBUG).
+  const logger = useMemo(
+    () => new VideoEditingLogger({ component: 'useVideoExport', taskId }),
+    [taskId]
+  );
+
   const handleExport = useCallback(async () => {
-    console.log(`[useVideoExport] 开始导出处理`, {
+    logger.info('开始导出处理', {
       totalDuration: timelineState.totalDuration.toFixed(2),
       trackCount: timelineState.tracks.length,
       aspectRatio: aspectRatio || 'default',
       aspectRatioType: typeof aspectRatio,
       aspectRatioLength: aspectRatio?.length,
-      taskId,
-      timestamp: new Date().toISOString()
     });
 
     // 记录导出开始时间
     const startTime = Date.now();
     setExportStartTime(startTime);
     setIsExporting(true);
-    
-    console.log(`[useVideoExport] 导出开始时间记录`, {
+
+    logger.info('导出开始时间记录', {
       startTime: new Date(startTime).toISOString(),
-      timestamp: startTime,
-      taskId
+      timestampMs: startTime,
     });
 
     // 导出前验证
-    const validation = validateVideoExport(timelineState, taskId);
-    
+    const validation = validateVideoExport(timelineState, logger);
+
     if (!validation.isValid) {
       const errorMessage = `${t.videoExport.videoTrackTooShort} ${t.videoExport.videoTrackDuration} ${validation.videoDuration.toFixed(1)}s, ${t.videoExport.audioTrackDuration} ${validation.audioDuration.toFixed(1)}s, ${t.videoExport.needToAdd} ${validation.deficit.toFixed(1)}s`;
-      
-      console.error(`[useVideoExport] 导出验证失败`, {
-        taskId,
+
+      logger.error('导出验证失败', {
         errorMessage,
         videoDuration: validation.videoDuration,
         audioDuration: validation.audioDuration,
         deficit: validation.deficit,
-        timestamp: new Date().toISOString()
       });
-      
+
       showError(errorMessage, 6000); // 显示6秒错误提示
       setIsExporting(false);
       setExportProgress(0);
@@ -154,11 +158,9 @@ export const useVideoExport = ({
       return;
     }
 
-    console.log(`[useVideoExport] 验证通过，继续导出流程`, {
-      taskId,
+    logger.info('验证通过，继续导出流程', {
       videoDuration: validation.videoDuration,
       audioDuration: validation.audioDuration,
-      timestamp: new Date().toISOString()
     });
 
     // Calculate actual total duration from clipped video segments
@@ -175,10 +177,10 @@ export const useVideoExport = ({
       // Process each track
       timelineState.tracks.forEach(track => {
         if (!track.isVisible || track.isLocked) {
-          console.log(`[useVideoExport] 跳过轨道 ${track.id}`, {
+          logger.debug('跳过轨道', {
+            trackId: track.id,
             isVisible: track.isVisible,
             isLocked: track.isLocked,
-            taskId
           });
           return;
         }
@@ -191,13 +193,12 @@ export const useVideoExport = ({
               // 检查是否为图片材料但在视频轨道中（需要特殊处理）
               if (material.type === 'image' || item.originalMaterialType === 'image') {
                 // 这是图片材料，应该作为图片叠加处理，而不是视频处理
-                console.log(`[useVideoExport] 发现图片材料在视频轨道中`, {
+                logger.debug('发现图片材料在视频轨道中', {
                   itemId: item.id,
                   itemName: item.name,
                   materialType: material.type,
                   originalMaterialType: item.originalMaterialType,
                   trackId: track.id,
-                  taskId
                 });
 
                 // 优先使用服务器URL，如果没有则使用本地URL
@@ -212,7 +213,7 @@ export const useVideoExport = ({
                   zIndex: 10
                 };
 
-                console.log(`[useVideoExport] 处理图片项目`, {
+                logger.debug('处理图片项目', {
                   itemId: item.id,
                   itemName: item.name,
                   materialUrl: material.url,
@@ -222,7 +223,6 @@ export const useVideoExport = ({
                   position: imagePosition,
                   startTime: item.startTime,
                   duration: item.duration,
-                  taskId
                 });
 
                 imageItems.push({
@@ -238,10 +238,9 @@ export const useVideoExport = ({
                   fade_out_duration: 0.0
                 });
                 
-                console.log(`[useVideoExport] 图片项目添加完成`, {
+                logger.debug('图片项目添加完成', {
                   itemId: item.id,
                   position: imagePosition,
-                  taskId
                 });
                 
                 return; // 跳过视频处理逻辑
@@ -257,7 +256,7 @@ export const useVideoExport = ({
               const clipEnd = item.clipEnd || (item.originalDuration || item.duration);
               const clippedDuration = clipEnd - clipStart;
               
-              console.log(`[useVideoExport] 处理视频项目`, {
+              logger.debug('处理视频项目', {
                 itemId: item.id,
                 itemName: item.name,
                 materialUrl: material.url,
@@ -269,7 +268,6 @@ export const useVideoExport = ({
                 clipStart: clipStart,
                 clipEnd: clipEnd,
                 clippedDuration: clippedDuration,
-                taskId
               });
 
               // Add clipped duration to actual total
@@ -291,11 +289,10 @@ export const useVideoExport = ({
                 clipped_duration: clippedDuration
               });
               
-              console.log(`[useVideoExport] 视频项目添加完成`, {
+              logger.debug('视频项目添加完成', {
                 itemId: item.id,
                 clippedDuration: clippedDuration,
                 runningTotalDuration: actualTotalDuration,
-                taskId
               });
             }
           } else if (item.type === 'audio') {
@@ -305,14 +302,13 @@ export const useVideoExport = ({
               // 优先使用服务器URL，如果没有则使用普通URL
               const audioUrl = material.serverUrl || material.url;
               
-              console.log(`[useVideoExport] 处理音频项目`, {
+              logger.debug('处理音频项目', {
                 itemId: item.id,
                 itemName: item.name,
                 materialUrl: material.url,
                 serverUrl: material.serverUrl,
                 finalUrl: audioUrl,
                 trackId: track.id,
-                taskId
               });
 
               audioItems.push({
@@ -327,7 +323,7 @@ export const useVideoExport = ({
                 clip_start: item.clipStart || 0,
                 clip_end: item.clipEnd || (item.originalDuration || item.duration)
               });
-              console.log(`[useVideoExport] 添加音频项目`, {
+              logger.debug('添加音频项目', {
                 itemId: item.id,
                 itemName: item.name,
                 finalUrl: audioUrl,
@@ -339,10 +335,9 @@ export const useVideoExport = ({
                 clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
                 clipDuration: ((item.clipEnd || (item.originalDuration || item.duration)) - (item.clipStart || 0)).toFixed(2),
                 timelineDuration: item.duration.toFixed(2),
-                taskId
               });
             } else {
-              console.warn(`[useVideoExport] 未找到音频素材 ${item.materialId} 对应的URL`, { taskId });
+              logger.warn('未找到音频素材对应的URL', { materialId: item.materialId });
             }
           } else if (item.type === 'subtitle') {
             // Extract subtitle styling from TimelineItem with proper defaults
@@ -354,7 +349,7 @@ export const useVideoExport = ({
               position: 'bottom'
             };
             
-            console.log(`[useVideoExport] 处理字幕项目，字体大小: ${subtitleStyle.fontSize}`, {
+            logger.debug('处理字幕项目', {
               itemId: item.id,
               itemName: item.name,
               text: item.text || item.name,
@@ -366,7 +361,6 @@ export const useVideoExport = ({
               position: subtitleStyle.position,
               startTime: item.startTime,
               duration: item.duration,
-              taskId
             });
             
             subtitleItems.push({
@@ -386,12 +380,11 @@ export const useVideoExport = ({
         });
       });
 
-      console.log(`[useVideoExport] 实际总时长计算完成`, {
+      logger.info('实际总时长计算完成', {
         originalTotalDuration: timelineState.totalDuration,
         actualTotalDuration: actualTotalDuration,
         durationDifference: actualTotalDuration - timelineState.totalDuration,
         videoItemsCount: videoItems.length,
-        taskId
       });
 
       // 关键修改：确保前端按照正确的timeline顺序排序，后端就不需要重新排序
@@ -401,12 +394,11 @@ export const useVideoExport = ({
       subtitleItems.sort((a, b) => a.start_time - b.start_time);
       imageItems.sort((a, b) => a.start_time - b.start_time); // 对图片项目也进行排序
 
-      console.log(`[useVideoExport] 完成前端排序`, {
+      logger.debug('完成前端排序', {
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
         imageItemsCount: imageItems.length, // 添加图片项目计数
-        taskId,
         videoOrder: videoItems.map((item, index) => ({
           index,
           id: item.id,
@@ -432,21 +424,17 @@ export const useVideoExport = ({
 
       // Validate we have content to export
       if (videoItems.length === 0 && audioItems.length === 0 && imageItems.length === 0) {
-        console.warn(`[useVideoExport] 没有视频、音频或图片内容可导出`, { 
-          taskId,
+        logger.warn('没有视频、音频或图片内容可导出', {
           videoItemsCount: videoItems.length,
           audioItemsCount: audioItems.length,
           imageItemsCount: imageItems.length,
-          timestamp: new Date().toISOString()
         });
-        
+
         // 使用 toast 警告提示，而不是 alert 弹窗
         showWarning(t.videoExport.noContentToExportFull, 5000);
 
-        console.log(`[useVideoExport] No content warning`, {
-          taskId,
+        logger.debug('No content warning', {
           message: t.videoExport.noContentToExportFull,
-          timestamp: new Date().toISOString()
         });
 
         setIsExporting(false);
@@ -464,7 +452,7 @@ export const useVideoExport = ({
       const maxImageEndTime = imageEndTimes.length > 0 ? Math.max(...imageEndTimes) : 0; // 获取图片项目的最大结束时间
       const calculatedTotalDuration = Math.max(maxVideoEndTime, maxAudioEndTime, maxImageEndTime); // 计算总时长
 
-      console.log(`[useVideoExport] 准备导出内容`, {
+      logger.info('准备导出内容', {
         videoItemsCount: videoItems.length,
         audioItemsCount: audioItems.length,
         subtitleItemsCount: subtitleItems.length,
@@ -476,7 +464,6 @@ export const useVideoExport = ({
         maxAudioEndTime: maxAudioEndTime,
         maxImageEndTime: maxImageEndTime, // 添加图片项目最大结束时间
         durationMatch: Math.abs(timelineState.totalDuration - calculatedTotalDuration) < 0.1,
-        taskId,
         videoItems: videoItems.map(item => ({
           id: item.id,
           name: item.name,
@@ -529,8 +516,7 @@ export const useVideoExport = ({
         output_format: 'mp4'
       };
 
-      console.log(`[useVideoExport] 合成请求配置`, {
-        taskId,
+      logger.debug('合成请求配置', {
         aspectRatio: aspectRatio || 'none',
         hasAspectRatio: !!aspectRatio,
         willUseDefaultResolution: !aspectRatio,
@@ -539,13 +525,12 @@ export const useVideoExport = ({
         subtitleItemsCount: subtitleItems.length,
         imageItemsCount: imageItems.length, // 添加图片项目计数
         totalDuration: actualTotalDuration,
-        timestamp: new Date().toISOString()
       });
 
       setExportProgress(20); // 更新进度
 
       // Show loading state (you might want to add a loading UI here)
-      console.log(`[useVideoExport] 发送合成请求...`, { taskId });
+      logger.info('发送合成请求', {});
       
       // Start video composition
       const compositionResponse = await videoCompositionAPI.composeVideo(compositionRequest);
@@ -554,17 +539,16 @@ export const useVideoExport = ({
         throw new Error(compositionResponse.message || '视频合成请求失败');
       }
 
-      console.log(`[useVideoExport] 合成开始`, {
+      logger.info('合成开始', {
         compositionId: compositionResponse.composition_id,
         status: compositionResponse.status,
-        taskId
       });
 
       setExportProgress(30); // 更新进度
 
       // If composition is already completed (unlikely but possible)
       if (compositionResponse.status === 'completed') {
-        console.log(`[useVideoExport] 合成立即完成，开始下载`, { taskId });
+        logger.info('合成立即完成，开始下载', {});
         setExportProgress(100);
         await videoCompositionAPI.triggerDownload(
           compositionResponse.composition_id,
@@ -575,18 +559,17 @@ export const useVideoExport = ({
       }
 
       // Poll for completion and show progress
-      console.log(`[useVideoExport] 开始轮询合成状态...`, { taskId });
-      
+      logger.info('开始轮询合成状态', {});
+
       await videoCompositionAPI.pollCompositionStatus(
         compositionResponse.composition_id,
         (status) => {
           const progressPercent = Math.max(30, Math.min(95, 30 + (status.progress * 65)));
           setExportProgress(progressPercent);
-          console.log(`[useVideoExport] 合成进度更新`, {
+          logger.debug('合成进度更新', {
             progress: (status.progress * 100).toFixed(1) + '%',
             displayProgress: progressPercent.toFixed(1) + '%',
             status: status.status,
-            taskId
           });
           // Here you could update a progress UI
         }
@@ -595,7 +578,7 @@ export const useVideoExport = ({
       setExportProgress(95); // 设置接近完成的进度
 
       // Download completed video
-      console.log(`[useVideoExport] 合成完成，开始自动下载...`, { taskId });
+      logger.info('合成完成，开始自动下载', {});
       
       try {
         await videoCompositionAPI.triggerDownload(
@@ -604,8 +587,7 @@ export const useVideoExport = ({
           `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`
         );
       } catch (downloadError: any) {
-        console.error(`[useVideoExport] 自动下载失败，尝试 Blob 下载兜底`, {
-          taskId,
+        logger.error('自动下载失败，尝试 Blob 下载兜底', {
           error: downloadError.message,
         });
 
@@ -619,13 +601,12 @@ export const useVideoExport = ({
         const filename = `video_export_${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`;
         try {
           await http.download(downloadUrl, filename, { timeoutMs: 600_000 });
-          console.log(`[useVideoExport] Blob 兜底下载成功`, { taskId });
+          logger.info('Blob 兜底下载成功', {});
         } catch (blobError: any) {
           // Both the primary `videoCompositionAPI.triggerDownload` and the
           // Blob fallback have failed. Surface a clear error to the user
           // rather than silently degrading.
-          console.error(`[useVideoExport] Blob 兜底下载也失败`, {
-            taskId,
+          logger.error('Blob 兜底下载也失败', {
             primaryError: downloadError.message,
             blobError: blobError?.message,
           });
@@ -637,17 +618,23 @@ export const useVideoExport = ({
       }
 
       setExportProgress(100); // 完成
-      console.log(`[useVideoExport] 视频导出完成`, { taskId });
-      
+      logger.info('视频导出完成', {});
+
     } catch (error: any) {
-      console.error(`[useVideoExport] 导出失败`, { error, taskId });
-      
+      // catch (error: unknown)-style narrowing: logger.error has an
+      // Error-overload that attaches stack; fall back to data overload
+      // when the caught value is not an Error instance.
+      if (error instanceof Error) {
+        logger.error('导出失败', error);
+      } else {
+        logger.error('导出失败', { error: String(error) });
+      }
+
       // 检查是否是超时错误并提供更友好的错误信息
       if (error?.name === 'TimeoutError' || error?.message?.includes('timeout')) {
-        console.error(`[useVideoExport] 视频导出超时`, { 
-          taskId, 
+        logger.error('视频导出超时', {
           timeout: '10 minutes',
-          error: error.message 
+          error: error.message
         });
         showError(t.videoExport.exportTimeout, 10000);
       } else {
@@ -686,13 +673,10 @@ export const useVideoExport = ({
         setExportProgress(0);
         setExportStartTime(null);
         
-        console.log(`[useVideoExport] 导出状态重置完成`, {
-          taskId,
-          timestamp: new Date().toISOString()
-        });
+        logger.info('导出状态重置完成', {});
       }, 2000); // 2秒后重置状态
     }
-  }, [timelineState, materials, taskId, aspectRatio, showError, showWarning, t]);
+  }, [timelineState, materials, taskId, aspectRatio, showError, showWarning, t, logger]);
 
   return {
     isExporting,
