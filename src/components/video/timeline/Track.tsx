@@ -2,7 +2,7 @@
 
 import React, { useRef } from 'react';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
-import { useTimelineStore } from './store';
+import { useTimelineStore, removeTrackAction } from './store';
 import { TrackTypeUtils } from './domain';
 import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
@@ -164,11 +164,32 @@ const Track: React.FC<TrackProps> = ({
   };
 
   const handleVisibilityClick = () => {
+    if (track.isLocked) return;
     toggleTrackVisibility(trackId);
   };
 
   const handleSelectAllClick = () => {
+    if (track.isLocked) return;
     selectAllTrackItems(trackId);
+  };
+
+  const handleRemoveTrackClick = () => {
+    if (track.isLocked) return;
+    const state = useTimelineStore.getState();
+    if (state.tracks.length <= 1) {
+      if (typeof window !== 'undefined') {
+        // eslint-disable-next-line no-alert
+        window.alert(t.timeline.track.removeTrackLast);
+      }
+      return;
+    }
+    const hasItems = track.items.length > 0;
+    if (hasItems && typeof window !== 'undefined') {
+      // TODO(ux): replace window.confirm with the project's ConfirmDialog
+      // eslint-disable-next-line no-alert
+      if (!window.confirm(t.timeline.track.removeTrackConfirm)) return;
+    }
+    removeTrackAction(() => useTimelineStore.getState(), track.id);
   };
 
   // ---------------------------------------------------------------------------
@@ -409,6 +430,33 @@ const Track: React.FC<TrackProps> = ({
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Delete track button */}
+            <div className="relative group">
+              <button
+                onClick={handleRemoveTrackClick}
+                disabled={track.isLocked}
+                aria-label={t.timeline.track.removeTrack}
+                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                  track.isLocked
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'bg-muted text-muted-foreground hover:bg-red-100 hover:text-red-600'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                </svg>
+
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
+                    {t.timeline.track.removeTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>

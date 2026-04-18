@@ -31,7 +31,7 @@ export interface TimelineExportData {
   tracks: Array<{
     id: string;
     name: string;
-    type: 'video' | 'audio' | 'subtitle';
+    type: 'video' | 'audio' | 'subtitle' | 'image';
     height: number;
     isLocked: boolean;
     isMuted: boolean;
@@ -198,7 +198,7 @@ export class TimelineExportService {
       tracks: timelineState.tracks.map(track => ({
         id: track.id,
         name: track.name,
-        type: track.type,
+        type: track.id.startsWith('image-track') ? 'image' : track.type,
         height: track.height,
         isLocked: track.isLocked,
         isMuted: track.isMuted,

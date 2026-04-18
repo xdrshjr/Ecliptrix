@@ -62,6 +62,29 @@ export function setTrackVolumeAction(
   scheduleNextStateCapture(get);
 }
 
+/**
+ * Remove a track.
+ *
+ * Refuses to delete the last remaining track (UI also disables the button in
+ * that case; this is the store-side guard). Cleans up any selected items that
+ * belong to the doomed track so the selection set does not retain dangling IDs.
+ */
+export function removeTrackAction(
+  get: () => TimelineStore,
+  trackId: string,
+): void {
+  const state = get();
+
+  if (state.tracks.length <= 1) {
+    return;
+  }
+
+  state.clearItemsOfTrack(trackId);
+  state.recordAction('TRACK_REMOVE', { trackId });
+  state.removeTrack(trackId);
+  scheduleNextStateCapture(get);
+}
+
 // ---------------------------------------------------------------------------
 // Internal helper
 // ---------------------------------------------------------------------------

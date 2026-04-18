@@ -40,7 +40,9 @@ export interface TimelineAction {
     | 'TRACK_LOCK'
     | 'TRACK_MUTE'
     | 'TRACK_VOLUME'
-    | 'TRACK_VISIBILITY';
+    | 'TRACK_VISIBILITY'
+    | 'TRACK_ADD'
+    | 'TRACK_REMOVE';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload?: any;
   timestamp: Date;

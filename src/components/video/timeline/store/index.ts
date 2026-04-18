@@ -38,6 +38,7 @@ export {
   toggleTrackMuteAction,
   toggleTrackVisibilityAction,
   setTrackVolumeAction,
+  removeTrackAction,
 } from './actions/trackActions';
 export {
   undoAction,
