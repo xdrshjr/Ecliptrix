@@ -32,6 +32,8 @@ export interface SelectionSlice {
   toggleItemSelection: (itemId: string) => void;
   selectAllTrackItems: (trackId: string) => void;
   deselectAll: () => void;
+  /** Drop any selected items that belong to the given track. */
+  clearItemsOfTrack: (trackId: string) => void;
   setActiveTool: (tool: TimelineToolType) => void;
 
   // Query helpers
@@ -78,6 +80,17 @@ export const createSelectionSlice: StateCreator<
 
   deselectAll: () => {
     set({ selectedItems: [] });
+  },
+
+  clearItemsOfTrack: (trackId: string) => {
+    const tracks = get().tracks;
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+    const doomedIds = new Set(track.items.map(i => i.id));
+    const filtered = get().selectedItems.filter(id => !doomedIds.has(id));
+    if (filtered.length !== get().selectedItems.length) {
+      set({ selectedItems: filtered });
+    }
   },
 
   setActiveTool: (tool: TimelineToolType) => {

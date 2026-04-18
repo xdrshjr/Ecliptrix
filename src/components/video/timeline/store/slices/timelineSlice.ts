@@ -63,6 +63,7 @@ export interface TimelineSlice {
   toggleTrackMute: (trackId: string) => void;
   toggleTrackVisibility: (trackId: string) => void;
   setTrackVolume: (trackId: string, volume: number) => void;
+  removeTrack: (trackId: string) => void;
 
   // Playback control
   setCurrentTime: (time: number) => void;
@@ -331,6 +332,17 @@ export const createTimelineSlice: StateCreator<
         state._aggregate.setTrackVolume(trackId, Volume.fromPercentage(volume));
       } catch (err) {
         console.error('[timelineSlice] setTrackVolume failed:', err);
+        return;
+      }
+      state._syncDerivedState();
+    },
+
+    removeTrack: (trackId: string) => {
+      const state = get();
+      try {
+        state._aggregate.removeTrack(trackId);
+      } catch (err) {
+        console.error('[timelineSlice] removeTrack failed:', err);
         return;
       }
       state._syncDerivedState();

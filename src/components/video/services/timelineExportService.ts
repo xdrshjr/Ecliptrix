@@ -31,7 +31,7 @@ export interface TimelineExportData {
   tracks: Array<{
     id: string;
     name: string;
-    type: 'video' | 'audio' | 'subtitle';
+    type: 'video' | 'audio' | 'subtitle' | 'image';
     height: number;
     isLocked: boolean;
     isMuted: boolean;

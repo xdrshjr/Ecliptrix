@@ -401,34 +401,40 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
     const currentData = state.exportToData();
 
-    // Find insertion point: after the last track of the same type
-    const typeOrder = { video: 0, audio: 1, subtitle: 2 };
-    // Include image tracks (type='video') for insertion positioning
-    const sameTypeTracks = currentData.tracks.filter(tr => tr.type === type);
+    // Find insertion point: after the last track of the same logical group.
+    // image-tracks carry type='video' but belong to their own 'image' group,
+    // so we key off id-prefix to avoid inserting new Video tracks after Image.
+    const typeOrder = { video: 0, image: 1, audio: 2, subtitle: 3 } as const;
+    type GroupKey = keyof typeof typeOrder;
+
+    const getGroupKey = (tr: { id: string; type: string }): GroupKey => {
+      if (tr.id.startsWith('image-track')) return 'image';
+      return tr.type as GroupKey;
+    };
+
+    const requestedGroup: GroupKey = type;
+    const sameGroupTracks = currentData.tracks.filter(
+      tr => getGroupKey(tr) === requestedGroup,
+    );
 
     let insertIndex = currentData.tracks.length; // default: end
     let orderValue: number;
 
-    if (sameTypeTracks.length > 0) {
-      const lastSameTypeTrack = sameTypeTracks[sameTypeTracks.length - 1];
-      const lastSameTypeIndex = currentData.tracks.indexOf(lastSameTypeTrack);
-      insertIndex = lastSameTypeIndex + 1;
-      orderValue = lastSameTypeTrack.order + 1;
+    if (sameGroupTracks.length > 0) {
+      const lastSame = sameGroupTracks[sameGroupTracks.length - 1];
+      insertIndex = currentData.tracks.indexOf(lastSame) + 1;
+      orderValue = lastSame.order + 1;
     } else {
-      // No tracks of this type — insert at correct group boundary
-      const typePriority = typeOrder[type];
-      let insertBeforeIndex = currentData.tracks.length;
-      for (let i = 0; i < currentData.tracks.length; i++) {
-        if (typeOrder[currentData.tracks[i].type as keyof typeof typeOrder] > typePriority) {
-          insertBeforeIndex = i;
-          break;
-        }
-      }
-      insertIndex = insertBeforeIndex;
-      if (insertBeforeIndex < currentData.tracks.length) {
-        orderValue = currentData.tracks[insertBeforeIndex].order;
-      } else {
+      const priority = typeOrder[requestedGroup];
+      const insertBeforeIndex = currentData.tracks.findIndex(
+        tr => typeOrder[getGroupKey(tr)] > priority,
+      );
+      if (insertBeforeIndex === -1) {
+        insertIndex = currentData.tracks.length;
         orderValue = currentData.tracks.length;
+      } else {
+        insertIndex = insertBeforeIndex;
+        orderValue = currentData.tracks[insertBeforeIndex].order;
       }
     }
 
