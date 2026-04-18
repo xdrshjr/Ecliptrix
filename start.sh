@@ -266,8 +266,25 @@ fi
 
 echo ""
 
+# ============ Step 2.5: Detect stale .next vs source ============
+FORCE_REBUILD=false
+if [ -d "$SCRIPT_DIR/.next" ] && [ -f "$SCRIPT_DIR/.next/BUILD_ID" ]; then
+    FIND_ROOTS=("$SCRIPT_DIR/src")
+    [ -d "$SCRIPT_DIR/public" ] && FIND_ROOTS+=("$SCRIPT_DIR/public")
+    NEWER=$(find "${FIND_ROOTS[@]}" \
+                 -type f \
+                 -newer "$SCRIPT_DIR/.next/BUILD_ID" \
+                 -print -quit 2>/dev/null)
+    if [ -n "$NEWER" ]; then
+        warn "Stale .next detected (source newer than BUILD_ID): $NEWER"
+        warn "Removing .next to force a rebuild / 检测到过期构建，强制重新构建"
+        rm -rf "$SCRIPT_DIR/.next"
+        FORCE_REBUILD=true
+    fi
+fi
+
 # ============ Step 3: Build Frontend (production mode only) ============
-if [ "$DEV_MODE" = false ]; then
+if [ "$DEV_MODE" = false ] || [ "$FORCE_REBUILD" = true ]; then
     header "[3/5] Building Frontend / 构建前端项目"
     cd "$SCRIPT_DIR"
 
