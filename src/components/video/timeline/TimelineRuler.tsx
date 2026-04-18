@@ -307,7 +307,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       <div
         ref={scrollRef || rulerRef}
         className={`flex-1 relative overflow-x-hidden overflow-y-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
-          hasItems && totalDuration > 0 ? 'cursor-pointer' : 'cursor-default'
+          hasItems && totalDuration > 0 ? 'cursor-pointer' : 'cursor-not-allowed'
         }`}
         role="slider"
         tabIndex={hasItems && totalDuration > 0 ? 0 : -1}

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { UseVideoPlaybackReturn, PreviewQuality } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { mockVideoPreview } from '../data';
+import { formatTimelineTime } from '@/components/video/timeline/timeFormat';
 
 /**
  * useVideoPlayback Hook
@@ -156,12 +157,11 @@ export const useVideoPlayback = (
     setIsFullscreen(newFullscreenState);
   }, [isFullscreen, logger]);
 
-  // 格式化时间显示
-  const formatTime = useCallback((seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }, []);
+  // 格式化时间显示 — 委托给 timeline 的 formatTimelineTime 以保持格式一致
+  const formatTime = useCallback(
+    (seconds: number) => formatTimelineTime(seconds, { showMs: false }),
+    [],
+  );
 
   // 模拟视频播放时间更新
   useEffect(() => {

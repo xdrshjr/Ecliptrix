@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useTimelineStore } from './store';
+import { useTimelineStore, setTrackVolumeAction } from './store';
 import { useLocale } from '@/contexts/LocaleContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
 
@@ -10,7 +10,8 @@ import { deriveTrackDisplayName } from './trackDisplayName';
  * VolumeSlider — Track volume control popover.
  *
  * Reads visibility / position / trackId from `useTimelineStore.showVolumeSlider`.
- * Calls `store.setTrackVolume` on change and `store.hideVolumeSlider` on close.
+ * Calls `setTrackVolumeAction` (history-aware) on commit and
+ * `store.hideVolumeSlider` on close.
  *
  * No props required — everything comes from the store.
  */
@@ -19,7 +20,6 @@ const VolumeSlider: React.FC = () => {
   const { t } = useLocale();
   const showVolumeSlider = useTimelineStore(s => s.showVolumeSlider);
   const tracks = useTimelineStore(s => s.tracks);
-  const setTrackVolume = useTimelineStore(s => s.setTrackVolume);
   const hideVolumeSlider = useTimelineStore(s => s.hideVolumeSlider);
 
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -148,7 +148,7 @@ const VolumeSlider: React.FC = () => {
     const handleMouseUp = () => {
       isDraggingRef.current = false;
       if (trackId) {
-        setTrackVolume(trackId, localVolumeRef.current);
+        setTrackVolumeAction(() => useTimelineStore.getState(), trackId, localVolumeRef.current);
       }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -156,7 +156,7 @@ const VolumeSlider: React.FC = () => {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [calculateVolume, updateVolume, setTrackVolume, trackId, isLocked]);
+  }, [calculateVolume, updateVolume, trackId, isLocked]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (isLocked) {
@@ -181,7 +181,7 @@ const VolumeSlider: React.FC = () => {
     const handleTouchEnd = () => {
       isDraggingRef.current = false;
       if (trackId) {
-        setTrackVolume(trackId, localVolumeRef.current);
+        setTrackVolumeAction(() => useTimelineStore.getState(), trackId, localVolumeRef.current);
       }
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
@@ -189,7 +189,7 @@ const VolumeSlider: React.FC = () => {
 
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [calculateVolume, updateVolume, setTrackVolume, trackId, isLocked]);
+  }, [calculateVolume, updateVolume, trackId, isLocked]);
 
   if (!mounted || !isVisible) return null;
 
@@ -290,7 +290,7 @@ const VolumeSlider: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               updateVolume(next);
-              if (trackId) setTrackVolume(trackId, next);
+              if (trackId) setTrackVolumeAction(() => useTimelineStore.getState(), trackId, next);
             }
           }}
         >

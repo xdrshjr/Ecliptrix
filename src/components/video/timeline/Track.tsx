@@ -2,7 +2,12 @@
 
 import React, { useRef } from 'react';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
-import { useTimelineStore, removeTrackAction } from './store';
+import {
+  useTimelineStore,
+  removeTrackAction,
+  toggleTrackLockAction,
+  toggleTrackVisibilityAction,
+} from './store';
 import { TrackTypeUtils } from './domain';
 import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
@@ -48,8 +53,6 @@ const Track: React.FC<TrackProps> = ({
   const dragPreview = useTimelineStore(s => s.dragPreview);
 
   // Store actions
-  const toggleTrackLock = useTimelineStore(s => s.toggleTrackLock);
-  const toggleTrackVisibility = useTimelineStore(s => s.toggleTrackVisibility);
   const selectAllTrackItems = useTimelineStore(s => s.selectAllTrackItems);
   const setMaterialDragOver = useTimelineStore(s => s.setMaterialDragOver);
   const clearMaterialDragOver = useTimelineStore(s => s.clearMaterialDragOver);
@@ -163,11 +166,11 @@ const Track: React.FC<TrackProps> = ({
   };
 
   const handleLockClick = () => {
-    toggleTrackLock(trackId);
+    toggleTrackLockAction(() => useTimelineStore.getState(), trackId);
   };
 
   const handleVisibilityClick = () => {
-    toggleTrackVisibility(trackId);
+    toggleTrackVisibilityAction(() => useTimelineStore.getState(), trackId);
   };
 
   const handleSelectAllClick = () => {
@@ -456,7 +459,7 @@ const Track: React.FC<TrackProps> = ({
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isVisible
                     ? 'bg-muted text-muted-foreground hover:bg-accent'
-                    : 'bg-accent text-muted-foreground hover:bg-accent'
+                    : 'bg-accent text-muted-foreground hover:bg-accent/80'
                 }`}
                 aria-label={track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
               >
