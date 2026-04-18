@@ -280,26 +280,28 @@ export class TimelineAggregate {
    */
   toggleTrackMute(trackId: string): void {
     const track = this.findTrackOrThrow(trackId);
+    if (track.isLocked) return;
     track.toggleMute();
   }
 
   /**
    * Toggle a track's visibility.
-   * @throws Error if the track is not found.
-   * @throws TrackLockedError if the track is locked.
+   * Silently no-ops for locked tracks (UI keeps the button disabled; this is
+   * the aggregate-side guard for any code path that bypasses the UI).
    */
   toggleTrackVisibility(trackId: string): void {
     const track = this.findTrackOrThrow(trackId);
+    if (track.isLocked) return;
     track.toggleVisibility();
   }
 
   /**
    * Set a track's volume.
-   * @throws Error if the track is not found.
-   * @throws TrackLockedError if the track is locked.
+   * Silently no-ops for locked tracks.
    */
   setTrackVolume(trackId: string, volume: Volume): void {
     const track = this.findTrackOrThrow(trackId);
+    if (track.isLocked) return;
     track.setVolume(volume);
   }
 

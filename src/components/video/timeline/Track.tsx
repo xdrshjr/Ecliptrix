@@ -164,10 +164,12 @@ const Track: React.FC<TrackProps> = ({
   };
 
   const handleVisibilityClick = () => {
+    if (track.isLocked) return;
     toggleTrackVisibility(trackId);
   };
 
   const handleSelectAllClick = () => {
+    if (track.isLocked) return;
     selectAllTrackItems(trackId);
   };
 
