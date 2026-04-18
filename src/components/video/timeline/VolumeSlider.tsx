@@ -62,6 +62,16 @@ const VolumeSlider: React.FC = () => {
       if (isDraggingRef.current) return;
       const target = event.target as Node;
       if (sliderRef.current && sliderRef.current.contains(target)) return;
+
+      // Let the owning volume button's onClick drive the toggle —
+      // otherwise we race with it and cannot close on a second click.
+      if (popoverId) {
+        const owner = document.querySelector<HTMLElement>(
+          `[aria-controls~="${CSS.escape(popoverId)}"]`,
+        );
+        if (owner && owner.contains(target)) return;
+      }
+
       hideVolumeSlider();
     };
 

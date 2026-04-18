@@ -2503,7 +2503,7 @@ export const translations: Record<string, Translations> = {
       brandSubtitle: 'Where light and shadow collide',
       languageSelector: 'Language',
       english: 'English',
-      chinese: 'Chinese',
+      chinese: '中文',
       returnToHomepage: 'Return to homepage',
       switchToLightMode: 'Switch to light mode',
       switchToDarkMode: 'Switch to dark mode',
@@ -5006,7 +5006,7 @@ export const translations: Record<string, Translations> = {
     header: {
       brandSubtitle: '光与影之交汇',
       languageSelector: '语言',
-      english: '英文',
+      english: 'English',
       chinese: '中文',
       returnToHomepage: '返回首页',
       switchToLightMode: '切换到亮色模式',

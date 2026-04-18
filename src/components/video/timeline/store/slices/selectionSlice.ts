@@ -34,7 +34,6 @@ export interface SelectionSlice {
   deselectAll: () => void;
   /** Drop any selected items that belong to the given track. */
   clearItemsOfTrack: (trackId: string) => void;
-  setActiveTool: (tool: TimelineToolType) => void;
 
   // Query helpers
   isSelected: (itemId: string) => boolean;
@@ -91,10 +90,6 @@ export const createSelectionSlice: StateCreator<
     if (filtered.length !== get().selectedItems.length) {
       set({ selectedItems: filtered });
     }
-  },
-
-  setActiveTool: (tool: TimelineToolType) => {
-    set({ activeTool: tool });
   },
 
   isSelected: (itemId: string): boolean => {

@@ -725,6 +725,18 @@
   transform: scale(1.2);
 }
 
+.progress-slider:disabled {
+  cursor: not-allowed;
+}
+
+.progress-slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+.progress-slider:disabled::-webkit-slider-thumb:hover {
+  transform: none;
+}
+
 /* 控制按钮行 */
 .controls-row {
   display: flex;
@@ -778,6 +790,15 @@
 
 .control-btn:active {
   transform: translateY(0);
+}
+
+.control-btn:disabled,
+.control-btn:disabled:hover {
+  cursor: not-allowed;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted-foreground);
+  opacity: 0.5;
 }
 
 /* 播放按钮特殊样式 */

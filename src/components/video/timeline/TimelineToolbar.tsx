@@ -31,9 +31,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Read from store
-  const { activeTool, canUndo, canRedo, isExporting, isImporting, isExtractingSubtitles, selectedItemsCount } = useTimelineStore(
+  const { canUndo, canRedo, isExporting, isImporting, isExtractingSubtitles, selectedItemsCount } = useTimelineStore(
     useShallow((state) => ({
-      activeTool: state.activeTool,
       canUndo: state.canUndo,
       canRedo: state.canRedo,
       isExporting: state.isExporting,
@@ -46,7 +45,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   // Store actions
   const undo = useTimelineStore((state) => state.undo);
   const redo = useTimelineStore((state) => state.redo);
-  const setActiveTool = useTimelineStore((state) => state.setActiveTool);
 
   const handleDelete = useCallback(() => {
     const state = useTimelineStore.getState();
@@ -304,11 +302,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         )}
 
         <div className="hidden md:flex items-center space-x-1 text-xs">
-          <span>{t.timeline.status.currentTool.replace('{tool}',
-            activeTool === 'select' ? t.timeline.toolbar.select :
-            activeTool === 'cut' ? t.timeline.toolbar.cut :
-            t.timeline.toolbar.select
-          )}</span>
+          <span>{t.timeline.status.currentTool.replace('{tool}', t.timeline.toolbar.select)}</span>
         </div>
       </div>
 
