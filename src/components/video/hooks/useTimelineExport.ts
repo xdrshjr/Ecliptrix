@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
 import { TimelineRepository, getSerializedTrackKind } from '../timeline/infrastructure';
 import type { TimelineData, MaterialData } from '../timeline/domain/types';
@@ -6,6 +6,7 @@ import { VideoEditingLogger } from '../utils';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { deriveTrackDisplayName } from '../timeline/trackDisplayName';
+import { useTimelineStore } from '../timeline/store';
 
 export interface UseTimelineExportReturn {
   isExporting: boolean;
@@ -44,6 +45,9 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
   // 状态管理
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // 同步再入防抖：React useState 更新异步，快速按键可能在 state 未刷新前再次进入，
+  // 用 ref 做同步闸门；同时把 store 的 isExporting flag 一并写真，让工具栏 disabled 生效。
+  const exportingRef = useRef(false);
 
   // 清除错误信息
   const clearError = useCallback(() => {
@@ -55,8 +59,11 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
     timelineState: TimelineState,
     materials: MaterialItem[]
   ) => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     try {
       setIsExporting(true);
+      useTimelineStore.getState().setExporting(true);
       setExportError(null);
 
       logger.info('开始导出时间轴JSON', {
@@ -193,6 +200,8 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
 
     } finally {
       setIsExporting(false);
+      useTimelineStore.getState().setExporting(false);
+      exportingRef.current = false;
     }
   }, [taskId, repository, logger, showSuccess, showError, t]);
 

@@ -1007,6 +1007,8 @@ export interface Translations {
       fullscreen: string;
       seekAriaLabel: string;
       volumeAriaLabel: string;
+      mute: string;
+      unmute: string;
     };
     info: {
       title: string;
@@ -1032,6 +1034,7 @@ export interface Translations {
       exportingVideoWithRatio: string;
       exportVideoWithRatio: string;
       selectAspectRatio: string;
+      selected: string;
     };
   };
   videoExportProgressModal: {
@@ -3493,6 +3496,8 @@ export const translations: Record<string, Translations> = {
         fullscreen: 'Fullscreen',
         seekAriaLabel: 'Seek within video',
         volumeAriaLabel: 'Volume',
+        mute: 'Mute',
+        unmute: 'Unmute',
       },
       info: {
         title: 'Video Info',
@@ -3518,6 +3523,7 @@ export const translations: Record<string, Translations> = {
         exportingVideoWithRatio: 'Exporting video with aspect ratio',
         exportVideoWithRatio: 'Export video with aspect ratio',
         selectAspectRatio: 'Select aspect ratio',
+        selected: 'selected',
       },
     },
     videoExportProgressModal: {
@@ -5998,6 +6004,8 @@ export const translations: Record<string, Translations> = {
         fullscreen: '全屏',
         seekAriaLabel: '视频进度条',
         volumeAriaLabel: '音量',
+        mute: '静音',
+        unmute: '取消静音',
       },
       info: {
         title: '视频信息',
@@ -6023,6 +6031,7 @@ export const translations: Record<string, Translations> = {
         exportingVideoWithRatio: '导出带宽高比的影片',
         exportVideoWithRatio: '导出带宽高比的影片',
         selectAspectRatio: '选择宽高比',
+        selected: '已选中',
       },
     },
     videoExportProgressModal: {

@@ -136,6 +136,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const preloadTriggeredRef = useRef<Set<number>>(new Set());
   // 过渡代数计数器 - 每次 src 切换时递增，让旧的 loadeddata 回调失效
   const transitionIdRef = useRef(0);
+  // 记录点击静音按钮前的音量值，便于取消静音时恢复
+  const previousVolumeRef = useRef<number>(volume > 0 ? volume : 1);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
   
@@ -580,6 +582,16 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
     return () => observer.disconnect();
   }, []);
+
+  // 切换预览区静音状态：保存上一次非零音量，再次点击恢复
+  const handleVolumeToggleMute = useCallback(() => {
+    if (volume > 0) {
+      previousVolumeRef.current = volume;
+      handleVolumeChange(0);
+    } else {
+      handleVolumeChange(previousVolumeRef.current > 0 ? previousVolumeRef.current : 1);
+    }
+  }, [volume, handleVolumeChange]);
 
   // 处理视频比例切换 - 优化稳定性和日志记录
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
@@ -2106,11 +2118,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 <div className="right-controls">
                   <div className="volume-control">
                     <button
+                      type="button"
                       className="control-btn volume-btn"
-                      title={t.videoPlayerPanel.controls.volume}
+                      onClick={handleVolumeToggleMute}
+                      title={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
+                      aria-label={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
+                      aria-pressed={volume === 0}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6.343 6.343A8 8 0 004.222 12a8 8 0 002.121 5.657l1.414-1.414A6 6 0 016.222 12a6 6 0 011.535-4.243l-1.414-1.414zM12 6l-2 2H7a1 1 0 00-1 1v6a1 1 0 001 1h3l2 2V6z" />
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        {volume === 0 ? (
+                          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                        ) : volume < 0.5 ? (
+                          <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                        ) : volume < 1 ? (
+                          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                        ) : (
+                          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                        )}
                       </svg>
                     </button>
                     <input
@@ -2135,30 +2159,39 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               <div className="aspect-ratio-group">
                 <span className="info-label">{t.videoPlayerPanel.info.aspectRatio}</span>
                 <div className="aspect-ratio-buttons">
-                  {ASPECT_RATIOS.map((aspectRatio) => (
-                    <button
-                      key={aspectRatio.id}
-                      onClick={() => handleAspectRatioChange(aspectRatio)}
-                      className={`
-                        aspect-ratio-btn
-                        ${selectedAspectRatio.id === aspectRatio.id
-                          ? 'aspect-ratio-btn-active'
-                          : 'aspect-ratio-btn-inactive'
+                  {ASPECT_RATIOS.map((aspectRatio) => {
+                    const isSelected = selectedAspectRatio.id === aspectRatio.id;
+                    return (
+                      <button
+                        key={aspectRatio.id}
+                        type="button"
+                        onClick={() => handleAspectRatioChange(aspectRatio)}
+                        className={`
+                          aspect-ratio-btn
+                          ${isSelected
+                            ? 'aspect-ratio-btn-active'
+                            : 'aspect-ratio-btn-inactive'
+                          }
+                        `}
+                        title={aspectRatio.description}
+                        tabIndex={0}
+                        aria-pressed={isSelected}
+                        aria-label={
+                          isSelected
+                            ? `${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description} — ${t.videoPlayerPanel.accessibility.selected}`
+                            : `${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description}`
                         }
-                      `}
-                      title={aspectRatio.description}
-                      tabIndex={0}
-                      aria-label={`${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description}`}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleAspectRatioChange(aspectRatio);
-                        }
-                      }}
-                    >
-                      {aspectRatio.label}
-                    </button>
-                  ))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleAspectRatioChange(aspectRatio);
+                          }
+                        }}
+                      >
+                        {aspectRatio.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

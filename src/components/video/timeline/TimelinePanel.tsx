@@ -294,11 +294,23 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const handleAddSubtitleRef = useRef<() => void | Promise<void>>(() => {});
 
   useEffect(() => {
+    // Only these input types are text-editing; range/checkbox/button etc. share
+    // tagName='INPUT' but must NOT swallow global shortcuts (Ctrl+Z, Ctrl+E, …).
+    const EDITABLE_INPUT_TYPES = new Set([
+      'text', 'search', 'email', 'password', 'url', 'tel', 'number', 'date',
+      'datetime-local', 'month', 'time', 'week',
+    ]);
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore when focus is on text-editing elements.
-      const active = document.activeElement as HTMLElement | null;
+      const active = document.activeElement as (HTMLElement & Partial<HTMLInputElement>) | null;
+      const isEditableInput =
+        !!active &&
+        active.tagName === 'INPUT' &&
+        EDITABLE_INPUT_TYPES.has(((active as HTMLInputElement).type || 'text').toLowerCase()) &&
+        !(active as HTMLInputElement).readOnly &&
+        !(active as HTMLInputElement).disabled;
       const isTextInput = !!active && (
-        active.tagName === 'INPUT' ||
+        isEditableInput ||
         active.tagName === 'TEXTAREA' ||
         active.isContentEditable === true
       );
@@ -330,6 +342,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         handleCopyRef.current();
       } else if (ctrl && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
+        // Defensive short-circuit — export hook also guards synchronously via ref.
+        if (useTimelineStore.getState().isExporting) return;
         handleExportJSONRef.current();
       } else if (!ctrl && !e.shiftKey && !e.altKey && !isInteractive && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();

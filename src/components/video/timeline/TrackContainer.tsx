@@ -118,16 +118,20 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     }
   };
 
-  // 检测鼠标位置是否在素材上方
-  const isMouseOverTimelineItem = (e: React.MouseEvent): boolean => {
+  // 判断指针当前是否位于交互区域（时间轴素材或左侧轨道控制列）。
+  // 这两类元素有自己的点击/拖动语义，不应触发拖拽式横向滚动。
+  const isPointerOverInteractiveArea = (e: React.MouseEvent): boolean => {
     const target = e.target as HTMLElement;
-    return target.closest('.timeline-item') !== null;
+    return (
+      target.closest('.timeline-item') !== null ||
+      target.closest('.track-controls') !== null
+    );
   };
 
   // 更新鼠标样式
   const updateCursorStyle = (e: React.MouseEvent) => {
-    const isOverItem = isMouseOverTimelineItem(e);
-    const newCursor = isOverItem ? 'default' : 'grab';
+    const isOverInteractive = isPointerOverInteractiveArea(e);
+    const newCursor = isOverInteractive ? 'default' : 'grab';
     if (dragScrollState.currentCursor !== newCursor) {
       setDragScrollState(prev => ({ ...prev, currentCursor: newCursor }));
     }
@@ -135,7 +139,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
 
   // 处理鼠标按下事件（拖拽滚动）
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isMouseOverTimelineItem(e)) return;
+    if (isPointerOverInteractiveArea(e)) return;
     if (e.button !== 0) return;
     e.preventDefault();
 

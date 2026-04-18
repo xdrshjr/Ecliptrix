@@ -176,6 +176,7 @@ const Track: React.FC<TrackProps> = ({
 
   const handleSelectAllClick = () => {
     if (track.items.length === 0) return;
+    if (track.isLocked) return;
     selectAllTrackItems(trackId);
   };
 
@@ -395,20 +396,28 @@ const Track: React.FC<TrackProps> = ({
             <div className="relative group">
               <button
                 onClick={handleSelectAllClick}
-                disabled={track.items.length === 0}
-                title={track.items.length === 0
-                  ? t.timeline.track.selectAllEmptyHint
-                  : t.timeline.track.selectAll}
-                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                disabled={track.items.length === 0 || track.isLocked}
+                title={
                   track.items.length === 0
+                    ? t.timeline.track.selectAllEmptyHint
+                    : track.isLocked
+                      ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
+                      : t.timeline.track.selectAll
+                }
+                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                  (track.items.length === 0 || track.isLocked)
                     ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
                     : allItemsSelected
                       ? 'bg-primary/10 text-primary hover:bg-primary/20'
                       : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
-                aria-label={track.items.length === 0
-                  ? `${t.timeline.track.selectAll} — ${t.timeline.track.selectAllEmptyHint}`
-                  : t.timeline.track.selectAll}
+                aria-label={
+                  track.items.length === 0
+                    ? `${t.timeline.track.selectAll} — ${t.timeline.track.selectAllEmptyHint}`
+                    : track.isLocked
+                      ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
+                      : t.timeline.track.selectAll
+                }
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M3 5H1v16c0 1.1.9 2 2 2h16v-2H3V5zm18-4H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 16H7V3h14v14zm-10-7l1.41 1.41L16 8.83 20.59 13.41 22 12l-6-6-4 4z"/>
@@ -418,7 +427,9 @@ const Track: React.FC<TrackProps> = ({
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.items.length === 0
                       ? t.timeline.track.selectAllEmptyHint
-                      : t.timeline.track.selectAll}
+                      : track.isLocked
+                        ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
+                        : t.timeline.track.selectAll}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
