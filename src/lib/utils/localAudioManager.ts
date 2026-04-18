@@ -18,6 +18,8 @@ class LocalAudioManager {
   private readonly MAX_CACHE_AGE = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor() {
+    // SSR guard: skip browser-only initialization on the server
+    if (typeof window === 'undefined') return;
     this.loadCacheFromStorage();
     this.startCleanupTimer();
   }
@@ -26,6 +28,9 @@ class LocalAudioManager {
    * 存储音频文件到本地
    */
   async storeAudioFile(fileName: string, blob: Blob): Promise<string> {
+    if (typeof window === 'undefined') {
+      throw new Error('storeAudioFile is browser-only');
+    }
     try {
       console.log('[LocalAudioManager] 存储音频文件', {
         fileName,
@@ -190,6 +195,7 @@ class LocalAudioManager {
    * 从localStorage加载缓存元数据
    */
   private loadCacheFromStorage(): void {
+    if (typeof localStorage === 'undefined') return;
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
@@ -207,6 +213,7 @@ class LocalAudioManager {
    * 保存缓存元数据到localStorage
    */
   private saveCacheToStorage(): void {
+    if (typeof localStorage === 'undefined') return;
     try {
       const metadata: Record<string, { fileName: string; createdAt: string; size: number }> = {};
       
@@ -288,6 +295,7 @@ class LocalAudioManager {
    * 启动定期清理定时器
    */
   private startCleanupTimer(): void {
+    if (typeof window === 'undefined') return;
     // 每小时清理一次
     setInterval(() => {
       console.log('[LocalAudioManager] 执行定期清理');

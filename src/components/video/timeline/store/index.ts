@@ -39,10 +39,14 @@ export {
   toggleTrackVisibilityAction,
   setTrackVolumeAction,
   removeTrackAction,
+  addTrackAction,
 } from './actions/trackActions';
 export type {
   RemoveTrackGroupKey,
   RemoveTrackResult,
+  AddTrackType,
+  AddTrackParams,
+  AddTrackResult,
 } from './actions/trackActions';
 export {
   undoAction,

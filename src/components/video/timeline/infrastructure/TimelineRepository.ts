@@ -17,6 +17,19 @@ import type { ITimelineRepository, ExportMetadata } from '../domain/ports';
 import type { TimelineData, TrackData, TimelineItemData, MaterialData } from '../domain/types';
 import { TimelineExportError, TimelineImportError } from './errors';
 
+/**
+ * Ensure legacy track names carry a numeric suffix. Older exports stored names
+ * like "Video Track" without a number, which would display identically for
+ * every track after import. If the name already ends in a digit, return as-is;
+ * otherwise append the trailing number parsed from the id (e.g. "-3").
+ */
+function normalizeTrackName(name: string, id: string): string {
+  if (/\d+\s*$/.test(name)) return name;
+  const match = id.match(/-(\d+)$/);
+  if (!match) return name;
+  return `${name} ${match[1]}`;
+}
+
 // ---------------------------------------------------------------------------
 // TimelineExportData — the on-disk JSON shape
 // ---------------------------------------------------------------------------
@@ -255,7 +268,7 @@ export class TimelineRepository implements ITimelineRepository {
       scrollLeft: exportData.timeline.scrollLeft ?? 0,
       tracks: exportData.tracks.map((track): TrackData => ({
         id: track.id,
-        name: track.name,
+        name: normalizeTrackName(track.name, track.id),
         type: track.type,
         height: track.height,
         isLocked: track.isLocked ?? false,

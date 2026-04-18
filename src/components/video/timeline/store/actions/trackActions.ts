@@ -6,6 +6,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { clampVolume } from '../../constants';
 
 /**
  * Toggle the locked state of a track.
@@ -56,10 +57,123 @@ export function setTrackVolumeAction(
   trackId: string,
   volume: number,
 ): void {
+  const clamped = clampVolume(volume);
   const state = get();
-  state.recordAction('TRACK_VOLUME', { trackId, volume });
-  state.setTrackVolume(trackId, volume);
+  state.recordAction('TRACK_VOLUME', { trackId, volume: clamped });
+  state.setTrackVolume(trackId, clamped);
   scheduleNextStateCapture(get);
+}
+
+// ---------------------------------------------------------------------------
+// Add track
+// ---------------------------------------------------------------------------
+
+export type AddTrackType = 'video' | 'image' | 'audio' | 'subtitle';
+
+export interface AddTrackParams {
+  type: AddTrackType;
+  /** Localized base name (e.g. "Video Track"); caller supplies to keep store i18n-agnostic. */
+  baseTrackName: string;
+}
+
+export interface AddTrackResult {
+  trackId: string;
+}
+
+/**
+ * Insert a new track into the timeline, recording history so Undo works.
+ *
+ * Group-aware placement: video/image/audio/subtitle each live in their own
+ * group; new tracks are appended to the end of their own group (or inserted
+ * before the first track of a higher-priority group if none exist).
+ * Monotonic numbering based on the highest existing suffix in the same group.
+ */
+export function addTrackAction(
+  get: () => TimelineStore,
+  { type, baseTrackName }: AddTrackParams,
+): AddTrackResult {
+  const state = get();
+  const existingIds = state.tracks.map(tr => tr.id);
+
+  const idPrefix = type === 'image' ? 'image-track' : `${type}-track`;
+  const domainType: 'video' | 'audio' | 'subtitle' =
+    type === 'image' ? 'video' : type;
+
+  const sameGroupTracks = state.tracks.filter(tr => {
+    if (type === 'image') return tr.id.startsWith('image-track');
+    if (type === 'video') return tr.type === 'video' && !tr.id.startsWith('image-track');
+    return tr.type === type;
+  });
+
+  const maxExistingNumber = sameGroupTracks.reduce((max, tr) => {
+    const m = tr.id.match(/-(\d+)$/) ?? tr.name.match(/(\d+)\s*$/);
+    const n = m ? parseInt(m[1], 10) : 0;
+    return n > max ? n : max;
+  }, 0);
+
+  let trackNumber = maxExistingNumber + 1;
+  let trackId = `${idPrefix}-${trackNumber}`;
+  while (existingIds.includes(trackId)) {
+    trackNumber++;
+    trackId = `${idPrefix}-${trackNumber}`;
+  }
+  const trackName = `${baseTrackName} ${trackNumber}`;
+
+  const currentData = state.exportToData();
+  const typeOrder = { video: 0, image: 1, audio: 2, subtitle: 3 } as const;
+  type GroupKey = keyof typeof typeOrder;
+  const getGroupKey = (tr: { id: string; type: string }): GroupKey =>
+    tr.id.startsWith('image-track') ? 'image' : (tr.type as GroupKey);
+
+  const requestedGroup: GroupKey = type;
+  const sameGroupExisting = currentData.tracks.filter(
+    tr => getGroupKey(tr) === requestedGroup,
+  );
+
+  let insertIndex = currentData.tracks.length;
+  let orderValue: number;
+
+  if (sameGroupExisting.length > 0) {
+    const lastSame = sameGroupExisting[sameGroupExisting.length - 1];
+    insertIndex = currentData.tracks.indexOf(lastSame) + 1;
+    orderValue = lastSame.order + 1;
+  } else {
+    const priority = typeOrder[requestedGroup];
+    const insertBeforeIndex = currentData.tracks.findIndex(
+      tr => typeOrder[getGroupKey(tr)] > priority,
+    );
+    if (insertBeforeIndex === -1) {
+      insertIndex = currentData.tracks.length;
+      orderValue = currentData.tracks.length;
+    } else {
+      insertIndex = insertBeforeIndex;
+      orderValue = currentData.tracks[insertBeforeIndex].order;
+    }
+  }
+
+  const newTrack = {
+    id: trackId,
+    name: trackName,
+    type: domainType,
+    height: type === 'subtitle' ? 50 : type === 'audio' ? 60 : 80,
+    isLocked: false,
+    isMuted: false,
+    isVisible: true,
+    volume: clampVolume(100),
+    order: orderValue,
+    items: [],
+  };
+
+  const updatedTracks = [...currentData.tracks];
+  updatedTracks.splice(insertIndex, 0, newTrack);
+  updatedTracks.forEach((tr, i) => { tr.order = i; });
+
+  // Record action BEFORE the mutation so the before-snapshot is correct.
+  state.recordAction('TRACK_ADD', { trackId, trackType: type });
+  state.importFromData({ ...currentData, tracks: updatedTracks });
+  scheduleNextStateCapture(get);
+
+  return { trackId };
 }
 
 export type RemoveTrackGroupKey = 'video' | 'image' | 'audio' | 'subtitle';

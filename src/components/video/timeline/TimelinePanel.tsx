@@ -11,11 +11,13 @@ import {
   useTimelineStore,
   removeItemsAction,
   addItemAction,
+  addTrackAction,
 } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
+import { clampVolume, VOLUME_DEFAULT } from './constants';
 import { http, ApiError } from '@/lib/api/http-client';
 
 // ---------------------------------------------------------------------------
@@ -94,6 +96,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const lastExternalUpdateIdRef = useRef<string | null>(null);
   const lastProcessedMaterialsTimestampRef = useRef<number | undefined>(undefined);
 
+  // Track id awaiting auto-scroll after addTrack (consumed by TrackContainer).
+  // State, not ref, so TrackContainer re-renders and its effect fires.
+  const [pendingScrollTrackId, setPendingScrollTrackId] = React.useState<string | null>(null);
+  const handleScrollConsumed = useCallback(() => {
+    setPendingScrollTrackId(null);
+  }, []);
+
   // Refs for stable callback access in mount-only effects (avoids stale closure)
   const onTimelineStateChangeRef = useRef(onTimelineStateChange);
   onTimelineStateChangeRef.current = onTimelineStateChange;
@@ -114,8 +123,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     const state = useTimelineStore.getState();
     // Only init if tracks are empty (first mount)
     if (state.tracks.length === 0) {
-      const defaultTrack = (id: string, name: string, type: 'video' | 'audio' | 'subtitle', order: number, volume = 100, height = 80) => ({
-        id, name, type, height, isLocked: false, isMuted: false, isVisible: true, volume, order, items: [] as any[],
+      const defaultTrack = (
+        id: string,
+        name: string,
+        type: 'video' | 'audio' | 'subtitle',
+        order: number,
+        volume: number = VOLUME_DEFAULT,
+        height = 80,
+      ) => ({
+        id, name, type, height,
+        isLocked: false, isMuted: false, isVisible: true,
+        volume: clampVolume(volume), order, items: [] as any[],
       });
       state.initTimeline({
         currentTime: 0,
@@ -374,105 +392,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [materialsToAdd, handleAddMaterialsToTimeline]);
 
   // ---------------------------------------------------------------------------
-  // Track operations (still local since addTrack needs naming logic)
+  // Track operations — delegates to addTrackAction; wrapper supplies i18n name
+  // and captures the new trackId for auto-scroll.
   // ---------------------------------------------------------------------------
   const handleAddTrack = useCallback((type: 'video' | 'image' | 'audio' | 'subtitle') => {
-    const state = useTimelineStore.getState();
-    const existingIds = state.tracks.map(tr => tr.id);
-
-    // image tracks are stored with domain type='video' and distinguished by id prefix
-    const idPrefix = type === 'image' ? 'image-track' : `${type}-track`;
-    const domainType: 'video' | 'audio' | 'subtitle' = type === 'image' ? 'video' : type;
-
-    // Select tracks in the same logical group (image vs video separated by id prefix)
-    const sameGroupTracks = state.tracks.filter(tr => {
-      if (type === 'image') return tr.id.startsWith('image-track');
-      if (type === 'video') return tr.type === 'video' && !tr.id.startsWith('image-track');
-      return tr.type === type;
-    });
-
-    // Monotonic numbering: max(existing suffix) + 1 (never reuses deleted numbers)
-    const maxExistingNumber = sameGroupTracks.reduce((max, tr) => {
-      const m = tr.id.match(/-(\d+)$/) ?? tr.name.match(/(\d+)\s*$/);
-      const n = m ? parseInt(m[1], 10) : 0;
-      return n > max ? n : max;
-    }, 0);
-
-    let trackNumber = maxExistingNumber + 1;
-    let trackId = `${idPrefix}-${trackNumber}`;
-    while (existingIds.includes(trackId)) {
-      trackNumber++;
-      trackId = `${idPrefix}-${trackNumber}`;
-    }
-
     const baseTrackName =
       type === 'video' ? t.timeline.track.videoTrack :
       type === 'image' ? t.timeline.track.imageTrack :
       type === 'audio' ? t.timeline.track.audioTrack :
       t.timeline.track.subtitleTrack;
-    const trackName = `${baseTrackName} ${trackNumber}`;
 
-    const currentData = state.exportToData();
-
-    // Find insertion point: after the last track of the same logical group.
-    // image-tracks carry type='video' but belong to their own 'image' group,
-    // so we key off id-prefix to avoid inserting new Video tracks after Image.
-    const typeOrder = { video: 0, image: 1, audio: 2, subtitle: 3 } as const;
-    type GroupKey = keyof typeof typeOrder;
-
-    const getGroupKey = (tr: { id: string; type: string }): GroupKey => {
-      if (tr.id.startsWith('image-track')) return 'image';
-      return tr.type as GroupKey;
-    };
-
-    const requestedGroup: GroupKey = type;
-    const sameGroupExisting = currentData.tracks.filter(
-      tr => getGroupKey(tr) === requestedGroup,
+    const { trackId } = addTrackAction(
+      () => useTimelineStore.getState(),
+      { type, baseTrackName },
     );
-
-    let insertIndex = currentData.tracks.length; // default: end
-    let orderValue: number;
-
-    if (sameGroupExisting.length > 0) {
-      const lastSame = sameGroupExisting[sameGroupExisting.length - 1];
-      insertIndex = currentData.tracks.indexOf(lastSame) + 1;
-      orderValue = lastSame.order + 1;
-    } else {
-      const priority = typeOrder[requestedGroup];
-      const insertBeforeIndex = currentData.tracks.findIndex(
-        tr => typeOrder[getGroupKey(tr)] > priority,
-      );
-      if (insertBeforeIndex === -1) {
-        insertIndex = currentData.tracks.length;
-        orderValue = currentData.tracks.length;
-      } else {
-        insertIndex = insertBeforeIndex;
-        orderValue = currentData.tracks[insertBeforeIndex].order;
-      }
-    }
-
-    const newTrack = {
-      id: trackId,
-      name: trackName,
-      type: domainType,
-      height: type === 'subtitle' ? 50 : type === 'audio' ? 60 : 80,
-      isLocked: false,
-      isMuted: false,
-      isVisible: true,
-      volume: 100,
-      order: orderValue,
-      items: [],
-    };
-
-    // Insert at calculated position and re-index orders
-    const updatedTracks = [...currentData.tracks];
-    updatedTracks.splice(insertIndex, 0, newTrack);
-    updatedTracks.forEach((tr, i) => { tr.order = i; });
-
-    state.importFromData({
-      ...currentData,
-      tracks: updatedTracks,
-    });
+    setPendingScrollTrackId(trackId);
   }, [t]);
 
   // ---------------------------------------------------------------------------
@@ -562,7 +496,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
     state.recordAction('UPDATE_ITEM', {
       operation: 'organize_materials',
-      description: '整理轨道中素材，去除间隙',
+      description: t.timeline.messages.organizeMaterialsDescription,
     });
 
     const currentData = state.exportToData();
@@ -756,16 +690,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onImportComplete?.(importedData.materials, importedData.timelineState);
         onTimelineStateChange?.(importedData.timelineState);
 
-        showSuccess(`项目文件导入成功！导入了 ${result.statistics?.imported_track_count || 0} 个轨道和 ${result.statistics?.imported_material_count || 0} 个素材。`);
+        showSuccess(
+          t.timeline.messages.importProjectSuccess
+            .replace('{trackCount}', String(result.statistics?.imported_track_count || 0))
+            .replace('{materialCount}', String(result.statistics?.imported_material_count || 0)),
+        );
       } else {
-        throw new Error('导入数据格式不正确');
+        throw new Error(t.timeline.messages.importProjectInvalidData);
       }
     } catch (error) {
-      showError(`项目导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      const errMsg = error instanceof Error ? error.message : t.timeline.messages.exportUnknownError;
+      showError(t.timeline.messages.importProjectError.replace('{error}', errMsg));
     } finally {
       useTimelineStore.getState().setImporting(false);
     }
-  }, [taskId, onImportComplete, onTimelineStateChange, showSuccess, showError]);
+  }, [taskId, onImportComplete, onTimelineStateChange, showSuccess, showError, t]);
 
   // ---------------------------------------------------------------------------
   // Subtitle editing (modal state)
@@ -889,6 +828,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onScroll={handleTrackScroll}
         onEditSubtitles={handleEditSubtitles}
         onAddTrack={handleAddTrack}
+        pendingScrollTrackId={pendingScrollTrackId}
+        onScrollConsumed={handleScrollConsumed}
       />
 
       {/* 字幕编辑模态框 */}

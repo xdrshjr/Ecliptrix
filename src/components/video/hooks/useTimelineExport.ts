@@ -4,6 +4,7 @@ import { TimelineRepository } from '../timeline/infrastructure';
 import type { TimelineData, MaterialData } from '../timeline/domain/types';
 import { VideoEditingLogger } from '../utils';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface UseTimelineExportReturn {
   isExporting: boolean;
@@ -36,6 +37,9 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
   // 通知系统
   const { showSuccess, showError } = useNotification();
 
+  // i18n
+  const { t } = useLocale();
+
   // 状态管理
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -62,11 +66,11 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
 
       // 验证输入数据
       if (!timelineState || !timelineState.tracks) {
-        throw new Error('无效的时间轴状态数据');
+        throw new Error(t.timeline.messages.exportInvalidTimelineState);
       }
 
       if (!Array.isArray(materials)) {
-        throw new Error('无效的素材数据');
+        throw new Error(t.timeline.messages.exportInvalidMaterials);
       }
 
       // Convert to domain-compatible shapes
@@ -79,40 +83,50 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
         snapToGrid: timelineState.snapToGrid,
         gridSize: timelineState.gridSize,
         scrollLeft: timelineState.scrollLeft,
-        tracks: timelineState.tracks.map(track => ({
-          id: track.id,
-          name: track.name,
-          type: track.type as 'video' | 'audio' | 'subtitle',
-          height: track.height,
-          isLocked: track.isLocked,
-          isMuted: track.isMuted,
-          isVisible: track.isVisible,
-          volume: track.volume,
-          order: track.order,
-          items: track.items.map(item => ({
-            id: item.id,
-            name: item.name,
-            type: item.type as 'video' | 'audio' | 'subtitle',
-            startTime: item.startTime,
-            duration: item.duration,
-            trackId: item.trackId,
-            color: item.color,
-            materialId: item.materialId,
-            clipStart: item.clipStart,
-            clipEnd: item.clipEnd,
-            originalDuration: item.originalDuration,
-            thumbnailUrl: item.thumbnailUrl,
-            waveformData: item.waveformData,
-            text: item.text,
-            volume: item.volume,
-            opacity: item.opacity,
-            isSelected: item.isSelected,
-            originalMaterialType: item.originalMaterialType,
-            subtitleStyle: item.subtitleStyle,
-            imagePosition: item.imagePosition,
-          })),
-        })),
-      };
+        tracks: timelineState.tracks.map(track => {
+          const trackBase = {
+            id: track.id,
+            name: track.name,
+            type: track.type as 'video' | 'audio' | 'subtitle',
+            height: track.height,
+            isLocked: track.isLocked,
+            isMuted: track.isMuted,
+            isVisible: track.isVisible,
+            order: track.order,
+            items: track.items.map(item => {
+              const itemBase = {
+                id: item.id,
+                name: item.name,
+                type: item.type as 'video' | 'audio' | 'subtitle',
+                startTime: item.startTime,
+                duration: item.duration,
+                trackId: item.trackId,
+                color: item.color,
+                materialId: item.materialId,
+                clipStart: item.clipStart,
+                clipEnd: item.clipEnd,
+                originalDuration: item.originalDuration,
+                thumbnailUrl: item.thumbnailUrl,
+                waveformData: item.waveformData,
+                text: item.text,
+                opacity: item.opacity,
+                isSelected: item.isSelected,
+                originalMaterialType: item.originalMaterialType,
+                subtitleStyle: item.subtitleStyle,
+                imagePosition: item.imagePosition,
+              };
+              // Subtitle items do not carry a volume field
+              return item.type === 'subtitle'
+                ? itemBase
+                : { ...itemBase, volume: item.volume };
+            }),
+          };
+          // Subtitle tracks do not carry a volume field
+          return track.type === 'subtitle'
+            ? trackBase
+            : { ...trackBase, volume: track.volume };
+        }),
+      } as TimelineData;
 
       const materialData: MaterialData[] = materials.map(m => ({
         id: m.id,
@@ -144,7 +158,10 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      showSuccess(`时间轴数据已成功导出为JSON文件: ${filename}`, 5000);
+      showSuccess(
+        t.timeline.messages.exportJsonSuccess.replace('{filename}', filename),
+        5000,
+      );
 
       logger.info('时间轴JSON导出成功', {
         fileName: filename,
@@ -152,10 +169,15 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
       });
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      const errorMessage = error instanceof Error
+        ? error.message
+        : t.timeline.messages.exportUnknownError;
       setExportError(errorMessage);
 
-      showError(`时间轴数据导出失败: ${errorMessage}`, 8000);
+      showError(
+        t.timeline.messages.exportJsonError.replace('{error}', errorMessage),
+        8000,
+      );
 
       logger.error('时间轴JSON导出失败', {
         error: errorMessage,
@@ -167,7 +189,7 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
     } finally {
       setIsExporting(false);
     }
-  }, [taskId, repository, logger, showSuccess, showError]);
+  }, [taskId, repository, logger, showSuccess, showError, t]);
 
   return {
     isExporting,

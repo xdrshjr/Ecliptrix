@@ -65,8 +65,11 @@ const Track: React.FC<TrackProps> = ({
   // Guard: track not found
   if (!track) return null;
 
-  // Derived display name (locale-aware)
+  // Derived display name.
+  // Prefer user-provided track.name if non-empty (honors renames); fall back to
+  // locale-aware derivation from id for legacy data that stored empty names.
   const trackDisplayName = (() => {
+    if (track.name && track.name.trim().length > 0) return track.name;
     const id = track.id;
     const match = id.match(/-(\d+)$/);
     const num = match ? parseInt(match[1]) : 0;
@@ -265,7 +268,11 @@ const Track: React.FC<TrackProps> = ({
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="track flex border-b border-border last:border-b-0" style={{ minWidth: '100%' }}>
+    <div
+      className="track flex border-b border-border last:border-b-0"
+      data-track-id={track.id}
+      style={{ minWidth: '100%' }}
+    >
       {/* Track controls panel */}
       <div className="track-controls w-48 bg-muted border-r border-border">
         <div

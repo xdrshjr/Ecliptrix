@@ -723,6 +723,15 @@ export interface Translations {
         organizeMaterialsSuccess: string;
         organizeMaterialsNoItems: string;
         featureComingSoon: string;
+        exportJsonSuccess: string;
+        exportJsonError: string;
+        exportInvalidTimelineState: string;
+        exportInvalidMaterials: string;
+        exportUnknownError: string;
+        organizeMaterialsDescription: string;
+        importProjectSuccess: string;
+        importProjectError: string;
+        importProjectInvalidData: string;
     };
     subtitleEditModal: {
       title: string;
@@ -3348,6 +3357,15 @@ export const translations: Record<string, Translations> = {
         organizeMaterialsSuccess: 'All materials have been successfully aligned to the left',
         organizeMaterialsNoItems: 'No material segments found, alignment failed',
         featureComingSoon: 'This feature is coming soon',
+        exportJsonSuccess: 'Timeline data successfully exported to JSON file: {filename}',
+        exportJsonError: 'Failed to export timeline data: {error}',
+        exportInvalidTimelineState: 'Invalid timeline state data',
+        exportInvalidMaterials: 'Invalid materials data',
+        exportUnknownError: 'Unknown error',
+        organizeMaterialsDescription: 'Organize track materials, remove gaps',
+        importProjectSuccess: 'Project file imported successfully! Imported {trackCount} tracks and {materialCount} materials.',
+        importProjectError: 'Project import failed: {error}',
+        importProjectInvalidData: 'Imported data format is invalid',
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -5829,6 +5847,15 @@ export const translations: Record<string, Translations> = {
           organizeMaterialsSuccess: '所有素材已向左对齐成功',
           organizeMaterialsNoItems: '无素材片段，对齐失败',
           featureComingSoon: '该功能即将推出',
+          exportJsonSuccess: '时间轴数据已成功导出为JSON文件: {filename}',
+          exportJsonError: '时间轴数据导出失败: {error}',
+          exportInvalidTimelineState: '无效的时间轴状态数据',
+          exportInvalidMaterials: '无效的素材数据',
+          exportUnknownError: '未知错误',
+          organizeMaterialsDescription: '整理轨道中素材，去除间隙',
+          importProjectSuccess: '项目文件导入成功！导入了 {trackCount} 个轨道和 {materialCount} 个素材。',
+          importProjectError: '项目导入失败: {error}',
+          importProjectInvalidData: '导入数据格式不正确',
         },
       subtitleEditModal: {
         title: '编辑字幕',

@@ -20,6 +20,10 @@ interface TrackContainerProps {
   onScroll?: (scrollLeft: number) => void;
   onEditSubtitles?: (trackId: string) => void;
   onAddTrack: (type: 'video' | 'image' | 'audio' | 'subtitle') => void;
+  /** Track id that should be scrolled into view on next render (e.g. after add). */
+  pendingScrollTrackId?: string | null;
+  /** Called once the container has consumed the pending-scroll request. */
+  onScrollConsumed?: () => void;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -27,6 +31,8 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onScroll,
   onEditSubtitles,
   onAddTrack,
+  pendingScrollTrackId,
+  onScrollConsumed,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -189,6 +195,41 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
       document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
   }, [dragScrollState.isDragging, dragScrollState.startX, dragScrollState.startScrollLeft, scrollRef, onScroll]);
+
+  // 新增轨道后，将新轨滚入可视区域（垂直方向）
+  // Precedence: use scrollRef (outer scroll container) for vertical scrollTop.
+  useEffect(() => {
+    if (!pendingScrollTrackId) return;
+    if (typeof window === 'undefined') return;
+    const scrollEl = scrollRef?.current;
+    if (!scrollEl) {
+      onScrollConsumed?.();
+      return;
+    }
+    const rafId = requestAnimationFrame(() => {
+      const el = scrollEl.querySelector<HTMLElement>(
+        `[data-track-id="${pendingScrollTrackId}"]`,
+      );
+      if (!el) {
+        onScrollConsumed?.();
+        return;
+      }
+      // Compute element position relative to the scroll container
+      const parentRect = scrollEl.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const elTopInParent = elRect.top - parentRect.top + scrollEl.scrollTop;
+      const elBottomInParent = elTopInParent + elRect.height;
+      const viewTop = scrollEl.scrollTop;
+      const viewBottom = viewTop + scrollEl.clientHeight;
+      if (elTopInParent < viewTop) {
+        scrollEl.scrollTop = Math.max(0, elTopInParent - 8);
+      } else if (elBottomInParent > viewBottom) {
+        scrollEl.scrollTop = elBottomInParent - scrollEl.clientHeight + 8;
+      }
+      onScrollConsumed?.();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [pendingScrollTrackId, scrollRef, onScrollConsumed]);
 
   // 处理Ctrl+滚轮缩放
   const handleWheel = useCallback((e: React.WheelEvent) => {
