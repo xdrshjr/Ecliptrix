@@ -15,6 +15,14 @@ export class VideoEditingLogger {
    * 记录信息级别日志
    */
   info(action: string, data?: Record<string, any>) {
+    // Gate: suppress in production unless explicitly enabled via
+    // NEXT_PUBLIC_VIDEO_EDIT_DEBUG. Cascading effect (intended): this also
+    // silences userAction / stateChange / performance / apiCall / apiComplete
+    // in prod because they all call this.info() internally. warn / error
+    // remain unconditional; apiError routes through error() and still surfaces.
+    if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_VIDEO_EDIT_DEBUG) {
+      return;
+    }
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level: 'INFO',

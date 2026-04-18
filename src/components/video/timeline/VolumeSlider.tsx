@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTimelineStore } from './store';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /**
  * VolumeSlider — Track volume control popover.
@@ -14,6 +15,7 @@ import { useTimelineStore } from './store';
  */
 
 const VolumeSlider: React.FC = () => {
+  const { t } = useLocale();
   const showVolumeSlider = useTimelineStore(s => s.showVolumeSlider);
   const tracks = useTimelineStore(s => s.tracks);
   const setTrackVolume = useTimelineStore(s => s.setTrackVolume);
@@ -46,26 +48,35 @@ const VolumeSlider: React.FC = () => {
     }
   }, [volume]);
 
-  // Click outside handler
+  // Click-outside + Escape handler
   useEffect(() => {
+    if (!isVisible) return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (isDraggingRef.current) return;
-
       const target = event.target as Node;
-
-      if (sliderRef.current && sliderRef.current.contains(target)) {
-        return;
-      }
-
+      if (sliderRef.current && sliderRef.current.contains(target)) return;
       hideVolumeSlider();
     };
 
-    if (isVisible) {
-      document.addEventListener('mousedown', handleClickOutside, true);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside, true);
-      };
-    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        // stopImmediatePropagation is required: the TimelinePanel global
+        // keydown handler is also bound to document and would otherwise
+        // still run and call deselectAll. stopPropagation alone does NOT
+        // block other listeners on the same target.
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        hideVolumeSlider();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [isVisible, hideVolumeSlider]);
 
   const calculateVolume = useCallback((clientX: number) => {
@@ -85,8 +96,22 @@ const VolumeSlider: React.FC = () => {
     e.preventDefault();
     isDraggingRef.current = true;
 
-    const newVolume = calculateVolume(e.clientX);
-    updateVolume(newVolume);
+    // If mousedown lands on the thumb, do NOT jump to the click position;
+    // drag continues via mousemove. Thumb is w-5 (20px) with translate(-50%)
+    // so centre is at (localVolumeRef/200)*width and hit radius is 10px.
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (rect) {
+      const thumbCenterPx = rect.left + (localVolumeRef.current / 200) * rect.width;
+      const THUMB_RADIUS_PX = 10;
+      const onThumb = Math.abs(e.clientX - thumbCenterPx) <= THUMB_RADIUS_PX;
+      if (!onThumb) {
+        const newVolume = calculateVolume(e.clientX);
+        updateVolume(newVolume);
+      }
+    } else {
+      const newVolume = calculateVolume(e.clientX);
+      updateVolume(newVolume);
+    }
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       moveEvent.preventDefault();
@@ -190,10 +215,43 @@ const VolumeSlider: React.FC = () => {
       <div className="relative">
         <div
           ref={trackRef}
-          className="relative w-full h-3 rounded-md cursor-pointer select-none"
+          role="slider"
+          tabIndex={0}
+          aria-label={t.timeline.toolbar.volumeControl}
+          aria-valuemin={0}
+          aria-valuemax={200}
+          aria-valuenow={displayVolume}
+          aria-valuetext={`${displayVolume}%`}
+          className="relative w-full h-3 rounded-md cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
           style={{ background: trackBackground }}
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
+          onKeyDown={(e) => {
+            let next = displayVolume;
+            let handled = true;
+            const step = e.shiftKey ? 10 : 1;
+            switch (e.key) {
+              case 'ArrowRight':
+              case 'ArrowUp':
+                next = Math.min(200, displayVolume + step);
+                break;
+              case 'ArrowLeft':
+              case 'ArrowDown':
+                next = Math.max(0, displayVolume - step);
+                break;
+              case 'Home': next = 0; break;
+              case 'End':  next = 200; break;
+              case 'PageUp':   next = Math.min(200, displayVolume + 10); break;
+              case 'PageDown': next = Math.max(0,   displayVolume - 10); break;
+              default: handled = false;
+            }
+            if (handled) {
+              e.preventDefault();
+              e.stopPropagation();
+              updateVolume(next);
+              if (trackId) setTrackVolume(trackId, next);
+            }
+          }}
         >
           {/* Thumb */}
           <div

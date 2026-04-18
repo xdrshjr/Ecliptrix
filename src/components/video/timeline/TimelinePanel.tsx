@@ -274,8 +274,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [isInteracting]);
 
   // ---------------------------------------------------------------------------
-  // Global keyboard shortcuts (Ctrl+Z, Ctrl+Y, Delete, Escape)
+  // Global keyboard shortcuts
+  // Refs are assigned further down after the handlers are declared, so the
+  // document-level listener always reaches the latest closures without
+  // re-subscribing. Placeholder values keep types honest before assignment.
   // ---------------------------------------------------------------------------
+  const handleCopyRef = useRef<() => void>(() => {});
+  const handleExportJSONRef = useRef<() => void>(() => {});
+  const handleAddEffectRef = useRef<() => void>(() => {});
+  const handleAddTransitionRef = useRef<() => void>(() => {});
+  const handleAddSubtitleRef = useRef<() => void | Promise<void>>(() => {});
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore when focus is on input elements
@@ -287,12 +296,29 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       );
       if (isInput) return;
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      if (ctrl && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         useTimelineStore.getState().undo();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      } else if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
         useTimelineStore.getState().redo();
+      } else if (ctrl && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        handleCopyRef.current();
+      } else if (ctrl && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        handleExportJSONRef.current();
+      } else if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        handleAddEffectRef.current();
+      } else if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        handleAddTransitionRef.current();
+      } else if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        void handleAddSubtitleRef.current();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         const state = useTimelineStore.getState();
         if (state.selectedItems.length > 0) {
@@ -412,10 +438,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   // Toolbar action handlers (complex operations not in store)
   // ---------------------------------------------------------------------------
-  const handleCut = useCallback(() => {
-    // placeholder
-  }, []);
-
   const handleCopy = useCallback(() => {
     const state = useTimelineStore.getState();
     if (state.selectedItems.length === 0) return;
@@ -796,6 +818,14 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     timelineExport.exportTimelineToJSON(ts, materials);
   }, [timelineExport, materials]);
 
+  // Assign-in-render: keeps the document keydown listener reaching the
+  // latest handler closures without re-subscribing every render.
+  handleCopyRef.current = handleCopy;
+  handleExportJSONRef.current = handleExportJSON;
+  handleAddEffectRef.current = handleAddEffect;
+  handleAddTransitionRef.current = handleAddTransition;
+  handleAddSubtitleRef.current = handleAddSubtitle;
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -809,7 +839,6 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onExportJSON={handleExportJSON}
         onImportJSON={handleImportJSON}
         onOrganizeMaterials={handleOrganizeMaterials}
-        onCut={handleCut}
         onCopy={handleCopy}
         onAddEffect={handleAddEffect}
         onAddTransition={handleAddTransition}

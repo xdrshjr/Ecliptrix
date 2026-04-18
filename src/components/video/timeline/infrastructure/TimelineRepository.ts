@@ -146,19 +146,22 @@ export class TimelineRepository implements ITimelineRepository {
         (sum, track) => sum + track.items.length,
         0
       );
+      // Empty timeline exports 0 instead of the aggregate's >0 invariant
+      // fallback (0.001). Re-import is safe: the aggregate re-clamps on load.
+      const effectiveTotalDuration = totalItems === 0 ? 0 : data.totalDuration;
 
       const exportData: TimelineExportData = {
         metadata: {
           exportedAt: metadata.exportedAt,
           version: metadata.version || EXPORT_VERSION,
           taskId: metadata.taskId,
-          totalDuration: data.totalDuration,
+          totalDuration: effectiveTotalDuration,
           trackCount: data.tracks.length,
           itemCount: totalItems,
         },
         timeline: {
           currentTime: data.currentTime,
-          totalDuration: data.totalDuration,
+          totalDuration: effectiveTotalDuration,
           zoomLevel: data.zoomLevel,
           playbackRate: data.playbackRate,
           isPlaying: data.isPlaying,

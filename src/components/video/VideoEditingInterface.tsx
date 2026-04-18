@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { VideoEditingLogger } from './utils/logger';
 import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment, ScriptSegment } from '@/types';
 import { useVideoEditingStore } from '@/stores';
 import ScriptPanel from './ScriptPanel';
@@ -215,7 +216,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const contentRef = useRef(content);
   contentRef.current = content;
 
-  console.log('[VideoEditingInterface] Restoring UI state:', {
+  const logger = useMemo(
+    () => new VideoEditingLogger({ taskId: taskId || 'unknown', component: 'VideoEditingInterface' }),
+    [taskId],
+  );
+
+  logger.debug('Restoring UI state', {
     taskId,
     hasContent: !!content,
     timelineCurrentTime,
@@ -230,7 +236,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isWorkflowConfigModalOpen,
     videoCutModalIsOpen: videoCutModal.isOpen,
     workflowConfigsCount: workflowConfigs.size,
-    timestamp: new Date().toISOString()
   });
 
   // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
@@ -281,7 +286,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       JSON.stringify(Object.fromEntries(workflowConfigs)) !== JSON.stringify(content.uiState?.workflowConfigs);
 
     if (hasStateChanged) {
-      console.log('[VideoEditingInterface] Persisting UI state:', {
+      logger.debug('Persisting UI state', {
         taskId,
         timelineCurrentTime,
         hasTimelineState: !!currentTimelineState,
@@ -294,7 +299,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isWorkflowConfigModalOpen,
         videoCutModalIsOpen: videoCutModal.isOpen,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
-        timestamp: new Date().toISOString()
       });
       onUpdateContent(updatedContent);
     }
@@ -312,7 +316,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     agentMode,
     videoCutModal,
     taskId,
-    content
+    content,
+    logger
   ]);
 
   // 组件挂载时清理残留的 isStreaming 状态
