@@ -35,6 +35,7 @@ const VolumeSlider: React.FC = () => {
 
   const trackData = tracks.find(t => t.id === trackId);
   const volume = trackData?.volume ?? 100;
+  const isLocked = trackData?.isLocked ?? false;
 
   useEffect(() => {
     setMounted(true);
@@ -92,6 +93,12 @@ const VolumeSlider: React.FC = () => {
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isLocked) {
+      // Locked tracks: block drag AND suppress focus so arrow keys don't act.
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
     e.stopPropagation();
     e.preventDefault();
     // preventDefault suppresses the default focus change that mousedown
@@ -134,9 +141,10 @@ const VolumeSlider: React.FC = () => {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [calculateVolume, updateVolume, setTrackVolume, trackId]);
+  }, [calculateVolume, updateVolume, setTrackVolume, trackId, isLocked]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (isLocked) return;
     e.stopPropagation();
     isDraggingRef.current = true;
 
@@ -162,7 +170,7 @@ const VolumeSlider: React.FC = () => {
 
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [calculateVolume, updateVolume, setTrackVolume, trackId]);
+  }, [calculateVolume, updateVolume, setTrackVolume, trackId, isLocked]);
 
   if (!mounted || !isVisible) return null;
 
@@ -220,17 +228,19 @@ const VolumeSlider: React.FC = () => {
         <div
           ref={trackRef}
           role="slider"
-          tabIndex={0}
+          tabIndex={isLocked ? -1 : 0}
+          aria-disabled={isLocked || undefined}
           aria-label={t.timeline.toolbar.volumeControl}
           aria-valuemin={0}
           aria-valuemax={200}
           aria-valuenow={displayVolume}
           aria-valuetext={`${displayVolume}%`}
-          className="relative w-full h-3 rounded-md cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className={`relative w-full h-3 rounded-md select-none focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
           style={{ background: trackBackground }}
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
           onKeyDown={(e) => {
+            if (isLocked) return;
             let next = displayVolume;
             let handled = true;
             const step = e.shiftKey ? 10 : 1;

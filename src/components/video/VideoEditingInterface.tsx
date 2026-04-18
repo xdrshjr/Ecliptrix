@@ -221,6 +221,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     [taskId],
   );
 
+  // Mirror timelineCurrentTime into a ref so effects (e.g. the document-level
+  // keydown listener) can read the latest value without being torn down each
+  // time the timeline ticker fires (~1 Hz at idle).
+  const timelineCurrentTimeRef = useRef(timelineCurrentTime);
+  useEffect(() => {
+    timelineCurrentTimeRef.current = timelineCurrentTime;
+  }, [timelineCurrentTime]);
+
   logger.debug('Restoring UI state', {
     taskId,
     hasContent: !!content,
@@ -331,10 +339,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     );
 
     if (hasStaleStreaming) {
-      console.log('[VideoEditingInterface] 清理残留的 isStreaming 状态', {
-        taskId,
-        timestamp: new Date().toISOString()
-      });
+      logger.info('清理残留的 isStreaming 状态', { taskId });
 
       const cleanedConversations = content.conversations.map(conv => ({
         ...conv,
@@ -360,76 +365,53 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       setCurrentDeviceType(deviceType);
       setShowMobileWarning(true);
       
-      console.warn('[VideoEditingInterface] Mobile device detected - showing restriction warning:', {
+      logger.warn('Mobile device detected - showing restriction warning', {
         taskId,
         deviceType,
         deviceInfo,
-        timestamp: new Date().toISOString(),
         note: 'This is a backup check - primary restriction should happen in Taskbar'
       });
     }
   }, [taskId]);
 
-  // 新增：全局键盘事件处理 - 空格键播放/暂停功能
+  // 全局键盘事件处理 - 空格键播放/暂停功能
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // 空格键播放/暂停：无论焦点在哪个面板，都从timeline游标位置播放/暂停
-      if (event.code === 'Space') {
-        // 检查是否在输入框中，如果是则不处理空格键
-        const target = event.target as HTMLElement;
-        const isInInputField = target.tagName === 'INPUT' || 
-                              target.tagName === 'TEXTAREA' || 
-                              target.contentEditable === 'true' ||
-                              target.closest('input') ||
-                              target.closest('textarea') ||
-                              target.closest('[contenteditable="true"]');
-        
-        if (!isInInputField && videoPlayerRef.current) {
-          event.preventDefault();
-          
-          console.log(`[VideoEditingInterface] 全局空格键触发播放/暂停`, {
-            taskId,
-            timelineCurrentTime: timelineCurrentTime.toFixed(2),
-            focusedElement: target.tagName,
-            focusedElementClass: target.className,
-            action: 'spacebar_global_playpause',
-            timestamp: new Date().toISOString()
-          });
+      if (event.code !== 'Space') return;
+      const target = event.target as HTMLElement;
+      const isInInputField =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true' ||
+        !!target.closest('input, textarea, [contenteditable="true"]');
+      if (isInInputField || !videoPlayerRef.current) return;
 
-          // 调用VideoPlayerPanel的从timeline游标位置播放/暂停方法
-          videoPlayerRef.current.handlePlayPauseFromTimeline(timelineCurrentTime);
-        }
-      }
+      event.preventDefault();
+      logger.debug('全局空格键触发播放/暂停', {
+        taskId,
+        timelineCurrentTime: timelineCurrentTimeRef.current.toFixed(2),
+        focusedElement: target.tagName,
+      });
+      videoPlayerRef.current.handlePlayPauseFromTimeline(timelineCurrentTimeRef.current);
     };
 
-    // 添加全局键盘事件监听器
     document.addEventListener('keydown', handleKeyDown);
-    
-    console.log(`[VideoEditingInterface] 全局键盘事件监听器已注册`, {
-      taskId,
-      supportedKeys: ['Space'],
-      description: '空格键从timeline游标位置播放/暂停，不受面板焦点影响',
-      timestamp: new Date().toISOString()
-    });
+    logger.debug('全局键盘事件监听器已注册', { taskId });
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      console.log(`[VideoEditingInterface] 全局键盘事件监听器已移除`, {
-        taskId,
-        timestamp: new Date().toISOString()
-      });
+      logger.debug('全局键盘事件监听器已移除', { taskId });
     };
-  }, [taskId, timelineCurrentTime]);
+  }, [taskId, logger]);
 
   // Mobile warning dialog close handler
   const handleCloseMobileWarning = useCallback(() => {
     setShowMobileWarning(false);
-    console.log('[VideoEditingInterface] Mobile warning dialog closed:', {
+    logger.info('Mobile warning dialog closed', {
       taskId,
       deviceType: currentDeviceType,
-      timestamp: new Date().toISOString()
     });
-  }, [taskId, currentDeviceType]);
+  }, [taskId, currentDeviceType, logger]);
 
   // 新增：处理timeline到视频播放器的实时跳转回调
   const handleVideoSeekRequired = useCallback(async (
@@ -437,43 +419,36 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     targetSequence: import('./types').VideoSequenceItem, 
     videoTime: number
   ) => {
-    console.log(`[VideoEditingInterface] Timeline触发视频播放器跳转`, {
+    logger.debug('Timeline触发视频播放器跳转', {
       compositionTime: compositionTime.toFixed(2),
       targetSequenceName: targetSequence.name,
       videoTime: videoTime.toFixed(2),
       hasVideoPlayerRef: !!videoPlayerRef.current,
-      timestamp: new Date().toISOString()
     });
 
     // 通过ref调用VideoPlayerPanel的组合跳转方法
     if (videoPlayerRef.current) {
       try {
         await videoPlayerRef.current.handleCompositionSeek(
-          compositionTime, 
-          targetSequence, 
-          videoTime, 
+          compositionTime,
+          targetSequence,
+          videoTime,
           'timeline'
         );
-        console.log(`[VideoEditingInterface] Timeline触发视频播放器跳转完成`, {
+        logger.debug('Timeline触发视频播放器跳转完成', {
           compositionTime: compositionTime.toFixed(2),
-          sequenceName: targetSequence.name
+          sequenceName: targetSequence.name,
         });
       } catch (error) {
-        console.error(`[VideoEditingInterface] Timeline触发视频播放器跳转失败`, {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          compositionTime: compositionTime.toFixed(2),
-          targetSequenceName: targetSequence.name,
-          timestamp: new Date().toISOString()
-        });
+        logger.error('Timeline触发视频播放器跳转失败', error instanceof Error ? error : new Error(String(error)));
       }
     } else {
-      console.warn(`[VideoEditingInterface] VideoPlayerPanel ref不可用，跳过视频跳转`, {
+      logger.warn('VideoPlayerPanel ref不可用，跳过视频跳转', {
         compositionTime: compositionTime.toFixed(2),
         targetSequenceName: targetSequence.name,
-        timestamp: new Date().toISOString()
       });
     }
-  }, []);
+  }, [logger]);
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
@@ -519,16 +494,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     const effectiveVolume = Math.max(0, Math.min(totalVolume / activeVideoTracks.length, 1));
     
-    console.log(`[VideoEditingInterface] 计算有效音量`, {
+    logger.debug('计算有效音量', {
       currentTime: currentTime.toFixed(2),
       activeVideoTracks: activeVideoTracks.length,
-      trackVolumes: activeVideoTracks.map(t => ({ id: t.id, name: t.name, volume: t.volume })),
       effectiveVolume: effectiveVolume.toFixed(3),
-      timestamp: new Date().toISOString()
     });
 
     return effectiveVolume;
-  }, []);
+  }, [logger]);
 
   // 计算当前的有效音量
   const currentEffectiveVolume = calculateEffectiveVolume(currentTimelineState, timelineCurrentTime);
@@ -561,7 +534,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const storeScriptType = useVideoEditingStore(state => state.scriptType);
   useEffect(() => {
     if (!storeScriptSegmentsData || storeScriptSegmentsData.length === 0) return;
-    console.log('[VideoEditingInterface] Structured script segments sync triggered:', {
+    logger.debug('Structured script segments sync triggered', {
       segmentCount: storeScriptSegmentsData.length,
       scriptType: storeScriptType,
     });
@@ -602,7 +575,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       storyboardScriptSegments: [],
     } as VideoEditingTaskContent;
 
-    console.log('[VideoEditingInterface] Updating content with', segments.length, 'structured script segments (with narration)');
+    logger.debug('Updating content with structured script segments (with narration)', {
+      count: segments.length,
+    });
     onUpdateContent({
       ...baseContent,
       ...update,
@@ -618,14 +593,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const storeScriptContent = useVideoEditingStore(state => state.scriptContent);
   useEffect(() => {
     if (!storeScriptContent) return;
-    console.log('[VideoEditingInterface] Script store sync triggered:', {
+    logger.debug('Script store sync triggered', {
       contentLength: storeScriptContent.length,
       scriptType: storeScriptType,
       hasContent: !!contentRef.current,
     });
     const segments = parseAgentScriptToSegments(storeScriptContent);
     if (segments.length === 0) {
-      console.warn('[VideoEditingInterface] parseAgentScriptToSegments returned 0 segments');
+      logger.warn('parseAgentScriptToSegments returned 0 segments');
       return;
     }
 
@@ -651,7 +626,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       storyboardScriptSegments: [],
     } as VideoEditingTaskContent;
 
-    console.log('[VideoEditingInterface] Updating content with', segments.length, 'script segments');
+    logger.debug('Updating content with script segments', { count: segments.length });
     onUpdateContent({
       ...baseContent,
       ...update,
@@ -668,7 +643,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const storeStoryboards = useVideoEditingStore(state => state.storyboards);
   useEffect(() => {
     if (!storeStoryboards || storeStoryboards.length === 0) return;
-    console.log('[VideoEditingInterface] Storyboard store sync triggered:', storeStoryboards.length, 'items');
+    logger.debug('Storyboard store sync triggered', { count: storeStoryboards.length });
 
     const storyboardSegments: StoryboardScriptSegment[] = storeStoryboards.map((sb, i) => ({
       id: sb.id || `storyboard-${Date.now()}-${i}`,
@@ -688,7 +663,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       storyboardScriptSegments: [],
     } as VideoEditingTaskContent;
 
-    console.log('[VideoEditingInterface] Updating content with', storyboardSegments.length, 'storyboard segments');
+    logger.debug('Updating content with storyboard segments', { count: storyboardSegments.length });
     onUpdateContent({
       ...baseContent,
       storyboardScriptSegments: storyboardSegments,
@@ -1447,10 +1422,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
-    console.log(`[VideoEditingInterface] Timeline时间变化同步到视频播放器`, {
+    logger.debug('Timeline时间变化同步到视频播放器', {
       newTime: time.toFixed(2),
       previousTime: timelineCurrentTime.toFixed(2),
-      timestamp: new Date().toISOString()
     });
     setTimelineCurrentTime(time);
     
@@ -1461,7 +1435,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       // 预览模式，同步到普通播放器
       videoPlayback.handleTimeSeek(time);
     }
-  }, [timelineComposition, videoPlayback]);
+  }, [timelineComposition, videoPlayback, logger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 处理时间轴状态变化，用于导出功能
   const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {

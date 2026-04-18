@@ -31,6 +31,8 @@ class TimelineImportRequest(BaseModel):
 
 class TimelineImportValidationResult(BaseModel):
     """时间轴导入验证结果"""
+    model_config = ConfigDict(populate_by_name=True)
+
     is_valid: bool = Field(..., alias="isValid", description="是否有效")
     errors: List[str] = Field(default_factory=list, description="验证错误列表")
     warnings: List[str] = Field(default_factory=list, description="验证警告列表")

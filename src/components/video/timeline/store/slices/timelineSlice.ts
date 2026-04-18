@@ -16,6 +16,7 @@ import {
   TimelineItem,
   ItemPlacementService,
   TrackSelectionService,
+  TrackLockedError,
 } from '../../domain';
 import type {
   TrackData,
@@ -331,6 +332,10 @@ export const createTimelineSlice: StateCreator<
         // TrackData uses 0-200 percentage; Volume.fromPercentage converts to 0-2.0 range.
         state._aggregate.setTrackVolume(trackId, Volume.fromPercentage(volume));
       } catch (err) {
+        if (err instanceof TrackLockedError) {
+          // User-caused; presentation layer should have prevented the call. Silent no-op.
+          return;
+        }
         console.error('[timelineSlice] setTrackVolume failed:', err);
         return;
       }

@@ -728,8 +728,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         throw new Error(t.timeline.messages.importProjectInvalidData);
       }
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : t.timeline.messages.exportUnknownError;
-      showError(t.timeline.messages.importProjectError.replace('{error}', errMsg));
+      const raw = error instanceof Error ? error.message : '';
+      // Backend may leak Python dict/Pydantic ValidationError str repr into
+      // error.message; collapse those into a friendly localised fallback.
+      const looksLikePythonDump =
+        /^\s*\{['"]/.test(raw) ||
+        raw.includes("{'") ||
+        raw.includes('errors.pydantic.dev');
+      const friendly = looksLikePythonDump
+        ? t.timeline.messages.importProjectInvalidData
+        : (raw || t.timeline.messages.exportUnknownError);
+      showError(t.timeline.messages.importProjectError.replace('{error}', friendly));
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.debug('[TimelinePanel] Import failed (raw)', { raw });
+      }
     } finally {
       useTimelineStore.getState().setImporting(false);
     }

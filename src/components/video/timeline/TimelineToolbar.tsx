@@ -2,6 +2,7 @@
 
 import React, { useRef, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { useTimelineStore, removeItemsAction } from './store';
 import type { TimelineToolType } from './store';
 import { useShallow } from 'zustand/react/shallow';
@@ -26,6 +27,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onAddSubtitle,
 }) => {
   const { t } = useLocale();
+  const { showError } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Read from store
@@ -62,16 +64,13 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // 验证文件类型
       if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
-        alert(t.timeline.toolbar.invalidJsonFile);
+        showError(t.timeline.toolbar.invalidJsonFile);
+        event.target.value = '';
         return;
       }
-
       onImportJSON(file);
     }
-
-    // 清除文件输入，允许重复选择同一文件
     event.target.value = '';
   };
 
