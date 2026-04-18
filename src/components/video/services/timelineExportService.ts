@@ -198,7 +198,7 @@ export class TimelineExportService {
       tracks: timelineState.tracks.map(track => ({
         id: track.id,
         name: track.name,
-        type: track.type,
+        type: track.id.startsWith('image-track') ? 'image' : track.type,
         height: track.height,
         isLocked: track.isLocked,
         isMuted: track.isMuted,

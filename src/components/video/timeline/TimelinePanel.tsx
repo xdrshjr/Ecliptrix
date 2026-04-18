@@ -127,11 +127,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         gridSize: 0.5,
         scrollLeft: 0,
         tracks: [
-          defaultTrack('video-track-1', t.timeline.track.videoTrack, 'video', 0),
-          defaultTrack('image-track-1', t.timeline.track.imageTrack, 'video', 1),
-          defaultTrack('audio-track-1', `${t.timeline.track.audioTrack} 1`, 'audio', 2, 200, 60),
-          defaultTrack('audio-track-2', `${t.timeline.track.audioTrack} 2`, 'audio', 3, 10, 60),
-          defaultTrack('subtitle-track-1', t.timeline.track.subtitleTrack, 'subtitle', 4, 100, 50),
+          defaultTrack('video-track-1', `${t.timeline.track.videoTrack} 1`, 'video', 0),
+          defaultTrack('image-track-1', `${t.timeline.track.imageTrack} 1`, 'video', 1),
+          defaultTrack('audio-track-1', `${t.timeline.track.audioTrack} 1`, 'audio', 2, 100, 60),
+          defaultTrack('audio-track-2', `${t.timeline.track.audioTrack} 2`, 'audio', 3, 100, 60),
+          defaultTrack('subtitle-track-1', `${t.timeline.track.subtitleTrack} 1`, 'subtitle', 4, 100, 50),
         ],
       } as any);
 

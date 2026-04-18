@@ -137,11 +137,16 @@ export class Track {
    * src/types/index.ts.
    */
   static fromPlainObject(data: TrackData): Track {
+    // Back-compat: JSON exported with the "image" alias maps back to
+    // internal type 'video' (image-tracks are video-tracks distinguished
+    // by the 'image-track' id prefix).
+    const internalType: TrackType =
+      (data.type as string) === 'image' ? 'video' : data.type;
     return new Track({
       id: data.id,
       name: data.name,
-      type: data.type,
-      height: data.height ?? TrackTypeUtils.getDefaultHeight(data.type),
+      type: internalType,
+      height: data.height ?? TrackTypeUtils.getDefaultHeight(internalType),
       isLocked: data.isLocked ?? false,
       isMuted: data.isMuted ?? false,
       isVisible: data.isVisible ?? true,
