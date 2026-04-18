@@ -94,6 +94,10 @@ const VolumeSlider: React.FC = () => {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    // preventDefault suppresses the default focus change that mousedown
+    // would otherwise trigger on a focusable element; restore it so keyboard
+    // users can follow a mouse click with Home/End/Arrow etc.
+    (e.currentTarget as HTMLDivElement).focus();
     isDraggingRef.current = true;
 
     // If mousedown lands on the thumb, do NOT jump to the click position;

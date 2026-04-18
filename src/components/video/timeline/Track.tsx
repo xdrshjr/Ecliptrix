@@ -540,7 +540,8 @@ const Track: React.FC<TrackProps> = ({
                 {getTrackIcon()}
               </div>
               <span>
-                {track.type === 'video' ? t.timeline.track.dropVideoHere :
+                {track.id.startsWith('image-track') ? t.timeline.track.dropImageHere :
+                 track.type === 'video' ? t.timeline.track.dropVideoHere :
                  track.type === 'audio' ? t.timeline.track.dropAudioHere :
                  t.timeline.track.dropSubtitleHere}
               </span>

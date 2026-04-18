@@ -17,7 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
-import { clampVolume, VOLUME_DEFAULT } from './constants';
+import { clampVolume, VOLUME_DEFAULT, getDefaultTrackHeight, type TrackKind } from './constants';
 import { http, ApiError } from '@/lib/api/http-client';
 
 // ---------------------------------------------------------------------------
@@ -123,15 +123,22 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     const state = useTimelineStore.getState();
     // Only init if tracks are empty (first mount)
     if (state.tracks.length === 0) {
+      // Default-generated tracks carry an empty name; Track.tsx:trackDisplayName
+      // derives a locale-aware label from the id prefix at render time, so
+      // language switches immediately reflect in the track header. User
+      // renames write a non-empty string which takes precedence.
       const defaultTrack = (
         id: string,
         name: string,
         type: 'video' | 'audio' | 'subtitle',
         order: number,
         volume: number = VOLUME_DEFAULT,
-        height = 80,
+        height?: number,
       ) => ({
-        id, name, type, height,
+        id, name, type,
+        height: height ?? getDefaultTrackHeight(
+          id.startsWith('image-track') ? 'image' : (type as TrackKind)
+        ),
         isLocked: false, isMuted: false, isVisible: true,
         volume: clampVolume(volume), order, items: [] as any[],
       });
@@ -145,11 +152,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         gridSize: 0.5,
         scrollLeft: 0,
         tracks: [
-          defaultTrack('video-track-1', `${t.timeline.track.videoTrack} 1`, 'video', 0),
-          defaultTrack('image-track-1', `${t.timeline.track.imageTrack} 1`, 'video', 1),
-          defaultTrack('audio-track-1', `${t.timeline.track.audioTrack} 1`, 'audio', 2, 100, 60),
-          defaultTrack('audio-track-2', `${t.timeline.track.audioTrack} 2`, 'audio', 3, 100, 60),
-          defaultTrack('subtitle-track-1', `${t.timeline.track.subtitleTrack} 1`, 'subtitle', 4, 100, 50),
+          defaultTrack('video-track-1',    '', 'video',    0),
+          defaultTrack('image-track-1',    '', 'video',    1),
+          defaultTrack('audio-track-1',    '', 'audio',    2),
+          defaultTrack('audio-track-2',    '', 'audio',    3),
+          defaultTrack('subtitle-track-1', '', 'subtitle', 4),
         ],
       } as any);
 
@@ -512,7 +519,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     );
 
     if (!hasItems) {
-      showError(t.timeline.messages.organizeMaterialsNoItems);
+      showInfo(t.timeline.messages.organizeMaterialsNoItems, 3000);
       return;
     }
 
@@ -543,7 +550,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     });
 
     showSuccess(t.timeline.messages.organizeMaterialsSuccess);
-  }, [showSuccess, showError, t]);
+  }, [showSuccess, showInfo, t]);
 
   const handleAddEffect = useCallback(() => {
     showInfo(t.timeline.messages.effectsRequireSelection, 4000);

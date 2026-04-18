@@ -24,6 +24,10 @@ import { TimelineExportError, TimelineImportError } from './errors';
  * otherwise append the trailing number parsed from the id (e.g. "-3").
  */
 function normalizeTrackName(name: string, id: string): string {
+  // Empty/whitespace name: leave empty so Track.tsx:trackDisplayName can
+  // derive a locale-aware label at render time. Padding with an id-suffix
+  // here would render as " 1" (leading space) on the receiving side.
+  if (!name || !name.trim()) return '';
   if (/\d+\s*$/.test(name)) return name;
   const match = id.match(/-(\d+)$/);
   if (!match) return name;

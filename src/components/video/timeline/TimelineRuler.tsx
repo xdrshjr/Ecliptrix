@@ -3,7 +3,10 @@
 import React, { useRef, useState, useCallback, RefObject } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
-import { TIMELINE_PADDING_SECONDS } from './constants';
+import {
+  TIMELINE_PADDING_SECONDS,
+  ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_BTN, ZOOM_STEP_WHEEL, ZOOM_EPSILON,
+} from './constants';
 import { useShallow } from 'zustand/react/shallow';
 
 interface TimelineRulerProps {
@@ -150,28 +153,31 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     return marks;
   };
 
-  // 处理缩放控制
+  // Derived boundary flags used by both handlers (defensive early-return)
+  // and button disabled state/styling.
+  const atZoomMax = zoomLevel >= ZOOM_MAX - ZOOM_EPSILON;
+  const atZoomMin = zoomLevel <= ZOOM_MIN + ZOOM_EPSILON;
+
   const handleZoomIn = () => {
-    const newZoom = Math.min(5.0, zoomLevel * 1.5);
-    setZoomLevel(newZoom);
+    if (atZoomMax) return;
+    setZoomLevel(Math.min(ZOOM_MAX, zoomLevel * ZOOM_STEP_BTN));
   };
 
   const handleZoomOut = () => {
-    const newZoom = Math.max(0.1, zoomLevel / 1.5);
-    setZoomLevel(newZoom);
+    if (atZoomMin) return;
+    setZoomLevel(Math.max(ZOOM_MIN, zoomLevel / ZOOM_STEP_BTN));
   };
 
   const handleZoomReset = () => {
     setZoomLevel(1.0);
   };
 
-  // 处理Ctrl+滚轮缩放
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey) {
       e.preventDefault();
       const newZoom = e.deltaY < 0
-        ? Math.min(5.0, zoomLevel * 1.15)
-        : Math.max(0.1, zoomLevel / 1.15);
+        ? Math.min(ZOOM_MAX, zoomLevel * ZOOM_STEP_WHEEL)
+        : Math.max(ZOOM_MIN, zoomLevel / ZOOM_STEP_WHEEL);
       setZoomLevel(newZoom);
     }
   }, [zoomLevel, setZoomLevel]);
@@ -214,7 +220,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         <div className="flex items-center space-x-1">
           <button
             onClick={handleZoomOut}
-            className="p-1 rounded hover:bg-accent transition-colors"
+            disabled={atZoomMin}
+            className={`p-1 rounded transition-colors ${
+              atZoomMin ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent'
+            }`}
             title={t.timeline.ruler.zoomOut}
           >
             <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
@@ -232,7 +241,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
           <button
             onClick={handleZoomIn}
-            className="p-1 rounded hover:bg-accent transition-colors"
+            disabled={atZoomMax}
+            className={`p-1 rounded transition-colors ${
+              atZoomMax ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent'
+            }`}
             title={t.timeline.ruler.zoomIn}
           >
             <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">

@@ -6,7 +6,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
-import { clampVolume } from '../../constants';
+import { clampVolume, getDefaultTrackHeight, type TrackKind } from '../../constants';
 
 /**
  * Toggle the locked state of a track.
@@ -117,7 +117,12 @@ export function addTrackAction(
     trackNumber++;
     trackId = `${idPrefix}-${trackNumber}`;
   }
-  const trackName = `${baseTrackName} ${trackNumber}`;
+  // Default name is derived at render time in Track.tsx:trackDisplayName
+  // based on current locale; storing '' here keeps JSON round-trip honest and
+  // makes locale switches live. baseTrackName is retained in the signature
+  // to avoid churn at call sites but is intentionally not used.
+  void baseTrackName;
+  const trackName = '';
 
   const currentData = state.exportToData();
   const typeOrder = { video: 0, image: 1, audio: 2, subtitle: 3 } as const;
@@ -155,7 +160,7 @@ export function addTrackAction(
     id: trackId,
     name: trackName,
     type: domainType,
-    height: type === 'subtitle' ? 50 : (type === 'audio' || type === 'image') ? 60 : 80,
+    height: getDefaultTrackHeight(type as TrackKind),
     isLocked: false,
     isMuted: false,
     isVisible: true,

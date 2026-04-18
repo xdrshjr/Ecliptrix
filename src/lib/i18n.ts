@@ -705,6 +705,7 @@ export interface Translations {
       removeTrackLast: string;
       removeTrackLastOfGroup: string;
       dropVideoHere: string;
+      dropImageHere: string;
       dropAudioHere: string;
       dropSubtitleHere: string;
       dropToTrack: string;
@@ -3341,7 +3342,8 @@ export const translations: Record<string, Translations> = {
         removeTrackConfirm: 'This track has items. Are you sure you want to remove it? All items will be deleted.',
         removeTrackLast: 'Cannot remove the last track.',
         removeTrackLastOfGroup: 'Cannot remove the last {group}.',
-        dropVideoHere: 'Drag video/image materials here',
+        dropVideoHere: 'Drag video materials here',
+        dropImageHere: 'Drag image materials here',
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
         dropToTrack: 'Drop to {trackName}',
@@ -3359,7 +3361,7 @@ export const translations: Record<string, Translations> = {
         operationGenerated: 'Generated',
         operationReplaced: 'Replaced',
         organizeMaterialsSuccess: 'All materials have been successfully aligned to the left',
-        organizeMaterialsNoItems: 'No material segments found, alignment failed',
+        organizeMaterialsNoItems: 'Nothing to organize yet.',
         featureComingSoon: 'This feature is coming soon',
         effectsRequireSelection: 'Select a clip on the timeline first to add effects. (Feature coming soon)',
         transitionsRequireSelection: 'Select two adjacent clips first to add a transition. (Feature coming soon)',
@@ -5834,7 +5836,8 @@ export const translations: Record<string, Translations> = {
         removeTrackConfirm: '该轨道中存在素材，确定要删除吗？所有素材将被一并删除。',
         removeTrackLast: '无法删除最后一条轨道。',
         removeTrackLastOfGroup: '无法删除最后一条{group}。',
-        dropVideoHere: '拖拽视频/图片素材到此轨道',
+        dropVideoHere: '拖拽视频素材到此轨道',
+        dropImageHere: '拖拽图片素材到此轨道',
         dropAudioHere: '拖拽音频素材到此轨道',
         dropSubtitleHere: '拖拽字幕素材到此轨道',
         dropToTrack: '放置到 {trackName}',
@@ -5852,7 +5855,7 @@ export const translations: Record<string, Translations> = {
           operationGenerated: '生成',
           operationReplaced: '替换',
           organizeMaterialsSuccess: '所有素材已向左对齐成功',
-          organizeMaterialsNoItems: '无素材片段，对齐失败',
+          organizeMaterialsNoItems: '暂无素材可整理',
           featureComingSoon: '该功能即将推出',
           effectsRequireSelection: '请先在时间轴上选中片段，再添加特效。（功能开发中）',
           transitionsRequireSelection: '请先选中两段相邻片段，再添加转场。（功能开发中）',
