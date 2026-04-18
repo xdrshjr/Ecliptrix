@@ -274,7 +274,11 @@ const Track: React.FC<TrackProps> = ({
       style={{ minWidth: '100%' }}
     >
       {/* Track controls panel */}
-      <div className="track-controls w-48 bg-muted border-r border-border">
+      <div
+        className={`track-controls w-48 bg-muted border-r border-border transition-opacity ${
+          track.isVisible ? '' : 'opacity-60'
+        }`}
+      >
         <div
           className="flex items-center justify-between p-2"
           style={{ height: trackHeight }}
@@ -292,7 +296,11 @@ const Track: React.FC<TrackProps> = ({
           {/* Right: control buttons */}
           <div className="flex items-center space-x-1">
             {/* Volume button (audio + video tracks) */}
-            {(track.type === 'audio' || (track.type === 'video' && !track.id.startsWith('image-track'))) && (
+            {(track.type === 'audio' || (track.type === 'video' && !track.id.startsWith('image-track'))) && (() => {
+              const volumeBase = track.isLocked
+                ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} - ${t.timeline.track.trackLocked}`
+                : `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`;
+              return (
               <div className="relative group">
                 <button
                   ref={volumeButtonRef}
@@ -305,16 +313,8 @@ const Track: React.FC<TrackProps> = ({
                         ? 'bg-accent text-muted-foreground hover:bg-accent'
                         : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
-                  aria-label={track.isLocked
-                    ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} - ${t.timeline.track.trackLocked}`
-                    : `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`}
-                  title={track.isLocked
-                    ? `${t.timeline.toolbar.trackVolumeControl
-                        .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
-                        .replace('{volume}', String(track.volume))} — ${t.timeline.track.trackLocked}`
-                    : t.timeline.toolbar.trackVolumeControl
-                        .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
-                        .replace('{volume}', String(track.volume))}
+                  aria-label={volumeBase}
+                  title={volumeBase}
                   aria-haspopup="dialog"
                   aria-expanded={volumeSliderOpen}
                   aria-controls={volumePopoverId}
@@ -334,13 +334,7 @@ const Track: React.FC<TrackProps> = ({
                   {/* Hover tooltip */}
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {track.isLocked
-                        ? `${t.timeline.toolbar.trackVolumeControl
-                            .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
-                            .replace('{volume}', String(track.volume))} — ${t.timeline.track.trackLocked}`
-                        : t.timeline.toolbar.trackVolumeControl
-                            .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
-                            .replace('{volume}', String(track.volume))}
+                      {volumeBase}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
@@ -351,7 +345,8 @@ const Track: React.FC<TrackProps> = ({
                 {/* Volume slider popover — rendered once globally, controlled by store */}
                 {volumeSliderOpen && <VolumeSlider />}
               </div>
-            )}
+              );
+            })()}
 
             {/* Edit subtitles button (subtitle track only) */}
             {track.type === 'subtitle' && (

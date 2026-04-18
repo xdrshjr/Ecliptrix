@@ -31,6 +31,8 @@ const VolumeSlider: React.FC = () => {
   // Keyboard step coalescing: one undo entry per ~300 ms window.
   const keyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingVolumeRef = useRef<number>(100);
+  // Bug 3: guard auto-focus race — only allow blur-close after focus has landed
+  const hasBeenFocusedRef = useRef(false);
 
   // Derive track volume from store
   const trackId = showVolumeSlider?.trackId ?? null;
@@ -63,10 +65,24 @@ const VolumeSlider: React.FC = () => {
 
   // Focus-on-open: schedule rAF only; cleanup cancels rAF, no focus side-effect.
   useEffect(() => {
-    if (!isVisible || isLocked) return;
-    const raf = requestAnimationFrame(() => trackRef.current?.focus());
-    return () => cancelAnimationFrame(raf);
-  }, [isVisible, isLocked]);
+    if (!isVisible || isLocked || !mounted) return;
+    let cancelled = false;
+    let rafId: number | null = null;
+    // Two-stage delay: microtask runs after the current commit; rAF runs on
+    // the next paint. By that point the portal child is in the DOM and
+    // `trackRef.current` resolves.
+    const run = () => {
+      if (cancelled) return;
+      rafId = requestAnimationFrame(() => {
+        if (!cancelled) trackRef.current?.focus();
+      });
+    };
+    queueMicrotask(run);
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isVisible, isLocked, mounted]);
 
   // Restore-on-close: capture activeElement on open, restore on close.
   useEffect(() => {
@@ -76,6 +92,11 @@ const VolumeSlider: React.FC = () => {
     }
     returnFocusRef.current?.focus?.();
     returnFocusRef.current = null;
+  }, [isVisible]);
+
+  // Bug 3: reset focus-guard whenever the popover is hidden
+  useEffect(() => {
+    if (!isVisible) hasBeenFocusedRef.current = false;
   }, [isVisible]);
 
   const calculateVolume = useCallback((clientX: number) => {
@@ -337,6 +358,17 @@ const VolumeSlider: React.FC = () => {
         transform: anchorBelow
           ? 'translateX(-50%) translateY(0)'
           : 'translateX(-50%) translateY(-100%)',
+      }}
+      onFocus={() => { hasBeenFocusedRef.current = true; }}
+      onBlur={(e) => {
+        // Only close after focus has actually landed inside at least once.
+        if (!hasBeenFocusedRef.current) return;
+        // If focus is moving to another element INSIDE the dialog, don't close.
+        const next = e.relatedTarget as Node | null;
+        if (next && sliderRef.current?.contains(next)) return;
+        // Focus left the dialog → treat like outside-click.
+        flushPendingKeyCommit();
+        hideVolumeSlider();
       }}
     >
       {/* Volume icon and value */}
