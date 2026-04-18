@@ -393,7 +393,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
         <div className="flex items-center space-x-3 text-xs text-muted-foreground">
           <span>{t.timeline.trackBar.tracks}: {tracks.length}</span>
           <span>{t.timeline.trackBar.materials}: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
-          <span>{t.timeline.trackBar.duration}: {formatTimelineTime(totalDuration)}</span>
+          <span>{t.timeline.trackBar.duration}: {formatTimelineTime(totalDuration, { showMs: true })}</span>
         </div>
 
         {/* 右侧添加轨道按钮 */}

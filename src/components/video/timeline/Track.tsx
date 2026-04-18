@@ -170,6 +170,7 @@ const Track: React.FC<TrackProps> = ({
   };
 
   const handleVisibilityClick = () => {
+    if (track.isLocked) return;
     toggleTrackVisibilityAction(() => useTimelineStore.getState(), trackId);
   };
 
@@ -456,12 +457,19 @@ const Track: React.FC<TrackProps> = ({
             <div className="relative group">
               <button
                 onClick={handleVisibilityClick}
+                disabled={track.isLocked}
+                aria-label={
+                  track.isLocked
+                    ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
+                    : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)
+                }
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  track.isVisible
-                    ? 'bg-muted text-muted-foreground hover:bg-accent'
-                    : 'bg-accent text-muted-foreground hover:bg-accent/80'
+                  track.isLocked
+                    ? 'opacity-50 cursor-not-allowed'
+                    : track.isVisible
+                      ? 'bg-muted text-muted-foreground hover:bg-accent'
+                      : 'bg-accent text-muted-foreground hover:bg-accent/80'
                 }`}
-                aria-label={track.isVisible ? t.timeline.track.hide : t.timeline.track.show}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   {track.isVisible ? (

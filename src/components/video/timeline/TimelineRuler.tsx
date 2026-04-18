@@ -5,10 +5,12 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
 import {
   TIMELINE_PADDING_SECONDS,
-  ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_BTN, ZOOM_STEP_WHEEL, ZOOM_EPSILON,
+  ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_WHEEL, ZOOM_EPSILON,
 } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import { formatTimelineTime } from './timeFormat';
+
+const ZOOM_LADDER = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] as const;
 
 interface TimelineRulerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
@@ -187,12 +189,17 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
   const handleZoomIn = () => {
     if (atZoomMax) return;
-    setZoomLevel(Math.min(ZOOM_MAX, zoomLevel * ZOOM_STEP_BTN));
+    const next = ZOOM_LADDER.find((z) => z > zoomLevel + ZOOM_EPSILON);
+    setZoomLevel(next ?? ZOOM_MAX);
   };
 
   const handleZoomOut = () => {
     if (atZoomMin) return;
-    setZoomLevel(Math.max(ZOOM_MIN, zoomLevel / ZOOM_STEP_BTN));
+    let next: number | undefined;
+    for (const z of ZOOM_LADDER) {
+      if (z < zoomLevel - ZOOM_EPSILON) next = z;
+    }
+    setZoomLevel(next ?? ZOOM_MIN);
   };
 
   const handleZoomReset = () => {
@@ -208,6 +215,8 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       setZoomLevel(newZoom);
     }
   }, [zoomLevel, setZoomLevel]);
+
+  const disabledWhenEmpty = !hasItems || totalDuration <= 0;
 
   return (
     <div className="timeline-ruler h-8 bg-muted border-b border-border flex relative select-none">
@@ -307,17 +316,17 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       <div
         ref={scrollRef || rulerRef}
         className={`flex-1 relative overflow-x-hidden overflow-y-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
-          hasItems && totalDuration > 0 ? 'cursor-pointer' : 'cursor-not-allowed'
+          disabledWhenEmpty ? 'cursor-not-allowed pointer-events-none' : 'cursor-pointer'
         }`}
         role="slider"
-        tabIndex={hasItems && totalDuration > 0 ? 0 : -1}
+        tabIndex={disabledWhenEmpty ? -1 : 0}
         aria-label={t.timeline.ruler.scrubAriaLabel}
         aria-valuemin={0}
-        aria-valuemax={hasItems && totalDuration > 0 ? totalDuration : 0}
+        aria-valuemax={disabledWhenEmpty ? 0 : totalDuration}
         aria-valuenow={currentTime}
         aria-valuetext={formatTime(currentTime)}
         aria-orientation="horizontal"
-        aria-disabled={!hasItems || totalDuration <= 0}
+        aria-disabled={disabledWhenEmpty}
         onMouseDown={handleMouseDown}
         onKeyDown={handleScrubKeyDown}
         onWheel={handleWheel}

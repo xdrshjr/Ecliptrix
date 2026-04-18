@@ -28,6 +28,9 @@ const VolumeSlider: React.FC = () => {
   const [displayVolume, setDisplayVolume] = useState(100);
   const isDraggingRef = useRef(false);
   const localVolumeRef = useRef(100);
+  // Keyboard step coalescing: one undo entry per ~300 ms window.
+  const keyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingVolumeRef = useRef<number>(100);
 
   // Derive track volume from store
   const trackId = showVolumeSlider?.trackId ?? null;
@@ -51,10 +54,56 @@ const VolumeSlider: React.FC = () => {
     if (!isDraggingRef.current) {
       setDisplayVolume(volume);
       localVolumeRef.current = volume;
+      pendingVolumeRef.current = volume;
     }
   }, [volume]);
 
-  // Click-outside + Escape handler
+  const calculateVolume = useCallback((clientX: number) => {
+    if (!trackRef.current) return localVolumeRef.current;
+    const rect = trackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return Math.round(ratio * 200);
+  }, []);
+
+  const updateVolume = useCallback((newVolume: number) => {
+    localVolumeRef.current = newVolume;
+    setDisplayVolume(newVolume);
+  }, []);
+
+  // Commit any pending keyboard-stepped volume immediately. Clears the timer
+  // and nulls the ref before dispatch so a re-entrant call cannot double-commit.
+  const flushPendingKeyCommit = useCallback(() => {
+    if (!keyCommitTimerRef.current) return;
+    clearTimeout(keyCommitTimerRef.current);
+    keyCommitTimerRef.current = null;
+    if (trackId) {
+      setTrackVolumeAction(
+        () => useTimelineStore.getState(),
+        trackId,
+        pendingVolumeRef.current,
+      );
+    }
+  }, [trackId]);
+
+  // Schedule a trailing 300 ms commit. Subsequent keystrokes reset the timer
+  // so a burst coalesces into a single undo entry.
+  const scheduleKeyCommit = useCallback((v: number) => {
+    pendingVolumeRef.current = v;
+    if (keyCommitTimerRef.current) clearTimeout(keyCommitTimerRef.current);
+    keyCommitTimerRef.current = setTimeout(() => {
+      keyCommitTimerRef.current = null;
+      if (trackId) {
+        setTrackVolumeAction(
+          () => useTimelineStore.getState(),
+          trackId,
+          pendingVolumeRef.current,
+        );
+      }
+    }, 300);
+  }, [trackId]);
+
+  // Click-outside + Escape handler. Flush any pending keyboard commit so the
+  // undo entry lands before the popover closes.
   useEffect(() => {
     if (!isVisible) return;
 
@@ -72,6 +121,7 @@ const VolumeSlider: React.FC = () => {
         if (owner && owner.contains(target)) return;
       }
 
+      flushPendingKeyCommit();
       hideVolumeSlider();
     };
 
@@ -83,6 +133,7 @@ const VolumeSlider: React.FC = () => {
         // block other listeners on the same target.
         event.stopImmediatePropagation();
         event.preventDefault();
+        flushPendingKeyCommit();
         hideVolumeSlider();
       }
     };
@@ -93,19 +144,27 @@ const VolumeSlider: React.FC = () => {
       document.removeEventListener('mousedown', handleClickOutside, true);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [isVisible, hideVolumeSlider]);
+  }, [isVisible, hideVolumeSlider, flushPendingKeyCommit, popoverId]);
 
-  const calculateVolume = useCallback((clientX: number) => {
-    if (!trackRef.current) return localVolumeRef.current;
-    const rect = trackRef.current.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return Math.round(ratio * 200);
-  }, []);
-
-  const updateVolume = useCallback((newVolume: number) => {
-    localVolumeRef.current = newVolume;
-    setDisplayVolume(newVolume);
-  }, []);
+  // Flush pending commit on unmount and when trackId changes while the popover
+  // stays open (popover swapped to a different track's volume button).
+  // The [trackId] dep is load-bearing: the cleanup's closure captures the
+  // old trackId so the pending volume commits to the correct track before
+  // the new one takes over.
+  useEffect(() => {
+    return () => {
+      if (!keyCommitTimerRef.current) return;
+      clearTimeout(keyCommitTimerRef.current);
+      keyCommitTimerRef.current = null;
+      if (trackId) {
+        setTrackVolumeAction(
+          () => useTimelineStore.getState(),
+          trackId,
+          pendingVolumeRef.current,
+        );
+      }
+    };
+  }, [trackId]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isLocked) {
@@ -290,9 +349,10 @@ const VolumeSlider: React.FC = () => {
               e.preventDefault();
               e.stopPropagation();
               updateVolume(next);
-              if (trackId) setTrackVolumeAction(() => useTimelineStore.getState(), trackId, next);
+              scheduleKeyCommit(next);
             }
           }}
+          onBlur={flushPendingKeyCommit}
         >
           {/* Thumb */}
           <div
