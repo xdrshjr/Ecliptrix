@@ -700,6 +700,7 @@ export interface Translations {
       selectAllEmptyHint: string;
       editSubtitles: string;
       editSubtitlesHint: string;
+      trackLocked: string;
       removeTrack: string;
       removeTrackConfirm: string;
       removeTrackLast: string;
@@ -3348,6 +3349,7 @@ export const translations: Record<string, Translations> = {
         selectAllEmptyHint: 'Track is empty.',
         editSubtitles: 'Edit Subtitles',
         editSubtitlesHint: 'Add subtitle items to this track to enable editing.',
+        trackLocked: 'Track is locked',
         removeTrack: 'Remove Track',
         removeTrackConfirm: 'This track has items. Are you sure you want to remove it? All items will be deleted.',
         removeTrackLast: 'Cannot remove the last track.',
@@ -5852,6 +5854,7 @@ export const translations: Record<string, Translations> = {
         selectAllEmptyHint: '轨道为空。',
         editSubtitles: '编辑字幕',
         editSubtitlesHint: '请先在该轨道上添加字幕素材。',
+        trackLocked: '轨道已锁定',
         removeTrack: '删除轨道',
         removeTrackConfirm: '该轨道中存在素材，确定要删除吗？所有素材将被一并删除。',
         removeTrackLast: '无法删除最后一条轨道。',

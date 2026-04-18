@@ -159,7 +159,11 @@ const VolumeSlider: React.FC = () => {
   }, [calculateVolume, updateVolume, setTrackVolume, trackId, isLocked]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (isLocked) return;
+    if (isLocked) {
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
     e.stopPropagation();
     isDraggingRef.current = true;
 

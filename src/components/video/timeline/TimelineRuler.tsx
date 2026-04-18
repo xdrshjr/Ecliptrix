@@ -8,6 +8,7 @@ import {
   ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_BTN, ZOOM_STEP_WHEEL, ZOOM_EPSILON,
 } from './constants';
 import { useShallow } from 'zustand/react/shallow';
+import { formatTimelineTime } from './timeFormat';
 
 interface TimelineRulerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
@@ -64,12 +65,8 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   hasItemsRef.current = hasItems;
 
   // 格式化时间显示
-  const formatTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 100);
-    return `${minutes}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
-  };
+  const formatTime = (seconds: number): string =>
+    formatTimelineTime(seconds, { showMs: true });
 
   // 计算时间轴点击位置对应的时间值
   const calculateTimeFromMouseEvent = (e: MouseEvent | React.MouseEvent): number | null => {

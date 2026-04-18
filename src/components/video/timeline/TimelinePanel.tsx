@@ -295,14 +295,27 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when focus is on input elements
-      const active = document.activeElement;
-      const isInput = active && (
+      // Ignore when focus is on text-editing elements.
+      const active = document.activeElement as HTMLElement | null;
+      const isTextInput = !!active && (
         active.tagName === 'INPUT' ||
         active.tagName === 'TEXTAREA' ||
-        (active as HTMLElement).contentEditable === 'true'
+        active.isContentEditable === true
       );
-      if (isInput) return;
+      if (isTextInput) return;
+
+      // Bare-letter shortcuts (e/t/s) must NOT fire while a non-text interactive
+      // widget (button, select, link, role=button/slider/...) has focus — users
+      // expect the space/enter of those widgets to be separate from editor hotkeys.
+      // Ctrl-chords (undo/redo/copy/export) stay global, and so do Delete/Escape.
+      const isInteractive = !!active && (
+        active.tagName === 'BUTTON' ||
+        active.tagName === 'SELECT' ||
+        active.tagName === 'A' ||
+        (typeof active.matches === 'function' && active.matches(
+          '[role="button"],[role="slider"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="option"],[role="switch"],[role="checkbox"],[role="radio"]'
+        ))
+      );
 
       const ctrl = e.ctrlKey || e.metaKey;
 
@@ -318,13 +331,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       } else if (ctrl && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
         handleExportJSONRef.current();
-      } else if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+      } else if (!ctrl && !e.shiftKey && !e.altKey && !isInteractive && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
         handleAddEffectRef.current();
-      } else if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
+      } else if (!ctrl && !e.shiftKey && !e.altKey && !isInteractive && (e.key === 't' || e.key === 'T')) {
         e.preventDefault();
         handleAddTransitionRef.current();
-      } else if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+      } else if (!ctrl && !e.shiftKey && !e.altKey && !isInteractive && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         void handleAddSubtitleRef.current();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {

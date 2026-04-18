@@ -150,6 +150,7 @@ const Track: React.FC<TrackProps> = ({
   // ---------------------------------------------------------------------------
 
   const handleVolumeClick = () => {
+    if (track.isLocked) return;
     if (volumeSliderOpen) {
       hideVolumeSlider();
     } else if (volumeButtonRef.current) {
@@ -291,12 +292,17 @@ const Track: React.FC<TrackProps> = ({
                 <button
                   ref={volumeButtonRef}
                   onClick={handleVolumeClick}
+                  disabled={track.isLocked}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                    volumeSliderOpen
-                      ? 'bg-accent text-muted-foreground hover:bg-accent'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
+                    track.isLocked
+                      ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
+                      : volumeSliderOpen
+                        ? 'bg-accent text-muted-foreground hover:bg-accent'
+                        : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
-                  aria-label={`${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`}
+                  aria-label={track.isLocked
+                    ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} - ${t.timeline.track.trackLocked}`
+                    : `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`}
                   aria-haspopup="dialog"
                   aria-expanded={volumeSliderOpen}
                   aria-controls={volumePopoverId}
@@ -340,15 +346,19 @@ const Track: React.FC<TrackProps> = ({
                       onEditSubtitles(track.id);
                     }
                   }}
-                  disabled={track.items.length === 0}
-                  title={track.items.length === 0
-                    ? t.timeline.track.editSubtitlesHint
-                    : t.timeline.track.editSubtitles}
-                  aria-label={track.items.length === 0
-                    ? `${t.timeline.track.editSubtitles} — ${t.timeline.track.editSubtitlesHint}`
-                    : t.timeline.track.editSubtitles}
+                  disabled={track.items.length === 0 || track.isLocked}
+                  title={
+                    track.items.length === 0 ? t.timeline.track.editSubtitlesHint :
+                    track.isLocked ? t.timeline.track.trackLocked :
+                    t.timeline.track.editSubtitles
+                  }
+                  aria-label={
+                    track.items.length === 0 ? `${t.timeline.track.editSubtitles} — ${t.timeline.track.editSubtitlesHint}` :
+                    track.isLocked ? `${t.timeline.track.editSubtitles} — ${t.timeline.track.trackLocked}` :
+                    t.timeline.track.editSubtitles
+                  }
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                    track.items.length === 0
+                    (track.items.length === 0 || track.isLocked)
                       ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                       : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/30'
                   }`}
@@ -361,7 +371,9 @@ const Track: React.FC<TrackProps> = ({
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                       {track.items.length === 0
                         ? t.timeline.track.editSubtitlesHint
-                        : t.timeline.track.editSubtitles}
+                        : track.isLocked
+                          ? t.timeline.track.trackLocked
+                          : t.timeline.track.editSubtitles}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
@@ -472,7 +484,9 @@ const Track: React.FC<TrackProps> = ({
               <button
                 onClick={handleRemoveTrackClick}
                 disabled={track.isLocked}
-                aria-label={t.timeline.track.removeTrack}
+                aria-label={track.isLocked
+                  ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
+                  : t.timeline.track.removeTrack}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
@@ -485,7 +499,9 @@ const Track: React.FC<TrackProps> = ({
 
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {t.timeline.track.removeTrack}
+                    {track.isLocked
+                      ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
+                      : t.timeline.track.removeTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>
