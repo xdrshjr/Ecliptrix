@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
 import type { TimelineItemData } from './domain/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
+import { formatTimelineTime } from './timeFormat';
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot come from the store
@@ -40,11 +41,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   );
   const editingSubtitleId = useTimelineStore(s => s.editingSubtitleId);
   const zoomLevel = useTimelineStore(s => s.zoomLevel);
+  // Parent track's lock state — cannot come via props (Track passes only item,
+  // pixelsPerSecond, trackHeight); read through selector so lock toggles re-render.
+  const isTrackLocked = useTimelineStore(s => {
+    const tr = s.tracks.find(t => t.id === item.trackId);
+    return tr?.isLocked ?? false;
+  });
 
   // Store actions
   const startDrag = useTimelineStore(s => s.startDrag);
   const selectItem = useTimelineStore(s => s.selectItem);
   const toggleItemSelection = useTimelineStore(s => s.toggleItemSelection);
+  const deselectAll = useTimelineStore(s => s.deselectAll);
   const setEditingSubtitle = useTimelineStore(s => s.setEditingSubtitle);
   const updateItemSubtitle = useTimelineStore(s => s.updateItemSubtitle);
 
@@ -120,8 +128,12 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   // ---------------------------------------------------------------------------
 
   const handleSubtitleEditComplete = () => {
-    if (editingText.trim() !== '') {
-      updateItemSubtitle(item.id, editingText.trim());
+    const nextText = editingText.trim();
+    const prevText = (item.text ?? '').trim();
+    // Only commit (and push to undo history) when the value actually changed.
+    // Allow empty commits so users can clear a caption without losing the clip.
+    if (nextText !== prevText) {
+      updateItemSubtitle(item.id, nextText);
     }
     setEditingSubtitle(null);
     setEditingText('');
@@ -139,6 +151,42 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       handleSubtitleEditCancel();
+    }
+  };
+
+  // Keyboard interaction on the item root (a11y). Enter/Space selects the
+  // item; Delete/Backspace ensures selection then lets the global panel
+  // handler delete; Escape clears selection. Locked tracks + active inline
+  // subtitle editing bypass this handler entirely.
+  const handleItemKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isEditingSubtitle) return;
+    if (isTrackLocked) return;
+
+    switch (e.key) {
+      case 'Enter':
+      case ' ': {
+        e.preventDefault();
+        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+          toggleItemSelection(item.id);
+        } else {
+          selectItem(item.id);
+        }
+        return;
+      }
+      case 'Delete':
+      case 'Backspace': {
+        if (!isSelected) {
+          selectItem(item.id);
+        }
+        return;
+      }
+      case 'Escape': {
+        e.preventDefault();
+        deselectAll();
+        return;
+      }
+      default:
+        return;
     }
   };
 
@@ -372,12 +420,28 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   return (
     <div
       ref={itemRef}
+      role="button"
+      tabIndex={isTrackLocked ? -1 : 0}
+      aria-pressed={isSelected}
+      aria-disabled={isTrackLocked || undefined}
+      aria-label={
+        `${item.name} ` +
+        `${formatTimelineTime(item.startTime, { showMs: true })}–` +
+        `${formatTimelineTime(item.startTime + item.duration, { showMs: true })}` +
+        `${isSelected ? ' (selected)' : ''}` +
+        `${isTrackLocked ? ' (locked)' : ''}`
+      }
       style={getItemStyles()}
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
-      className="timeline-item"
+      onKeyDown={handleItemKeyDown}
+      className="timeline-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       data-clip-id={item.id}
-      title={`${item.name} (${item.startTime.toFixed(1)}s - ${(item.startTime + item.duration).toFixed(1)}s)`}
+      title={
+        `${item.name} ` +
+        `${formatTimelineTime(item.startTime, { showMs: true })} - ` +
+        `${formatTimelineTime(item.startTime + item.duration, { showMs: true })}`
+      }
     >
       {renderItemContent()}
 

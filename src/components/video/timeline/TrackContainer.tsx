@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, RefObject, useRef } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
-import { TIMELINE_PADDING_SECONDS } from './constants';
+import { TIMELINE_PADDING_SECONDS, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_WHEEL } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import Track from './Track';
 import { formatTimelineTime } from './timeFormat';
@@ -241,8 +241,8 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     if (e.ctrlKey) {
       e.preventDefault();
       const newZoom = e.deltaY < 0
-        ? Math.min(5.0, zoomLevel * 1.15)
-        : Math.max(0.1, zoomLevel / 1.15);
+        ? Math.min(ZOOM_MAX, zoomLevel * ZOOM_STEP_WHEEL)
+        : Math.max(ZOOM_MIN, zoomLevel / ZOOM_STEP_WHEEL);
       setZoomLevel(newZoom);
     }
   }, [zoomLevel, setZoomLevel]);
@@ -411,11 +411,12 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 onClick={() => handleAddTrack('video')}
                 className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addVideoTrack}
+                title={t.timeline.trackBar.addVideoTrack}
               >
                 <svg className="w-3 h-3 text-blue-600 group-hover:text-blue-700" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
                 </svg>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addVideoTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
@@ -432,11 +433,12 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 onClick={() => handleAddTrack('image')}
                 className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addImageTrack}
+                title={t.timeline.trackBar.addImageTrack}
               >
                 <svg className="w-3 h-3 text-purple-600 group-hover:text-purple-700" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                 </svg>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addImageTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
@@ -453,11 +455,12 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 onClick={() => handleAddTrack('audio')}
                 className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addAudioTrack}
+                title={t.timeline.trackBar.addAudioTrack}
               >
                 <svg className="w-3 h-3 text-green-600 group-hover:text-green-700" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                 </svg>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addAudioTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
@@ -474,11 +477,12 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                 onClick={() => handleAddTrack('subtitle')}
                 className="p-1.5 rounded hover:bg-accent transition-colors w-6 h-6 flex items-center justify-center"
                 aria-label={t.timeline.trackBar.addSubtitleTrack}
+                title={t.timeline.trackBar.addSubtitleTrack}
               >
                 <svg className="w-3 h-3 text-amber-600 group-hover:text-amber-700" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                 </svg>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {t.timeline.trackBar.addSubtitleTrack}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">

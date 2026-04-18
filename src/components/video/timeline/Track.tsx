@@ -308,6 +308,13 @@ const Track: React.FC<TrackProps> = ({
                   aria-label={track.isLocked
                     ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} - ${t.timeline.track.trackLocked}`
                     : `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`}
+                  title={track.isLocked
+                    ? `${t.timeline.toolbar.trackVolumeControl
+                        .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
+                        .replace('{volume}', String(track.volume))} — ${t.timeline.track.trackLocked}`
+                    : t.timeline.toolbar.trackVolumeControl
+                        .replace('{type}', track.type === 'video' ? t.timeline.track.videoTrack : t.timeline.track.audioTrack)
+                        .replace('{volume}', String(track.volume))}
                   aria-haspopup="dialog"
                   aria-expanded={volumeSliderOpen}
                   aria-controls={volumePopoverId}
@@ -325,7 +332,7 @@ const Track: React.FC<TrackProps> = ({
                   </svg>
 
                   {/* Hover tooltip */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                       {track.isLocked
                         ? `${t.timeline.toolbar.trackVolumeControl
@@ -376,7 +383,7 @@ const Track: React.FC<TrackProps> = ({
                     <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
                   </svg>
 
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                       {track.items.length === 0
                         ? t.timeline.track.editSubtitlesHint
@@ -423,7 +430,7 @@ const Track: React.FC<TrackProps> = ({
                   <path d="M3 5H1v16c0 1.1.9 2 2 2h16v-2H3V5zm18-4H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 16H7V3h14v14zm-10-7l1.41 1.41L16 8.83 20.59 13.41 22 12l-6-6-4 4z"/>
                 </svg>
 
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.items.length === 0
                       ? t.timeline.track.selectAllEmptyHint
@@ -448,6 +455,7 @@ const Track: React.FC<TrackProps> = ({
                     : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
                 aria-label={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
+                title={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   {track.isLocked ? (
@@ -457,7 +465,7 @@ const Track: React.FC<TrackProps> = ({
                   )}
                 </svg>
 
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
@@ -478,6 +486,9 @@ const Track: React.FC<TrackProps> = ({
                     ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
                     : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)
                 }
+                title={track.isLocked
+                  ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
+                  : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
@@ -494,7 +505,7 @@ const Track: React.FC<TrackProps> = ({
                   )}
                 </svg>
 
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.isLocked
                       ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
@@ -515,6 +526,9 @@ const Track: React.FC<TrackProps> = ({
                 aria-label={track.isLocked
                   ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
                   : t.timeline.track.removeTrack}
+                title={track.isLocked
+                  ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
+                  : t.timeline.track.removeTrack}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
@@ -525,7 +539,7 @@ const Track: React.FC<TrackProps> = ({
                   <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                 </svg>
 
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
                     {track.isLocked
                       ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`

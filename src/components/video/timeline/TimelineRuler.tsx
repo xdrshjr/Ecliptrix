@@ -147,8 +147,14 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             style={{ left: '0px' }}
           />
           <span
-            className="text-xs text-muted-foreground mt-1 font-mono"
-            style={{ left: '-20px', position: 'absolute', top: '16px' }}
+            className="text-xs text-muted-foreground mt-1 font-mono whitespace-nowrap"
+            style={{
+              left: '0px',
+              transform: 'translateX(0)',
+              textAlign: 'left',
+              position: 'absolute',
+              top: '16px',
+            }}
           >
             {formatTime(0)}
           </span>
@@ -169,8 +175,14 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           />
           {isMajor && (
             <span
-              className="text-xs text-muted-foreground mt-1 font-mono"
-              style={{ left: `${left - 20}px`, position: 'absolute', top: '16px' }}
+              className="text-xs text-muted-foreground mt-1 font-mono whitespace-nowrap"
+              style={{
+                left: `${left}px`,
+                transform: time === 0 ? 'translateX(0)' : 'translateX(-50%)',
+                textAlign: time === 0 ? 'left' : 'center',
+                position: 'absolute',
+                top: '16px',
+              }}
             >
               {formatTime(time)}
             </span>
@@ -365,13 +377,13 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
           >
             {/* 播放头顶部手柄 */}
             <div
-              className="absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t cursor-ew-resize"
+              className="absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t cursor-col-resize"
               style={{ pointerEvents: 'auto' }}
             />
 
             {/* 播放头底部手柄 */}
             <div
-              className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-ew-resize"
+              className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-col-resize"
               style={{ pointerEvents: 'auto' }}
             />
           </div>
