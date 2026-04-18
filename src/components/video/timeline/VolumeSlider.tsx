@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTimelineStore } from './store';
 import { useLocale } from '@/contexts/LocaleContext';
+import { deriveTrackDisplayName } from './trackDisplayName';
 
 /**
  * VolumeSlider — Track volume control popover.
@@ -36,6 +37,10 @@ const VolumeSlider: React.FC = () => {
   const trackData = tracks.find(t => t.id === trackId);
   const volume = trackData?.volume ?? 100;
   const isLocked = trackData?.isLocked ?? false;
+  const trackDisplayName = trackData
+    ? deriveTrackDisplayName(trackData, t.timeline.track)
+    : '';
+  const popoverId = trackId ? `volume-popover-${trackId}` : undefined;
 
   useEffect(() => {
     setMounted(true);
@@ -207,6 +212,12 @@ const VolumeSlider: React.FC = () => {
   const sliderContent = (
     <div
       ref={sliderRef}
+      id={popoverId}
+      role="dialog"
+      aria-modal="false"
+      aria-label={trackDisplayName
+        ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName}`
+        : t.timeline.toolbar.volumeControl}
       className="fixed bg-background text-foreground rounded-lg p-3 w-[200px] border border-border shadow-lg"
       style={{
         zIndex: 999999,
@@ -230,7 +241,9 @@ const VolumeSlider: React.FC = () => {
           role="slider"
           tabIndex={isLocked ? -1 : 0}
           aria-disabled={isLocked || undefined}
-          aria-label={t.timeline.toolbar.volumeControl}
+          aria-label={trackDisplayName
+            ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName}`
+            : t.timeline.toolbar.volumeControl}
           aria-valuemin={0}
           aria-valuemax={200}
           aria-valuenow={displayVolume}

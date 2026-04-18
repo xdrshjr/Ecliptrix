@@ -1871,6 +1871,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       : 'text-muted-foreground bg-muted border-border cursor-not-allowed opacity-50'
                   }`}
                   title={completedSegments.has(segment.id) ? t.scriptPanel.actions.searchOnlineVideos : t.scriptPanel.actions.completeConversionFirst}
+                  aria-label={completedSegments.has(segment.id)
+                    ? t.scriptPanel.actions.searchOnlineVideos
+                    : `${t.scriptPanel.actions.searchOnlineVideos} — ${t.scriptPanel.actions.completeConversionFirst}`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1905,6 +1908,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                             ? t.scriptPanel.actions.aiMatching
                             : t.scriptPanel.actions.aiMatchVideo
                   }
+                  aria-label={(() => {
+                    const verb = t.scriptPanel.actions.aiMatchVideo;
+                    if (!completedSegments.has(segment.id)) return `${verb} — ${t.scriptPanel.actions.completeConversionFirst}`;
+                    if (!getVideoAnalysisResult)            return `${verb} — ${t.scriptPanel.actions.aiMatchNotConfigured}`;
+                    if (!hasAvailableAnalyzedVideos(segment.id)) return `${verb} — ${t.scriptPanel.actions.noAvailableAnalyzedVideos}`;
+                    if (videoAIMatch.matchState.isMatching) return `${verb} — ${t.scriptPanel.actions.aiMatching}`;
+                    return verb;
+                  })()}
                 >
                   {videoAIMatch.matchState.isMatching ? (
                     <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">

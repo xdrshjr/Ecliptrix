@@ -74,6 +74,7 @@ const Track: React.FC<TrackProps> = ({
   const isDragOver = materialDragOver?.trackId === trackId;
   const allItemsSelected = track.items.length > 0 && track.items.every(item => selectedItems.includes(item.id));
   const volumeSliderOpen = showVolumeSlider?.trackId === trackId;
+  const volumePopoverId = `volume-popover-${track.id}`;
 
   // ---------------------------------------------------------------------------
   // Drag-and-drop handlers (material panel -> track)
@@ -296,6 +297,9 @@ const Track: React.FC<TrackProps> = ({
                       : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
                   aria-label={`${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`}
+                  aria-haspopup="dialog"
+                  aria-expanded={volumeSliderOpen}
+                  aria-controls={volumePopoverId}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     {track.volume === 0 ? (
@@ -341,7 +345,7 @@ const Track: React.FC<TrackProps> = ({
                     ? t.timeline.track.editSubtitlesHint
                     : t.timeline.track.editSubtitles}
                   aria-label={track.items.length === 0
-                    ? t.timeline.track.editSubtitlesHint
+                    ? `${t.timeline.track.editSubtitles} — ${t.timeline.track.editSubtitlesHint}`
                     : t.timeline.track.editSubtitles}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     track.items.length === 0
@@ -383,7 +387,7 @@ const Track: React.FC<TrackProps> = ({
                       : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
                 aria-label={track.items.length === 0
-                  ? t.timeline.track.selectAllEmptyHint
+                  ? `${t.timeline.track.selectAll} — ${t.timeline.track.selectAllEmptyHint}`
                   : t.timeline.track.selectAll}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
