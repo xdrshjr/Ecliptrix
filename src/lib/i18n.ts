@@ -681,6 +681,7 @@ export interface Translations {
       duration: string;
       addTrack: string;
       addVideoTrack: string;
+      addImageTrack: string;
       addAudioTrack: string;
       addSubtitleTrack: string;
     };
@@ -697,9 +698,11 @@ export interface Translations {
       hide: string;
       selectAll: string;
       editSubtitles: string;
+      editSubtitlesHint: string;
       removeTrack: string;
       removeTrackConfirm: string;
       removeTrackLast: string;
+      removeTrackLastOfGroup: string;
       dropVideoHere: string;
       dropAudioHere: string;
       dropSubtitleHere: string;
@@ -3303,6 +3306,7 @@ export const translations: Record<string, Translations> = {
         duration: 'Duration',
         addTrack: 'Add Track',
         addVideoTrack: 'Add Video Track',
+        addImageTrack: 'Add Image Track',
         addAudioTrack: 'Add Audio Track',
         addSubtitleTrack: 'Add Subtitle Track',
       },
@@ -3319,9 +3323,11 @@ export const translations: Record<string, Translations> = {
         hide: 'Hide Track',
         selectAll: 'Select All',
         editSubtitles: 'Edit Subtitles',
+        editSubtitlesHint: 'Add subtitle items to this track to enable editing.',
         removeTrack: 'Remove Track',
         removeTrackConfirm: 'This track has items. Are you sure you want to remove it? All items will be deleted.',
         removeTrackLast: 'Cannot remove the last track.',
+        removeTrackLastOfGroup: 'Cannot remove the last {group}.',
         dropVideoHere: 'Drag video/image materials here',
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
@@ -5781,6 +5787,7 @@ export const translations: Record<string, Translations> = {
         duration: '时长',
         addTrack: '添加轨道',
         addVideoTrack: '添加视频轨道',
+        addImageTrack: '添加图片轨道',
         addAudioTrack: '添加音频轨道',
         addSubtitleTrack: '添加字幕轨道',
       },
@@ -5797,9 +5804,11 @@ export const translations: Record<string, Translations> = {
         hide: '隐藏轨道',
         selectAll: '全选',
         editSubtitles: '编辑字幕',
+        editSubtitlesHint: '请先在该轨道上添加字幕素材。',
         removeTrack: '删除轨道',
         removeTrackConfirm: '该轨道中存在素材，确定要删除吗？所有素材将被一并删除。',
         removeTrackLast: '无法删除最后一条轨道。',
+        removeTrackLastOfGroup: '无法删除最后一条{group}。',
         dropVideoHere: '拖拽视频/图片素材到此轨道',
         dropAudioHere: '拖拽音频素材到此轨道',
         dropSubtitleHere: '拖拽字幕素材到此轨道',

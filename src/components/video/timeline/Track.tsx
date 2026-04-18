@@ -8,6 +8,7 @@ import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
 import TimelineItem from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
+import { useNotification } from '@/contexts/NotificationContext';
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot be read from the store
@@ -57,6 +58,9 @@ const Track: React.FC<TrackProps> = ({
 
   // i18n
   const t = getTranslations(locale);
+
+  // Notification API (toast-based confirm / warning)
+  const { showWarning, showConfirm } = useNotification();
 
   // Guard: track not found
   if (!track) return null;
@@ -175,21 +179,31 @@ const Track: React.FC<TrackProps> = ({
 
   const handleRemoveTrackClick = () => {
     if (track.isLocked) return;
-    const state = useTimelineStore.getState();
-    if (state.tracks.length <= 1) {
-      if (typeof window !== 'undefined') {
-        // eslint-disable-next-line no-alert
-        window.alert(t.timeline.track.removeTrackLast);
+
+    const doRemove = () => {
+      const result = removeTrackAction(() => useTimelineStore.getState(), track.id);
+      if (result.ok) return;
+      if (result.reason === 'LAST_TRACK') {
+        showWarning(t.timeline.track.removeTrackLast);
+        return;
       }
-      return;
+      if (result.reason === 'LAST_OF_GROUP') {
+        const groupLabel =
+          result.group === 'image' ? t.timeline.track.imageTrack :
+          result.group === 'video' ? t.timeline.track.videoTrack :
+          result.group === 'audio' ? t.timeline.track.audioTrack :
+          t.timeline.track.subtitleTrack;
+        showWarning(
+          t.timeline.track.removeTrackLastOfGroup.replace('{group}', groupLabel),
+        );
+      }
+    };
+
+    if (track.items.length > 0) {
+      showConfirm(t.timeline.track.removeTrackConfirm, doRemove);
+    } else {
+      doRemove();
     }
-    const hasItems = track.items.length > 0;
-    if (hasItems && typeof window !== 'undefined') {
-      // TODO(ux): replace window.confirm with the project's ConfirmDialog
-      // eslint-disable-next-line no-alert
-      if (!window.confirm(t.timeline.track.removeTrackConfirm)) return;
-    }
-    removeTrackAction(() => useTimelineStore.getState(), track.id);
   };
 
   // ---------------------------------------------------------------------------
@@ -326,12 +340,17 @@ const Track: React.FC<TrackProps> = ({
                     }
                   }}
                   disabled={track.items.length === 0}
+                  title={track.items.length === 0
+                    ? t.timeline.track.editSubtitlesHint
+                    : t.timeline.track.editSubtitles}
+                  aria-label={track.items.length === 0
+                    ? t.timeline.track.editSubtitlesHint
+                    : t.timeline.track.editSubtitles}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     track.items.length === 0
-                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                      ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                       : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
                   }`}
-                  aria-label={t.timeline.track.editSubtitles}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
@@ -339,7 +358,9 @@ const Track: React.FC<TrackProps> = ({
 
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {t.timeline.track.editSubtitles}
+                      {track.items.length === 0
+                        ? t.timeline.track.editSubtitlesHint
+                        : t.timeline.track.editSubtitles}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
@@ -353,10 +374,13 @@ const Track: React.FC<TrackProps> = ({
             <div className="relative group">
               <button
                 onClick={handleSelectAllClick}
+                disabled={track.isLocked}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  allItemsSelected
-                    ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                    : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  track.isLocked
+                    ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
+                    : allItemsSelected
+                      ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
                 aria-label={t.timeline.track.selectAll}
               >

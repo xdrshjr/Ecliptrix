@@ -376,27 +376,40 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   // Track operations (still local since addTrack needs naming logic)
   // ---------------------------------------------------------------------------
-  const handleAddTrack = useCallback((type: 'video' | 'audio' | 'subtitle') => {
+  const handleAddTrack = useCallback((type: 'video' | 'image' | 'audio' | 'subtitle') => {
     const state = useTimelineStore.getState();
     const existingIds = state.tracks.map(tr => tr.id);
 
-    // Count tracks of the same type for naming (exclude image tracks, matching original logic)
-    const sameTypeCount = state.tracks.filter(
-      tr => tr.type === type && !tr.id.startsWith('image-track')
-    ).length;
-    const trackNumber = sameTypeCount + 1;
+    // image tracks are stored with domain type='video' and distinguished by id prefix
+    const idPrefix = type === 'image' ? 'image-track' : `${type}-track`;
+    const domainType: 'video' | 'audio' | 'subtitle' = type === 'image' ? 'video' : type;
 
-    // Generate unique ID
-    let counter = sameTypeCount + 1;
-    let trackId = `${type}-track-${counter}`;
+    // Select tracks in the same logical group (image vs video separated by id prefix)
+    const sameGroupTracks = state.tracks.filter(tr => {
+      if (type === 'image') return tr.id.startsWith('image-track');
+      if (type === 'video') return tr.type === 'video' && !tr.id.startsWith('image-track');
+      return tr.type === type;
+    });
+
+    // Monotonic numbering: max(existing suffix) + 1 (never reuses deleted numbers)
+    const maxExistingNumber = sameGroupTracks.reduce((max, tr) => {
+      const m = tr.id.match(/-(\d+)$/) ?? tr.name.match(/(\d+)\s*$/);
+      const n = m ? parseInt(m[1], 10) : 0;
+      return n > max ? n : max;
+    }, 0);
+
+    let trackNumber = maxExistingNumber + 1;
+    let trackId = `${idPrefix}-${trackNumber}`;
     while (existingIds.includes(trackId)) {
-      counter++;
-      trackId = `${type}-track-${counter}`;
+      trackNumber++;
+      trackId = `${idPrefix}-${trackNumber}`;
     }
 
-    const baseTrackName = type === 'video' ? t.timeline.track.videoTrack :
-                          type === 'audio' ? t.timeline.track.audioTrack :
-                          t.timeline.track.subtitleTrack;
+    const baseTrackName =
+      type === 'video' ? t.timeline.track.videoTrack :
+      type === 'image' ? t.timeline.track.imageTrack :
+      type === 'audio' ? t.timeline.track.audioTrack :
+      t.timeline.track.subtitleTrack;
     const trackName = `${baseTrackName} ${trackNumber}`;
 
     const currentData = state.exportToData();
@@ -413,15 +426,15 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     };
 
     const requestedGroup: GroupKey = type;
-    const sameGroupTracks = currentData.tracks.filter(
+    const sameGroupExisting = currentData.tracks.filter(
       tr => getGroupKey(tr) === requestedGroup,
     );
 
     let insertIndex = currentData.tracks.length; // default: end
     let orderValue: number;
 
-    if (sameGroupTracks.length > 0) {
-      const lastSame = sameGroupTracks[sameGroupTracks.length - 1];
+    if (sameGroupExisting.length > 0) {
+      const lastSame = sameGroupExisting[sameGroupExisting.length - 1];
       insertIndex = currentData.tracks.indexOf(lastSame) + 1;
       orderValue = lastSame.order + 1;
     } else {
@@ -441,7 +454,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     const newTrack = {
       id: trackId,
       name: trackName,
-      type,
+      type: domainType,
       height: type === 'subtitle' ? 50 : type === 'audio' ? 60 : 80,
       isLocked: false,
       isMuted: false,
