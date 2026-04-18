@@ -340,12 +340,17 @@ const Track: React.FC<TrackProps> = ({
                     }
                   }}
                   disabled={track.items.length === 0}
+                  title={track.items.length === 0
+                    ? t.timeline.track.editSubtitlesHint
+                    : t.timeline.track.editSubtitles}
+                  aria-label={track.items.length === 0
+                    ? t.timeline.track.editSubtitlesHint
+                    : t.timeline.track.editSubtitles}
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     track.items.length === 0
-                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                      ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                       : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
                   }`}
-                  aria-label={t.timeline.track.editSubtitles}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
@@ -353,7 +358,9 @@ const Track: React.FC<TrackProps> = ({
 
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                     <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {t.timeline.track.editSubtitles}
+                      {track.items.length === 0
+                        ? t.timeline.track.editSubtitlesHint
+                        : t.timeline.track.editSubtitles}
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                         <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                       </div>
@@ -367,10 +374,13 @@ const Track: React.FC<TrackProps> = ({
             <div className="relative group">
               <button
                 onClick={handleSelectAllClick}
+                disabled={track.isLocked}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
-                  allItemsSelected
-                    ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                    : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                  track.isLocked
+                    ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
+                    : allItemsSelected
+                      ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
                 aria-label={t.timeline.track.selectAll}
               >

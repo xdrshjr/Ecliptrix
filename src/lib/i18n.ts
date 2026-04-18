@@ -698,6 +698,7 @@ export interface Translations {
       hide: string;
       selectAll: string;
       editSubtitles: string;
+      editSubtitlesHint: string;
       removeTrack: string;
       removeTrackConfirm: string;
       removeTrackLast: string;
@@ -3322,6 +3323,7 @@ export const translations: Record<string, Translations> = {
         hide: 'Hide Track',
         selectAll: 'Select All',
         editSubtitles: 'Edit Subtitles',
+        editSubtitlesHint: 'Add subtitle items to this track to enable editing.',
         removeTrack: 'Remove Track',
         removeTrackConfirm: 'This track has items. Are you sure you want to remove it? All items will be deleted.',
         removeTrackLast: 'Cannot remove the last track.',
@@ -5802,6 +5804,7 @@ export const translations: Record<string, Translations> = {
         hide: '隐藏轨道',
         selectAll: '全选',
         editSubtitles: '编辑字幕',
+        editSubtitlesHint: '请先在该轨道上添加字幕素材。',
         removeTrack: '删除轨道',
         removeTrackConfirm: '该轨道中存在素材，确定要删除吗？所有素材将被一并删除。',
         removeTrackLast: '无法删除最后一条轨道。',

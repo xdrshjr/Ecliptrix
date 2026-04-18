@@ -38,8 +38,11 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
   const pixelsPerSecond = zoomLevel * 50;
 
-  // Use padded duration for visual width
-  const paddedDuration = totalDuration + TIMELINE_PADDING_SECONDS;
+  // Use padded duration for visual width; empty project (no duration) should
+  // not produce phantom ruler marks, so collapse paddedDuration to 0 there.
+  const paddedDuration = totalDuration <= 0
+    ? 0
+    : totalDuration + TIMELINE_PADDING_SECONDS;
 
   // 使用ref跟踪最新值，避免拖拽过程中的闭包陈旧问题
   const scrollLeftRef = useRef(scrollLeft);
@@ -101,6 +104,26 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const generateTimeMarks = () => {
     const marks = [];
     const interval = zoomLevel < 0.5 ? 10 : zoomLevel < 1 ? 5 : zoomLevel < 2 ? 1 : 0.5;
+
+    // Empty project: only render a single 0:00 mark so the ruler does not
+    // suggest a seekable range the timeline does not actually have.
+    if (paddedDuration <= 0) {
+      marks.push(
+        <div key={0} className="absolute flex flex-col items-center">
+          <div
+            className="border-l border-border h-4"
+            style={{ left: '0px' }}
+          />
+          <span
+            className="text-xs text-muted-foreground mt-1 font-mono"
+            style={{ left: '-20px', position: 'absolute', top: '16px' }}
+          >
+            {formatTime(0)}
+          </span>
+        </div>
+      );
+      return marks;
+    }
 
     for (let time = 0; time <= paddedDuration; time += interval) {
       const left = time * pixelsPerSecond;

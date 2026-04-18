@@ -232,7 +232,12 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
           {/* 滚动内容容器 */}
           <div
             className="relative"
-            style={{ minWidth: `${Math.max((totalDuration + TIMELINE_PADDING_SECONDS) * pixelsPerSecond, 800)}px` }}
+            style={{
+              minWidth: `${Math.max(
+                (totalDuration <= 0 ? 0 : totalDuration + TIMELINE_PADDING_SECONDS) * pixelsPerSecond,
+                800,
+              )}px`,
+            }}
           >
             {/* 垂直对齐线 */}
             {sortedTracks.length > 0 && (
