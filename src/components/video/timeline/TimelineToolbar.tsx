@@ -244,8 +244,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           {button.icon}
         </span>
 
-        {/* 悬停提示 */}
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+        {/* 悬停提示 — also shows on keyboard focus (round 17 a11y pattern) */}
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
           <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
             {button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2">

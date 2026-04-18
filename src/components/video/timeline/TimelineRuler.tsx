@@ -139,7 +139,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
     // Empty project: only render a single 0:00 mark so the ruler does not
     // suggest a seekable range the timeline does not actually have.
-    if (paddedDuration <= 0) {
+    // paddedDuration is always ≥ ~10 because totalDuration is floored at 0.001
+    // by the Duration invariant in TimelineAggregate; hasItems is the
+    // authoritative "nothing to scrub" signal.
+    if (!hasItems) {
       marks.push(
         <div key={0} className="absolute flex flex-col items-center">
           <div
@@ -375,16 +378,22 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
             }}
           >
-            {/* 播放头顶部手柄 */}
+            {/* 播放头顶部手柄 — disabled on empty timeline to match ruler scroll */}
             <div
-              className="absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t cursor-col-resize"
-              style={{ pointerEvents: 'auto' }}
+              className={`absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t ${
+                hasItems ? 'cursor-col-resize' : 'cursor-not-allowed'
+              }`}
+              style={{ pointerEvents: hasItems ? 'auto' : 'none' }}
+              aria-hidden="true"
             />
 
-            {/* 播放头底部手柄 */}
+            {/* 播放头底部手柄 — same gate */}
             <div
-              className="absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b cursor-col-resize"
-              style={{ pointerEvents: 'auto' }}
+              className={`absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b ${
+                hasItems ? 'cursor-col-resize' : 'cursor-not-allowed'
+              }`}
+              style={{ pointerEvents: hasItems ? 'auto' : 'none' }}
+              aria-hidden="true"
             />
           </div>
 

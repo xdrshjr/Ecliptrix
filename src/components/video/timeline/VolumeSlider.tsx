@@ -58,6 +58,28 @@ const VolumeSlider: React.FC = () => {
     }
   }, [volume]);
 
+  // Remember the element that opened the popover so we can restore focus on close.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  // Focus the slider on open; restore focus to the owner on close.
+  useEffect(() => {
+    if (!isVisible) return;
+    returnFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    if (!isLocked) {
+      // rAF so the portal has mounted and trackRef is attached.
+      const raf = requestAnimationFrame(() => trackRef.current?.focus());
+      return () => {
+        cancelAnimationFrame(raf);
+        returnFocusRef.current?.focus?.();
+        returnFocusRef.current = null;
+      };
+    }
+    return () => {
+      returnFocusRef.current?.focus?.();
+      returnFocusRef.current = null;
+    };
+  }, [isVisible, isLocked]);
+
   const calculateVolume = useCallback((clientX: number) => {
     if (!trackRef.current) return localVolumeRef.current;
     const rect = trackRef.current.getBoundingClientRect();
@@ -282,6 +304,24 @@ const VolumeSlider: React.FC = () => {
 
   const thumbLeft = gradientPercent; // 0-100%
 
+  // Viewport-edge clamp. Popover is ~200px × ~140px; 8px safe margin.
+  const MARGIN = 8;
+  const POPOVER_W = 200;
+  const POPOVER_H = 140; // conservative: icon row + slider + ticks + padding + arrow
+  const vpW = typeof window !== 'undefined' ? window.innerWidth : POPOVER_W;
+  const vpH = typeof window !== 'undefined' ? window.innerHeight : POPOVER_H;
+
+  const halfW = POPOVER_W / 2;
+  let clampedLeft = position.x;
+  if (position.x - halfW < MARGIN) clampedLeft = MARGIN + halfW;
+  if (position.x + halfW > vpW - MARGIN) clampedLeft = vpW - MARGIN - halfW;
+
+  // Default: anchor ABOVE (translateY(-100%)). If clipping the top, anchor BELOW.
+  const anchorBelow = position.y - POPOVER_H < MARGIN;
+  const clampedTop = anchorBelow
+    ? Math.min(position.y + 24, vpH - MARGIN - POPOVER_H)
+    : position.y;
+
   const sliderContent = (
     <div
       ref={sliderRef}
@@ -294,9 +334,11 @@ const VolumeSlider: React.FC = () => {
       className="fixed bg-background text-foreground rounded-lg p-3 w-[200px] border border-border shadow-lg"
       style={{
         zIndex: 999999,
-        left: position.x,
-        top: position.y,
-        transform: 'translateX(-50%) translateY(-100%)'
+        left: clampedLeft,
+        top: clampedTop,
+        transform: anchorBelow
+          ? 'translateX(-50%) translateY(0)'
+          : 'translateX(-50%) translateY(-100%)',
       }}
     >
       {/* Volume icon and value */}
@@ -376,10 +418,16 @@ const VolumeSlider: React.FC = () => {
         </div>
       </div>
 
-      {/* Arrow indicator */}
-      <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-      </div>
+      {/* Arrow indicator — flips when anchored below */}
+      {anchorBelow ? (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2">
+          <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-background"></div>
+        </div>
+      ) : (
+        <div className="absolute top-full left-1/2 transform -translate-x-1/2">
+          <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
+        </div>
+      )}
     </div>
   );
 

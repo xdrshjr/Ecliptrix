@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { AudioSentenceSegment, SentenceTimingInfo } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
+import { formatTimelineTime } from './timeFormat';
 
 interface SentenceSegmentBarProps {
   sentenceSegments: AudioSentenceSegment;
@@ -16,6 +18,7 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
   height,
   duration
 }) => {
+  const { t } = useLocale();
   const [hoveredSentence, setHoveredSentence] = useState<string | null>(null);
 
   // 如果没有句子数据，返回空
@@ -53,11 +56,10 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
 
   // 生成句子工具提示内容
   const getSentenceTooltip = (sentence: SentenceTimingInfo): string => {
-    const startTime = sentence.start_time.toFixed(1);
-    const endTime = sentence.end_time.toFixed(1);
-    const duration = sentence.duration.toFixed(1);
-    
-    return `${sentence.text}\n\n时间: ${startTime}s - ${endTime}s (${duration}s)`;
+    const startLabel = formatTimelineTime(sentence.start_time, { showMs: true });
+    const endLabel = formatTimelineTime(sentence.end_time, { showMs: true });
+    const durLabel = `${sentence.duration.toFixed(1)}s`;
+    return `${sentence.text}\n\n${t.timeline.sentenceSegment.timeLabel}${startLabel} - ${endLabel} (${durLabel})`;
   };
 
   return (
@@ -113,11 +115,12 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
                 }}
               >
                 <div className="font-medium mb-1">
-                  句子 {sentence.order}
+                  {t.timeline.sentenceSegment.sentence.replace('{order}', String(sentence.order))}
                 </div>
                 <div className="text-muted-foreground mb-1">
-                  {sentence.start_time.toFixed(1)}s - {sentence.end_time.toFixed(1)}s 
-                  ({sentence.duration.toFixed(1)}s)
+                  {formatTimelineTime(sentence.start_time, { showMs: true })} -{' '}
+                  {formatTimelineTime(sentence.end_time, { showMs: true })}
+                  {' '}({sentence.duration.toFixed(1)}s)
                 </div>
                 <div className="text-foreground text-wrap break-words">
                   {sentence.text.length > 50 

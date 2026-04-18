@@ -701,6 +701,7 @@ export interface Translations {
       editSubtitles: string;
       editSubtitlesHint: string;
       trackLocked: string;
+      selected: string;
       removeTrack: string;
       removeTrackConfirm: string;
       removeTrackLast: string;
@@ -760,6 +761,10 @@ export interface Translations {
       playing: string;
       scrubAriaLabel: string;
       resetZoomAriaLabel: string;
+    };
+    sentenceSegment: {
+      sentence: string;
+      timeLabel: string;
     };
   };
   materialsPanel: {
@@ -3353,6 +3358,7 @@ export const translations: Record<string, Translations> = {
         editSubtitles: 'Edit Subtitles',
         editSubtitlesHint: 'Add subtitle items to this track to enable editing.',
         trackLocked: 'Track is locked',
+        selected: 'Selected',
         removeTrack: 'Remove Track',
         removeTrackConfirm: 'This track has items. Are you sure you want to remove it? All items will be deleted.',
         removeTrackLast: 'Cannot remove the last track.',
@@ -3412,6 +3418,10 @@ export const translations: Record<string, Translations> = {
         playing: 'Playing',
         scrubAriaLabel: 'Timeline playhead scrubber',
         resetZoomAriaLabel: 'Reset zoom, current {percent}%',
+      },
+      sentenceSegment: {
+        sentence: 'Sentence {order}',
+        timeLabel: 'Time: ',
       },
     },
     videoSearchModal: {
@@ -5861,6 +5871,7 @@ export const translations: Record<string, Translations> = {
         editSubtitles: '编辑字幕',
         editSubtitlesHint: '请先在该轨道上添加字幕素材。',
         trackLocked: '轨道已锁定',
+        selected: '已选中',
         removeTrack: '删除轨道',
         removeTrackConfirm: '该轨道中存在素材，确定要删除吗？所有素材将被一并删除。',
         removeTrackLast: '无法删除最后一条轨道。',
@@ -5920,6 +5931,10 @@ export const translations: Record<string, Translations> = {
         playing: '播放中',
         scrubAriaLabel: '时间轴播放头滑块',
         resetZoomAriaLabel: '重置缩放，当前 {percent}%',
+      },
+      sentenceSegment: {
+        sentence: '句子 {order}',
+        timeLabel: '时间: ',
       },
     },
     videoSearchModal: {

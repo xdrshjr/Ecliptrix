@@ -428,8 +428,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         `${item.name} ` +
         `${formatTimelineTime(item.startTime, { showMs: true })}–` +
         `${formatTimelineTime(item.startTime + item.duration, { showMs: true })}` +
-        `${isSelected ? ' (selected)' : ''}` +
-        `${isTrackLocked ? ' (locked)' : ''}`
+        `${isSelected ? ` (${t.timeline.track.selected})` : ''}` +
+        `${isTrackLocked ? ` (${t.timeline.track.trackLocked})` : ''}`
       }
       style={getItemStyles()}
       onPointerDown={handlePointerDown}
