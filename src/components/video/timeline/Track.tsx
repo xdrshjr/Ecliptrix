@@ -351,7 +351,7 @@ const Track: React.FC<TrackProps> = ({
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     track.items.length === 0
                       ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
-                      : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                      : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/30'
                   }`}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
@@ -397,7 +397,9 @@ const Track: React.FC<TrackProps> = ({
 
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {t.timeline.track.selectAll}
+                    {track.items.length === 0
+                      ? t.timeline.track.selectAllEmptyHint
+                      : t.timeline.track.selectAll}
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2">
                       <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
                     </div>

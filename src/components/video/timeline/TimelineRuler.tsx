@@ -205,7 +205,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             {/* 工具提示 */}
             {showTooltip && (
               <div className="absolute left-0 top-6 bg-card text-foreground text-xs px-2 py-1 rounded whitespace-nowrap z-50">
-                时间轴
+                {t.timeline.ruler.timelineTooltip}
                 <div className="absolute -top-1 left-2 w-2 h-2 bg-card transform rotate-45"></div>
               </div>
             )}

@@ -175,7 +175,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         </svg>
       ),
       label: isExporting ? t.timeline.toolbar.exportingJson : t.timeline.toolbar.exportJson,
-      shortcut: 'Ctrl+E',
+      shortcut: t.timeline.shortcuts.exportShortcut,
       disabled: isExporting
     },
     {

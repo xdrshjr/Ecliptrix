@@ -510,7 +510,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     requestAnimationFrame(() => {
       useTimelineStore.getState().captureNextState();
     });
-  }, []);
+  }, [t]);
 
   const handleOrganizeMaterials = useCallback(() => {
     const state = useTimelineStore.getState();
@@ -704,12 +704,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         }, { timeoutMs: 300_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
-          throw new Error(httpError.message || `导入失败: ${httpError.status}`);
+          throw new Error(
+            httpError.message ||
+              `${t.timeline.messages.importProjectInvalidData} (${httpError.status})`,
+          );
         }
         throw httpError;
       }
 
-      if (!result.success) throw new Error(result.error || '导入失败');
+      if (!result.success)
+        throw new Error(result.error || t.timeline.messages.importProjectInvalidData);
 
       const importedData = result.importedData;
       if (importedData?.timelineState && importedData?.materials) {

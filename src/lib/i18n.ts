@@ -752,6 +752,7 @@ export interface Translations {
       zoomIn: string;
       zoomOut: string;
       resetZoom: string;
+      timelineTooltip: string;
     };
   };
   materialsPanel: {
@@ -3390,6 +3391,7 @@ export const translations: Record<string, Translations> = {
         zoomIn: 'Zoom In',
         zoomOut: 'Zoom Out',
         resetZoom: 'Reset Zoom',
+        timelineTooltip: 'Timeline',
       },
     },
     videoSearchModal: {
@@ -5884,6 +5886,7 @@ export const translations: Record<string, Translations> = {
         zoomIn: '放大',
         zoomOut: '缩小',
         resetZoom: '重置缩放',
+        timelineTooltip: '时间轴',
       },
     },
     videoSearchModal: {
