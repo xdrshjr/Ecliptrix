@@ -2232,7 +2232,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     if (!hasAutoChatInitialized.current && (!content?.conversations || content.conversations.length === 0)) {
       hasAutoChatInitialized.current = true;
       
-      console.log('[VideoEditingInterface] 自动初始化视频编辑聊天对话', {
+      logger.debug('自动初始化视频编辑聊天对话', {
         taskId,
         timestamp: new Date().toISOString()
       });
@@ -2257,7 +2257,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       onUpdateContent(updatedContent);
       
-      console.log('[VideoEditingInterface] 视频编辑聊天对话初始化完成', {
+      logger.debug('视频编辑聊天对话初始化完成', {
         conversationId,
         timestamp: now.toISOString()
       });
@@ -2268,7 +2268,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   useEffect(() => {
     const loadWorkflowPreferences = async () => {
       if (!user?.id) {
-        console.log('[VideoEditingInterface] 等待用户认证信息，跳过工作流配置加载', {
+        logger.debug('等待用户认证信息，跳过工作流配置加载', {
           taskId,
           timestamp: new Date().toISOString()
         });
@@ -2277,7 +2277,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       // 如果已经有配置了（例如从其他地方设置的），不需要重新加载
       if (workflowConfigs.size > 0) {
-        console.log('[VideoEditingInterface] 工作流配置已存在，跳过自动加载', {
+        logger.debug('工作流配置已存在，跳过自动加载', {
           taskId,
           configsCount: workflowConfigs.size,
           timestamp: new Date().toISOString()
@@ -2286,7 +2286,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       }
 
       try {
-        console.log('[VideoEditingInterface] 开始从后端加载工作流配置', {
+        logger.debug('开始从后端加载工作流配置', {
           taskId,
           userId: user.id,
           timestamp: new Date().toISOString()
@@ -2297,7 +2297,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         const workflowsResponse = await loadAgentWorkflows(user.id);
         
         if (!workflowsResponse.success || !workflowsResponse.data) {
-          console.warn('[VideoEditingInterface] 加载工作流列表失败，使用空配置', {
+          logger.warn('加载工作流列表失败，使用空配置', {
             taskId,
             timestamp: new Date().toISOString()
           });
@@ -2305,7 +2305,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         }
 
         const workflows = workflowsResponse.data;
-        console.log('[VideoEditingInterface] 成功加载工作流列表', {
+        logger.debug('成功加载工作流列表', {
           taskId,
           workflowsCount: workflows.length,
           timestamp: new Date().toISOString()
@@ -2317,7 +2317,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         try {
           preferencesResult = await loadWorkflowPrefs(user.id);
         } catch (err) {
-          console.warn('[VideoEditingInterface] 加载工作流配置偏好失败，使用空配置', {
+          logger.warn('加载工作流配置偏好失败，使用空配置', {
             taskId,
             error: err instanceof Error ? err.message : String(err),
             timestamp: new Date().toISOString()
@@ -2351,7 +2351,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           
           setWorkflowConfigs(preferencesMap);
           
-          console.log('[VideoEditingInterface] 工作流配置加载成功', {
+          logger.debug('工作流配置加载成功', {
             taskId,
             configsCount: preferencesMap.size,
             enabledCount: Array.from(preferencesMap.values()).filter(c => c.enabled).length,

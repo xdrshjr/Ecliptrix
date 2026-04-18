@@ -354,6 +354,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onFocus={handleFocus}
               onBlur={handleBlur}
               placeholder={placeholderText}
+              aria-label={t.videoChatWindow.inputAriaLabel}
               className="w-full px-3 py-2 border border-border dark:border-zinc-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-24 bg-muted dark:bg-zinc-800 min-h-[32px] transition-all text-sm text-foreground dark:text-zinc-200"
               rows={1}
               disabled={inputDisabled}

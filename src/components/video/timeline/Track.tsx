@@ -295,7 +295,7 @@ const Track: React.FC<TrackProps> = ({
                       ? 'bg-accent text-muted-foreground hover:bg-accent'
                       : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
-                  aria-label={`${t.timeline.toolbar.volumeControl} - ${trackDisplayName}`}
+                  aria-label={`${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`}
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     {track.volume === 0 ? (

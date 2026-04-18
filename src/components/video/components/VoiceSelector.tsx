@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { VoiceType, getVoiceTypes } from '@/lib/api/tts';
 import { useLocale } from '@/contexts/LocaleContext';
+import { VideoEditingLogger } from '../utils/logger';
 
 interface VoiceSelectorProps {
   selectedVoiceId: string;
@@ -22,6 +23,11 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
+  const logger = useMemo(
+    () => new VideoEditingLogger({ taskId: 'global', component: 'VoiceSelector' }),
+    [],
+  );
+
   useEffect(() => {
     loadVoiceTypes();
   }, [locale]);
@@ -31,12 +37,12 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
       setIsLoading(true);
       setError(null);
       
-      console.log('[VoiceSelector] 加载音色列表');
-      
+      logger.debug('加载音色列表');
+
       const response = await getVoiceTypes(locale);
       if (response.success) {
         setVoiceTypes(response.data);
-        console.log('[VoiceSelector] 音色列表加载成功', {
+        logger.debug('音色列表加载成功', {
           count: Object.keys(response.data).length,
           categories: Array.from(new Set(Object.values(response.data).map(v => v.category))),
           voicesByCategory: Object.values(response.data).reduce((acc, voice) => {
@@ -49,7 +55,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '未知错误';
-      console.error('[VoiceSelector] 加载音色列表失败', { error: errorMsg });
+      logger.error('加载音色列表失败', err instanceof Error ? err : new Error(errorMsg), { error: errorMsg });
       setError(errorMsg);
     } finally {
       setIsLoading(false);
@@ -57,7 +63,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   };
 
   const handleVoiceSelect = (voiceId: string) => {
-    console.log('[VoiceSelector] 用户选择音色', {
+    logger.debug('用户选择音色', {
       previousVoice: selectedVoiceId,
       previousVoiceName: voiceTypes[selectedVoiceId]?.name,
       previousCategory: voiceTypes[selectedVoiceId]?.category,
@@ -147,7 +153,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
       <button
         onClick={() => {
           const newIsOpen = !isOpen;
-          console.log('[VoiceSelector] 音色选择面板状态变化', {
+          logger.debug('音色选择面板状态变化', {
             isOpen: newIsOpen,
             currentVoice: selectedVoiceId,
             currentVoiceName: voiceTypes[selectedVoiceId]?.name,

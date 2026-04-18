@@ -1714,6 +1714,7 @@ export interface Translations {
     viewWorkflowsTooltip: string;
     agentToggleLabel: string;
     agentInputPlaceholder: string;
+    inputAriaLabel: string;
     agentWorkingPlaceholder: string;
     agentUndoButton: string;
     agentUndoneLabel: string;
@@ -4213,6 +4214,7 @@ export const translations: Record<string, Translations> = {
       viewWorkflowsTooltip: 'View Workflows',
       agentToggleLabel: 'Agent',
       agentInputPlaceholder: 'Tell the agent what to edit...',
+      inputAriaLabel: 'Video editing chat input',
       agentWorkingPlaceholder: 'Agent is working...',
       agentUndoButton: 'Undo',
       agentUndoneLabel: 'Operations undone',
@@ -6716,6 +6718,7 @@ export const translations: Record<string, Translations> = {
       viewWorkflowsTooltip: '查看工作流',
       agentToggleLabel: 'Agent',
       agentInputPlaceholder: '告诉 Agent 你要编辑什么...',
+      inputAriaLabel: '视频编辑对话输入框',
       agentWorkingPlaceholder: 'Agent 正在执行...',
       agentUndoButton: '撤销',
       agentUndoneLabel: '操作已撤销',

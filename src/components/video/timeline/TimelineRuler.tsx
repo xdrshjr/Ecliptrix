@@ -309,12 +309,14 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       {/* 时间刻度区域 */}
       <div
         ref={scrollRef || rulerRef}
-        className="flex-1 relative cursor-pointer overflow-x-hidden overflow-y-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        className={`flex-1 relative overflow-x-hidden overflow-y-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+          hasItems && totalDuration > 0 ? 'cursor-pointer' : 'cursor-default'
+        }`}
         role="slider"
         tabIndex={hasItems && totalDuration > 0 ? 0 : -1}
         aria-label={t.timeline.ruler.scrubAriaLabel}
         aria-valuemin={0}
-        aria-valuemax={totalDuration > 0 ? totalDuration : 0}
+        aria-valuemax={hasItems && totalDuration > 0 ? totalDuration : 0}
         aria-valuenow={currentTime}
         aria-valuetext={formatTime(currentTime)}
         aria-orientation="horizontal"

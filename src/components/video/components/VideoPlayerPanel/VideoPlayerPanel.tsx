@@ -2012,7 +2012,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                           : t.videoPlayerPanel.placeholders.clickPlayToPreview}
                       </p>
                       <div className="placeholder-aspect-info">
-                        {t.videoPlayerPanel.placeholders.currentAspectRatioLabel}: {selectedAspectRatio.label} ({selectedAspectRatio.description})
+                        {t.videoPlayerPanel.placeholders.currentAspectRatioLabel}: {selectedAspectRatio.description}
                       </div>
                     </div>
                   </div>
