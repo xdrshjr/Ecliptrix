@@ -77,7 +77,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   externalTimelineUpdateId,
 }) => {
   const { t, locale } = useLocale();
-  const { showSuccess, showError, showWarning } = useNotification();
+  const { showSuccess, showError, showInfo } = useNotification();
 
   // Hooks for side-effect features
   const videoCache = useVideoCache(taskId);
@@ -524,12 +524,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [showSuccess, showError, t]);
 
   const handleAddEffect = useCallback(() => {
-    showWarning(t.timeline.messages.featureComingSoon);
-  }, [showWarning, t]);
+    showInfo(t.timeline.messages.effectsRequireSelection, 4000);
+  }, [showInfo, t]);
 
   const handleAddTransition = useCallback(() => {
-    showWarning(t.timeline.messages.featureComingSoon);
-  }, [showWarning, t]);
+    showInfo(t.timeline.messages.transitionsRequireSelection, 4000);
+  }, [showInfo, t]);
 
   // ---------------------------------------------------------------------------
   // Subtitle extraction (kept as local handler - complex API call)

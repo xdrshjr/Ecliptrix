@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
-import { TimelineRepository } from '../timeline/infrastructure';
+import { TimelineRepository, getSerializedTrackKind } from '../timeline/infrastructure';
 import type { TimelineData, MaterialData } from '../timeline/domain/types';
 import { VideoEditingLogger } from '../utils';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -84,10 +84,11 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
         gridSize: timelineState.gridSize,
         scrollLeft: timelineState.scrollLeft,
         tracks: timelineState.tracks.map(track => {
+          const kind = getSerializedTrackKind(track);
           const trackBase = {
             id: track.id,
             name: track.name,
-            type: track.type as 'video' | 'audio' | 'subtitle',
+            type: kind,
             height: track.height,
             isLocked: track.isLocked,
             isMuted: track.isMuted,
@@ -121,8 +122,8 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
                 : { ...itemBase, volume: item.volume };
             }),
           };
-          // Subtitle tracks do not carry a volume field
-          return track.type === 'subtitle'
+          // image- and subtitle-tracks do not carry a volume at rest
+          return (kind === 'image' || kind === 'subtitle')
             ? trackBase
             : { ...trackBase, volume: track.volume };
         }),

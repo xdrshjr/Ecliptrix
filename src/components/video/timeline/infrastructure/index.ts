@@ -5,8 +5,8 @@
  */
 
 // Adapters
-export { TimelineRepository } from './TimelineRepository';
-export type { TimelineExportData } from './TimelineRepository';
+export { TimelineRepository, getSerializedTrackKind } from './TimelineRepository';
+export type { TimelineExportData, SerializedTrackKind } from './TimelineRepository';
 
 export { VideoCacheAdapter } from './VideoCacheAdapter';
 export type { VideoCacheConfig } from './VideoCacheAdapter';

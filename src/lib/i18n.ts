@@ -697,6 +697,7 @@ export interface Translations {
       show: string;
       hide: string;
       selectAll: string;
+      selectAllEmptyHint: string;
       editSubtitles: string;
       editSubtitlesHint: string;
       removeTrack: string;
@@ -723,6 +724,8 @@ export interface Translations {
         organizeMaterialsSuccess: string;
         organizeMaterialsNoItems: string;
         featureComingSoon: string;
+        effectsRequireSelection: string;
+        transitionsRequireSelection: string;
         exportJsonSuccess: string;
         exportJsonError: string;
         exportInvalidTimelineState: string;
@@ -3331,6 +3334,7 @@ export const translations: Record<string, Translations> = {
         show: 'Show Track',
         hide: 'Hide Track',
         selectAll: 'Select All',
+        selectAllEmptyHint: 'Track is empty.',
         editSubtitles: 'Edit Subtitles',
         editSubtitlesHint: 'Add subtitle items to this track to enable editing.',
         removeTrack: 'Remove Track',
@@ -3357,6 +3361,8 @@ export const translations: Record<string, Translations> = {
         organizeMaterialsSuccess: 'All materials have been successfully aligned to the left',
         organizeMaterialsNoItems: 'No material segments found, alignment failed',
         featureComingSoon: 'This feature is coming soon',
+        effectsRequireSelection: 'Select a clip on the timeline first to add effects. (Feature coming soon)',
+        transitionsRequireSelection: 'Select two adjacent clips first to add a transition. (Feature coming soon)',
         exportJsonSuccess: 'Timeline data successfully exported to JSON file: {filename}',
         exportJsonError: 'Failed to export timeline data: {error}',
         exportInvalidTimelineState: 'Invalid timeline state data',
@@ -5821,6 +5827,7 @@ export const translations: Record<string, Translations> = {
         show: '显示轨道',
         hide: '隐藏轨道',
         selectAll: '全选',
+        selectAllEmptyHint: '轨道为空。',
         editSubtitles: '编辑字幕',
         editSubtitlesHint: '请先在该轨道上添加字幕素材。',
         removeTrack: '删除轨道',
@@ -5847,6 +5854,8 @@ export const translations: Record<string, Translations> = {
           organizeMaterialsSuccess: '所有素材已向左对齐成功',
           organizeMaterialsNoItems: '无素材片段，对齐失败',
           featureComingSoon: '该功能即将推出',
+          effectsRequireSelection: '请先在时间轴上选中片段，再添加特效。（功能开发中）',
+          transitionsRequireSelection: '请先选中两段相邻片段，再添加转场。（功能开发中）',
           exportJsonSuccess: '时间轴数据已成功导出为JSON文件: {filename}',
           exportJsonError: '时间轴数据导出失败: {error}',
           exportInvalidTimelineState: '无效的时间轴状态数据',

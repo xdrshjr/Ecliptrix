@@ -78,7 +78,7 @@ export const useVideoCache = (taskId: string): UseVideoCacheReturn => {
     const stats = getAdapterStats();
     setCacheStats(stats);
 
-    logger.info('缓存统计信息更新', {
+    logger.debug('cache stats update', {
       totalCached: stats.totalCached,
       totalLoading: stats.totalLoading,
       totalErrors: stats.totalErrors,

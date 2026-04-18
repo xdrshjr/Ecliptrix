@@ -431,22 +431,24 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       materialId?: string;
     }> = [];
 
-    console.log(`[VideoPlayerPanel] 获取图片叠加层`, {
+    logger.debug('get image overlays', {
       currentPlaybackTime: currentPlaybackTime.toFixed(2),
       timelineTracksCount: timelineState.tracks.length,
       materialsCount: materials.length
     });
 
     timelineState.tracks.forEach(track => {
-      console.log(`[VideoPlayerPanel] 检查轨道: ${track.id}`, {
+      logger.debug('check track', {
+        trackId: track.id,
         trackType: track.type,
+        displayKind: track.id.startsWith('image-track') ? 'image' : track.type,
         itemsCount: track.items.length,
         isVisible: track.isVisible
       });
-      
+
       if (track.isVisible) {
         track.items.forEach(item => {
-          console.log(`[VideoPlayerPanel] 检查时间轴项目`, {
+          logger.debug('check timeline item', {
             itemId: item.id,
             itemName: item.name,
             itemType: item.type,
@@ -457,20 +459,20 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             isInTimeRange: currentPlaybackTime >= item.startTime && currentPlaybackTime < item.startTime + item.duration,
             materialId: item.materialId
           });
-          
+
           // 检查是否为图片类型且在当前时间范围内
-          if (item.originalMaterialType === 'image' && 
-              currentPlaybackTime >= item.startTime && 
+          if (item.originalMaterialType === 'image' &&
+              currentPlaybackTime >= item.startTime &&
               currentPlaybackTime < item.startTime + item.duration) {
-            
-            console.log(`[VideoPlayerPanel] 图片项目在时间范围内，查找素材`, {
+
+            logger.debug('image item in range, lookup material', {
               itemId: item.id,
               materialId: item.materialId
             });
-            
+
             // 查找对应的素材
             const material = materials?.find(m => m.id === item.materialId);
-            console.log(`[VideoPlayerPanel] 素材查找结果`, {
+            logger.debug('material lookup result', {
               found: !!material,
               materialId: item.materialId,
               materialName: material?.name,
@@ -478,7 +480,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               materialType: material?.type,
               isWatermarkRemoved: material?.metadata?.isWatermarkRemoved || false
             });
-            
+
             if (material && material.url) {
               // 为图片设置默认位置（如果没有设置的话）
               const defaultPosition: ImagePosition = {
@@ -496,7 +498,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 materialId: item.materialId
               };
 
-              console.log(`[VideoPlayerPanel] 添加图片叠加层`, {
+              logger.debug('add image overlay', {
                 overlayId: overlay.id,
                 overlayUrl: overlay.url.substring(0, 100),
                 position: overlay.position,
@@ -504,7 +506,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               });
               imageOverlays.push(overlay);
             } else {
-              console.warn(`[VideoPlayerPanel] 图片素材未找到或无URL`, {
+              logger.warn('image material missing or no URL', {
                 itemId: item.id,
                 materialId: item.materialId,
                 materialFound: !!material,
@@ -522,7 +524,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       }
     });
 
-    console.log(`[VideoPlayerPanel] 图片叠加层获取完成`, {
+    logger.debug('image overlays complete', {
       totalOverlays: imageOverlays.length,
       overlays: imageOverlays.map(o => ({
         id: o.id,
@@ -531,7 +533,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       }))
     });
     return imageOverlays;
-  }, [timelineState, compositionCurrentTime, currentTime, materials]);
+  }, [timelineState, compositionCurrentTime, currentTime, materials, logger]);
 
   // 新增：处理图片位置变化
   const handleImagePositionChange = useCallback((itemId: string, newPosition: ImagePosition) => {
@@ -590,7 +592,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       return;
     }
     
-    console.log(`[VideoPlayerPanel] 比例切换调试`, {
+    logger.debug('aspect ratio change debug', {
       fromRatio: selectedAspectRatio.id,
       toRatio: aspectRatio.id,
       fromObject: selectedAspectRatio,
@@ -625,7 +627,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 处理视频导出（带比例信息记录）
   const handleVideoExport = useCallback(async () => {
-    console.log(`[VideoPlayerPanel] 导出前最终检查`, {
+    logger.debug('pre-export final check', {
       selectedAspectRatioId: selectedAspectRatio.id,
       selectedAspectRatioObject: selectedAspectRatio,
       timestamp: new Date().toISOString()
@@ -1952,7 +1954,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   {/* 新增：图片叠加层 */}
                   {(() => {
                     const overlays = getCurrentImageOverlays();
-                    console.log('[VideoPlayerPanel] Rendering image overlays:', {
+                    logger.debug('render image overlays', {
                       overlayCount: overlays.length,
                       containerDimensions,
                       hasValidDimensions: containerDimensions.width > 0 && containerDimensions.height > 0,
@@ -1962,9 +1964,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                         position: o.position
                       }))
                     });
-                    
+
                     if (containerDimensions.width === 0 || containerDimensions.height === 0) {
-                      console.warn('[VideoPlayerPanel] Container dimensions are zero, overlays will not be visible');
+                      logger.warn('container dimensions are zero', {});
                     }
                     
                     return overlays.map((overlay) => (
@@ -2018,7 +2020,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   {/* 在预览模式下也显示图片叠加 */}
                   {(() => {
                     const overlays = getCurrentImageOverlays();
-                    console.log('[VideoPlayerPanel] Rendering image overlays in preview mode:', {
+                    logger.debug('render image overlays in preview mode', {
                       overlayCount: overlays.length,
                       containerDimensions,
                       playbackMode: 'preview'

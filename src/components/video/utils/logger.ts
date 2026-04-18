@@ -35,6 +35,10 @@ export class VideoEditingLogger {
    * 记录调试级别日志
    */
   debug(action: string, data?: Record<string, any>) {
+    // Gate: suppress in production unless explicitly enabled via NEXT_PUBLIC_VIDEO_EDIT_DEBUG.
+    if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_VIDEO_EDIT_DEBUG) {
+      return;
+    }
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level: 'DEBUG',

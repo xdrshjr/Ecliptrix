@@ -30,6 +30,16 @@ function normalizeTrackName(name: string, id: string): string {
   return `${name} ${match[1]}`;
 }
 
+export type SerializedTrackKind = 'video' | 'image' | 'audio' | 'subtitle';
+
+// image-tracks carry internal type='video' but id prefix 'image-track-';
+// expose their external identity as 'image' in the serialized JSON so
+// consumers (and round-tripping) see the correct semantic kind.
+export function getSerializedTrackKind(track: { id: string; type: string }): SerializedTrackKind {
+  if (track.id.startsWith('image-track')) return 'image';
+  return track.type as SerializedTrackKind;
+}
+
 // ---------------------------------------------------------------------------
 // TimelineExportData — the on-disk JSON shape
 // ---------------------------------------------------------------------------
@@ -59,12 +69,12 @@ export interface TimelineExportData {
   tracks: Array<{
     id: string;
     name: string;
-    type: 'video' | 'audio' | 'subtitle';
+    type: SerializedTrackKind;
     height: number;
     isLocked: boolean;
     isMuted: boolean;
     isVisible: boolean;
-    volume: number;
+    volume?: number;
     order: number;
     items: Array<{
       id: string;
@@ -156,39 +166,45 @@ export class TimelineRepository implements ITimelineRepository {
           gridSize: data.gridSize,
           scrollLeft: data.scrollLeft,
         },
-        tracks: data.tracks.map((track) => ({
-          id: track.id,
-          name: track.name,
-          type: track.type,
-          height: track.height,
-          isLocked: track.isLocked,
-          isMuted: track.isMuted,
-          isVisible: track.isVisible,
-          volume: track.volume,
-          order: track.order,
-          items: track.items.map((item) => ({
-            id: item.id,
-            name: item.name,
-            type: item.type,
-            startTime: item.startTime,
-            duration: item.duration,
-            trackId: item.trackId,
-            color: item.color,
-            thumbnailUrl: item.thumbnailUrl,
-            waveformData: item.waveformData,
-            text: item.text,
-            materialId: item.materialId,
-            volume: item.volume,
-            opacity: item.opacity,
-            isSelected: item.isSelected,
-            clipStart: item.clipStart,
-            clipEnd: item.clipEnd,
-            originalDuration: item.originalDuration,
-            originalMaterialType: item.originalMaterialType,
-            subtitleStyle: item.subtitleStyle,
-            imagePosition: item.imagePosition,
-          })),
-        })),
+        tracks: data.tracks.map((track) => {
+          const kind = getSerializedTrackKind(track);
+          const base = {
+            id: track.id,
+            name: track.name,
+            type: kind,
+            height: track.height,
+            isLocked: track.isLocked,
+            isMuted: track.isMuted,
+            isVisible: track.isVisible,
+            order: track.order,
+            items: track.items.map((item) => ({
+              id: item.id,
+              name: item.name,
+              type: item.type,
+              startTime: item.startTime,
+              duration: item.duration,
+              trackId: item.trackId,
+              color: item.color,
+              thumbnailUrl: item.thumbnailUrl,
+              waveformData: item.waveformData,
+              text: item.text,
+              materialId: item.materialId,
+              volume: item.volume,
+              opacity: item.opacity,
+              isSelected: item.isSelected,
+              clipStart: item.clipStart,
+              clipEnd: item.clipEnd,
+              originalDuration: item.originalDuration,
+              originalMaterialType: item.originalMaterialType,
+              subtitleStyle: item.subtitleStyle,
+              imagePosition: item.imagePosition,
+            })),
+          };
+          // image- and subtitle-tracks do not carry a volume at rest
+          return (kind === 'image' || kind === 'subtitle')
+            ? base
+            : { ...base, volume: track.volume };
+        }),
         materials: materials.map((material) => ({
           id: material.id,
           name: material.name,
@@ -269,7 +285,8 @@ export class TimelineRepository implements ITimelineRepository {
       tracks: exportData.tracks.map((track): TrackData => ({
         id: track.id,
         name: normalizeTrackName(track.name, track.id),
-        type: track.type,
+        // 'image' in JSON → internal 'video' (image-tracks live in the video domain).
+        type: track.type === 'image' ? 'video' : track.type,
         height: track.height,
         isLocked: track.isLocked ?? false,
         isMuted: track.isMuted ?? false,
@@ -364,7 +381,7 @@ export class TimelineRepository implements ITimelineRepository {
         }
         if (typeof track.type !== 'string') {
           errors.push(`tracks[${i}].type must be a string.`);
-        } else if (!['video', 'audio', 'subtitle'].includes(track.type as string)) {
+        } else if (!['video', 'image', 'audio', 'subtitle'].includes(track.type as string)) {
           errors.push(`tracks[${i}].type "${track.type}" is not a valid track type.`);
         }
         if (!Array.isArray(track.items)) {

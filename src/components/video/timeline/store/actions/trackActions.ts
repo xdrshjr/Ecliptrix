@@ -155,7 +155,7 @@ export function addTrackAction(
     id: trackId,
     name: trackName,
     type: domainType,
-    height: type === 'subtitle' ? 50 : type === 'audio' ? 60 : 80,
+    height: type === 'subtitle' ? 50 : (type === 'audio' || type === 'image') ? 60 : 80,
     isLocked: false,
     isMuted: false,
     isVisible: true,
