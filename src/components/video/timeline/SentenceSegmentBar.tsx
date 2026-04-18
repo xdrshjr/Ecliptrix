@@ -58,7 +58,7 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
   const getSentenceTooltip = (sentence: SentenceTimingInfo): string => {
     const startLabel = formatTimelineTime(sentence.start_time, { showMs: true });
     const endLabel = formatTimelineTime(sentence.end_time, { showMs: true });
-    const durLabel = `${sentence.duration.toFixed(1)}s`;
+    const durLabel = `${sentence.duration.toFixed(1)}${t.timeline.sentenceSegment.durationUnit}`;
     return `${sentence.text}\n\n${t.timeline.sentenceSegment.timeLabel}${startLabel} - ${endLabel} (${durLabel})`;
   };
 
@@ -120,7 +120,7 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
                 <div className="text-muted-foreground mb-1">
                   {formatTimelineTime(sentence.start_time, { showMs: true })} -{' '}
                   {formatTimelineTime(sentence.end_time, { showMs: true })}
-                  {' '}({sentence.duration.toFixed(1)}s)
+                  {' '}({sentence.duration.toFixed(1)}{t.timeline.sentenceSegment.durationUnit})
                 </div>
                 <div className="text-foreground text-wrap break-words">
                   {sentence.text.length > 50 

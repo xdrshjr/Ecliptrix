@@ -765,6 +765,7 @@ export interface Translations {
     sentenceSegment: {
       sentence: string;
       timeLabel: string;
+      durationUnit: string;
     };
   };
   materialsPanel: {
@@ -1012,6 +1013,7 @@ export interface Translations {
       fullscreen: string;
       seekAriaLabel: string;
       volumeAriaLabel: string;
+      previewVolumeAriaLabel: string;
       mute: string;
       unmute: string;
     };
@@ -3422,6 +3424,7 @@ export const translations: Record<string, Translations> = {
       sentenceSegment: {
         sentence: 'Sentence {order}',
         timeLabel: 'Time: ',
+        durationUnit: 's',
       },
     },
     videoSearchModal: {
@@ -3506,6 +3509,7 @@ export const translations: Record<string, Translations> = {
         fullscreen: 'Fullscreen',
         seekAriaLabel: 'Seek within video',
         volumeAriaLabel: 'Volume',
+        previewVolumeAriaLabel: 'Preview Volume',
         mute: 'Mute',
         unmute: 'Unmute',
       },
@@ -5935,6 +5939,7 @@ export const translations: Record<string, Translations> = {
       sentenceSegment: {
         sentence: '句子 {order}',
         timeLabel: '时间: ',
+        durationUnit: '秒',
       },
     },
     videoSearchModal: {
@@ -6019,6 +6024,7 @@ export const translations: Record<string, Translations> = {
         fullscreen: '全屏',
         seekAriaLabel: '视频进度条',
         volumeAriaLabel: '音量',
+        previewVolumeAriaLabel: '预览音量',
         mute: '静音',
         unmute: '取消静音',
       },

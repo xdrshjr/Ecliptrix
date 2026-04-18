@@ -364,14 +364,14 @@ const Track: React.FC<TrackProps> = ({
                   }}
                   disabled={track.items.length === 0 || track.isLocked}
                   title={
-                    track.items.length === 0 ? t.timeline.track.editSubtitlesHint :
-                    track.isLocked ? t.timeline.track.trackLocked :
-                    t.timeline.track.editSubtitles
+                    track.items.length === 0 ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.editSubtitlesHint}` :
+                    track.isLocked ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.trackLocked}` :
+                    `${t.timeline.track.editSubtitles} - ${trackDisplayName}`
                   }
                   aria-label={
-                    track.items.length === 0 ? `${t.timeline.track.editSubtitles} — ${t.timeline.track.editSubtitlesHint}` :
-                    track.isLocked ? `${t.timeline.track.editSubtitles} — ${t.timeline.track.trackLocked}` :
-                    t.timeline.track.editSubtitles
+                    track.items.length === 0 ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.editSubtitlesHint}` :
+                    track.isLocked ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.trackLocked}` :
+                    `${t.timeline.track.editSubtitles} - ${trackDisplayName}`
                   }
                   className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                     (track.items.length === 0 || track.isLocked)
@@ -406,10 +406,10 @@ const Track: React.FC<TrackProps> = ({
                 disabled={track.items.length === 0 || track.isLocked}
                 title={
                   track.items.length === 0
-                    ? t.timeline.track.selectAllEmptyHint
+                    ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.selectAllEmptyHint}`
                     : track.isLocked
-                      ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
-                      : t.timeline.track.selectAll
+                      ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
+                      : `${t.timeline.track.selectAll} - ${trackDisplayName}`
                 }
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   (track.items.length === 0 || track.isLocked)
@@ -420,10 +420,10 @@ const Track: React.FC<TrackProps> = ({
                 }`}
                 aria-label={
                   track.items.length === 0
-                    ? `${t.timeline.track.selectAll} — ${t.timeline.track.selectAllEmptyHint}`
+                    ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.selectAllEmptyHint}`
                     : track.isLocked
-                      ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
-                      : t.timeline.track.selectAll
+                      ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
+                      : `${t.timeline.track.selectAll} - ${trackDisplayName}`
                 }
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
@@ -454,8 +454,8 @@ const Track: React.FC<TrackProps> = ({
                     ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-200 dark:hover:bg-yellow-500/30'
                     : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
-                aria-label={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
-                title={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
+                aria-label={`${track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock} - ${trackDisplayName}`}
+                title={`${track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock} - ${trackDisplayName}`}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   {track.isLocked ? (
@@ -483,12 +483,12 @@ const Track: React.FC<TrackProps> = ({
                 disabled={track.isLocked}
                 aria-label={
                   track.isLocked
-                    ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
-                    : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)
+                    ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
+                    : `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName}`
                 }
                 title={track.isLocked
-                  ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
-                  : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)}
+                  ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
+                  : `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName}`}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
@@ -524,11 +524,11 @@ const Track: React.FC<TrackProps> = ({
                 onClick={handleRemoveTrackClick}
                 disabled={track.isLocked}
                 aria-label={track.isLocked
-                  ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
-                  : t.timeline.track.removeTrack}
+                  ? `${t.timeline.track.removeTrack} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
+                  : `${t.timeline.track.removeTrack} - ${trackDisplayName}`}
                 title={track.isLocked
-                  ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
-                  : t.timeline.track.removeTrack}
+                  ? `${t.timeline.track.removeTrack} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
+                  : `${t.timeline.track.removeTrack} - ${trackDisplayName}`}
                 className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
@@ -593,16 +593,18 @@ const Track: React.FC<TrackProps> = ({
         {track.items.length === 0 && (
           <div className={`absolute inset-0 flex items-center justify-center text-muted-foreground text-xs pointer-events-none ${
             isDragOver ? 'text-primary' : ''
-          }`}>
+          } ${track.isLocked ? 'opacity-50' : ''}`}>
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3">
                 {getTrackIcon()}
               </div>
               <span>
-                {track.id.startsWith('image-track') ? t.timeline.track.dropImageHere :
-                 track.type === 'video' ? t.timeline.track.dropVideoHere :
-                 track.type === 'audio' ? t.timeline.track.dropAudioHere :
-                 t.timeline.track.dropSubtitleHere}
+                {track.isLocked
+                  ? t.timeline.track.trackLocked
+                  : track.id.startsWith('image-track') ? t.timeline.track.dropImageHere :
+                    track.type === 'video' ? t.timeline.track.dropVideoHere :
+                    track.type === 'audio' ? t.timeline.track.dropAudioHere :
+                    t.timeline.track.dropSubtitleHere}
               </span>
             </div>
           </div>

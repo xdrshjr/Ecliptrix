@@ -2144,7 +2144,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       step={0.1}
                       value={volume}
                       onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                      aria-label={t.videoPlayerPanel.controls.volumeAriaLabel}
+                      aria-label={t.videoPlayerPanel.controls.previewVolumeAriaLabel}
                       aria-valuetext={`${Math.round(volume * 100)}%`}
                       className="volume-slider"
                     />

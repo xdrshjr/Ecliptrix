@@ -250,11 +250,18 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
           >
-            <div className="text-muted-foreground cursor-help">
+            <button
+              type="button"
+              className="text-muted-foreground cursor-help bg-transparent border-0 p-0 rounded"
+              aria-label={t.timeline.ruler.timelineTooltip}
+              title={t.timeline.ruler.timelineTooltip}
+              onFocus={() => setShowTooltip(true)}
+              onBlur={() => setShowTooltip(false)}
+            >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
               </svg>
-            </div>
+            </button>
 
             {/* 工具提示 */}
             {showTooltip && (
@@ -318,11 +325,18 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             onMouseEnter={() => setShowZoomHint(true)}
             onMouseLeave={() => setShowZoomHint(false)}
           >
-            <div className="text-muted-foreground cursor-help p-0.5">
+            <button
+              type="button"
+              className="text-muted-foreground cursor-help p-0.5 bg-transparent border-0 rounded"
+              aria-label={t.timeline.toolbar.zoomHint}
+              title={t.timeline.toolbar.zoomHint}
+              onFocus={() => setShowZoomHint(true)}
+              onBlur={() => setShowZoomHint(false)}
+            >
               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/>
               </svg>
-            </div>
+            </button>
             {showZoomHint && (
               <div className="absolute left-1/2 -translate-x-1/2 top-6 bg-card text-foreground text-xs px-2 py-1 rounded whitespace-nowrap z-50 border border-border">
                 {t.timeline.toolbar.zoomHint}

@@ -61,24 +61,22 @@ const VolumeSlider: React.FC = () => {
   // Remember the element that opened the popover so we can restore focus on close.
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
-  // Focus the slider on open; restore focus to the owner on close.
+  // Focus-on-open: schedule rAF only; cleanup cancels rAF, no focus side-effect.
   useEffect(() => {
-    if (!isVisible) return;
-    returnFocusRef.current = (document.activeElement as HTMLElement) ?? null;
-    if (!isLocked) {
-      // rAF so the portal has mounted and trackRef is attached.
-      const raf = requestAnimationFrame(() => trackRef.current?.focus());
-      return () => {
-        cancelAnimationFrame(raf);
-        returnFocusRef.current?.focus?.();
-        returnFocusRef.current = null;
-      };
-    }
-    return () => {
-      returnFocusRef.current?.focus?.();
-      returnFocusRef.current = null;
-    };
+    if (!isVisible || isLocked) return;
+    const raf = requestAnimationFrame(() => trackRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
   }, [isVisible, isLocked]);
+
+  // Restore-on-close: capture activeElement on open, restore on close.
+  useEffect(() => {
+    if (isVisible) {
+      returnFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+      return;
+    }
+    returnFocusRef.current?.focus?.();
+    returnFocusRef.current = null;
+  }, [isVisible]);
 
   const calculateVolume = useCallback((clientX: number) => {
     if (!trackRef.current) return localVolumeRef.current;
