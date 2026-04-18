@@ -5,6 +5,7 @@ import type { TimelineData, MaterialData } from '../timeline/domain/types';
 import { VideoEditingLogger } from '../utils';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
+import { deriveTrackDisplayName } from '../timeline/trackDisplayName';
 
 export interface UseTimelineExportReturn {
   isExporting: boolean;
@@ -85,9 +86,12 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
         scrollLeft: timelineState.scrollLeft,
         tracks: timelineState.tracks.map(track => {
           const kind = getSerializedTrackKind(track);
+          // Pre-derive the locale-aware display name so exported JSON never
+          // contains blanks — external consumers depend on track.name.
+          const displayName = deriveTrackDisplayName(track, t.timeline.track);
           const trackBase = {
             id: track.id,
-            name: track.name,
+            name: displayName,
             type: kind,
             height: track.height,
             isLocked: track.isLocked,

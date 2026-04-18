@@ -359,9 +359,14 @@ export const createTimelineSlice: StateCreator<
 
     setCurrentTime: (time: number) => {
       const state = get();
-      state._aggregate.setCurrentTime(TimePosition.create(time));
+      // Defensive clamp: an empty timeline reports totalDuration ≈ 0.001 (the
+      // `Duration > 0` invariant floor), so a naïve setCurrentTime(50) would
+      // leave currentTime far past the end. Clamp to [0, totalDuration].
+      const max = Math.max(0, state.totalDuration);
+      const clamped = Math.min(Math.max(0, time), max);
+      state._aggregate.setCurrentTime(TimePosition.create(clamped));
       // Directly set for performance (avoid full sync for high-frequency updates)
-      set({ currentTime: time });
+      set({ currentTime: clamped });
     },
 
     setPlaybackRate: (rate: number) => {

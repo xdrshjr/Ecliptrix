@@ -138,6 +138,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     id="username"
                     name="username"
                     type="text"
+                    autoComplete="username"
                     value={formData.username}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 bg-input border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors"

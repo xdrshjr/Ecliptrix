@@ -757,6 +757,8 @@ export interface Translations {
       resetZoom: string;
       timelineTooltip: string;
       playing: string;
+      scrubAriaLabel: string;
+      resetZoomAriaLabel: string;
     };
   };
   materialsPanel: {
@@ -1002,6 +1004,8 @@ export interface Translations {
       volume: string;
       playbackSpeed: string;
       fullscreen: string;
+      seekAriaLabel: string;
+      volumeAriaLabel: string;
     };
     info: {
       title: string;
@@ -3400,6 +3404,8 @@ export const translations: Record<string, Translations> = {
         resetZoom: 'Reset Zoom',
         timelineTooltip: 'Timeline',
         playing: 'Playing',
+        scrubAriaLabel: 'Timeline playhead scrubber',
+        resetZoomAriaLabel: 'Reset zoom, current {percent}%',
       },
     },
     videoSearchModal: {
@@ -3482,6 +3488,8 @@ export const translations: Record<string, Translations> = {
         volume: 'Volume',
         playbackSpeed: 'Playback Speed',
         fullscreen: 'Fullscreen',
+        seekAriaLabel: 'Seek within video',
+        volumeAriaLabel: 'Volume',
       },
       info: {
         title: 'Video Info',
@@ -5899,6 +5907,8 @@ export const translations: Record<string, Translations> = {
         resetZoom: '重置缩放',
         timelineTooltip: '时间轴',
         playing: '播放中',
+        scrubAriaLabel: '时间轴播放头滑块',
+        resetZoomAriaLabel: '重置缩放，当前 {percent}%',
       },
     },
     videoSearchModal: {
@@ -5981,6 +5991,8 @@ export const translations: Record<string, Translations> = {
         volume: '音量',
         playbackSpeed: '播放速度',
         fullscreen: '全屏',
+        seekAriaLabel: '视频进度条',
+        volumeAriaLabel: '音量',
       },
       info: {
         title: '视频信息',

@@ -19,6 +19,7 @@ import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
 import { clampVolume, VOLUME_DEFAULT, getDefaultTrackHeight, type TrackKind } from './constants';
 import { http, ApiError } from '@/lib/api/http-client';
+import { TimelineRepository } from './infrastructure';
 
 // ---------------------------------------------------------------------------
 // Inline throttle (avoids lodash dependency)
@@ -691,15 +692,20 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     useTimelineStore.getState().setImporting(true);
 
     try {
-      const fileContent = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target?.result as string;
-          content ? resolve(content) : reject(new Error('Failed to read file'));
-        };
-        reader.onerror = () => reject(new Error('File reading error'));
-        reader.readAsText(file);
-      });
+      const fileContent = await file.text();
+
+      // Pre-validate locally so obviously-invalid files do not round-trip
+      // through /api/timeline-import (which would 400 with a noisy stack).
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(fileContent);
+      } catch {
+        throw new Error(t.timeline.messages.importProjectInvalidData);
+      }
+      const validator = new TimelineRepository();
+      if (!validator.validateExportData(parsed)) {
+        throw new Error(t.timeline.messages.importProjectInvalidData);
+      }
 
       let result: any;
       try {

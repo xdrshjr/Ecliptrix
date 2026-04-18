@@ -39,6 +39,10 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const setCurrentTime = useTimelineStore((state) => state.setCurrentTime);
   const setZoomLevel = useTimelineStore((state) => state.setZoomLevel);
 
+  // Bug 3 guard: empty timelines report totalDuration ≈ 0.001 (Duration > 0
+  // invariant floor). Without this the ruler would scrub into phantom time.
+  const hasItems = useTimelineStore((s) => s.tracks.some((tr) => tr.items.length > 0));
+
   const pixelsPerSecond = zoomLevel * 50;
 
   // Use padded duration for visual width; empty project (no duration) should
@@ -51,11 +55,13 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const scrollLeftRef = useRef(scrollLeft);
   const pixelsPerSecondRef = useRef(pixelsPerSecond);
   const totalDurationRef = useRef(totalDuration);
+  const hasItemsRef = useRef(hasItems);
 
   // Keep refs in sync
   scrollLeftRef.current = scrollLeft;
   pixelsPerSecondRef.current = pixelsPerSecond;
   totalDurationRef.current = totalDuration;
+  hasItemsRef.current = hasItems;
 
   // 格式化时间显示
   const formatTime = (seconds: number): string => {
@@ -67,12 +73,36 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
   // 计算时间轴点击位置对应的时间值
   const calculateTimeFromMouseEvent = (e: MouseEvent | React.MouseEvent): number | null => {
+    // Empty timeline: aggregate reports totalDuration ≈ 0.001, but the user
+    // cannot meaningfully seek. Reject the event so the playhead stays at 0.
+    if (!hasItemsRef.current) return null;
     const targetElement = scrollRef?.current || rulerRef.current;
     const rect = targetElement?.getBoundingClientRect();
     if (!rect) return null;
 
     const x = e.clientX - rect.left + scrollLeftRef.current;
     return Math.max(0, Math.min(totalDurationRef.current, x / pixelsPerSecondRef.current));
+  };
+
+  // Keyboard scrubbing for the ruler (a11y). Step depends on modifier keys:
+  // Shift = ±5s (coarse), Alt/Meta = ±0.1s (fine), plain = ±1s.
+  const handleScrubKeyDown = (e: React.KeyboardEvent) => {
+    if (!hasItems || totalDuration <= 0) return;
+    const key = e.key;
+    const coarse = e.shiftKey;
+    const fine = e.altKey || e.metaKey;
+    const step = coarse ? 5 : fine ? 0.1 : 1;
+
+    let next: number | null = null;
+    if (key === 'ArrowLeft') next = currentTime - step;
+    else if (key === 'ArrowRight') next = currentTime + step;
+    else if (key === 'Home') next = 0;
+    else if (key === 'End') next = totalDuration;
+    else return;
+
+    e.preventDefault();
+    // setCurrentTime clamps defensively (see timelineSlice).
+    setCurrentTime(next);
   };
 
   // 处理播放头拖拽
@@ -225,6 +255,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               atZoomMin ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent'
             }`}
             title={t.timeline.ruler.zoomOut}
+            aria-label={t.timeline.ruler.zoomOut}
           >
             <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 13H5v-2h14v2z"/>
@@ -235,6 +266,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             onClick={handleZoomReset}
             className="px-2 py-0.5 text-xs bg-card border border-border rounded hover:bg-muted transition-colors"
             title={t.timeline.ruler.resetZoom}
+            aria-label={t.timeline.ruler.resetZoomAriaLabel.replace('{percent}', String(Math.round(zoomLevel * 100)))}
           >
             {Math.round(zoomLevel * 100)}%
           </button>
@@ -246,6 +278,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               atZoomMax ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent'
             }`}
             title={t.timeline.ruler.zoomIn}
+            aria-label={t.timeline.ruler.zoomIn}
           >
             <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
@@ -276,8 +309,18 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       {/* 时间刻度区域 */}
       <div
         ref={scrollRef || rulerRef}
-        className="flex-1 relative cursor-pointer overflow-x-hidden overflow-y-hidden"
+        className="flex-1 relative cursor-pointer overflow-x-hidden overflow-y-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        role="slider"
+        tabIndex={hasItems && totalDuration > 0 ? 0 : -1}
+        aria-label={t.timeline.ruler.scrubAriaLabel}
+        aria-valuemin={0}
+        aria-valuemax={totalDuration > 0 ? totalDuration : 0}
+        aria-valuenow={currentTime}
+        aria-valuetext={formatTime(currentTime)}
+        aria-orientation="horizontal"
+        aria-disabled={!hasItems || totalDuration <= 0}
         onMouseDown={handleMouseDown}
+        onKeyDown={handleScrubKeyDown}
         onWheel={handleWheel}
         onScroll={(e) => {
           if (onScroll) {

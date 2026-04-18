@@ -9,6 +9,7 @@ import type { MaterialItem } from '@/types';
 import TimelineItem from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
 import { useNotification } from '@/contexts/NotificationContext';
+import { deriveTrackDisplayName } from './trackDisplayName';
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot be read from the store
@@ -65,20 +66,9 @@ const Track: React.FC<TrackProps> = ({
   // Guard: track not found
   if (!track) return null;
 
-  // Derived display name.
-  // Prefer user-provided track.name if non-empty (honors renames); fall back to
-  // locale-aware derivation from id for legacy data that stored empty names.
-  const trackDisplayName = (() => {
-    if (track.name && track.name.trim().length > 0) return track.name;
-    const id = track.id;
-    const match = id.match(/-(\d+)$/);
-    const num = match ? parseInt(match[1]) : 0;
-    if (id.startsWith('image-track')) return num > 0 ? `${t.timeline.track.imageTrack} ${num}` : t.timeline.track.imageTrack;
-    if (id.startsWith('video-track')) return num > 0 ? `${t.timeline.track.videoTrack} ${num}` : t.timeline.track.videoTrack;
-    if (id.startsWith('audio-track')) return num > 0 ? `${t.timeline.track.audioTrack} ${num}` : t.timeline.track.audioTrack;
-    if (id.startsWith('subtitle-track')) return num > 0 ? `${t.timeline.track.subtitleTrack} ${num}` : t.timeline.track.subtitleTrack;
-    return track.name;
-  })();
+  // Derived display name — shared with useTimelineExport so exported JSON
+  // matches what is shown in the UI (see ./trackDisplayName).
+  const trackDisplayName = deriveTrackDisplayName(track, t.timeline.track);
 
   // Derived
   const isDragOver = materialDragOver?.trackId === trackId;

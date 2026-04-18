@@ -2079,14 +2079,27 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
                 <div className="center-controls">
                   <div className="progress-container">
-                    <input
-                      type="range"
-                      min="0"
-                      max={getTotalDuration()}
-                      value={getCurrentTime()}
-                      onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
-                      className="progress-slider"
-                    />
+                    {(() => {
+                      // Empty/unknown duration yields min===max===0 which makes
+                      // AT announce "slider 0 of 0" and degenerates the track.
+                      // Disable + pin max=1 until a real duration is known.
+                      const totalDurationValue = getTotalDuration();
+                      const isSeekable = totalDurationValue > 0;
+                      return (
+                        <input
+                          type="range"
+                          min={0}
+                          max={isSeekable ? totalDurationValue : 1}
+                          step="any"
+                          value={getCurrentTime()}
+                          disabled={!isSeekable}
+                          onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
+                          aria-label={t.videoPlayerPanel.controls.seekAriaLabel}
+                          aria-valuetext={formatTime(getCurrentTime())}
+                          className="progress-slider"
+                        />
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -2102,11 +2115,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     </button>
                     <input
                       type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
+                      min={0}
+                      max={1}
+                      step={0.1}
                       value={volume}
                       onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                      aria-label={t.videoPlayerPanel.controls.volumeAriaLabel}
+                      aria-valuetext={`${Math.round(volume * 100)}%`}
                       className="volume-slider"
                     />
                   </div>
