@@ -8,6 +8,7 @@ import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
 import TimelineItem from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
+import { useNotification } from '@/contexts/NotificationContext';
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot be read from the store
@@ -57,6 +58,9 @@ const Track: React.FC<TrackProps> = ({
 
   // i18n
   const t = getTranslations(locale);
+
+  // Notification API (toast-based confirm / warning)
+  const { showWarning, showConfirm } = useNotification();
 
   // Guard: track not found
   if (!track) return null;
@@ -175,21 +179,31 @@ const Track: React.FC<TrackProps> = ({
 
   const handleRemoveTrackClick = () => {
     if (track.isLocked) return;
-    const state = useTimelineStore.getState();
-    if (state.tracks.length <= 1) {
-      if (typeof window !== 'undefined') {
-        // eslint-disable-next-line no-alert
-        window.alert(t.timeline.track.removeTrackLast);
+
+    const doRemove = () => {
+      const result = removeTrackAction(() => useTimelineStore.getState(), track.id);
+      if (result.ok) return;
+      if (result.reason === 'LAST_TRACK') {
+        showWarning(t.timeline.track.removeTrackLast);
+        return;
       }
-      return;
+      if (result.reason === 'LAST_OF_GROUP') {
+        const groupLabel =
+          result.group === 'image' ? t.timeline.track.imageTrack :
+          result.group === 'video' ? t.timeline.track.videoTrack :
+          result.group === 'audio' ? t.timeline.track.audioTrack :
+          t.timeline.track.subtitleTrack;
+        showWarning(
+          t.timeline.track.removeTrackLastOfGroup.replace('{group}', groupLabel),
+        );
+      }
+    };
+
+    if (track.items.length > 0) {
+      showConfirm(t.timeline.track.removeTrackConfirm, doRemove);
+    } else {
+      doRemove();
     }
-    const hasItems = track.items.length > 0;
-    if (hasItems && typeof window !== 'undefined') {
-      // TODO(ux): replace window.confirm with the project's ConfirmDialog
-      // eslint-disable-next-line no-alert
-      if (!window.confirm(t.timeline.track.removeTrackConfirm)) return;
-    }
-    removeTrackAction(() => useTimelineStore.getState(), track.id);
   };
 
   // ---------------------------------------------------------------------------

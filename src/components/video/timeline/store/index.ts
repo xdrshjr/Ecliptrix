@@ -40,6 +40,10 @@ export {
   setTrackVolumeAction,
   removeTrackAction,
 } from './actions/trackActions';
+export type {
+  RemoveTrackGroupKey,
+  RemoveTrackResult,
+} from './actions/trackActions';
 export {
   undoAction,
   redoAction,

@@ -701,6 +701,7 @@ export interface Translations {
       removeTrack: string;
       removeTrackConfirm: string;
       removeTrackLast: string;
+      removeTrackLastOfGroup: string;
       dropVideoHere: string;
       dropAudioHere: string;
       dropSubtitleHere: string;
@@ -3324,6 +3325,7 @@ export const translations: Record<string, Translations> = {
         removeTrack: 'Remove Track',
         removeTrackConfirm: 'This track has items. Are you sure you want to remove it? All items will be deleted.',
         removeTrackLast: 'Cannot remove the last track.',
+        removeTrackLastOfGroup: 'Cannot remove the last {group}.',
         dropVideoHere: 'Drag video/image materials here',
         dropAudioHere: 'Drag audio materials here',
         dropSubtitleHere: 'Drag subtitle materials here',
@@ -5803,6 +5805,7 @@ export const translations: Record<string, Translations> = {
         removeTrack: '删除轨道',
         removeTrackConfirm: '该轨道中存在素材，确定要删除吗？所有素材将被一并删除。',
         removeTrackLast: '无法删除最后一条轨道。',
+        removeTrackLastOfGroup: '无法删除最后一条{group}。',
         dropVideoHere: '拖拽视频/图片素材到此轨道',
         dropAudioHere: '拖拽音频素材到此轨道',
         dropSubtitleHere: '拖拽字幕素材到此轨道',
