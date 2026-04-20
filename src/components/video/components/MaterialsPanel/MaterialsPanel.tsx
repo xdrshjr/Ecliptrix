@@ -1694,7 +1694,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           className="flex space-x-1 mb-4 p-1 bg-muted rounded-md overflow-x-auto scrollbar-thin"
           style={{ scrollbarWidth: 'thin' }}
         >
-          {(['all', 'video', 'audio', 'image', 'subtitle', 'storyboard_pack', 'character_pack', 'scene_pack'] as const).map((type) => (
+          {(['all', 'video', 'audio', 'image', 'storyboard_pack', 'character_pack', 'scene_pack'] as const).map((type) => (
             <button
               key={type}
               data-material-type={type}
@@ -1714,7 +1714,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                type === 'image' ? t.materialsPanel.filterImage :
                type === 'storyboard_pack' ? t.materialsPanel.storyboardPack :
                type === 'character_pack' ? t.materialsPanel.filterCharacterPack :
-               type === 'scene_pack' ? t.materialsPanel.filterScenePack : t.materialsPanel.filterSubtitle}
+               t.materialsPanel.filterScenePack}
             </button>
           ))}
         </div>
