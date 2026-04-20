@@ -785,11 +785,34 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   }, []);
 
   // AI视频生成
-  const handleAiVideoGenerate = useCallback(async (params: ArkVideoGenerateParams) => {
+  const handleAiVideoGenerate = useCallback(async (
+    params: ArkVideoGenerateParams,
+    options?: {
+      metadataExtras?: Record<string, any>;
+      onSucceeded?: (material: MaterialItem) => void;
+      onFailed?: (reason: string) => void;
+    },
+  ) => {
     const tempId = generateUUID();
     const createdAt = new Date();
     // Use timestamp-based name so the material has a stable, identifiable name
     const materialName = `AI视频_${createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+
+    // Merge metadata extras (extras win for source etc., but prompt is always baseline)
+    const baseMetadata: Record<string, any> = { source: 'ark-ai-video', prompt: params.prompt, ...(options?.metadataExtras ?? {}) };
+
+    // Idempotent callback guard: ensure onSucceeded/onFailed fires at most once in total
+    let notified = false;
+    const notifySucceeded = (m: MaterialItem) => {
+      if (notified) return;
+      notified = true;
+      try { options?.onSucceeded?.(m); } catch (e) { logger.error('onSucceeded callback threw', e as Error); }
+    };
+    const notifyFailed = (reason: string) => {
+      if (notified) return;
+      notified = true;
+      try { options?.onFailed?.(reason); } catch (e) { logger.error('onFailed callback threw', e as Error); }
+    };
 
     // Insert placeholder card at the front of the list
     const placeholder: MaterialItem = {
@@ -802,7 +825,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       createdAt,
       downloadStatus: 'generating',
       downloadProgress: 0,
-      metadata: { source: 'ark-ai-video', prompt: params.prompt },
+      metadata: { ...baseMetadata },
     };
     setMaterials(prev => [placeholder, ...prev]);
 
@@ -813,6 +836,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     } catch (error) {
       logger.error('创建Ark视频任务失败', error as Error);
       setMaterials(prev => prev.filter(m => m.id !== tempId));
+      notifyFailed((error as Error)?.message || 'createArkVideoTask failed');
       return;
     }
 
@@ -853,10 +877,11 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
               createdAt,
               downloadStatus: undefined,
               downloadProgress: undefined,
-              metadata: { source: 'ark-ai-video', prompt: params.prompt },
+              metadata: { ...baseMetadata },
             };
             addOrReplaceMaterial(finalMaterial);
             pendingAiTasks.current.delete(tempId);
+            notifySucceeded(finalMaterial);
             return;
           }
 
@@ -877,15 +902,17 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
             createdAt,
             downloadStatus: 'generating',
             downloadProgress: 95,
-            metadata: { source: 'ark-ai-video', prompt: params.prompt },
+            metadata: { ...baseMetadata },
           };
           addOrReplaceMaterial(cdnMaterial);
 
           if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
             // OSS upload timed out — finalise with CDN URL, extract thumbnail client-side
             logger.warn(`Ark视频OSS上传等待超时，使用CDN URL`, { arkTaskId, ossWaitRetries });
-            addOrReplaceMaterial({ ...cdnMaterial, downloadStatus: undefined, downloadProgress: undefined });
+            const finalisedCdn: MaterialItem = { ...cdnMaterial, downloadStatus: undefined, downloadProgress: undefined };
+            addOrReplaceMaterial(finalisedCdn);
             pendingAiTasks.current.delete(tempId);
+            notifySucceeded(finalisedCdn);
             extractVideoThumbnail(status.video_url).then(dataUrl => {
               if (dataUrl && isMountedRef.current) {
                 setMaterials(prev => prev.map(m =>
@@ -905,6 +932,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
         if (status.status === 'failed') {
           setMaterials(prev => prev.filter(m => m.id !== tempId));
           pendingAiTasks.current.delete(tempId);
+          notifyFailed('ARK task status=failed');
           return;
         }
 
@@ -919,6 +947,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           logger.error(`Ark视频轮询达到最大重试次数，放弃任务`, { arkTaskId, retries: errorRetries });
           setMaterials(prev => prev.filter(m => m.id !== tempId));
           pendingAiTasks.current.delete(tempId);
+          notifyFailed(`polling exceeded max retries (${MAX_ERROR_RETRIES})`);
           return;
         }
 

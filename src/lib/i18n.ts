@@ -1258,6 +1258,14 @@ export interface Translations {
       addWatermarkDesc: string;
       resolutionLabel: string;
       startGenerate: string;
+      sentenceAiVideoButton: string;
+      sentenceAiVideoGenerating: string;
+      sentenceAiVideoSucceeded: string;
+      sentenceAiVideoFailed: string;
+      sentenceAiVideoModalSubtitle: string;
+      sentenceAiVideoSuccessToast: string;
+      sentenceAiVideoFailedToast: string;
+      sentenceAiVideoDurationHint: string;
     };
   };
   videoScript: {
@@ -3754,6 +3762,14 @@ export const translations: Record<string, Translations> = {
          addWatermarkDesc: 'Add platform watermark on generated video',
          resolutionLabel: 'Resolution',
          startGenerate: 'Start Generating',
+         sentenceAiVideoButton: 'AI Video',
+         sentenceAiVideoGenerating: 'Generating…',
+         sentenceAiVideoSucceeded: '\u2713 Generated',
+         sentenceAiVideoFailed: 'Failed, retry',
+         sentenceAiVideoModalSubtitle: 'Generate AI video for this sentence',
+         sentenceAiVideoSuccessToast: 'AI video generated and linked to the sentence',
+         sentenceAiVideoFailedToast: 'AI video generation failed: {reason}',
+         sentenceAiVideoDurationHint: 'Sentence is {actual}s; nearest bucket is {bucket}s (split if >12s)',
         },
      },
    videoScript: {
@@ -6269,6 +6285,14 @@ export const translations: Record<string, Translations> = {
          addWatermarkDesc: '在生成视频上添加平台水印',
          resolutionLabel: '分辨率',
          startGenerate: '开始生成',
+         sentenceAiVideoButton: 'AI视频',
+         sentenceAiVideoGenerating: '生成中…',
+         sentenceAiVideoSucceeded: '\u2713 已生成',
+         sentenceAiVideoFailed: '失败，重试',
+         sentenceAiVideoModalSubtitle: '为当前句生成 AI 视频',
+         sentenceAiVideoSuccessToast: 'AI 视频生成成功并已关联脚本',
+         sentenceAiVideoFailedToast: 'AI 视频生成失败：{reason}',
+         sentenceAiVideoDurationHint: '当前句 {actual}s，已就近选择 {bucket}s（>12s 建议手动拆句）',
         },
      },
    videoScript: {

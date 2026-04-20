@@ -153,7 +153,14 @@ export interface UseMaterialManagementReturn {
   confirmationDialog: ConfirmationDialogState;
   handleCloseConfirmationDialog: () => void;
   // AI视频生成
-  handleAiVideoGenerate: (params: { prompt: string; duration: number; camera_fixed: boolean; watermark: boolean; image_url?: string }) => Promise<void>;
+  handleAiVideoGenerate: (
+    params: import('@/lib/api/arkVideo').ArkVideoGenerateParams,
+    options?: {
+      metadataExtras?: Record<string, any>;
+      onSucceeded?: (material: MaterialItem) => void;
+      onFailed?: (reason: string) => void;
+    },
+  ) => Promise<void>;
   // AI图像生成
   handleAiImageGenerate: (params: import('@/lib/api/arkImage').ArkImageGenerateParams) => Promise<import('@/lib/api/arkImage').ArkImagePack | null>;
   // 分镜包生成

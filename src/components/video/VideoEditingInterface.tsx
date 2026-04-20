@@ -31,6 +31,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { analyzeVideosInBatch, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
 import { http, ApiError } from '@/lib/api/http-client';
+import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import {
   DocumentPanel,
   AIAssistantPanel,
@@ -961,6 +962,82 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // 调用脚本生成服务，传入配置和聊天消息
     scriptGeneration.handleGenerateScriptWithConfig(config, chatMessages);
   }, [taskId, documentState.markdownValue.length, scriptGeneration, content, messageContentForScript]);
+
+  // Mirror the latest scriptSegments so async callbacks always see current state,
+  // even after the sentence has been deleted or replaced.
+  const scriptSegmentsRef = useRef<ScriptSegment[]>(content?.scriptSegments || []);
+  useEffect(() => {
+    scriptSegmentsRef.current = content?.scriptSegments || [];
+  }, [content?.scriptSegments]);
+
+  // 句子级 AI 视频生成桥接：接收 ScriptPanel 的 onConfirm，连通 useMaterialManagement + sentence 状态回写
+  const handleGenerateAiVideoForSentence = useCallback((
+    params: ArkVideoGenerateParams,
+    link: { segmentId: string; sentenceId: string },
+  ) => {
+    const { segmentId, sentenceId } = link;
+
+    // 1) 乐观更新：立即把 sentence.aiVideoStatus 切到 generating
+    const currentSegments = scriptSegmentsRef.current;
+    const optimisticSegments: ScriptSegment[] = currentSegments.map(seg => {
+      if (seg.id !== segmentId) return seg;
+      return {
+        ...seg,
+        sentences: seg.sentences.map(s => s.id === sentenceId
+          ? { ...s, aiVideoStatus: 'generating' as const }
+          : s,
+        ),
+      };
+    });
+    scriptGeneration.handleUpdateSegments(optimisticSegments);
+
+    // 2) 查找最新 segments 的辅助函数（避免闭包过时 / 卸载守护）
+    const findAndPatch = (patch: (s: import('@/types').ScriptSentence) => import('@/types').ScriptSentence) => {
+      const latest = scriptSegmentsRef.current;
+      const target = latest.find(seg => seg.id === segmentId);
+      const hasSentence = !!target?.sentences.some(s => s.id === sentenceId);
+      if (!hasSentence) return false;
+      const next: ScriptSegment[] = latest.map(seg => {
+        if (seg.id !== segmentId) return seg;
+        return {
+          ...seg,
+          sentences: seg.sentences.map(s => s.id === sentenceId ? patch(s) : s),
+        };
+      });
+      scriptGeneration.handleUpdateSegments(next);
+      return true;
+    };
+
+    void materialManagement.handleAiVideoGenerate(params, {
+      metadataExtras: {
+        source: 'narration-ai-video',
+        linkedSegmentId: segmentId,
+        linkedSentenceId: sentenceId,
+      },
+      onSucceeded: (material) => {
+        const patched = findAndPatch(s => ({
+          ...s,
+          aiVideoStatus: 'succeeded',
+          linkedMaterialId: material.id,
+          generatedVideoUrl: material.url,
+          generatedVideoThumbnailUrl: material.thumbnailUrl,
+        }));
+        if (patched) {
+          showSuccess(locale === 'zh' ? 'AI 视频生成成功并已关联脚本' : 'AI video generated and linked to the sentence');
+        } else {
+          showSuccess(locale === 'zh' ? '素材已生成但关联脚本已删除，请在素材面板查看' : 'Material generated but the linked sentence was deleted; see Materials panel');
+        }
+      },
+      onFailed: (reason) => {
+        const patched = findAndPatch(s => ({ ...s, aiVideoStatus: 'failed' }));
+        if (patched) {
+          showError(
+            (locale === 'zh' ? 'AI 视频生成失败：' : 'AI video generation failed: ') + reason,
+          );
+        }
+      },
+    });
+  }, [content?.scriptSegments, scriptGeneration, materialManagement, showSuccess, showError, locale]);
 
   // 处理添加素材到时间轴
   const handleAddMaterialToTimeline = useCallback((material: MaterialItem) => {
@@ -3025,6 +3102,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               isGeneratingAIVideoScript={isGeneratingAIVideoScript}
               storyboardScriptSegments={content?.storyboardScriptSegments || []}
               onUpdateStoryboardScriptSegments={handleUpdateStoryboardScriptSegments}
+              onGenerateAiVideoForSentence={handleGenerateAiVideoForSentence}
             />
           </div>
 

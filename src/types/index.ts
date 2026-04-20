@@ -373,6 +373,11 @@ export interface ScriptSentence {
   narration?: string; // 解说文案（对应该句的旁白文本）
   startTime?: number; // 预留给未来的时间轴功能
   endTime?: number;
+  // 句子级 AI 视频生成关联字段（per-sentence narration AI video）
+  linkedMaterialId?: string;
+  generatedVideoUrl?: string;
+  generatedVideoThumbnailUrl?: string;
+  aiVideoStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
 }
 
 export interface ScriptSegment {

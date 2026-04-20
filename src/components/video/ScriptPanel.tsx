@@ -32,6 +32,9 @@ import { useLocale } from '@/contexts/LocaleContext';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { AIVideoScriptTab, createAIVideoSegment } from './components/AIVideoScriptTab';
 import { StoryboardScriptTab } from './components/StoryboardScriptTab';
+import AiVideoModal from './components/AiVideoModal/AiVideoModal';
+import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
+import { mapSentenceDurationToArkBucket, ArkDurationBucket } from './utils/arkVideoDuration';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -49,6 +52,11 @@ interface ScriptPanelProps {
   isGeneratingAIVideoScript?: boolean;
   storyboardScriptSegments?: StoryboardScriptSegment[];
   onUpdateStoryboardScriptSegments?: (segments: StoryboardScriptSegment[]) => void;
+  // 句子级 AI 视频生成入口：由父组件桥接 useMaterialManagement
+  onGenerateAiVideoForSentence?: (
+    params: ArkVideoGenerateParams,
+    link: { segmentId: string; sentenceId: string },
+  ) => void;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -67,6 +75,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   isGeneratingAIVideoScript = false,
   storyboardScriptSegments = [],
   onUpdateStoryboardScriptSegments,
+  onGenerateAiVideoForSentence,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -81,6 +90,16 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'narration' | 'aiVideo' | 'storyboard'>('narration');
+
+  // 句子级 AI 视频弹窗状态
+  const [sentenceAiModal, setSentenceAiModal] = useState<{
+    open: boolean;
+    segmentId?: string;
+    sentenceId?: string;
+    initialPrompt?: string;
+    initialDuration?: ArkDurationBucket;
+    sentenceActualDuration?: number;
+  }>({ open: false });
 
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -2083,14 +2102,58 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                             const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
                             
                             if (sentenceTiming) {
+                              const status = sentence.aiVideoStatus ?? 'idle';
+                              const canTrigger = !!onGenerateAiVideoForSentence && status !== 'generating';
+                              const btnLabel =
+                                status === 'generating' ? t.scriptPanel.aiVideoScript.sentenceAiVideoGenerating :
+                                status === 'succeeded' ? t.scriptPanel.aiVideoScript.sentenceAiVideoSucceeded :
+                                status === 'failed' ? t.scriptPanel.aiVideoScript.sentenceAiVideoFailed :
+                                t.scriptPanel.aiVideoScript.sentenceAiVideoButton;
+                              const btnClass =
+                                status === 'generating'
+                                  ? 'bg-purple-500/30 text-white/70 cursor-not-allowed'
+                                  : status === 'succeeded'
+                                    ? 'border border-purple-500 text-purple-600 hover:bg-purple-500/10 dark:text-purple-300'
+                                    : status === 'failed'
+                                      ? 'border border-red-500 text-red-500 hover:bg-red-500/10'
+                                      : 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700';
+                              const handleOpenSentenceAi = () => {
+                                if (!canTrigger) return;
+                                const raw = (sentence.text || '').trim();
+                                const initialPrompt = raw.length < 8 && segment.narrationText
+                                  ? `${raw}（上下文：${segment.narrationText.slice(0, 100)}）`
+                                  : raw;
+                                const initialDuration = mapSentenceDurationToArkBucket(sentenceTiming.duration);
+                                setSentenceAiModal({
+                                  open: true,
+                                  segmentId: segment.id,
+                                  sentenceId: sentence.id,
+                                  initialPrompt,
+                                  initialDuration,
+                                  sentenceActualDuration: sentenceTiming.duration,
+                                });
+                              };
                               return (
-                                <div className="flex items-center space-x-2 mt-1">
-                                  <span className="text-xs text-primary font-mono bg-primary/10 px-1 py-0.5 rounded">
-                                    {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {t.scriptPanel.video.duration}: {sentenceTiming.duration.toFixed(1)}s
-                                  </span>
+                                <div className="flex items-center justify-between mt-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-xs text-primary font-mono bg-primary/10 px-1 py-0.5 rounded">
+                                      {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {t.scriptPanel.video.duration}: {sentenceTiming.duration.toFixed(1)}s
+                                    </span>
+                                  </div>
+                                  {onGenerateAiVideoForSentence && (
+                                    <button
+                                      type="button"
+                                      onClick={handleOpenSentenceAi}
+                                      disabled={status === 'generating'}
+                                      className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ${btnClass}`}
+                                      title={btnLabel}
+                                    >
+                                      {btnLabel}
+                                    </button>
+                                  )}
                                 </div>
                               );
                             } else if (sentence.startTime !== undefined && sentence.endTime !== undefined) {
@@ -2420,6 +2483,27 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         cancelText={t.scriptPanel.messages.cancelDelete}
         onConfirm={confirmationDialog.onConfirm}
         onCancel={handleCloseConfirmationDialog}
+      />
+
+      {/* 句子级 AI 视频生成弹窗 */}
+      <AiVideoModal
+        isOpen={sentenceAiModal.open}
+        onClose={() => setSentenceAiModal({ open: false })}
+        onConfirm={(params) => {
+          if (sentenceAiModal.segmentId && sentenceAiModal.sentenceId) {
+            onGenerateAiVideoForSentence?.(params, {
+              segmentId: sentenceAiModal.segmentId,
+              sentenceId: sentenceAiModal.sentenceId,
+            });
+          }
+          setSentenceAiModal({ open: false });
+        }}
+        materials={materials}
+        initialPrompt={sentenceAiModal.initialPrompt}
+        initialDuration={sentenceAiModal.initialDuration}
+        initialMode="description"
+        subtitle={t.scriptPanel.aiVideoScript.sentenceAiVideoModalSubtitle}
+        sentenceActualDuration={sentenceAiModal.sentenceActualDuration}
       />
       </>
       )}

@@ -5,6 +5,9 @@ import { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import ImagePickerSlot from '../AIVideoScriptTab/ImagePickerSlot';
+import { ARK_DURATION_BUCKETS, ArkDurationBucket, isArkDurationBucket, mapSentenceDurationToArkBucket } from '../../utils/arkVideoDuration';
+
+type GenerationMode = 'description' | 'keyframe' | 'reference';
 
 interface AiVideoModalProps {
   isOpen: boolean;
@@ -13,11 +16,27 @@ interface AiVideoModalProps {
   initialImageUrl?: string;
   initialImageName?: string;
   materials?: MaterialItem[];
+  // 新增：句子级入口使用的可选预填
+  initialPrompt?: string;
+  initialDuration?: number;
+  initialMode?: GenerationMode;
+  subtitle?: string;
+  // 供 duration 提示文案展示用的原始句子秒数（可选）
+  sentenceActualDuration?: number;
 }
 
-type GenerationMode = 'description' | 'keyframe' | 'reference';
-
-const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm, initialImageUrl, materials }) => {
+const AiVideoModal: React.FC<AiVideoModalProps> = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  initialImageUrl,
+  materials,
+  initialPrompt,
+  initialDuration,
+  initialMode,
+  subtitle,
+  sentenceActualDuration,
+}) => {
   const { t } = useLocale();
   const [mode, setMode] = useState<GenerationMode>('description');
   const [prompt, setPrompt] = useState('');
@@ -51,6 +70,28 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
     }
   }, [isOpen, initialImageUrl]);
 
+  // Pre-fill for sentence-level entry: apply initialPrompt/Duration/Mode when opened
+  useEffect(() => {
+    if (!isOpen) return;
+    if (typeof initialPrompt === 'string') {
+      setPrompt(initialPrompt.slice(0, 500));
+    }
+    if (typeof initialDuration === 'number') {
+      if (isArkDurationBucket(initialDuration)) {
+        setDuration(initialDuration);
+      } else {
+        const fallback: ArkDurationBucket = mapSentenceDurationToArkBucket(initialDuration);
+        // eslint-disable-next-line no-console
+        console.warn('[AiVideoModal] initialDuration not in bucket, snapping', { initialDuration, fallback });
+        setDuration(fallback);
+      }
+    }
+    if (initialMode && !initialImageUrl) {
+      // 仅在没有 initialImageUrl 自动切 keyframe 的场景下，才遵循 initialMode
+      setMode(initialMode);
+    }
+  }, [isOpen, initialPrompt, initialDuration, initialMode, initialImageUrl]);
+
   const descLabels = [
     t.scriptPanel.aiVideoScript.characterImage,
     t.scriptPanel.aiVideoScript.sceneImage,
@@ -72,9 +113,15 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
   ];
 
   const resetForm = () => {
-    setMode('description');
-    setPrompt('');
-    setDuration(5);
+    setMode(initialMode ?? 'description');
+    setPrompt(initialPrompt ?? '');
+    setDuration(
+      typeof initialDuration === 'number' && isArkDurationBucket(initialDuration)
+        ? initialDuration
+        : typeof initialDuration === 'number'
+          ? mapSentenceDurationToArkBucket(initialDuration)
+          : 5,
+    );
     setCameraFixed(false);
     setWatermark(false);
     setShowAdvanced(false);
@@ -173,7 +220,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-semibold text-foreground">{t.scriptPanel.aiVideoScript.modalTitle}</h2>
-              <p className="text-sm text-muted-foreground mt-1">{t.scriptPanel.aiVideoScript.modalSubtitle}</p>
+              <p className="text-sm text-muted-foreground mt-1">{subtitle ?? t.scriptPanel.aiVideoScript.modalSubtitle}</p>
             </div>
             <button
               onClick={handleClose}
@@ -249,7 +296,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
               {t.scriptPanel.aiVideoScript.durationLabel}
             </label>
             <div className="flex gap-3">
-              {[5, 7, 10, 12].map((d) => (
+              {ARK_DURATION_BUCKETS.map((d) => (
                 <button
                   key={d}
                   onClick={() => setDuration(d)}
@@ -263,6 +310,13 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({ isOpen, onClose, onConfirm,
                 </button>
               ))}
             </div>
+            {typeof sentenceActualDuration === 'number' && Number.isFinite(sentenceActualDuration) && sentenceActualDuration > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t.scriptPanel.aiVideoScript.sentenceAiVideoDurationHint
+                  .replace('{actual}', sentenceActualDuration.toFixed(1))
+                  .replace('{bucket}', String(duration))}
+              </p>
+            )}
           </div>
 
           {/* Aspect Ratio — hidden in keyframe mode (forced to adaptive) */}
