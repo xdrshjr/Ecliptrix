@@ -113,8 +113,9 @@ class BatchTTSService:
             
         except Exception as e:
             processing_time = time.time() - start_time
-            error_msg = str(e)
-            
+            # 兼容 starlette<=0.27 的 HTTPException：str(e) 可能为空。
+            error_msg = str(e) or getattr(e, "detail", "") or repr(e)
+
             logger.error(f"段落 {segment_id} 转换失败", {
                 "segment_id": segment_id,
                 "error": error_msg,

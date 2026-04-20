@@ -648,14 +648,15 @@ class TTSService:
 
                 # 最后一次尝试失败
                 if attempt == max_retries - 1:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"语音转换失败 (尝试{max_retries}次): {error_msg}"
-                    )
+                    # 服务层抛 RuntimeError，避免 starlette<=0.27 的 HTTPException
+                    # 让 str(e) 为空导致上层错误信息被吞噬。
+                    raise RuntimeError(
+                        f"语音转换失败 (尝试{max_retries}次): {error_msg}"
+                    ) from e
 
                 # 等待后重试
                 time.sleep(2 * (attempt + 1))
-    
+
     def convert_text_to_speech_local(
         self,
         text: str,
@@ -708,119 +709,114 @@ class TTSService:
         else:
             filename = os.path.basename(output_path)
         
-        # 重试机制
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"开始TTS本地转换 (尝试 {attempt + 1}/{max_retries})", {
-                    "text_length": len(text),
-                    "voice_type": voice_type,
-                    "speed_ratio": speed_ratio,
+        # 注意：不在此处做内层重试。
+        # 此方法由 SentenceTTSService._convert_single_sentence 调用，
+        # 外层已有 3 次重试。若此处再嵌套 3 次，会导致单句最多 9 次 API 调用，
+        # 浪费配额并长时间阻塞 worker 线程（requests.post 为同步）。
+        try:
+            logger.info("开始TTS本地转换", {
+                "text_length": len(text),
+                "voice_type": voice_type,
+                "speed_ratio": speed_ratio,
+                "segment_id": segment_id,
+                "task_id": task_id,
+                "output_path": output_path,
+                "mock_mode": MOCK_MODE,
+            })
+
+            tts_client = TTSClient(self.appid, self.access_token)
+            success = tts_client.synthesize_speech(
+                text=text,
+                output_file=output_path,
+                voice_type=voice_type,
+                speed_ratio=speed_ratio,
+            )
+
+            if not success:
+                raise RuntimeError("语音合成失败（详见 TTS API HTTP错误/API错误 日志）")
+
+            # 验证文件
+            if not os.path.exists(output_path):
+                raise RuntimeError("音频文件生成失败")
+
+            file_size = os.path.getsize(output_path)
+            if file_size == 0:
+                raise RuntimeError("音频文件为空")
+
+            # 获取音频实际时长
+            actual_duration = self._get_audio_duration_with_ffmpeg(output_path)
+            if actual_duration is None:
+                # 如果ffmpeg获取失败，使用估算方式
+                actual_duration = self._estimate_audio_duration(len(text), speed_ratio)
+                logger.info("使用估算时长作为备用方案", {
                     "segment_id": segment_id,
-                    "task_id": task_id,
-                    "output_path": output_path,
-                    "mock_mode": MOCK_MODE
+                    "estimated_duration": actual_duration,
                 })
-                
-                tts_client = TTSClient(self.appid, self.access_token)
-                success = tts_client.synthesize_speech(
-                    text=text,
-                    output_file=output_path,
-                    voice_type=voice_type,
-                    speed_ratio=speed_ratio
-                )
-                
-                if not success:
-                    raise Exception("语音合成失败")
 
-                # 验证文件
-                if not os.path.exists(output_path):
-                    raise Exception("音频文件生成失败")
-
-                file_size = os.path.getsize(output_path)
-                if file_size == 0:
-                    raise Exception("音频文件为空")
-
-                # 获取音频实际时长
-                actual_duration = self._get_audio_duration_with_ffmpeg(output_path)
-                if actual_duration is None:
-                    # 如果ffmpeg获取失败，使用估算方式
-                    actual_duration = self._estimate_audio_duration(len(text), speed_ratio)
-                    logger.info("使用估算时长作为备用方案", {
+            # Try uploading to OSS; fall back to local URL on failure
+            audio_url = f"/api/audio/generated/{filename}"
+            oss_uploaded = False
+            oss_client = get_oss_client()
+            if oss_client:
+                try:
+                    oss_relative = f"audio/generated/{filename}"
+                    audio_url = oss_client.upload_file_sync(output_path, oss_relative, "audio/mpeg")
+                    oss_uploaded = True
+                    logger.info("TTS音频上传OSS成功", {"oss_url": audio_url, "segment_id": segment_id})
+                except Exception as oss_exc:
+                    logger.warning("TTS音频上传OSS失败，使用本地URL", {
+                        "error": str(oss_exc),
                         "segment_id": segment_id,
-                        "estimated_duration": actual_duration
                     })
-                
-                # Try uploading to OSS; fall back to local URL on failure
-                audio_url = f"/api/audio/generated/{filename}"
-                oss_uploaded = False
-                oss_client = get_oss_client()
-                if oss_client:
-                    try:
-                        oss_relative = f"audio/generated/{filename}"
-                        audio_url = oss_client.upload_file_sync(output_path, oss_relative, "audio/mpeg")
-                        oss_uploaded = True
-                        logger.info("TTS音频上传OSS成功", {"oss_url": audio_url, "segment_id": segment_id})
-                    except Exception as oss_exc:
-                        logger.warning("TTS音频上传OSS失败，使用本地URL", {
-                            "error": str(oss_exc),
-                            "segment_id": segment_id,
-                        })
 
-                # 构造返回数据
-                result = {
-                    "audio_url": audio_url,
-                    "file_path": output_path,
-                    "file_name": filename,
-                    "file_size": file_size,
-                    "duration": actual_duration,
-                    "voice_type": voice_type,
-                    "text_length": len(text),
-                    "speed_ratio": speed_ratio,
-                    "request_id": str(uuid.uuid4()),
-                    "created_at": datetime.now().isoformat(),
-                    "segment_id": segment_id,
-                    "task_id": task_id,
-                    "mock_mode": MOCK_MODE,
-                    "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",
-                    "storage_upload": oss_uploaded,
-                    "local_only": not oss_uploaded
-                }
+            # 构造返回数据
+            result = {
+                "audio_url": audio_url,
+                "file_path": output_path,
+                "file_name": filename,
+                "file_size": file_size,
+                "duration": actual_duration,
+                "voice_type": voice_type,
+                "text_length": len(text),
+                "speed_ratio": speed_ratio,
+                "request_id": str(uuid.uuid4()),
+                "created_at": datetime.now().isoformat(),
+                "segment_id": segment_id,
+                "task_id": task_id,
+                "mock_mode": MOCK_MODE,
+                "duration_method": "ffmpeg" if self._get_ffmpeg_path() else "estimated",
+                "storage_upload": oss_uploaded,
+                "local_only": not oss_uploaded,
+            }
 
-                logger.info("TTS本地转换成功", {
-                    "output_path": output_path,
-                    "file_size": result["file_size"],
-                    "duration": result["duration"],
-                    "segment_id": segment_id,
-                    "task_id": task_id
-                })
-                return result
+            logger.info("TTS本地转换成功", {
+                "output_path": output_path,
+                "file_size": result["file_size"],
+                "duration": result["duration"],
+                "segment_id": segment_id,
+                "task_id": task_id,
+            })
+            return result
 
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"TTS本地转换失败 (尝试 {attempt + 1}/{max_retries})", {
-                    "error": error_msg,
-                    "output_path": output_path,
-                    "segment_id": segment_id,
-                    "task_id": task_id
-                })
+        except Exception as e:
+            error_msg = str(e) or getattr(e, "detail", "") or repr(e)
+            logger.error("TTS本地转换失败", {
+                "error": error_msg,
+                "output_path": output_path,
+                "segment_id": segment_id,
+                "task_id": task_id,
+            })
 
-                # 清理失败的文件
-                if os.path.exists(output_path) and os.path.getsize(output_path) == 0:
-                    try:
-                        os.remove(output_path)
-                    except:
-                        pass
+            # 清理失败的空文件
+            if os.path.exists(output_path) and os.path.getsize(output_path) == 0:
+                try:
+                    os.remove(output_path)
+                except Exception:
+                    pass
 
-                # 最后一次尝试失败
-                if attempt == max_retries - 1:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"语音本地转换失败 (尝试{max_retries}次): {error_msg}"
-                    )
-
-                # 等待后重试
-                time.sleep(2 * (attempt + 1))
+            # 服务层抛 RuntimeError，而非 HTTPException —— 后者在 starlette<=0.27 下
+            # 不会把 detail 放进 Exception.args，导致上游 str(e) 为空。
+            raise RuntimeError(f"语音本地转换失败: {error_msg}") from e
     
     def get_available_voice_types(self, locale: str = "zh-CN") -> Dict[str, VoiceTypeInfo]:
         """获取可用的音色类型列表，从配置文件读取"""

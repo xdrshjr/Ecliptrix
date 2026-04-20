@@ -169,7 +169,9 @@ class SentenceTTSService:
                 
             except Exception as e:
                 attempt_processing_time = time.time() - attempt_start_time
-                error_msg = str(e)
+                # 兼容 starlette<=0.27 的 HTTPException：其 str(e) 为空，
+                # 会导致错误信息被吞成 "重试N次后失败: "（空尾）。
+                error_msg = str(e) or getattr(e, "detail", "") or repr(e)
                 
                 logger.error(f"句子 {sentence.sentence_id} 第 {attempt + 1}/{max_retries} 次尝试失败", {
                     "sentence_id": sentence.sentence_id,
