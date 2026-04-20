@@ -4,7 +4,6 @@ Handles LLM API calls with video understanding prompts and structured responses.
 """
 
 import json
-import httpx
 import uuid
 from typing import Dict, Any, List
 from datetime import datetime
@@ -17,6 +16,7 @@ from app.models.video_understanding_script_models import (
     ScriptSentence,
     VideoItem
 )
+from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 from app.services.video_analysis_storage_service import video_analysis_storage
 
 logger = get_logger(__name__)
@@ -30,7 +30,8 @@ class VideoUnderstandingScriptService:
         self.api_key = ***REMOVED***
         self.api_url = settings.video_cut_llm_api_url
         self.model = settings.video_cut_llm_model
-        
+        self.api_type = normalize_api_type(settings.video_cut_llm_api_type)
+
         if not self.api_key or not self.api_url:
             raise ValueError("Video Cut LLM API key and URL must be configured")
     
@@ -465,86 +466,53 @@ class VideoUnderstandingScriptService:
         )
         
         logger.info(f"LLM prompt generated: length={len(prompt)}, includes_user_requirements={'<user_requirements>' in prompt}")
-        
-        # Prepare request data
-        request_data = {
-            "model": self.model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "stream": False,
-            "temperature": 0.3,  # Slightly higher temperature for creative script generation
-            "max_tokens": 6000   # Sufficient tokens for script content
-        }
-        
-        logger.info(f"Calling LLM API for script generation: {self.api_url}/chat/completions for task: {task_id}")
-        
-        # Debug logging: print request body if DEBUG=true
+
+        messages = [{"role": "user", "content": prompt}]
+
+        logger.info(
+            f"Calling LLM API for script generation (api_type={self.api_type}) "
+            f"base={self.api_url} for task: {task_id}"
+        )
+
         if settings.debug:
             print(f"\n=== DEBUG: Script Generation LLM API Request for task {task_id} ===")
-            print(f"URL: {self.api_url}/chat/completions")
-            print(f"Headers: Content-Type: application/json, Authorization: Bearer {self.api_key[:10]}...{self.api_key[-4:]}")
-            print(f"Request Body:")
-            print(json.dumps(request_data, indent=2, ensure_ascii=False))
+            print(f"api_type: {self.api_type}")
+            print(f"Base URL: {self.api_url}")
+            print(f"Headers: Authorization: Bearer {self.api_key[:10]}...{self.api_key[-4:]}")
+            print("Messages:")
+            print(json.dumps(messages, indent=2, ensure_ascii=False))
             print("=" * 50)
-        
+
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{self.api_url}/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.api_key}"
-                    },
-                    json=request_data
-                )
-                
-                if response.status_code != 200:
-                    error_text = response.text
-                    error_msg = f"LLM API error: {response.status_code} - {error_text}"
-                    logger.error(error_msg, extra={"task_id": task_id, "status_code": response.status_code})
-                    raise Exception(error_msg)
-                
-                # Parse response
-                response_data = response.json()
-                
-                # Debug logging: print response body if DEBUG=true
-                if settings.debug:
-                    print(f"\n=== DEBUG: Script Generation LLM API Response for task {task_id} ===")
-                    print(f"Status Code: {response.status_code}")
-                    print(f"Response Body:")
-                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
-                    print("=" * 50)
-                
-                # Extract generated content
-                if ("choices" not in response_data or 
-                    not response_data["choices"] or 
-                    "message" not in response_data["choices"][0] or
-                    "content" not in response_data["choices"][0]["message"]):
-                    raise Exception("Invalid LLM response format")
-                
-                generated_content = response_data["choices"][0]["message"]["content"]
-                
-                # Parse the generated script content
-                script_segments = self._parse_generated_script(
-                    generated_content, 
-                    analysis_results, 
-                    parameters,
-                    task_id,
-                    original_videos
-                )
-                
-                logger.info(f"Successfully generated {len(script_segments)} script segments for task: {task_id}")
-                return script_segments
-                
-        except httpx.RequestError as e:
-            error_msg = f"HTTP request error: {str(e)}"
-            logger.error(error_msg, extra={"task_id": task_id})
-            raise Exception(error_msg)
-        except json.JSONDecodeError as e:
-            error_msg = f"JSON decode error: {str(e)}"
-            logger.error(error_msg, extra={"task_id": task_id})
-            raise Exception(error_msg)
+            generated_content = await call_chat(
+                messages,
+                config=LLMCallConfig(
+                    api_url=self.api_url,
+                    api_key=self.api_key,
+                    model=self.model,
+                    api_type=self.api_type,
+                ),
+                temperature=0.3,
+                max_tokens=6000,
+                timeout=120.0,
+            )
+
+            if settings.debug:
+                print(f"\n=== DEBUG: Script Generation LLM API Response for task {task_id} ===")
+                print(generated_content)
+                print("=" * 50)
+
+            script_segments = self._parse_generated_script(
+                generated_content,
+                analysis_results,
+                parameters,
+                task_id,
+                original_videos,
+            )
+
+            logger.info(f"Successfully generated {len(script_segments)} script segments for task: {task_id}")
+            return script_segments
+
         except Exception as e:
             error_msg = f"Script generation error: {str(e)}"
             logger.error(error_msg, extra={"task_id": task_id})

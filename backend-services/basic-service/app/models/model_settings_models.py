@@ -160,7 +160,10 @@ class ProvidersResponse(BaseModel):
 class ResolvedConfigResponse(BaseModel):
     """Resolved effective config for a function type.
 
-    Shape MUST remain unchanged — downstream consumers (chat/route.ts etc.) depend on it.
+    Shape is backward-compatible — `api_type` was added so the frontend
+    direct-stream routes (src/app/api/chat, video-editing-agent/chat) can
+    branch between OpenAI- and Anthropic-format SSE. Existing consumers that
+    ignore the new field keep working unchanged.
     """
     model_config = ConfigDict(protected_namespaces=())
 
@@ -172,3 +175,4 @@ class ResolvedConfigResponse(BaseModel):
     temperature: float
     max_tokens: int
     provider_type: Optional[str] = None  # e.g. 'openai', 'kimi_coding', 'anthropic'
+    api_type: str = "openai"  # 'openai' | 'anthropic' — drives request/response shape

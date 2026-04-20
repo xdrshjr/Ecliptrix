@@ -5,10 +5,10 @@ Uses VIDEO_CUT_LLM API (same as AI mixed editing).
 """
 
 import json
-import httpx
 from typing import Dict, Any, Optional
 from app.config import settings
 from app.logger import get_logger
+from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 from app.services.timeline_parser_service import TimelineParserService
 from app.models.ai_mixed_editing_models import SimplifiedTimelineModel
 
@@ -23,8 +23,9 @@ class AIVideoGenerateService:
         self.api_key = ***REMOVED***
         self.api_url = settings.video_cut_llm_api_url
         self.model = settings.video_cut_llm_model
+        self.api_type = normalize_api_type(settings.video_cut_llm_api_type)
         self.timeline_parser = TimelineParserService()
-        
+
         if not self.api_key or not self.api_url:
             raise ValueError("Video Cut LLM API key and URL must be configured")
     
@@ -346,44 +347,31 @@ class AIVideoGenerateService:
         # Get LLM parameters
         temperature = config.get('temperature', 0.7) if config else 0.7
         max_tokens = config.get('maxTokens', 2000) if config else 2000
-        
-        # Prepare API request
-        request_data = {
-            "model": self.model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature,
-            "max_tokens": max_tokens
-        }
-        
-        logger.info(f"Calling Video Cut LLM API for node: {node_id}")
+
+        messages = [{"role": "user", "content": prompt}]
+
+        logger.info(f"Calling Video Cut LLM API for node: {node_id} (api_type={self.api_type})")
         logger.debug(f"LLM Request: model={self.model}, temperature={temperature}, max_tokens={max_tokens}")
-        
-        # Call LLM API
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.api_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json=request_data
+
+        try:
+            content = await call_chat(
+                messages,
+                config=LLMCallConfig(
+                    api_url=self.api_url,
+                    api_key=self.api_key,
+                    model=self.model,
+                    api_type=self.api_type,
+                ),
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=60.0,
             )
-        
-        if response.status_code != 200:
-            error_msg = f"LLM API error: {response.status_code} - {response.text}"
+        except Exception as e:
+            error_msg = f"LLM API error for node {node_id}: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
-        
-        result = response.json()
+
         logger.info(f"LLM API call successful for node: {node_id}")
-        
-        # Extract content
-        if 'choices' not in result or len(result['choices']) == 0:
-            raise Exception("LLM API returned no choices")
-        
-        content = result['choices'][0]['message']['content']
         logger.debug(f"LLM raw response length: {len(content)} characters")
         
         # Parse JSON from response

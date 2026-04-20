@@ -48,6 +48,19 @@ class VideoAnalysisService:
     
     def __init__(self):
         """Initialize the video analysis service."""
+        # VL path speaks OpenAI-compatible protocol only (qwen-vl, gpt-4o, etc.).
+        # If someone mis-configures VL_LLM_API_TYPE=anthropic we warn loudly but
+        # still fall through the OpenAI SDK path so the service can boot.
+        vl_api_type = (settings.vl_llm_api_type or "openai").strip().lower()
+        if vl_api_type == "anthropic":
+            logger.warning(
+                "VL_LLM_API_TYPE=anthropic is not supported — VL endpoints "
+                "speak the OpenAI protocol in this codebase. Falling back to "
+                "OpenAI client; ensure VL_LLM_API_URL points at an OpenAI-"
+                "compatible vision endpoint (e.g. qwen-vl) or switch the type "
+                "back to 'openai'."
+            )
+
         if not settings.vl_llm_api_key or not settings.vl_llm_api_url:
             logger.warning("VL LLM configuration not found, video analysis may not work properly")
             self.client = None
@@ -57,7 +70,7 @@ class VideoAnalysisService:
                 api_key=settings.vl_llm_api_key,
                 base_url=settings.vl_llm_api_url,
             )
-            
+
             logger.info("VideoAnalysisService initialized with VL_LLM configuration")
         
         # Load configuration

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { backendConfig } from '@/lib/config/backend';
+import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
 import { createVideoEditingAgent, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
 import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
 import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
@@ -62,7 +63,7 @@ async function performThinkingPhase(
   conversationHistory: ChatMessage[],
   timelineState: TimelineState | null,
   materials: MaterialItem[],
-  config: { apiUrl: string; apiKey: string; model: string; providerType?: string },
+  config: { apiUrl: string; apiKey: string; model: string; providerType?: string; apiType: LlmApiType },
   signal: AbortSignal,
 ): Promise<void> {
   let thinkingHeartbeatId: ReturnType<typeof setInterval> | null = null;
@@ -92,59 +93,35 @@ async function performThinkingPhase(
       ? (AbortSignal as any).any([thinkingController.signal, signal])
       : thinkingController.signal;
 
-    const response = await fetch(`${config.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
+    try {
+      for await (const event of streamLlmChat({
+        config: {
+          apiUrl: config.apiUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+          apiType: config.apiType,
+        },
         messages: [
           { role: 'system', content: thinkingPrompt },
-          ...recentHistory.map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
+          ...recentHistory.map(m => ({ role: m.role, content: m.content })),
           { role: 'user', content: userMessage },
         ],
-        stream: true,
-        max_tokens: 800,
-      }),
-      signal: combinedSignal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn('[ThinkingPhase] LLM call failed:', response.status);
-      send({ type: 'thinking_end' });
-      return;
-    }
-
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-          try {
-            const data = JSON.parse(line.slice(6));
-            const content = data.choices?.[0]?.delta?.content;
-            if (content) {
-              send({ type: 'thinking_delta', content });
-            }
-          } catch { /* skip unparseable lines */ }
+        maxTokens: 800,
+        signal: combinedSignal,
+      })) {
+        if (event.kind === 'error') {
+          console.warn('[ThinkingPhase] LLM call failed:', event.status, event.message);
+          break;
         }
+        if (event.kind === 'content') {
+          send({ type: 'thinking_delta', content: event.text });
+        }
+        // Reasoning/thinking deltas are swallowed here — the "thinking phase"
+        // surfaces final content to the user while the internal chain-of-
+        // thought stays internal.
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     send({ type: 'thinking_end' });
@@ -190,7 +167,15 @@ function readIncomingAuth(request: NextRequest): string | undefined {
  * `model_settings` (Kimi / GLM / Claude custom) is ignored. That bug was
  * diagnosed on 2026-04-07 alongside the main "fetch failed" incident.
  */
-const getConfig = async (authToken: string | undefined) => {
+type AgentResolvedConfig = {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  providerType: string | undefined;
+  apiType: LlmApiType;
+};
+
+const getConfig = async (authToken: string | undefined): Promise<AgentResolvedConfig> => {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (authToken) {
@@ -212,6 +197,7 @@ const getConfig = async (authToken: string | undefined) => {
           apiKey: data.api_key,
           model: data.model_name,
           providerType: data.provider_type as string | undefined,
+          apiType: normalizeApiType(data.api_type),
         };
       }
     } else {
@@ -227,12 +213,13 @@ const getConfig = async (authToken: string | undefined) => {
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+  const apiType = normalizeApiType(process.env.LLM_API_TYPE);
 
   if (!apiKey) {
     throw new Error('API key not configured');
   }
 
-  return { apiUrl, apiKey, model, providerType: undefined as string | undefined };
+  return { apiUrl, apiKey, model, providerType: undefined, apiType };
 };
 
 /**

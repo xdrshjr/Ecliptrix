@@ -572,6 +572,14 @@ class ModelSettingsService:
             assignment = result.scalar_one_or_none()
 
         if assignment and assignment.provider:
+            # Prefer the provider's explicit api_format; fall back to auto-infer
+            # from provider_type (existing 3-tier rule) so DB-assigned Anthropic
+            # providers surface as api_type="anthropic".
+            db_api_type = _resolve_api_format(
+                None,
+                assignment.provider.api_format,
+                assignment.provider.provider_type or "",
+            )
             return ResolvedConfigResponse(
                 success=True,
                 source="database",
@@ -581,36 +589,48 @@ class ModelSettingsService:
                 temperature=assignment.temperature,
                 max_tokens=assignment.max_tokens,
                 provider_type=assignment.provider.provider_type,
+                api_type=db_api_type,
             )
 
         # Fallback to env vars
         settings = get_settings()
         env_map = {
-            ModelFunctionType.CHAT: (settings.llm_api_url, settings.llm_api_key, settings.llm_model),
+            ModelFunctionType.CHAT: (
+                settings.llm_api_url, settings.llm_api_key, settings.llm_model,
+                settings.llm_api_type,
+            ),
             ModelFunctionType.FAST: (
-                os.getenv("FAST_LLM_API_URL", settings.llm_api_url),
-                os.getenv("FAST_LLM_API_KEY", settings.llm_api_key),
-                os.getenv("FAST_LLM_MODEL", settings.llm_model),
+                settings.fast_llm_api_url or settings.llm_api_url,
+                ***REMOVED*** or settings.llm_api_key,
+                settings.fast_llm_model or settings.llm_model,
+                settings.fast_llm_api_type,
             ),
             ModelFunctionType.VIDEO_CUT: (
                 settings.video_cut_llm_api_url or settings.llm_api_url,
                 ***REMOVED*** or settings.llm_api_key,
                 settings.video_cut_llm_model,
+                settings.video_cut_llm_api_type,
             ),
             ModelFunctionType.VISION: (
                 settings.vl_llm_api_url or settings.llm_api_url,
                 settings.vl_llm_api_key or settings.llm_api_key,
                 settings.vl_llm_model,
+                settings.vl_llm_api_type,
             ),
             ModelFunctionType.CODING: (
                 os.getenv("CODING_LLM_API_URL", settings.llm_api_url),
                 os.getenv("CODING_LLM_API_KEY", settings.llm_api_key),
                 os.getenv("CODING_LLM_MODEL", "kimi-k2.5"),
+                os.getenv("CODING_LLM_API_TYPE", "openai"),
             ),
         }
-        api_url, api_key, model_name = env_map.get(
-            function_type, (settings.llm_api_url, settings.llm_api_key, settings.llm_model)
+        api_url, api_key, model_name, api_type = env_map.get(
+            function_type,
+            (settings.llm_api_url, settings.llm_api_key, settings.llm_model, settings.llm_api_type),
         )
+        api_type = (api_type or "openai").strip().lower()
+        if api_type not in ("openai", "anthropic"):
+            api_type = "openai"
         return ResolvedConfigResponse(
             success=True,
             source="environment",
@@ -619,6 +639,7 @@ class ModelSettingsService:
             model_name=model_name,
             temperature=0.7,
             max_tokens=128000,
+            api_type=api_type,
         )
 
     # ── Static data ──

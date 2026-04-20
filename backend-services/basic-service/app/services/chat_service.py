@@ -4,10 +4,10 @@ Handles LLM API calls with streaming support.
 """
 
 import json
-import httpx
 from typing import AsyncGenerator, Dict, List
 from app.config import settings
 from app.logger import get_logger
+from app.services.llm_client import LLMCallConfig, normalize_api_type, stream_chat
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,8 @@ class ChatService:
         self.api_key = settings.llm_api_key
         self.api_url = settings.llm_api_url
         self.model = settings.llm_model
-        
+        self.api_type = normalize_api_type(settings.llm_api_type)
+
         if not self.api_key or not self.api_url:
             raise ValueError("LLM API key and URL must be configured")
     
@@ -120,62 +121,33 @@ class ChatService:
             Exception: If API call fails
         """
         self._log_request(message, current_content, task_id)
-        
-        # Prepare request data
-        request_data = {
-            "model": self.model,
-            "messages": self._format_messages(message, current_content),
-            "stream": True,
-            "temperature": 0.7,
-            "max_tokens": 2000
-        }
-        
-        logger.info(f"Calling LLM API: {self.api_url}/chat/completions for task: {task_id}")
-        
+
+        messages = self._format_messages(message, current_content)
+
+        logger.info(
+            f"Calling LLM API (api_type={self.api_type}) base={self.api_url} "
+            f"for task: {task_id}"
+        )
+
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self.api_url}/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.api_key}"
-                    },
-                    json=request_data
-                ) as response:
-                    
-                    if response.status_code != 200:
-                        error_text = await response.aread()
-                        error_msg = f"LLM API error: {response.status_code} - {error_text.decode()}"
-                        logger.error(error_msg, extra={"task_id": task_id, "status_code": response.status_code})
-                        self._log_response(False, task_id, error_msg)
-                        raise Exception(error_msg)
-                    
-                    # Process streaming response
-                    async for line in response.aiter_lines():
-                        if line.strip():
-                            if line.startswith("data: "):
-                                data = line[6:]  # Remove "data: " prefix
-                                
-                                if data.strip() == "[DONE]":
-                                    logger.debug(f"Stream completed for task: {task_id}")
-                                    break
-                                
-                                try:
-                                    json_data = json.loads(data)
-                                    if "choices" in json_data and json_data["choices"]:
-                                        delta = json_data["choices"][0].get("delta", {})
-                                        if "content" in delta:
-                                            content = delta["content"]
-                                            yield f"data: {json.dumps({'content': content})}\n\n"
-                                except json.JSONDecodeError:
-                                    logger.warning(f"Invalid JSON in stream for task: {task_id}: {data}")
-                                    continue
-                    
-                    # Send final done signal
-                    yield "data: [DONE]\n\n"
-                    self._log_response(True, task_id)
-                    
+            async for piece in stream_chat(
+                messages,
+                config=LLMCallConfig(
+                    api_url=self.api_url,
+                    api_key=self.api_key,
+                    model=self.model,
+                    api_type=self.api_type,
+                ),
+                temperature=0.7,
+                max_tokens=2000,
+                timeout=60.0,
+            ):
+                # Preserve the public browser SSE contract: data: {"content": "..."}\n\n
+                yield f"data: {json.dumps({'content': piece})}\n\n"
+
+            yield "data: [DONE]\n\n"
+            self._log_response(True, task_id)
+
         except Exception as e:
             error_msg = f"Chat service error: {str(e)}"
             logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)

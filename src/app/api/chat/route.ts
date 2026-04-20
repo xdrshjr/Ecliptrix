@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { backendConfig } from '@/lib/config/backend'
+import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat'
 import { ChatMessage } from '@/types'
 
 // SWEEP-EXCEPTION: third-party LLM streaming, not a backend proxy
@@ -19,7 +20,16 @@ import { ChatMessage } from '@/types'
 // Out of scope for this PR per master plan §3 (third-party LLM streaming
 // stays as-is). Only the BACKEND_URL read was migrated.
 
-const getConfig = async () => {
+type ResolvedConfig = {
+  apiUrl: string
+  apiKey: string
+  model: string
+  apiType: LlmApiType
+  temperature: number
+  maxTokens: number
+}
+
+const getConfig = async (): Promise<ResolvedConfig> => {
   // Try to resolve LLM settings from the FastAPI backend.
   try {
     const res = await fetch(
@@ -36,6 +46,7 @@ const getConfig = async () => {
           apiUrl: data.api_url,
           apiKey: data.api_key,
           model: data.model_name,
+          apiType: normalizeApiType(data.api_type),
           temperature: data.temperature ?? 0.7,
           maxTokens: data.max_tokens ?? 2000,
         }
@@ -49,12 +60,13 @@ const getConfig = async () => {
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1'
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY
   const model = process.env.LLM_MODEL || 'gpt-3.5-turbo'
+  const apiType = normalizeApiType(process.env.LLM_API_TYPE)
 
   if (!apiKey) {
     throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.')
   }
 
-  return { apiUrl, apiKey, model, temperature: 0.7, maxTokens: 2000 }
+  return { apiUrl, apiKey, model, apiType, temperature: 0.7, maxTokens: 2000 }
 }
 
 const formatMessages = (messages: ChatMessage[]) => {
@@ -95,36 +107,7 @@ export async function POST(request: NextRequest) {
     const config = await getConfig()
     logRequest(messages, config)
 
-    const requestData = {
-      model: config.model,
-      messages: formatMessages(messages),
-      stream: true,
-      temperature: config.temperature,
-      max_tokens: config.maxTokens,
-    }
-
-    console.log(`[Chat API] Calling LLM API: ${config.apiUrl}/chat/completions`)
-
-    // SWEEP-EXCEPTION: third-party LLM stream — NOT a backend proxy call.
-    const response = await fetch(`${config.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(requestData),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`[Chat API] LLM API error: ${response.status} - ${errorText}`)
-      logResponse(false, `LLM API error: ${response.status}`)
-
-      return NextResponse.json(
-        { error: `LLM API error: ${response.status}` },
-        { status: response.status },
-      )
-    }
+    console.log(`[Chat API] Calling LLM API (api_type=${config.apiType}) base=${config.apiUrl}`)
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
@@ -135,69 +118,61 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode(`: stream-start\n\n`))
           console.log('[Chat API] 已发送流建立信号')
 
-          const reader = response.body?.getReader()
-          if (!reader) {
-            throw new Error('No reader available')
-          }
-
-          let buffer = ''
           let totalChunks = 0
           let lastChunkTime = Date.now()
           const startTime = Date.now()
+          let upstreamError: { status: number; message: string } | null = null
 
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) {
-              const totalTime = Date.now() - startTime
-              console.log(`[Chat API] 流式传输完成，总计 ${totalChunks} 个数据块，耗时 ${totalTime}ms，平均 ${totalChunks > 0 ? Math.round(totalTime / totalChunks) : 0}ms/块`)
+          for await (const event of streamLlmChat({
+            config: {
+              apiUrl: config.apiUrl,
+              apiKey: config.apiKey,
+              model: config.model,
+              apiType: config.apiType,
+            },
+            messages: formatMessages(messages),
+            temperature: config.temperature,
+            maxTokens: config.maxTokens,
+          })) {
+            if (event.kind === 'error') {
+              upstreamError = { status: event.status, message: event.message }
               break
             }
+            totalChunks++
+            const currentTime = Date.now()
+            const timeSinceLastChunk = currentTime - lastChunkTime
+            lastChunkTime = currentTime
 
-            buffer += new TextDecoder().decode(value)
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || ''
+            const payload: { content?: string; reasoning?: string } = {}
+            if (event.kind === 'content') payload.content = event.text
+            else if (event.kind === 'reasoning') payload.reasoning = event.text
 
-            for (const line of lines) {
-              const trimmedLine = line.trim()
-              if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`))
 
-              const data = trimmedLine.slice(6)
-              if (data === '[DONE]') {
-                controller.enqueue(encoder.encode(`data: [DONE]\n\n`))
-                console.log('[Chat API] 收到完成信号 [DONE]')
-                continue
-              }
-
-              try {
-                const parsed = JSON.parse(data)
-                const delta = parsed.choices?.[0]?.delta
-                const content = delta?.content
-                const reasoning = delta?.reasoning_content
-
-                if (content || reasoning) {
-                  totalChunks++
-                  const currentTime = Date.now()
-                  const timeSinceLastChunk = currentTime - lastChunkTime
-                  lastChunkTime = currentTime
-
-                  const responseData: { content?: string; reasoning?: string } = {}
-                  if (content) responseData.content = content
-                  if (reasoning) responseData.reasoning = reasoning
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify(responseData)}\n\n`),
-                  )
-
-                  if (totalChunks % 10 === 0 || totalChunks <= 3) {
-                    const lens = `content:${content?.length || 0},reasoning:${reasoning?.length || 0}`
-                    console.log(`[Chat API] 已发送第 ${totalChunks} 个数据块 (间隔 ${timeSinceLastChunk}ms, ${lens})`)
-                  }
-                }
-              } catch (e) {
-                console.error('[Chat API] Error parsing SSE data:', e)
-              }
+            if (totalChunks % 10 === 0 || totalChunks <= 3) {
+              const len = event.kind === 'content'
+                ? `content:${event.text.length}`
+                : `reasoning:${event.text.length}`
+              console.log(`[Chat API] 已发送第 ${totalChunks} 个数据块 (间隔 ${timeSinceLastChunk}ms, ${len})`)
             }
           }
 
+          if (upstreamError) {
+            console.error(`[Chat API] LLM upstream error: ${upstreamError.status} - ${upstreamError.message}`)
+            logResponse(false, `LLM upstream error: ${upstreamError.status}`)
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ error: `LLM upstream error: ${upstreamError.status}`, message: upstreamError.message })}\n\n`,
+              ),
+            )
+            controller.enqueue(encoder.encode(`data: [DONE]\n\n`))
+            controller.close()
+            return
+          }
+
+          controller.enqueue(encoder.encode(`data: [DONE]\n\n`))
+          const totalTime = Date.now() - startTime
+          console.log(`[Chat API] 流式传输完成，总计 ${totalChunks} 个数据块，耗时 ${totalTime}ms`)
           logResponse(true)
           controller.close()
         } catch (error) {

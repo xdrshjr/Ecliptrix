@@ -4,7 +4,6 @@ Handles Video Cut LLM API calls with structured prompts and JSON parsing.
 """
 
 import json
-import httpx
 from typing import Dict, Any, List
 from app.config import settings
 from app.logger import get_logger
@@ -13,6 +12,7 @@ from app.models.ai_mixed_editing_models import (
     SimplifiedTimelineModel,
     VideoAnalysisMetadata,
 )
+from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 from app.services.timeline_parser_service import TimelineParserService
 from app.services.video_analysis_storage_service import video_analysis_storage
 
@@ -27,6 +27,7 @@ class AIMixedEditingService:
         self.api_key = ***REMOVED***
         self.api_url = settings.video_cut_llm_api_url
         self.model = settings.video_cut_llm_model
+        self.api_type = normalize_api_type(settings.video_cut_llm_api_type)
         self.timeline_parser = TimelineParserService()
 
         if not self.api_key or not self.api_url:
@@ -527,156 +528,73 @@ class AIMixedEditingService:
                             )
                 print("=" * 50)
 
-        # Prepare request data with reduced token requirements
-        request_data = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "temperature": 0.2,  # Lower temperature for consistent JSON output
-            "max_tokens": 8000,  # Reduced tokens for simplified JSON
-        }
+        messages = [{"role": "user", "content": prompt}]
 
         logger.info(
-            f"Calling Video Cut LLM API for simplified timeline: {self.api_url}/chat/completions for task: {task_id}"
+            f"Calling Video Cut LLM API for simplified timeline "
+            f"(api_type={self.api_type}) base={self.api_url} for task: {task_id}"
         )
 
-        # Debug logging: print request body if DEBUG=true (FULL CONTENT - NO TRUNCATION)
         if settings.debug:
             print(f"\n=== DEBUG: LLM API Request for task {task_id} ===")
-            print(f"URL: {self.api_url}/chat/completions")
-            print(
-                f"Headers: Content-Type: application/json, Authorization: Bearer {self.api_key[:10]}...{self.api_key[-4:]}"
-            )
-            print(f"Request Body:")
-            # Print full request body without truncation as required
-            print(json.dumps(request_data, indent=2, ensure_ascii=False))
+            print(f"api_type: {self.api_type}")
+            print(f"Base URL: {self.api_url}")
+            print(f"Model: {self.model}")
+            print(json.dumps(messages, indent=2, ensure_ascii=False))
             print("=" * 50)
 
         try:
-            async with httpx.AsyncClient(
-                timeout=120.0
-            ) as client:  # Reduced timeout for simplified generation
-                response = await client.post(
-                    f"{self.api_url}/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.api_key}",
-                    },
-                    json=request_data,
-                )
-
-                if response.status_code != 200:
-                    error_text = response.text
-                    error_msg = f"Video Cut LLM API error: {response.status_code} - {error_text}"
-                    logger.error(
-                        error_msg,
-                        extra={"task_id": task_id, "status_code": response.status_code},
-                    )
-                    self._log_llm_response(False, task_id, error_msg)
-                    raise Exception(error_msg)
-
-                # Parse response
-                response_data = response.json()
-
-                # Debug logging: print response body if DEBUG=true
-                if settings.debug:
-                    print(f"\n=== DEBUG: LLM API Response for task {task_id} ===")
-                    print(f"Status Code: {response.status_code}")
-                    print(f"Response Body:")
-                    # Create a copy for printing (truncate long content)
-                    debug_response = response_data.copy()
-                    if (
-                        "choices" in debug_response
-                        and debug_response["choices"]
-                        and "message" in debug_response["choices"][0]
-                        and "content" in debug_response["choices"][0]["message"]
-                    ):
-                        content_length = len(
-                            debug_response["choices"][0]["message"]["content"]
-                        )
-                        if content_length > 3000:
-                            debug_response["choices"][0]["message"]["content"] = (
-                                debug_response["choices"][0]["message"]["content"][
-                                    :3000
-                                ]
-                                + f"... [TRUNCATED - Total length: {content_length}]"
-                            )
-                    print(json.dumps(debug_response, indent=2, ensure_ascii=False))
-                    print("=" * 50)
-
-                if "choices" not in response_data or not response_data["choices"]:
-                    error_msg = (
-                        "Invalid Video Cut LLM response format: no choices found"
-                    )
-                    logger.error(error_msg, extra={"task_id": task_id})
-                    self._log_llm_response(False, task_id, error_msg)
-                    raise Exception(error_msg)
-
-                content = response_data["choices"][0]["message"]["content"]
-
-                # Parse simplified JSON from content
-                try:
-                    # Clean up content (remove markdown formatting)
-                    content = content.strip()
-                    if content.startswith("```json"):
-                        content = content[7:]
-                    if content.endswith("```"):
-                        content = content[:-3]
-                    content = content.strip()
-
-                    # Parse JSON and validate with Pydantic model
-                    simplified_data_dict = json.loads(content)
-                    simplified_timeline = SimplifiedTimelineModel(
-                        **simplified_data_dict
-                    )
-
-                    # Debug logging: print parsed simplified timeline if DEBUG=true
-                    if settings.debug:
-                        print(
-                            f"\n=== DEBUG: Parsed Simplified Timeline for task {task_id} ==="
-                        )
-                        print(
-                            json.dumps(
-                                simplified_timeline.model_dump(),
-                                indent=2,
-                                ensure_ascii=False,
-                            )
-                        )
-                        print("=" * 50)
-
-                    # Validate the simplified timeline
-                    if not self.timeline_parser.validate_simplified_timeline(
-                        simplified_timeline
-                    ):
-                        raise ValueError("Simplified timeline validation failed")
-
-                    self._log_llm_response(
-                        True, task_id, simplified_data=simplified_timeline
-                    )
-                    return simplified_timeline
-
-                except (json.JSONDecodeError, ValueError) as e:
-                    error_msg = (
-                        f"Failed to parse simplified JSON from LLM response: {str(e)}"
-                    )
-                    logger.error(
-                        error_msg,
-                        extra={"task_id": task_id, "llm_content": content[:1000]},
-                    )
-                    self._log_llm_response(False, task_id, error_msg)
-                    raise Exception(error_msg)
-
+            content = await call_chat(
+                messages,
+                config=LLMCallConfig(
+                    api_url=self.api_url,
+                    api_key=self.api_key,
+                    model=self.model,
+                    api_type=self.api_type,
+                ),
+                temperature=0.2,
+                max_tokens=8000,
+                timeout=120.0,
+            )
         except Exception as e:
-            if "Video Cut LLM API error" in str(
-                e
-            ) or "Failed to parse simplified JSON" in str(e):
-                # Re-raise already handled exceptions
-                raise
-            else:
-                error_msg = f"LLM API call failed: {str(e)}"
-                logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)
-                self._log_llm_response(False, task_id, error_msg)
-                raise Exception(error_msg)
+            error_msg = f"Video Cut LLM API call failed: {str(e)}"
+            logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)
+            self._log_llm_response(False, task_id, error_msg)
+            raise Exception(error_msg)
+
+        if settings.debug:
+            preview = content if len(content) <= 3000 else content[:3000] + f"... [TRUNCATED - Total length: {len(content)}]"
+            print(f"\n=== DEBUG: LLM API Response for task {task_id} ===")
+            print(preview)
+            print("=" * 50)
+
+        try:
+            content = content.strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            simplified_data_dict = json.loads(content)
+            simplified_timeline = SimplifiedTimelineModel(**simplified_data_dict)
+
+            if settings.debug:
+                print(f"\n=== DEBUG: Parsed Simplified Timeline for task {task_id} ===")
+                print(json.dumps(simplified_timeline.model_dump(), indent=2, ensure_ascii=False))
+                print("=" * 50)
+
+            if not self.timeline_parser.validate_simplified_timeline(simplified_timeline):
+                raise ValueError("Simplified timeline validation failed")
+
+            self._log_llm_response(True, task_id, simplified_data=simplified_timeline)
+            return simplified_timeline
+
+        except (json.JSONDecodeError, ValueError) as e:
+            error_msg = f"Failed to parse simplified JSON from LLM response: {str(e)}"
+            logger.error(error_msg, extra={"task_id": task_id, "llm_content": content[:1000]})
+            self._log_llm_response(False, task_id, error_msg)
+            raise Exception(error_msg)
 
     def _convert_to_full_timeline(
         self,

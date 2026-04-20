@@ -300,6 +300,21 @@ class Settings(BaseModel):
         description="Video Cut LLM API protocol: 'openai' (default) or 'anthropic'",
     )
 
+    # Fast LLM Configuration (for quick ops: translation, intent detection, search query gen)
+    fast_llm_api_key: str = Field(
+        default="", description="Fast LLM API key for low-latency utility calls"
+    )
+    fast_llm_api_url: str = Field(
+        default="", description="Fast LLM API base URL"
+    )
+    fast_llm_model: str = Field(
+        default="qwen3-next-80b-a3b-instruct", description="Fast LLM model name"
+    )
+    fast_llm_api_type: str = Field(
+        default="openai",
+        description="Fast LLM API protocol: 'openai' (default) or 'anthropic'",
+    )
+
     # VL LLM Configuration (for video analysis)
     vl_llm_api_key: str = Field(
         default="", description="VL LLM API key for video analysis"
@@ -598,6 +613,12 @@ def get_settings() -> Settings:
             "VIDEO_CUT_LLM_MODEL", "claude-sonnet-4-20250514"
         ),
         video_cut_llm_api_type=os.getenv("VIDEO_CUT_LLM_API_TYPE", "openai"),
+        fast_llm_api_key=os.getenv("FAST_LLM_API_KEY", ""),
+        fast_llm_api_url=os.getenv("FAST_LLM_API_URL", ""),
+        fast_llm_model=os.getenv(
+            "FAST_LLM_MODEL", "qwen3-next-80b-a3b-instruct"
+        ),
+        fast_llm_api_type=os.getenv("FAST_LLM_API_TYPE", "openai"),
         vl_llm_api_key=os.getenv("VL_LLM_API_KEY", ""),
         vl_llm_api_url=os.getenv("VL_LLM_API_URL", ""),
         vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),

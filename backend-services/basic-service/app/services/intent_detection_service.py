@@ -2,17 +2,18 @@
 Intent Detection Service
 使用Fast LLM检测用户意图，判断是否需要调用工作流
 """
-import os
 import json
 import logging
 from typing import List
-import httpx
+
+from app.config import settings
 from app.models.intent_detection_models import (
     IntentDetectionRequest,
     IntentDetectionResponse,
     WorkflowIntention,
     WorkflowInfo
 )
+from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -23,10 +24,11 @@ class IntentDetectionService:
 
     def __init__(self):
         """初始化意图检测服务"""
-        self.api_key = os.getenv("FAST_LLM_API_KEY")
-        self.api_url = os.getenv("FAST_LLM_API_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        self.model = os.getenv("FAST_LLM_MODEL", "qwen-max-latest")
-        
+        self.api_key = ***REMOVED***
+        self.api_url = settings.fast_llm_api_url or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        self.model = settings.fast_llm_model
+        self.api_type = normalize_api_type(settings.fast_llm_api_type)
+
         # 不在初始化时就抛出异常，允许服务启动
         # 在实际调用时再检查配置
         if not self.api_key:
@@ -37,7 +39,7 @@ class IntentDetectionService:
         else:
             logger.info(
                 f"[IntentDetectionService] 初始化完成 - "
-                f"API URL: {self.api_url}, Model: {self.model}"
+                f"API URL: {self.api_url}, Model: {self.model}, api_type={self.api_type}"
             )
 
     def _build_system_prompt(self, workflows: List[WorkflowInfo]) -> str:
@@ -144,54 +146,35 @@ class IntentDetectionService:
             # 调用Fast LLM API
             logger.info(
                 f"[IntentDetectionService] 调用Fast LLM API - "
-                f"URL: {self.api_url}/chat/completions, Model: {self.model}"
+                f"base={self.api_url} api_type={self.api_type} model={self.model}"
             )
             logger.debug(
                 f"[IntentDetectionService] 准备调用Fast LLM - "
                 f"消息数量: {len(messages)}, "
                 f"API Key前缀: {self.api_key[:10]}..."
             )
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.api_url}/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.api_key}"
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "temperature": 0.3,  # 较低温度，更确定的输出
-                        "max_tokens": 500,
-                        "response_format": {"type": "json_object"}  # 强制JSON输出
-                    }
+
+            try:
+                llm_content = await call_chat(
+                    messages,
+                    config=LLMCallConfig(
+                        api_url=self.api_url,
+                        api_key=self.api_key,
+                        model=self.model,
+                        api_type=self.api_type,
+                    ),
+                    temperature=0.3,
+                    max_tokens=500,
+                    timeout=30.0,
                 )
-                
-            logger.info(
-                f"[IntentDetectionService] Fast LLM API响应 - "
-                f"状态码: {response.status_code}"
-            )
-            
-            if response.status_code != 200:
-                error_text = response.text
-                logger.error(
-                    f"[IntentDetectionService] Fast LLM API调用失败 - "
-                    f"状态码: {response.status_code}, 错误: {error_text}"
-                )
+            except Exception as e:
+                logger.error(f"[IntentDetectionService] Fast LLM API调用失败: {e}")
                 return IntentDetectionResponse(
                     success=False,
-                    message=f"LLM API调用失败: {response.status_code}",
-                    error=error_text
+                    message="LLM API调用失败",
+                    error=str(e),
                 )
-            
-            # 解析响应
-            response_data = response.json()
-            logger.debug(f"[IntentDetectionService] LLM响应: {response_data}")
-            
-            # 提取LLM的回复内容
-            llm_content = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            
+
             if not llm_content:
                 logger.error("[IntentDetectionService] LLM响应内容为空")
                 return IntentDetectionResponse(
@@ -199,12 +182,21 @@ class IntentDetectionService:
                     message="LLM响应内容为空",
                     error="Empty response from LLM"
                 )
-            
+
             logger.info(f"[IntentDetectionService] LLM返回内容: {llm_content}")
             
-            # 解析JSON响应
+            # 解析JSON响应 — strip markdown fences if the model wrapped output.
+            cleaned = llm_content.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            elif cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+
             try:
-                intent_data = json.loads(llm_content)
+                intent_data = json.loads(cleaned)
             except json.JSONDecodeError as e:
                 logger.error(f"[IntentDetectionService] JSON解析失败: {e}, 内容: {llm_content}")
                 return IntentDetectionResponse(

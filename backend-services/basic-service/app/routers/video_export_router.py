@@ -9,9 +9,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Union, Dict, Any
 from app.logger import get_logger
 from app.config import get_settings
+from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 import json
-import os
-import httpx
 
 logger = get_logger(__name__)
 
@@ -68,11 +67,12 @@ async def enhance_video_metadata_with_llm(video_url: str, filename: str) -> Dict
         Dict with enhanced metadata including description, tags, and inferred properties
     """
     try:
-        # Get Fast LLM configuration from environment
-        fast_llm_api_key = os.getenv('FAST_LLM_API_KEY')
-        fast_llm_api_url = os.getenv('FAST_LLM_API_URL')
-        fast_llm_model = os.getenv('FAST_LLM_MODEL', 'qwen3-next-80b-a3b-instruct')
-        
+        # Get Fast LLM configuration from Settings (single source of truth).
+        fast_llm_api_key = ***REMOVED***
+        fast_llm_api_url = settings.fast_llm_api_url
+        fast_llm_model = settings.fast_llm_model
+        fast_llm_api_type = normalize_api_type(settings.fast_llm_api_type)
+
         if not fast_llm_api_key or not fast_llm_api_url:
             logger.warning(
                 "[Video Export] Fast LLM credentials not configured, using basic metadata",
@@ -114,35 +114,26 @@ Provide metadata in JSON format."""
             extra={
                 "video_url": video_url[:100],
                 "video_filename": filename,
-                "llm_model": fast_llm_model
+                "llm_model": fast_llm_model,
+                "llm_api_type": fast_llm_api_type,
             }
         )
-        
-        # Call LLM API directly using httpx
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{fast_llm_api_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {fast_llm_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": fast_llm_model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 500,
-                    "stream": False
-                }
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"LLM API returned status {response.status_code}: {response.text}")
-            
-            result = response.json()
-            llm_response = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        llm_response = await call_chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            config=LLMCallConfig(
+                api_url=fast_llm_api_url,
+                api_key=fast_llm_api_key,
+                model=fast_llm_model,
+                api_type=fast_llm_api_type,
+            ),
+            temperature=0.3,
+            max_tokens=500,
+            timeout=30.0,
+        )
         
         # Parse LLM response
         try:

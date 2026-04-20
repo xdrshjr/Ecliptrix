@@ -8,8 +8,9 @@ parsing based on that field, so callers only deal with OpenAI-style messages.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional
 
 import httpx
 
@@ -189,3 +190,165 @@ async def _call_anthropic(
         logger.error(f"Unexpected Anthropic LLM response shape: {body}")
         raise ValueError(f"Invalid Anthropic LLM response: {exc}") from exc
     return text
+
+
+async def stream_chat(
+    messages: List[Dict[str, Any]],
+    *,
+    config: LLMCallConfig,
+    temperature: float = 0.7,
+    max_tokens: Optional[int] = None,
+    timeout: float = 60.0,
+) -> AsyncIterator[str]:
+    """Stream an LLM chat response, yielding text chunks as they arrive.
+
+    Abstracts OpenAI- vs Anthropic-format SSE. Callers see a flat stream of
+    assistant text pieces regardless of the upstream protocol, and wrap those
+    pieces in whatever envelope their client expects.
+    """
+    if not config.api_key or not config.api_url:
+        raise ValueError("LLM api_key and api_url must be configured")
+
+    logger.debug(
+        f"LLM stream: type={config.api_type} model={config.model} "
+        f"url={config.api_url} max_tokens={max_tokens}"
+    )
+
+    if config.api_type == "anthropic":
+        agen = _stream_anthropic(
+            messages,
+            config=config,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+    else:
+        agen = _stream_openai(
+            messages,
+            config=config,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+
+    async for chunk in agen:
+        if chunk:
+            yield chunk
+
+
+async def _stream_openai(
+    messages: List[Dict[str, Any]],
+    *,
+    config: LLMCallConfig,
+    temperature: float,
+    max_tokens: Optional[int],
+    timeout: float,
+) -> AsyncIterator[str]:
+    url = config.api_url.rstrip("/") + "/chat/completions"
+    payload: dict = {
+        "model": config.model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+    }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
+
+    headers = {
+        "Authorization": f"Bearer {config.api_key}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", url, json=payload, headers=headers) as resp:
+            if resp.status_code != 200:
+                err = (await resp.aread()).decode("utf-8", errors="replace")
+                logger.error(
+                    f"OpenAI stream upstream error {resp.status_code}: {err[:500]}"
+                )
+                raise httpx.HTTPStatusError(
+                    f"OpenAI stream status {resp.status_code}: {err[:200]}",
+                    request=resp.request,
+                    response=resp,
+                )
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data: "):
+                    continue
+                data = line[6:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(data)
+                except json.JSONDecodeError:
+                    logger.warning(f"OpenAI stream: invalid JSON chunk: {data[:200]}")
+                    continue
+                choices = obj.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                piece = delta.get("content")
+                if piece:
+                    yield piece
+
+
+async def _stream_anthropic(
+    messages: List[Dict[str, Any]],
+    *,
+    config: LLMCallConfig,
+    temperature: float,
+    max_tokens: Optional[int],
+    timeout: float,
+) -> AsyncIterator[str]:
+    url = config.api_url.rstrip("/") + "/v1/messages"
+    system, rest = _split_system_messages(messages)
+    payload: dict = {
+        "model": config.model,
+        "messages": rest,
+        "temperature": temperature,
+        "max_tokens": max_tokens or _DEFAULT_ANTHROPIC_MAX_TOKENS,
+        "stream": True,
+    }
+    if system:
+        payload["system"] = system
+
+    headers = {
+        "x-api-key": config.api_key,
+        "Authorization": f"Bearer {config.api_key}",
+        "anthropic-version": _DEFAULT_ANTHROPIC_VERSION,
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", url, json=payload, headers=headers) as resp:
+            if resp.status_code != 200:
+                err = (await resp.aread()).decode("utf-8", errors="replace")
+                logger.error(
+                    f"Anthropic stream upstream error {resp.status_code}: {err[:500]}"
+                )
+                raise httpx.HTTPStatusError(
+                    f"Anthropic stream status {resp.status_code}: {err[:200]}",
+                    request=resp.request,
+                    response=resp,
+                )
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line.split(":", 1)[1].strip()
+                if not data:
+                    continue
+                try:
+                    obj = json.loads(data)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Anthropic stream: invalid JSON chunk: {data[:200]}"
+                    )
+                    continue
+                etype = obj.get("type")
+                if etype == "content_block_delta":
+                    delta = obj.get("delta") or {}
+                    if delta.get("type") == "text_delta":
+                        piece = delta.get("text")
+                        if piece:
+                            yield piece
+                elif etype == "message_stop":
+                    break
