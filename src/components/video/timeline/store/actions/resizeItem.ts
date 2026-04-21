@@ -28,6 +28,9 @@ export function resizeItemAction(
   // Perform the resize
   state.resizeItem(itemId, edge, newPosition);
 
+  // Auto-organize after resize so that any trailing gap is closed.
+  get().autoOrganize();
+
   // Schedule after-snapshot capture
   if (typeof requestAnimationFrame !== 'undefined') {
     requestAnimationFrame(() => {

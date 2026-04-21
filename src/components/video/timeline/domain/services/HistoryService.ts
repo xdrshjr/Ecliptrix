@@ -34,6 +34,7 @@ export interface TimelineAction {
     | 'REMOVE_ITEM'
     | 'UPDATE_ITEM'
     | 'MOVE_ITEM'
+    | 'SWAP_ITEMS'
     | 'SELECT_ITEM'
     | 'DESELECT_ALL'
     | 'SELECT_ALL_TRACK_ITEMS'

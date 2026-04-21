@@ -33,6 +33,7 @@ export { addItemAction } from './actions/addItem';
 export { moveItemAction } from './actions/moveItem';
 export { resizeItemAction } from './actions/resizeItem';
 export { removeItemAction, removeItemsAction } from './actions/removeItem';
+export { swapItemsAction } from './actions/swapItems';
 export {
   toggleTrackLockAction,
   toggleTrackMuteAction,

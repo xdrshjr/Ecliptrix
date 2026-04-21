@@ -35,6 +35,9 @@ export function moveItemAction(
   state.moveItem(itemId, newStartTime, isPreview);
 
   if (!isPreview) {
+    // Auto-organize on commit only — preview drags must not pack tracks.
+    get().autoOrganize();
+
     // Schedule after-snapshot capture
     if (typeof requestAnimationFrame !== 'undefined') {
       requestAnimationFrame(() => {

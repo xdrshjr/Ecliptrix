@@ -39,6 +39,11 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const dragPreview = useTimelineStore(s =>
     s.dragPreview?.itemId === item.id ? s.dragPreview : null,
   );
+  // True when THIS item is the swap target the drag preview is parked on.
+  const isSwapTarget = useTimelineStore(s => s.swapTargetItemId === item.id);
+  // True when any swap target is active (regardless of which item); used by
+  // the dragged item itself to fade out so the target is more readable.
+  const hasActiveSwapTarget = useTimelineStore(s => s.swapTargetItemId !== null);
   const editingSubtitleId = useTimelineStore(s => s.editingSubtitleId);
   const zoomLevel = useTimelineStore(s => s.zoomLevel);
   // Parent track's lock state — cannot come via props (Track passes only item,
@@ -198,6 +203,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     const padding = Math.max(2, Math.floor(trackHeight * 0.125));
     const itemHeight = trackHeight - padding * 2;
 
+    // When a swap target is under the dragged item's center, fade the
+    // dragged item more heavily so the highlighted target is clearly read.
+    const draggedOpacity = hasActiveSwapTarget ? 0.65 : 0.8;
+
     const baseStyles = {
       position: 'absolute' as const,
       left: `${left}px`,
@@ -208,9 +217,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       cursor: isThisItemDragging ? 'grabbing' : 'grab',
       userSelect: 'none' as const,
       transition: isThisItemDragging || isThisItemResizing ? 'none' : 'all 0.2s ease',
-      zIndex: isSelected ? 10 : 1,
-      opacity: isThisItemDragging ? 0.8 : 1,
+      zIndex: isSwapTarget ? 9 : (isSelected ? 10 : 1),
+      opacity: isThisItemDragging ? draggedOpacity : 1,
     };
+
+    // Swap-target overlay: dashed cyan outline + glow.
+    const swapTargetStyles = isSwapTarget
+      ? {
+          outline: '2px dashed #22d3ee',
+          outlineOffset: '1px',
+          boxShadow: '0 0 0 4px rgba(34, 211, 238, 0.25)',
+        }
+      : null;
 
     switch (item.type) {
       case 'video':
@@ -219,6 +237,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : 'none',
+          ...(swapTargetStyles ?? {}),
         };
       case 'audio':
         return {
@@ -226,6 +245,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
           background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
           border: isSelected ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.2)',
           boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
+          ...(swapTargetStyles ?? {}),
         };
       case 'subtitle':
         return {
@@ -444,6 +464,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       }
     >
       {renderItemContent()}
+
+      {/* Swap-target hint label: shown on the peer item that the drag preview
+          center is hovering over. Hidden on subtitle items (subtitle tracks
+          cannot be swap targets; the highlight is never applied, but guard
+          anyway). */}
+      {isSwapTarget && item.type !== 'subtitle' && (
+        <div
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-6 px-2 py-0.5 rounded text-xs font-medium text-white bg-cyan-500/90 shadow-sm whitespace-nowrap"
+        >
+          {t.timeline.messages.swapHint}
+        </div>
+      )}
 
       {/* Resize handles */}
       {isSelected && (

@@ -20,7 +20,6 @@ import type {
   TrackType,
   TimelineData,
   TimelineSnapshot,
-  TrackData,
   CreateTrackProps,
 } from '../types';
 
@@ -207,6 +206,80 @@ export class TimelineAggregate {
     }
 
     item.resize(edge, newPosition);
+    track.sortItems();
+    this.recalculateTotalDuration();
+  }
+
+  /**
+   * Re-organize all video/audio tracks by sorting items by startTime and
+   * packing them flush from 0 with no gaps. Subtitle tracks are left
+   * untouched (tight audio/caption alignment must be preserved). Locked
+   * tracks are also skipped to respect the lock invariant.
+   *
+   * This is the auto-organize hook used after every structural mutation
+   * ("organize track materials" applied on every edit).
+   */
+  organizeVideoAudioTracks(): void {
+    for (const track of this._tracks) {
+      if (track.isLocked) continue;
+      if (track.type !== 'video' && track.type !== 'audio') continue;
+      if (track.items.length === 0) continue;
+
+      // track.items is already a ReadonlyArray; copy before sorting.
+      const sorted = [...track.items].sort(
+        (a, b) => a.startTime.value - b.startTime.value,
+      );
+      let cursor = 0;
+      for (const item of sorted) {
+        if (item.startTime.value !== cursor) {
+          item.moveTo(TimePosition.create(cursor));
+        }
+        cursor += item.duration.value;
+      }
+      track.sortItems();
+    }
+    this.recalculateTotalDuration();
+  }
+
+  /**
+   * Swap the start times of two items that live on the SAME non-subtitle,
+   * non-locked track. Durations are preserved; only startTime is exchanged.
+   * After the swap the caller typically invokes organizeVideoAudioTracks()
+   * to close any incidental gap.
+   *
+   * @throws Error if either item is not found, if they live on different
+   *   tracks, if the track is locked, or if the track is a subtitle track.
+   */
+  swapItems(aId: string, bId: string): void {
+    if (aId === bId) {
+      throw new Error(`TimelineAggregate.swapItems: cannot swap an item with itself ("${aId}").`);
+    }
+    const foundA = this.findItem(aId);
+    const foundB = this.findItem(bId);
+    if (!foundA) {
+      throw new Error(`TimelineAggregate.swapItems: item "${aId}" not found.`);
+    }
+    if (!foundB) {
+      throw new Error(`TimelineAggregate.swapItems: item "${bId}" not found.`);
+    }
+    if (foundA.track.id !== foundB.track.id) {
+      throw new Error(
+        `TimelineAggregate.swapItems: cross-track swap is not supported (a="${foundA.track.id}", b="${foundB.track.id}").`
+      );
+    }
+    const track = foundA.track;
+    if (track.isLocked) {
+      throw new TrackLockedError(track.id, 'swapItems');
+    }
+    if (track.type === 'subtitle') {
+      throw new Error(
+        `TimelineAggregate.swapItems: subtitle tracks are excluded from swap (track="${track.id}").`
+      );
+    }
+
+    const tmp = foundA.item.startTime;
+    foundA.item.moveTo(foundB.item.startTime);
+    foundB.item.moveTo(tmp);
     track.sortItems();
     this.recalculateTotalDuration();
   }

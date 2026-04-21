@@ -31,6 +31,9 @@ export function removeItemAction(
     get().deselectAll();
   }
 
+  // Auto-organize: close any gap left by the removed item.
+  get().autoOrganize();
+
   // Schedule after-snapshot capture
   if (typeof requestAnimationFrame !== 'undefined') {
     requestAnimationFrame(() => {
@@ -69,6 +72,9 @@ export function removeItemsAction(
 
   // Clear selection
   state.deselectAll();
+
+  // Auto-organize once for the whole batch.
+  get().autoOrganize();
 
   // Schedule after-snapshot capture
   if (typeof requestAnimationFrame !== 'undefined') {

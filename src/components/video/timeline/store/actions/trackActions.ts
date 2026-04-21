@@ -176,6 +176,9 @@ export function addTrackAction(
   // Record action BEFORE the mutation so the before-snapshot is correct.
   state.recordAction('TRACK_ADD', { trackId, trackType: type });
   state.importFromData({ ...currentData, tracks: updatedTracks });
+  // Auto-organize: new tracks start empty so this is a no-op for the fresh
+  // track but still keeps other tracks well-packed (defensive + consistent).
+  get().autoOrganize();
   scheduleNextStateCapture(get);
 
   return { trackId };
@@ -229,6 +232,7 @@ export function removeTrackAction(
   state.clearItemsOfTrack(trackId);
   state.recordAction('TRACK_REMOVE', { trackId });
   state.removeTrack(trackId);
+  get().autoOrganize();
   scheduleNextStateCapture(get);
   return { ok: true };
 }

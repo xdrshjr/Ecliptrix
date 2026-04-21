@@ -43,3 +43,15 @@ export const ZOOM_MAX = 5.0;
 export const ZOOM_STEP_BTN = 1.5;    // multiplicative step for zoom in/out buttons
 export const ZOOM_STEP_WHEEL = 1.15; // multiplicative step for Ctrl+wheel
 export const ZOOM_EPSILON = 1e-6;    // float comparison tolerance at boundaries
+
+// ---------------------------------------------------------------------------
+// Drag-to-swap hit detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Proportion of a target item's duration that counts as the "center region"
+ * for swap hit-testing. The hovered item swaps when the dragged item's
+ * center point falls inside `[t0 + (1-R)/2·D, t0 + (1+R)/2·D)`. R = 0.6 →
+ * the middle 60%, with a 20% dead-zone on each side.
+ */
+export const SWAP_TARGET_CENTER_RATIO = 0.6;

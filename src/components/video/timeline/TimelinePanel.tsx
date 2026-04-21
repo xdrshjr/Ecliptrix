@@ -534,6 +534,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
     state.importFromData({ ...currentData, tracks: updatedTracks });
 
+    // Copy appends at the end of each track; auto-organize so the new items
+    // participate in the same flush-from-0 invariant as any other mutation.
+    useTimelineStore.getState().autoOrganize();
+
     // Schedule after-snapshot
     requestAnimationFrame(() => {
       useTimelineStore.getState().captureNextState();
@@ -551,27 +555,14 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       return;
     }
 
+    // Reuse the UPDATE_ITEM action type so existing history filters keep
+    // working; autoOrganize does the actual packing.
     state.recordAction('UPDATE_ITEM', {
       operation: 'organize_materials',
       description: t.timeline.messages.organizeMaterialsDescription,
     });
 
-    const currentData = state.exportToData();
-    const updatedTracks = currentData.tracks.map((track: any) => {
-      if (track.type !== 'video' && track.type !== 'audio') return track;
-      if (!track.items || track.items.length === 0) return track;
-
-      const sorted = [...track.items].sort((a: any, b: any) => (a.startTime || 0) - (b.startTime || 0));
-      let ct = 0;
-      const organized = sorted.map((item: any) => {
-        const result = { ...item, startTime: ct };
-        ct += item.duration || 0;
-        return result;
-      });
-      return { ...track, items: organized };
-    });
-
-    state.importFromData({ ...currentData, tracks: updatedTracks });
+    state.autoOrganize();
 
     requestAnimationFrame(() => {
       useTimelineStore.getState().captureNextState();

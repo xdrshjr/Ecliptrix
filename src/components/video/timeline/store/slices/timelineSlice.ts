@@ -58,6 +58,15 @@ export interface TimelineSlice {
   updateItemSubtitle: (itemId: string, text: string) => void;
   /** Shift subsequent items on the same track to close gaps after a given item. */
   consolidateTrackAfterItem: (itemId: string) => void;
+  /**
+   * Auto-organize: sort all video/audio track items by startTime and pack
+   * them flush from 0. Subtitle and locked tracks are skipped. Called as
+   * a post-mutation side effect from orchestrated actions; does NOT itself
+   * write to history (the parent action's before/after snapshots bracket it).
+   */
+  autoOrganize: () => void;
+  /** Swap the startTimes of two items on the same non-subtitle track. */
+  swapItems: (aId: string, bId: string) => void;
 
   // Track operations
   toggleTrackLock: (trackId: string) => void;
@@ -202,7 +211,13 @@ export const createTimelineSlice: StateCreator<
       state._syncDerivedState();
     },
 
-    moveItem: (itemId: string, newStartTime: number, isPreview?: boolean) => {
+    // NOTE: the `isPreview` parameter is part of the public shape the drag
+    // layer and action orchestrator rely on (they pass `true` during a drag
+    // preview and `false` on commit) but this implementation treats both
+    // identically — aggregate mutation + derived sync. History recording is
+    // the concern of the orchestrated action layer, not this slice. Prefixed
+    // with `_` to silence no-unused-vars while preserving the signature.
+    moveItem: (itemId: string, newStartTime: number, _isPreview?: boolean) => {
       const state = get();
       const aggregate = state._aggregate;
 
@@ -254,6 +269,23 @@ export const createTimelineSlice: StateCreator<
       }
 
       track.sortItems();
+      state._syncDerivedState();
+    },
+
+    autoOrganize: () => {
+      const state = get();
+      state._aggregate.organizeVideoAudioTracks();
+      state._syncDerivedState();
+    },
+
+    swapItems: (aId: string, bId: string) => {
+      const state = get();
+      try {
+        state._aggregate.swapItems(aId, bId);
+      } catch (err) {
+        console.error('[timelineSlice] swapItems failed:', err);
+        return;
+      }
       state._syncDerivedState();
     },
 

@@ -741,6 +741,7 @@ export interface Translations {
         batchTranscriptionRequestFailed: string;
         batchTranscriptionFailed: string;
         subtitleExtractionUnknownError: string;
+        swapHint: string;
     };
     subtitleEditModal: {
       title: string;
@@ -3412,6 +3413,7 @@ export const translations: Record<string, Translations> = {
         batchTranscriptionRequestFailed: 'Batch transcription request failed: {status}',
         batchTranscriptionFailed: 'Batch transcription failed: {error}',
         subtitleExtractionUnknownError: 'Unknown error',
+        swapHint: 'Drop to swap',
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -5939,6 +5941,7 @@ export const translations: Record<string, Translations> = {
           batchTranscriptionRequestFailed: '批量转录请求失败: {status}',
           batchTranscriptionFailed: '批量转录失败: {error}',
           subtitleExtractionUnknownError: '未知错误',
+          swapHint: '释放以交换位置',
         },
       subtitleEditModal: {
         title: '编辑字幕',

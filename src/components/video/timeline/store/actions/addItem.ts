@@ -36,6 +36,10 @@ export function addItemAction(
   // 2. Create and add the item
   const itemData = state.addItemToTrack(trackId, material);
 
+  // 2.5 Auto-organize: pack video/audio tracks flush from 0 after the add.
+  // Not recorded in history — bracketed by the before/after snapshots above.
+  get().autoOrganize();
+
   // 3. Schedule after-snapshot capture
   if (typeof requestAnimationFrame !== 'undefined') {
     requestAnimationFrame(() => {
