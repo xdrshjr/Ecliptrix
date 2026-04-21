@@ -378,6 +378,12 @@ export interface ScriptSentence {
   generatedVideoUrl?: string;
   generatedVideoThumbnailUrl?: string;
   aiVideoStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
+  // 句子级 AI 视频提示词：TTS 完成后自动生成 + 用户可手动刷新
+  aiVideoPrompt?: string;
+  aiVideoPromptStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
+  aiVideoPromptError?: string;
+  // 标记手动触发的结果，避免后到的自动结果覆盖用户确认版本
+  aiVideoPromptManual?: boolean;
 }
 
 export interface ScriptSegment {

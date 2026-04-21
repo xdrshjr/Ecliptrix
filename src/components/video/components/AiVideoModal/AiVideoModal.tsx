@@ -23,6 +23,12 @@ interface AiVideoModalProps {
   subtitle?: string;
   // 供 duration 提示文案展示用的原始句子秒数（可选）
   sentenceActualDuration?: number;
+  /**
+   * 可选：点击提示词栏右侧的"AI提示词"按钮时触发。
+   * 返回优化后的提示词；返回 null 表示生成失败。
+   * 由调用方提供以便携带全文脚本上下文并更新外部 sentence 状态。
+   */
+  onGeneratePrompt?: (currentPrompt: string) => Promise<string | null>;
 }
 
 const AiVideoModal: React.FC<AiVideoModalProps> = ({
@@ -36,10 +42,13 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
   initialMode,
   subtitle,
   sentenceActualDuration,
+  onGeneratePrompt,
 }) => {
   const { t } = useLocale();
   const [mode, setMode] = useState<GenerationMode>('description');
   const [prompt, setPrompt] = useState('');
+  const [aiPromptGenerating, setAiPromptGenerating] = useState(false);
+  const [aiPromptFailed, setAiPromptFailed] = useState(false);
   const [duration, setDuration] = useState<number>(5);
   const [cameraFixed, setCameraFixed] = useState(false);
   const [watermark, setWatermark] = useState(false);
@@ -72,7 +81,12 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
 
   // Pre-fill for sentence-level entry: apply initialPrompt/Duration/Mode when opened
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setAiPromptGenerating(false);
+      setAiPromptFailed(false);
+      return;
+    }
+    setAiPromptFailed(false);
     if (typeof initialPrompt === 'string') {
       setPrompt(initialPrompt.slice(0, 500));
     }
@@ -272,9 +286,66 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
 
           {/* Prompt */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              {t.scriptPanel.aiVideoScript.promptLabel} <span className="text-red-500">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-foreground">
+                {t.scriptPanel.aiVideoScript.promptLabel} <span className="text-red-500">*</span>
+              </label>
+              {onGeneratePrompt && (
+                <button
+                  type="button"
+                  disabled={aiPromptGenerating}
+                  onClick={async () => {
+                    if (aiPromptGenerating) return;
+                    setAiPromptGenerating(true);
+                    setAiPromptFailed(false);
+                    try {
+                      const next = await onGeneratePrompt(prompt);
+                      if (typeof next === 'string' && next.trim()) {
+                        setPrompt(next.slice(0, 500));
+                      } else {
+                        setAiPromptFailed(true);
+                      }
+                    } catch {
+                      setAiPromptFailed(true);
+                    } finally {
+                      setAiPromptGenerating(false);
+                    }
+                  }}
+                  className={`text-xs font-medium px-2 py-1 rounded transition-colors flex items-center gap-1 ${
+                    aiPromptGenerating
+                      ? 'bg-purple-500/30 text-white/70 cursor-not-allowed'
+                      : aiPromptFailed
+                        ? 'border border-red-500 text-red-500 hover:bg-red-500/10'
+                        : 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700'
+                  }`}
+                  title={
+                    aiPromptGenerating
+                      ? t.scriptPanel.aiVideoScript.aiPromptGenerating
+                      : aiPromptFailed
+                        ? t.scriptPanel.aiVideoScript.aiPromptRetry
+                        : t.scriptPanel.aiVideoScript.aiPromptButton
+                  }
+                >
+                  {aiPromptGenerating ? (
+                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z" />
+                    </svg>
+                  )}
+                  <span>
+                    {aiPromptGenerating
+                      ? t.scriptPanel.aiVideoScript.aiPromptGenerating
+                      : aiPromptFailed
+                        ? t.scriptPanel.aiVideoScript.aiPromptRetry
+                        : t.scriptPanel.aiVideoScript.aiPromptButton}
+                  </span>
+                </button>
+              )}
+            </div>
             <div className="relative">
               <textarea
                 value={prompt}

@@ -1266,6 +1266,10 @@ export interface Translations {
       sentenceAiVideoSuccessToast: string;
       sentenceAiVideoFailedToast: string;
       sentenceAiVideoDurationHint: string;
+      aiPromptButton: string;
+      aiPromptGenerating: string;
+      aiPromptRetry: string;
+      aiPromptFailedToast: string;
     };
   };
   videoScript: {
@@ -3770,6 +3774,10 @@ export const translations: Record<string, Translations> = {
          sentenceAiVideoSuccessToast: 'AI video generated and linked to the sentence',
          sentenceAiVideoFailedToast: 'AI video generation failed: {reason}',
          sentenceAiVideoDurationHint: 'Sentence is {actual}s; nearest bucket is {bucket}s (split if >12s)',
+         aiPromptButton: 'AI Prompt',
+         aiPromptGenerating: 'Generating…',
+         aiPromptRetry: 'Retry',
+         aiPromptFailedToast: 'AI prompt generation failed: {reason}',
         },
      },
    videoScript: {
@@ -6293,6 +6301,10 @@ export const translations: Record<string, Translations> = {
          sentenceAiVideoSuccessToast: 'AI 视频生成成功并已关联脚本',
          sentenceAiVideoFailedToast: 'AI 视频生成失败：{reason}',
          sentenceAiVideoDurationHint: '当前句 {actual}s，已就近选择 {bucket}s（>12s 建议手动拆句）',
+         aiPromptButton: 'AI提示词',
+         aiPromptGenerating: '生成中…',
+         aiPromptRetry: '重新生成',
+         aiPromptFailedToast: 'AI 提示词生成失败：{reason}',
         },
      },
    videoScript: {

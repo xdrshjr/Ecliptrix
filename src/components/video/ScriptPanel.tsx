@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
 import { 
   convertTextToSpeech, 
@@ -35,6 +35,12 @@ import { StoryboardScriptTab } from './components/StoryboardScriptTab';
 import AiVideoModal from './components/AiVideoModal/AiVideoModal';
 import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { mapSentenceDurationToArkBucket, ArkDurationBucket } from './utils/arkVideoDuration';
+import {
+  generateSentenceAiVideoPrompt,
+  buildFullScriptContext,
+  shouldAutoGeneratePrompt,
+  runWithConcurrency,
+} from '@/lib/api/sentenceAiVideoPrompt';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -81,6 +87,29 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     taskId: taskId || 'unknown',
     component: 'ScriptPanel'
   }), [taskId]);
+
+  // 保持最新的 segments 引用，供异步批量 prompt 生成使用，避免闭包读到旧值
+  const segmentsRef = useRef<ScriptSegment[]>(segments);
+  useEffect(() => { segmentsRef.current = segments; }, [segments]);
+
+  /**
+   * 增量修改单个 sentence 字段并向上同步，避免整批更新造成竞态覆盖。
+   */
+  const patchSentence = useCallback(
+    (segmentId: string, sentenceId: string, patch: Partial<ScriptSentence>) => {
+      if (!onUpdateSegments) return;
+      const nextSegments = segmentsRef.current.map(seg => {
+        if (seg.id !== segmentId) return seg;
+        return {
+          ...seg,
+          sentences: seg.sentences.map(s => (s.id === sentenceId ? { ...s, ...patch } : s)),
+        };
+      });
+      segmentsRef.current = nextSegments;
+      onUpdateSegments(nextSegments);
+    },
+    [onUpdateSegments],
+  );
 
   // 使用通知hook
   const { showSuccess, showError } = useNotification();
@@ -1134,6 +1163,92 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     })).sort((a, b) => a.order - b.order);
   }, [sentenceTimingInfo]);
 
+  /**
+   * 为单个 sentence 生成/刷新 AI 视频提示词，写回 store。
+   * isManual=true 代表用户主动触发（来自 modal），优先级最高，不会被自动批量生成覆盖。
+   */
+  const generatePromptForSentence = useCallback(
+    async (
+      segmentId: string,
+      sentenceId: string,
+      opts: { isManual?: boolean; fullScriptOverride?: string } = {},
+    ): Promise<string | null> => {
+      const { isManual = false, fullScriptOverride } = opts;
+      const seg = segmentsRef.current.find(s => s.id === segmentId);
+      const sentence = seg?.sentences.find(s => s.id === sentenceId);
+      if (!seg || !sentence) return null;
+      const text = (sentence.text || '').trim();
+      if (!text) return null;
+
+      patchSentence(segmentId, sentenceId, {
+        aiVideoPromptStatus: 'generating',
+        aiVideoPromptError: undefined,
+      });
+
+      const fullScript = fullScriptOverride ?? buildFullScriptContext(segmentsRef.current);
+      const res = await generateSentenceAiVideoPrompt(text, fullScript);
+
+      if (res.success && res.prompt) {
+        patchSentence(segmentId, sentenceId, {
+          aiVideoPrompt: res.prompt,
+          aiVideoPromptStatus: 'succeeded',
+          aiVideoPromptError: undefined,
+          ...(isManual ? { aiVideoPromptManual: true } : {}),
+        });
+        return res.prompt;
+      } else {
+        patchSentence(segmentId, sentenceId, {
+          aiVideoPromptStatus: 'failed',
+          aiVideoPromptError: res.message || 'generate failed',
+        });
+        return null;
+      }
+    },
+    [patchSentence],
+  );
+
+  /**
+   * TTS 完成后并发生成整段所有句子的 AI 视频提示词（限制并发 2）。
+   * - 已手动确认（aiVideoPromptManual=true）或已成功 / 生成中的句子会被跳过
+   * - 失败不阻塞其他句
+   */
+  const autoGeneratePromptsForSegment = useCallback(
+    async (segmentId: string) => {
+      const seg = segmentsRef.current.find(s => s.id === segmentId);
+      if (!seg) return;
+      const fullScript = buildFullScriptContext(segmentsRef.current);
+      const targets = seg.sentences.filter(shouldAutoGeneratePrompt);
+      if (targets.length === 0) return;
+
+      logger.info('开始批量生成句子 AI 视频提示词', {
+        segmentId,
+        total: targets.length,
+      });
+
+      await runWithConcurrency(targets, 2, async (s) => {
+        // 在真正运行前再读一次最新状态，避免与手动触发竞态
+        const current = segmentsRef.current
+          .find(x => x.id === segmentId)?.sentences.find(x => x.id === s.id);
+        if (!current || !shouldAutoGeneratePrompt(current)) return;
+        try {
+          await generatePromptForSentence(segmentId, s.id, {
+            isManual: false,
+            fullScriptOverride: fullScript,
+          });
+        } catch (err) {
+          logger.warn('批量生成 AI 视频提示词单句失败', {
+            segmentId,
+            sentenceId: s.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+
+      logger.info('批量生成句子 AI 视频提示词完成', { segmentId });
+    },
+    [generatePromptForSentence, logger],
+  );
+
   // 句子级TTS转换处理
   const handleConvertToSpeech = async (segment: ScriptSegment) => {
     if (convertingSegments.has(segment.id)) {
@@ -1365,6 +1480,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             .replace('{total}', String(response.total_sentences))
             .replace('{duration}', response.total_duration?.toFixed(1) || '0')
           );
+
+          // TTS 成功后，后台自动为该段所有句子生成 AI 视频提示词（不阻塞 UI）
+          void autoGeneratePromptsForSegment(segment.id);
 
         } catch (downloadError) {
           logger.error('拼接音频下载或存储失败', {
@@ -2050,12 +2168,51 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {/* 句子列表（可折叠） */}
             {expandedScriptSegments.has(segment.id) && <div className="space-y-2">
               {segment.sentences.map((sentence, sentenceIndex) => (
-                <div 
+                <div
                   key={sentence.id}
                   className="script-sentence p-2 rounded border border-border hover:border-border transition-colors"
                 >
+                  {(() => {
+                    const timingDisplay = getSentenceTimingDisplay(segment.id);
+                    const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
+                    const aiVideoStatus = sentence.aiVideoStatus ?? 'idle';
+                    const canTriggerAiVideo =
+                      !!onGenerateAiVideoForSentence && aiVideoStatus !== 'generating' && !!sentenceTiming;
+                    const aiVideoBtnLabel =
+                      aiVideoStatus === 'generating' ? t.scriptPanel.aiVideoScript.sentenceAiVideoGenerating :
+                      aiVideoStatus === 'succeeded' ? t.scriptPanel.aiVideoScript.sentenceAiVideoSucceeded :
+                      aiVideoStatus === 'failed' ? t.scriptPanel.aiVideoScript.sentenceAiVideoFailed :
+                      t.scriptPanel.aiVideoScript.sentenceAiVideoButton;
+                    const aiVideoBtnClass =
+                      aiVideoStatus === 'generating'
+                        ? 'bg-purple-500/30 text-white/70 cursor-not-allowed'
+                        : aiVideoStatus === 'succeeded'
+                          ? 'border border-purple-500 text-purple-600 hover:bg-purple-500/10 dark:text-purple-300'
+                          : aiVideoStatus === 'failed'
+                            ? 'border border-red-500 text-red-500 hover:bg-red-500/10'
+                            : 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700';
+                    const handleOpenSentenceAi = () => {
+                      if (!canTriggerAiVideo || !sentenceTiming) return;
+                      const raw = (sentence.text || '').trim();
+                      const fallbackPrompt = raw.length < 8 && segment.narrationText
+                        ? `${raw}（上下文：${segment.narrationText.slice(0, 100)}）`
+                        : raw;
+                      const initialPrompt = (sentence.aiVideoPrompt && sentence.aiVideoPrompt.trim())
+                        ? sentence.aiVideoPrompt
+                        : fallbackPrompt;
+                      const initialDuration = mapSentenceDurationToArkBucket(sentenceTiming.duration);
+                      setSentenceAiModal({
+                        open: true,
+                        segmentId: segment.id,
+                        sentenceId: sentence.id,
+                        initialPrompt,
+                        initialDuration,
+                        sentenceActualDuration: sentenceTiming.duration,
+                      });
+                    };
+                    return (
                   <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-2 flex-1">
+                    <div className="flex items-start space-x-2 flex-1 min-w-0">
                       <span className="text-xs text-muted-foreground mt-1 font-mono">
                         {String(sentenceIndex + 1).padStart(2, '0')}
                       </span>
@@ -2088,91 +2245,35 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                           </div>
                         </div>
                       ) : (
-                        <div className="flex-1">
-                          <p 
+                        <div className="flex-1 min-w-0">
+                          <p
                             className="text-sm text-foreground leading-relaxed cursor-pointer"
                             onClick={() => handleStartEdit(sentence)}
                           >
                             {sentence.text}
                           </p>
                           {/* 时间信息显示在句子下方 */}
-                          {(() => {
-                            // 优先显示句子级TTS生成的时间信息
-                            const timingDisplay = getSentenceTimingDisplay(segment.id);
-                            const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
-                            
-                            if (sentenceTiming) {
-                              const status = sentence.aiVideoStatus ?? 'idle';
-                              const canTrigger = !!onGenerateAiVideoForSentence && status !== 'generating';
-                              const btnLabel =
-                                status === 'generating' ? t.scriptPanel.aiVideoScript.sentenceAiVideoGenerating :
-                                status === 'succeeded' ? t.scriptPanel.aiVideoScript.sentenceAiVideoSucceeded :
-                                status === 'failed' ? t.scriptPanel.aiVideoScript.sentenceAiVideoFailed :
-                                t.scriptPanel.aiVideoScript.sentenceAiVideoButton;
-                              const btnClass =
-                                status === 'generating'
-                                  ? 'bg-purple-500/30 text-white/70 cursor-not-allowed'
-                                  : status === 'succeeded'
-                                    ? 'border border-purple-500 text-purple-600 hover:bg-purple-500/10 dark:text-purple-300'
-                                    : status === 'failed'
-                                      ? 'border border-red-500 text-red-500 hover:bg-red-500/10'
-                                      : 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700';
-                              const handleOpenSentenceAi = () => {
-                                if (!canTrigger) return;
-                                const raw = (sentence.text || '').trim();
-                                const initialPrompt = raw.length < 8 && segment.narrationText
-                                  ? `${raw}（上下文：${segment.narrationText.slice(0, 100)}）`
-                                  : raw;
-                                const initialDuration = mapSentenceDurationToArkBucket(sentenceTiming.duration);
-                                setSentenceAiModal({
-                                  open: true,
-                                  segmentId: segment.id,
-                                  sentenceId: sentence.id,
-                                  initialPrompt,
-                                  initialDuration,
-                                  sentenceActualDuration: sentenceTiming.duration,
-                                });
-                              };
-                              return (
-                                <div className="flex items-center justify-between mt-1">
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-xs text-primary font-mono bg-primary/10 px-1 py-0.5 rounded">
-                                      {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {t.scriptPanel.video.duration}: {sentenceTiming.duration.toFixed(1)}s
-                                    </span>
-                                  </div>
-                                  {onGenerateAiVideoForSentence && (
-                                    <button
-                                      type="button"
-                                      onClick={handleOpenSentenceAi}
-                                      disabled={status === 'generating'}
-                                      className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ${btnClass}`}
-                                      title={btnLabel}
-                                    >
-                                      {btnLabel}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            } else if (sentence.startTime !== undefined && sentence.endTime !== undefined) {
-                              // 兼容旧的时间信息
-                              return (
-                                <div className="mt-1">
-                                  <span className="text-xs text-muted-foreground font-mono bg-muted px-1 py-0.5 rounded">
-                                    {sentence.startTime}s-{sentence.endTime}s
-                                  </span>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
+                          {sentenceTiming ? (
+                            <div className="flex items-center space-x-2 mt-1">
+                              <span className="text-xs text-primary font-mono bg-primary/10 px-1 py-0.5 rounded">
+                                {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {t.scriptPanel.video.duration}: {sentenceTiming.duration.toFixed(1)}s
+                              </span>
+                            </div>
+                          ) : (sentence.startTime !== undefined && sentence.endTime !== undefined) ? (
+                            <div className="mt-1">
+                              <span className="text-xs text-muted-foreground font-mono bg-muted px-1 py-0.5 rounded">
+                                {sentence.startTime}s-{sentence.endTime}s
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>
                     {editingSentenceId !== sentence.id && (
-                      <div className="flex items-center space-x-1 ml-2">
+                      <div className="flex items-center space-x-1 ml-2 shrink-0">
                         <button
                           onClick={() => handleStartEdit(sentence)}
                           className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
@@ -2192,9 +2293,22 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
+                        {sentenceTiming && onGenerateAiVideoForSentence && (
+                          <button
+                            type="button"
+                            onClick={handleOpenSentenceAi}
+                            disabled={aiVideoStatus === 'generating'}
+                            className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ml-1 ${aiVideoBtnClass}`}
+                            title={aiVideoBtnLabel}
+                          >
+                            {aiVideoBtnLabel}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
+                    );
+                  })()}
                 </div>
               ))}
               
@@ -2504,6 +2618,26 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         initialMode="description"
         subtitle={t.scriptPanel.aiVideoScript.sentenceAiVideoModalSubtitle}
         sentenceActualDuration={sentenceAiModal.sentenceActualDuration}
+        onGeneratePrompt={
+          sentenceAiModal.segmentId && sentenceAiModal.sentenceId
+            ? async () => {
+                const segmentId = sentenceAiModal.segmentId!;
+                const sentenceId = sentenceAiModal.sentenceId!;
+                const result = await generatePromptForSentence(segmentId, sentenceId, {
+                  isManual: true,
+                });
+                if (!result) {
+                  const seg = segmentsRef.current.find(s => s.id === segmentId);
+                  const sentence = seg?.sentences.find(s => s.id === sentenceId);
+                  const reason = sentence?.aiVideoPromptError || 'unknown';
+                  showError(
+                    t.scriptPanel.aiVideoScript.aiPromptFailedToast.replace('{reason}', reason),
+                  );
+                }
+                return result;
+              }
+            : undefined
+        }
       />
       </>
       )}
