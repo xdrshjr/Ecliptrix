@@ -1,70 +1,55 @@
-# Deployment / Delivery Recommendation — 分镜生成面板修复
+# Phase 4 Delivery Recommendation — 视频剪辑 Agent 同轨重叠修复
 
-> **Phase**: 4 (Code Review & Issue Resolution)  
-> **Date**: Phase 4 completion  
+> **Phase**: 4 (Code Review & Issue Resolution)
+> **Date**: 2026-04-25
 
 ---
 
 ## 1. Overall Code Quality Rating
 
-**A- (Production-Ready)**
+**A (Production-Ready)**
 
-The Phase 3 refactor successfully unifies the “分镜生成” tab layout with its sibling tabs via a clean left-right split, introduces a well-isolated `StoryboardPreviewPanel`, and extracts reusable utilities (`gridUtils`, `AspectRatioIcon`). Type safety is strong, tests are comprehensive for the scope, and no regressions were detected.
+核心算法纯函数化、前后端共享同一段代码、覆盖率高的单测 + 集成测试、systemPrompt 含死循环防护。唯一 Minor 问题已在本阶段修复。没有 critical / major 级问题。
 
-The only major issue discovered during review (incorrect aspect-ratio preview for `4:3`/`3:4`) has been corrected. Remaining concerns are minor, pre-existing, or outside the defined scope.
+## 2. Readiness for Production Deployment
 
----
+✅ **可直接上线**。
 
-## 2. Production Readiness Assessment
+- 无 schema / 数据库 / 外部 API 改动；也无配置项新增，部署无额外步骤。
+- 无 runtime dependency 新增 — 所有改动在现有 `src/lib/video-editing-agent/*` 与 `src/components/video/timeline/domain/services/*` 目录内。
+- ESLint 产线构建忽略，无新增 warning 放大。
+- `tsc --noEmit` 0 错误；全量 vitest 302/302 通过。
+- UI 层行为无回归（reconcile 使用与 UI 已有 `TimelineAggregate.organizeVideoAudioTracks` 一致的算法）。
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| **Functional Correctness** | ✅ Pass | Layout renders correctly across `input`, `generating`, `success`, `error`, and `script` steps. Preview panel accurately reflects selected aspect ratio after fix. |
-| **Type Safety** | ✅ Pass | `tsc --noEmit` reports **0 errors**. |
-| **Test Coverage** | ✅ Pass | **213/213** automated tests pass. Structural tests guard against accidental layout regressions. |
-| **Accessibility** | ⚠️ Acceptable | New `aria-label` on the preview region and `aria-hidden` on decorative icons are in place. Full a11y audit (focus order, color-contrast testing) was not in scope. |
-| **Performance** | ✅ Pass | No new heavy computations; `computeOptimalGrid` is memoized. Grid preview renders at most 64 DOM nodes. |
-| **Security** | ✅ Pass | No new injection surfaces. User-supplied URLs are rendered in standard `<img>` tags (existing pattern, low risk). |
-| **Maintainability** | ✅ Pass | Components are small, focused, and follow project conventions. `ConfigSection` extraction eliminated an inline-function anti-pattern. |
+## 3. 已知限制 Known Acceptable Limitations
 
-### Verdict
-**The codebase is approved for deployment.**
+以下限制在 Phase 3 设计阶段即已显式标注，不在本期范围：
 
----
+1. `auto_fix_overlaps` 仅支持同轨打紧，不会跨轨搬移。若需跨轨调整，LLM 需显式调用 `move_clip(newTrackId=...)`。
+2. 历史项目打开时不主动触发 reconcile（R13 缓解）：reconcile 只在 Agent operation 落地路径上生效；用户加载的历史文件若含预先存在的重叠，不会被自动清理。这是为了避免"打开项目 → 布局被无征兆修改"的惊吓体验。
+3. subtitle 与 locked 轨道**永远**跳过。subtitle 与 TTS 音频对齐要求毫秒级精度；locked 意味着用户声明过"我自己管"。auto_fix_overlaps 在这些轨道上仍有重叠时会通过 `warning` 字段请求 LLM 人工介入。
+4. `auto_fix_overlaps` 批量移动会在前端 undo 列表显示 N 条记录而非 1 条。与现有 `compose_storyboard` 同构，未分组。
 
-## 3. Remaining Known Issues & Impact
+## 4. 上线后建议监控
 
-| Issue | Severity | Impact | Recommended Action |
-|-------|----------|--------|--------------------|
-| Hard-coded Chinese strings in `StoryboardTab.tsx` | Low | Non-blocking for domestic (zh-CN) users; may delay future internationalization efforts. | Schedule i18n sweep in a future localization sprint. |
-| Inconsistent Tailwind disabled-state classes in `GridSizeSelector.tsx` | Very Low | Visual-only discrepancy; no functional impact. | Address when the component is next touched. |
-| Structural tests instead of mounted component tests | Low | Catches class-name regressions but not runtime interaction bugs. | Add React Testing Library / jsdom behavioral tests once the build pipeline supports JSX in test files. |
-| No visual regression (snapshot) tests | Low | UI changes must be verified manually or via class-name assertions. | Evaluate Playwright or Chromatic snapshot testing for the modal tabs. |
+- **服务端日志**:
+  - `[VideoEditingAgent] Circuit breaker tripped` — 若触发，说明连续 5 次工具失败；本次改动未新增失败源，若出现多为网络/鉴权问题。
+  - `[OperationApplier] No timeline state — initializing default` — 理论上不应出现（agent 启动前 timelineState 一定存在），若出现说明 config 有问题。
+- **用户侧**:
+  - 观察 AI 剪辑结果里是否仍出现重叠片段。理想情况应降为 0；若仍有，可通过 sentry 或后端日志抓取 `check_timeline_overlaps` 返回 `valid=false` 的 tool_result 事件用于回溯。
+  - 观察 `auto_fix_overlaps` 调用频次：若每次 Agent 会话都调用多次才能收敛，说明 systemPrompt 反思-修复循环写法仍有优化空间。
 
----
+## 5. 推荐的后续工作（不在本期）
 
-## 4. Recommended Next Steps
+按价值-成本排序：
 
-1. **Merge & Deploy**  
-   The fix set is minimal and safe. Deploy through the standard CI/CD pipeline.
+| 优先级 | 主题 | 预估工作量 |
+|-------|------|-----------|
+| P2 | `auto_fix_overlaps` 批次 undo 聚合（1 次 revert 整个批次） | ~0.5 人日 |
+| P2 | subtitle 轨道的 overlap 自动处理策略（当前靠 LLM 手工 move） | ~1 人日 |
+| P3 | 服务端单路径的"load project → reconcile on demand" CLI 修复工具 | ~0.5 人日 |
+| P3 | systemPrompt 中加入"auto_fix_overlaps 已达上限请向用户解释"的示例对话 | ~0.25 人日 |
 
-2. **Post-Deployment Monitoring**  
-   - Watch error-tracking dashboards for any `StoryboardTab` or `StoryboardPreviewPanel` runtime exceptions.  
-   - Collect user feedback on the new preview panel, especially for `4:3` and `3:4` aspect ratios (the area most recently corrected).
+## 6. 汇报结论
 
-3. **Follow-up Work (Non-Blocking)**  
-   - **i18n completion**: Extract remaining hard-coded strings in `StoryboardTab.tsx` and `StoryboardScriptReview.tsx` into `src/lib/i18n.ts`.  
-   - **Behavioral tests**: Once the Vitest/tsconfig JSX limitation is resolved, add mounted tests for:  
-     - Changing aspect ratio updates the preview panel.  
-     - Clicking “下一步：生成分镜剧本” transitions from `input` to `script` step.  
-     - `window.confirm` on “返回修改输入” resets draft state.
-
----
-
-## 5. Sign-Off
-
-- **Code Review**: Completed  
-- **Critical / Major Issues**: Resolved  
-- **Tests**: All passing (213/213)  
-- **Type Check**: Clean (0 errors)  
-- **Deployment Recommendation**: **APPROVED**
+Phase 3 的交付物达到产线上线标准；Phase 4 发现的 1 个 Minor 类型安全问题已在本阶段修复并通过全量测试验证。**批准进入 Phase 5（代码提交与 Commit 描述编写）**。

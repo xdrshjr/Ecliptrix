@@ -1,210 +1,118 @@
-# Issue Fix Record — Phase 4
+# Phase 4 Issue Fix Record — 视频剪辑 Agent 同轨重叠修复
 
-> **Task**: 代码评审与问题修复 (Phase 4)  
-> **Project**: Ecliptrix — 分镜生成面板修复  
+## Issue #1 — 不安全的类型强转 (Minor, Type-Safety)
 
----
+**文件**:
+- `src/lib/video-editing-agent/reconcile.ts`
+- `src/lib/video-editing-agent/OperationApplier.ts`
 
-## Fix #1 — Incorrect Aspect Ratio Preview for 4:3 and 3:4
+**问题描述**:
 
-- **Category**: Correctness  
-- **Severity**: Major  
-- **File**: `src/components/video/components/AiImageModal/StoryboardPreviewPanel.tsx`
+`reconcileOverlapsAfterAgentOp(state, operation)` 的 `operation` 形参原来是 `TimelineOperation`（定义在 `src/lib/video-editing-agent/types.ts`）。但是 `OperationApplier.applyToTimeline` 内接收到的 operation 是 `AgentTimelineOperation`（定义在 `src/types/index.ts`）。两个 discriminated union 在 add_clip 分支上的 `material` 字段有差异：
 
-### Problem
-`StoryboardPreviewPanel` mapped every landscape aspect ratio to `16 / 9` and every portrait ratio to `9 / 16` in its CSS `aspect-ratio` style. Consequently, selecting `4:3` or `3:4` displayed a preview with the wrong proportions, misleading users about the generated grid shape.
+| 字段 | `TimelineOperation.material` | `AgentTimelineOperation.material` (AgentMaterialData) |
+|------|--------------------------|---------------------------------------------------|
+| `id` | ✅ | ✅ |
+| `name` | ✅ | ✅ |
+| `type` | ✅ | ✅ |
+| `url` | **string（必填）** | **缺失** |
+| `thumbnailUrl?` | ✅ | ✅ |
 
-### Before
-```tsx
-<div
-  className="grid gap-1"
-  style={{
-    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-    aspectRatio: variant === 'square' ? '1 / 1' : variant === 'landscape' ? '16 / 9' : '9 / 16',
-  }}
->
-```
+原实现靠 `operation as TimelineOperation` 强转绕过类型检查。reconcile 实际上只读 `operation.type`、`operation.clip.trackId` 等字段，完全不访问 `material.url`，所以运行时没有 bug。但强转在类型层面掩盖了"这两个类型结构不同"的事实，未来若有人加一行 `operation.material.url` 的访问代码，静态类型无法拦截。
 
-### After
-```tsx
-<div
-  className="grid gap-1"
-  style={{
-    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-    aspectRatio: aspectRatio.replace(':', ' / '),
-  }}
->
-```
+**严重度**: Minor（不影响运行时，但削弱了静态类型保障）
 
-### Verification
-- `npm run type-check` — 0 errors
-- `npm run test` — all 213 tests pass
-- Visual logic verified: `4:3` now renders `aspect-ratio: 4 / 3`, `3:4` renders `3 / 4`, etc.
+**修复**:
 
----
+在 `reconcile.ts` 中定义一个内部类型别名 `ReconcilableOperation = TimelineOperation | AgentTimelineOperation`，把两种 discriminated union 合并。TypeScript 对 union 的 switch/case 收窄仍然有效，因为二者的 `type` 判别字段完全一致；而 reconcile 读取的 `clip.trackId` / `clipId` / `trackId` / `fromTrackId` / `toTrackId` 在两种类型下都存在且类型一致。
 
-## Fix #2 — Inline `renderConfigSection` Anti-Pattern
+**Before** (`reconcile.ts`):
 
-- **Category**: Maintainability / Code Quality  
-- **Severity**: Minor  
-- **File**: `src/components/video/components/AiImageModal/StoryboardTab.tsx`
-
-### Problem
-`StoryboardTab` defined `renderConfigSection` as an inline function that returned JSX. This is a known React anti-pattern: it creates a new function on every render, bloats the parent component (~380 lines), and makes unit testing the config UI in isolation impossible.
-
-### Before
-```tsx
-const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenerate }) => {
-  // ...
-  const renderConfigSection = (options?: { compact?: boolean }) => (
-    <div className={options?.compact ? 'space-y-5' : 'space-y-6'}>...{/* 40+ lines */}
-  );
-  // ...
-  {renderConfigSection({ compact: true })}
-  {renderConfigSection()}
-};
-```
-
-### After
-Extracted to a named component `ConfigSection` declared **outside** `StoryboardTab`:
-
-```tsx
-interface ConfigSectionProps {
-  frameCount: number;
-  aspectRatio: StoryboardAspectRatio;
-  referenceImages: MentionedImage[];
-  prompt: string;
-  onChange: React.Dispatch<React.SetStateAction<StoryboardTabState>>;
-  disabled?: boolean;
-  compact?: boolean;
-}
-
-const ConfigSection: React.FC<ConfigSectionProps> = ({ ... }) => { ... };
-```
-
-Inside `StoryboardTab`:
-```tsx
-<ConfigSection compact frameCount={frameCount} ... disabled={inputsDisabled} />
-<ConfigSection frameCount={frameCount} ... disabled={inputsDisabled} />
-```
-
-### Verification
-- `npm run type-check` — 0 errors
-- `npm run test` — all 213 tests pass, including `layoutFixes.test.tsx` structural assertions
-- No change to rendered DOM or Tailwind class names
-
----
-
-## Fix #3 — Missing Accessibility Attributes on Decorative Icons
-
-- **Category**: Accessibility  
-- **Severity**: Minor  
-- **File**: `src/components/video/components/AiImageModal/AspectRatioIcon.tsx`
-
-### Problem
-`AspectRatioIcon` renders pure-decorative SVGs. Without `aria-hidden` and `focusable="false"`, assistive technologies may expose them as unlabeled graphics, and some browsers (IE/Edge legacy) allow keyboard focus on SVGs.
-
-### Before
-```tsx
-<svg className={`w-3.5 h-3.5 ${svgClass}`} viewBox="0 0 24 24" fill="none">
-```
-
-### After
-```tsx
-<svg className={svgClass} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-```
-
-(Also cleaned up class-name concatenation to avoid duplicate size tokens.)
-
-### Verification
-- `npm run type-check` — 0 errors
-- `npm run test` — all 213 tests pass
-
----
-
-## Fix #4 — Missing `type="button"` on Interactive Buttons
-
-- **Category**: Security / Best Practices  
-- **Severity**: Minor  
-- **File**: `src/components/video/components/AiImageModal/StoryboardTab.tsx`
-
-### Problem
-Aspect-ratio preset buttons and the “skip script” fallback button lacked an explicit `type="button"`. In a future refactor where the modal body might be wrapped in a `<form>`, these buttons would unintentionally submit the form.
-
-### Before
-```tsx
-<button
-  key={preset.value}
-  onClick={() => onChange((prev) => ({ ...prev, aspectRatio: preset.value }))}
-  disabled={inputsDisabled}
->
-```
-
-```tsx
-<button
-  onClick={handleSkipScript}
-  disabled={!prompt.trim() || inputsDisabled}
->
-```
-
-### After
-Added `type="button"` to all five aspect-ratio preset buttons and the skip-script button.
-
-### Verification
-- `npm run type-check` — 0 errors
-- `npm run test` — all 213 tests pass
-
----
-
-## Fix #5 — Dead i18n Key `summaryLabel`
-
-- **Category**: Code Quality / i18n Hygiene  
-- **Severity**: Minor  
-- **File**: `src/lib/i18n.ts`
-
-### Problem
-The translation key `storyboardPreviewPanel.summaryLabel` existed in the `Translations` interface and in both the `en` and `zh-CN` translation objects, but `StoryboardPreviewPanel.tsx` never referenced it.
-
-### Before
 ```ts
-// Interface
-storyboardPreviewPanel: {
-  title: string;
-  summaryLabel: string;   // <— unused
-  gridSize: string;
-  // ...
-}
+import type { TimelineState, Track, TimelineItem } from '@/types';
+import type { TimelineOperation } from './types';
 
-// en
-storyboardPreviewPanel: {
-  title: 'Storyboard Preview',
-  summaryLabel: 'Configuration Summary',
-  // ...
-}
+function affectedTrackIds(
+  state: TimelineState,
+  operation?: TimelineOperation,
+): Set<string> | null { /* ... */ }
 
-// zh-CN
-storyboardPreviewPanel: {
-  title: '分镜预览',
-  summaryLabel: '配置摘要',
-  // ...
-}
+export function reconcileOverlapsAfterAgentOp(
+  state: TimelineState,
+  operation?: TimelineOperation,
+  opts?: { epsilon?: number },
+): ReconcileResult { /* ... */ }
 ```
 
-### After
-Removed `summaryLabel` from the interface and both translation objects.
+**After**:
 
-### Verification
-- `npm run type-check` — 0 errors (TypeScript confirms no consumer references the removed key)
-- `npm run test` — all 213 tests pass
+```ts
+import type { TimelineState, Track, TimelineItem, AgentTimelineOperation } from '@/types';
+import type { TimelineOperation } from './types';
+
+/**
+ * Accepted operation shape for reconcile. `TimelineOperation` (from the
+ * video-editing-agent types) and `AgentTimelineOperation` (from `@/types`)
+ * share every field reconcile reads but differ on unrelated ones like
+ * `material.url`, so accepting the union lets both the in-browser
+ * `OperationApplier` and the server-side `agent.ts` call this helper
+ * without an unsafe cast.
+ */
+type ReconcilableOperation = TimelineOperation | AgentTimelineOperation;
+
+function affectedTrackIds(
+  state: TimelineState,
+  operation?: ReconcilableOperation,
+): Set<string> | null { /* ... */ }
+
+export function reconcileOverlapsAfterAgentOp(
+  state: TimelineState,
+  operation?: ReconcilableOperation,
+  opts?: { epsilon?: number },
+): ReconcileResult { /* ... */ }
+```
+
+**Before** (`OperationApplier.ts`):
+
+```ts
+import type { AgentOperation, MaterialOperation, /* ... */ TimelineOperation } from './types';
+// ...
+reconcileOverlapsAfterAgentOp(state, operation as TimelineOperation);
+```
+
+**After**:
+
+```ts
+import type { AgentOperation, MaterialOperation, /* ... */ } from './types';
+// `TimelineOperation` import dropped — no longer needed here.
+// ...
+reconcileOverlapsAfterAgentOp(state, operation);
+```
+
+**验证**:
+
+1. `npx tsc --noEmit` 通过（0 错误）。
+2. `npx vitest run src/components/video/timeline src/lib/video-editing-agent` → 13 test files / 90 tests 全部通过。
+3. 全量 `npx vitest run` → 43 test files / 302 tests 全部通过。
+
+`agent.ts::applyOperationLocally` 本来就用 `operation: TimelineOperation` 直接调用 reconcile，新 union 类型向下兼容，无需调整。
 
 ---
 
-## Final Validation Summary
+## 未修问题（已记录为可接受）
 
-| Check | Result |
-|-------|--------|
-| TypeScript compilation | ✅ 0 errors |
-| Full unit-test suite | ✅ 213/213 passed |
-| Structural layout tests | ✅ 18/18 passed |
-| No new runtime dependencies | ✅ Confirmed |
-| i18n keys consistent (zh + en) | ✅ Confirmed |
+| # | 文件 | 描述 | 不修原因 |
+|---|------|------|--------|
+| obs-1 | `AgentEventRouter.handleToolResult` | `auto_fix_overlaps` 的 N 条 move_clip 被当作 N 条独立 operation 应用，在 UI 的 undo 列表里显示为 N 条记录。 | 与现有 `compose_storyboard` 路径完全同构。分组 UX 是独立的 feature，超出本期范围（"不能让 Agent 剪辑出重叠 + 能检查 + 能修复"）。 |
+| obs-2 | `OperationApplier.applyToTimeline` L546 | reconcile 已经在 `state.totalDuration` 写入一次（有变更时取 `Math.max(computeTotalDuration(state), state.totalDuration ?? 0)`），外层又做 `state.totalDuration = Math.max(maxEnd, state.totalDuration);`。冗余但结果一致。 | 非 bug。移除需要同步调整测试期望，收益微乎其微。 |
+| obs-3 | pack-flush 策略本身 | 策略是"按 startTime 排序后从 0 开始打紧整条轨道"。若轨道上已有 a@0 + b@10，新插入 c@5，pack 后会得到 a@0 + c@5 + b@(5+c.dur)，即 b 被右移。 | 这就是 UI 层 `TimelineAggregate.organizeVideoAudioTracks` 既有行为（拖拽完成后也这么打紧），本期目标是"让 Agent 行为与 UI 一致"而不是"改 UI 行为"。 |
+| obs-4 | `tools/deleteClip.ts` | 未加 `overlapWarning` post-check。 | `delete_clip` 不可能引入新重叠（只会减少片段）；省掉一次 O(N log N) 扫描，符合防御性编码原则。 |
+
+---
+
+## 修复后最终状态
+
+- **总改动**: 新增 9 文件 + 修改 11 文件（Phase 3 交付）+ 本次 Phase 4 微调 2 文件（reconcile.ts、OperationApplier.ts）。
+- **代码行数变化**: Phase 4 净增约 +12 / -3 行（新增类型别名 + 注释，删除冗余 import + cast）。
+- **测试**: 全量 302/302 通过。
+- **类型检查**: `tsc --noEmit` 0 错误。
