@@ -3,11 +3,39 @@ Data models for AI Storyboard generation, cropping, VL description,
 batch video generation, and video composition.
 """
 
-import math
 from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.base_models import BaseResponse
+
+
+# ---------------------------------------------------------------------------
+# Limits — post-refactor, storyboard generation is fixed to 2x2 grids chained
+# across batches of 4. User-facing scene count is capped at 16 (ceil(16/4)=4
+# batches), matching UI validation.
+# ---------------------------------------------------------------------------
+
+STORYBOARD_MAX_SCENE_COUNT = 16
+STORYBOARD_BATCH_SIZE = 4  # one 2x2 grid per batch
+
+
+class PartialGenerationError(Exception):
+    """Raised mid-way through a multi-batch storyboard run after at least one
+    batch has succeeded. Carries the partially-complete pack so the router can
+    surface a `partial=true` response without discarding the user's work.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        pack: Optional["StoryboardPack"] = None,
+        completed_batches: int = 0,
+        cause: Optional[BaseException] = None,
+    ) -> None:
+        super().__init__(message)
+        self.pack = pack
+        self.completed_batches = completed_batches
+        self.cause = cause
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +61,12 @@ class GenerateScriptRequest(BaseModel):
     """Request to generate a storyboard script (initial pass, no prior history)."""
 
     prompt: str = Field(..., max_length=2000, description="User prompt / theme")
-    frame_count: int = Field(..., ge=1, le=64, description="Number of scenes")
+    frame_count: int = Field(
+        ...,
+        ge=1,
+        le=STORYBOARD_MAX_SCENE_COUNT,
+        description=f"Number of scenes (1-{STORYBOARD_MAX_SCENE_COUNT})",
+    )
     aspect_ratio: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = Field(default="1:1")
     locale: Literal["zh", "en"] = Field(default="zh", description="Output language")
     reference_images: Optional[List[str]] = Field(default=None, max_length=4)
@@ -42,7 +75,7 @@ class GenerateScriptRequest(BaseModel):
 class ReviseScriptRequest(BaseModel):
     """Request to revise an existing script given chat history and new user instruction."""
 
-    frame_count: int = Field(..., ge=1, le=64)
+    frame_count: int = Field(..., ge=1, le=STORYBOARD_MAX_SCENE_COUNT)
     aspect_ratio: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = Field(default="1:1")
     locale: Literal["zh", "en"] = Field(default="zh")
     current_draft: List[ScriptShot] = Field(..., description="Current shot list before revision")
@@ -51,7 +84,13 @@ class ReviseScriptRequest(BaseModel):
 
 
 class StoryboardGenerateRequest(BaseModel):
-    """Request to generate a multi-cell storyboard image via ARK Seedream."""
+    """Request to generate a multi-cell storyboard image via ARK Seedream.
+
+    Post-refactor the storyboard pipeline always uses a 2x2 grid per ARK call
+    and chains ``ceil(frame_count / 4)`` batches together. ``grid_size`` is
+    therefore only allowed as the constant ``"2x2"`` (or omitted); any other
+    value is rejected at validation time.
+    """
 
     prompt: str = Field(
         ...,
@@ -60,13 +99,18 @@ class StoryboardGenerateRequest(BaseModel):
     )
     grid_size: Optional[str] = Field(
         None,
-        description="Grid layout specification (e.g. '3x3', '2x4'). If omitted, computed from frame_count.",
+        description="Deprecated. Only '2x2' or None is accepted; the backend always uses 2x2 internally.",
     )
     frame_count: Optional[int] = Field(
         None,
         ge=1,
-        le=64,
-        description="Desired number of storyboard frames (1-64). Auto-computes optimal grid layout.",
+        le=STORYBOARD_MAX_SCENE_COUNT,
+        description=(
+            f"Desired number of storyboard frames (1-{STORYBOARD_MAX_SCENE_COUNT}). "
+            "Frames are generated in 2x2 batches; the backend runs ceil(N/4) sequential "
+            "batches, chaining the last two frames of each batch into the next batch's "
+            "reference image."
+        ),
     )
     aspect_ratio: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = Field(
         default="1:1", description="Target aspect ratio for each storyboard cell"
@@ -102,52 +146,26 @@ class StoryboardGenerateRequest(BaseModel):
     @field_validator("grid_size")
     @classmethod
     def validate_grid_size(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
+        # The refactor restricts storyboard generation to 2x2 grids only.
+        # Accept the literal string "2x2" or None (auto-defaulted by the
+        # model validator below). Anything else is a hard 400 from the
+        # router layer.
+        if v is None or v == "2x2":
             return v
-        import re
-
-        match = re.match(r"^(\d+)x(\d+)$", v)
-        if not match:
-            raise ValueError(f"grid_size must be in 'NxM' format, got '{v}'")
-        rows, cols = int(match.group(1)), int(match.group(2))
-        if not (1 <= rows <= 8 and 1 <= cols <= 8):
-            raise ValueError(
-                f"grid_size rows and cols must be between 1 and 8, got '{v}'"
-            )
-        if rows * cols > 64:
-            raise ValueError(
-                f"grid_size total cells ({rows * cols}) exceeds maximum of 64"
-            )
-        return v
+        raise ValueError(
+            f"grid_size is deprecated; only '2x2' is supported, got {v!r} "
+            "(GRID_SIZE_DEPRECATED)"
+        )
 
     @model_validator(mode="after")
     def ensure_grid_or_frame_count(self) -> "StoryboardGenerateRequest":
-        if self.grid_size is None and self.frame_count is None:
-            self.frame_count = 9
-        if self.frame_count is not None and self.grid_size is None:
-            rows, cols = compute_optimal_grid(self.frame_count)
-            self.grid_size = f"{rows}x{cols}"
+        # Default to 4 frames (one 2x2 batch) when the client sends neither
+        # grid_size nor frame_count. grid_size is always forced to "2x2" —
+        # the old compute_optimal_grid branch has been removed.
+        if self.frame_count is None:
+            self.frame_count = STORYBOARD_BATCH_SIZE
+        self.grid_size = "2x2"
         return self
-
-
-def compute_optimal_grid(frame_count: int) -> tuple:
-    """Compute the optimal (rows, cols) grid for a given frame count.
-
-    Picks the near-square layout with rows * cols >= frame_count,
-    with rows <= cols (landscape-oriented grid).
-
-    Algorithm: start from cols = ceil(sqrt(n)) and find the first cols
-    where rows = ceil(n / cols) satisfies rows <= cols.
-    """
-    if frame_count <= 0 or frame_count == 1:
-        return (1, 1)
-
-    cols = math.ceil(math.sqrt(frame_count))
-    while True:
-        rows = math.ceil(frame_count / cols)
-        if rows <= cols:
-            return (rows, cols)
-        cols += 1
 
 
 class StoryboardDescribeRequest(BaseModel):
@@ -243,12 +261,36 @@ class StoryboardFrame(BaseModel):
     reference_image_url: Optional[str] = Field(None, description="Reference image URL")
 
 
+class BatchInfo(BaseModel):
+    """Per-batch accounting for a chained 2x2 storyboard run.
+
+    Each batch corresponds to exactly one ARK Seedream call and yields up to
+    four frames (fewer only when the whole run requests <4 scenes). The
+    indexes here are GLOBAL — i.e. they index into ``StoryboardPack.frames``
+    directly, so the frontend can group frames by batch without recomputing.
+    """
+
+    index: int = Field(..., description="Zero-based batch index")
+    seedream_task_id: Optional[str] = Field(
+        None, description="ARK request id (when returned by the provider)"
+    )
+    frame_indices: List[int] = Field(
+        default_factory=list,
+        description="Global frame indices produced by this batch",
+    )
+    duration_ms: Optional[int] = Field(
+        None, description="End-to-end wall time for this batch"
+    )
+    started_at: Optional[str] = Field(None, description="ISO-8601 start timestamp")
+    ended_at: Optional[str] = Field(None, description="ISO-8601 end timestamp")
+
+
 class StoryboardPack(BaseModel):
     """Complete storyboard pack metadata."""
 
     pack_id: str = Field(..., description="Unique pack identifier")
     prompt: str = Field(..., description="Original user prompt")
-    grid_size: str = Field(..., description="Grid specification (e.g. '3x3')")
+    grid_size: str = Field(..., description="Grid specification (always '2x2' for newly generated packs)")
     aspect_ratio: str = Field(default="1:1", description="Aspect ratio of each frame")
     frame_count: int = Field(..., description="Total number of frames")
     created_at: str = Field(..., description="ISO-8601 creation timestamp")
@@ -265,6 +307,37 @@ class StoryboardPack(BaseModel):
     script_title: Optional[str] = Field(None, description="Script title")
     script_history: Optional[List[Dict[str, str]]] = Field(
         None, description="Chat history used to produce the script"
+    )
+    # ── Chained-batch accounting (new fields; Optional for backward compat) ──
+    batches: Optional[List[BatchInfo]] = Field(
+        None, description="Per-batch accounting; None for legacy single-shot packs"
+    )
+    partial: Optional[bool] = Field(
+        None,
+        description=(
+            "True if generation failed before all batches completed; the "
+            "pack only contains frames from the successful batches."
+        ),
+    )
+    completed_batches: Optional[int] = Field(
+        None, description="Number of batches that completed successfully"
+    )
+    total_batches: Optional[int] = Field(
+        None, description="Total number of batches planned (ceil(frame_count/4))"
+    )
+    discarded_frame_count: Optional[int] = Field(
+        None,
+        description=(
+            "Number of padding frames (e.g. when frame_count is not a multiple "
+            "of 4) that were generated and deleted."
+        ),
+    )
+    error: Optional[Dict[str, str]] = Field(
+        None,
+        description=(
+            "Populated when partial=true. Shape: {code, message}. "
+            "code=PARTIAL_GENERATION_FAILED for batch-level failures."
+        ),
     )
 
 

@@ -1,11 +1,12 @@
 import { http } from '@/lib/api/http-client';
 import {
+  BatchInfo,
+  ScriptMessage,
+  ScriptShot,
+  StoryboardAspectRatio,
+  StoryboardFrame,
   StoryboardGenerateParams,
   StoryboardPack,
-  StoryboardFrame,
-  StoryboardAspectRatio,
-  ScriptShot,
-  ScriptMessage,
 } from '@/types';
 
 /** Raw backend frame shape (snake_case). */
@@ -22,6 +23,16 @@ interface RawFrame {
   reference_image_url?: string;
 }
 
+/** Raw backend batch-accounting shape (snake_case). */
+interface RawBatchInfo {
+  index: number;
+  seedream_task_id?: string | null;
+  frame_indices: number[];
+  duration_ms?: number | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+}
+
 /** Raw backend pack shape (snake_case). */
 interface RawPack {
   pack_id: string;
@@ -35,6 +46,13 @@ interface RawPack {
   frames?: RawFrame[];
   script_title?: string;
   script_history?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+  // New chained-batch fields (all optional for backward compatibility).
+  batches?: RawBatchInfo[];
+  partial?: boolean | null;
+  completed_batches?: number | null;
+  total_batches?: number | null;
+  discarded_frame_count?: number | null;
+  error?: { code: string; message: string } | null;
 }
 
 interface StoryboardEnvelope<T> {
@@ -59,6 +77,17 @@ function toFrame(f: RawFrame): StoryboardFrame {
   };
 }
 
+function toBatch(b: RawBatchInfo): BatchInfo {
+  return {
+    index: b.index,
+    seedreamTaskId: b.seedream_task_id ?? undefined,
+    frameIndices: b.frame_indices ?? [],
+    durationMs: b.duration_ms ?? undefined,
+    startedAt: b.started_at ?? undefined,
+    endedAt: b.ended_at ?? undefined,
+  };
+}
+
 /** Convert a raw backend pack to a typed StoryboardPack. */
 function toPack(d: RawPack): StoryboardPack {
   return {
@@ -73,6 +102,12 @@ function toPack(d: RawPack): StoryboardPack {
     frames: (d.frames || []).map(toFrame),
     scriptTitle: d.script_title,
     scriptHistory: d.script_history,
+    batches: d.batches ? d.batches.map(toBatch) : undefined,
+    partial: d.partial ?? undefined,
+    completedBatches: d.completed_batches ?? undefined,
+    totalBatches: d.total_batches ?? undefined,
+    discardedFrameCount: d.discarded_frame_count ?? undefined,
+    error: d.error ?? undefined,
   };
 }
 
@@ -128,6 +163,11 @@ export async function createPackFromShots(
 /**
  * Generate a storyboard pack by calling the backend via Next.js API route.
  * Returns the created StoryboardPack with all cropped frames.
+ *
+ * ``params.frameCount`` is the TOTAL scene count the user asked for
+ * (1–16). Internally the backend splits the request into ceil(N/4) chained
+ * 2×2 batches, which can take several minutes end-to-end — the client
+ * timeout mirrors the BFF ceiling at 15 minutes.
  */
 export async function generateStoryboard(params: StoryboardGenerateParams): Promise<StoryboardPack> {
   const data = await http.post<StoryboardEnvelope<RawPack>>(
@@ -144,7 +184,7 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
       locale: params.locale,
       pack_id: params.packId,
     },
-    { timeoutMs: 300_000 },
+    { timeoutMs: 900_000 },
   );
 
   if (!data.success || !data.data) {

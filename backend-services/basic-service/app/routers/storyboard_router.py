@@ -10,6 +10,7 @@ from app.models.base_models import BaseResponse
 from app.models.storyboard_models import (
     GenerateScriptRequest,
     GenerateScriptResponse,
+    PartialGenerationError,
     ReviseScriptRequest,
     StoryboardBatchVideoRequest,
     StoryboardBatchVideoResponse,
@@ -36,13 +37,40 @@ router = APIRouter(prefix="/storyboard", tags=["Storyboard"])
 
 @router.post("/generate", response_model=StoryboardGenerateResponse)
 async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardGenerateResponse:
-    """Generate a multi-cell storyboard image, crop into frames, and create a pack."""
+    """Generate a chained 2x2 storyboard pack. On partial failure returns
+    HTTP 200 with ``data.partial = true`` and whatever frames completed.
+    """
     try:
         pack = await storyboard_service.generate_storyboard(request)
         return StoryboardGenerateResponse(
             success=True,
             message=f"Storyboard generated: {pack.frame_count} frames ({pack.grid_size})",
             data=pack,
+        )
+    except PartialGenerationError as partial_err:
+        # NOTE: returning 200 + success=True + data.partial=true is deliberate.
+        # The project's proxy layer routes non-2xx responses through a
+        # `BACKEND_ERROR` envelope that the frontend surfaces as a full
+        # failure; doing that here would discard the frames we DID generate.
+        # The partial marker on the pack tells the UI to render what exists
+        # and offer a retry for the missing batches.
+        logger.error(
+            f"Partial storyboard failure: {partial_err} (completed={partial_err.completed_batches})",
+            exc_info=partial_err.cause,
+        )
+        if partial_err.pack is None:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Storyboard partial failure with no pack: {partial_err}",
+            )
+        return StoryboardGenerateResponse(
+            success=True,
+            message=(
+                f"Storyboard partially generated: {partial_err.pack.frame_count} "
+                f"frames across {partial_err.completed_batches} batch(es); "
+                f"remaining batches failed"
+            ),
+            data=partial_err.pack,
         )
     except ValueError as e:
         logger.warning(f"Storyboard generation validation error: {e}")

@@ -56,7 +56,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
 
   const [storyboardState, setStoryboardState] = useState<StoryboardTabState>({
     prompt: '',
-    frameCount: 9,
+    frameCount: 4,
     aspectRatio: '16:9',
     referenceImages: [],
   });
@@ -70,7 +70,7 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
     setBasicState({ prompt: '', size: '2048x2048', count: 1, watermark: true, referenceImages: [] });
     setCharacterState({ prompt: '', watermark: true, referenceImages: [], selectedTemplateId: null });
     setSceneState({ prompt: '', watermark: true, referenceImages: [], selectedTemplateId: null });
-    setStoryboardState({ prompt: '', frameCount: 9, aspectRatio: '16:9', referenceImages: [] });
+    setStoryboardState({ prompt: '', frameCount: 4, aspectRatio: '16:9', referenceImages: [] });
   };
 
   const handleClose = () => {

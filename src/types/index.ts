@@ -509,8 +509,18 @@ export type ImageMentionMap = Record<string, string>;
 // Storyboard Generation types
 // ========================
 
-/** Preset storyboard grid sizes for quick selection */
-export type StoryboardGridSize = '2x2' | '3x3' | '4x4' | '6x6' | '8x8';
+/** Supported storyboard grid sizes. Post-refactor the backend only emits
+ *  ``'2x2'`` (via chained batches); legacy packs may still carry any NxM
+ *  string, so the type stays widened to ``string`` in {@link StoryboardPack}.
+ */
+export type StoryboardGridSize = '2x2';
+
+/** Scene-count bounds mirrored from the backend. The UI should clamp/validate
+ *  against these rather than hardcoding numbers inline.
+ */
+export const STORYBOARD_MIN_SCENE_COUNT = 1;
+export const STORYBOARD_MAX_SCENE_COUNT = 16;
+export const STORYBOARD_BATCH_SIZE = 4;
 
 /** Supported aspect ratios for storyboard frame cells */
 export type StoryboardAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
@@ -530,11 +540,24 @@ export interface StoryboardFrame {
   referenceImageUrl?: string;        // https / /api/storage/files/... / data:
 }
 
+/** Per-batch accounting exposed by the new chained-2×2 backend pipeline.
+ *  Legacy single-shot packs have no ``batches`` field and consumers MUST
+ *  treat it as optional.
+ */
+export interface BatchInfo {
+  index: number;
+  seedreamTaskId?: string;
+  frameIndices: number[];
+  durationMs?: number;
+  startedAt?: string;
+  endedAt?: string;
+}
+
 /** A storyboard pack containing the original image and its cropped frames */
 export interface StoryboardPack {
   packId: string;
   prompt: string;
-  gridSize: string;           // Grid layout string (e.g. '3x3', '2x3') — may be non-preset
+  gridSize: string;           // '2x2' for new packs; legacy packs may have '3x3' etc.
   aspectRatio?: StoryboardAspectRatio;
   frameCount: number;
   createdAt: string;
@@ -544,6 +567,13 @@ export interface StoryboardPack {
   // ── AI-scripted pack fields (optional) ──
   scriptTitle?: string;
   scriptHistory?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+  // ── Chained-batch accounting (optional, backward compatible) ──
+  batches?: BatchInfo[];
+  partial?: boolean;
+  completedBatches?: number;
+  totalBatches?: number;
+  discardedFrameCount?: number;
+  error?: { code: string; message: string };
 }
 
 /** A single LLM-produced script shot bound to a frame index. */
@@ -566,7 +596,11 @@ export interface StoryboardScriptDraft {
   locale: 'zh' | 'en';
 }
 
-/** Parameters for generating a storyboard */
+/** Parameters for generating a storyboard.
+ *  ``frameCount`` is the TOTAL number of scenes the user wants (1–16).
+ *  The backend internally splits the request into ceil(frameCount/4) chained
+ *  2×2 batches.
+ */
 export interface StoryboardGenerateParams {
   prompt: string;
   frameCount: number;

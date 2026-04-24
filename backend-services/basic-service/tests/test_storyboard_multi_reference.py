@@ -77,17 +77,19 @@ class TestStoryboardModels:
         )
         assert req.mentioned_images == {"@[cat]": uri1, "@[room]": uri2}
 
-    def test_grid_size_auto_computed(self):
+    def test_grid_size_always_2x2_regardless_of_frame_count(self):
+        # Post-refactor: the backend always uses 2×2 batches internally,
+        # so grid_size is locked to "2x2" no matter what frame_count is.
         req = StoryboardGenerateRequest(
             prompt="test",
             frame_count=6,
         )
-        assert req.grid_size == "2x3"
+        assert req.grid_size == "2x2"
 
-    def test_default_frame_count(self):
+    def test_default_frame_count_is_one_batch(self):
         req = StoryboardGenerateRequest(prompt="test")
-        assert req.frame_count == 9
-        assert req.grid_size == "3x3"
+        assert req.frame_count == 4
+        assert req.grid_size == "2x2"
 
 
 class TestStoryboardMultiReferenceResolve:

@@ -10,7 +10,7 @@ import {
 } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import MentionedImageInput from './MentionedImageInput';
-import GridSizeSelector from './GridSizeSelector';
+import SceneCountInput from './SceneCountInput';
 import StoryboardScriptReview from './StoryboardScriptReview';
 import StoryboardPreviewPanel from './StoryboardPreviewPanel';
 import AspectRatioIcon from './AspectRatioIcon';
@@ -87,7 +87,7 @@ const ConfigSection: React.FC<ConfigSectionProps> = ({
 
   return (
     <div className={compact ? 'space-y-5' : 'space-y-6'}>
-      <GridSizeSelector
+      <SceneCountInput
         value={frameCount}
         onChange={(fc) => onChange((prev) => ({ ...prev, frameCount: fc }))}
         disabled={disabled}

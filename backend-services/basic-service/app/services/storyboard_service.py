@@ -13,7 +13,7 @@ import shutil
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import re
@@ -28,7 +28,11 @@ from app.logger import get_logger
 from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 from app.models.ark_video_models import ArkVideoGenerateRequest
 from app.models.storyboard_models import (
+    STORYBOARD_BATCH_SIZE,
+    STORYBOARD_MAX_SCENE_COUNT,
+    BatchInfo,
     GenerateScriptRequest,
+    PartialGenerationError,
     ReviseScriptRequest,
     ScriptMessage,
     ScriptShot,
@@ -38,7 +42,6 @@ from app.models.storyboard_models import (
     StoryboardFrame,
     StoryboardGenerateRequest,
     StoryboardPack,
-    compute_optimal_grid,
 )
 from app.services import ark_video_service, grid_pack_service
 from app.services.grid_pack_service import (
@@ -382,25 +385,384 @@ async def revise_storyboard_script(
 
 
 # ---------------------------------------------------------------------------
-# Storyboard generation (ARK Seedream)
+# Storyboard generation (chained 2x2 batches via ARK Seedream)
 # ---------------------------------------------------------------------------
+#
+# Post-refactor pipeline:
+#   1. The user picks a total scene count N (1..STORYBOARD_MAX_SCENE_COUNT).
+#   2. The backend splits N into M = ceil(N/4) sequential batches of exactly
+#      4 frames each (a single 2x2 ARK Seedream call per batch).
+#   3. Batch 1 uses the user-provided reference image(s), if any.
+#      Batches 2..M use a 2-image composite of the PREVIOUS batch's last two
+#      frames (row=1, cols 0/1) as their single `image` reference — this is
+#      the "chain" that holds style / character / environment continuity.
+#   4. Each batch's raw grid PNG is cropped in a per-batch sub-directory
+#      (`_batch_{k:02d}/`) to avoid filename collisions, then promoted to
+#      globally-indexed `frame_{N:03d}.png` under the pack root.
+#   5. If the overall scene count is not a multiple of 4, the last batch's
+#      SHOT LIST is padded with placeholder lines so Seedream always receives
+#      exactly 4 scene instructions, and the extra generated frames are
+#      discarded after cropping.
+#
+# Failure model:
+#   - Per batch we retry up to STORYBOARD_BATCH_MAX_RETRIES times with
+#     exponential backoff.
+#   - If batch k fails after retries and k == 1, we raise the exception as a
+#     normal error (nothing useful to return).
+#   - If batch k > 1 fails, we raise PartialGenerationError carrying a pack
+#     containing the frames from batches 1..k-1. The router converts that to
+#     HTTP 200 + `partial=true` so the user can keep the work.
 
 
-async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardPack:
-    """Generate a storyboard image, crop it, and persist the pack."""
+STORYBOARD_BATCH_MAX_RETRIES = int(os.getenv("STORYBOARD_BATCH_MAX_RETRIES", "2"))
+STORYBOARD_BATCH_RETRY_BASE_DELAY = float(
+    os.getenv("STORYBOARD_BATCH_RETRY_BASE_DELAY", "2.0")
+)
 
+
+def _chain_prompt_prefix(locale: str) -> str:
+    """Prefix prepended to batch-2+ prompts to flag that the reference image
+    is a 1x2 composite of the previous batch's last two scenes, so Seedream
+    treats the new 4 cells as a continuation rather than remixing the
+    reference into the grid."""
+    if locale == "zh":
+        return (
+            "参考图是上一批分镜的最后两幕拼接（左半 = 上一批第3幕，右半 = 上一批第4幕）。"
+            "请将新生成的 4 幕视为上一批的后续延续，"
+            "保持一致的画面风格、配色、人物造型、光线氛围与环境设定。"
+        )
+    return (
+        "The reference image is a composite of the previous batch's last two scenes "
+        "(left half = previous scene 3, right half = previous scene 4). "
+        "Treat the new four cells as a direct continuation of that batch — "
+        "maintain identical style, palette, character design, lighting, and environment."
+    )
+
+
+def _placeholder_shot(locale: str) -> str:
+    """Placeholder shot description used to pad the final batch to 4 cells."""
+    if locale == "zh":
+        return "（占位幕，留空）"
+    return "(placeholder scene, leave blank)"
+
+
+def _pad_scripts_to_batch(scripts: List[str], locale: str) -> List[str]:
+    """Pad the batch-local shot list to exactly STORYBOARD_BATCH_SIZE entries."""
+    if len(scripts) >= STORYBOARD_BATCH_SIZE:
+        return scripts[:STORYBOARD_BATCH_SIZE]
+    return scripts + [_placeholder_shot(locale)] * (STORYBOARD_BATCH_SIZE - len(scripts))
+
+
+def _build_batch_prompt(
+    *,
+    resolved_prompt: str,
+    batch_scripts: List[str],
+    locale: str,
+    aspect_ratio: str,
+    chain_prefix: Optional[str],
+) -> str:
+    """Construct the final Seedream prompt for a single 2x2 batch.
+
+    ``resolved_prompt`` is the user's original prompt AFTER any batch-1-only
+    mention/reference block processing has been applied (or the raw prompt for
+    batch 2+). ``batch_scripts`` is expected to already be padded to length 4.
+    """
+    scene_prefix = "第" if locale == "zh" else "Scene "
+    scene_suffix = "幕：" if locale == "zh" else ": "
+    scene_lines = [
+        f"{scene_prefix}{i + 1}{scene_suffix}{script}"
+        for i, script in enumerate(batch_scripts)
+    ]
+    effective_prompt = (
+        f"{resolved_prompt}\n\n"
+        "SHOT LIST (render each cell in row-major order, 4 cells total):\n"
+        + "\n".join(scene_lines)
+    )
+    if chain_prefix:
+        effective_prompt = f"{chain_prefix}\n\n{effective_prompt}"
+    return build_storyboard_prompt(effective_prompt, 2, 2, aspect_ratio)
+
+
+async def _call_ark_seedream(
+    *,
+    prompt: str,
+    reference_image: Optional[str],
+) -> Tuple[str, Optional[str]]:
+    """POST to ARK Seedream and return (remote_image_url, seedream_task_id).
+
+    Seedream currently does not expose a cancel endpoint, so a timeout here
+    only abandons the local wait — the remote task still runs to completion
+    and the URL we would have received is discarded.
+    """
+    payload: dict = {
+        "model": ARK_IMAGE_MODEL,
+        "prompt": prompt,
+        "size": STORYBOARD_IMAGE_SIZE,
+        "n": 1,
+        "response_format": "url",
+        "watermark": False,
+    }
+    if reference_image:
+        payload["image"] = reference_image
+
+    headers = {
+        "Authorization": f"Bearer {settings.ark_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.post(ARK_IMAGE_API, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+    items = data.get("data", [])
+    if not items or not items[0].get("url"):
+        raise ValueError(f"ARK Seedream returned no image data: {data}")
+    remote_url = items[0]["url"]
+    task_id = (
+        data.get("id")
+        or data.get("task_id")
+        or data.get("request_id")
+        or items[0].get("task_id")
+    )
+    return remote_url, task_id
+
+
+async def _download_batch_original(remote_url: str, dest_path: str) -> None:
+    """Download a Seedream-generated grid PNG to a local path."""
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as dl:
+        dl_resp = await dl.get(remote_url)
+        dl_resp.raise_for_status()
+        async with aiofiles.open(dest_path, "wb") as f:
+            await f.write(dl_resp.content)
+
+
+def _batch_subdir(pack_dir: str, batch_index: int) -> str:
+    return os.path.join(pack_dir, f"_batch_{batch_index:02d}")
+
+
+def _intermediate_dir(pack_dir: str) -> str:
+    return os.path.join(pack_dir, "_intermediate")
+
+
+def _promote_batch_frames(
+    pack_dir: str,
+    batch_index: int,
+    global_offset: int,
+) -> List[Tuple[int, str]]:
+    """Move cropped cells from ``_batch_{k:02d}/frame_00X.png`` to pack-root
+    ``frame_{global_offset + X:03d}.png`` and return a list of
+    ``(global_index, filename)`` pairs in row-major order.
+
+    After promotion the per-batch sub-directory is deleted so the pack root
+    contains exactly the final, globally-indexed frame files (plus
+    ``_intermediate/`` for debugging).
+    """
+    sub = _batch_subdir(pack_dir, batch_index)
+    if not os.path.isdir(sub):
+        return []
+
+    local_files = sorted(
+        f for f in os.listdir(sub) if f.startswith("frame_") and f.endswith(".png")
+    )
+    promoted: List[Tuple[int, str]] = []
+    for i, local_name in enumerate(local_files[:STORYBOARD_BATCH_SIZE]):
+        gidx = global_offset + i
+        new_name = f"frame_{gidx + 1:03d}.png"
+        src = os.path.join(sub, local_name)
+        dst = os.path.join(pack_dir, new_name)
+        if os.path.exists(dst):
+            os.remove(dst)
+        shutil.move(src, dst)
+        promoted.append((gidx, new_name))
+
+    # Clean up empty batch dir; ignore errors if other files linger.
+    try:
+        for leftover in os.listdir(sub):
+            os.remove(os.path.join(sub, leftover))
+        os.rmdir(sub)
+    except OSError:
+        pass
+    return promoted
+
+
+async def _extract_chain_refs(
+    pack_dir: str,
+    global_frames: List[dict],
+    batch_index: int,
+) -> List[str]:
+    """Return absolute local paths of the last two globally-promoted frames
+    from the previous batch.
+
+    ``global_frames`` is the running list of frame dicts already promoted to
+    pack-root names. ``batch_index`` is the 0-based index of the *next* batch
+    we are about to generate (so the chain reference comes from
+    ``batch_index - 1``). The caller guarantees ``batch_index >= 1``.
+    """
+    if batch_index < 1:
+        raise ValueError("batch_index must be >= 1 for chain reference extraction")
+
+    prev_batch = batch_index - 1
+    prev_frames = [f for f in global_frames if f.get("batch_index") == prev_batch]
+    # Row-major sort so row=1 frames land at the end.
+    prev_frames.sort(key=lambda f: (f["row"], f["col"]))
+    if len(prev_frames) < 2:
+        raise ValueError(
+            f"Cannot build chain reference: batch {prev_batch} produced "
+            f"{len(prev_frames)} frames (need >= 2)"
+        )
+
+    tail = prev_frames[-2:]
+    return [os.path.join(pack_dir, f["filename"]) for f in tail]
+
+
+async def _generate_single_2x2_batch(
+    *,
+    pack_dir: str,
+    batch_index: int,
+    resolved_prompt: str,
+    batch_scripts: List[str],
+    aspect_ratio: str,
+    locale: str,
+    reference_image: Optional[str],
+    is_chain: bool,
+) -> Tuple[List[dict], Optional[str]]:
+    """Run one 2x2 ARK Seedream call end-to-end and return (frame_dicts,
+    seedream_task_id).
+
+    ``frame_dicts`` is a list of up-to-4 dicts with the cropped cell's local
+    filename (inside ``_batch_{k:02d}/``), row/col, and batch-local index.
+    The caller is responsible for calling ``_promote_batch_frames`` to move
+    them to globally-indexed locations and then assigning a global ``index``.
+    """
+    padded_scripts = _pad_scripts_to_batch(batch_scripts, locale)
+    chain_prefix = _chain_prompt_prefix(locale) if is_chain else None
+    final_prompt = _build_batch_prompt(
+        resolved_prompt=resolved_prompt,
+        batch_scripts=padded_scripts,
+        locale=locale,
+        aspect_ratio=aspect_ratio,
+        chain_prefix=chain_prefix,
+    )
+
+    # Retry loop for transient ARK / download failures. Auth errors (401/403)
+    # are considered permanent and propagated immediately.
+    last_exc: Optional[BaseException] = None
+    for attempt in range(STORYBOARD_BATCH_MAX_RETRIES + 1):
+        try:
+            logger.info(
+                "[storyboard] batch %d start attempt=%d is_chain=%s",
+                batch_index,
+                attempt,
+                is_chain,
+            )
+            remote_url, task_id = await _call_ark_seedream(
+                prompt=final_prompt,
+                reference_image=reference_image,
+            )
+
+            intermediate = _intermediate_dir(pack_dir)
+            os.makedirs(intermediate, exist_ok=True)
+            intermediate_path = os.path.join(
+                intermediate, f"batch_{batch_index:02d}_original.png"
+            )
+            await _download_batch_original(remote_url, intermediate_path)
+
+            sub = _batch_subdir(pack_dir, batch_index)
+            os.makedirs(sub, exist_ok=True)
+            frame_dicts = crop_storyboard(
+                intermediate_path, 2, 2, sub, aspect_ratio
+            )
+            # Tag with batch index so the driver can later attribute each
+            # frame back to the batch that produced it.
+            for fd in frame_dicts:
+                fd["batch_index"] = batch_index
+            logger.info(
+                "[storyboard] batch %d cropped %d cells task_id=%s",
+                batch_index,
+                len(frame_dicts),
+                task_id,
+            )
+            return frame_dicts, task_id
+        except httpx.HTTPStatusError as http_exc:
+            status = http_exc.response.status_code
+            if status in (401, 403):
+                raise
+            last_exc = http_exc
+        except Exception as exc:
+            last_exc = exc
+
+        if attempt < STORYBOARD_BATCH_MAX_RETRIES:
+            delay = STORYBOARD_BATCH_RETRY_BASE_DELAY * (2**attempt)
+            logger.warning(
+                "[storyboard] batch %d failed (attempt %d/%d): %s — retrying in %.1fs",
+                batch_index,
+                attempt + 1,
+                STORYBOARD_BATCH_MAX_RETRIES + 1,
+                last_exc,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+    # All retries exhausted.
+    assert last_exc is not None  # nosec B101 - defensive
+    raise last_exc
+
+
+def _strip_position_blocks(prompt: str) -> str:
+    """Remove multi-reference position annotations from a prompt.
+
+    Used when building batch 2+ prompts — those batches no longer have the
+    user's multi-reference composite, so the "[left area reference image]"
+    placeholders and the trailing "synthesize from all reference areas"
+    sentence would become nonsensical.
+    """
+    cleaned = prompt
+    # Strip "[xxx reference image]" or "[xxx area reference image]" tokens.
+    cleaned = re.sub(r"\[[^\]]*reference image\]", "", cleaned)
+    # Strip "Reference image is a ... area." describing the composite.
+    cleaned = re.sub(
+        r"Reference image is a [^.]*\.[^\n]*\n?",
+        "",
+        cleaned,
+    )
+    cleaned = cleaned.replace(
+        "Please synthesize elements from all reference areas.", ""
+    )
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
+async def _generate_storyboard_core(request: StoryboardGenerateRequest) -> StoryboardPack:
+    """Core driver — orchestrates M = ceil(N/4) chained 2x2 batches.
+
+    The global concurrency limiter is applied by ``generate_storyboard``
+    (module-level entry point) so tests can call this function directly with
+    a mocked Seedream stub.
+    """
     if not settings.ark_api_key:
         raise ValueError(
             "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
         )
 
-    # grid_size is guaranteed to be set by model_validator (from frame_count or default)
-    rows, cols = _parse_grid_size(request.grid_size)
-    requested_frame_count = (
-        request.frame_count
-    )  # may be None if grid_size was provided directly
+    # Validator guarantees grid_size == "2x2" and 1 <= frame_count <= 16.
+    rows, cols = 2, 2
+    total_scene_count = request.frame_count or STORYBOARD_BATCH_SIZE
+    if total_scene_count < 1 or total_scene_count > STORYBOARD_MAX_SCENE_COUNT:
+        raise ValueError(
+            f"frame_count must be between 1 and {STORYBOARD_MAX_SCENE_COUNT}, "
+            f"got {total_scene_count}"
+        )
     aspect_ratio = getattr(request, "aspect_ratio", "1:1") or "1:1"
+    locale = request.locale or "zh"
 
+    if request.frame_scripts and len(request.frame_scripts) != total_scene_count:
+        raise ValueError(
+            f"frame_scripts length ({len(request.frame_scripts)}) "
+            f"does not match frame_count ({total_scene_count})"
+        )
+
+    # ── Batch-1 prompt preparation (user references + mention tags) ──
     resolved_prompt = request.prompt
     normalized_reference: Optional[str] = None
 
@@ -435,194 +797,332 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
             )
         )
 
-    # If caller provided a per-frame script (new two-step flow), fold the shot
-    # list into the prompt so Seedream can tell frame-by-frame stories.
-    effective_prompt = resolved_prompt
-    if request.frame_scripts:
-        expected = request.frame_count or (rows * cols)
-        if len(request.frame_scripts) != expected:
-            raise ValueError(
-                f"frame_scripts length ({len(request.frame_scripts)}) "
-                f"does not match frame_count ({expected})"
-            )
-        scene_prefix = "第" if request.locale == "zh" else "Scene "
-        scene_suffix = "幕：" if request.locale == "zh" else ": "
-        scene_lines = [
-            f"{scene_prefix}{i + 1}{scene_suffix}{script}"
-            for i, script in enumerate(request.frame_scripts)
-        ]
-        effective_prompt = (
-            f"{resolved_prompt}\n\nSHOT LIST (render each cell in row-major order):\n"
-            + "\n".join(scene_lines)
-        )
+    # Prompt used for batches 2..M: strip any position-reference language that
+    # only made sense when the composite user-reference was attached.
+    chained_prompt = _strip_position_blocks(request.prompt)
 
-    final_prompt = build_storyboard_prompt(effective_prompt, rows, cols, aspect_ratio)
-
-    # Prepare ARK request payload
-    payload: dict = {
-        "model": ARK_IMAGE_MODEL,
-        "prompt": final_prompt,
-        "size": STORYBOARD_IMAGE_SIZE,
-        "n": 1,
-        "response_format": "url",
-        "watermark": False,
-    }
-
-    if normalized_reference:
-        payload["image"] = normalized_reference
-        logger.info(
-            f"Storyboard reference image attached (normalized, {len(normalized_reference)} chars)"
-        )
-
-    headers = {
-        "Authorization": f"Bearer {settings.ark_api_key}",
-        "Content-Type": "application/json",
-    }
-
-    logger.info(
-        f"Storyboard generation: grid={request.grid_size}, "
-        f"prompt='{request.prompt[:60]}...'"
-    )
-
-    # Call ARK Seedream API
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(ARK_IMAGE_API, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-    items = data.get("data", [])
-    if not items or not items[0].get("url"):
-        raise ValueError(f"ARK Seedream returned no image data: {data}")
-
-    remote_url = items[0]["url"]
-
-    # Create pack directory
+    # Allocate pack id + directory up front so partial results can still be
+    # persisted if a mid-run batch fails.
     pack_id = uuid4().hex[:16]
     today_str = date.today().strftime("%Y%m%d")
     pack_directory = os.path.join(_storyboard_base_dir(), today_str, pack_id)
     os.makedirs(pack_directory, exist_ok=True)
 
-    # Download the generated image
-    original_path = os.path.join(pack_directory, "original.png")
-    try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as dl_client:
-            dl_resp = await dl_client.get(remote_url)
-            dl_resp.raise_for_status()
-            async with aiofiles.open(original_path, "wb") as f:
-                await f.write(dl_resp.content)
-        logger.info(f"Storyboard image downloaded to {original_path}")
-    except Exception as exc:
-        logger.error(f"Failed to download storyboard image: {exc}")
-        raise ValueError(f"Failed to download generated image: {exc}") from exc
+    total_batches = (total_scene_count + STORYBOARD_BATCH_SIZE - 1) // STORYBOARD_BATCH_SIZE
 
-    # Crop into individual frames
-    frame_dicts = crop_storyboard(
-        original_path, rows, cols, pack_directory, aspect_ratio
+    # Save user reference image (if any) next to the pack so the frontend can
+    # show "yes, a reference was used" even on partial failures.
+    saved_reference_url = await _persist_user_reference(
+        pack_directory=pack_directory,
+        today_str=today_str,
+        pack_id=pack_id,
+        request=request,
+        normalized_reference=normalized_reference,
     )
 
-    # Truncate to requested frame_count (discard excess cells)
-    if requested_frame_count and requested_frame_count < len(frame_dicts):
-        # Remove excess frame files from disk
-        for excess in frame_dicts[requested_frame_count:]:
-            excess_path = os.path.join(pack_directory, excess["filename"])
-            if os.path.exists(excess_path):
-                os.remove(excess_path)
-        frame_dicts = frame_dicts[:requested_frame_count]
+    script_history_dump: Optional[List[dict]] = None
+    if request.script_history:
+        script_history_dump = [m.model_dump() for m in request.script_history]
 
-    # Build frame metadata with URLs — attach bound scripts if provided.
-    original_image_url = _frame_url(today_str, pack_id, "original.png")
-    frame_scripts = request.frame_scripts or []
-    frames: List[StoryboardFrame] = []
-    for fd in frame_dicts:
-        script_text = (
-            frame_scripts[fd["index"]]
-            if fd["index"] < len(frame_scripts)
-            else None
-        )
-        if script_text:
-            fd["script"] = script_text
-            fd["description"] = script_text  # mirror for legacy consumers
-        frames.append(
-            StoryboardFrame(
-                index=fd["index"],
-                filename=fd["filename"],
-                url=_frame_url(today_str, pack_id, fd["filename"]),
-                row=fd["row"],
-                col=fd["col"],
-                description=script_text,
-                script=script_text,
+    user_scripts: List[str] = list(request.frame_scripts or [])
+
+    global_frames: List[dict] = []
+    batches_info: List[BatchInfo] = []
+    original_image_path_first_batch: Optional[str] = None
+
+    try:
+        for b in range(total_batches):
+            slice_start = b * STORYBOARD_BATCH_SIZE
+            slice_end = slice_start + STORYBOARD_BATCH_SIZE
+            batch_scripts = user_scripts[slice_start:slice_end] if user_scripts else []
+
+            if b == 0:
+                batch_prompt = resolved_prompt
+                ref = normalized_reference
+                is_chain = False
+            else:
+                tail_paths = await _extract_chain_refs(pack_directory, global_frames, b)
+                composite_ref, _ = await composite_references(tail_paths)
+                batch_prompt = chained_prompt
+                ref = composite_ref
+                is_chain = True
+
+            started_at = datetime.now(timezone.utc).isoformat()
+            t0 = asyncio.get_event_loop().time()
+            frame_dicts, task_id = await _generate_single_2x2_batch(
+                pack_dir=pack_directory,
+                batch_index=b,
+                resolved_prompt=batch_prompt,
+                batch_scripts=batch_scripts,
+                aspect_ratio=aspect_ratio,
+                locale=locale,
+                reference_image=ref,
+                is_chain=is_chain,
             )
-        )
 
-    # Save reference image alongside pack if provided. Two cases:
-    #   1) base64 data URI — decode and persist locally so the frontend can
-    #      display the same reference the user uploaded.
-    #   2) HTTPS URL — pass the URL straight through to the response without
-    #      re-downloading; the user already has it accessible.
-    # In both cases the resulting URL is exposed via StoryboardPack.reference_image_url
-    # so the response always reflects "yes, a reference was used".
-    saved_reference_url: Optional[str] = None
+            # Promote cropped cells from the batch subdir to global names.
+            global_offset = b * STORYBOARD_BATCH_SIZE
+            promoted = _promote_batch_frames(pack_directory, b, global_offset)
+            if not promoted:
+                raise RuntimeError(
+                    f"Batch {b} produced no frames after cropping"
+                )
+
+            # Map cropped descriptor → global frame dict (row/col kept from
+            # the original 2x2 crop so UIs can reason about grid position).
+            for i, (gidx, filename) in enumerate(promoted):
+                src = frame_dicts[i] if i < len(frame_dicts) else {"row": i // 2, "col": i % 2}
+                global_frames.append(
+                    {
+                        "index": gidx,
+                        "filename": filename,
+                        "row": src.get("row", i // 2),
+                        "col": src.get("col", i % 2),
+                        "batch_index": b,
+                    }
+                )
+            ended_at = datetime.now(timezone.utc).isoformat()
+            duration_ms = int((asyncio.get_event_loop().time() - t0) * 1000)
+            batches_info.append(
+                BatchInfo(
+                    index=b,
+                    seedream_task_id=task_id,
+                    frame_indices=[gidx for gidx, _ in promoted],
+                    duration_ms=duration_ms,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+            )
+            if b == 0:
+                original_image_path_first_batch = os.path.join(
+                    _intermediate_dir(pack_directory), f"batch_{b:02d}_original.png"
+                )
+
+        # Success path — all batches completed.
+        pack = await _finalize_pack(
+            pack_id=pack_id,
+            today_str=today_str,
+            pack_directory=pack_directory,
+            request=request,
+            aspect_ratio=aspect_ratio,
+            total_scene_count=total_scene_count,
+            total_batches=total_batches,
+            global_frames=global_frames,
+            batches_info=batches_info,
+            saved_reference_url=saved_reference_url,
+            script_history_dump=script_history_dump,
+            original_image_path_first_batch=original_image_path_first_batch,
+            partial=False,
+            error=None,
+        )
+        logger.info(
+            f"Storyboard pack created: {pack_id}, {pack.frame_count} frames, "
+            f"{len(batches_info)} batches"
+        )
+        return pack
+
+    except Exception as exc:
+        if not batches_info:
+            # Nothing to salvage — tear down partial directory and re-raise.
+            shutil.rmtree(pack_directory, ignore_errors=True)
+            raise
+
+        logger.error(
+            f"Storyboard generation failed at batch {len(batches_info)}/{total_batches}: {exc}",
+            exc_info=True,
+        )
+        pack = await _finalize_pack(
+            pack_id=pack_id,
+            today_str=today_str,
+            pack_directory=pack_directory,
+            request=request,
+            aspect_ratio=aspect_ratio,
+            total_scene_count=total_scene_count,
+            total_batches=total_batches,
+            global_frames=global_frames,
+            batches_info=batches_info,
+            saved_reference_url=saved_reference_url,
+            script_history_dump=script_history_dump,
+            original_image_path_first_batch=original_image_path_first_batch,
+            partial=True,
+            error={
+                "code": "PARTIAL_GENERATION_FAILED",
+                "message": str(exc) or exc.__class__.__name__,
+            },
+        )
+        raise PartialGenerationError(
+            f"Storyboard generation failed at batch {len(batches_info) + 1}/{total_batches}",
+            pack=pack,
+            completed_batches=len(batches_info),
+            cause=exc,
+        ) from exc
+
+
+async def _persist_user_reference(
+    *,
+    pack_directory: str,
+    today_str: str,
+    pack_id: str,
+    request: StoryboardGenerateRequest,
+    normalized_reference: Optional[str],
+) -> Optional[str]:
+    """Save the user-provided reference image next to the pack (if any) and
+    return the URL to expose in the response."""
     request_reference_image = (
         request.reference_images[0]
         if request.reference_images and len(request.reference_images) >= 1
         else request.reference_image
     )
-    if request_reference_image:
-        raw = request_reference_image
-        if raw.startswith("data:") or (
-            normalized_reference and normalized_reference.startswith("data:")
-        ):
-            try:
-                source = normalized_reference or raw
-                header, b64_data = source.split(",", 1)
-                ref_bytes = base64.b64decode(b64_data)
-                ref_path = os.path.join(pack_directory, "reference.png")
-                async with aiofiles.open(ref_path, "wb") as f:
-                    await f.write(ref_bytes)
-                saved_reference_url = _frame_url(today_str, pack_id, "reference.png")
-            except Exception as exc:
-                logger.warning(f"Failed to save reference image: {exc}")
-        else:
-            # HTTPS URL — pass through to the response so the frontend still
-            # knows a reference was attached.
-            saved_reference_url = raw
+    if not request_reference_image:
+        return None
 
-    # Write metadata.json
+    raw = request_reference_image
+    if raw.startswith("data:") or (
+        normalized_reference and normalized_reference.startswith("data:")
+    ):
+        try:
+            source = normalized_reference or raw
+            _, b64_data = source.split(",", 1)
+            ref_bytes = base64.b64decode(b64_data)
+            ref_path = os.path.join(pack_directory, "reference.png")
+            async with aiofiles.open(ref_path, "wb") as f:
+                await f.write(ref_bytes)
+            return _frame_url(today_str, pack_id, "reference.png")
+        except Exception as exc:
+            logger.warning(f"Failed to save reference image: {exc}")
+            return None
+    # HTTPS URL — pass through so the response still knows a reference exists.
+    return raw
+
+
+async def _finalize_pack(
+    *,
+    pack_id: str,
+    today_str: str,
+    pack_directory: str,
+    request: StoryboardGenerateRequest,
+    aspect_ratio: str,
+    total_scene_count: int,
+    total_batches: int,
+    global_frames: List[dict],
+    batches_info: List[BatchInfo],
+    saved_reference_url: Optional[str],
+    script_history_dump: Optional[List[dict]],
+    original_image_path_first_batch: Optional[str],
+    partial: bool,
+    error: Optional[Dict[str, str]],
+) -> StoryboardPack:
+    """Assemble the StoryboardPack from accumulated batch state.
+
+    For success paths this trims frames down to ``total_scene_count`` and
+    deletes the discarded padding cells. For partial failures it keeps
+    whatever frames exist from completed batches.
+    """
+    # Sort frames by global index just in case; they SHOULD already be in
+    # order but future refactors may relax that.
+    global_frames = sorted(global_frames, key=lambda f: f["index"])
+
+    # Reindex to be contiguous starting at 0 — if we had to discard any
+    # partial batches this keeps the contract that index == position in
+    # the frames list.
+    discarded_frame_count = 0
+    if not partial and len(global_frames) > total_scene_count:
+        extra = global_frames[total_scene_count:]
+        for fr in extra:
+            extra_path = os.path.join(pack_directory, fr["filename"])
+            if os.path.exists(extra_path):
+                try:
+                    os.remove(extra_path)
+                except OSError:
+                    pass
+        discarded_frame_count = len(extra)
+        global_frames = global_frames[:total_scene_count]
+    effective_frame_count = len(global_frames)
+
+    # Propagate any bound frame scripts.
+    frame_scripts = request.frame_scripts or []
+    frames: List[StoryboardFrame] = []
+    for fr in global_frames:
+        script_text = (
+            frame_scripts[fr["index"]]
+            if fr["index"] < len(frame_scripts)
+            else None
+        )
+        if script_text:
+            fr["script"] = script_text
+            fr["description"] = script_text
+        frames.append(
+            StoryboardFrame(
+                index=fr["index"],
+                filename=fr["filename"],
+                url=_frame_url(today_str, pack_id, fr["filename"]),
+                row=fr["row"],
+                col=fr["col"],
+                description=script_text,
+                script=script_text,
+            )
+        )
+
+    # Expose the first batch's original grid as the pack's "original image"
+    # so legacy UIs that display a single preview thumbnail still have one.
+    original_filename = "original.png"
+    if original_image_path_first_batch and os.path.isfile(
+        original_image_path_first_batch
+    ):
+        try:
+            shutil.copyfile(
+                original_image_path_first_batch,
+                os.path.join(pack_directory, original_filename),
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to mirror first-batch original.png: {exc}")
+    original_image_url = _frame_url(today_str, pack_id, original_filename)
+
     now_iso = datetime.now(timezone.utc).isoformat()
-    script_history_dump: Optional[List[dict]] = None
-    if request.script_history:
-        script_history_dump = [m.model_dump() for m in request.script_history]
+
     metadata = {
         "pack_id": pack_id,
         "pack_type": PACK_TYPE_STORYBOARD,
         "prompt": request.prompt,
-        "grid_size": request.grid_size,
+        "grid_size": "2x2",
         "aspect_ratio": aspect_ratio,
-        "frame_count": len(frames),
-        "requested_frame_count": requested_frame_count,
+        "frame_count": effective_frame_count,
+        "total_scene_count": total_scene_count,
+        "requested_frame_count": total_scene_count,
         "created_at": now_iso,
         "reference_image": saved_reference_url,
         "original_image_url": original_image_url,
-        "frames": [fd for fd in frame_dicts],
+        "frames": global_frames,
         "script_history": script_history_dump,
         "locale": request.locale,
+        "batches": [b.model_dump() for b in batches_info],
+        "partial": partial,
+        "completed_batches": len(batches_info),
+        "total_batches": total_batches,
+        "discarded_frame_count": discarded_frame_count,
     }
+    if error:
+        metadata["error"] = error
     metadata_path = os.path.join(pack_directory, "metadata.json")
     async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
         await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
 
-    # Optional OSS upload
+    # OSS upload (best-effort) — skip anything under _intermediate/ or
+    # _batch_*/ so private intermediates don't leak to the CDN.
     oss_client = get_oss_client()
     if oss_client:
         try:
             for filename in os.listdir(pack_directory):
-                if filename.endswith((".png", ".json")):
-                    local_file = os.path.join(pack_directory, filename)
-                    rel = f"{STORYBOARD_STORAGE_DIR}/{today_str}/{pack_id}/{filename}"
-                    content_type = (
-                        "image/png" if filename.endswith(".png") else "application/json"
-                    )
-                    await oss_client.upload_file(local_file, rel, content_type)
+                local_file = os.path.join(pack_directory, filename)
+                if os.path.isdir(local_file):
+                    continue
+                if not filename.endswith((".png", ".json")):
+                    continue
+                rel = f"{STORYBOARD_STORAGE_DIR}/{today_str}/{pack_id}/{filename}"
+                content_type = (
+                    "image/png" if filename.endswith(".png") else "application/json"
+                )
+                await oss_client.upload_file(local_file, rel, content_type)
             logger.info(f"Storyboard pack {pack_id} uploaded to OSS")
         except Exception as oss_exc:
             logger.warning(
@@ -632,18 +1132,63 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
     pack = StoryboardPack(
         pack_id=pack_id,
         prompt=request.prompt,
-        grid_size=request.grid_size,
+        grid_size="2x2",
         aspect_ratio=aspect_ratio,
-        frame_count=len(frames),
+        frame_count=effective_frame_count,
         created_at=now_iso,
         original_image_url=original_image_url,
         reference_image_url=saved_reference_url,
         frames=frames,
         script_history=script_history_dump,
+        batches=batches_info or None,
+        partial=partial or None,
+        completed_batches=len(batches_info),
+        total_batches=total_batches,
+        discarded_frame_count=discarded_frame_count or None,
+        error=error,
     )
-
-    logger.info(f"Storyboard pack created: {pack_id}, {len(frames)} frames")
     return pack
+
+
+# ---------------------------------------------------------------------------
+# Public entry point with global concurrency limit (T11)
+# ---------------------------------------------------------------------------
+
+_GENERATE_SEMAPHORE: Optional[asyncio.Semaphore] = None
+_GENERATE_SEMAPHORE_LIMIT: int = 0
+
+
+def _get_generate_semaphore() -> asyncio.Semaphore:
+    """Lazy-initialize the module-level generation semaphore.
+
+    Built lazily so tests can override ``settings.storyboard.generation.max_concurrent``
+    before the first call.
+    """
+    global _GENERATE_SEMAPHORE, _GENERATE_SEMAPHORE_LIMIT
+    desired = settings.storyboard.generation.max_concurrent
+    if _GENERATE_SEMAPHORE is None or _GENERATE_SEMAPHORE_LIMIT != desired:
+        _GENERATE_SEMAPHORE = asyncio.Semaphore(desired)
+        _GENERATE_SEMAPHORE_LIMIT = desired
+    return _GENERATE_SEMAPHORE
+
+
+async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardPack:
+    """Public entry point — serializes concurrent calls with an asyncio
+    semaphore so we never run more than ``storyboard.generation.max_concurrent``
+    chained pipelines at once. Inside the semaphore the real work is delegated
+    to :func:`_generate_storyboard_core`.
+    """
+    semaphore = _get_generate_semaphore()
+    waiting_since = asyncio.get_event_loop().time()
+    async with semaphore:
+        waited = asyncio.get_event_loop().time() - waiting_since
+        if waited > 1.0:
+            logger.info(
+                "[storyboard] waited %.1fs for generation slot (limit=%d)",
+                waited,
+                _GENERATE_SEMAPHORE_LIMIT,
+            )
+        return await _generate_storyboard_core(request)
 
 
 # ---------------------------------------------------------------------------
@@ -1159,6 +1704,22 @@ async def _run_ffmpeg(cmd: List[str], timeout: int = 300) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _batches_from_meta(meta: dict) -> Optional[List[BatchInfo]]:
+    """Parse the optional ``batches`` field from persisted metadata.
+
+    Returns ``None`` for legacy packs that predate the chained-batch refactor
+    so their responses do not gain misleading empty arrays.
+    """
+    raw = meta.get("batches")
+    if not raw:
+        return None
+    try:
+        return [BatchInfo.model_validate(b) for b in raw]
+    except Exception as exc:
+        logger.warning(f"Failed to parse batches metadata: {exc}")
+        return None
+
+
 async def list_packs() -> List[StoryboardPack]:
     """Scan storage directories and return all storyboard packs sorted by creation date."""
     base = _storyboard_base_dir()
@@ -1212,6 +1773,12 @@ async def list_packs() -> List[StoryboardPack]:
                         frames=frames,
                         script_title=meta.get("script_title"),
                         script_history=meta.get("script_history"),
+                        batches=_batches_from_meta(meta),
+                        partial=meta.get("partial") or None,
+                        completed_batches=meta.get("completed_batches"),
+                        total_batches=meta.get("total_batches"),
+                        discarded_frame_count=meta.get("discarded_frame_count") or None,
+                        error=meta.get("error"),
                     )
                 )
             except Exception as exc:
@@ -1268,6 +1835,12 @@ async def get_pack(pack_id: str) -> StoryboardPack:
         frames=frames,
         script_title=meta.get("script_title"),
         script_history=meta.get("script_history"),
+        batches=_batches_from_meta(meta),
+        partial=meta.get("partial") or None,
+        completed_batches=meta.get("completed_batches"),
+        total_batches=meta.get("total_batches"),
+        discarded_frame_count=meta.get("discarded_frame_count") or None,
+        error=meta.get("error"),
     )
 
 

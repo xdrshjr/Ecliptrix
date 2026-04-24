@@ -189,11 +189,29 @@ class StoryboardVideoGenerationConfig(BaseModel):
     job_retention_seconds: int = Field(default=3600, ge=60, description="Terminal-job retention before cleanup")
 
 
+class StoryboardGenerationConfig(BaseModel):
+    """Global concurrency control for chained 2x2 storyboard image generation."""
+
+    max_concurrent: int = Field(
+        default=3,
+        ge=1,
+        le=32,
+        description=(
+            "Maximum number of concurrent /storyboard/generate pipelines. "
+            "Protects ARK Seedream rate limits when many users kick off "
+            "multi-batch generations simultaneously."
+        ),
+    )
+
+
 class StoryboardConfig(BaseModel):
     """Storyboard configuration (video generation and future storyboard-wide knobs)."""
 
     video_generation: StoryboardVideoGenerationConfig = Field(
         default_factory=StoryboardVideoGenerationConfig
+    )
+    generation: StoryboardGenerationConfig = Field(
+        default_factory=StoryboardGenerationConfig
     )
 
 
@@ -560,13 +578,21 @@ def get_settings() -> Settings:
         _int_env("STORYBOARD_VIDEO_JOB_RETENTION_SECONDS")
         or sb_yaml_vg.get("job_retention_seconds", 3600)
     )
+    sb_yaml_gen = (storyboard_yaml_config.get("generation", {}) or {})
+    sb_gen_max_concurrent = (
+        _int_env("STORYBOARD_MAX_CONCURRENT_GENERATE")
+        or sb_yaml_gen.get("max_concurrent", 3)
+    )
     storyboard_config = StoryboardConfig(
         video_generation=StoryboardVideoGenerationConfig(
             max_concurrent=int(sb_max_concurrent),
             timeout_seconds=int(sb_timeout_seconds),
             poll_interval_seconds=int(sb_poll_interval),
             job_retention_seconds=int(sb_job_retention),
-        )
+        ),
+        generation=StoryboardGenerationConfig(
+            max_concurrent=int(sb_gen_max_concurrent),
+        ),
     )
 
     # Create Storage configuration

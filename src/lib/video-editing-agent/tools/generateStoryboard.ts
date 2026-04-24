@@ -16,7 +16,14 @@ const parameters = Type.Object({
     Type.String({ description: 'Topic description. Used as fallback when no script is available. At least one of script or topic must be provided.' }),
   ),
   scene_count: Type.Optional(
-    Type.Number({ description: 'Desired number of storyboard scenes/frames (1-64, maps to grid size).', minimum: 1, maximum: 64 }),
+    Type.Number({
+      description:
+        'Desired total number of storyboard scenes (1-16). The backend always uses 2×2 batches ' +
+        'internally and chains ceil(scene_count / 4) Seedream calls together, using the previous ' +
+        "batch's last two frames as the reference for the next batch to preserve style continuity.",
+      minimum: 1,
+      maximum: 16,
+    }),
   ),
   aspect_ratio: Type.Optional(
     Type.Union(
@@ -41,9 +48,11 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
     name: 'generate_storyboard',
     label: 'Generate Storyboard',
     description:
-      'Generate an AI storyboard from a script or topic. Each storyboard contains multiple scene frames ' +
-      'with images. Results are displayed in the storyboard panel. If no script is provided, the current ' +
-      'script panel content is used. If neither script nor topic is available, returns an error.',
+      'Generate an AI storyboard from a script or topic using chained 2×2 Seedream batches ' +
+      '(4 scenes per batch, reference-chained for visual consistency). scene_count 1–16. ' +
+      'Each storyboard contains multiple scene frames with images. Results are displayed in the ' +
+      'storyboard panel. If no script is provided, the current script panel content is used. If ' +
+      'neither script nor topic is available, returns an error.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -67,7 +76,8 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
       try {
         const response = await toolFetch(_context, '/api/storyboard/generate', {
           method: 'POST',
-          timeout: 120_000,
+          // Chained 2×2 (up to 4 batches × ~90s) — align with BFF ceiling.
+          timeout: 900_000,
           body: JSON.stringify({
             prompt,
             frame_count: frameCount,
@@ -179,7 +189,7 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
         const err = {
           success: false,
           error: isTimeout
-            ? 'Storyboard generation timed out after 120s'
+            ? 'Storyboard generation timed out after 900s (chained 2×2 batches)'
             : `Storyboard generation request failed: ${error instanceof Error ? error.message : String(error)}`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };

@@ -1522,7 +1522,9 @@ export interface Translations {
   };
   storyboardPreviewPanel: {
     title: string;
-    gridSize: string;
+    batchCount: string;
+    batchCountValue: string;
+    batchLabel: string;
     aspectRatio: string;
     totalFrames: string;
     hint: string;
@@ -2165,13 +2167,11 @@ export interface Translations {
     description: string;
     useDesktop: string;
   };
-  gridSizeSelector: {
-    frameCount: string;
-    gridLabel: string;
-    custom: string;
+  sceneCountInput: {
+    label: string;
     placeholder: string;
-    willGenerate: string;
-    willUse: string;
+    batchesHint: string;
+    maxScenesExceededTip: string;
   };
   creativeBrainstorming: {
     inputPlaceholder: string;
@@ -4031,11 +4031,13 @@ export const translations: Record<string, Translations> = {
     },
     storyboardPreviewPanel: {
       title: 'Storyboard Preview',
-      gridSize: 'Grid size',
+      batchCount: 'Batches',
+      batchCountValue: '{batches} × 2×2 ({totalCells} cells)',
+      batchLabel: 'Batch {index} / {total}',
       aspectRatio: 'Aspect ratio',
-      totalFrames: 'Total frames',
-      hint: 'Click "Next" to generate a script for each frame.',
-      ariaLabel: '{aspectRatio} storyboard preview, {rows}×{cols} grid with {frameCount} frames',
+      totalFrames: 'Total scenes',
+      hint: 'Each batch is one 2×2 Seedream call, chained from the previous batch.',
+      ariaLabel: '{aspectRatio} storyboard preview, {batches} chained 2×2 batches containing {frameCount} scenes',
     },
    welcomeGuide: {
      title: 'AI Video Editing Assistant',
@@ -4695,13 +4697,12 @@ export const translations: Record<string, Translations> = {
       description: 'For a better experience, please access this app on a computer.',
       useDesktop: 'Recommended: use a computer',
     },
-    gridSizeSelector: {
-      frameCount: 'Storyboard Count',
-      gridLabel: 'grid',
-      custom: 'Custom',
-      placeholder: 'Enter storyboard count (1-64)',
-      willGenerate: 'Will generate {rows}x{cols} = {total} frame grid',
-      willUse: 'Will generate {rows}x{cols} = {total} grid, using first {value} frames',
+    sceneCountInput: {
+      label: 'Scene Count',
+      placeholder: 'Enter scene count (1-16)',
+      batchesHint:
+        'Generates {count} scenes across {batches} chained 2×2 batches ({batchSize} scenes each).',
+      maxScenesExceededTip: 'Maximum supported scene count is {max}.',
     },
     creativeBrainstorming: {
       inputPlaceholder: 'Enter your thoughts or questions...',
@@ -6559,11 +6560,13 @@ export const translations: Record<string, Translations> = {
     },
     storyboardPreviewPanel: {
       title: '分镜预览',
-      gridSize: '宫格尺寸',
+      batchCount: '批次数',
+      batchCountValue: '{batches} 批 × 2×2（共 {totalCells} 格）',
+      batchLabel: '第 {index} / {total} 批',
       aspectRatio: '画面比例',
-      totalFrames: '总帧数',
-      hint: '点击"下一步"为每一格生成剧本。',
-      ariaLabel: '{aspectRatio} 分镜预览，{rows}×{cols} 共 {frameCount} 格',
+      totalFrames: '总幕数',
+      hint: '每一批都是一次 2×2 Seedream 调用，并以上一批的最后两幕作为参考链式生成。',
+      ariaLabel: '{aspectRatio} 分镜预览，{batches} 批链式 2×2 共 {frameCount} 幕',
     },
    welcomeGuide: {
      title: 'AI视频编辑助手',
@@ -7223,13 +7226,11 @@ export const translations: Record<string, Translations> = {
       description: '为了提供更好的使用体验，请在电脑上访问本应用。',
       useDesktop: '建议使用电脑访问',
     },
-    gridSizeSelector: {
-      frameCount: '分镜数量',
-      gridLabel: '格',
-      custom: '自定义',
-      placeholder: '输入分镜数量 (1-64)',
-      willGenerate: '将生成 {rows}x{cols} = {total} 格分镜',
-      willUse: '将生成 {rows}x{cols} = {total} 格，使用前 {value} 帧',
+    sceneCountInput: {
+      label: '幕数',
+      placeholder: '输入幕数 (1-16)',
+      batchesHint: '共生成 {count} 幕，按 2×2 分镜链式分成 {batches} 批（每批 {batchSize} 幕）。',
+      maxScenesExceededTip: '最多支持 {max} 幕分镜。',
     },
     creativeBrainstorming: {
       inputPlaceholder: '输入您的想法或问题...',
