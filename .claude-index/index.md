@@ -48,9 +48,10 @@ Entry: `agent.ts`
   - `SSEStreamManager.ts` — Framework-agnostic SSE stream manager with heartbeat detection, auto-retry with exponential backoff, cancellation support
   - `AgentEventRouter.ts` — Pure event dispatcher routing SSE events to AgentStateManager and OperationApplier (no React dependency)
   - `AgentStateManager.ts` — Centralized state management for agent execution session with batch rAF updates to reduce React re-renders
-  - `OperationApplier.ts` — Timeline mutation applier (addToTrack, moveClip, trimClip, deleteClip, resizeClip) with undo/redo snapshots
+  - `OperationApplier.ts` — Timeline mutation applier (addToTrack, moveClip, trimClip, deleteClip, resizeClip) with undo/redo snapshots; runs `reconcileOverlapsAfterAgentOp` in the same setState pass to keep the undo history overlap-free
+  - `reconcile.ts` — Pure pack-flush helper shared by frontend OperationApplier and backend agent.ts so server/client timeline state stay in sync after every Agent edit
   - `errorRecovery.ts` — Error classification (StreamErrorType), recovery strategies, exponential backoff
-- **Agent Tools (28):** `getTimeline`, `listMaterials`, `searchMaterials`, `addToTrack`, `trimClip`, `deleteClip`, `moveClip`, `resizeClip`, `addMaterialToLibrary`, `batchGenerateTts`, `batchStoryboardVideo`, `composeStoryboard`, `describeStoryboard`, `expandVideoScript`, `exploreTools`, `generateAiImage`, `generateAiVideo`, `generateStoryboard`, `generateTts`, `generateVideoScript`, `imageToVideo`, `removeMaterial`, `searchAudio`, `searchImage`, `searchVideo`, `understandVideoScript`
+- **Agent Tools:** `getTimeline`, `listMaterials`, `searchMaterials`, `addToTrack`, `trimClip`, `deleteClip`, `moveClip`, `resizeClip`, `addMaterialToLibrary`, `batchGenerateTts`, `batchStoryboardVideo`, `composeStoryboard`, `describeStoryboard`, `expandVideoScript`, `exploreTools`, `generateAiImage`, `generateAiVideo`, `generateStoryboard`, `generateTts`, `generateVideoScript`, `imageToVideo`, `removeMaterial`, `searchAudio`, `searchImage`, `searchVideo`, `understandVideoScript`, `checkOverlaps` (`check_timeline_overlaps`), `autoFixOverlaps` (`auto_fix_overlaps` — pack-flush video/audio tracks, batch `move_clip` operations on `details.operations[]`)
 
 #### Video Chat Agent UI (`src/components/video/components/VideoChatWindow/`)
 - Enhanced chat window with agent response rendering and timeline-based execution visualization
