@@ -1,55 +1,74 @@
-# Phase 4 Delivery Recommendation — 视频剪辑 Agent 同轨重叠修复
+# Phase 4 Delivery Recommendation — AI 分镜流水线 2×2 链式重构
 
 > **Phase**: 4 (Code Review & Issue Resolution)
 > **Date**: 2026-04-25
+> **Reviewer**: Senior Code Reviewer
 
 ---
 
-## 1. Overall Code Quality Rating
+## 综合质量评级
 
-**A (Production-Ready)**
+**★★★★★ (Production-ready)**
 
-核心算法纯函数化、前后端共享同一段代码、覆盖率高的单测 + 集成测试、systemPrompt 含死循环防护。唯一 Minor 问题已在本阶段修复。没有 critical / major 级问题。
+- Phase 3 按 Phase 2 最终计划 T0–T11 完整交付，接口契约、并发策略、partial-failure 协议均与评审稿一致。
+- 后端 30 / 前端 29 全绿，`tsc --noEmit` 零错误，本次 Phase 4 唯一修复（Issue #1）为一行默认值常量，不引入行为风险。
+- 核心算法（链式参考图、末批占位裁剪、全局并发限流）既有纯函数单测覆盖也有驱动层端到端覆盖。
 
-## 2. Readiness for Production Deployment
+## 上线就绪度
 
-✅ **可直接上线**。
+- [x] 后端 Pydantic 合约收敛到 `"2x2"`（含参数化 8 种非法 grid 拒绝测试）
+- [x] Driver 分层 + retry + partial envelope 路由集成
+- [x] 前端 `SceneCountInput` / `StoryboardPreviewPanel` 全量替换 `GridSizeSelector` / `gridUtils`
+- [x] 三层 timeout（BFF / API client / Agent tool）对齐 900_000 ms
+- [x] 全局并发 `STORYBOARD_MAX_CONCURRENT_GENERATE` 生效，测试 peak ≤ limit 断言通过
+- [x] i18n zh/en 齐全，未使用的 `gridSizeSelectorTab` key 保留以避免 scope 外 churn
+- [x] Type-check、backend / frontend 测试全部通过
+- [x] Phase 4 Issue #1 已修复并重新跑通全量测试
 
-- 无 schema / 数据库 / 外部 API 改动；也无配置项新增，部署无额外步骤。
-- 无 runtime dependency 新增 — 所有改动在现有 `src/lib/video-editing-agent/*` 与 `src/components/video/timeline/domain/services/*` 目录内。
-- ESLint 产线构建忽略，无新增 warning 放大。
-- `tsc --noEmit` 0 错误；全量 vitest 302/302 通过。
-- UI 层行为无回归（reconcile 使用与 UI 已有 `TimelineAggregate.organizeVideoAudioTracks` 一致的算法）。
+**结论：可进入 Phase 5（commit & deliver）后部署到生产环境。**
 
-## 3. 已知限制 Known Acceptable Limitations
+## 剩余已知问题与影响评估
 
-以下限制在 Phase 3 设计阶段即已显式标注，不在本期范围：
+| Observation | 严重度 | 影响评估 |
+|-------------|-------|---------|
+| obs-1: `_int_env` 或链不区分 `0` | 极低 | Pydantic `ge=1` 强制下限兜底，实际等价于 fallback；仅影响运维配错时的故障表达 |
+| obs-2: 链参 prompt "previous scene 3/4" 歧义 | 低 | 端到端测试 Seedream 仍按 reference 延续风格；若 16 幕大批次观测到风格漂移再微调文案 |
+| obs-3: `_get_generate_semaphore` 热更新窗口 | 极低 | 生产 config 变更伴随重启；瞬时 over-limit 不会触达 ARK 配额 |
 
-1. `auto_fix_overlaps` 仅支持同轨打紧，不会跨轨搬移。若需跨轨调整，LLM 需显式调用 `move_clip(newTrackId=...)`。
-2. 历史项目打开时不主动触发 reconcile（R13 缓解）：reconcile 只在 Agent operation 落地路径上生效；用户加载的历史文件若含预先存在的重叠，不会被自动清理。这是为了避免"打开项目 → 布局被无征兆修改"的惊吓体验。
-3. subtitle 与 locked 轨道**永远**跳过。subtitle 与 TTS 音频对齐要求毫秒级精度；locked 意味着用户声明过"我自己管"。auto_fix_overlaps 在这些轨道上仍有重叠时会通过 `warning` 字段请求 LLM 人工介入。
-4. `auto_fix_overlaps` 批量移动会在前端 undo 列表显示 N 条记录而非 1 条。与现有 `compose_storyboard` 同构，未分组。
+三项 observation 均不阻塞发布，归档为 P2 backlog。
 
-## 4. 上线后建议监控
+## 建议的上线 / 回归监控清单
 
-- **服务端日志**:
-  - `[VideoEditingAgent] Circuit breaker tripped` — 若触发，说明连续 5 次工具失败；本次改动未新增失败源，若出现多为网络/鉴权问题。
-  - `[OperationApplier] No timeline state — initializing default` — 理论上不应出现（agent 启动前 timelineState 一定存在），若出现说明 config 有问题。
-- **用户侧**:
-  - 观察 AI 剪辑结果里是否仍出现重叠片段。理想情况应降为 0；若仍有，可通过 sentry 或后端日志抓取 `check_timeline_overlaps` 返回 `valid=false` 的 tool_result 事件用于回溯。
-  - 观察 `auto_fix_overlaps` 调用频次：若每次 Agent 会话都调用多次才能收敛，说明 systemPrompt 反思-修复循环写法仍有优化空间。
+### 部署前
 
-## 5. 推荐的后续工作（不在本期）
+1. **环境变量核对** — 生产 `.env`（Singapore-01: `47.245.126.128`）确认：
+   - `ARK_API_KEY` 有效（驱动首次调用前显式校验）
+   - `STORYBOARD_MAX_CONCURRENT_GENERATE` 与 ARK 账户的并发配额一致（默认 3；如 ARK 并发 ≥ 5 可调整）
+   - `STORYBOARD_BATCH_MAX_RETRIES=2`、`STORYBOARD_BATCH_RETRY_BASE_DELAY=2.0` 保持默认；如 Seedream 抖动升级可上调
+2. **BFF timeout 验证** — 确认 Nginx upstream timeout 仍为 3600 s（memory: post-refactor 已配置），Next.js BFF 是 900 s
+3. **磁盘空间** — `storage.root` 下 `storyboard/<date>/<pack_id>/_intermediate/` 保留原始 2048² 网格作诊断用；16 幕 pack ≈ 4 × ~3 MB = 12 MB，按日巡检可用空间
 
-按价值-成本排序：
+### 上线后首日监控
 
-| 优先级 | 主题 | 预估工作量 |
-|-------|------|-----------|
-| P2 | `auto_fix_overlaps` 批次 undo 聚合（1 次 revert 整个批次） | ~0.5 人日 |
-| P2 | subtitle 轨道的 overlap 自动处理策略（当前靠 LLM 手工 move） | ~1 人日 |
-| P3 | 服务端单路径的"load project → reconcile on demand" CLI 修复工具 | ~0.5 人日 |
-| P3 | systemPrompt 中加入"auto_fix_overlaps 已达上限请向用户解释"的示例对话 | ~0.25 人日 |
+1. **ARK 调用成功率** — 按 `seedream_task_id` 聚合 per-batch 成功 / 重试 / 最终失败占比；partial 率应 < 5%
+2. **延迟分布** — `BatchInfo.duration_ms` → 单批 p50 / p95；端到端 p95（对 N=16）预期 ≤ 300 s
+3. **并发等待** — grep 日志 "waited %.1fs for generation slot" 出现频率；若频繁且 waited > 30 s，考虑上调 `STORYBOARD_MAX_CONCURRENT_GENERATE`
+4. **Partial 响应** — BFF 层应能区分 `data.partial === true` 并向用户展示"N 批完成、剩余失败"提示；前端 `toPack` 已映射 `partial/completedBatches/error`
 
-## 6. 汇报结论
+### 回归覆盖
 
-Phase 3 的交付物达到产线上线标准；Phase 4 发现的 1 个 Minor 类型安全问题已在本阶段修复并通过全量测试验证。**批准进入 Phase 5（代码提交与 Commit 描述编写）**。
+1. **Agent tool 回归** — `generate_storyboard` MCP tool 使用 `scene_count >= 1` / `<= 16`；手工触发 Agent flow 验证 16 幕不再被 120 s timeout 打断
+2. **分镜面板 UX** — 打开 AiImageModal → 分镜 tab：初值 4 幕、1 批 2×2；关闭再开仍是 4（Issue #1 修复验证）
+3. **生产环境真实生成** — R10 原计划的 1 次 N=7 手工试跑：验证 2 批串行、第二批 reference 正确、最终 pack 含 7 帧、`original_image_url` 指向 batch 1 的网格
+4. **OSS 上传白名单** — 若 OSS_ENABLED=true，抽查新生成的 `_batch_*/` 与 `_intermediate/` 未进入 CDN；仅 `frame_*.png / original.png / reference.png / metadata.json` 上传
+
+## 后续迭代建议（P1 Backlog）
+
+1. **Partial 续传端点** — 支持从失败批 k 继续（无需重跑已完成批次）；Phase 2 Q2 遗留。
+2. **生成进度 SSE / polling** — 当前 UI 为单一 spinner，`StoryboardPreviewPanel` 已具备批次脚手架；增加批次进度事件后即可点亮"第 k / M 批"。
+3. **链参文案 A/B** — 针对 16 幕大批次收集风格一致性反馈，必要时改为 array-mode 多图协议（Phase 2 R-F2）。
+4. **诊断清理策略** — `_intermediate/` 长期累积，可加入基于 `job_retention_seconds` 的 TTL 清理 cron。
+
+---
+
+**签字**：Phase 4 代码评审通过，推荐进入 Phase 5（commit & deliver）。
