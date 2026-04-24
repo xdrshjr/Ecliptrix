@@ -147,7 +147,7 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
 
   return (
     <div
-      className={`fixed top-14 inset-x-0 bottom-0 bg-black/30 flex items-center justify-center z-[200] p-4 ${
+      className={`fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4 ${
         !isOpen ? 'hidden' : ''
       }`}
       onClick={(e) => {
