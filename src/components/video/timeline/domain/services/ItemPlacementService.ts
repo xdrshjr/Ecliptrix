@@ -20,7 +20,58 @@ import type {
   MaterialData,
   TrackType,
   TimelineItemData,
+  TrackData,
 } from '../types';
+
+// ---------------------------------------------------------------------------
+// Overlap detection types
+// ---------------------------------------------------------------------------
+
+/**
+ * One overlap pair detected on a single track.
+ *
+ * `a` is always the item with the earlier (or equal) startTime per the
+ * scan order, but consumers should not depend on that ordering — both
+ * items participate symmetrically in the overlap.
+ */
+export interface OverlapReport {
+  trackId: string;
+  trackType: TrackType;
+  a: { clipId: string; startTime: number; endTime: number };
+  b: { clipId: string; startTime: number; endTime: number };
+  /** Inclusive lower bound of the overlapping interval (seconds). */
+  overlapStart: number;
+  /** Exclusive upper bound of the overlapping interval (seconds). */
+  overlapEnd: number;
+}
+
+export interface FindAllOverlapsOptions {
+  /** Minimum positive overlap (seconds) treated as real. Default: 1e-6. */
+  epsilon?: number;
+  /** When provided, only these tracks are scanned. */
+  trackIds?: ReadonlyArray<string>;
+}
+
+const DEFAULT_OVERLAP_EPSILON = 1e-6;
+
+/**
+ * Half-open interval intersection test, shared by all overlap helpers.
+ *
+ * Two intervals [aStart, aEnd) and [bStart, bEnd) intersect iff their
+ * intersection has length > epsilon. Touching boundaries (aEnd === bStart)
+ * are NOT considered an overlap.
+ */
+function intersects(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+  epsilon: number,
+): boolean {
+  const overlapLow = Math.max(aStart, bStart);
+  const overlapHigh = Math.min(aEnd, bEnd);
+  return overlapHigh - overlapLow > epsilon;
+}
 
 // ---------------------------------------------------------------------------
 // Color mapping — extracted from TimelinePanel.tsx getMaterialColor
@@ -216,8 +267,7 @@ export class ItemPlacementService {
       const existingStart = existing.startTime.value;
       const existingEnd = existing.endTime().value;
 
-      // Standard interval overlap check
-      if (newStart < existingEnd && existingStart < newEnd) {
+      if (intersects(newStart, newEnd, existingStart, existingEnd, DEFAULT_OVERLAP_EPSILON)) {
         return true;
       }
     }
@@ -248,11 +298,86 @@ export class ItemPlacementService {
 
       const existingEnd = existing.startTime + existing.duration;
 
-      if (newStart < existingEnd && existing.startTime < newEnd) {
+      if (intersects(newStart, newEnd, existing.startTime, existingEnd, DEFAULT_OVERLAP_EPSILON)) {
         return true;
       }
     }
 
     return false;
+  }
+
+  /**
+   * Scan every track and report all pairwise overlaps.
+   *
+   * Algorithm: per-track sort by startTime, then linear scan with an
+   * "active interval frontier" (current max endTime). For each item, compare
+   * against all earlier items whose endTime exceeds the new item's startTime.
+   *
+   * Complexity: O(N log N) per track for the sort, then O(N + K) for the scan
+   * where K is the number of overlapping pairs returned. For typical
+   * timelines (≤ a few hundred clips) this is well under 5 ms.
+   *
+   * The function is pure: it does not mutate `tracks`. Touching boundaries
+   * are not treated as overlaps (half-open intervals + epsilon tolerance).
+   *
+   * @param tracks  Plain-object track array (compatible with both
+   *   `TrackData` from the domain layer and the legacy `Track` type from
+   *   `@/types`). Items lacking `startTime`/`duration` are ignored.
+   * @param opts    Optional epsilon and trackId filter.
+   */
+  static findAllOverlaps(
+    tracks: ReadonlyArray<Pick<TrackData, 'id' | 'type'> & { items: ReadonlyArray<Pick<TimelineItemData, 'id' | 'startTime' | 'duration'>> }>,
+    opts?: FindAllOverlapsOptions,
+  ): OverlapReport[] {
+    const epsilon = opts?.epsilon ?? DEFAULT_OVERLAP_EPSILON;
+    const trackFilter = opts?.trackIds ? new Set(opts.trackIds) : null;
+
+    const reports: OverlapReport[] = [];
+
+    for (const track of tracks) {
+      if (trackFilter && !trackFilter.has(track.id)) continue;
+      const items = track.items;
+      if (!items || items.length < 2) continue;
+
+      const sorted = [...items]
+        .filter(it => typeof it.startTime === 'number' && typeof it.duration === 'number')
+        .sort((a, b) => a.startTime - b.startTime);
+
+      // Active list contains items whose endTime is still ahead of the
+      // current scan frontier. Pruned each iteration to keep linear cost.
+      const active: Array<{ id: string; start: number; end: number }> = [];
+
+      for (const item of sorted) {
+        const start = item.startTime;
+        const end = start + item.duration;
+
+        // Drop active items that end before this one starts.
+        for (let i = active.length - 1; i >= 0; i--) {
+          if (active[i].end <= start + epsilon) {
+            active.splice(i, 1);
+          }
+        }
+
+        // Anyone still active whose end exceeds `start + epsilon` overlaps.
+        for (const prev of active) {
+          if (intersects(prev.start, prev.end, start, end, epsilon)) {
+            const overlapStart = Math.max(prev.start, start);
+            const overlapEnd = Math.min(prev.end, end);
+            reports.push({
+              trackId: track.id,
+              trackType: track.type,
+              a: { clipId: prev.id, startTime: prev.start, endTime: prev.end },
+              b: { clipId: item.id, startTime: start, endTime: end },
+              overlapStart,
+              overlapEnd,
+            });
+          }
+        }
+
+        active.push({ id: item.id, start, end });
+      }
+    }
+
+    return reports;
   }
 }

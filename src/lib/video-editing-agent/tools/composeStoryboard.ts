@@ -9,6 +9,8 @@ import {
   generateClipId,
   checkTrackDurationConstraint,
   formatDurationWarning,
+  runOverlapPostCheck,
+  formatOverlapWarning,
 } from './index';
 
 // ---------------------------------------------------------------------------
@@ -143,6 +145,8 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
+      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {
         success: true,
@@ -155,6 +159,7 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
         operations: allOperations,
         message: `Added ${clipsAdded}/${params.video_materials.length} scene clips to the timeline. Total duration: ${totalDuration.toFixed(1)}s.`,
         ...(warning ? { warning } : {}),
+        ...(overlapWarning ? { overlapWarning, overlapCount: overlapReports.length } : {}),
       };
 
       return {

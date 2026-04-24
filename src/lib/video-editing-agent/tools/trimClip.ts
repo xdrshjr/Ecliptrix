@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, checkTrackDurationConstraint, formatDurationWarning } from './index';
+import { findClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to trim' }),
@@ -54,11 +54,14 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
+      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {
         success: true,
         clip: { id: params.clipId, clipStart: newStart, clipEnd: newEnd, duration: newDuration },
         ...(warning ? { warning } : {}),
+        ...(overlapWarning ? { overlapWarning, overlapCount: overlapReports.length } : {}),
       };
 
       return {

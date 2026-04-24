@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findMaterial, checkTrackDurationConstraint } from './index';
+import { findMaterial, checkTrackDurationConstraint, runOverlapPostCheck } from './index';
 
 const parameters = Type.Object({});
 type Params = Static<typeof parameters>;
@@ -39,6 +39,7 @@ export function createGetTimelineTool(context: ToolContext): AgentTool<typeof pa
       }));
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
+      const overlapReports = runOverlapPostCheck(context.timelineState);
 
       const result = {
         success: true,
@@ -48,6 +49,18 @@ export function createGetTimelineTool(context: ToolContext): AgentTool<typeof pa
           videoDuration: constraintCheck.videoDuration,
           maxOtherDuration: constraintCheck.maxOtherDuration,
           violatingTracks: constraintCheck.violatingTracks,
+        },
+        overlapCheck: {
+          valid: overlapReports.length === 0,
+          overlapCount: overlapReports.length,
+          overlaps: overlapReports.map(r => ({
+            trackId: r.trackId,
+            trackType: r.trackType,
+            clipAId: r.a.clipId,
+            clipBId: r.b.clipId,
+            overlapStart: r.overlapStart,
+            overlapEnd: r.overlapEnd,
+          })),
         },
         tracks,
       };

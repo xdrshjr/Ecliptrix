@@ -23,6 +23,7 @@ import type { TimelineState, AgentTimelineOperation, MaterialItem } from '@/type
 import type { AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import { useVideoEditingStore } from '@/stores';
+import { reconcileOverlapsAfterAgentOp } from './reconcile';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -526,6 +527,13 @@ export class OperationApplier {
         break;
       }
     }
+
+    // Reconcile overlaps that this Agent operation may have produced.
+    // Runs in the SAME setTimelineState pass so the undo snapshot does
+    // not see a transient overlapping state (R11). Operates only on the
+    // tracks the operation touched — historical layouts (R13) are left
+    // alone, and subtitle / locked tracks are skipped inside reconcile.
+    reconcileOverlapsAfterAgentOp(state, operation);
 
     // Recalculate total duration
     let maxEnd = 0;

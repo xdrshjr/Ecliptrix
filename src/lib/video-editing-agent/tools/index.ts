@@ -28,6 +28,9 @@ import { createGenerateStoryboardTool } from './generateStoryboard';
 import { createDescribeStoryboardTool } from './describeStoryboard';
 import { createBatchStoryboardVideoTool } from './batchStoryboardVideo';
 import { createComposeStoryboardTool } from './composeStoryboard';
+import { createCheckOverlapsTool, summarizeOverlapReport } from './checkOverlaps';
+import { createAutoFixOverlapsTool } from './autoFixOverlaps';
+import { ItemPlacementService, type OverlapReport } from '@/components/video/timeline/domain/services/ItemPlacementService';
 
 // --- Shared helpers used by tools ---
 
@@ -111,6 +114,25 @@ export function checkTrackDurationConstraint(state: TimelineState) {
   };
 }
 
+/**
+ * Run overlap detection across the current timeline and return the raw
+ * report list. Pure: does not mutate state.
+ */
+export function runOverlapPostCheck(state: TimelineState): OverlapReport[] {
+  return ItemPlacementService.findAllOverlaps(state.tracks);
+}
+
+/**
+ * Format the overlap reports for inclusion in a tool result. Returns null
+ * when no overlaps were detected so callers can spread the value
+ * conditionally without producing an empty `overlapWarning` field.
+ */
+export function formatOverlapWarning(reports: OverlapReport[]): string | null {
+  if (reports.length === 0) return null;
+  const lines = reports.map(summarizeOverlapReport);
+  return `⚠️ 时间线出现 ${reports.length} 处同轨重叠：\n${lines.join('\n')}\n请调用 auto_fix_overlaps 自动修复，或使用 move_clip / resize_clip / trim_clip 手动调整，然后再次调用 check_timeline_overlaps 直至 valid=true。`;
+}
+
 export function formatDurationWarning(check: ReturnType<typeof checkTrackDurationConstraint>): string | null {
   if (check.valid) return null;
   const tracks = check.violatingTracks
@@ -173,6 +195,7 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     createGetTimelineTool(context),
     createListMaterialsTool(context),
     createSearchMaterialsTool(context),
+    createCheckOverlapsTool(context),
   ]);
 
   // Populate editing_tools category
@@ -182,6 +205,7 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     createDeleteClipTool(context),
     createMoveClipTool(context),
     createResizeClipTool(context),
+    createAutoFixOverlapsTool(context),
   ]);
 
   // Populate search_tools category

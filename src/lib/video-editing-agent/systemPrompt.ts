@@ -19,7 +19,7 @@ const TRACK_TYPE_LABELS: Record<string, string> = {
  * These are the 8 baseline tools that the agent can call without explore_tools.
  */
 const ALWAYS_AVAILABLE_TOOLS: { name: string; desc: string }[] = [
-  { name: 'get_timeline', desc: '获取完整时间线状态' },
+  { name: 'get_timeline', desc: '获取完整时间线状态（含 constraintCheck 和 overlapCheck）' },
   { name: 'list_materials', desc: '列出素材库中的所有素材' },
   { name: 'search_materials', desc: '搜索素材库中的素材（名称/描述/字幕匹配）' },
   { name: 'add_to_track', desc: '将素材添加到时间线轨道' },
@@ -27,6 +27,8 @@ const ALWAYS_AVAILABLE_TOOLS: { name: string; desc: string }[] = [
   { name: 'delete_clip', desc: '删除时间线上的片段' },
   { name: 'move_clip', desc: '移动片段到新位置或不同轨道' },
   { name: 'resize_clip', desc: '调整片段在时间线上的显示时长' },
+  { name: 'check_timeline_overlaps', desc: '扫描整个时间线，列出所有同轨重叠片段（valid + overlaps[]）' },
+  { name: 'auto_fix_overlaps', desc: '一键 pack-flush 视频/音频轨道，消除同轨重叠（subtitle/locked 轨跳过）' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -238,6 +240,7 @@ export function buildSystemPrompt(
 - 搜索/生成的结果会自动添加到素材库。AI生成任务为异步，启动后无需等待。
 - **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
 - **失败必须停止**：如果某个生成或搜索工具返回 "success: false"，你必须先向用户报告错误并停止当前流程，不要用编造的 ID 继续调用 add_to_track。连续 5 次工具失败后，Agent 将被自动中断。
+- **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
 
 ${formatToolOverview(categorySummaries)}
 
@@ -280,5 +283,12 @@ ${formatCompactSummary(timelineState, materials)}
 - 如果某个操作导致非视频轨道超过视频轨道，工具会返回 warning 警告。**收到警告后你必须立即修正**：使用 resize_clip / trim_clip 缩短超出的轨道，或搜索更多视频素材填充视频轨道。
 - 视频轨道应比音频轨道略长 1-2 秒，避免导出时出现黑屏或音频超出视频范围。
 - 多个视频片段应首尾相连，中间不留空隙。
-- 在完成所有轨道编辑后，调用 get_timeline 检查 constraintCheck 字段，确认约束是否满足。`.trim();
+- 在完成所有轨道编辑后，调用 get_timeline 检查 constraintCheck 字段，确认约束是否满足。
+
+## ⚠️ 强制约束：同轨不可重叠（反思-修复闭环）
+- **[HARD CONSTRAINT] 同一轨道上任意两个片段的时间区间不得重叠**。
+- add_to_track / move_clip / resize_clip / trim_clip / compose_storyboard 任意一次成功后，若返回 overlapWarning，**必须立即调用 auto_fix_overlaps 一次自动修复**；如希望保留刻意留白则用 move_clip 显式调整。
+- 一组复合编辑结束、即将向用户报告完成之前：先调用 check_timeline_overlaps；若 valid=false，则调用 auto_fix_overlaps，再 check_timeline_overlaps，循环直至 valid=true。
+- **死循环防护**：当 auto_fix_overlaps 连续 2 次返回 fixedCount=0（或 noop=true），立即停止修复循环。若 check_timeline_overlaps 仍报重叠（通常是 subtitle/locked 轨道造成），向用户说明无法自动修复并请求指示，不要继续无意义的工具调用。
+- check_timeline_overlaps / auto_fix_overlaps 仅用于编辑路径的自检；纯搜索 / 生成任务无需调用。`.trim();
 }

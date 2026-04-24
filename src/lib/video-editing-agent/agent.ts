@@ -7,6 +7,7 @@ import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
+import { reconcileOverlapsAfterAgentOp } from './reconcile';
 
 /** Map provider_type from backend to pi-ai api/provider values. */
 function resolveModelFormat(providerType?: string): { api: KnownApi; provider: string } {
@@ -363,4 +364,9 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
       break;
     }
   }
+
+  // Mirror the frontend OperationApplier reconcile so the next tool
+  // (e.g. check_timeline_overlaps, get_timeline) sees the same packed
+  // layout the UI will end up with. Pure function — safe on the server.
+  reconcileOverlapsAfterAgentOp(state, operation);
 }

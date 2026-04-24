@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, findTrack, checkTrackDurationConstraint, formatDurationWarning } from './index';
+import { findClip, findTrack, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to move' }),
@@ -53,6 +53,8 @@ export function createMoveClipTool(context: ToolContext): AgentTool<typeof param
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
+      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {
         success: true,
@@ -62,6 +64,7 @@ export function createMoveClipTool(context: ToolContext): AgentTool<typeof param
           startTime: params.newStartTime,
         },
         ...(warning ? { warning } : {}),
+        ...(overlapWarning ? { overlapWarning, overlapCount: overlapReports.length } : {}),
       };
 
       return {
