@@ -14,7 +14,7 @@ import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
 // invocation, heartbeat keepalive, and SSE event ID tracking. Only the
 // backend call was migrated to `backendConfig.baseUrl`.
 
-const AGENT_TIMEOUT = 600_000; // 10 minutes — storyboard generation can take 4+ minutes
+const AGENT_TIMEOUT = 1_800_000; // 30 minutes — storyboard generation can take 4+ minutes; long tool chains need headroom
 
 const THINKING_TIMEOUT = 30_000;
 const THINKING_HEARTBEAT_INTERVAL = 15_000;
@@ -135,7 +135,7 @@ async function performThinkingPhase(
   }
 }
 
-export const maxDuration = 600; // 10 minutes (for Vercel/serverless platforms)
+export const maxDuration = 1800; // 30 minutes (for Vercel/serverless platforms)
 
 /**
  * Read the caller's bare session token from the incoming request. Supports
