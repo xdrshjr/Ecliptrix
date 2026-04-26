@@ -378,12 +378,13 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
           const isPartial = resultPack.partial === true;
           const totalBatches = resultPack.totalBatches ?? 0;
           const completedBatches = resultPack.completedBatches ?? 0;
-          // Reconstruct expected total scene count from batch accounting, falling
-          // back to frameCount on the pack (which under partial==true equals the
-          // already-completed frame count, not the user-requested total).
-          const expectedTotal = totalBatches > 0
-            ? totalBatches * 4
-            : Math.max(resultPack.frameCount, frameCountActual);
+          // Use the user's requested scene count when known so partial packs
+          // show "missing 5, 6" instead of mis-extrapolating to total_batches*4
+          // and labelling the trailing pad cells (7, 8) as missing.
+          const expectedTotal =
+            resultPack.requestedFrameCount && resultPack.requestedFrameCount > 0
+              ? resultPack.requestedFrameCount
+              : Math.max(frameCount, resultPack.frameCount, frameCountActual);
           const presentIndices = new Set(frames.map((f) => f.index));
           const missingIndices: number[] = [];
           for (let i = 0; i < expectedTotal; i += 1) {

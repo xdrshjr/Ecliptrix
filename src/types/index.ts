@@ -573,6 +573,10 @@ export interface StoryboardPack {
   completedBatches?: number;
   totalBatches?: number;
   discardedFrameCount?: number;
+  /** Total scene count the user originally requested (1–16). On a partial
+   *  run frameCount drops to what was completed, so this field stays at the
+   *  requested value to support "N of M generated" UX. */
+  requestedFrameCount?: number;
   error?: { code: string; message: string };
 }
 

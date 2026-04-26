@@ -517,7 +517,18 @@ async def _call_ark_seedream(
 
     items = data.get("data", [])
     if not items or not items[0].get("url"):
-        raise ValueError(f"ARK Seedream returned no image data: {data}")
+        # Log the raw payload (truncated) so when ARK silently drops a batch
+        # — e.g. content moderation filtering — we have something to grep
+        # for in the logs instead of just "no image data".
+        try:
+            raw_preview = json.dumps(data, ensure_ascii=False)[:600]
+        except Exception:
+            raw_preview = repr(data)[:600]
+        logger.error(
+            "[storyboard] ARK Seedream returned no image data; raw payload (truncated): %s",
+            raw_preview,
+        )
+        raise ValueError(f"ARK Seedream returned no image data: {raw_preview}")
     remote_url = items[0]["url"]
     task_id = (
         data.get("id")
@@ -761,6 +772,20 @@ async def _generate_storyboard_core(request: StoryboardGenerateRequest) -> Story
             f"frame_scripts length ({len(request.frame_scripts)}) "
             f"does not match frame_count ({total_scene_count})"
         )
+
+    # Entry-level visibility: log the resolved scene count + planned batches so
+    # ops can quickly tell whether a "only got N frames" report is "user asked
+    # for N" or "user asked for >N but late batches failed silently".
+    planned_batches = (total_scene_count + STORYBOARD_BATCH_SIZE - 1) // STORYBOARD_BATCH_SIZE
+    logger.info(
+        "[storyboard] generate_storyboard_core: frame_count=%d planned_batches=%d "
+        "aspect_ratio=%s locale=%s pack_id_hint=%s",
+        total_scene_count,
+        planned_batches,
+        aspect_ratio,
+        locale,
+        request.pack_id or "<none>",
+    )
 
     # ── Batch-1 prompt preparation (user references + mention tags) ──
     resolved_prompt = request.prompt
@@ -1037,6 +1062,17 @@ async def _finalize_pack(
                     pass
         discarded_frame_count = len(extra)
         global_frames = global_frames[:total_scene_count]
+
+    # Invariant: a "success" finalize must produce at least the user's
+    # requested scene count. Anything less means a batch silently lost frames
+    # — promote that into a hard failure so it can't masquerade as success.
+    if not partial and len(global_frames) < total_scene_count:
+        raise RuntimeError(
+            f"_finalize_pack invariant violation: success path has "
+            f"{len(global_frames)} frames, expected {total_scene_count} "
+            f"(batches_completed={len(batches_info)}, total_batches={total_batches})"
+        )
+
     effective_frame_count = len(global_frames)
 
     # Propagate any bound frame scripts.
@@ -1145,6 +1181,7 @@ async def _finalize_pack(
         completed_batches=len(batches_info),
         total_batches=total_batches,
         discarded_frame_count=discarded_frame_count or None,
+        requested_frame_count=total_scene_count,
         error=error,
     )
     return pack
@@ -1778,6 +1815,8 @@ async def list_packs() -> List[StoryboardPack]:
                         completed_batches=meta.get("completed_batches"),
                         total_batches=meta.get("total_batches"),
                         discarded_frame_count=meta.get("discarded_frame_count") or None,
+                        requested_frame_count=meta.get("requested_frame_count")
+                        or meta.get("total_scene_count"),
                         error=meta.get("error"),
                     )
                 )
@@ -1840,6 +1879,8 @@ async def get_pack(pack_id: str) -> StoryboardPack:
         completed_batches=meta.get("completed_batches"),
         total_batches=meta.get("total_batches"),
         discarded_frame_count=meta.get("discarded_frame_count") or None,
+        requested_frame_count=meta.get("requested_frame_count")
+        or meta.get("total_scene_count"),
         error=meta.get("error"),
     )
 

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { StoryboardPack, StoryboardFrame } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import FrameCard from './FrameCard';
 
 interface StoryboardPackViewProps {
@@ -26,8 +27,25 @@ const StoryboardPackView: React.FC<StoryboardPackViewProps> = ({
   onFrameClick,
   onAddAllFramesToMaterials,
 }) => {
+  const { t } = useLocale();
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [originalImgExpanded, setOriginalImgExpanded] = useState(false);
+
+  // Partial-pack accounting (mirrors StoryboardPackModal).
+  const isPartial = pack.partial === true;
+  const requestedTotal =
+    pack.requestedFrameCount && pack.requestedFrameCount > 0
+      ? pack.requestedFrameCount
+      : pack.frameCount;
+  const completedBatches = pack.completedBatches ?? 0;
+  const totalBatches = pack.totalBatches ?? 0;
+  const presentIndexes = new Set(pack.frames.map((f) => f.index));
+  const missingIndexes: number[] = [];
+  if (isPartial) {
+    for (let i = 0; i < requestedTotal; i += 1) {
+      if (!presentIndexes.has(i)) missingIndexes.push(i);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -77,7 +95,18 @@ const StoryboardPackView: React.FC<StoryboardPackViewProps> = ({
         {/* Grid size + frame count */}
         <div className="flex items-center space-x-3 text-xs text-muted-foreground">
           <span>宫格规格: <span className="text-foreground font-medium">{pack.gridSize}</span></span>
-          <span>帧数: <span className="text-foreground font-medium">{pack.frameCount}</span></span>
+          <span>
+            帧数:{' '}
+            <span className="text-foreground font-medium">
+              {pack.frameCount}
+              {isPartial && requestedTotal > pack.frameCount ? `/${requestedTotal}` : ''}
+            </span>
+          </span>
+          {isPartial && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">
+              {t.storyboardPack.partialBadge}
+            </span>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -124,6 +153,33 @@ const StoryboardPackView: React.FC<StoryboardPackViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Partial-pack banner — surfaces failure state for packs viewed
+          from the materials panel side, where there's no other indicator. */}
+      {isPartial && (
+        <div className="border border-yellow-500/40 bg-yellow-500/10 rounded-md p-2.5 mb-3 space-y-1">
+          <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">
+            {t.storyboardPack.partialBanner
+              .replace('{completed}', String(pack.frameCount))
+              .replace('{total}', String(requestedTotal))
+              .replace('{batchesDone}', String(completedBatches))
+              .replace('{batchesTotal}', String(totalBatches))}
+          </p>
+          {missingIndexes.length > 0 && (
+            <p className="text-xs text-yellow-700 dark:text-yellow-400/80">
+              {t.storyboardPack.partialMissingScenes.replace(
+                '{scenes}',
+                missingIndexes.map((i) => i + 1).join(', '),
+              )}
+            </p>
+          )}
+          {pack.error?.message && (
+            <p className="text-xs text-yellow-700/80 dark:text-yellow-400/70 truncate">
+              {t.storyboardPack.partialErrorPrefix}{pack.error.message}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Frame grid — scrollable */}
       <div className="flex-1 overflow-y-auto min-h-0">

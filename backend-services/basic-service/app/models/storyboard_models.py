@@ -332,6 +332,14 @@ class StoryboardPack(BaseModel):
             "of 4) that were generated and deleted."
         ),
     )
+    requested_frame_count: Optional[int] = Field(
+        None,
+        description=(
+            "Total scene count the user originally requested (1-16). On a "
+            "successful run this equals frame_count; on partial runs it stays "
+            "at the user's request so the UI can show 'N of M completed'."
+        ),
+    )
     error: Optional[Dict[str, str]] = Field(
         None,
         description=(

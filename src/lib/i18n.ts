@@ -2158,6 +2158,10 @@ export interface Translations {
     frameCountLabel: string;
     gridWillGenerate: string;
     gridWillUse: string;
+    partialBadge: string;
+    partialBanner: string;
+    partialMissingScenes: string;
+    partialErrorPrefix: string;
   };
   mobileWarning: {
     tablet: string;
@@ -4691,6 +4695,10 @@ export const translations: Record<string, Translations> = {
       frameCountLabel: 'Frames',
       gridWillGenerate: 'Will generate {rows}x{cols} = {total} frame grid',
       gridWillUse: 'Will generate {rows}x{cols} = {total} grid, using first {value} frames',
+      partialBadge: 'Partial',
+      partialBanner: 'Partial pack: {completed}/{total} frames generated ({batchesDone}/{batchesTotal} batches succeeded). Missing frames are not shown.',
+      partialMissingScenes: 'Missing shots: {scenes}',
+      partialErrorPrefix: 'Reason: ',
     },
     mobileWarning: {
       tablet: 'Tablet',
@@ -7223,6 +7231,10 @@ export const translations: Record<string, Translations> = {
       frameCountLabel: '帧数',
       gridWillGenerate: '将生成 {rows}x{cols} = {total} 格分镜',
       gridWillUse: '将生成 {rows}x{cols} = {total} 格，使用前 {value} 帧',
+      partialBadge: '不完整',
+      partialBanner: '分镜包不完整：仅生成 {completed}/{total} 帧（{batchesDone}/{batchesTotal} 批次成功），缺失的分镜未显示。',
+      partialMissingScenes: '缺失的分镜：{scenes}',
+      partialErrorPrefix: '原因：',
     },
     mobileWarning: {
       tablet: '平板设备',

@@ -71,6 +71,23 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
     ? pack.frames.find(f => f.index === selectedFrameIndex) ?? null
     : null;
 
+  // Partial-pack accounting — compute the user-facing "X of Y" counts and
+  // which scene indexes are missing so the banner can list them.
+  const isPartial = pack.partial === true;
+  const requestedTotal =
+    pack.requestedFrameCount && pack.requestedFrameCount > 0
+      ? pack.requestedFrameCount
+      : pack.frameCount;
+  const completedBatches = pack.completedBatches ?? 0;
+  const totalBatches = pack.totalBatches ?? 0;
+  const presentIndexes = new Set(pack.frames.map((f) => f.index));
+  const missingIndexes: number[] = [];
+  if (isPartial) {
+    for (let i = 0; i < requestedTotal; i += 1) {
+      if (!presentIndexes.has(i)) missingIndexes.push(i);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-200"
@@ -92,8 +109,18 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
               </h3>
               <div className="flex items-center space-x-3 text-xs text-muted-foreground mt-0.5">
                 <span>{pack.gridSize}</span>
-                <span>{pack.frameCount} {t.storyboardPack.frames}</span>
+                <span>
+                  {pack.frameCount}
+                  {isPartial && requestedTotal > pack.frameCount ? `/${requestedTotal}` : ''}
+                  {' '}
+                  {t.storyboardPack.frames}
+                </span>
                 <span>{new Date(pack.createdAt).toLocaleDateString()}</span>
+                {isPartial && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">
+                    {t.storyboardPack.partialBadge}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -112,6 +139,33 @@ const StoryboardPackModal: React.FC<StoryboardPackModalProps> = ({
 
         {/* Body — scrollable */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
+          {/* Partial-pack banner — shown only when generation finished with
+              fewer frames than the user asked for. */}
+          {isPartial && (
+            <div className="border border-yellow-500/40 bg-yellow-500/10 rounded-md p-3 space-y-1">
+              <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">
+                {t.storyboardPack.partialBanner
+                  .replace('{completed}', String(pack.frameCount))
+                  .replace('{total}', String(requestedTotal))
+                  .replace('{batchesDone}', String(completedBatches))
+                  .replace('{batchesTotal}', String(totalBatches))}
+              </p>
+              {missingIndexes.length > 0 && (
+                <p className="text-xs text-yellow-700 dark:text-yellow-400/80">
+                  {t.storyboardPack.partialMissingScenes.replace(
+                    '{scenes}',
+                    missingIndexes.map((i) => i + 1).join(', '),
+                  )}
+                </p>
+              )}
+              {pack.error?.message && (
+                <p className="text-xs text-yellow-700/80 dark:text-yellow-400/70 truncate">
+                  {t.storyboardPack.partialErrorPrefix}{pack.error.message}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Original image — collapsible */}
           <div>
             <button

@@ -52,6 +52,8 @@ interface RawPack {
   completed_batches?: number | null;
   total_batches?: number | null;
   discarded_frame_count?: number | null;
+  requested_frame_count?: number | null;
+  total_scene_count?: number | null;
   error?: { code: string; message: string } | null;
 }
 
@@ -107,6 +109,8 @@ function toPack(d: RawPack): StoryboardPack {
     completedBatches: d.completed_batches ?? undefined,
     totalBatches: d.total_batches ?? undefined,
     discardedFrameCount: d.discarded_frame_count ?? undefined,
+    requestedFrameCount:
+      d.requested_frame_count ?? d.total_scene_count ?? undefined,
     error: d.error ?? undefined,
   };
 }

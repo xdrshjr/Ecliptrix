@@ -77,12 +77,29 @@ const StoryboardPackCard: React.FC<StoryboardPackCardProps> = ({
           </button>
         </div>
 
-        {/* Bottom-right label: grid size + frame count */}
+        {/* Bottom-right label: grid size + frame count (with N/M when partial) */}
         <div className="absolute bottom-1 right-1">
           <span className="px-1 py-0.5 bg-foreground/75 text-background text-xs rounded">
-            {pack.gridSize} · {pack.frameCount}{t.materialsPanel.frames}
+            {pack.gridSize} ·{' '}
+            {pack.frameCount}
+            {pack.partial &&
+            pack.requestedFrameCount &&
+            pack.requestedFrameCount > pack.frameCount
+              ? `/${pack.requestedFrameCount}`
+              : ''}
+            {t.materialsPanel.frames}
           </span>
         </div>
+
+        {/* Partial-pack badge — top-center, above thumbnail, so users see
+            at-a-glance which packs in their material library are incomplete. */}
+        {pack.partial && (
+          <div className="absolute top-1 left-1/2 -translate-x-1/2">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-500/85 text-yellow-50 border border-yellow-600/50">
+              {t.storyboardPack.partialBadge}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Info row */}
