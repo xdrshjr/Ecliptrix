@@ -37,6 +37,7 @@ from app.models import (
 from app.models.youtube_models import YoutubeVideoDownloadRequest
 from app.services.subtitle_service import SubtitleService
 from app.services.youtube_service import YouTubeService
+from app.services.material_download_service import get_material_download_service
 
 logger = get_logger(__name__)
 
@@ -882,13 +883,37 @@ class VideoCompositionService:
             downloaded_videos = [None] * len(request.video_items)  # Pre-allocate with correct size
             failed_downloads = []
             url_to_downloaded_path = {}  # URL -> downloaded file path mapping
-            
-            # Download unique URLs only
+
+            # Persistent cache lookup: any URL with a ready CachedMaterial entry
+            # can skip the network download entirely. Must populate
+            # url_to_downloaded_path BEFORE submitting downloads so we don't
+            # re-fetch already-cached assets.
+            material_svc = get_material_download_service()
+            urls_to_download: List[str] = []
+            for url in unique_urls:
+                cached_path = None
+                try:
+                    cached_path = material_svc.lookup_by_url(url)
+                except Exception as lookup_exc:
+                    logger.warning(f"Cache lookup failed for {url}: {lookup_exc}")
+                if cached_path and os.path.exists(cached_path):
+                    url_to_downloaded_path[url] = cached_path
+                    logger.info(f"Cache hit for {url} -> {cached_path}")
+                else:
+                    urls_to_download.append(url)
+
+            cache_hits = len(unique_urls) - len(urls_to_download)
+            logger.info(
+                f"Material cache: {cache_hits}/{len(unique_urls)} URLs served from cache, "
+                f"{len(urls_to_download)} require download"
+            )
+
+            # Download remaining unique URLs only
             with ThreadPoolExecutor(max_workers=5) as executor:
-                # Create futures for unique URLs only
+                # Create futures for URLs that still need downloading
                 futures = {
-                    executor.submit(self._download_video_with_retry, url, temp_dir, unique_urls.index(url), request.video_items[url_to_indices[url][0]]): url 
-                    for url in unique_urls
+                    executor.submit(self._download_video_with_retry, url, temp_dir, unique_urls.index(url), request.video_items[url_to_indices[url][0]]): url
+                    for url in urls_to_download
                 }
                 
                 # Collect download results
@@ -901,6 +926,19 @@ class VideoCompositionService:
                         downloaded_path = result['output_path']
                         url_to_downloaded_path[url] = downloaded_path
                         logger.info(f"Downloaded unique URL {len(url_to_downloaded_path)}/{unique_count}: {url}")
+                        # Write-through to persistent cache so future exports
+                        # of the same URL can skip the download.
+                        try:
+                            inferred_source = "pexels" if self._is_pexels_url(url) else (
+                                "youtube" if self._is_youtube_url(url) else "url"
+                            )
+                            material_svc.store_external_download(
+                                url=url,
+                                local_path=downloaded_path,
+                                source=inferred_source,
+                            )
+                        except Exception as cache_exc:
+                            logger.warning(f"Cache write-through failed for {url}: {cache_exc}")
                     else:
                         # Record failure for all video items using this URL
                         for video_index in url_to_indices[url]:

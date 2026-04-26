@@ -482,6 +482,11 @@ from app.routers import voice_clone_router
 
 app.include_router(voice_clone_router.router, prefix="/api")
 
+# Import and include Material caching router (predownload remote assets)
+from app.routers import material_router
+
+app.include_router(material_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

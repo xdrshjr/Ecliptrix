@@ -33,6 +33,7 @@ from app.models.queue_models import (
     QueueErrorResponse
 )
 from app.services import VideoSearchService, VideoCompositionService, SubtitleService, video_analysis_service
+from app.services.material_download_service import get_material_download_service
 from app.services.video_analysis_storage_service import video_analysis_storage
 from app.services.video_cut_service import VideoCutService
 from app.services.watermark_removal_service import WatermarkRemovalService
@@ -102,6 +103,22 @@ async def search_videos(request: VideoSearchRequest) -> VideoSearchResponse:
             return result
         
         logger.info(f"Successfully found {len(result.videos)} videos for query: '{request.query}'")
+
+        # Pre-download every Pexels result so subsequent video composition can
+        # skip the slow synchronous download step. Fire-and-forget — failures
+        # here must not block search responses.
+        try:
+            material_svc = get_material_download_service()
+            for video in result.videos:
+                if video.video_url and video.id is not None:
+                    material_svc.enqueue_threadsafe(
+                        source="pexels",
+                        source_id=str(video.id),
+                        url=video.video_url,
+                    )
+        except Exception as enqueue_exc:
+            logger.warning(f"Failed to enqueue predownload for search results: {enqueue_exc}")
+
         return result
         
     except HTTPException:

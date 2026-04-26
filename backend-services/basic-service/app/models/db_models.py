@@ -114,6 +114,40 @@ class SystemSetting(Base):
     )
 
 
+class CachedMaterial(Base):
+    """
+    Persistent cache of downloaded remote video/material assets.
+
+    Status lifecycle: pending -> downloading -> ready (or failed).
+    The (source, source_id) pair is the canonical dedup key; source_url is also
+    indexed so export-time lookups by URL stay O(1).
+
+    ref_count is incremented on every ingest enqueue (including dedup hits) and
+    is intended for future LRU/TTL cleanup — no current code path decrements it.
+    """
+    __tablename__ = "cached_materials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source = Column(String(32), nullable=False, index=True)  # 'pexels', 'unsplash', 'youtube', 'url', ...
+    source_id = Column(String(128), nullable=False, index=True)  # e.g. pexels video id
+    source_url = Column(Text, nullable=False, index=True)
+    local_path = Column(String(1024), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    duration = Column(Float, nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    error_message = Column(Text, nullable=True)
+    ref_count = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_cached_materials_source_id"),
+        Index("ix_cached_materials_status", "status"),
+    )
+
+
 class SettingsAuditLog(Base):
     """Audit trail for settings changes."""
     __tablename__ = "settings_audit_log"

@@ -18,6 +18,7 @@ from . import ai_video_generate_router
 from . import auth_router
 from . import user_router
 from . import voice_clone_router
+from . import material_router
 
 __all__ = [
     "api_router",
@@ -36,4 +37,5 @@ __all__ = [
     "auth_router",
     "user_router",
     "voice_clone_router",
+    "material_router",
 ]
