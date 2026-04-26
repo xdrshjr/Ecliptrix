@@ -395,12 +395,26 @@ async def resolve_reference_to_base64_or_url(value: Optional[str]) -> Optional[s
     if value.startswith("data:") or value.startswith("http://") or value.startswith("https://"):
         return value
 
-    root = os.path.normpath(storage_root())
+    # Always resolve to an absolute, normalized path so commonpath does not
+    # raise ValueError when the configured STORAGE_ROOT is relative (the
+    # default is "static/uploads") and the candidate has been absolutized
+    # from cwd. Mixing absolute + relative inputs into commonpath blew up
+    # silently and caused chain references to fail downstream.
+    root = os.path.abspath(storage_root())
 
     def _is_within_root(abs_path: str) -> bool:
         try:
-            return os.path.normcase(os.path.commonpath([abs_path, root])) == os.path.normcase(root)
+            a = os.path.abspath(abs_path)
+            common = os.path.normcase(os.path.commonpath([a, root]))
+            return common == os.path.normcase(root)
         except ValueError:
+            # Different drives / roots — not "inside" root, but log so
+            # future regressions are not silently swallowed.
+            logger.debug(
+                "_is_within_root: commonpath ValueError for path=%r root=%r",
+                abs_path,
+                root,
+            )
             return False
 
     # Case: public serving URL → map to filesystem.

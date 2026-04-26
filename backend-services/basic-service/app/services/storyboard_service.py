@@ -625,7 +625,9 @@ async def _extract_chain_refs(
         )
 
     tail = prev_frames[-2:]
-    return [os.path.join(pack_dir, f["filename"]) for f in tail]
+    # Emit absolute paths so downstream consumers (resolve_reference_to_base64_or_url)
+    # are not at the mercy of cwd / a relative STORAGE_ROOT.
+    return [os.path.abspath(os.path.join(pack_dir, f["filename"])) for f in tail]
 
 
 async def _generate_single_2x2_batch(
