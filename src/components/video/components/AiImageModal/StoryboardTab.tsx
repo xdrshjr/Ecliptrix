@@ -372,36 +372,96 @@ const StoryboardTab: React.FC<StoryboardTabProps> = ({ state, onChange, onGenera
           </div>
         )}
 
-        {step === 'success' && resultPack && (
-          <div className="flex flex-col justify-center h-full min-h-[120px]">
-            <div className="border border-border rounded-md p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <img
-                  src={resultPack.originalImageUrl}
-                  alt={t.storyboardTab.storyboardImageAlt}
-                  className="w-20 h-20 rounded-md border border-border object-cover flex-shrink-0"
-                />
-                <div className="flex-1 min-w-0">
+        {step === 'success' && resultPack && (() => {
+          const frames = (resultPack.frames || []).slice().sort((a, b) => a.index - b.index);
+          const frameCountActual = frames.length;
+          const isPartial = resultPack.partial === true;
+          const totalBatches = resultPack.totalBatches ?? 0;
+          const completedBatches = resultPack.completedBatches ?? 0;
+          // Reconstruct expected total scene count from batch accounting, falling
+          // back to frameCount on the pack (which under partial==true equals the
+          // already-completed frame count, not the user-requested total).
+          const expectedTotal = totalBatches > 0
+            ? totalBatches * 4
+            : Math.max(resultPack.frameCount, frameCountActual);
+          const presentIndices = new Set(frames.map((f) => f.index));
+          const missingIndices: number[] = [];
+          for (let i = 0; i < expectedTotal; i += 1) {
+            if (!presentIndices.has(i)) missingIndices.push(i);
+          }
+          const gridCols =
+            frameCountActual <= 1 ? 'grid-cols-1'
+              : frameCountActual <= 4 ? 'grid-cols-2'
+              : frameCountActual <= 9 ? 'grid-cols-3'
+              : 'grid-cols-4';
+          return (
+            <div className="flex flex-col justify-center h-full min-h-[120px]">
+              <div className="border border-border rounded-md p-4 space-y-3">
+                <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">
-                    {t.storyboardTab.croppedFrames.replace('{count}', String(resultPack.frameCount))}
+                    {t.storyboardTab.croppedFrames.replace('{count}', String(frameCountActual))}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">
-                    {resultPack.prompt}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {t.storyboardTab.gridLabel} {resultPack.gridSize}
-                  </p>
+                  <p className="text-xs text-muted-foreground truncate">{resultPack.prompt}</p>
                 </div>
+
+                {isPartial && (
+                  <div className="border border-yellow-500/40 bg-yellow-500/10 rounded-md p-2.5 space-y-1">
+                    <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">
+                      {t.storyboardTab.partialFramesNotice
+                        .replace('{completed}', String(completedBatches))
+                        .replace('{total}', String(totalBatches))}
+                    </p>
+                    {missingIndices.length > 0 && (
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400/80">
+                        {t.storyboardTab.partialMissingScenes.replace(
+                          '{scenes}',
+                          missingIndices.map((i) => i + 1).join(', '),
+                        )}
+                      </p>
+                    )}
+                    {resultPack.error?.message && (
+                      <p className="text-xs text-yellow-700/80 dark:text-yellow-400/70 truncate">
+                        {resultPack.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {frameCountActual === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    {t.storyboardTab.emptyFramesNotice}
+                  </p>
+                ) : (
+                  <div className={`grid ${gridCols} gap-2`}>
+                    {frames.map((f) => (
+                      <div
+                        key={f.index}
+                        className="relative rounded-md border border-border overflow-hidden bg-muted/30"
+                      >
+                        <img
+                          src={f.url}
+                          alt={`${t.storyboardTab.storyboardImageAlt} ${f.index + 1}`}
+                          className="w-full h-auto object-cover"
+                          loading="lazy"
+                        />
+                        <span className="absolute top-1 left-1 px-1.5 py-0.5 text-[10px] font-medium bg-background/80 text-foreground rounded">
+                          {f.index + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={resetAll}
+                  className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
+                >
+                  {isPartial ? t.storyboardTab.retryButton : t.storyboardTab.generateNew}
+                </button>
               </div>
-              <button
-                onClick={resetAll}
-                className="w-full py-2 text-sm font-medium text-foreground bg-secondary border border-border rounded-md hover:bg-accent transition-colors"
-              >
-                {t.storyboardTab.generateNew}
-              </button>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {step === 'error' && (
           <div className="flex flex-col justify-center h-full min-h-[120px]">

@@ -2334,6 +2334,9 @@ export interface Translations {
     backConfirm: string;
     generateFailed: string;
     storyboardImageAlt: string;
+    partialFramesNotice: string;
+    partialMissingScenes: string;
+    emptyFramesNotice: string;
   };
   gridSizeSelectorTab: {
     frameCountLabel: string;
@@ -4864,7 +4867,10 @@ export const translations: Record<string, Translations> = {
       scriptUpdated: 'Script updated ({count} shots).',
       backConfirm: 'Going back will clear the current script draft. Continue?',
       generateFailed: 'Storyboard generation failed, please retry',
-      storyboardImageAlt: 'Storyboard full image',
+      storyboardImageAlt: 'Storyboard frame',
+      partialFramesNotice: 'Some batches failed: {completed}/{total} batches succeeded. The missing frames are not shown.',
+      partialMissingScenes: 'Missing shots: {scenes}',
+      emptyFramesNotice: 'No frames were generated. Please retry.',
     },
     gridSizeSelectorTab: {
       frameCountLabel: 'Storyboard Count',
@@ -7392,7 +7398,10 @@ export const translations: Record<string, Translations> = {
       scriptUpdated: '已更新剧本（{count} 幕）。',
       backConfirm: '返回修改输入将清空当前剧本草稿，是否继续？',
       generateFailed: '分镜生成失败，请重试',
-      storyboardImageAlt: '分镜大图',
+      storyboardImageAlt: '分镜画面',
+      partialFramesNotice: '部分批次失败：{completed}/{total} 批次成功，未生成的分镜不会显示。',
+      partialMissingScenes: '缺失的分镜：{scenes}',
+      emptyFramesNotice: '未生成任何分镜，请重试。',
     },
     gridSizeSelectorTab: {
       frameCountLabel: '分镜数量',
