@@ -144,7 +144,6 @@ class CachedMaterial(Base):
 
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="uq_cached_materials_source_id"),
-        Index("ix_cached_materials_status", "status"),
     )
 
 

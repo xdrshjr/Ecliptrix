@@ -16,13 +16,13 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Awaitable, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.database import async_session_factory
 from app.logger import get_logger
 from app.models.db_models import CachedMaterial
 
@@ -51,9 +51,14 @@ class MaterialDownloadService:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self._max_concurrent = _parse_concurrency_limit()
-        # Background loop / semaphore are lazily initialised on first use so we
-        # don't fight FastAPI's startup loop.
+        # Background loop, engine, semaphore are lazily initialised on first use.
+        # The engine MUST live on this background loop alone — sharing the global
+        # engine with FastAPI's loop pollutes asyncpg's pool with connections
+        # bound to multiple loops, surfacing as random "Future attached to a
+        # different loop" failures on unrelated requests (e.g. auth middleware).
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._engine = None
+        self._session_factory: Optional[async_sessionmaker[AsyncSession]] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._loop_thread: Optional[threading.Thread] = None
         self._loop_lock = threading.Lock()
@@ -85,17 +90,55 @@ class MaterialDownloadService:
             self._loop = loop
             self._loop_thread = t
 
-            # Semaphore must be created from inside the target loop.
-            fut = asyncio.run_coroutine_threadsafe(self._init_semaphore(), loop)
-            fut.result(timeout=5)
+            # Engine + session factory + semaphore must all be created from
+            # inside the target loop so asyncpg pools to *this* loop only.
+            fut = asyncio.run_coroutine_threadsafe(self._init_runtime(), loop)
+            fut.result(timeout=10)
             return loop
 
-    async def _init_semaphore(self) -> None:
+    async def _init_runtime(self) -> None:
+        self._engine = create_async_engine(
+            settings.database.url,
+            pool_size=2,
+            max_overflow=4,
+            pool_timeout=settings.database.pool_timeout,
+            pool_recycle=settings.database.pool_recycle,
+            echo=False,
+        )
+        self._session_factory = async_sessionmaker(
+            self._engine, class_=AsyncSession, expire_on_commit=False
+        )
         self._semaphore = asyncio.Semaphore(self._max_concurrent)
+
+    async def _dispatch(self, coro: Awaitable[Any]) -> Any:
+        """Run *coro* on the background loop, awaitable from any caller loop.
+
+        Sync wrappers below already schedule via ``run_coroutine_threadsafe``,
+        so on the bg loop ``get_running_loop()`` is the bg loop and we just
+        await directly. From the FastAPI loop we bridge across loops via
+        ``asyncio.wrap_future``.
+        """
+        loop = self._ensure_loop()
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            current = None
+        if current is loop:
+            return await coro
+        fut = asyncio.run_coroutine_threadsafe(coro, loop)
+        return await asyncio.wrap_future(fut)
 
     # ------------------------------------------------------------------ ingest
 
     async def enqueue(
+        self,
+        source: str,
+        source_id: str,
+        url: str,
+    ) -> Dict[str, str]:
+        return await self._dispatch(self._enqueue_impl(source, source_id, url))
+
+    async def _enqueue_impl(
         self,
         source: str,
         source_id: str,
@@ -111,7 +154,8 @@ class MaterialDownloadService:
         if not url or not source or not source_id:
             return {"material_id": "", "status": "invalid"}
 
-        async with async_session_factory() as session:
+        assert self._session_factory is not None
+        async with self._session_factory() as session:
             stmt = select(CachedMaterial).where(
                 CachedMaterial.source == source,
                 CachedMaterial.source_id == str(source_id),
@@ -184,9 +228,13 @@ class MaterialDownloadService:
     # ------------------------------------------------------------------ lookup
 
     async def lookup_by_url_async(self, url: str) -> Optional[str]:
+        return await self._dispatch(self._lookup_by_url_impl(url))
+
+    async def _lookup_by_url_impl(self, url: str) -> Optional[str]:
         if not url:
             return None
-        async with async_session_factory() as session:
+        assert self._session_factory is not None
+        async with self._session_factory() as session:
             stmt = select(CachedMaterial).where(
                 CachedMaterial.source_url == url,
                 CachedMaterial.status == "ready",
@@ -226,6 +274,17 @@ class MaterialDownloadService:
         source: str = "url",
         source_id: Optional[str] = None,
     ) -> None:
+        await self._dispatch(
+            self._store_external_download_impl(url, local_path, source, source_id)
+        )
+
+    async def _store_external_download_impl(
+        self,
+        url: str,
+        local_path: str,
+        source: str = "url",
+        source_id: Optional[str] = None,
+    ) -> None:
         """
         Persist an externally-downloaded file into the cache table so subsequent
         exports of the same URL can reuse it. Used as a write-through fallback
@@ -246,7 +305,8 @@ class MaterialDownloadService:
 
         file_size = os.path.getsize(cached_path) if os.path.exists(cached_path) else None
 
-        async with async_session_factory() as session:
+        assert self._session_factory is not None
+        async with self._session_factory() as session:
             stmt = select(CachedMaterial).where(
                 CachedMaterial.source == source,
                 CachedMaterial.source_id == str(source_id or self._fallback_id(url)),
@@ -295,15 +355,15 @@ class MaterialDownloadService:
     # ------------------------------------------------------------------ worker
 
     async def _download_material(self, material_id: str) -> None:
-        if self._semaphore is None:
-            await self._init_semaphore()
+        # Runtime is guaranteed initialised because _submit goes through
+        # _ensure_loop, which blocks on _init_runtime.
         assert self._semaphore is not None
-
         async with self._semaphore:
             await self._do_download(material_id)
 
     async def _do_download(self, material_id: str) -> None:
-        async with async_session_factory() as session:
+        assert self._session_factory is not None
+        async with self._session_factory() as session:
             row = await session.get(CachedMaterial, uuid.UUID(material_id))
             if row is None:
                 logger.warning(f"CachedMaterial {material_id} disappeared before download")
@@ -318,7 +378,7 @@ class MaterialDownloadService:
 
         ok, err = await asyncio.to_thread(self._download_to_path, url, target_path)
 
-        async with async_session_factory() as session:
+        async with self._session_factory() as session:
             row = await session.get(CachedMaterial, uuid.UUID(material_id))
             if row is None:
                 return
