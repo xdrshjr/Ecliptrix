@@ -360,6 +360,19 @@ class Settings(BaseModel):
         default="", description="Volcano TTS Secret Key"
     )
 
+    # Volcano ASR (Recording File Recognition / vc) Configuration
+    # Falls back to VOLCANO_TTS_* if not provided so older deployments keep working.
+    # NOTE: a Volcano APPID's TTS authorization is independent from its ASR
+    # authorization — when the same APPID does not have ASR enabled, transcription
+    # will fail. In that case set VOLCANO_ASR_* explicitly to an ASR-enabled APPID.
+    volcano_asr_appid: str = Field(default="", description="Volcano ASR App ID")
+    volcano_asr_access_token: str = Field(
+        default="", description="Volcano ASR Access Token"
+    )
+    volcano_asr_secret_key: str = Field(
+        default="", description="Volcano ASR Secret Key"
+    )
+
     # Volcano Voice Clone Configuration
     volcano_voice_clone_app_key: str = Field(
         default="", description="Volcano Voice Clone App Key (X-Api-App-Key)"
@@ -653,6 +666,15 @@ def get_settings() -> Settings:
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
+        volcano_asr_appid=os.getenv(
+            "VOLCANO_ASR_APPID", os.getenv("VOLCANO_TTS_APPID", "")
+        ),
+        volcano_asr_access_token=os.getenv(
+            "***REMOVED***", os.getenv("VOLCANO_TTS_ACCESS_TOKEN", "")
+        ),
+        volcano_asr_secret_key=os.getenv(
+            "VOLCANO_ASR_SECRET_KEY", os.getenv("VOLCANO_TTS_SECRET_KEY", "")
+        ),
         volcano_voice_clone_app_key=os.getenv(
             "VOLCANO_VOICE_CLONE_APP_KEY", os.getenv("VOLCANO_TTS_APPID", "")
         ),

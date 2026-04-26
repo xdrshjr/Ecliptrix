@@ -27,7 +27,9 @@ class AudioTranscriptionService:
 
     def __init__(self):
         """初始化音频转字幕服务"""
-        self.appid = settings.volcano_tts_appid
+        # ASR 凭据独立于 TTS：volcano_asr_* 在未设置时由 config.py 自动 fallback 到
+        # volcano_tts_*，保证旧部署不破坏；新部署可单独配置 ASR 凭据。
+        self.appid = settings.volcano_asr_appid
         self.access_token = ***REMOVED***
         self.secret_key = ***REMOVED***
         self.base_url = 'https://openspeech.bytedance.com/api/v1/vc'
@@ -38,10 +40,24 @@ class AudioTranscriptionService:
 
         # 验证配置
         if not all([self.appid, self.access_token, self.secret_key]):
-            logger.error("火山引擎API配置不完整")
-            raise ValueError("火山引擎API配置不完整，请检查环境变量")
+            logger.error("火山引擎ASR API配置不完整")
+            raise ValueError(
+                "火山引擎ASR API配置不完整，请检查 VOLCANO_ASR_* "
+                "(或回落使用的 VOLCANO_TTS_*) 环境变量"
+            )
 
-        logger.info("音频转字幕服务初始化完成")
+        # 启动时打印脱敏的 APPID，便于运维快速核对生效凭据
+        appid_masked = self._mask(self.appid)
+        logger.info(f"音频转字幕服务初始化完成，使用 ASR APPID={appid_masked}")
+
+    @staticmethod
+    def _mask(secret: str) -> str:
+        """对凭据做脱敏展示（只保留前 2 位 + 末 2 位）。"""
+        if not secret:
+            return ""
+        if len(secret) <= 4:
+            return "*" * len(secret)
+        return f"{secret[:2]}****{secret[-2:]}"
 
     def _resolve_local_path(self, url: str) -> Optional[str]:
         """
@@ -59,82 +75,103 @@ class AudioTranscriptionService:
                 return os.path.join(directory, filename)
         return None
 
-    def submit_audio(self, audio_path: str, language: str = "zh-CN", 
+    def submit_audio(self, audio_path: str, language: str = "zh-CN",
                     use_itn: bool = True, use_punc: bool = False,
-                    max_lines: int = 2, words_per_line: int = 15) -> Optional[str]:
+                    max_lines: int = 2, words_per_line: int = 15) -> str:
         """
-        提交音频到字幕生成API
-        
-        Args:
-            audio_path: 音频文件路径
-            language: 语言代码
-            use_itn: 是否使用逆文本规范化
-            use_punc: 是否使用标点符号
-            max_lines: 最大行数
-            words_per_line: 每行最大字数
-            
-        Returns:
-            任务ID，失败返回None
+        提交音频到字幕生成API。
+
+        成功时返回 ASR 任务 ID。失败时抛出带具体原因的 RuntimeError，
+        让上游 `process_audio_file` / `transcribe_audio_urls` 把真实错误透传到
+        响应体的 `error_message`，避免被笼统的 "提交音频失败" 文案掩盖。
         """
+        url = f"{self.base_url}/submit"
+        params = {
+            'appid': self.appid,
+            'language': language,
+            'use_itn': str(use_itn),
+            'use_punc': str(use_punc),
+            'max_lines': max_lines,
+            'words_per_line': words_per_line
+        }
+
+        logger.info(f"提交音频转字幕请求: {audio_path}, 参数: {params}")
+
+        # 读取音频文件
         try:
-            url = f"{self.base_url}/submit"
-            params = {
-                'appid': self.appid,
-                'language': language,
-                'use_itn': str(use_itn),
-                'use_punc': str(use_punc),
-                'max_lines': max_lines,
-                'words_per_line': words_per_line
-            }
-
-            logger.info(f"提交音频转字幕请求: {audio_path}, 参数: {params}")
-
-            # 读取音频文件并提交
             with open(audio_path, 'rb') as audio_file:
                 audio_data = audio_file.read()
-                
-                # Content-Type 根据文件扩展名判断
-                ext = os.path.splitext(audio_path)[1].lower()
-                content_type_map = {
-                    '.mp3': 'audio/mpeg',
-                    '.wav': 'audio/wav',
-                    '.ogg': 'audio/ogg',
-                    '.m4a': 'audio/mp4',
-                    '.aac': 'audio/aac',
-                }
-                content_type = content_type_map.get(ext, 'audio/mpeg')
-                headers = {
-                    'Authorization': f'Bearer;{self.access_token}',
-                    'Content-Type': content_type
-                }
+        except OSError as e:
+            logger.error(f"读取音频文件失败: {audio_path}, {e}")
+            raise RuntimeError(f"读取音频文件失败: {audio_path}: {e}") from e
 
-                response = requests.post(
-                    url,
-                    params=params,
-                    data=audio_data,
-                    headers=headers,
-                    timeout=30
-                )
+        # Content-Type 根据文件扩展名判断
+        ext = os.path.splitext(audio_path)[1].lower()
+        content_type_map = {
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+            '.ogg': 'audio/ogg',
+            '.m4a': 'audio/mp4',
+            '.aac': 'audio/aac',
+        }
+        content_type = content_type_map.get(ext, 'audio/mpeg')
+        headers = {
+            'Authorization': f'Bearer;{self.access_token}',
+            'Content-Type': content_type
+        }
 
-            logger.info(f"API响应状态码: {response.status_code}")
-            logger.debug(f"API响应内容: {response.text}")
+        # 提交到火山引擎 ASR
+        try:
+            response = requests.post(
+                url,
+                params=params,
+                data=audio_data,
+                headers=headers,
+                timeout=30
+            )
+        except requests.exceptions.RequestException as e:
+            logger.error(f"提交音频到 Volcano ASR 失败（网络/超时）: {e}")
+            raise RuntimeError(f"Volcano ASR 提交失败（网络/超时）: {e}") from e
 
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('message') == 'Success':
-                    job_id = result.get('id')
-                    logger.info(f"音频提交成功，任务ID: {job_id}")
-                    return job_id
-                else:
-                    logger.error(f"提交失败: {result.get('message')}")
-                    return None
-            else:
-                logger.error(f"HTTP请求失败: {response.status_code}, {response.text}")
-                return None
+        logger.info(f"API响应状态码: {response.status_code}")
+        logger.debug(f"API响应内容: {response.text}")
 
-        except Exception as e:
-            logger.error(f"提交音频失败: {str(e)}")
-            return None
+        if response.status_code != 200:
+            snippet = (response.text or "")[:200]
+            logger.error(
+                f"Volcano ASR HTTP 失败: status={response.status_code}, body={snippet}"
+            )
+            raise RuntimeError(
+                f"Volcano ASR HTTP 失败 (status={response.status_code}): {snippet}"
+            )
+
+        try:
+            result = response.json()
+        except ValueError as e:
+            logger.error(f"Volcano ASR 响应不是 JSON: {response.text[:200]}")
+            raise RuntimeError(
+                f"Volcano ASR 响应解析失败: {response.text[:200]}"
+            ) from e
+
+        if result.get('message') != 'Success':
+            api_message = result.get('message')
+            api_code = result.get('code')
+            logger.error(
+                f"Volcano ASR 业务失败: appid={self._mask(self.appid)}, "
+                f"code={api_code}, message={api_message}"
+            )
+            raise RuntimeError(
+                f"Volcano ASR 提交被拒绝: code={api_code}, message={api_message} "
+                f"(常见原因：APPID 未开通录音文件识别 (vc) 能力，或 AccessToken 不匹配)"
+            )
+
+        job_id = result.get('id')
+        if not job_id:
+            logger.error(f"Volcano ASR 返回 Success 但缺少 id: {result}")
+            raise RuntimeError(f"Volcano ASR 返回 Success 但缺少 id: {result}")
+
+        logger.info(f"音频提交成功，任务ID: {job_id}")
+        return job_id
 
     def query_result(self, job_id: str, max_retries: int = 30) -> Optional[Dict[str, Any]]:
         """
@@ -327,12 +364,10 @@ class AudioTranscriptionService:
             # 获取音频时长
             audio_duration = self.get_audio_duration(audio_path)
             
-            # 1. 提交音频到API
+            # 1. 提交音频到API（失败时 submit_audio 抛出带具体原因的 RuntimeError）
             job_id = self.submit_audio(
                 audio_path, language, use_itn, use_punc, max_lines, words_per_line
             )
-            if not job_id:
-                raise Exception("提交音频失败")
 
             # 2. 查询字幕结果
             subtitle_data = self.query_result(job_id)
