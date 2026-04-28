@@ -35,19 +35,63 @@ interface CacheEntry {
 // ---------------------------------------------------------------------------
 
 export interface VideoCacheConfig {
-  /** Maximum number of video elements to cache. Default: 10 */
+  /** Maximum number of video elements to cache. Default: 20 */
   maxCacheSize: number;
   /** Preload timeout in milliseconds. Default: 30000 (30s) */
   preloadTimeout: number;
   /** Whether to use LRU eviction. Default: true */
   enableLRU: boolean;
+  /**
+   * When true, only same-origin or `/api/storage/files/...` URLs are cached.
+   * Cross-origin URLs are silently no-op'd. Default: true.
+   *
+   * Why: the in-memory <video> cache is meant to absorb already-downloaded
+   * local files; preloading raw CDN URLs blows memory without giving the
+   * scrub path a measurable speed-up (the actual remote bytes still go
+   * through Range fetches). See R7 / Rev-8.
+   */
+  sameOriginOnly: boolean;
 }
 
 const DEFAULT_CONFIG: VideoCacheConfig = {
-  maxCacheSize: 10,
+  // Bumped from 10 → 20 to absorb a typical multi-track timeline of remote
+  // assets. evict() is reliable now (see Rev-9 / F29) so the larger pool
+  // doesn't leak DOM nodes.
+  maxCacheSize: 20,
   preloadTimeout: 30_000,
   enableLRU: true,
+  sameOriginOnly: true,
 };
+
+/**
+ * Decide whether a URL is "ours" — i.e. served by the same origin or via
+ * the `/api/storage/files/...` static mount that the backend exposes.
+ *
+ * Pure helper, exported for tests. SSR-safe: falls back to "same origin" if
+ * `window` is unavailable so unit tests in node don't drop everything.
+ */
+export function isSameOriginVideoUrl(url: string): boolean {
+  if (!url) return false;
+  // Relative paths under /api/storage/files/ are always same-origin once
+  // the browser resolves them.
+  if (url.startsWith('/api/storage/files/')) return true;
+  if (url.startsWith('/')) return true;
+  if (url.startsWith('blob:')) return true;
+  if (url.startsWith('data:')) return true;
+
+  if (typeof window === 'undefined') return true;
+  try {
+    const u = new URL(url);
+    if (u.origin === window.location.origin) return true;
+    // Also accept absolute URLs that point at our static mount.
+    if (u.pathname.startsWith('/api/storage/files/')) {
+      return u.host === window.location.host;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // VideoCacheAdapter implementation
@@ -88,6 +132,14 @@ export class VideoCacheAdapter implements IVideoCachePort {
         return existing.loadPromise;
       }
       return existing.state;
+    }
+
+    // Cross-origin URLs are skipped under the default config (see R7).
+    // They aren't an error — the playback path will just fall back to
+    // <video> streaming directly from the remote CDN. Returning
+    // 'not-found' keeps the API consistent with `getCacheState`.
+    if (this.config.sameOriginOnly && !isSameOriginVideoUrl(url)) {
+      return 'not-found';
     }
 
     // Evict if at capacity
@@ -217,19 +269,23 @@ export class VideoCacheAdapter implements IVideoCachePort {
 
   /**
    * Remove a specific material from the cache and clean up its DOM element.
+   *
+   * Order matters (see Rev-9 / F29):
+   *   1. pause() so any in-flight playback / network fetch stops.
+   *   2. Detach 'error' listener BEFORE we drop the src — Safari fires an
+   *      error event when removeAttribute('src') triggers a re-load() with
+   *      no source, and we don't want a stray onError to log the eviction.
+   *   3. removeAttribute('src') + load() to actually release any open Range
+   *      sockets and decode buffers (just `src=''` isn't enough on Chrome).
+   *   4. Detach from DOM.
+   *
+   * Skipping any step leaks: (1) keeps the network request alive, (3) keeps
+   * the video buffered in memory even after removal.
    */
   evict(materialId: string): void {
     const entry = this.cache.get(materialId);
     if (!entry) return;
-
-    // Remove from DOM
-    if (entry.element.parentNode) {
-      entry.element.parentNode.removeChild(entry.element);
-    }
-    // Release resources
-    entry.element.src = '';
-    entry.element.load();
-
+    this.disposeElement(entry.element);
     this.cache.delete(materialId);
   }
 
@@ -237,16 +293,30 @@ export class VideoCacheAdapter implements IVideoCachePort {
    * Clear all cached videos and release resources.
    */
   clearAll(): void {
-    this.cache.forEach((entry) => {
-      if (entry.element.parentNode) {
-        entry.element.parentNode.removeChild(entry.element);
-      }
-      entry.element.src = '';
-      entry.element.load();
-    });
+    this.cache.forEach((entry) => this.disposeElement(entry.element));
     this.cache.clear();
     this.totalRequests = 0;
     this.cacheHits = 0;
+  }
+
+  private disposeElement(el: HTMLVideoElement): void {
+    try {
+      el.pause();
+    } catch {
+      /* swallow: pausing on detached element can throw on some browsers */
+    }
+    // Wipe any external listeners we might have attached during preload to
+    // suppress the abort-error Safari raises during removeAttribute->load.
+    el.onerror = null;
+    el.removeAttribute('src');
+    try {
+      el.load();
+    } catch {
+      /* swallow: load() after removeAttribute can throw on rare engines */
+    }
+    if (el.parentNode) {
+      el.parentNode.removeChild(el);
+    }
   }
 
   // -----------------------------------------------------------------------
