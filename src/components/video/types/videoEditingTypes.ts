@@ -13,6 +13,10 @@ export interface VideoSequenceItem {
   id: string;
   name: string;
   url: string;
+  // 同源缓存路径（cached_materials 命中时由 CompositionAdapter 注入）。
+  // 仅供预览路径通过 selectPlaybackUrl(..., { purpose: 'preview' }) 消费；
+  // 导出路径必须读 url（远端原始 URL）。
+  cacheUrl?: string | null;
   startTime: number;
   duration: number;
   thumbnailUrl?: string;

@@ -165,6 +165,16 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     }
   }, []);
 
+  // 序列在浏览器中的预览播放 URL —— 与 <video>.src 设值口径保持一致。
+  // 凡 src 比对/赋值都必须走这里，避免 cacheUrl(同源) 与 url(远端) 混用导致
+  // normalizeVideoUrl 永不相等 → handleTimeUpdate 兜底刷屏 + seek/启动反复
+  // 重置 src 触发 play()/pause() AbortError。详见 da056df 回归。
+  const getSequencePreviewSrc = useCallback(
+    (seq: VideoSequenceItem): string =>
+      selectPlaybackUrl(seq, { purpose: 'preview' }) || seq.url,
+    []
+  );
+
   // 捕获当前视频帧到 canvas 并显示，防止 src 切换时黑屏
   const captureFrameToCanvas = useCallback(() => {
     const video = videoRef.current;
@@ -1004,7 +1014,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       
       // 检查状态中的序列是否与当前播放的视频URL匹配
       if (stateSequence &&
-          normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(stateSequence.url)) {
+          normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(stateSequence))) {
         // 状态序列匹配当前视频URL，直接使用
         actualSequenceIndex = stateSequenceIndex;
         currentSequence = stateSequence;
@@ -1027,7 +1037,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           const sequenceEndTime = accumulatedTime + sequence.duration;
           
           // 检查URL匹配且当前组合时间落在这个序列的时间范围内
-          if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(sequence.url) &&
+          if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(sequence)) &&
               compositionCurrentTime >= sequenceStartTime &&
               compositionCurrentTime < sequenceEndTime) {
             actualSequenceIndex = i;
@@ -1053,11 +1063,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         if (!foundSequence) {
           for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
             const sequence = compositionPlayback.videoSequences[i];
-            if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(sequence.url)) {
+            if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(sequence))) {
               actualSequenceIndex = i;
               currentSequence = sequence;
               foundSequence = true;
-              
+
               logger.warn('使用URL匹配回退方案（可能导致相同素材跳转问题）', {
                 sequenceIndex: i,
                 sequenceName: sequence.name,
@@ -1224,7 +1234,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, normalizeVideoUrl, syncAudioPlayback, preloadUpcomingSequences, logger, getCurrentVideoElement]);
+  }, [playbackMode, compositionPlayback, isCompositionPlaying, isPlaying, onCompositionTimeUpdate, onTimelineTimeUpdate, handleVideoEnded, normalizeVideoUrl, getSequencePreviewSrc, syncAudioPlayback, preloadUpcomingSequences, logger, getCurrentVideoElement]);
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
@@ -1303,7 +1313,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
               }
 
               const clampedVideoTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd));
-              const needsSourceChange = normalizeVideoUrl(currentVideo.src) !== normalizeVideoUrl(targetSequence.url);
+              const targetPreviewSrc = getSequencePreviewSrc(targetSequence);
+              const needsSourceChange = normalizeVideoUrl(currentVideo.src) !== normalizeVideoUrl(targetPreviewSrc);
 
               if (needsSourceChange) {
                 // 捕获当前帧到canvas，防止切换src时黑屏
@@ -1311,7 +1322,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 // 视频源不同，等待canplay后再播放
                 isSeekingRef.current = true;
                 const tid = ++transitionIdRef.current;
-                currentVideo.src = targetSequence.url;
+                currentVideo.src = targetPreviewSrc;
                 const handleLoaded = () => {
                   if (transitionIdRef.current !== tid) return;
                   if (videoRef.current) {
@@ -1404,7 +1415,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, logger]);
+  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, onCompositionPlayPause, handlePlayPause, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, logger]);
 
   // 新增：核心组合播放跳转函数，可被timeline和播放器UI调用
   const handleCompositionSeek = useCallback(async (
@@ -1435,21 +1446,22 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         const wasPlayingBefore = isCompositionPlaying;
         
         // 如果视频源不同，需要切换视频
-        const needsSwitchVideo = normalizeVideoUrl(videoRef.current.src) !== normalizeVideoUrl(targetSequence.url);
-        
+        const targetPreviewSrc = getSequencePreviewSrc(targetSequence);
+        const needsSwitchVideo = normalizeVideoUrl(videoRef.current.src) !== normalizeVideoUrl(targetPreviewSrc);
+
         if (needsSwitchVideo) {
           // 捕获当前帧到canvas，防止切换src时黑屏
           captureFrameToCanvas();
 
           logger.info('切换视频序列', {
             previousSrc: videoRef.current.src,
-            newSrc: targetSequence.url,
+            newSrc: targetPreviewSrc,
             sequenceName: targetSequence.name,
             wasPlayingBefore,
             source
           });
           const tid = ++transitionIdRef.current;
-          videoRef.current.src = targetSequence.url;
+          videoRef.current.src = targetPreviewSrc;
 
           // 如果需要切换视频源，等待视频加载完成再设置时间和播放状态
           const handleVideoLoaded = () => {
@@ -1561,7 +1573,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       onCompositionSeek(compositionTime);
     }
 
-  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, logger]);
+  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, logger]);
 
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
@@ -1725,13 +1737,14 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             }
           }
 
-          const needsSourceChange = normalizeVideoUrl(currentVideo.src) !== normalizeVideoUrl(targetSequence.url);
+          const targetPreviewSrc = getSequencePreviewSrc(targetSequence);
+          const needsSourceChange = normalizeVideoUrl(currentVideo.src) !== normalizeVideoUrl(targetPreviewSrc);
 
           if (needsSourceChange) {
             captureFrameToCanvas();
             isSeekingRef.current = true;
             const tid = ++transitionIdRef.current;
-            currentVideo.src = targetSequence.url;
+            currentVideo.src = targetPreviewSrc;
             const handleLoaded = () => {
               if (transitionIdRef.current !== tid) return;
               if (videoRef.current) {
@@ -1782,7 +1795,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       newState: getCurrentlyPlaying() ? '播放中' : '已暂停',
       finalVideoTime: getCurrentTime().toFixed(2)
     });
-  }, [getCurrentTime, getCurrentlyPlaying, playbackMode, compositionPlayback, compositionCurrentTime, handleCompositionSeek, handleTimeSeek, handlePlayPauseClick, syncAudioPlayback, normalizeVideoUrl, captureFrameToCanvas, hideCanvasBuffer, preloadUpcomingSequences, onCompositionPlayPause, onSequenceIndexUpdate, logger, getCurrentVideoElement]);
+  }, [getCurrentTime, getCurrentlyPlaying, playbackMode, compositionPlayback, compositionCurrentTime, handleCompositionSeek, handleTimeSeek, handlePlayPauseClick, syncAudioPlayback, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, preloadUpcomingSequences, onCompositionPlayPause, onSequenceIndexUpdate, logger, getCurrentVideoElement]);
 
   // 新增：通过ref暴露方法给父组件
   useImperativeHandle(ref, () => ({
