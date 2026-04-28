@@ -6,6 +6,7 @@ import { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useVideoExport } from '../../hooks/useVideoExport';
 import { useVideoCache } from '../../hooks/useVideoCache';
+import { selectPlaybackUrl } from '../../lib/selectPlaybackUrl';
 import VideoExportProgressModal from './VideoExportProgressModal';
 import ImageOverlay from './ImageOverlay';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -685,10 +686,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     if (playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 && videoRef.current) {
       const firstSequence = compositionPlayback.videoSequences[0];
       const clipStart = firstSequence.clipStart || 0;
-      
+
       // 检查是否需要更新视频源（避免重复设置相同的src）
       const currentSrc = videoRef.current.src;
-      const newSrc = firstSequence.url;
+      // 预览路径优先消费同源 cacheUrl（远程素材已被预下载到 cached_materials）；
+      // 仅 cacheUrl 缺失时回落到 serverUrl||url。导出路径不会经过这里。
+      const newSrc = selectPlaybackUrl(firstSequence, { purpose: 'preview' }) || firstSequence.url;
       const currentVideoTime = videoRef.current.currentTime;
       
       if (normalizeVideoUrl(currentSrc) !== normalizeVideoUrl(newSrc) || Math.abs(currentVideoTime - clipStart) > 0.1) {
@@ -732,11 +735,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 cacheState: firstSequence.materialId ? videoCache.getCacheState(firstSequence.materialId) : 'no-material-id'
               });
               
-              currentVideo.src = firstSequence.url;
+              // newSrc resolved above via selectPlaybackUrl(preview)
+              currentVideo.src = newSrc;
             }
           }
         }
-        
+
         // 设置到裁剪起始位置（或视频开始位置）
         const currentVideo = getCurrentVideoElement();
         if (currentVideo) {
@@ -808,7 +812,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     for (let i = startIndex; i < Math.min(startIndex + count, sequences.length); i++) {
       const seq = sequences[i];
       if (seq.materialId && videoCache.getCacheState(seq.materialId) === 'not-found') {
-        videoCache.preloadVideo(seq.url, seq.materialId).catch(() => {
+        // 仅同源缓存可被 VideoCacheAdapter 受控管理；通过 selectPlaybackUrl
+        // 把 cacheUrl 暴露出来后再入池可避免跨域资源浪费内存（T6 在 adapter
+        // 内部还会再做一次同源校验作为兜底）。
+        const previewSrc =
+          selectPlaybackUrl(seq, { purpose: 'preview' }) || seq.url;
+        videoCache.preloadVideo(previewSrc, seq.materialId).catch(() => {
           // 预加载失败不影响主流程
         });
       }
@@ -892,7 +901,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 containerStability: '容器尺寸已固定，防止切换闪烁'
               });
 
-              currentVideo.src = nextSequence.url;
+              // 预览路径走 selectPlaybackUrl，远程素材命中本地缓存时
+              // 直接读取 /api/storage/files/cached_materials/...；导出路径
+              // 不会调用这里，故 cacheUrl 不会污染合成请求。
+              currentVideo.src =
+                selectPlaybackUrl(nextSequence, { purpose: 'preview' }) ||
+                nextSequence.url;
             }
 
             // 等待视频加载完成后再播放，避免黑屏闪烁

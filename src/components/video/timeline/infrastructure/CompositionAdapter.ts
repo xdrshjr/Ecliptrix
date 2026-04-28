@@ -38,6 +38,13 @@ import type { TrackData, MaterialData } from '../domain/types';
  */
 export interface CompositionMaterialData extends MaterialData {
   serverUrl?: string;
+  /**
+   * Same-origin URL when the remote asset has been pre-downloaded into
+   * cached_materials. Forwarded into VideoSequenceItem.cacheUrl so the
+   * playback preview can swap to it via `selectPlaybackUrl`. Not used on
+   * the export composition path.
+   */
+  cacheUrl?: string;
   metadata?: {
     isWatermarkRemoved?: boolean;
     source?: string;
@@ -108,6 +115,11 @@ export class CompositionAdapter implements ICompositionPort {
           id: item.id,
           name: item.name,
           url: finalUrl,
+          // cacheUrl is an opt-in same-origin hint for the preview path.
+          // Down-stream consumers MUST gate it with selectPlaybackUrl(...,
+          // { purpose: 'preview' }) — the export builder reads `url`
+          // directly so it stays untouched here.
+          cacheUrl: material.cacheUrl,
           startTime: item.startTime,
           duration: item.duration,
           thumbnailUrl: item.thumbnailUrl || material.thumbnailUrl,

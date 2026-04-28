@@ -6,6 +6,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
 import { useVideoCache } from '../hooks/useVideoCache';
+import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
 import { useTimelineExport } from '../hooks/useTimelineExport';
 import {
   useTimelineStore,
@@ -412,9 +413,15 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
     // Trigger video preload
     if (material.type === 'video') {
-      const videoUrl = material.serverUrl || material.url;
-      if (videoUrl && material.id) {
-        videoCache.preloadVideo(videoUrl, material.id).catch(() => {});
+      // 优先预热同源 cacheUrl（远程素材已被 useRemoteMaterialPrefetch 预下载
+      // 到 cached_materials；命中后 <video> Range 走本地 200ms 内首字节）。
+      // 未命中时回落到 serverUrl||url，与历史行为一致。
+      const previewUrl =
+        selectPlaybackUrl(material, { purpose: 'preview' }) ||
+        material.serverUrl ||
+        material.url;
+      if (previewUrl && material.id) {
+        videoCache.preloadVideo(previewUrl, material.id).catch(() => {});
       }
     }
   }, [videoCache]);
