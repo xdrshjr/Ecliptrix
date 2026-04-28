@@ -245,6 +245,70 @@ class MaterialDownloadService:
                 return row.local_path
         return None
 
+    async def lookup_async(
+        self,
+        url: Optional[str] = None,
+        source: Optional[str] = None,
+        source_id: Optional[str] = None,
+    ) -> Optional[CachedMaterial]:
+        """Composite-key first, URL fallback. Returns the CachedMaterial row.
+
+        Pexels (and many CDNs) rotate query params on the source URL between
+        sessions, so searching by URL alone misses the cache. Whenever the
+        caller has the source identifier triple, prefer that.
+        """
+        return await self._dispatch(
+            self._lookup_impl(url=url, source=source, source_id=source_id)
+        )
+
+    async def _lookup_impl(
+        self,
+        url: Optional[str] = None,
+        source: Optional[str] = None,
+        source_id: Optional[str] = None,
+    ) -> Optional[CachedMaterial]:
+        if not (url or (source and source_id)):
+            return None
+        assert self._session_factory is not None
+        async with self._session_factory() as session:
+            row = None
+            if source and source_id:
+                stmt = select(CachedMaterial).where(
+                    CachedMaterial.source == source,
+                    CachedMaterial.source_id == str(source_id),
+                )
+                result = await session.execute(stmt)
+                row = result.scalar_one_or_none()
+            if row is None and url:
+                stmt = select(CachedMaterial).where(
+                    CachedMaterial.source_url == url,
+                )
+                result = await session.execute(stmt)
+                row = result.scalar_one_or_none()
+            return row
+
+    def local_url_for(self, row: Optional[CachedMaterial]) -> Optional[str]:
+        """Derive the same-origin static URL for a ready row.
+
+        Returns ``None`` unless the row is `ready` AND its local_path file
+        exists on disk. Front-end <video> consumes this directly via the
+        existing `/api/storage/files` mount — no new static mount is needed
+        because cached_materials lives under STORAGE_ROOT.
+        """
+        if row is None:
+            return None
+        if (row.status or "") != "ready":
+            return None
+        local_path = row.local_path or ""
+        if not local_path or not os.path.exists(local_path):
+            return None
+        file_name = os.path.basename(local_path)
+        # Defensive fallback: a row written with an empty source still resolves
+        # to /cached_materials/url/<file>, matching how `_target_path` would
+        # have routed an unsourced enqueue.
+        source = (row.source or "url").strip() or "url"
+        return f"/api/storage/files/cached_materials/{source}/{file_name}"
+
     def lookup_by_url(self, url: str) -> Optional[str]:
         """Sync helper for use inside ThreadPoolExecutor download workers.
 

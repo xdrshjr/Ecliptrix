@@ -196,6 +196,34 @@ async def _download_and_cache(
         local_url = f"/api/storage/files/video/ark/{today_str}/{local_filename}"
         video_relative_path = f"video/ark/{today_str}/{local_filename}"
 
+        # Write-through into the cached_materials table so the timeline preview
+        # pipeline (selectPlaybackUrl in the frontend) can resolve a same-origin
+        # `local_url` for this asset on the very next /api/material/lookup poll
+        # — without re-downloading the same file via ffmpeg. Failures here
+        # MUST NOT abort generation; they simply mean the preview falls back
+        # to the (still-valid) CDN URL.
+        try:
+            from app.services.material_download_service import (
+                get_material_download_service,
+            )
+
+            material_svc = get_material_download_service()
+            await material_svc.store_external_download_async(
+                url=video_remote_url,
+                local_path=local_path,
+                source="ark",
+                source_id=ark_task_id,
+            )
+            logger.info(
+                f"Background: Ark video {ark_task_id} cached for preview "
+                f"(source=ark, id={ark_task_id})"
+            )
+        except Exception as cache_exc:  # pragma: no cover - defensive
+            logger.warning(
+                f"Background: cached_materials write-back failed for {ark_task_id}: "
+                f"{cache_exc}"
+            )
+
         # Upload video to OSS (fall back to local URL on failure or when OSS is disabled)
         final_video_url = local_url
         oss_client = get_oss_client()
