@@ -14,6 +14,9 @@ export type { VideoCacheConfig } from './VideoCacheAdapter';
 export { CompositionAdapter } from './CompositionAdapter';
 export type { CompositionMaterialData } from './CompositionAdapter';
 
+export { RemoteMaterialPrefetchAdapter } from './RemoteMaterialPrefetchAdapter';
+export type { RemoteMaterialPrefetchConfig } from './RemoteMaterialPrefetchAdapter';
+
 // Errors
 export {
   TimelineExportError,

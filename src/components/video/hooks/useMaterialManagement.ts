@@ -10,6 +10,10 @@ import { generateArkImages, generateArkImagesWithPack, ArkImageGenerateParams } 
 import { generateStoryboard } from '@/lib/api/storyboard';
 import { useVideoEditingStore } from '@/stores';
 import { http, ApiError } from '@/lib/api/http-client';
+import {
+  useRemoteMaterialPrefetch,
+  type RemoteMaterialPatch,
+} from './useRemoteMaterialPrefetch';
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -1119,6 +1123,28 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     }
     return materials.filter(material => material.type === selectedMaterialType);
   }, [materials, selectedMaterialType]);
+
+  // 远程视频素材预缓存：识别远程 URL → 调用 /api/material/{ingest,lookup}
+  // 把同源 cacheUrl 写回到 MaterialItem 上，让 selectPlaybackUrl 能在预览
+  // 路径中替换为 /api/storage/files/cached_materials/...，移除 CDN 卡顿。
+  // 同时镜像到 Zustand 全局 store（materialSlice），方便时间轴 TimelineItem
+  // 等只读消费方读取 cacheStatus。
+  const updateStoreMaterial = useVideoEditingStore(state => state.updateMaterial);
+  const patchMaterialCache = useCallback(
+    (id: string, patch: RemoteMaterialPatch) => {
+      if (!isMountedRef.current) return;
+      setMaterials(prev =>
+        prev.map(m => (m.id === id ? { ...m, ...patch } : m))
+      );
+      try {
+        updateStoreMaterial(id, patch);
+      } catch {
+        // store entry may not exist for materials added only locally
+      }
+    },
+    [updateStoreMaterial],
+  );
+  useRemoteMaterialPrefetch(materials, patchMaterialCache);
 
   return {
     materials: filteredMaterials,
