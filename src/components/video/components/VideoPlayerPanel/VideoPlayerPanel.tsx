@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, useImperative
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
 import { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
+import { mapTimelineTimeToVideoTime } from '../../utils/timelineMapping';
 import { useVideoExport } from '../../hooks/useVideoExport';
 import { useVideoCache } from '../../hooks/useVideoCache';
 import { selectPlaybackUrl } from '../../lib/selectPlaybackUrl';
@@ -1429,11 +1430,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     // 设置跳转状态标记，防止handleTimeUpdate干扰
     isSeekingRef.current = true;
 
+    // 把 timeline-relative 的 videoTime 通过 clipStart/clipEnd 映射回视频文件
+    // 实际时间。否则当 sequence.clipStart > 0 时，videoRef.currentTime 会落在
+    // 裁剪点之前，timeupdate 把 timelineRelativeTime clamp 到 0，光标就会被
+    // 强制拉回片段开头。
+    const mappedVideoTime = mapTimelineTimeToVideoTime(targetSequence, videoTime);
+
     logger.userAction('组合播放视频跳转', source === 'timeline' ? 'timelineCompositionSeek' : 'playerCompositionSeek', {
       compositionTime: compositionTime.toFixed(2),
       targetSequenceName: targetSequence.name,
       targetSequenceUrl: targetSequence.url,
       videoTime: videoTime.toFixed(2),
+      mappedVideoTime: mappedVideoTime.toFixed(2),
       source,
       previousCompositionTime: compositionCurrentTime.toFixed(2),
       wasPlayingBefore: isCompositionPlaying,
@@ -1467,7 +1475,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           const handleVideoLoaded = () => {
             if (transitionIdRef.current !== tid) return; // 已被更新的过渡取代，忽略
             if (videoRef.current) {
-              videoRef.current.currentTime = videoTime;
+              videoRef.current.currentTime = mappedVideoTime;
               isSeekingRef.current = false;
               hideCanvasBuffer();
 
@@ -1515,7 +1523,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           ++transitionIdRef.current; // 作废上一次 src 切换的回调
           hideCanvasBuffer();        // 恢复 video opacity + 解锁容器
 
-          videoRef.current.currentTime = videoTime;
+          videoRef.current.currentTime = mappedVideoTime;
           isSeekingRef.current = false;
           
           // 如果之前是播放状态且当前已暂停，恢复播放
@@ -1725,11 +1733,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         const currentVideo = getCurrentVideoElement();
 
         if (targetSequence && currentVideo) {
-          const clipStart = targetSequence.clipStart || 0;
-          const clipEnd = targetSequence.clipEnd || targetSequence.originalDuration || targetSequence.duration;
-          const clipDuration = clipEnd - clipStart;
-          const actualVideoTime = clipStart + (targetVideoTime * clipDuration / targetSequence.duration);
-          const clampedVideoTime = Math.max(clipStart, Math.min(actualVideoTime, clipEnd));
+          const clampedVideoTime = mapTimelineTimeToVideoTime(targetSequence, targetVideoTime);
 
           if (compositionPlayback.currentSequenceIndex !== targetSequenceIndex) {
             if (onSequenceIndexUpdate) {
