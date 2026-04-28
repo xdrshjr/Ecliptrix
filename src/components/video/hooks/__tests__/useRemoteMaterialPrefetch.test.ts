@@ -184,6 +184,30 @@ describe('useRemoteMaterialPrefetch', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it('does NOT re-trigger when material already has cacheStatus=failed (breaks the failure-retry loop)', () => {
+    // Regression: before this guard, every failed-patch render re-entered
+    // the effect and re-issued ingest, producing a 401/5xx error storm in
+    // the browser console (origin of the /api/material/ingest 401 spam).
+    const adapter = makeAdapter({
+      source: 'pexels',
+      source_id: '12345',
+      material_id: '',
+      status: 'failed',
+      error_message: 'auth failed',
+    });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [makeMaterial({ cacheStatus: 'failed', cacheError: 'auth failed' })],
+        onPatch,
+        { adapter },
+      ),
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
   it('surfaces failed terminal state with cacheError', async () => {
     const adapter = makeAdapter({
       source: 'pexels',

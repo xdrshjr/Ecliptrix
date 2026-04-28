@@ -20,6 +20,7 @@
  * patches MaterialItem state.
  */
 
+import { http } from '@/lib/api/http-client';
 import type {
   IRemoteMaterialPrefetchPort,
   RemoteMaterialKey,
@@ -40,7 +41,12 @@ export interface RemoteMaterialPrefetchConfig {
   totalTimeoutMs: number;
   /** Backoff multiplier per attempt. Default 1.6. */
   backoffMultiplier: number;
-  /** Override fetch (test injection). Defaults to global fetch. */
+  /**
+   * Test-only seam: when provided, ingest()/lookup() bypass the http-client
+   * wrapper and call this directly. Production code must NEVER set this —
+   * it skips the project's mandated auth-injecting wrapper. Tests use it to
+   * mock the network without standing up localStorage/session state.
+   */
   fetchImpl?: typeof fetch;
   /** Override sleep (test injection). Defaults to setTimeout. */
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -55,6 +61,11 @@ const DEFAULT_CONFIG: Omit<Required<RemoteMaterialPrefetchConfig>, 'fetchImpl' |
   totalTimeoutMs: 5 * 60 * 1000,
   backoffMultiplier: 1.6,
 };
+
+interface IngestResponse {
+  success?: boolean;
+  items?: RemoteMaterialResult[];
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,7 +122,7 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
   private readonly config: Required<
     Omit<RemoteMaterialPrefetchConfig, 'fetchImpl' | 'sleepImpl'>
   > & {
-    fetchImpl: typeof fetch;
+    fetchImpl?: typeof fetch;
     sleepImpl: (ms: number, signal?: AbortSignal) => Promise<void>;
   };
 
@@ -127,7 +138,7 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
     this.config = {
       ...DEFAULT_CONFIG,
       ...opts,
-      fetchImpl: opts.fetchImpl ?? fetch.bind(globalThis),
+      fetchImpl: opts.fetchImpl,
       sleepImpl: opts.sleepImpl ?? defaultSleep,
     };
   }
@@ -137,31 +148,44 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
   async ingest(items: RemoteMaterialKey[]): Promise<RemoteMaterialResult[]> {
     if (!items || items.length === 0) return [];
 
-    const body = JSON.stringify({
+    const payload = {
       items: items.map((it) => ({
         source: it.source,
         source_id: it.source_id,
         url: it.url,
       })),
-    });
+    };
 
-    const resp = await this.config.fetchImpl('/api/material/ingest', {
+    // Production path: route through http-client so the Authorization header
+    // is injected and 401 triggers the global session-expired handler exactly
+    // once. Bypassing it (which the original adapter did with bare fetch) is
+    // what produced the 401 spam.
+    const json = this.config.fetchImpl
+      ? await this.fetchIngestRaw(payload)
+      : await http.post<IngestResponse>('/api/material/ingest', payload);
+
+    return Array.isArray(json.items) ? json.items : [];
+  }
+
+  /** Test-seam fallback that calls the injected raw fetch. */
+  private async fetchIngestRaw(payload: {
+    items: Array<{ source: string; source_id: string; url: string }>;
+  }): Promise<IngestResponse> {
+    const fetchImpl = this.config.fetchImpl;
+    if (!fetchImpl) {
+      throw new Error('fetchIngestRaw called without fetchImpl');
+    }
+    const resp = await fetchImpl('/api/material/ingest', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body,
+      body: JSON.stringify(payload),
     });
-
     if (!resp.ok) {
       throw new Error(
         `material/ingest failed: ${resp.status} ${resp.statusText}`,
       );
     }
-
-    const json = (await resp.json()) as {
-      success: boolean;
-      items: RemoteMaterialResult[];
-    };
-    return Array.isArray(json.items) ? json.items : [];
+    return (await resp.json()) as IngestResponse;
   }
 
   // ------------------------------------------------------ pollUntilReady
@@ -272,10 +296,16 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
       try {
         result = await this.lookup(key, signal);
       } catch (err) {
-        // Network blip — keep polling unless we're aborted/timed out.
+        // Network blip — keep polling unless the failure is fatal. Auth
+        // failures (MissingAuth/SessionExpired) MUST propagate so the hook
+        // marks cacheStatus='failed' once and bails — looping on 401 is what
+        // produced the original error spam.
         if (
           err instanceof Error &&
-          (err.name === 'AbortError' || err.name === 'TimeoutError')
+          (err.name === 'AbortError' ||
+            err.name === 'TimeoutError' ||
+            err.name === 'MissingAuthError' ||
+            err.name === 'SessionExpiredError')
         ) {
           throw err;
         }
@@ -309,12 +339,17 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
     if (key.source) params.set('source', key.source);
     if (key.source_id) params.set('source_id', key.source_id);
     if (key.url) params.set('url', key.url);
+    const path = `/api/material/lookup?${params.toString()}`;
 
-    const resp = await this.config.fetchImpl(
-      `/api/material/lookup?${params.toString()}`,
-      { method: 'GET', signal },
-    );
-    if (!resp.ok) return null;
-    return (await resp.json()) as RemoteMaterialResult;
+    if (this.config.fetchImpl) {
+      const resp = await this.config.fetchImpl(path, { method: 'GET', signal });
+      if (!resp.ok) return null;
+      return (await resp.json()) as RemoteMaterialResult;
+    }
+
+    // Production path: http-client injects auth and centralizes 401 handling.
+    // It throws ApiError on 4xx/5xx; runPoll's catch treats anything other
+    // than abort/timeout/auth as a transient blip and continues polling.
+    return await http.get<RemoteMaterialResult>(path, { signal });
   }
 }

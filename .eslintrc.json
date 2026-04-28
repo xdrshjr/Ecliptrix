@@ -8,6 +8,25 @@
     "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": "warn",
     "@typescript-eslint/no-explicit-any": "warn",
-    "react-hooks/exhaustive-deps": "warn"
-  }
+    "react-hooks/exhaustive-deps": "warn",
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.name='fetch'][arguments.0.type='Literal'][arguments.0.value=/^\\u002Fapi\\u002F/]",
+        "message": "Do not call fetch('/api/...') directly. Use the http-client wrapper from '@/lib/api/http-client' so the Authorization header is injected and 401 routes through the global session-expired handler. See src/lib/api/http-client.ts."
+      },
+      {
+        "selector": "CallExpression[callee.name='fetch'][arguments.0.type='TemplateLiteral'][arguments.0.quasis.0.value.raw=/^\\u002Fapi\\u002F/]",
+        "message": "Do not call fetch(`/api/...`) directly. Use the http-client wrapper from '@/lib/api/http-client'."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/app/api/**/*", "**/__tests__/**/*", "**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
 }

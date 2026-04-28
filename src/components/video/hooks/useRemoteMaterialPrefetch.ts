@@ -126,6 +126,11 @@ function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean
   if (material.cacheStatus === 'downloading' || material.cacheStatus === 'pending') {
     return false;
   }
+  // Terminal failure — do NOT auto-retry. Each failed prefetch patches
+  // cacheStatus='failed', which would otherwise re-enter this effect on the
+  // next render and re-issue ingest, producing a tight 401/5xx retry loop.
+  // The user can reset cacheStatus (or remove+re-add the material) to retry.
+  if (material.cacheStatus === 'failed') return false;
   return isRemote(material.url);
 }
 

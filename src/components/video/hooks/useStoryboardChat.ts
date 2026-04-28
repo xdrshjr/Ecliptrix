@@ -190,6 +190,7 @@ export function useStoryboardChat(
       let accumulatedReasoning = '';
       let wasAborted = false;
       try {
+        // eslint-disable-next-line no-restricted-syntax -- /api/chat is the streaming LLM passthrough route; it doesn't require session auth and uses a custom SSE reader that the http-client wrapper does not expose.
         const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
