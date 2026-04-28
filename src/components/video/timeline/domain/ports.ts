@@ -94,13 +94,97 @@ export interface IVideoCachePort {
 }
 
 // ---------------------------------------------------------------------------
+// IRemoteMaterialPrefetchPort — Remote material pre-download orchestration
+// ---------------------------------------------------------------------------
+
+/**
+ * Identifier triple for a cached_materials row. `source` is e.g. `pexels`,
+ * `unsplash`, `ark`, or `url`; `source_id` is the per-source stable id (e.g.
+ * Pexels video id, ARK video id, or a sha1 fingerprint of the URL).
+ */
+export interface RemoteMaterialKey {
+  source: string;
+  source_id: string;
+  url: string;
+}
+
+/** Backend `cached_materials.status` projection plus client-only hints. */
+export type RemoteMaterialCacheStatus =
+  | 'pending'
+  | 'downloading'
+  | 'ready'
+  | 'failed'
+  | 'missing';
+
+/**
+ * Wire shape returned by `/api/material/ingest` and `/api/material/lookup`.
+ * Mirrors the FastAPI `MaterialIngestResultEntry` model (see backend
+ * `app/routers/material_router.py`).
+ */
+export interface RemoteMaterialResult {
+  source: string;
+  source_id: string;
+  material_id: string;
+  status: RemoteMaterialCacheStatus | string;
+  local_path?: string | null;
+  /** Same-origin URL the browser can play directly. */
+  local_url?: string | null;
+  error_message?: string | null;
+}
+
+/** Progress callback contract — invoked between transitions. */
+export type RemoteMaterialProgressCallback = (
+  result: RemoteMaterialResult,
+) => void;
+
+export interface IRemoteMaterialPrefetchPort {
+  /**
+   * POST a batch to `/api/material/ingest`. Returns one entry per item in
+   * order, including `local_url` when the row is already `ready`.
+   */
+  ingest(items: RemoteMaterialKey[]): Promise<RemoteMaterialResult[]>;
+
+  /**
+   * Poll `/api/material/lookup` (preferring `(source, source_id)`, falling
+   * back to the URL) until the row is `ready` or `failed`, then resolve.
+   *
+   * MUST short-circuit when the prior `ingest` call already returned
+   * `status='ready' && local_url`, to avoid a wasted round-trip.
+   *
+   * @param signal AbortController signal; rejects with AbortError when fired.
+   * @param onProgress Optional patch callback; fires on each transition.
+   */
+  pollUntilReady(
+    key: RemoteMaterialKey,
+    options?: {
+      signal?: AbortSignal;
+      onProgress?: RemoteMaterialProgressCallback;
+    },
+  ): Promise<RemoteMaterialResult>;
+}
+
+// ---------------------------------------------------------------------------
 // Video/Audio Sequence Item shapes (used by ICompositionPort)
 // ---------------------------------------------------------------------------
 
 export interface VideoSequenceItem {
   id: string;
   name: string;
+  /**
+   * Export-safe URL for this sequence: `serverUrl || url`. The composition
+   * builder embeds this directly into the backend request, so it must
+   * resolve cross-session and outside the browser. Do NOT replace this with
+   * a same-origin cacheUrl — see R12 / Rev-7.
+   */
   url: string;
+  /**
+   * Optional same-origin URL pointing at the locally pre-cached file
+   * (`/api/storage/files/cached_materials/...`). Populated when the
+   * material has been ingested via `useRemoteMaterialPrefetch`. Consumed
+   * ONLY on the playback / scrub preview path through `selectPlaybackUrl`,
+   * never on the export composition path.
+   */
+  cacheUrl?: string;
   startTime: number;
   duration: number;
   thumbnailUrl?: string;

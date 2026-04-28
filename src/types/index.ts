@@ -665,6 +665,11 @@ export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'co
 // 上传状态类型
 export type MaterialUploadStatus = 'waiting' | 'uploading' | 'completed';
 
+// 远程素材本地缓存状态（来自 /api/material/{ingest,lookup}）
+// 与 downloadStatus 解耦：downloadStatus 表示前端可见的"用户行为"进度（生成/下载），
+// cacheStatus 表示后端 cached_materials 表里的预下载流水线状态。
+export type MaterialCacheStatus = 'idle' | 'pending' | 'downloading' | 'ready' | 'failed';
+
 export interface MaterialItem {
   id: string;
   name: string;
@@ -685,6 +690,11 @@ export interface MaterialItem {
   downloadProgress?: number; // 下载进度 (0-100)
   downloadError?: string; // 下载错误信息
   youtubeUrl?: string; // 原始Youtube URL
+  // 远程素材本地预缓存（cached_materials 表）状态。
+  // 字节进度复用 downloadProgress（不重复字段），见 phase2-development-plan-revised.md Rev-2
+  cacheStatus?: MaterialCacheStatus;
+  cacheUrl?: string; // 同源相对路径，例如 /api/storage/files/cached_materials/pexels/<file>.mp4
+  cacheError?: string; // 缓存失败时的简短错误信息
   // 新增：上传状态相关字段
   uploadStatus?: MaterialUploadStatus; // 上传状态
   uploadProgress?: number; // 上传进度 (0-100)
