@@ -822,23 +822,34 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   // Scroll sync between ruler and track container
   // ---------------------------------------------------------------------------
+  // 写入对方容器后，回读浏览器实际生效的 scrollLeft 作为兜底，
+  // 防止上游误传超出可滚动范围的值导致 Ruler / Track / store 三者错位。
   const handleRulerScroll = useCallback((scrollLeftVal: number) => {
     if (isScrollingSyncRef.current) return;
     isScrollingSyncRef.current = true;
+    let effective = scrollLeftVal;
     if (trackScrollRef.current) {
       trackScrollRef.current.scrollLeft = scrollLeftVal;
+      effective = trackScrollRef.current.scrollLeft;
+      if (rulerScrollRef.current && rulerScrollRef.current.scrollLeft !== effective) {
+        rulerScrollRef.current.scrollLeft = effective;
+      }
     }
-    useTimelineStore.getState().setScrollLeft(scrollLeftVal);
+    useTimelineStore.getState().setScrollLeft(effective);
     requestAnimationFrame(() => { isScrollingSyncRef.current = false; });
   }, []);
 
   const handleTrackScroll = useCallback((scrollLeftVal: number) => {
     if (isScrollingSyncRef.current) return;
     isScrollingSyncRef.current = true;
-    if (rulerScrollRef.current) {
-      rulerScrollRef.current.scrollLeft = scrollLeftVal;
+    let effective = scrollLeftVal;
+    if (trackScrollRef.current) {
+      effective = trackScrollRef.current.scrollLeft;
     }
-    useTimelineStore.getState().setScrollLeft(scrollLeftVal);
+    if (rulerScrollRef.current) {
+      rulerScrollRef.current.scrollLeft = effective;
+    }
+    useTimelineStore.getState().setScrollLeft(effective);
     requestAnimationFrame(() => { isScrollingSyncRef.current = false; });
   }, []);
 

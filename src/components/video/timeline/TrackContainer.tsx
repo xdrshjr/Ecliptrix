@@ -152,6 +152,18 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     });
   };
 
+  // 计算夹取后的 scrollLeft：同时处理下界(0)与上界(scrollWidth - clientWidth)，
+  // 避免拖到右端时 DOM 已停止但仍把"未夹取的更大值"传给 Ruler/store，导致标尺与轨道偏移。
+  const computeClampedScrollLeft = (
+    el: HTMLDivElement,
+    startScrollLeft: number,
+    deltaX: number,
+  ): number => {
+    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const raw = startScrollLeft - deltaX;
+    return Math.min(maxScrollLeft, Math.max(0, raw));
+  };
+
   // 处理鼠标移动事件
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!dragScrollState.isDragging) {
@@ -160,7 +172,11 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     }
     if (scrollRef?.current && onScroll) {
       const deltaX = e.clientX - dragScrollState.startX;
-      const newScrollLeft = Math.max(0, dragScrollState.startScrollLeft - deltaX);
+      const newScrollLeft = computeClampedScrollLeft(
+        scrollRef.current,
+        dragScrollState.startScrollLeft,
+        deltaX,
+      );
       scrollRef.current.scrollLeft = newScrollLeft;
       onScroll(newScrollLeft);
     }
@@ -177,9 +193,14 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       if (dragScrollState.isDragging && scrollRef?.current && onScroll) {
+        const el = scrollRef.current;
         const deltaX = e.clientX - dragScrollState.startX;
-        const newScrollLeft = Math.max(0, dragScrollState.startScrollLeft - deltaX);
-        scrollRef.current.scrollLeft = newScrollLeft;
+        const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+        const newScrollLeft = Math.min(
+          maxScrollLeft,
+          Math.max(0, dragScrollState.startScrollLeft - deltaX),
+        );
+        el.scrollLeft = newScrollLeft;
         onScroll(newScrollLeft);
       }
     };
