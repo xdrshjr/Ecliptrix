@@ -808,6 +808,14 @@ export interface Translations {
     downloadingVideo: string;
     downloadFailed: string;
     retryDownload: string;
+    cacheStatus: {
+      pending: string;
+      downloading: string;
+      ready: string;
+      failed: string;
+      retry: string;
+      scrubWaiting: string;
+    };
         aiAnalyzing: string;
     viewAnalysisResult: string;
     aiVideoAnalysis: string;
@@ -3188,6 +3196,14 @@ export const translations: Record<string, Translations> = {
       downloadingVideo: 'Downloading video...',
       downloadFailed: 'Download failed',
       retryDownload: 'Retry Download',
+      cacheStatus: {
+        pending: 'Queued for caching',
+        downloading: 'Caching for smooth preview',
+        ready: 'Cached locally',
+        failed: 'Cache failed',
+        retry: 'Click to retry',
+        scrubWaiting: 'Caching… preview may briefly pause',
+      },
       aiAnalyzing: 'AI analyzing...',
       viewAnalysisResult: 'View Analysis Result',
       aiVideoAnalysis: 'AI Video Analysis',
@@ -5724,6 +5740,14 @@ export const translations: Record<string, Translations> = {
       downloadingVideo: '正在下载视频...',
       downloadFailed: '下载失败',
       retryDownload: '重试下载',
+      cacheStatus: {
+        pending: '已加入缓存队列',
+        downloading: '正在缓存以保证流畅预览',
+        ready: '已缓存到本地',
+        failed: '缓存失败',
+        retry: '点击重试',
+        scrubWaiting: '正在缓存…预览可能会短暂暂停',
+      },
               aiAnalyzing: 'AI解析中...',
         viewAnalysisResult: '查看解析结果',
         aiVideoAnalysis: 'AI视频解析',

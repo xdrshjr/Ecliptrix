@@ -25,6 +25,7 @@ import { StoryboardPack, StoryboardFrame } from '@/types';
 import { listPacks, deletePack } from '@/lib/api/storyboard';
 import { listImagePacks, deleteImagePack, ImagePack } from '@/lib/api/imagePack';
 import { http, ApiError } from '@/lib/api/http-client';
+import MaterialCacheBadge from '../MaterialCacheBadge';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -2083,6 +2084,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                       </button>
                     </div>
                     
+                    {/* 远程素材预缓存徽章（仅 video 远程资源；同源素材不显示）*/}
+                    {material.type === 'video' && (
+                      <div className="absolute bottom-1 left-1 z-10">
+                        <MaterialCacheBadge
+                          material={material}
+                          onRetry={onRetryDownload ? () => onRetryDownload(material) : undefined}
+                        />
+                      </div>
+                    )}
+
                     {/* 右下角区域 - 时长和功能按钮 */}
                     <div className="absolute bottom-1 right-1 flex items-center space-x-1">
                       {/* AI素材解析按钮 - 对视频和图片素材显示 */}
