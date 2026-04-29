@@ -487,6 +487,11 @@ from app.routers import material_router
 
 app.include_router(material_router.router, prefix="/api")
 
+# Import and include Video Project router (per-user project list / cards)
+from app.routers import video_project_router
+
+app.include_router(video_project_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

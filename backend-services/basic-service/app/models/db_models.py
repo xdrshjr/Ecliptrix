@@ -147,6 +147,57 @@ class CachedMaterial(Base):
     )
 
 
+class VideoProjectCategory(Base):
+    """User-owned category for grouping video projects.
+
+    Categories are flat (no parent_id) for v1. Each category belongs to a
+    single user and is used to organise the user's video editing projects.
+    """
+    __tablename__ = "video_project_categories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    color = Column(String(20), nullable=True)  # Optional hex color tag
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_video_project_categories_user_sort", "user_id", "sort_order"),
+    )
+
+
+class VideoProject(Base):
+    """A persisted video editing project owned by a user.
+
+    The full ``VideoEditingTaskContent`` payload is stored as JSON in
+    ``project_data``. List endpoints return a projection that excludes this
+    column (it can be megabytes per row when materials are present).
+
+    ``last_opened_at`` is touched whenever the user opens the project so the
+    default 'recent' sort surfaces the most recently used projects first.
+    """
+    __tablename__ = "video_projects"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(36), nullable=False, index=True)
+    category_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    cover_url = Column(String(1000), nullable=True)
+    project_data = Column(JSON, nullable=True)  # Full VideoEditingTaskContent
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_opened_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_video_projects_user_updated", "user_id", "updated_at"),
+        Index("ix_video_projects_user_category", "user_id", "category_id"),
+        Index("ix_video_projects_user_lastopened", "user_id", "last_opened_at"),
+    )
+
+
 class SettingsAuditLog(Base):
     """Audit trail for settings changes."""
     __tablename__ = "settings_audit_log"

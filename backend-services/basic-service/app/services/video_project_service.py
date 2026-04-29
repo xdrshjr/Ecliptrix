@@ -1,0 +1,386 @@
+"""
+Service layer for the per-user Video Editing project list & cards feature.
+
+All public methods take an explicit ``user_id`` argument that the router has
+already derived from ``Depends(get_current_user)``. The service NEVER accepts
+``user_id`` from a request body. Cross-user reads return ``None`` (the router
+maps that to a 404 response — we do not leak existence with 403).
+"""
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID
+
+from sqlalchemy import or_, select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.logger import get_logger
+from app.models.db_models import VideoProject, VideoProjectCategory
+from app.models.video_project_models import (
+    CreateVideoProjectCategoryRequest,
+    CreateVideoProjectRequest,
+    UpdateVideoProjectCategoryRequest,
+    UpdateVideoProjectRequest,
+    VideoProjectCategoryRecord,
+    VideoProjectListItem,
+    VideoProjectRecord,
+)
+
+logger = get_logger(__name__)
+
+
+SortKey = str  # 'recent' | 'created' | 'name'
+
+
+def _iso(value: Optional[datetime]) -> str:
+    """Serialise a datetime to ISO-8601. Returns empty string when missing
+    (NEVER substitutes ``datetime.now()`` — that would falsely report the
+    current request time as a creation/update timestamp on a row whose
+    server-default hadn't materialised yet)."""
+    return value.isoformat() if value else ""
+
+
+def _as_uuid(value: Optional[str]) -> Optional[UUID]:
+    if value is None or value == "":
+        return None
+    try:
+        return UUID(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _category_to_record(row: VideoProjectCategory) -> VideoProjectCategoryRecord:
+    return VideoProjectCategoryRecord(
+        id=str(row.id),
+        name=row.name,
+        color=row.color,
+        sort_order=row.sort_order or 0,
+        created_at=_iso(row.created_at),
+        updated_at=_iso(row.updated_at),
+    )
+
+
+def _project_to_record(row: VideoProject) -> VideoProjectRecord:
+    return VideoProjectRecord(
+        id=str(row.id),
+        name=row.name,
+        description=row.description,
+        category_id=str(row.category_id) if row.category_id else None,
+        cover_url=row.cover_url,
+        project_data=row.project_data,
+        created_at=_iso(row.created_at),
+        updated_at=_iso(row.updated_at),
+        last_opened_at=row.last_opened_at.isoformat() if row.last_opened_at else None,
+    )
+
+
+def _project_to_list_item(row: VideoProject) -> VideoProjectListItem:
+    return VideoProjectListItem(
+        id=str(row.id),
+        name=row.name,
+        description=row.description,
+        category_id=str(row.category_id) if row.category_id else None,
+        cover_url=row.cover_url,
+        created_at=_iso(row.created_at),
+        updated_at=_iso(row.updated_at),
+        last_opened_at=row.last_opened_at.isoformat() if row.last_opened_at else None,
+    )
+
+
+class VideoProjectService:
+    """All business logic for video projects + their categories."""
+
+    # ------------------------------------------------------------------
+    # Categories
+    # ------------------------------------------------------------------
+
+    async def list_categories(
+        self,
+        db: AsyncSession,
+        user_id: str,
+    ) -> List[VideoProjectCategoryRecord]:
+        stmt = (
+            select(VideoProjectCategory)
+            .where(VideoProjectCategory.user_id == user_id)
+            .order_by(
+                VideoProjectCategory.sort_order.asc(),
+                VideoProjectCategory.created_at.asc(),
+            )
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+        return [_category_to_record(row) for row in rows]
+
+    async def create_category(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        payload: CreateVideoProjectCategoryRequest,
+    ) -> VideoProjectCategoryRecord:
+        category = VideoProjectCategory(
+            user_id=user_id,
+            name=payload.name.strip(),
+            color=payload.color,
+            sort_order=payload.sort_order or 0,
+        )
+        db.add(category)
+        await db.flush()
+        await db.refresh(category)
+        logger.info(
+            "Created video project category",
+            {"user_id": user_id, "category_id": str(category.id)},
+        )
+        return _category_to_record(category)
+
+    async def update_category(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        category_id: str,
+        payload: UpdateVideoProjectCategoryRequest,
+    ) -> Optional[VideoProjectCategoryRecord]:
+        cat_uuid = _as_uuid(category_id)
+        if cat_uuid is None:
+            return None
+        stmt = (
+            select(VideoProjectCategory)
+            .where(
+                VideoProjectCategory.id == cat_uuid,
+                VideoProjectCategory.user_id == user_id,
+            )
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return None
+        if payload.name is not None:
+            row.name = payload.name.strip()
+        if payload.color is not None:
+            row.color = payload.color
+        if payload.sort_order is not None:
+            row.sort_order = payload.sort_order
+        await db.flush()
+        await db.refresh(row)
+        return _category_to_record(row)
+
+    async def delete_category(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        category_id: str,
+    ) -> bool:
+        """Delete a category. Projects in this category have category_id set
+        to NULL (they are not deleted alongside the category)."""
+        cat_uuid = _as_uuid(category_id)
+        if cat_uuid is None:
+            return False
+        stmt = (
+            select(VideoProjectCategory)
+            .where(
+                VideoProjectCategory.id == cat_uuid,
+                VideoProjectCategory.user_id == user_id,
+            )
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return False
+
+        # Unlink any project still pointing at this category (set to NULL)
+        proj_stmt = (
+            select(VideoProject)
+            .where(
+                VideoProject.user_id == user_id,
+                VideoProject.category_id == cat_uuid,
+            )
+        )
+        projects = (await db.execute(proj_stmt)).scalars().all()
+        for project in projects:
+            project.category_id = None
+
+        await db.delete(row)
+        await db.flush()
+        return True
+
+    # ------------------------------------------------------------------
+    # Projects
+    # ------------------------------------------------------------------
+
+    async def list_projects(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        category_id: Optional[str] = None,
+        search: Optional[str] = None,
+        sort: SortKey = "recent",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Tuple[List[VideoProjectListItem], int]:
+        """Returns (items, total). ``project_data`` is intentionally excluded
+        from the projection — list endpoints must stay light.
+        """
+        # Clamp pagination defensively
+        limit = max(1, min(int(limit or 100), 200))
+        offset = max(0, int(offset or 0))
+
+        filters = [VideoProject.user_id == user_id]
+
+        if category_id is not None and category_id != "":
+            cat_uuid = _as_uuid(category_id)
+            if cat_uuid is not None:
+                filters.append(VideoProject.category_id == cat_uuid)
+            else:
+                # Special token "__uncategorized__" matches NULL category
+                if category_id == "__uncategorized__":
+                    filters.append(VideoProject.category_id.is_(None))
+                else:
+                    # Unknown token → return empty but don't error
+                    return [], 0
+
+        if search:
+            term = f"%{search.strip().lower()}%"
+            filters.append(
+                or_(
+                    func.lower(VideoProject.name).like(term),
+                    func.lower(func.coalesce(VideoProject.description, "")).like(term),
+                )
+            )
+
+        # Total count for pagination
+        count_stmt = select(func.count(VideoProject.id)).where(*filters)
+        total = int((await db.execute(count_stmt)).scalar_one() or 0)
+
+        # Sort selection
+        if sort == "name":
+            order = (VideoProject.name.asc(),)
+        elif sort == "created":
+            order = (VideoProject.created_at.desc(),)
+        else:  # 'recent' (default)
+            # last_opened_at first, then updated_at as fallback for never-opened rows
+            order = (
+                VideoProject.last_opened_at.desc().nullslast()
+                if hasattr(VideoProject.last_opened_at.desc(), "nullslast")
+                else VideoProject.last_opened_at.desc(),
+                VideoProject.updated_at.desc(),
+            )
+
+        stmt = (
+            select(VideoProject)
+            .where(*filters)
+            .order_by(*order)
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+        items = [_project_to_list_item(row) for row in rows]
+        return items, total
+
+    async def create_project(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        payload: CreateVideoProjectRequest,
+    ) -> VideoProjectRecord:
+        project = VideoProject(
+            user_id=user_id,
+            name=payload.name.strip(),
+            description=payload.description,
+            category_id=_as_uuid(payload.category_id),
+            cover_url=payload.cover_url,
+            project_data=payload.project_data or {},
+        )
+        db.add(project)
+        await db.flush()
+        await db.refresh(project)
+        logger.info(
+            "Created video project",
+            {"user_id": user_id, "project_id": str(project.id)},
+        )
+        return _project_to_record(project)
+
+    async def get_project(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        project_id: str,
+        touch_last_opened: bool = True,
+    ) -> Optional[VideoProjectRecord]:
+        proj_uuid = _as_uuid(project_id)
+        if proj_uuid is None:
+            return None
+        stmt = (
+            select(VideoProject)
+            .where(
+                VideoProject.id == proj_uuid,
+                VideoProject.user_id == user_id,
+            )
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return None
+        if touch_last_opened:
+            row.last_opened_at = datetime.now(timezone.utc)
+            await db.flush()
+            await db.refresh(row)
+        return _project_to_record(row)
+
+    async def update_project(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        project_id: str,
+        payload: UpdateVideoProjectRequest,
+    ) -> Optional[VideoProjectRecord]:
+        proj_uuid = _as_uuid(project_id)
+        if proj_uuid is None:
+            return None
+        stmt = (
+            select(VideoProject)
+            .where(
+                VideoProject.id == proj_uuid,
+                VideoProject.user_id == user_id,
+            )
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return None
+
+        if payload.name is not None:
+            row.name = payload.name.strip()
+        if payload.description is not None:
+            row.description = payload.description
+        if payload.category_id is not None:
+            # Empty string = unassign category
+            row.category_id = _as_uuid(payload.category_id) if payload.category_id else None
+        if payload.cover_url is not None:
+            row.cover_url = payload.cover_url
+        if payload.project_data is not None:
+            row.project_data = payload.project_data
+
+        await db.flush()
+        await db.refresh(row)
+        return _project_to_record(row)
+
+    async def delete_project(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        project_id: str,
+    ) -> bool:
+        proj_uuid = _as_uuid(project_id)
+        if proj_uuid is None:
+            return False
+        stmt = (
+            select(VideoProject)
+            .where(
+                VideoProject.id == proj_uuid,
+                VideoProject.user_id == user_id,
+            )
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return False
+        await db.delete(row)
+        await db.flush()
+        return True
+
+
+# Module-level singleton
+video_project_service = VideoProjectService()
