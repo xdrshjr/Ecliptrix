@@ -4,6 +4,7 @@ import { UseTimelineCompositionReturn, VideoSequenceItem, AudioSequenceItem, Com
 import { VideoEditingLogger } from '../utils';
 import { CompositionAdapter } from '../timeline/infrastructure';
 import type { TrackData, MaterialData } from '../timeline/domain/types';
+import { findSequenceAtCompositionTime } from '../utils/timelineMapping';
 
 /**
  * useTimelineComposition Hook
@@ -130,25 +131,10 @@ export const useTimelineComposition = (
   // 组合时间跳转
   const handleCompositionSeek = useCallback(async (time: number) => {
     const clampedTime = Math.max(0, Math.min(time, compositionPlayback.totalCompositionDuration));
-
-    // 计算当前应该播放的序列索引和视频内时间
-    let currentSequenceIndex = 0;
-    let accumulatedTime = 0;
-    let targetVideoTime = clampedTime;
-
-    for (let i = 0; i < compositionPlayback.videoSequences.length; i++) {
-      const sequence = compositionPlayback.videoSequences[i];
-      if (accumulatedTime + sequence.duration > clampedTime) {
-        currentSequenceIndex = i;
-        targetVideoTime = clampedTime - accumulatedTime;
-        break;
-      }
-      accumulatedTime += sequence.duration;
-      currentSequenceIndex = i + 1;
-    }
-
-    // 获取目标序列
-    const targetSequence = compositionPlayback.videoSequences[currentSequenceIndex];
+    const target = findSequenceAtCompositionTime(compositionPlayback.videoSequences, clampedTime);
+    const currentSequenceIndex = target?.index ?? 0;
+    const targetVideoTime = target?.offset ?? 0;
+    const targetSequence = target?.sequence;
 
     if (onVideoSeekRequired && targetSequence) {
       // 关键：在 await 之前同步写入 currentSequenceIndex。
