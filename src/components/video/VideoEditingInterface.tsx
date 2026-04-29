@@ -702,7 +702,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const imageSearch = useImageSearch(taskId, materialManagement.addMaterials);
   
   // 添加时间轴组合播放功能（新增视频跳转回调）
-  const timelineComposition = useTimelineComposition(taskId, materialManagement.materials, handleVideoSeekRequired);
+  // 使用 allMaterials：组合播放需要解析所有素材的 URL，不能受 MaterialsPanel 的类型筛选影响
+  const timelineComposition = useTimelineComposition(taskId, materialManagement.allMaterials, handleVideoSeekRequired);
   
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
@@ -1415,12 +1416,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const handleBatchVideoAnalysis = useCallback(async () => {
     console.log(`[VideoEditingInterface] 点击批量解析按钮`, {
       taskId,
-      totalMaterialsCount: materialManagement.materials.length,
+      totalMaterialsCount: materialManagement.allMaterials.length,
       timestamp: new Date().toISOString()
     });
 
-    // 筛选所有视频素材
-    const videoMaterials = materialManagement.materials.filter(material => {
+    // 筛选所有视频素材（使用 allMaterials：批量解析应覆盖全部素材，不受类型筛选影响）
+    const videoMaterials = materialManagement.allMaterials.filter(material => {
       return material.type === 'video' && material.url;
     });
 
@@ -1428,7 +1429,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     if (videoMaterials.length === 0) {
       console.warn(`[VideoEditingInterface] 没有找到可解析的视频素材`, {
         taskId,
-        totalMaterials: materialManagement.materials.length
+        totalMaterials: materialManagement.allMaterials.length
       });
       showError('当前没有视频素材可供解析，请先上传视频素材', 5000);
       return;
@@ -1442,7 +1443,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     // 打开模式选择弹窗
     setIsBatchAnalysisModalOpen(true);
-  }, [taskId, materialManagement.materials, showError]);
+  }, [taskId, materialManagement.allMaterials, showError]);
 
   // 处理批量解析模式确认
   const handleBatchAnalysisConfirm = useCallback(async (mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
@@ -1456,8 +1457,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // 关闭模式选择弹窗
     setIsBatchAnalysisModalOpen(false);
 
-    // 筛选所有视频素材
-    const videoMaterials = materialManagement.materials.filter(material => {
+    // 筛选所有视频素材（使用 allMaterials：批量解析应覆盖全部素材，不受类型筛选影响）
+    const videoMaterials = materialManagement.allMaterials.filter(material => {
       return material.type === 'video' && material.url;
     });
 
@@ -1495,7 +1496,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       videoCount: videoMaterials.length,
       mode: mode.type
     });
-  }, [taskId, materialManagement.materials, videoAnalysis, handleVideoAnalysis]);
+  }, [taskId, materialManagement.allMaterials, videoAnalysis, handleVideoAnalysis]);
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
@@ -1763,8 +1764,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      // 获取现有素材
-      const existingMaterials = materialManagement.materials;
+      // 获取现有素材（使用 allMaterials：URL 去重应覆盖被类型筛选隐藏的素材，避免重复导入）
+      const existingMaterials = materialManagement.allMaterials;
       const existingUrls = new Set(existingMaterials.map(m => m.url));
 
       // 过滤掉已存在的素材（根据URL去重）
@@ -1846,30 +1847,30 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const handleAutoMixAudio = useCallback(() => {
     console.log(`[VideoEditingInterface] 开始AI自动混剪`, {
       taskId,
-      totalMaterialsCount: materialManagement.materials.length,
+      totalMaterialsCount: materialManagement.allMaterials.length,
       timestamp: new Date().toISOString()
     });
 
-    // 筛选从文本脚本转换的音频素材
-    const scriptAudioMaterials = materialManagement.materials.filter(material => {
+    // 筛选从文本脚本转换的音频素材（使用 allMaterials：自动混剪需要音频+视频，类型筛选会丢素材）
+    const scriptAudioMaterials = materialManagement.allMaterials.filter(material => {
       const isAudio = material.type === 'audio';
       const hasSegmentId = material.metadata?.segment_id;
       const hasSegmentNumber = typeof material.metadata?.segment_number === 'number';
-      
+
       return isAudio && hasSegmentId && hasSegmentNumber;
     });
 
-    // 筛选从文本脚本关联的视频素材
-    const scriptVideoMaterials = materialManagement.materials.filter(material => {
+    // 筛选从文本脚本关联的视频素材（使用 allMaterials：同上）
+    const scriptVideoMaterials = materialManagement.allMaterials.filter(material => {
       const isVideo = material.type === 'video';
       const hasSegmentId = material.metadata?.segment_id;
       const hasSegmentNumber = typeof material.metadata?.segment_number === 'number';
-      
+
       return isVideo && hasSegmentId && hasSegmentNumber;
     });
 
     console.log(`[VideoEditingInterface] 筛选出脚本素材`, {
-      totalMaterials: materialManagement.materials.length,
+      totalMaterials: materialManagement.allMaterials.length,
       scriptAudioCount: scriptAudioMaterials.length,
       scriptVideoCount: scriptVideoMaterials.length,
       audioMaterials: scriptAudioMaterials.map(m => ({
@@ -1893,10 +1894,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         taskId,
         troubleshooting: {
           message: '请确保：1) 已完成文本转语音 2) 已完成AI匹配视频 3) 素材包含正确的segment_id和segment_number元数据',
-          audioMaterialsWithSegmentData: materialManagement.materials.filter(m => m.type === 'audio' && m.metadata?.segment_id).length,
-          videoMaterialsWithSegmentData: materialManagement.materials.filter(m => m.type === 'video' && m.metadata?.segment_id).length
+          audioMaterialsWithSegmentData: materialManagement.allMaterials.filter(m => m.type === 'audio' && m.metadata?.segment_id).length,
+          videoMaterialsWithSegmentData: materialManagement.allMaterials.filter(m => m.type === 'video' && m.metadata?.segment_id).length
         },
-        availableMaterials: materialManagement.materials.map(m => ({
+        availableMaterials: materialManagement.allMaterials.map(m => ({
           id: m.id,
           name: m.name,
           type: m.type,
@@ -1944,17 +1945,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     // 合并音频和视频素材为一个数组，不指定targetTrackId，让handleMaterialDrop根据素材类型自动选择轨道
     // 这样避免了两次setMaterialsToAddToTimeline之间的状态覆盖问题
-    const allMaterials = [...sortedAudioMaterials, ...sortedVideoMaterials];
+    const combinedMaterials = [...sortedAudioMaterials, ...sortedVideoMaterials];
 
-    if (allMaterials.length > 0) {
+    if (combinedMaterials.length > 0) {
       setMaterialsToAddToTimeline({
-        materials: allMaterials,
+        materials: combinedMaterials,
         // 不指定targetTrackId，让每个素材根据类型自动路由到对应轨道（音频→audio-track, 视频→video-track）
         timestamp: Date.now()
       });
 
       console.log(`[VideoEditingInterface] 素材添加请求已发送（音频+视频合并）`, {
-        totalCount: allMaterials.length,
+        totalCount: combinedMaterials.length,
         audioCount: sortedAudioMaterials.length,
         videoCount: sortedVideoMaterials.length,
         timestamp: Date.now()
@@ -1964,21 +1965,21 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     console.log(`[VideoEditingInterface] AI自动混剪请求完成`, {
       audioMaterialsCount: sortedAudioMaterials.length,
       videoMaterialsCount: sortedVideoMaterials.length,
-      totalMaterialsProcessed: allMaterials.length,
+      totalMaterialsProcessed: combinedMaterials.length,
       timestamp: Date.now()
     });
-  }, [taskId, materialManagement.materials]);
+  }, [taskId, materialManagement.allMaterials]);
 
   // 新增：AI混剪功能 - 显示模式选择弹窗
   const handleAIMixedEditing = useCallback(() => {
     console.log(`[VideoEditingInterface] 点击AI混剪按钮`, {
       taskId,
-      totalMaterialsCount: materialManagement.materials.length,
+      totalMaterialsCount: materialManagement.allMaterials.length,
       timestamp: new Date().toISOString()
     });
 
-    // 检查是否有素材
-    if (materialManagement.materials.length === 0) {
+    // 检查是否有素材（使用 allMaterials：MaterialsPanel 类型筛选不应让按钮误判为"无素材"）
+    if (materialManagement.allMaterials.length === 0) {
       console.warn(`[VideoEditingInterface] 无素材可用于AI混剪`, { taskId });
       showError('无素材可用于AI混剪，请先添加视频、音频或图片素材', 5000);
       return;
@@ -1986,14 +1987,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     // 显示模式选择弹窗
     setIsAIMixingModeModalOpen(true);
-  }, [taskId, materialManagement.materials.length, showError]);
+  }, [taskId, materialManagement.allMaterials.length, showError]);
 
   // 新增：执行AI混剪的实际逻辑
   const executeAIMixedEditing = useCallback(async (mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
     console.log(`[VideoEditingInterface] 开始执行AI混剪`, {
       taskId,
       mode,
-      totalMaterialsCount: materialManagement.materials.length,
+      totalMaterialsCount: materialManagement.allMaterials.length,
       timestamp: new Date().toISOString()
     });
 
@@ -2015,7 +2016,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     try {
             // 第一步：如果有视频素材，先进行并行视频分析
-      const videoMaterials = materialManagement.materials.filter(m => m.type === 'video');
+            // 使用 allMaterials：AI 混剪需要覆盖全部视频素材，不受 MaterialsPanel 类型筛选影响
+      const videoMaterials = materialManagement.allMaterials.filter(m => m.type === 'video');
       
       if (videoMaterials.length > 0) {
         console.log(`[VideoEditingInterface] 开始批量视频分析阶段（AI混剪模式）`, {
@@ -2075,9 +2077,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         }
       }
 
-      // 第二步：执行AI混剪
+      // 第二步：执行AI混剪（使用 allMaterials：AI 混剪 API 需要看到全部素材）
       console.log(`[VideoEditingInterface] 开始AI混剪阶段`, {
-        materials: materialManagement.materials.map(m => ({
+        materials: materialManagement.allMaterials.map(m => ({
           id: m.id,
           name: m.name,
           type: m.type,
@@ -2090,7 +2092,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       try {
         result = await http.post<any>('/api/ai-mixed-editing', {
           taskId: taskId,
-          materials: materialManagement.materials
+          materials: materialManagement.allMaterials
         }, { timeoutMs: 600_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
@@ -2229,7 +2231,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       });
       showError(`AI混剪失败: ${error instanceof Error ? error.message : String(error)}`, 8000);
     }
-  }, [taskId, materialManagement.materials, showSuccess, showError, handleImportComplete]);
+  }, [taskId, materialManagement.allMaterials, showSuccess, showError, handleImportComplete]);
 
   // 处理AI混剪模式选择弹窗的确认
   const handleAIMixingModeConfirm = useCallback((mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
@@ -2535,7 +2537,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     activeConversationId: content?.activeConversationId,
     timelineState: currentTimelineState,
     setTimelineState: setCurrentTimelineState,
-    materials: materialManagement.materials,
+    // 使用 allMaterials：Agent 执行需要看到全部素材，不能因 MaterialsPanel 的类型筛选丢素材
+    materials: materialManagement.allMaterials,
     onTimelineUpdate: (id) => setExternalTimelineUpdateId(id),
     onNotification: (type, message) => {
       if (type === 'error') showError(message);
@@ -3076,7 +3079,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onUndoAll={agent.undoAllOperations}
           onUndoSingle={agent.undoSingleOperation}
           onCancel={agent.cancelExecution}
-          hasMaterials={materialManagement.materials.length > 0}
+          hasMaterials={materialManagement.allMaterials.length > 0}
         />
       </div>
 
@@ -3094,7 +3097,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
               onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
               taskId={taskId}
-              materials={materialManagement.materials}
+              // 使用 allMaterials：ScriptPanel 内部按 type 过滤素材用于音频/视频匹配，
+              // 类型筛选会让跨类型匹配丢素材
+              materials={materialManagement.allMaterials}
               getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
               aiVideoScriptSegments={content?.aiVideoScriptSegments || []}
               onUpdateAIVideoScriptSegments={handleUpdateAIVideoScriptSegments}
@@ -3141,7 +3146,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               currentTimelineTime={timelineCurrentTime}
               onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
               timelineState={currentTimelineState || undefined}
-              materials={materialManagement.materials}
+              // 使用 allMaterials：导出依赖此 prop 解析音频/视频素材的 URL，类型筛选会导致跨类型素材 miss
+              materials={materialManagement.allMaterials}
               onImagePositionChange={handleImagePositionChange}
             />
           </div>
@@ -3157,7 +3163,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onTimelineStateChange={handleTimelineStateChange}
             externalCurrentTime={timelineCurrentTime}
             onCurrentTimeChange={handleTimelineTimeChange}
-            materials={materialManagement.materials}
+            // 使用 allMaterials：时间轴需要按 materialId 解析任意类型素材，类型筛选会丢素材
+            materials={materialManagement.allMaterials}
             onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
             materialsToAdd={materialsToAddToTimeline}
             taskId={taskId}
@@ -3217,7 +3224,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       <ConvertToScriptModal
         isOpen={convertToScript.isModalOpen}
         onClose={convertToScript.closeModal}
-        materials={materialManagement.materials}
+        materials={materialManagement.allMaterials}
         taskId={taskId}
         chatContent={convertToScript.chatContent}
         onGenerateScript={convertToScript.generateScript}
@@ -3236,7 +3243,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       <VideoUnderstandingScriptModal
         isOpen={videoUnderstandingScript.isModalOpen}
         onClose={videoUnderstandingScript.closeModal}
-        materials={materialManagement.materials}
+        materials={materialManagement.allMaterials}
         taskId={taskId}
         onGenerateScript={videoUnderstandingScript.generateScript}
         isGenerating={videoUnderstandingScript.isGenerating}
