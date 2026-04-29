@@ -53,6 +53,13 @@ export function useProjectAutosave(
   const contentRef = useRef<VideoEditingTaskContent | null>(content);
   const projectIdRef = useRef<string | null>(projectId);
   const optsRef = useRef(opts);
+  // Tracks the project for which the hydrate-baseline has already been
+  // captured. The first non-empty `json` we see for a given projectId is
+  // the rehydrated content (timeline + UI state from the backend); it must
+  // not trigger a PUT, otherwise opening any saved project causes a noop
+  // round-trip and burns autosave noise. After this fires once, normal
+  // skip-equal handling (`json === lastSavedJsonRef.current`) takes over.
+  const baselineInitProjectIdRef = useRef<string | null>(null);
 
   // Keep refs current on every render (cheap, no effect needed).
   contentRef.current = content;
@@ -65,6 +72,7 @@ export function useProjectAutosave(
     lastSavedJsonRef.current = '';
     lastSaveAtRef.current = Date.now();
     dirtyRef.current = false;
+    baselineInitProjectIdRef.current = null;
   }, [projectId]);
 
   // The save routine — reads from refs so it can be re-driven without
@@ -141,6 +149,22 @@ export function useProjectAutosave(
       return;
     }
     if (!json || json === lastSavedJsonRef.current) {
+      return;
+    }
+
+    // Hydrate-baseline: the very first non-empty `json` we observe for a
+    // given project is the rehydrated content from the backend. Treat it
+    // as the saved baseline and skip scheduling a save — otherwise simply
+    // opening a project causes a no-op PUT (and a saving→saved flicker).
+    // The next genuine content change will be different from this baseline
+    // and flow through normal scheduling.
+    if (
+      baselineInitProjectIdRef.current !== projectId &&
+      lastSavedJsonRef.current === ''
+    ) {
+      baselineInitProjectIdRef.current = projectId;
+      lastSavedJsonRef.current = json;
+      lastSaveAtRef.current = Date.now();
       return;
     }
 

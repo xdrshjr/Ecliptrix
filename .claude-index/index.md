@@ -25,6 +25,7 @@ Entry: `VideoEditingInterface.tsx` (~3378 lines, monolithic orchestrator)
 - **Key exports:**
   - `VideoEditingInterface` — Main component, instantiates all hooks/modals
   - `ScriptPanel` — Script segment editor
+- **Persistence:** `src/components/video/projects/` hosts the project-list landing and per-project editor. `VideoEditorContainer.tsx` opens a project, calls `resetVideoEditingStore()`, then `hydrateTimelineFromProjectData(record.project_data)` (in `projects/hydrateTimeline.ts`) BEFORE `setContent`, so `useTimelineStore` is seeded with `uiState.currentTimelineState` (selectedItems stripped) before `TimelinePanel` mounts and would otherwise default-init five empty tracks. `useProjectAutosave` writes the rehydrated payload as its baseline so opening a project does not trigger a no-op PUT.
 
 #### Timeline (`src/components/video/timeline/`)
 - Multi-track timeline with ruler, tracks, items, volume control (0-200%), sentence-level segments

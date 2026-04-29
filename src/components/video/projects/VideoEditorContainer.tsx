@@ -8,6 +8,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { getVideoProject } from '@/lib/api/videoProjects';
 import type { Conversation, VideoEditingTaskContent } from '@/types';
 import { useProjectAutosave } from './hooks/useProjectAutosave';
+import { hydrateTimelineFromProjectData } from './hydrateTimeline';
 
 /** Render a project's `updated_at` ISO string for the editor top strip.
  *  Mirrors ProjectCard's relative formatting so list ↔ editor agree. */
@@ -115,6 +116,12 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
         if (cancelled) return;
         setProjectMeta({ name: record.name, updatedAt: record.updated_at });
         const data = (record.project_data ?? {}) as Record<string, unknown>;
+        // Hydrate the timeline store BEFORE setContent. setContent triggers
+        // VideoEditingInterface mount → TimelinePanel mount; the panel checks
+        // `tracks.length === 0` to decide whether to seed defaults. By
+        // importing persisted tracks here, the default-init branch only
+        // fires for fresh projects.
+        hydrateTimelineFromProjectData(data);
         // Re-hydrate the lastModified date if it was persisted as ISO string.
         // Spread first so explicit overrides (Date object, default markdown)
         // win over the persisted string form.

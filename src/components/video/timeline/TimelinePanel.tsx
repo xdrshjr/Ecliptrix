@@ -111,6 +111,32 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const onTimelineCompositionChangeRef = useRef(onTimelineCompositionChange);
   onTimelineCompositionChangeRef.current = onTimelineCompositionChange;
 
+  // Snapshot of the last emitted timeline-shape JSON. Used to suppress
+  // duplicate emits with byte-identical content from either the explicit
+  // mount-time emit or the subscribe path. Only timeline-shape fields are
+  // compared (not transient ones like isInteracting/isDragging) so legitimate
+  // user edits still propagate.
+  const lastEmittedShapeJsonRef = useRef<string>('');
+  const computeShapeJson = useCallback((ts: TimelineState): string => {
+    try {
+      return JSON.stringify({
+        tracks: ts.tracks,
+        currentTime: ts.currentTime,
+        totalDuration: ts.totalDuration,
+        zoomLevel: ts.zoomLevel,
+        playbackRate: ts.playbackRate,
+        scrollLeft: ts.scrollLeft,
+        snapToGrid: ts.snapToGrid,
+        gridSize: ts.gridSize,
+        isPlaying: ts.isPlaying,
+      });
+    } catch {
+      // Cyclic / non-serialisable structure — let the emit through; better
+      // to risk a duplicate than to silently drop a real change.
+      return '';
+    }
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Store selectors
   // ---------------------------------------------------------------------------
@@ -123,7 +149,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const state = useTimelineStore.getState();
-    // Only init if tracks are empty (first mount)
+    // Hydration is owned by VideoEditorContainer (project list flow): it calls
+    // useTimelineStore.importFromData(persisted) BEFORE setContent, so when we
+    // mount with non-empty tracks, the persisted timeline is already loaded
+    // and we skip the default-init branch. The branch below only runs for
+    // fresh projects (no persisted timeline) and for entry points that don't
+    // hydrate (legacy task-pane mounts).
     if (state.tracks.length === 0) {
       // Default-generated tracks carry an empty name; Track.tsx:trackDisplayName
       // derives a locale-aware label from the id prefix at render time, so
@@ -178,8 +209,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         gridSize: freshState.gridSize,
         scrollLeft: freshState.scrollLeft,
       };
-      onTimelineStateChangeRef.current?.(ts);
-      onTimelineCompositionChangeRef.current?.(ts);
+      const shapeJson = computeShapeJson(ts);
+      if (shapeJson === '' || shapeJson !== lastEmittedShapeJsonRef.current) {
+        lastEmittedShapeJsonRef.current = shapeJson;
+        onTimelineStateChangeRef.current?.(ts);
+        onTimelineCompositionChangeRef.current?.(ts);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -202,11 +237,20 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         gridSize: state.gridSize,
         scrollLeft: state.scrollLeft,
       };
+      // Suppress emits whose timeline-shape is byte-identical to the last
+      // one we sent. Pure-transient-only state changes (selection, drag
+      // flags) are excluded from the shape JSON, so they don't propagate
+      // here — that's intentional: parent autosave doesn't care about them.
+      const shapeJson = computeShapeJson(ts);
+      if (shapeJson !== '' && shapeJson === lastEmittedShapeJsonRef.current) {
+        return;
+      }
+      lastEmittedShapeJsonRef.current = shapeJson;
       onTimelineStateChange?.(ts);
       onTimelineCompositionChange?.(ts);
     });
     return unsub;
-  }, [onTimelineStateChange, onTimelineCompositionChange]);
+  }, [onTimelineStateChange, onTimelineCompositionChange, computeShapeJson]);
 
   // ---------------------------------------------------------------------------
   // External time sync
