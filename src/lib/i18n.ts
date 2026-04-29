@@ -530,6 +530,7 @@ export interface Translations {
     deleteCategoryConfirm: string;
     openProject: string;
     lastOpened: string;
+    lastUpdated: string;
     neverOpened: string;
     emptyTitle: string;
     emptyHint: string;
@@ -3099,6 +3100,7 @@ export const translations: Record<string, Translations> = {
       deleteCategoryConfirm: 'Delete this category? Projects inside will become Uncategorized.',
       openProject: 'Open',
       lastOpened: 'Last opened',
+      lastUpdated: 'Last updated',
       neverOpened: 'Not opened yet',
       emptyTitle: 'No projects yet',
       emptyHint: 'Create your first project to start editing videos.',
@@ -5688,6 +5690,7 @@ export const translations: Record<string, Translations> = {
       deleteCategoryConfirm: '确认删除该分类？分类下的项目将变为"未分类"。',
       openProject: '打开',
       lastOpened: '上次打开',
+      lastUpdated: '最近修改',
       neverOpened: '尚未打开',
       emptyTitle: '暂无项目',
       emptyHint: '创建第一个项目，开始你的视频剪辑之旅。',

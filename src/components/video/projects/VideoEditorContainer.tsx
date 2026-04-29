@@ -9,6 +9,23 @@ import { getVideoProject } from '@/lib/api/videoProjects';
 import type { Conversation, VideoEditingTaskContent } from '@/types';
 import { useProjectAutosave } from './hooks/useProjectAutosave';
 
+/** Render a project's `updated_at` ISO string for the editor top strip.
+ *  Mirrors ProjectCard's relative formatting so list ↔ editor agree. */
+function formatLastUpdated(iso: string | undefined, fallback: string): string {
+  if (!iso) return fallback;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return fallback;
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return date.toLocaleTimeString();
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  return date.toLocaleDateString();
+}
+
 /** Convert a value that was persisted as JSON back into a `Date`. Returns
  *  `undefined` for unparseable input so callers can fall back. */
 function toDate(v: unknown): Date | undefined {
@@ -77,6 +94,7 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [projectMeta, setProjectMeta] = useState<{ name: string; updatedAt: string } | null>(null);
   const lastShownErrorRef = useRef<string | null>(null);
 
   // Reset Zustand state BEFORE hydration on every project switch (R-F).
@@ -90,10 +108,12 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
     setLoading(true);
     setError(null);
     setContent(null);
+    setProjectMeta(null);
     (async () => {
       try {
         const record = await getVideoProject(projectId);
         if (cancelled) return;
+        setProjectMeta({ name: record.name, updatedAt: record.updated_at });
         const data = (record.project_data ?? {}) as Record<string, unknown>;
         // Re-hydrate the lastModified date if it was persisted as ISO string.
         // Spread first so explicit overrides (Date object, default markdown)
@@ -134,7 +154,15 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
   // Autosave (R-C). Suppress saves while still loading.
   useProjectAutosave(loading || error ? null : projectId, content, {
     onSaveStart: () => setSaveStatus('saving'),
-    onSaveSuccess: () => setSaveStatus('saved'),
+    onSaveSuccess: () => {
+      setSaveStatus('saved');
+      // Refresh the displayed last-updated timestamp to match what the
+      // backend now records. Using the local clock is acceptable since
+      // updateVideoProject() set updated_at server-side at this same moment.
+      setProjectMeta((prev) =>
+        prev ? { ...prev, updatedAt: new Date().toISOString() } : prev,
+      );
+    },
     onSaveError: (err) => {
       setSaveStatus('error');
       const status = (err as { status?: number } | undefined)?.status;
@@ -175,19 +203,32 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Top strip: Back to projects + save status */}
-      <div className="flex items-center justify-between px-4 h-9 border-b border-border bg-muted/20 flex-shrink-0">
+      {/* Top strip: Back to projects + project meta + save status.
+          Uses bg-background + border so it picks up both light/dark themes
+          uniformly (was bg-muted/20, which had insufficient contrast). */}
+      <div className="flex items-center gap-3 px-4 h-9 border-b border-border bg-background flex-shrink-0">
         <button
           type="button"
           onClick={onCloseProject}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           {t.videoProjects.backToProjects}
         </button>
-        <div className="text-xs text-muted-foreground" aria-live="polite">
+        {projectMeta && (
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-xs font-medium text-foreground truncate">
+              {projectMeta.name || t.videoProjects.untitled}
+            </span>
+            <span className="text-xs text-muted-foreground/70 truncate flex-shrink-0">
+              · {t.videoProjects.lastUpdated}:{' '}
+              {formatLastUpdated(projectMeta.updatedAt, t.videoProjects.neverOpened)}
+            </span>
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground flex-shrink-0" aria-live="polite">
           {saveStatus === 'saving' && t.videoProjects.saving}
           {saveStatus === 'saved' && t.videoProjects.saved}
           {saveStatus === 'error' && t.videoProjects.saveError}

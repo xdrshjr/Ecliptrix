@@ -66,11 +66,14 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           onOpen();
         }
       }}
-      className="group relative bg-card border border-border rounded-md overflow-hidden hover:shadow-lg hover:border-primary/40 transition-all cursor-pointer"
+      className={`group relative bg-card border border-border rounded-md hover:shadow-lg hover:border-primary/40 transition-all cursor-pointer ${
+        menuOpen ? 'z-30' : ''
+      }`}
     >
-      {/* Cover */}
+      {/* Cover — overflow-hidden lives here (not on the card root) so the
+          actions menu can escape the card bounds. */}
       <div
-        className="aspect-video bg-cover bg-center relative"
+        className="aspect-video bg-cover bg-center relative rounded-t-[5px] overflow-hidden"
         style={cover}
       >
         {!project.cover_url && (
