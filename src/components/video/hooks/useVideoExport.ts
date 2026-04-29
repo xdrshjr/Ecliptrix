@@ -170,6 +170,19 @@ export const useVideoExport = ({
     const subtitleItems: any[] = [];
     const imageItems: any[] = []; // 新增：用于存储图片项目
 
+    // Count audio items the build loop below will attempt to push. Filter must
+    // mirror that loop's track guard exactly (visible + unlocked) — muted
+    // tracks are still exported with their volume scaled, so they count too.
+    // Compared to audioItems.length after the loop so we can hard-fail when
+    // materials.find() drops items.
+    let expectedAudioItemCount = 0;
+    timelineState.tracks.forEach(track => {
+      if (track.type !== 'audio' || !track.isVisible || track.isLocked) return;
+      track.items.forEach(item => {
+        if (item.type === 'audio') expectedAudioItemCount += 1;
+      });
+    });
+
     try {
       // Import the video composition API
       const { videoCompositionAPI } = await import('@/lib/api/videoComposition');
@@ -337,7 +350,17 @@ export const useVideoExport = ({
                 timelineDuration: item.duration.toFixed(2),
               });
             } else {
-              logger.warn('未找到音频素材对应的URL', { materialId: item.materialId });
+              // Track-level miss: a TimelineItem references a material id that
+              // is no longer in `materials`. Previously this only emitted a
+              // warn and the export silently dropped the audio entry; the
+              // count assertion after the loop now turns this into a hard
+              // user-visible error.
+              logger.error('未找到音频素材对应的URL', {
+                materialId: item.materialId,
+                itemId: item.id,
+                itemName: item.name,
+                trackId: track.id,
+              });
             }
           } else if (item.type === 'subtitle') {
             // Extract subtitle styling from TimelineItem with proper defaults
@@ -386,6 +409,32 @@ export const useVideoExport = ({
         durationDifference: actualTotalDuration - timelineState.totalDuration,
         videoItemsCount: videoItems.length,
       });
+
+      // Hard-fail when constructed audioItems doesn't match the timeline.
+      // This guards the case where `materials.find(m => m.id === item.materialId)`
+      // misses (stale state, material not yet loaded, empty url, etc.) and
+      // would otherwise silently produce a video without the user's audio.
+      if (audioItems.length !== expectedAudioItemCount) {
+        const missing = expectedAudioItemCount - audioItems.length;
+        const errorMessage =
+          `${t.videoExport.exportFailedWithError} ` +
+          `audio item mismatch: timeline has ${expectedAudioItemCount} audio item(s) ` +
+          `but only ${audioItems.length} were resolvable ` +
+          `(${missing} missing material reference${missing === 1 ? '' : 's'}). ` +
+          `请刷新页面或重新导入素材后再试。`;
+
+        logger.error('音频项目数量与时间轴不一致，阻止导出', {
+          expectedAudioItemCount,
+          builtAudioItemCount: audioItems.length,
+          missing,
+        });
+
+        showError(errorMessage, 8000);
+        setIsExporting(false);
+        setExportProgress(0);
+        setExportStartTime(null);
+        return;
+      }
 
       // 关键修改：确保前端按照正确的timeline顺序排序，后端就不需要重新排序
       // 按start_time排序所有项目，确保时间轴顺序正确

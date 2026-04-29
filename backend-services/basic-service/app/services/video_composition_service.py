@@ -1211,11 +1211,11 @@ class VideoCompositionService:
                     audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
 
                     processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path, actual_total_duration, extra_audio_paths=video_audio_paths)
-                    
+
                     if processed_audio_path:
                         logger.info("Adding mixed audio to video...")
                         video_with_audio_path = str(output_path).replace('.mp4', '_with_audio.mp4')
-                        
+
                         audio_video_cmd = [
                             ffmpeg_path,
                             '-y',
@@ -1229,41 +1229,65 @@ class VideoCompositionService:
                             # Audio is already processed to match video duration via total_duration
                             video_with_audio_path
                         ]
-                        
+
                         logger.info(f"Running audio-video merge command: {' '.join(audio_video_cmd)}")
                         logger.info(f"Input video: {output_path} (exists: {os.path.exists(output_path)})")
                         logger.info(f"Input audio: {processed_audio_path} (exists: {os.path.exists(processed_audio_path)})")
                         logger.info(f"Output path: {video_with_audio_path}")
-                        
+
                         result = subprocess.run(audio_video_cmd, capture_output=True, text=True)
-                        
+
                         logger.info(f"Audio-video merge result: returncode={result.returncode}")
                         if result.stdout:
                             logger.info(f"FFmpeg stdout: {result.stdout}")
                         if result.stderr:
                             logger.info(f"FFmpeg stderr: {result.stderr}")
-                        
+
                         if result.returncode == 0:
                             # Check if the output file was created and has content
                             if os.path.exists(video_with_audio_path):
                                 output_size = os.path.getsize(video_with_audio_path)
                                 logger.info(f"Audio-video merge output file created: {output_size} bytes")
-                                
+
                                 # Replace original video with audio version
                                 os.replace(video_with_audio_path, str(output_path))
                                 logger.info("Audio successfully added to video")
-                                
+
                                 # Verify final file
                                 final_size = os.path.getsize(output_path)
                                 logger.info(f"Final video file size: {final_size} bytes")
                             else:
-                                logger.error("Audio-video merge output file was not created")
+                                raise RuntimeError(
+                                    "Audio-video merge output file was not created "
+                                    f"(expected at {video_with_audio_path})"
+                                )
                         else:
-                            logger.error(f"Failed to add audio to video: returncode={result.returncode}")
-                            logger.error(f"FFmpeg stderr: {result.stderr}")
-                            
+                            raise RuntimeError(
+                                f"FFmpeg audio-video merge failed (returncode={result.returncode}): "
+                                f"{result.stderr.strip() if result.stderr else 'no stderr'}"
+                            )
+                    else:
+                        # _process_audio_tracks returned None — the silent
+                        # short-circuit that previously produced an audio-less
+                        # MP4 while marking the composition completed. Surface
+                        # it as a hard error so the outer handler marks the
+                        # composition failed and the user actually sees it.
+                        audio_count = len(request.audio_items) if request.audio_items else 0
+                        extra_count = len(video_audio_paths) if video_audio_paths else 0
+                        raise RuntimeError(
+                            "Audio merge skipped: _process_audio_tracks returned None "
+                            f"(audio_items={audio_count}, video_audio_paths={extra_count}). "
+                            "See earlier logs for FileNotFoundError or FFmpeg stderr details."
+                        )
+
                 except Exception as e:
-                    logger.warning(f"Audio processing error: {str(e)}")
+                    # Promote audio failures from silent warnings to hard errors:
+                    # without audio the export is incorrect, so let the outer
+                    # handler mark the composition as failed and propagate the
+                    # error to the client instead of silently shipping a video
+                    # with no sound.
+                    logger.error(f"Audio processing error: {str(e)}", exc_info=True)
+                    raise
             else:
                 logger.info("No audio tracks to process")
             
@@ -1467,40 +1491,87 @@ class VideoCompositionService:
             "composition_id": composition_id
         } 
 
+    # Backend service root: backend-services/basic-service/. Resolved from this
+    # file's location instead of CWD so the path holds whether uvicorn is launched
+    # from repo root, the basic-service directory, or anywhere else.
+    _SERVICE_ROOT = Path(__file__).resolve().parents[2]
+
+    # Mirrors the static-file mounts in app/main.py. Keys are URL prefixes
+    # (with trailing slash); values are paths relative to _SERVICE_ROOT.
+    _URL_PREFIX_TO_REL_DIR = {
+        '/api/audio/generated/': os.path.join('static', 'audio', 'generated'),
+        '/api/audio/subtitles/': os.path.join('static', 'audio', 'subtitles'),
+    }
+
     def _convert_url_to_local_path(self, url: str) -> str:
         """
         Convert a server URL to local file path.
-        Handles both local file paths and server URLs like /api/audio/generated/filename.mp3
+        Handles both local file paths and server URLs like /api/audio/generated/filename.mp3.
+        Resolves relative paths against the backend service root rather than the
+        process CWD, matching the static-file mounts in app/main.py.
         """
         logger.info(f"Converting URL to local path: {url}")
-        
-        if url.startswith('/api/audio/generated/'):
-            # Convert server URL to local file path
-            filename = url.replace('/api/audio/generated/', '')
-            local_path = os.path.join('static', 'audio', 'generated', filename)
-            
-            logger.info(f"Converted server URL to local path", {
+
+        for prefix, rel_dir in self._URL_PREFIX_TO_REL_DIR.items():
+            if url.startswith(prefix):
+                filename = url[len(prefix):]
+                local_path = str(self._SERVICE_ROOT / rel_dir / filename)
+
+                logger.info(f"Converted server URL to local path", {
+                    'original_url': url,
+                    'local_path': local_path,
+                    'exists': os.path.exists(local_path)
+                })
+
+                if not os.path.exists(local_path):
+                    logger.error(f"Local file does not exist: {local_path}")
+                    raise FileNotFoundError(f"Audio file not found: {local_path}")
+
+                return local_path
+
+        # /api/storage/files/ is mounted at settings.storage.root (configurable via STORAGE_ROOT)
+        storage_prefix = '/api/storage/files/'
+        if url.startswith(storage_prefix):
+            filename = url[len(storage_prefix):]
+            storage_root = settings.storage.root
+            # If storage_root is relative, anchor to service root for consistency.
+            if not os.path.isabs(storage_root):
+                local_path = str(self._SERVICE_ROOT / storage_root / filename)
+            else:
+                local_path = os.path.join(storage_root, filename)
+
+            logger.info(f"Converted storage URL to local path", {
                 'original_url': url,
                 'local_path': local_path,
                 'exists': os.path.exists(local_path)
             })
-            
+
             if not os.path.exists(local_path):
-                logger.warning(f"Local file does not exist: {local_path}")
+                logger.error(f"Local file does not exist: {local_path}")
                 raise FileNotFoundError(f"Audio file not found: {local_path}")
-            
+
             return local_path
-        elif url.startswith('http://') or url.startswith('https://'):
+
+        if url.startswith('http://') or url.startswith('https://'):
             # For HTTP URLs, return as-is (ffmpeg can handle them)
             logger.info(f"Using HTTP URL directly: {url}")
             return url
+
+        # Assume it's already a local file path. Anchor relative paths to the
+        # service root so callers don't have to depend on CWD.
+        logger.info(f"Using local file path: {url}")
+        if os.path.isabs(url):
+            local_path = url
         else:
-            # Assume it's already a local file path
-            logger.info(f"Using local file path: {url}")
-            if not os.path.exists(url):
-                logger.warning(f"Local file does not exist: {url}")
-                raise FileNotFoundError(f"Audio file not found: {url}")
-            return url
+            local_path = str(self._SERVICE_ROOT / url)
+            if not os.path.exists(local_path) and os.path.exists(url):
+                # Fallback to CWD-relative for backward compatibility.
+                local_path = url
+
+        if not os.path.exists(local_path):
+            logger.error(f"Local file does not exist: {local_path}")
+            raise FileNotFoundError(f"Audio file not found: {local_path}")
+        return local_path
 
     def _extract_video_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str) -> list:
         """
@@ -1616,8 +1687,18 @@ class VideoCompositionService:
             if total_audio_count == 1 and has_audio_items and len(request.audio_items) == 1 and not has_extra_audio:
                 # Single audio item with no video embedded audio - process it directly
                 audio_item = request.audio_items[0]
-                local_audio_path = self._convert_url_to_local_path(audio_item.url)
-                
+                # Mirrors the per-item try/except in the multi-audio branch below.
+                # Without it any FileNotFoundError from _convert_url_to_local_path
+                # bubbled to the outer try and used to be swallowed silently.
+                try:
+                    local_audio_path = self._convert_url_to_local_path(audio_item.url)
+                except Exception as resolve_exc:
+                    logger.error(
+                        f"Failed to resolve single audio path for '{audio_item.name}': {resolve_exc}",
+                        exc_info=True,
+                    )
+                    return None
+
                 logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
                 logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
                 # 安全获取音频裁剪参数
