@@ -6,8 +6,45 @@ import { resetVideoEditingStore } from '@/stores/videoEditingStore';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { getVideoProject } from '@/lib/api/videoProjects';
-import type { VideoEditingTaskContent } from '@/types';
+import type { Conversation, VideoEditingTaskContent } from '@/types';
 import { useProjectAutosave } from './hooks/useProjectAutosave';
+
+/** Convert a value that was persisted as JSON back into a `Date`. Returns
+ *  `undefined` for unparseable input so callers can fall back. */
+function toDate(v: unknown): Date | undefined {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? undefined : v;
+  if (typeof v === 'string' || typeof v === 'number') {
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? undefined : d;
+  }
+  return undefined;
+}
+
+/** Re-hydrate `Date` fields inside persisted conversations. JSON-serialised
+ *  ISO strings would otherwise crash UI code that calls `.toLocaleTimeString()`
+ *  directly on the field. */
+function rehydrateConversations(raw: unknown): Conversation[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const now = new Date();
+  return raw.map((c) => {
+    const conv = (c ?? {}) as Partial<Conversation> & Record<string, unknown>;
+    const messages = Array.isArray(conv.messages)
+      ? conv.messages.map((m) => {
+          const msg = (m ?? {}) as unknown as Record<string, unknown>;
+          return {
+            ...msg,
+            timestamp: toDate(msg.timestamp) ?? now,
+          };
+        })
+      : [];
+    return {
+      ...(conv as object),
+      messages,
+      createdAt: toDate(conv.createdAt) ?? now,
+      updatedAt: toDate(conv.updatedAt) ?? now,
+    } as Conversation;
+  });
+}
 
 interface VideoEditorContainerProps {
   /** The persisted project ID to load and bind to. */
@@ -62,6 +99,7 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
         // Spread first so explicit overrides (Date object, default markdown)
         // win over the persisted string form.
         const lm = data.lastModified;
+        const conversations = rehydrateConversations(data.conversations);
         const hydrated: VideoEditingTaskContent = {
           ...(data as Partial<VideoEditingTaskContent>),
           markdownContent: (data.markdownContent as string) ?? '',
@@ -69,6 +107,7 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
             typeof lm === 'string' && lm
               ? new Date(lm)
               : new Date(record.updated_at),
+          ...(conversations !== undefined ? { conversations } : {}),
         } as VideoEditingTaskContent;
         setContent(hydrated);
         setLoading(false);
