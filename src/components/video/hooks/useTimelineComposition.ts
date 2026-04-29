@@ -151,24 +151,21 @@ export const useTimelineComposition = (
     const targetSequence = compositionPlayback.videoSequences[currentSequenceIndex];
 
     if (onVideoSeekRequired && targetSequence) {
+      // 关键：在 await 之前同步写入 currentSequenceIndex。
+      // Why: video 元素 currentTime 赋值会在 await 期间触发 timeupdate；
+      // 若 currentSequenceIndex 还是旧值，反向映射会用错的 sequence 把
+      // timelineCurrentTime 钳到旧片段开头，造成光标"跳回片段开头"。
+      setCompositionPlayback(prev => ({
+        ...prev,
+        compositionCurrentTime: clampedTime,
+        currentSequenceIndex
+      }));
       try {
         await onVideoSeekRequired(clampedTime, targetSequence, targetVideoTime);
-
-        setCompositionPlayback(prev => ({
-          ...prev,
-          compositionCurrentTime: clampedTime,
-          currentSequenceIndex
-        }));
       } catch (error) {
         logger.error('视频播放器实时跳转失败', error as Error, {
           compositionTime: clampedTime.toFixed(2)
         });
-
-        setCompositionPlayback(prev => ({
-          ...prev,
-          compositionCurrentTime: clampedTime,
-          currentSequenceIndex
-        }));
       }
     } else {
       setCompositionPlayback(prev => ({

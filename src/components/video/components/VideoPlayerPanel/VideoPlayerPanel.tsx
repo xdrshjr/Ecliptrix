@@ -1013,20 +1013,34 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       const stateSequenceIndex = compositionPlayback.currentSequenceIndex;
       const stateSequence = compositionPlayback.videoSequences[stateSequenceIndex];
       
-      // 检查状态中的序列是否与当前播放的视频URL匹配
+      // 计算 stateSequence 在 timeline 上的起止区间，用于双重校验。
+      // Why: 多 sequence 共用同一 URL 时，仅靠 URL 同源会粘在旧 stateSequenceIndex 上，
+      // 导致 timeupdate 用错的 sequence 反映射并把光标拉回旧片段开头。
+      let stateAccumulatedTime = 0;
+      if (stateSequence) {
+        for (let i = 0; i < stateSequenceIndex; i++) {
+          stateAccumulatedTime += compositionPlayback.videoSequences[i].duration;
+        }
+      }
+      const stateInRange = !!stateSequence &&
+        compositionCurrentTime >= stateAccumulatedTime &&
+        compositionCurrentTime < stateAccumulatedTime + stateSequence.duration;
+
+      // 检查状态中的序列是否与当前播放的视频URL匹配，且 compositionCurrentTime 落在区间内
       if (stateSequence &&
-          normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(stateSequence))) {
+          normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(stateSequence)) &&
+          stateInRange) {
         // 状态序列匹配当前视频URL，直接使用
         actualSequenceIndex = stateSequenceIndex;
         currentSequence = stateSequence;
         foundSequence = true;
-        
+
         logger.info('使用状态中的序列索引（验证匹配）', {
           sequenceIndex: stateSequenceIndex,
           sequenceName: stateSequence.name,
           sequenceId: stateSequence.id,
           currentVideoUrl: currentVideoSrc.substring(0, 50) + '...',
-          reason: '状态序列与当前视频URL匹配'
+          reason: '状态序列与当前视频URL匹配且 compositionCurrentTime 在区间内'
         });
       } else {
         // 状态序列不匹配，需要基于组合播放时间重新定位正确的序列
@@ -1430,6 +1444,20 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     // 设置跳转状态标记，防止handleTimeUpdate干扰
     isSeekingRef.current = true;
 
+    // 在写入 videoRef.currentTime 之前，先把父级 currentSequenceIndex 同步到目标 sequence。
+    // Why: handleTimeUpdate 优先分支只校验 URL 同源，不校验时间区间。多素材同 URL 场景下，
+    // 若 state 仍是旧 index，反向映射会按旧片段的 clipStart/clipDuration 计算并钳到 0，
+    // 把 timelineCurrentTime 写回旧片段开头，光标"跳回片段开头"。
+    // 与 handlePlayPauseFromTimeline:1738-1742 的写法对齐。
+    const targetSequenceIndex = compositionPlayback.videoSequences.findIndex(s => s.id === targetSequence.id);
+    if (
+      onSequenceIndexUpdate &&
+      targetSequenceIndex >= 0 &&
+      targetSequenceIndex !== compositionPlayback.currentSequenceIndex
+    ) {
+      onSequenceIndexUpdate(targetSequenceIndex);
+    }
+
     // 把 timeline-relative 的 videoTime 通过 clipStart/clipEnd 映射回视频文件
     // 实际时间。否则当 sequence.clipStart > 0 时，videoRef.currentTime 会落在
     // 裁剪点之前，timeupdate 把 timelineRelativeTime clamp 到 0，光标就会被
@@ -1523,9 +1551,22 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           ++transitionIdRef.current; // 作废上一次 src 切换的回调
           hideCanvasBuffer();        // 恢复 video opacity + 解锁容器
 
+          // 把 isSeekingRef 清除推迟到一次 'seeked' 事件之后（带 1s 兜底），
+          // 防止赋值 currentTime 与浏览器 async seek 之间的窗口内
+          // handleTimeUpdate 用陈旧 currentTime 反向覆盖 timeline 光标。
+          const seekedHandler = () => {
+            isSeekingRef.current = false;
+          };
+          videoRef.current.addEventListener('seeked', seekedHandler, { once: true });
+          // 即便 seeked 因故未触发（罕见），仍要在 1s 后兜底清除，避免长期 short-circuit。
+          setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.removeEventListener('seeked', seekedHandler);
+            }
+            isSeekingRef.current = false;
+          }, 1000);
           videoRef.current.currentTime = mappedVideoTime;
-          isSeekingRef.current = false;
-          
+
           // 如果之前是播放状态且当前已暂停，恢复播放
           if (wasPlayingBefore && videoRef.current.paused) {
             videoRef.current.play().then(() => {
@@ -1581,7 +1622,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       onCompositionSeek(compositionTime);
     }
 
-  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, logger]);
+  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, onSequenceIndexUpdate, logger]);
 
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
