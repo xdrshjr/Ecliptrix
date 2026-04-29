@@ -510,6 +510,51 @@ export interface Translations {
     brainstorming: string;
     aiChat: string;
   };
+  videoProjects: {
+    title: string;
+    all: string;
+    recent: string;
+    uncategorized: string;
+    categories: string;
+    newProject: string;
+    newCategory: string;
+    search: string;
+    searchPlaceholder: string;
+    sortRecent: string;
+    sortCreated: string;
+    sortName: string;
+    rename: string;
+    moveToCategory: string;
+    delete: string;
+    deleteConfirm: string;
+    deleteCategoryConfirm: string;
+    openProject: string;
+    lastOpened: string;
+    neverOpened: string;
+    emptyTitle: string;
+    emptyHint: string;
+    noResults: string;
+    untitled: string;
+    save: string;
+    cancel: string;
+    create: string;
+    projectName: string;
+    projectNamePlaceholder: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    categoryName: string;
+    categoryNamePlaceholder: string;
+    backToProjects: string;
+    projectCount: string;
+    categoryAll: string;
+    sidebarHeading: string;
+    cardsHeading: string;
+    saved: string;
+    saving: string;
+    saveError: string;
+    loadError: string;
+    cover: string;
+  };
   workflowInterface: {
     chatInterfaceTab: string;
     workflowInterfaceTab: string;
@@ -3033,6 +3078,51 @@ export const translations: Record<string, Translations> = {
       videoEditing: 'Video Editing',
       brainstorming: 'Brainstorming',
       aiChat: 'AI Chat',
+    },
+    videoProjects: {
+      title: 'Video Projects',
+      all: 'All projects',
+      recent: 'Recently opened',
+      uncategorized: 'Uncategorized',
+      categories: 'Categories',
+      newProject: 'New project',
+      newCategory: 'New category',
+      search: 'Search',
+      searchPlaceholder: 'Search projects…',
+      sortRecent: 'Recently opened',
+      sortCreated: 'Date created',
+      sortName: 'Name',
+      rename: 'Rename',
+      moveToCategory: 'Move to category',
+      delete: 'Delete',
+      deleteConfirm: 'Delete this project? This cannot be undone.',
+      deleteCategoryConfirm: 'Delete this category? Projects inside will become Uncategorized.',
+      openProject: 'Open',
+      lastOpened: 'Last opened',
+      neverOpened: 'Not opened yet',
+      emptyTitle: 'No projects yet',
+      emptyHint: 'Create your first project to start editing videos.',
+      noResults: 'No projects match your search.',
+      untitled: 'Untitled',
+      save: 'Save',
+      cancel: 'Cancel',
+      create: 'Create',
+      projectName: 'Project name',
+      projectNamePlaceholder: 'My amazing video',
+      descriptionLabel: 'Description (optional)',
+      descriptionPlaceholder: 'A short description of this project',
+      categoryName: 'Category name',
+      categoryNamePlaceholder: 'e.g. Marketing, Travel, Tutorials',
+      backToProjects: 'All projects',
+      projectCount: '{count} projects',
+      categoryAll: 'All',
+      sidebarHeading: 'Projects',
+      cardsHeading: 'My projects',
+      saved: 'Saved',
+      saving: 'Saving…',
+      saveError: 'Failed to save project',
+      loadError: 'Failed to load projects',
+      cover: 'Cover',
     },
     workflowInterface: {
       chatInterfaceTab: 'Chat Interface',
@@ -5577,6 +5667,51 @@ export const translations: Record<string, Translations> = {
       videoEditing: '视频编辑',
       brainstorming: '头脑风暴',
       aiChat: 'AI对话',
+    },
+    videoProjects: {
+      title: '视频项目',
+      all: '全部项目',
+      recent: '最近打开',
+      uncategorized: '未分类',
+      categories: '分类',
+      newProject: '新建项目',
+      newCategory: '新建分类',
+      search: '搜索',
+      searchPlaceholder: '搜索项目…',
+      sortRecent: '最近打开',
+      sortCreated: '创建时间',
+      sortName: '名称',
+      rename: '重命名',
+      moveToCategory: '移动到分类',
+      delete: '删除',
+      deleteConfirm: '确认删除该项目？此操作不可撤销。',
+      deleteCategoryConfirm: '确认删除该分类？分类下的项目将变为"未分类"。',
+      openProject: '打开',
+      lastOpened: '上次打开',
+      neverOpened: '尚未打开',
+      emptyTitle: '暂无项目',
+      emptyHint: '创建第一个项目，开始你的视频剪辑之旅。',
+      noResults: '没有匹配的项目。',
+      untitled: '未命名',
+      save: '保存',
+      cancel: '取消',
+      create: '创建',
+      projectName: '项目名称',
+      projectNamePlaceholder: '我的精彩视频',
+      descriptionLabel: '简介（可选）',
+      descriptionPlaceholder: '关于该项目的简短描述',
+      categoryName: '分类名称',
+      categoryNamePlaceholder: '例如：营销、旅行、教程',
+      backToProjects: '返回项目列表',
+      projectCount: '{count} 个项目',
+      categoryAll: '全部',
+      sidebarHeading: '项目',
+      cardsHeading: '我的项目',
+      saved: '已保存',
+      saving: '保存中…',
+      saveError: '保存项目失败',
+      loadError: '加载项目失败',
+      cover: '封面',
     },
     workflowInterface: {
       chatInterfaceTab: '聊天界面',

@@ -56,3 +56,34 @@ export const useVideoEditingStore = create<VideoEditingStore>()((...a) => ({
   ...createTimelineSlice(...a),
   ...createAsyncTaskSlice(...a),
 }));
+
+/**
+ * Reset every slice to its initial state.
+ *
+ * Why this exists: this Zustand store is a module-level singleton, so a
+ * `key={projectId}` remount of a React subtree will rebuild the React tree
+ * but will NOT reset the store. When the user switches between video
+ * projects, materials/timeline/storyboards from project A would otherwise
+ * leak into project B. Call this BEFORE hydrating the editor with a new
+ * project's `project_data` (see `VideoEditingInterface` projectId effect).
+ *
+ * Implementation note: we re-use each slice's existing reset/clear helper
+ * where one exists, and explicitly set fields that have no helper.
+ */
+export function resetVideoEditingStore(): void {
+  const s = useVideoEditingStore.getState();
+  // material slice
+  s.clearMaterials();
+  s.setFilterType(null);
+  // script slice
+  s.resetScript();
+  // storyboard slice
+  s.setStoryboards([]);
+  s.setStoryboardPacks([]);
+  s.setActiveStoryboard(null);
+  s.setStoryboardGenerating(false);
+  // timeline slice
+  s.setTimelineState(null);
+  // async-task slice — drop ALL tasks (including in-flight ones)
+  useVideoEditingStore.setState({ tasks: {} });
+}

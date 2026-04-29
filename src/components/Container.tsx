@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Task, VideoEditingTaskContent, WorkflowTaskContent, ChatTaskContent } from '@/types';
-import VideoEditingInterface from './video/VideoEditingInterface';
+import { Task, VideoEditingTaskContent, WorkflowTaskContent, ChatTaskContent, MaterialItem } from '@/types';
 import WorkflowInterface from './workflow/WorkflowInterface';
 import ChatInterface from './chat/ChatInterface';
+import { VideoProjectListView, VideoEditorContainer } from './video/projects';
 import { useLocale } from '@/contexts/LocaleContext';
 
 interface ContainerProps {
@@ -18,16 +18,6 @@ interface ContainerProps {
 
 const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, tasks, tabs, onSelectTab }) => {
   const { t } = useLocale();
-
-  const handleUpdateVideoEditingContent = (content: VideoEditingTaskContent) => {
-    if (activeTask && onUpdateTask) {
-      onUpdateTask(activeTask.id, { 
-        content,
-        updatedAt: new Date(),
-        status: 'active' as const,
-      });
-    }
-  };
 
   const handleUpdateWorkflowContent = (content: WorkflowTaskContent) => {
     if (activeTask && onUpdateTask) {
@@ -192,16 +182,55 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
   }
 
   // Handle video editing task type
-  if (activeTask.type === 'video') {    
+  if (activeTask.type === 'video') {
+    const videoContent = activeTask.content as VideoEditingTaskContent | null;
+    const incomingTimeline = videoContent?.pendingTimelineData;
+    const incomingMaterials: MaterialItem[] | undefined = videoContent?.pendingMaterials;
+    const selectedProjectId = activeTask.selectedProjectId;
+
+    // Default landing: per-user project list / cards. Opening a card sets
+    // `selectedProjectId` on the task, which routes to the editor below.
+    if (!selectedProjectId) {
+      return (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <VideoProjectListView
+            onOpenProject={(projectId) => {
+              if (onUpdateTask) {
+                onUpdateTask(activeTask.id, { selectedProjectId: projectId });
+              }
+            }}
+            incomingTimeline={incomingTimeline}
+            incomingMaterials={incomingMaterials}
+            onConsumeIncoming={() => {
+              // Strip pending fields so a re-render does not auto-create
+              // a second project (R-A / R-14).
+              if (!onUpdateTask) return;
+              const stripped: VideoEditingTaskContent = {
+                ...(videoContent ?? {
+                  markdownContent: '',
+                  lastModified: new Date(),
+                }),
+                pendingTimelineData: undefined,
+                pendingMaterials: undefined,
+              };
+              onUpdateTask(activeTask.id, { content: stripped });
+            }}
+          />
+        </div>
+      );
+    }
+
     return (
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <VideoEditingInterface
-          key={activeTask.id}
-          taskId={activeTask.id}
-          content={activeTask.content as VideoEditingTaskContent | null}
-          onUpdateContent={handleUpdateVideoEditingContent}
-        />
-      </div>
+      <VideoEditorContainer
+        key={selectedProjectId}
+        projectId={selectedProjectId}
+        taskId={activeTask.id}
+        onCloseProject={() => {
+          if (onUpdateTask) {
+            onUpdateTask(activeTask.id, { selectedProjectId: undefined });
+          }
+        }}
+      />
     );
   }
 

@@ -6,6 +6,41 @@ export interface Task {
   createdAt: Date;
   updatedAt: Date;
   content?: unknown;
+  /**
+   * Currently-open video project for the Video Editing tab. When unset, the
+   * tab renders the project list / cards landing instead of the editor.
+   * Always cleared when the user navigates "Back to projects".
+   */
+  selectedProjectId?: string;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Video Project (per-user persisted projects for the Video Editing tab)
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface VideoProjectCategory {
+  id: string;
+  name: string;
+  color?: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoProjectListItem {
+  id: string;
+  name: string;
+  description?: string;
+  category_id?: string;
+  cover_url?: string;
+  created_at: string;
+  updated_at: string;
+  last_opened_at?: string;
+}
+
+export interface VideoProjectRecord extends VideoProjectListItem {
+  /** Full VideoEditingTaskContent payload — only present on detail/get/create/update responses. */
+  project_data?: Record<string, unknown>;
 }
 
 export interface Tab {
