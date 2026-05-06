@@ -379,6 +379,98 @@ class StorageService:
         })
         return upload_result
 
+    async def write_to_well_known_slot(
+        self,
+        rel_path: str,
+        content: bytes,
+        content_type: str,
+    ) -> Dict[str, Any]:
+        """Write *content* to a caller-specified, opinionated path under the
+        storage root, bypassing the date-bucketed layout used by ``upload_file``.
+
+        Used for "well-known slot" artifacts where the caller owns the path
+        scheme — e.g. per-project cover PNGs at
+        ``projects/<project_id>/cover.png`` that need to overwrite in place
+        so a stable URL can be served.
+
+        Sanitisation:
+          * The *parent directory* portion of ``rel_path`` is preserved as-is
+            (caller's choice), but path-traversal is still blocked via
+            ``_validate_path``.
+          * The *filename* component is sanitised via ``_sanitize_filename``.
+          * The combined relative path is then re-resolved through
+            ``_validate_path`` so the final on-disk target stays inside the
+            storage root.
+
+        Args:
+            rel_path: Relative path inside the storage root, ``parent/.../name``.
+            content:  File bytes to write.
+            content_type: MIME type used in the result envelope (no
+                          allowlist applied — caller has decided).
+
+        Returns:
+            ``{success, file_url, file_path, file_size, content_type, filename}``
+            on success, ``{success: False, message: str}`` on failure.
+        """
+        if not content:
+            return {"success": False, "message": "File data is empty"}
+
+        if len(content) > self.config.max_file_size:
+            return {
+                "success": False,
+                "message": f"File exceeds maximum size ({self.config.max_file_size} bytes)",
+            }
+
+        # Normalise + split rel_path
+        rel_norm = rel_path.replace("\\", "/").lstrip("/")
+        if not rel_norm or rel_norm.endswith("/"):
+            return {"success": False, "message": f"Invalid path: {rel_path}"}
+
+        parts = rel_norm.split("/")
+        filename = self._sanitize_filename(parts[-1])
+        parent_parts = parts[:-1]
+        # Sanitise each parent segment lightly — block ".." / "." / empty
+        for segment in parent_parts:
+            if segment in ("", ".", "..") or "\0" in segment:
+                return {
+                    "success": False,
+                    "message": f"Invalid path segment: {segment!r}",
+                }
+        cleaned_rel = "/".join([*parent_parts, filename])
+
+        try:
+            target = self._validate_path(cleaned_rel)
+        except ValueError as exc:
+            logger.error("Path validation failed", {"error": str(exc)})
+            return {"success": False, "message": str(exc)}
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            async with aiofiles.open(target, "wb") as fp:
+                await fp.write(content)
+
+            logger.info("File written to well-known slot", {
+                "path": cleaned_rel,
+                "size": len(content),
+                "content_type": content_type,
+            })
+
+            return {
+                "success": True,
+                "file_url": self._get_file_url(cleaned_rel),
+                "file_path": cleaned_rel,
+                "file_size": len(content),
+                "content_type": content_type,
+                "filename": filename,
+            }
+        except Exception as exc:
+            logger.error("File write failed", {
+                "path": cleaned_rel,
+                "error": str(exc),
+            })
+            return {"success": False, "message": f"File write failed: {exc}"}
+
     async def delete_file(self, file_path: str) -> Dict[str, Any]:
         """Delete a file from local storage.
 

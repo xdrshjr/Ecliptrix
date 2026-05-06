@@ -232,6 +232,37 @@ class StoryboardPackOwnership(Base):
     )
 
 
+class ProjectCover(Base):
+    """Authoring state for a per-project video cover (thumbnail).
+
+    One row per project (``project_id`` is unique). The full ``CoverConfig``
+    JSON shape — text layers, decorations — is stored in ``cover_config``.
+    The most recently rendered PNG is uploaded separately and its URL is
+    written back into ``video_projects.cover_url`` (with a ``?v=<unix>``
+    cache-busting suffix).
+
+    No DB-level FK to ``video_projects`` — ownership and cascade-delete are
+    enforced at the service layer (mirrors ``StoryboardPackOwnership``).
+    """
+    __tablename__ = "project_covers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    template_id = Column(String(50), nullable=False)
+    cover_config = Column(JSON, nullable=False)
+    image_source = Column(String(20), nullable=False)
+    frame_virtual_time_ms = Column(Integer, nullable=True)
+    uploaded_image_url = Column(String(1000), nullable=True)
+    aspect_ratio = Column(String(20), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_project_covers_user_updated", "user_id", "updated_at"),
+    )
+
+
 class SettingsAuditLog(Base):
     """Audit trail for settings changes."""
     __tablename__ = "settings_audit_log"

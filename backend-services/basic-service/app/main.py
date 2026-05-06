@@ -492,6 +492,11 @@ from app.routers import video_project_router
 
 app.include_router(video_project_router.router, prefix="/api")
 
+# Import and include Video Cover router (per-project thumbnail/cover authoring)
+from app.routers import video_cover as video_cover_router
+
+app.include_router(video_cover_router.router, prefix="/api")
+
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"
 os.makedirs(audio_static_dir, exist_ok=True)

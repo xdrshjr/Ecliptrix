@@ -1114,6 +1114,56 @@ export interface Translations {
     cancelExport: string;
     exportSuccess: string;
   };
+  videoCoverModal: {
+    title: string;
+    button: string;
+    templates: {
+      title: string;
+      tutorial: string;
+      click: string;
+      minimal: string;
+    };
+    source: {
+      label: string;
+      frame: string;
+      upload: string;
+    };
+    scrubber: {
+      tooltip: string;
+      atTime: string;
+      noVideoItems: string;
+    };
+    textTools: {
+      font: string;
+      size: string;
+      color: string;
+      align: string;
+      alignLeft: string;
+      alignCenter: string;
+      alignRight: string;
+      bold: string;
+      italic: string;
+      underline: string;
+    };
+    upload: {
+      hint: string;
+      drop: string;
+      browse: string;
+      tooLarge: string;
+      wrongType: string;
+    };
+    actions: {
+      cancel: string;
+      download: string;
+      downloadFilename: string;
+    };
+    errors: {
+      extractFailed: string;
+      saveFailed: string;
+      uploadFailed: string;
+      renderFailed: string;
+    };
+  };
   videoExport: {
     noContentToExport: string;
     noContentToExportDesc: string;
@@ -3683,6 +3733,56 @@ export const translations: Record<string, Translations> = {
       pleaseWait: 'Please wait, do not close this page during export',
       cancelExport: 'Cancel Export',
       exportSuccess: 'Export successful',
+    },
+    videoCoverModal: {
+      title: 'Video Cover',
+      button: 'Cover',
+      templates: {
+        title: 'Title',
+        tutorial: 'Tutorial',
+        click: 'Click-bait',
+        minimal: 'Minimal',
+      },
+      source: {
+        label: 'Source',
+        frame: 'Frame',
+        upload: 'Upload',
+      },
+      scrubber: {
+        tooltip: 'Drag to pick a frame',
+        atTime: 'At {time}',
+        noVideoItems: 'No video clips on the timeline',
+      },
+      textTools: {
+        font: 'Font',
+        size: 'Size',
+        color: 'Color',
+        align: 'Align',
+        alignLeft: 'Left',
+        alignCenter: 'Center',
+        alignRight: 'Right',
+        bold: 'Bold',
+        italic: 'Italic',
+        underline: 'Underline',
+      },
+      upload: {
+        hint: 'PNG / JPG up to 10 MB',
+        drop: 'Drop an image here',
+        browse: 'Browse',
+        tooLarge: 'File too large (max 10 MB)',
+        wrongType: 'Unsupported file type',
+      },
+      actions: {
+        cancel: 'Cancel',
+        download: 'Download Cover',
+        downloadFilename: '{slug}-cover.png',
+      },
+      errors: {
+        extractFailed: 'Failed to extract frame',
+        saveFailed: 'Failed to save cover',
+        uploadFailed: 'Failed to upload background image',
+        renderFailed: 'Failed to render cover',
+      },
     },
     videoExport: {
       noContentToExport: 'No content to export',
@@ -6273,6 +6373,56 @@ export const translations: Record<string, Translations> = {
       pleaseWait: '请耐心等待，导出过程中请勿关闭页面',
       cancelExport: '取消导出',
       exportSuccess: '导出成功',
+    },
+    videoCoverModal: {
+      title: '视频封面',
+      button: '封面',
+      templates: {
+        title: '标题',
+        tutorial: '教程',
+        click: '吸睛',
+        minimal: '极简',
+      },
+      source: {
+        label: '来源',
+        frame: '视频帧',
+        upload: '上传',
+      },
+      scrubber: {
+        tooltip: '拖动选择封面帧',
+        atTime: '当前 {time}',
+        noVideoItems: '时间轴上没有视频片段',
+      },
+      textTools: {
+        font: '字体',
+        size: '字号',
+        color: '颜色',
+        align: '对齐',
+        alignLeft: '左对齐',
+        alignCenter: '居中',
+        alignRight: '右对齐',
+        bold: '加粗',
+        italic: '斜体',
+        underline: '下划线',
+      },
+      upload: {
+        hint: 'PNG / JPG，最大 10 MB',
+        drop: '拖入图片或点击浏览',
+        browse: '浏览',
+        tooLarge: '文件过大（上限 10 MB）',
+        wrongType: '不支持的文件类型',
+      },
+      actions: {
+        cancel: '取消',
+        download: '下载封面',
+        downloadFilename: '{slug}-cover.png',
+      },
+      errors: {
+        extractFailed: '抽帧失败',
+        saveFailed: '保存封面失败',
+        uploadFailed: '上传背景图失败',
+        renderFailed: '生成封面失败',
+      },
     },
     videoExport: {
       noContentToExport: '没有视频内容可导出',

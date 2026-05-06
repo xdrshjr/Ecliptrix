@@ -3158,6 +3158,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               // 使用 allMaterials：导出依赖此 prop 解析音频/视频素材的 URL，类型筛选会导致跨类型素材 miss
               materials={materialManagement.allMaterials}
               onImagePositionChange={handleImagePositionChange}
+              projectId={projectId}
+              projectName=""
             />
           </div>
         </div>

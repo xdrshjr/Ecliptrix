@@ -369,6 +369,7 @@ class VideoProjectService:
         # config → … and pack_ownership_service imports the User model
         # already imported elsewhere; defer both to the call site).
         from app.services import pack_ownership_service, storyboard_service
+        from app.services.video_cover_service import video_cover_service
 
         proj_uuid = _as_uuid(project_id)
         if proj_uuid is None:
@@ -394,6 +395,10 @@ class VideoProjectService:
         )
         if pack_ids:
             await pack_ownership_service.delete_rows_by_project(db, project_id)
+
+        # 3) Cover row + on-disk PNG / uploaded backgrounds (P0-2). Same
+        # transaction as the project delete so DB rollback always undoes both.
+        await video_cover_service.delete_for_project(db, project_id)
 
         await db.delete(row)
         await db.flush()

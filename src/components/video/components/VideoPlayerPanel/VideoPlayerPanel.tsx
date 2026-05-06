@@ -15,6 +15,8 @@ import { selectPlaybackUrl } from '../../lib/selectPlaybackUrl';
 import VideoExportProgressModal from './VideoExportProgressModal';
 import ImageOverlay from './ImageOverlay';
 import { useLocale } from '@/contexts/LocaleContext';
+import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
+import type { CoverAspectRatio } from '../VideoCoverModal/types';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -57,6 +59,9 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   materials?: MaterialItem[];
   // 新增：图片叠加位置更新回调
   onImagePositionChange?: (itemId: string, position: ImagePosition) => void;
+  // 新增：项目元信息，供 Cover 模态使用（无 projectId 时按钮隐藏）
+  projectId?: string;
+  projectName?: string;
 }
 
 // 新增：VideoPlayerPanel ref接口，用于外部调用内部方法
@@ -90,7 +95,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   onSequenceIndexUpdate,
   timelineState,
   materials,
-  onImagePositionChange
+  onImagePositionChange,
+  projectId,
+  projectName,
 }, ref) => {
   const { t } = useLocale();
   const logger = new VideoEditingLogger({
@@ -230,6 +237,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   
   // 新增：视频比例状态
   const [selectedAspectRatioId, setSelectedAspectRatioId] = useState<string>(ASPECT_RATIOS[0].id);
+
+  // Cover modal open state — opened from the CoverButton in the aspect-ratio row.
+  const [isCoverModalOpen, setIsCoverModalOpen] = useState<boolean>(false);
   const selectedAspectRatio = ASPECT_RATIOS.find(ar => ar.id === selectedAspectRatioId) || ASPECT_RATIOS[0];
 
   // 新增：图片叠加相关状态
@@ -2298,9 +2308,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             </div>
 
             <div className="video-info-panel flex items-center justify-center">
-            {/* 宽高比选择器 */}
-            <div className="aspect-ratio-row">
-              <div className="aspect-ratio-group">
+            {/* 宽高比选择器 + 封面入口（80/20） */}
+            <div className="aspect-ratio-row flex items-center gap-2 w-full">
+              <div className="aspect-ratio-group" style={{ flex: 4 }}>
                 <span className="info-label">{t.videoPlayerPanel.info.aspectRatio}</span>
                 <div className="aspect-ratio-buttons">
                   {ASPECT_RATIOS.map((aspectRatio) => {
@@ -2338,6 +2348,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   })}
                 </div>
               </div>
+              {projectId && (
+                <div style={{ flex: 1 }} className="flex justify-end">
+                  <CoverButton onClick={() => setIsCoverModalOpen(true)} />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2351,6 +2366,19 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         startTime={videoExport.exportStartTime}
         allowCancel={false}
       />
+
+      {/* Video Cover authoring modal — only mounted when a projectId is bound. */}
+      {projectId && (
+        <VideoCoverModal
+          isOpen={isCoverModalOpen}
+          onClose={() => setIsCoverModalOpen(false)}
+          projectId={projectId}
+          projectName={projectName ?? ''}
+          aspectRatio={selectedAspectRatio.id as CoverAspectRatio}
+          materials={materials ?? []}
+          timelineItems={timelineState?.tracks?.flatMap((tr) => tr.items) ?? []}
+        />
+      )}
     </div>
   );
 });
