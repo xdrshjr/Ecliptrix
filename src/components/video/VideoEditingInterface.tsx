@@ -98,12 +98,18 @@ function parseAgentScriptToSegments(text: string): ScriptSegment[] {
 
 interface VideoEditingInterfaceProps {
   taskId: string;
+  /** Owning project id when the editor is mounted from VideoEditorContainer.
+   *  Optional so legacy mount paths (Task-only, no project) keep compiling
+   *  — storyboard pack APIs throw on the server when missing, and the
+   *  Materials panel disables pack creation in that case. */
+  projectId?: string;
   content: VideoEditingTaskContent | null;
   onUpdateContent: (content: VideoEditingTaskContent) => void;
 }
 
 const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   taskId,
+  projectId,
   content,
   onUpdateContent,
 }) => {
@@ -2546,6 +2552,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     },
     agentMode,
     setAgentMode,
+    projectId,
   });
 
   // --- Unified send handler: routes to agent or regular based on agentMode ---
@@ -3097,6 +3104,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
               onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
               taskId={taskId}
+              projectId={projectId}
               // 使用 allMaterials：ScriptPanel 内部按 type 过滤素材用于音频/视频匹配，
               // 类型筛选会让跨类型匹配丢素材
               materials={materialManagement.allMaterials}
@@ -3127,6 +3135,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onCutMaterial={handleCutMaterial}
             onWatermarkRemoval={handleWatermarkRemoval}
             taskId={taskId}
+            projectId={projectId}
             className="video-editing-materials-panel bg-card border-r border-border"
           />
 

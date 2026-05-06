@@ -13,7 +13,11 @@ interface AiImageModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (params: ArkImageGenerateParams) => void;
-  onStoryboardGenerate?: (params: StoryboardGenerateParams) => Promise<StoryboardPack>;
+  // The modal builds the storyboard params from its own state — the parent
+  // (MaterialsPanel) is responsible for injecting the owning projectId
+  // before calling the API client. Hence the modal hands the parent the
+  // params *without* projectId.
+  onStoryboardGenerate?: (params: Omit<StoryboardGenerateParams, 'projectId'>) => Promise<StoryboardPack>;
 }
 
 type TabKey = ArkImageMode | 'storyboard';

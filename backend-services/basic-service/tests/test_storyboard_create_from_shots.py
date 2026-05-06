@@ -35,6 +35,7 @@ def _png_data_uri() -> str:
 class TestRequestValidation:
     def test_minimal_valid(self):
         req = StoryboardCreateFromShotsRequest(
+            project_id="proj-1",
             shots=[
                 StoryboardShotInput(
                     shot_id="s1",
@@ -45,10 +46,11 @@ class TestRequestValidation:
         )
         assert req.aspect_ratio == "1:1"
         assert len(req.shots) == 1
+        assert req.project_id == "proj-1"
 
     def test_rejects_empty_shots(self):
         with pytest.raises(ValidationError):
-            StoryboardCreateFromShotsRequest(shots=[])
+            StoryboardCreateFromShotsRequest(project_id="proj-1", shots=[])
 
     def test_caps_max_shots(self):
         many = [
@@ -60,7 +62,23 @@ class TestRequestValidation:
             for i in range(33)
         ]
         with pytest.raises(ValidationError):
-            StoryboardCreateFromShotsRequest(shots=many)
+            StoryboardCreateFromShotsRequest(project_id="proj-1", shots=many)
+
+    def test_project_id_optional_in_pydantic_model(self):
+        """The Pydantic model leaves project_id Optional so service-level
+        tests can still construct a request without inventing a project.
+        The HTTP layer (router) is what enforces PROJECT_ID_REQUIRED.
+        """
+        req = StoryboardCreateFromShotsRequest(
+            shots=[
+                StoryboardShotInput(
+                    shot_id="s1",
+                    script="hello",
+                    generated_image_url="data:image/png;base64,AAAA",
+                )
+            ]
+        )
+        assert req.project_id is None
 
 
 class TestCreatePackFromShots:
@@ -77,6 +95,7 @@ class TestCreatePackFromShots:
         )
 
         req = StoryboardCreateFromShotsRequest(
+            project_id="proj-demo",
             title="Demo Pack",
             aspect_ratio="16:9",
             shots=[

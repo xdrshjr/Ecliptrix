@@ -84,4 +84,29 @@ describe('resetVideoEditingStore (R-F)', () => {
     expect(after.materials).toEqual([]);
     expect(after.tasks).toEqual({});
   });
+
+  it('clears storyboardPacks on project switch (regression for project isolation)', () => {
+    // Project A: seed packs into the slice as if listPacks() had returned them.
+    const s = useVideoEditingStore.getState();
+    s.setStoryboardPacks([
+      {
+        packId: 'pk-a-1',
+        projectId: 'project-a',
+        prompt: '',
+        gridSize: '2x2',
+        frameCount: 0,
+        createdAt: '2026-04-15T00:00:00Z',
+        originalImageUrl: '',
+        frames: [],
+      },
+    ]);
+    expect(useVideoEditingStore.getState().storyboardPacks.length).toBe(1);
+
+    // Simulate the project-switch lifecycle hook in VideoEditorContainer.
+    resetVideoEditingStore();
+
+    // After reset the slice is empty regardless of which project loads next —
+    // project A's packs are no longer reachable from project B's editor.
+    expect(useVideoEditingStore.getState().storyboardPacks).toEqual([]);
+  });
 });

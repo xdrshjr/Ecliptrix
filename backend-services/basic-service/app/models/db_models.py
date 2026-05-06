@@ -198,6 +198,40 @@ class VideoProject(Base):
     )
 
 
+class StoryboardPackOwnership(Base):
+    """Ownership edge binding a storyboard pack (filesystem) to a project + user.
+
+    Source of truth for "which project owns this pack". The on-disk
+    metadata.json carries a denormalized copy for backups/migration, but
+    visibility on list/get/delete is decided exclusively by this table.
+    Legacy packs without a row here are invisible to the per-project list.
+
+    No DB-level FK to ``video_projects`` — pack_ids may outlive their project
+    row briefly during cascade deletes (pack ids collected inside the txn,
+    storage cleanup deferred to after-commit).
+    """
+    __tablename__ = "storyboard_packs"
+
+    pack_id = Column(String(64), primary_key=True)
+    project_id = Column(String(36), nullable=False)
+    user_id = Column(String(36), nullable=False)
+    pack_type = Column(String(32), nullable=False, default="storyboard", server_default="storyboard")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index(
+            "ix_storyboard_packs_project_created",
+            "project_id",
+            "created_at",
+        ),
+        Index(
+            "ix_storyboard_packs_user_project",
+            "user_id",
+            "project_id",
+        ),
+    )
+
+
 class SettingsAuditLog(Base):
     """Audit trail for settings changes."""
     __tablename__ = "settings_audit_log"

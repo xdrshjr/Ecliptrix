@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -364,6 +365,11 @@ class VideoProjectService:
         user_id: str,
         project_id: str,
     ) -> bool:
+        # Avoid an import cycle (storyboard_service imports settings →
+        # config → … and pack_ownership_service imports the User model
+        # already imported elsewhere; defer both to the call site).
+        from app.services import pack_ownership_service, storyboard_service
+
         proj_uuid = _as_uuid(project_id)
         if proj_uuid is None:
             return False
@@ -377,10 +383,75 @@ class VideoProjectService:
         row = (await db.execute(stmt)).scalar_one_or_none()
         if row is None:
             return False
+
+        # 1) Snapshot owned pack ids and 2) delete ownership rows — both
+        # inside the same transaction as the project-row delete so DB-level
+        # consistency is unconditional. Filesystem + OSS cleanup runs after
+        # commit so a flaky storage backend can't roll back the project
+        # delete (mirrors the storage-cleanup philosophy elsewhere).
+        pack_ids = await pack_ownership_service.collect_pack_ids_for_project(
+            db, project_id
+        )
+        if pack_ids:
+            await pack_ownership_service.delete_rows_by_project(db, project_id)
+
         await db.delete(row)
         await db.flush()
+        await db.commit()
+
+        if pack_ids:
+            try:
+                await storyboard_service.cleanup_pack_storage(pack_ids)
+            except Exception as exc:
+                logger.warning(
+                    "Pack storage cleanup failed after project delete",
+                    {"project_id": project_id, "error": str(exc)},
+                )
         return True
+
+    async def assert_project_writable(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        project_id: str,
+    ) -> VideoProject:
+        """Resolve a project owned by ``user_id`` or raise 404.
+
+        Returns the ORM row so callers can read e.g. ``row.id`` if needed.
+        We deliberately mask 403 as 404 to avoid project-id enumeration,
+        matching the existing ``video_project_router`` style.
+        """
+        proj_uuid = _as_uuid(project_id)
+        if proj_uuid is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PROJECT_NOT_FOUND",
+            )
+        stmt = (
+            select(VideoProject)
+            .where(
+                VideoProject.id == proj_uuid,
+                VideoProject.user_id == user_id,
+            )
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PROJECT_NOT_FOUND",
+            )
+        return row
 
 
 # Module-level singleton
 video_project_service = VideoProjectService()
+
+
+# Convenience alias so callers can `from app.services.video_project_service
+# import assert_project_writable` without going through the singleton.
+async def assert_project_writable(
+    db: AsyncSession, user_id: str, project_id: str
+) -> VideoProject:
+    return await video_project_service.assert_project_writable(
+        db=db, user_id=user_id, project_id=project_id
+    )

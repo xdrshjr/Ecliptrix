@@ -22,6 +22,9 @@ export interface UseStoryboardScriptGenerationProps {
   onUpdateSegments: (segments: StoryboardScriptSegment[]) => void;
   onAddMaterial?: (material: MaterialItem) => void;
   taskId?: string;
+  /** Owning project id — required for ``listPacks``. Without it the
+   *  available-packs list stays empty rather than 400-ing the backend. */
+  projectId?: string;
 }
 
 export interface UseStoryboardScriptGenerationReturn {
@@ -68,6 +71,7 @@ export function useStoryboardScriptGeneration({
   onUpdateSegments,
   onAddMaterial,
   taskId,
+  projectId,
 }: UseStoryboardScriptGenerationProps): UseStoryboardScriptGenerationReturn {
   const [availablePacks, setAvailablePacks] = useState<StoryboardPack[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
@@ -525,16 +529,20 @@ export function useStoryboardScriptGeneration({
   // ── Pack management ──
 
   const refreshPacks = useCallback(async () => {
+    if (!projectId) {
+      setAvailablePacks([]);
+      return;
+    }
     setIsLoadingPacks(true);
     try {
-      const packs = await listPacks();
+      const packs = await listPacks(projectId);
       setAvailablePacks(packs);
     } catch (error) {
       console.error('[useStoryboardScriptGeneration] Failed to load packs:', error);
     } finally {
       setIsLoadingPacks(false);
     }
-  }, []);
+  }, [projectId]);
 
   const loadPack = useCallback(
     async (packId: string) => {
@@ -542,9 +550,14 @@ export function useStoryboardScriptGeneration({
       setCompositionError(null);
       setIsLoadingPack(true);
 
+      if (!projectId) {
+        console.warn('[useStoryboardScriptGeneration] loadPack called without projectId; skipping fetch');
+        setIsLoadingPack(false);
+        return;
+      }
       try {
         // 1. Fetch pack data
-        const pack = await getPack(packId);
+        const pack = await getPack(projectId, packId);
 
         // 2. Pack-level binding decision: if every frame has a non-empty script,
         //    treat the whole pack as script-bound — inject scripts into segment
@@ -586,7 +599,7 @@ export function useStoryboardScriptGeneration({
         setIsLoadingPack(false);
       }
     },
-    [onUpdateSegments],
+    [onUpdateSegments, projectId],
   );
 
   // ── Description generation ──

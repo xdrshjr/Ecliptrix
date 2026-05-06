@@ -20,8 +20,10 @@ import re
 
 import aiofiles
 import httpx
+from fastapi import HTTPException, status
 from openai import OpenAI
 from PIL import Image
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.logger import get_logger
@@ -746,7 +748,12 @@ def _strip_position_blocks(prompt: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
-async def _generate_storyboard_core(request: StoryboardGenerateRequest) -> StoryboardPack:
+async def _generate_storyboard_core(
+    request: StoryboardGenerateRequest,
+    *,
+    db: Optional[AsyncSession] = None,
+    user_id: Optional[str] = None,
+) -> StoryboardPack:
     """Core driver — orchestrates M = ceil(N/4) chained 2x2 batches.
 
     The global concurrency limiter is applied by ``generate_storyboard``
@@ -941,6 +948,8 @@ async def _generate_storyboard_core(request: StoryboardGenerateRequest) -> Story
             original_image_path_first_batch=original_image_path_first_batch,
             partial=False,
             error=None,
+            db=db,
+            user_id=user_id,
         )
         logger.info(
             f"Storyboard pack created: {pack_id}, {pack.frame_count} frames, "
@@ -976,6 +985,8 @@ async def _generate_storyboard_core(request: StoryboardGenerateRequest) -> Story
                 "code": "PARTIAL_GENERATION_FAILED",
                 "message": str(exc) or exc.__class__.__name__,
             },
+            db=db,
+            user_id=user_id,
         )
         raise PartialGenerationError(
             f"Storyboard generation failed at batch {len(batches_info) + 1}/{total_batches}",
@@ -1038,6 +1049,8 @@ async def _finalize_pack(
     original_image_path_first_batch: Optional[str],
     partial: bool,
     error: Optional[Dict[str, str]],
+    db: Optional[AsyncSession] = None,
+    user_id: Optional[str] = None,
 ) -> StoryboardPack:
     """Assemble the StoryboardPack from accumulated batch state.
 
@@ -1121,6 +1134,8 @@ async def _finalize_pack(
     metadata = {
         "pack_id": pack_id,
         "pack_type": PACK_TYPE_STORYBOARD,
+        "project_id": request.project_id,
+        "user_id": user_id,
         "prompt": request.prompt,
         "grid_size": "2x2",
         "aspect_ratio": aspect_ratio,
@@ -1144,6 +1159,27 @@ async def _finalize_pack(
     metadata_path = os.path.join(pack_directory, "metadata.json")
     async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
         await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+
+    # Persist the ownership row right after metadata.json is durably flushed.
+    # Both `db` and a request-supplied `project_id` must be present for the
+    # write — service-layer tests that bypass the router call this path
+    # without a session and stay invisible to the per-project list (matches
+    # legacy-pack semantics).
+    if db is not None and user_id is not None and request.project_id:
+        from app.services import pack_ownership_service
+
+        try:
+            await pack_ownership_service.upsert(
+                db=db,
+                pack_id=pack_id,
+                project_id=request.project_id,
+                user_id=user_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to persist storyboard pack ownership row",
+                {"pack_id": pack_id, "error": str(exc)},
+            )
 
     # OSS upload (best-effort) — skip anything under _intermediate/ or
     # _batch_*/ so private intermediates don't leak to the CDN.
@@ -1169,6 +1205,7 @@ async def _finalize_pack(
 
     pack = StoryboardPack(
         pack_id=pack_id,
+        project_id=request.project_id,
         prompt=request.prompt,
         grid_size="2x2",
         aspect_ratio=aspect_ratio,
@@ -1211,11 +1248,21 @@ def _get_generate_semaphore() -> asyncio.Semaphore:
     return _GENERATE_SEMAPHORE
 
 
-async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardPack:
+async def generate_storyboard(
+    request: StoryboardGenerateRequest,
+    *,
+    db: Optional[AsyncSession] = None,
+    user_id: Optional[str] = None,
+) -> StoryboardPack:
     """Public entry point — serializes concurrent calls with an asyncio
     semaphore so we never run more than ``storyboard.generation.max_concurrent``
     chained pipelines at once. Inside the semaphore the real work is delegated
     to :func:`_generate_storyboard_core`.
+
+    ``db`` and ``user_id`` are forwarded to the core driver so the pack's
+    ownership row is persisted as part of the success path. Service-level
+    tests may omit them — the pack is still produced on disk but stays
+    invisible to per-project lists.
     """
     semaphore = _get_generate_semaphore()
     waiting_since = asyncio.get_event_loop().time()
@@ -1227,7 +1274,7 @@ async def generate_storyboard(request: StoryboardGenerateRequest) -> StoryboardP
                 waited,
                 _GENERATE_SEMAPHORE_LIMIT,
             )
-        return await _generate_storyboard_core(request)
+        return await _generate_storyboard_core(request, db=db, user_id=user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1759,8 +1806,28 @@ def _batches_from_meta(meta: dict) -> Optional[List[BatchInfo]]:
         return None
 
 
-async def list_packs() -> List[StoryboardPack]:
-    """Scan storage directories and return all storyboard packs sorted by creation date."""
+async def list_packs(
+    *,
+    db: Optional[AsyncSession] = None,
+    project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> List[StoryboardPack]:
+    """Return storyboard packs visible to the (project_id, user_id) pair.
+
+    When ``db``/``project_id``/``user_id`` are all provided we query the
+    ``storyboard_packs`` index and load metadata for each owned pack id —
+    legacy packs without a row stay hidden, which is the explicit acceptance
+    bar for project isolation.
+
+    When the parameters are omitted (service-level tests bypassing the
+    router) we fall back to the historical "scan every date dir" behaviour
+    so existing tests keep working without inventing a session.
+    """
+    if db is not None and project_id and user_id:
+        return await _list_packs_for_project(
+            db=db, project_id=project_id, user_id=user_id
+        )
+
     base = _storyboard_base_dir()
     packs: List[StoryboardPack] = []
 
@@ -1799,6 +1866,7 @@ async def list_packs() -> List[StoryboardPack]:
                 packs.append(
                     StoryboardPack(
                         pack_id=meta["pack_id"],
+                        project_id=meta.get("project_id"),
                         prompt=meta.get("prompt", ""),
                         grid_size=meta.get("grid_size", ""),
                         aspect_ratio=meta.get("aspect_ratio", "1:1"),
@@ -1863,6 +1931,7 @@ async def get_pack(pack_id: str) -> StoryboardPack:
 
     return StoryboardPack(
         pack_id=meta["pack_id"],
+        project_id=meta.get("project_id"),
         prompt=meta.get("prompt", ""),
         grid_size=meta.get("grid_size", ""),
         aspect_ratio=meta.get("aspect_ratio", "1:1"),
@@ -1887,8 +1956,119 @@ async def get_pack(pack_id: str) -> StoryboardPack:
     )
 
 
-async def delete_pack(pack_id: str) -> None:
-    """Delete a storyboard pack directory and optionally its OSS counterpart."""
+async def _load_pack_from_disk(pack_id: str) -> Optional[StoryboardPack]:
+    """Construct a StoryboardPack by reading its on-disk metadata, or
+    return None if the directory is missing.
+
+    Used by ``_list_packs_for_project`` to materialise packs whose ids come
+    from the ``storyboard_packs`` index — the index is the source of truth
+    for visibility, and this helper is the cheap way to assemble the
+    response payload without rewriting the get_pack body.
+    """
+    try:
+        return await get_pack(pack_id)
+    except FileNotFoundError:
+        return None
+
+
+async def _list_packs_for_project(
+    *,
+    db: AsyncSession,
+    project_id: str,
+    user_id: str,
+) -> List[StoryboardPack]:
+    from app.services import pack_ownership_service
+
+    pack_ids = await pack_ownership_service.list_pack_ids_for_project(
+        db=db, project_id=project_id, user_id=user_id
+    )
+    packs: List[StoryboardPack] = []
+    for pid in pack_ids:
+        pack = await _load_pack_from_disk(pid)
+        if pack is not None:
+            packs.append(pack)
+    # Order from the index is created_at DESC; preserve it.
+    return packs
+
+
+async def _assert_pack_owned(
+    db: AsyncSession, pack_id: str, user_id: str
+) -> str:
+    """Resolve the project_id bound to ``pack_id`` for ``user_id``.
+
+    Returns the project_id on success, raises 404 when the pack has no
+    owner row or is owned by another user. We mask 403 as 404 deliberately
+    to avoid pack-id enumeration (matches the video_project_router style).
+    """
+    from app.services import pack_ownership_service
+
+    row = await pack_ownership_service.get(db, pack_id)
+    if row is None or row.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="STORYBOARD_PACK_NOT_FOUND",
+        )
+    return row.project_id
+
+
+async def cleanup_pack_storage(pack_ids: List[str]) -> None:
+    """Best-effort filesystem + OSS cleanup for a batch of pack ids.
+
+    Used by ``video_project_service.delete_project`` after the project-row
+    delete has committed. Per-pack failures are logged but do not surface
+    — disk leaks are recoverable via the orphan script in §9.3.
+    """
+    if not pack_ids:
+        return
+    oss_client = get_oss_client()
+    for pid in pack_ids:
+        try:
+            pack_directory = _pack_dir(pid)
+        except ValueError:
+            logger.warning(
+                "Skipping cleanup for invalid pack id",
+                {"pack_id": pid},
+            )
+            continue
+        if not pack_directory:
+            continue
+        date_str = Path(pack_directory).parent.name
+        try:
+            shutil.rmtree(pack_directory, ignore_errors=True)
+            logger.info(
+                "Cleanup removed pack directory after project delete",
+                {"pack_id": pid, "directory": pack_directory},
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to remove pack directory during cleanup",
+                {"pack_id": pid, "error": str(exc)},
+            )
+
+        # In-memory caches keyed by pack_id
+        _pack_video_tasks.pop(pid, None)
+
+        if oss_client:
+            try:
+                prefix = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{pid}/"
+                await asyncio.to_thread(_oss_delete_prefix, oss_client, prefix)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete OSS objects during cleanup",
+                    {"pack_id": pid, "error": str(exc)},
+                )
+
+
+async def delete_pack(
+    pack_id: str,
+    *,
+    db: Optional[AsyncSession] = None,
+) -> None:
+    """Delete a storyboard pack directory and optionally its OSS counterpart.
+
+    When ``db`` is supplied the matching ownership row is also dropped so
+    the pack disappears from the per-project list immediately.
+    """
     pack_directory = _pack_dir(pack_id)
     if not pack_directory:
         raise FileNotFoundError(f"Storyboard pack not found: {pack_id}")
@@ -1901,6 +2081,20 @@ async def delete_pack(pack_id: str) -> None:
 
     # Clean up in-memory caches
     _pack_video_tasks.pop(pack_id, None)
+
+    # Drop the ownership row alongside the on-disk delete. Best-effort —
+    # the disk delete is what the user observes; a stranded row will
+    # simply produce 404s on next access.
+    if db is not None:
+        from app.services import pack_ownership_service
+
+        try:
+            await pack_ownership_service.delete_by_pack(db, pack_id)
+        except Exception as exc:
+            logger.warning(
+                "Failed to delete storyboard pack ownership row",
+                {"pack_id": pack_id, "error": str(exc)},
+            )
 
     # Remove from OSS if enabled
     oss_client = get_oss_client()
@@ -1957,11 +2151,18 @@ async def _download_to_local(src_url: str, dest_path: str) -> None:
 
 async def create_pack_from_shots(
     request: StoryboardCreateFromShotsRequest,
+    *,
+    db: Optional[AsyncSession] = None,
+    user_id: Optional[str] = None,
 ) -> StoryboardPack:
     """Create a storyboard pack from script-bound shots (no cropping, no Seedream).
 
     Each shot's generated image is downloaded/copied to the pack directory so the
     pack is self-contained. The bound script text is persisted into frame.script.
+
+    ``db``/``user_id`` are forwarded by the router so the pack's ownership
+    row is persisted; service-level tests may omit them, in which case the
+    pack stays invisible to the per-project list (legacy semantics).
     """
     pack_id = f"sbpk_{uuid4().hex[:12]}"
     today_str = date.today().isoformat()
@@ -2023,6 +2224,8 @@ async def create_pack_from_shots(
     metadata = {
         "pack_id": pack_id,
         "pack_type": PACK_TYPE_STORYBOARD,
+        "project_id": request.project_id,
+        "user_id": user_id,
         "prompt": request.title or "",
         "grid_size": grid_size,
         "aspect_ratio": request.aspect_ratio,
@@ -2038,8 +2241,25 @@ async def create_pack_from_shots(
     async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
         await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
 
+    if db is not None and user_id is not None and request.project_id:
+        from app.services import pack_ownership_service
+
+        try:
+            await pack_ownership_service.upsert(
+                db=db,
+                pack_id=pack_id,
+                project_id=request.project_id,
+                user_id=user_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to persist storyboard pack ownership row",
+                {"pack_id": pack_id, "error": str(exc)},
+            )
+
     return StoryboardPack(
         pack_id=pack_id,
+        project_id=request.project_id,
         prompt=request.title or "",
         grid_size=grid_size,
         aspect_ratio=request.aspect_ratio,

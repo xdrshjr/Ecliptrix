@@ -202,8 +202,11 @@ async function executeProxy(
   const resolvedPath = await resolveBackendPath(backendPath, ctx)
   let targetUrl = backendConfig.joinPath(resolvedPath)
 
-  // 2. Forward query string for GET requests
-  if (method === 'GET') {
+  // 2. Forward query string. Originally GET-only; the storyboard project
+  //    isolation work added DELETE + POST routes (``?project_id=...``) that
+  //    rely on the BFF passing the query through verbatim, so it now applies
+  //    to every method. Body precedence on POST/PUT is unchanged.
+  {
     const qs = req.nextUrl.searchParams.toString()
     if (qs) targetUrl += (targetUrl.includes('?') ? '&' : '?') + qs
   }

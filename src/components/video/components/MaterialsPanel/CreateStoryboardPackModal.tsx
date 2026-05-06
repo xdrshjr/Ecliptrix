@@ -15,6 +15,8 @@ interface Props {
   onClose: () => void;
   onCreated: (pack: StoryboardPack) => void;
   imageMaterials?: MaterialItem[];
+  /** Owning project id — required by the backend to bind the new pack. */
+  projectId?: string;
 }
 
 function isHttpUrl(url: string | undefined): boolean {
@@ -49,6 +51,7 @@ const CreateStoryboardPackModal: React.FC<Props> = ({
   onClose,
   onCreated,
   imageMaterials = [],
+  projectId,
 }) => {
   const { locale } = useLocale();
   const isZh = locale === 'zh-CN';
@@ -269,6 +272,10 @@ const CreateStoryboardPackModal: React.FC<Props> = ({
       setSaveError(t.shotEmpty);
       return;
     }
+    if (!projectId) {
+      setSaveError(isZh ? '缺少项目上下文，无法创建分镜包' : 'Missing project context — cannot create pack');
+      return;
+    }
     setSaving(true);
     try {
       const apiShots: CreatePackFromShotsShot[] = shots.map((s) => ({
@@ -279,6 +286,7 @@ const CreateStoryboardPackModal: React.FC<Props> = ({
         generatedImageUrl: batch.states[s.shotId]!.imageUrl!,
       }));
       const pack = await createPackFromShots({
+        projectId,
         title: title || undefined,
         aspectRatio: '16:9',
         shots: apiShots,
@@ -293,7 +301,7 @@ const CreateStoryboardPackModal: React.FC<Props> = ({
     } finally {
       setSaving(false);
     }
-  }, [shots, batch, title, chat, onCreated, forceClose, t.noScript, t.shotEmpty]);
+  }, [shots, batch, title, chat, onCreated, forceClose, projectId, isZh, t.noScript, t.shotEmpty]);
 
   if (!isOpen) return null;
 

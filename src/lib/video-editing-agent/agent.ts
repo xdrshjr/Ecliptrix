@@ -60,6 +60,7 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     materials: config.materials,
     apiBaseUrl: config.apiBaseUrl,
     authToken: config.authToken,
+    projectId: config.projectId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
       toolContext.operations.set(toolCallId, operation);

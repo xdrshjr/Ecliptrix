@@ -42,6 +42,12 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onWatermarkRemoval?: (material: MaterialItem) => void; // 新增：水印去除回调
   onSelectPackForScript?: (pack: StoryboardPack) => void; // 分镜包→脚本面板回调
   taskId: string;
+  /** Owning project id. Required for storyboard pack listing/creation/delete —
+   *  the backend rejects calls without it (PROJECT_ID_REQUIRED). When
+   *  undefined the storyboard pack tab still renders but skips API calls so
+   *  the legacy mount path (no project context) does not 400 on every
+   *  refresh. */
+  projectId?: string;
   className?: string;
 }
 
@@ -69,6 +75,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   onWatermarkRemoval, // 新增：水印去除回调
   onSelectPackForScript, // 分镜包→脚本面板回调
   taskId,
+  projectId,
   className = '',
   // 新增的删除功能
   handleMaterialDelete,
@@ -202,14 +209,20 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
   // 加载分镜包列表
   const refreshStoryboardPacks = useCallback(async () => {
+    if (!projectId) {
+      // No project bound to this editor instance — clear packs and skip
+      // the API call. The backend would 400 with PROJECT_ID_REQUIRED.
+      setStoryboardPacks([]);
+      return;
+    }
     try {
-      const packs = await listPacks();
+      const packs = await listPacks(projectId);
       setStoryboardPacks(packs);
-      logger.info('分镜包列表加载成功', { count: packs.length });
+      logger.info('分镜包列表加载成功', { count: packs.length, projectId });
     } catch (error) {
       logger.error('加载分镜包列表失败', error instanceof Error ? error : new Error(String(error)));
     }
-  }, [logger]);
+  }, [logger, projectId]);
 
   // 加载人物/场景建模包列表
   const refreshCharacterPacks = useCallback(async () => {
@@ -234,7 +247,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     refreshStoryboardPacks();
     refreshCharacterPacks();
     refreshScenePacks();
-  }, []);
+    // Re-run when the bound project changes so switching projects swaps
+    // the visible pack list. The other refresh helpers are stable across
+    // projects (character/scene packs are global today) but kept here for
+    // simplicity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   // 删除分镜包
   const handleDeleteStoryboardPack = useCallback((packId: string) => {
@@ -245,8 +263,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     const packId = storyboardPackDeleteConfirm.packId;
     if (!packId) return;
     setStoryboardPackDeleteConfirm({ isOpen: false, packId: null });
+    if (!projectId) {
+      showError('无法删除分镜包：缺少项目上下文');
+      return;
+    }
     try {
-      await deletePack(packId);
+      await deletePack(projectId, packId);
       setStoryboardPacks(prev => prev.filter(p => p.packId !== packId));
       // If we are inside this pack, go back to top level
       if (currentStoryboardPack?.packId === packId) {
@@ -259,7 +281,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       showError(`删除分镜包失败: ${msg}`);
       logger.error('删除分镜包失败', error instanceof Error ? error : new Error(msg));
     }
-  }, [storyboardPackDeleteConfirm.packId, currentStoryboardPack, showSuccess, showError, logger]);
+  }, [storyboardPackDeleteConfirm.packId, currentStoryboardPack, projectId, showSuccess, showError, logger]);
 
   // 确认删除 人物/场景 建模包
   const handleConfirmDeleteImagePack = useCallback(async () => {
@@ -531,7 +553,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       const sc = scenePacksRef.current;
 
       const tasks: Promise<unknown>[] = [
-        ...sb.map(p => deletePack(p.packId)),
+        // Each pack carries its own owning projectId from the backend; fall
+        // back to the editor's bound project when missing (legacy packs are
+        // hidden anyway, so this branch only runs on the current project).
+        ...sb.map(p =>
+          deletePack(p.projectId ?? projectId ?? '', p.packId).catch((err) => {
+            logger.error('清空时删除分镜包失败', err instanceof Error ? err : new Error(String(err)));
+          }),
+        ),
         ...ch.map(p => deleteImagePack('character', p.pack_id)),
         ...sc.map(p => deleteImagePack('scene', p.pack_id)),
       ];
@@ -2502,6 +2531,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
       <CreateStoryboardPackModal
         isOpen={createStoryboardModalOpen}
+        projectId={projectId}
         imageMaterials={materials.filter((m) => m.type === 'image')}
         onClose={() => setCreateStoryboardModalOpen(false)}
         onCreated={(pack) => {
@@ -2782,7 +2812,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             });
         }}
         onStoryboardGenerate={async (params) => {
-          const pack = await handleStoryboardGenerate(params);
+          if (!projectId) {
+            throw new Error('Missing project context — cannot generate storyboard.');
+          }
+          const pack = await handleStoryboardGenerate({ ...params, projectId });
           await refreshStoryboardPacks();
           return pack;
         }}

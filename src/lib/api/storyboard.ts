@@ -36,6 +36,7 @@ interface RawBatchInfo {
 /** Raw backend pack shape (snake_case). */
 interface RawPack {
   pack_id: string;
+  project_id?: string | null;
   prompt: string;
   grid_size: string;
   aspect_ratio?: string;
@@ -94,6 +95,7 @@ function toBatch(b: RawBatchInfo): BatchInfo {
 function toPack(d: RawPack): StoryboardPack {
   return {
     packId: d.pack_id,
+    projectId: d.project_id ?? undefined,
     prompt: d.prompt,
     gridSize: d.grid_size,
     aspectRatio: (d.aspect_ratio || '1:1') as StoryboardAspectRatio,
@@ -128,6 +130,8 @@ export interface CreatePackFromShotsShot {
 }
 
 export interface CreatePackFromShotsPayload {
+  /** Owning project id — required by the backend. */
+  projectId: string;
   title?: string;
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
   shots: CreatePackFromShotsShot[];
@@ -144,6 +148,7 @@ export async function createPackFromShots(
   const data = await http.post<StoryboardEnvelope<RawPack>>(
     '/api/storyboard/packs/create-from-shots',
     {
+      project_id: payload.projectId,
       title: payload.title,
       aspect_ratio: payload.aspectRatio || '1:1',
       shots: payload.shots.map((s) => ({
@@ -177,6 +182,7 @@ export async function generateStoryboard(params: StoryboardGenerateParams): Prom
   const data = await http.post<StoryboardEnvelope<RawPack>>(
     '/api/storyboard/generate',
     {
+      project_id: params.projectId,
       prompt: params.prompt,
       frame_count: params.frameCount,
       aspect_ratio: params.aspectRatio || '1:1',
@@ -273,10 +279,16 @@ export async function reviseStoryboardScript(
 }
 
 /**
- * List all storyboard packs.
+ * List storyboard packs scoped to ``projectId``. The backend rejects calls
+ * without a project_id with HTTP 400 PROJECT_ID_REQUIRED — the frontend
+ * always knows which project the editor is bound to, so the parameter is
+ * required here too.
  */
-export async function listPacks(): Promise<StoryboardPack[]> {
-  const data = await http.get<StoryboardEnvelope<RawPack[]>>('/api/storyboard/packs');
+export async function listPacks(projectId: string): Promise<StoryboardPack[]> {
+  const qs = `?project_id=${encodeURIComponent(projectId)}`;
+  const data = await http.get<StoryboardEnvelope<RawPack[]>>(
+    `/api/storyboard/packs${qs}`,
+  );
 
   if (!data.success) {
     throw new Error(data.message || '获取分镜包列表失败');
@@ -286,10 +298,17 @@ export async function listPacks(): Promise<StoryboardPack[]> {
 }
 
 /**
- * Get a single storyboard pack by ID.
+ * Get a single storyboard pack by ID. Requires the owning ``projectId``;
+ * the backend returns 404 when the pack/project pair does not match.
  */
-export async function getPack(packId: string): Promise<StoryboardPack> {
-  const data = await http.get<StoryboardEnvelope<RawPack>>(`/api/storyboard/packs/${packId}`);
+export async function getPack(
+  projectId: string,
+  packId: string,
+): Promise<StoryboardPack> {
+  const qs = `?project_id=${encodeURIComponent(projectId)}`;
+  const data = await http.get<StoryboardEnvelope<RawPack>>(
+    `/api/storyboard/packs/${packId}${qs}`,
+  );
 
   if (!data.success || !data.data) {
     throw new Error(data.message || '获取分镜包失败');
@@ -299,10 +318,17 @@ export async function getPack(packId: string): Promise<StoryboardPack> {
 }
 
 /**
- * Delete a storyboard pack.
+ * Delete a storyboard pack. Requires the owning ``projectId``; the
+ * backend returns 404 when the pack/project pair does not match.
  */
-export async function deletePack(packId: string): Promise<void> {
-  const data = await http.del<StoryboardEnvelope<unknown>>(`/api/storyboard/packs/${packId}`);
+export async function deletePack(
+  projectId: string,
+  packId: string,
+): Promise<void> {
+  const qs = `?project_id=${encodeURIComponent(projectId)}`;
+  const data = await http.del<StoryboardEnvelope<unknown>>(
+    `/api/storyboard/packs/${packId}${qs}`,
+  );
 
   if (!data.success) {
     throw new Error(data.message || '删除分镜包失败');

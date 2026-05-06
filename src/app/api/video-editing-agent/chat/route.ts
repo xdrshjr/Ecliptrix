@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
       console.error('[VideoEditingAgent] JSON parse failed. Raw body length:', rawText.length, 'Preview:', rawText.slice(0, 500));
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
-    const { messages, timelineState, materials, sessionToken: bodyToken } = body;
+    const { messages, timelineState, materials, sessionToken: bodyToken, projectId } = body as AgentChatRequest & { projectId?: string };
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -367,6 +367,7 @@ export async function POST(request: NextRequest) {
             conversationHistory: messages,
             apiBaseUrl,
             authToken: incomingAuthToken,
+            projectId,
           });
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;

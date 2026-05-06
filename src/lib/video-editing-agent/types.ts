@@ -23,6 +23,14 @@ export interface ToolContext {
    * auth-protected routes.
    */
   authToken?: string;
+  /**
+   * Owning project id when the agent is invoked from a project-bound editor
+   * mount (the normal case post project-isolation refactor). Tools that
+   * touch project-scoped backend resources (e.g. storyboard packs) must
+   * forward this field; tools without an active project should refuse with
+   * a structured error rather than fall back to a global call.
+   */
+  projectId?: string;
   /** Map of toolCallId → operation produced by that tool call */
   operations: Map<string, AgentOperation>;
   /** Called by tools to record an operation and update local state */
@@ -155,6 +163,10 @@ export interface AgentChatRequest {
    * The chat route reads from header first, then falls back to this field.
    */
   sessionToken?: string;
+  /** Owning project id of the editor session that fired this request.
+   *  Forwarded into the agent's ToolContext so project-scoped tools (e.g.
+   *  storyboard pack creation) include it on backend calls. */
+  projectId?: string;
 }
 
 // --- Agent Factory Config ---
@@ -181,6 +193,13 @@ export interface VideoEditingAgentConfig {
    * SessionAuthMiddleware see the user identity.
    */
   authToken?: string;
+  /**
+   * Owning project id forwarded from the user's editor session. Tools that
+   * call project-scoped backend resources rely on this to pass project_id
+   * along; absence means the user is not inside a project and such tools
+   * should refuse with an actionable error.
+   */
+  projectId?: string;
 }
 
 // Re-export from central types for convenience

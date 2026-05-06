@@ -50,6 +50,9 @@ interface ScriptPanelProps {
   onUpdateSegments?: (segments: ScriptSegment[]) => void;
   onAddMaterial?: (material: MaterialItem) => void; // 添加素材到材料面板
   taskId?: string;
+  /** Owning project id forwarded to StoryboardScriptTab for project-scoped
+   *  pack listing/reads. */
+  projectId?: string;
   materials?: MaterialItem[]; // 添加材料列表，用于查找音频文件
   getVideoAnalysisResult?: (videoUrl: string) => VideoAnalysisResponse | null; // 获取视频分析结果
   aiVideoScriptSegments?: AIVideoScriptSegment[];
@@ -82,6 +85,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   storyboardScriptSegments = [],
   onUpdateStoryboardScriptSegments,
   onGenerateAiVideoForSentence,
+  projectId,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -1928,6 +1932,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             onUpdateSegments={onUpdateStoryboardScriptSegments}
             onAddMaterial={onAddMaterial}
             taskId={taskId}
+            projectId={projectId}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center p-8">

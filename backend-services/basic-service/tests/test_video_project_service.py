@@ -291,6 +291,101 @@ async def test_invalid_uuids_return_none(db_session):
 
 
 @pytest.mark.asyncio
+async def test_delete_project_cascades_storyboard_pack_ownership(db_session, monkeypatch):
+    """Deleting a project drops all its storyboard_packs ownership rows
+    inside the same transaction; on-disk cleanup runs after commit (best-effort)."""
+    from app.services import pack_ownership_service, storyboard_service
+
+    proj = await video_project_service.create_project(
+        db=db_session,
+        user_id=USER_A,
+        payload=CreateVideoProjectRequest(name="With packs"),
+    )
+    other = await video_project_service.create_project(
+        db=db_session,
+        user_id=USER_A,
+        payload=CreateVideoProjectRequest(name="Untouched"),
+    )
+
+    # Two packs in the project being deleted, one in another project.
+    await pack_ownership_service.upsert(
+        db=db_session, pack_id="pk-cascade-1", project_id=proj.id, user_id=USER_A
+    )
+    await pack_ownership_service.upsert(
+        db=db_session, pack_id="pk-cascade-2", project_id=proj.id, user_id=USER_A
+    )
+    await pack_ownership_service.upsert(
+        db=db_session,
+        pack_id="pk-untouched",
+        project_id=other.id,
+        user_id=USER_A,
+    )
+
+    # Stub out the post-commit storage cleanup — no on-disk pack here.
+    cleanup_calls: list[list[str]] = []
+
+    async def _fake_cleanup(pack_ids):
+        cleanup_calls.append(list(pack_ids))
+
+    monkeypatch.setattr(
+        storyboard_service, "cleanup_pack_storage", _fake_cleanup
+    )
+
+    deleted = await video_project_service.delete_project(
+        db=db_session, user_id=USER_A, project_id=proj.id
+    )
+    assert deleted is True
+
+    # Ownership rows for the deleted project are gone, others survive.
+    remaining_proj = await pack_ownership_service.collect_pack_ids_for_project(
+        db_session, proj.id
+    )
+    assert remaining_proj == []
+    remaining_other = await pack_ownership_service.collect_pack_ids_for_project(
+        db_session, other.id
+    )
+    assert remaining_other == ["pk-untouched"]
+
+    # cleanup_pack_storage was called once with the snapshot of pack ids.
+    assert len(cleanup_calls) == 1
+    assert sorted(cleanup_calls[0]) == ["pk-cascade-1", "pk-cascade-2"]
+
+
+@pytest.mark.asyncio
+async def test_assert_project_writable_raises_404_for_other_user(db_session):
+    from fastapi import HTTPException
+
+    proj = await video_project_service.create_project(
+        db=db_session,
+        user_id=USER_A,
+        payload=CreateVideoProjectRequest(name="Only A"),
+    )
+    # User A: ok.
+    row = await video_project_service.assert_project_writable(
+        db=db_session, user_id=USER_A, project_id=proj.id
+    )
+    assert str(row.id) == proj.id
+    # User B: 404.
+    with pytest.raises(HTTPException) as excinfo:
+        await video_project_service.assert_project_writable(
+            db=db_session, user_id=USER_B, project_id=proj.id
+        )
+    assert excinfo.value.status_code == 404
+    assert excinfo.value.detail == "PROJECT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_assert_project_writable_404_for_invalid_id(db_session):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as excinfo:
+        await video_project_service.assert_project_writable(
+            db=db_session, user_id=USER_A, project_id="not-a-uuid"
+        )
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_request_rejects_user_id_field():
     """Per the auth contract, the Pydantic create model has no user_id field.
 

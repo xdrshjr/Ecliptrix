@@ -28,13 +28,14 @@ describe('storyboard API client', () => {
   beforeEach(() => vi.restoreAllMocks());
   afterEach(() => vi.restoreAllMocks());
 
-  it('generateStoryboard calls http.post on /api/storyboard/generate with snake_case body', async () => {
+  it('generateStoryboard wires project_id + snake_case body into /api/storyboard/generate', async () => {
     const spy = vi.spyOn(httpModule.http, 'post').mockResolvedValue({
       success: true,
       data: fakePack,
     } as never);
 
     const params: StoryboardGenerateParams = {
+      projectId: 'proj-42',
       prompt: 'a cat',
       frameCount: 4,
       aspectRatio: '1:1',
@@ -44,39 +45,40 @@ describe('storyboard API client', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0][0]).toBe('/api/storyboard/generate');
     const body = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(body.project_id).toBe('proj-42');
     expect(body.frame_count).toBe(4);
     expect(body.aspect_ratio).toBe('1:1');
   });
 
-  it('listPacks calls http.get and returns mapped packs', async () => {
+  it('listPacks forwards project_id as query string', async () => {
     const spy = vi.spyOn(httpModule.http, 'get').mockResolvedValue({
       success: true,
       data: [fakePack],
     } as never);
 
-    const packs = await listPacks();
-    expect(spy).toHaveBeenCalledWith('/api/storyboard/packs');
+    const packs = await listPacks('proj-42');
+    expect(spy).toHaveBeenCalledWith('/api/storyboard/packs?project_id=proj-42');
     expect(packs.length).toBe(1);
     expect(packs[0].packId).toBe('pk-1');
   });
 
-  it('getPack calls http.get with the pack id in the path', async () => {
+  it('getPack forwards project_id and the pack id in the path', async () => {
     const spy = vi.spyOn(httpModule.http, 'get').mockResolvedValue({
       success: true,
       data: fakePack,
     } as never);
 
-    await getPack('pk-1');
-    expect(spy).toHaveBeenCalledWith('/api/storyboard/packs/pk-1');
+    await getPack('proj-42', 'pk-1');
+    expect(spy).toHaveBeenCalledWith('/api/storyboard/packs/pk-1?project_id=proj-42');
   });
 
-  it('deletePack uses http.del', async () => {
+  it('deletePack forwards project_id and uses http.del', async () => {
     const spy = vi.spyOn(httpModule.http, 'del').mockResolvedValue({
       success: true,
     } as never);
 
-    await deletePack('pk-1');
-    expect(spy).toHaveBeenCalledWith('/api/storyboard/packs/pk-1');
+    await deletePack('proj-42', 'pk-1');
+    expect(spy).toHaveBeenCalledWith('/api/storyboard/packs/pk-1?project_id=proj-42');
   });
 
   it('describeFrames calls http.post on /api/storyboard/describe', async () => {
@@ -126,7 +128,7 @@ describe('storyboard API client', () => {
   it('lets ApiError propagate without wrapping', async () => {
     const err = new ApiError(500, 'INTERNAL', 'storyboard down');
     vi.spyOn(httpModule.http, 'get').mockRejectedValue(err);
-    await expect(listPacks()).rejects.toBe(err);
+    await expect(listPacks('proj-42')).rejects.toBe(err);
   });
 
   it('createPackFromShots posts snake_case shots and unwraps pack', async () => {
@@ -154,6 +156,7 @@ describe('storyboard API client', () => {
     } as never);
 
     const pack = await createPackFromShots({
+      projectId: 'proj-42',
       title: 'Demo',
       aspectRatio: '16:9',
       shots: [
@@ -169,6 +172,7 @@ describe('storyboard API client', () => {
     expect(spy).toHaveBeenCalledWith(
       '/api/storyboard/packs/create-from-shots',
       expect.objectContaining({
+        project_id: 'proj-42',
         title: 'Demo',
         aspect_ratio: '16:9',
         shots: [
@@ -197,7 +201,10 @@ describe('storyboard API client', () => {
       message: 'boom',
     } as never);
     await expect(
-      createPackFromShots({ shots: [{ shotId: 's', script: 'a', generatedImageUrl: 'u' }] }),
+      createPackFromShots({
+        projectId: 'proj-42',
+        shots: [{ shotId: 's', script: 'a', generatedImageUrl: 'u' }],
+      }),
     ).rejects.toThrow(/boom|创建/);
   });
 });

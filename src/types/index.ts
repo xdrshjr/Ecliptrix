@@ -591,6 +591,9 @@ export interface BatchInfo {
 /** A storyboard pack containing the original image and its cropped frames */
 export interface StoryboardPack {
   packId: string;
+  /** Owning project id. Optional for legacy pre-isolation packs that have no
+   *  ownership row in the backend. New packs always carry one. */
+  projectId?: string;
   prompt: string;
   gridSize: string;           // '2x2' for new packs; legacy packs may have '3x3' etc.
   aspectRatio?: StoryboardAspectRatio;
@@ -641,6 +644,9 @@ export interface StoryboardScriptDraft {
  *  2×2 batches.
  */
 export interface StoryboardGenerateParams {
+  /** Owning project id — required by the backend (router rejects with 400
+   *  PROJECT_ID_REQUIRED otherwise). */
+  projectId: string;
   prompt: string;
   frameCount: number;
   aspectRatio?: StoryboardAspectRatio;

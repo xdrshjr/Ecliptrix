@@ -244,6 +244,7 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
 
       <VideoEditingInterface
         key={projectId}
+        projectId={projectId}
         taskId={taskId}
         content={content}
         onUpdateContent={handleUpdateContent}

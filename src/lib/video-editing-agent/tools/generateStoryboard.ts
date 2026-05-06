@@ -73,12 +73,27 @@ export function createGenerateStoryboardTool(_context: ToolContext): AgentTool<t
       const frameCount = params.scene_count || 4;
       const aspectRatio = params.aspect_ratio ?? '16:9';
 
+      // Storyboard packs are scoped to a project — the agent must be
+      // running inside an editor session bound to one. Refuse early with
+      // a structured error rather than 400-ing on the backend so the agent
+      // can surface a useful message to the user.
+      const projectId = _context.projectId;
+      if (!projectId) {
+        const err = {
+          success: false,
+          error_code: 'STORYBOARD_REQUIRES_PROJECT',
+          error: 'No active project context. Open a video project before generating a storyboard so it can be saved into the project.',
+        };
+        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      }
+
       try {
         const response = await toolFetch(_context, '/api/storyboard/generate', {
           method: 'POST',
           // Chained 2×2 (up to 4 batches × ~90s) — align with BFF ceiling.
           timeout: 900_000,
           body: JSON.stringify({
+            project_id: projectId,
             prompt,
             frame_count: frameCount,
             aspect_ratio: aspectRatio,

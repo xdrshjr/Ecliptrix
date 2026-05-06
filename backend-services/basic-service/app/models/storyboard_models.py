@@ -92,6 +92,15 @@ class StoryboardGenerateRequest(BaseModel):
     value is rejected at validation time.
     """
 
+    project_id: Optional[str] = Field(
+        None,
+        description=(
+            "Owning project id. Required by the HTTP layer (the router rejects "
+            "missing values with 400 PROJECT_ID_REQUIRED); kept Optional in the "
+            "Pydantic model so existing service-level tests that exercise the "
+            "generation pipeline directly do not need to invent a project."
+        ),
+    )
     prompt: str = Field(
         ...,
         max_length=2000,
@@ -217,6 +226,14 @@ class StoryboardShotInput(BaseModel):
 class StoryboardCreateFromShotsRequest(BaseModel):
     """Request to create a storyboard pack from AI-scripted shots."""
 
+    project_id: Optional[str] = Field(
+        None,
+        description=(
+            "Owning project id. Required by the HTTP layer (the router rejects "
+            "missing values with 400 PROJECT_ID_REQUIRED); kept Optional in the "
+            "Pydantic model for parity with StoryboardGenerateRequest."
+        ),
+    )
     title: Optional[str] = Field(None, description="Optional pack title")
     aspect_ratio: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = Field(
         default="1:1", description="Aspect ratio of shots"
@@ -289,6 +306,14 @@ class StoryboardPack(BaseModel):
     """Complete storyboard pack metadata."""
 
     pack_id: str = Field(..., description="Unique pack identifier")
+    project_id: Optional[str] = Field(
+        None,
+        description=(
+            "Owning project id. Optional for legacy reads — packs whose "
+            "metadata.json predates the project-isolation refactor will not "
+            "have one and remain invisible to per-project lists."
+        ),
+    )
     prompt: str = Field(..., description="Original user prompt")
     grid_size: str = Field(..., description="Grid specification (always '2x2' for newly generated packs)")
     aspect_ratio: str = Field(default="1:1", description="Aspect ratio of each frame")

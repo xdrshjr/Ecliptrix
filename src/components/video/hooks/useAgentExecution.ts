@@ -52,6 +52,9 @@ export interface UseAgentExecutionParams {
   agentMode: boolean;
   /** Agent mode setter (managed externally for UI persistence). */
   setAgentMode: (mode: boolean) => void;
+  /** Owning project id forwarded to the agent route so project-scoped tools
+   *  (storyboard pack creation, etc.) can include it on backend calls. */
+  projectId?: string;
 }
 
 export interface UseAgentExecutionReturn {
@@ -89,6 +92,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     onNotification,
     agentMode,
     setAgentMode,
+    projectId,
   } = params;
 
   // -- Execution state (lifecycle, tool tracking, etc.) --
@@ -294,6 +298,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         timelineState: currentTL,
         materials: materialsRef.current,
         sessionToken: sessionToken ?? undefined,
+        projectId,
       },
       onEvent: (event: SSEEvent) => {
         // Route event through AgentEventRouter (async for timeline operations)

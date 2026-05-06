@@ -13,6 +13,9 @@ interface StoryboardScriptTabProps {
   onUpdateSegments: (segments: StoryboardScriptSegment[]) => void;
   onAddMaterial?: (material: MaterialItem) => void;
   taskId?: string;
+  /** Owning project id forwarded to the storyboard hooks for project-scoped
+   *  pack listing and per-pack reads. */
+  projectId?: string;
 }
 
 const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
@@ -20,6 +23,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
   onUpdateSegments,
   onAddMaterial,
   taskId,
+  projectId,
 }) => {
   const { t } = useLocale();
   const {
@@ -47,6 +51,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
     onUpdateSegments,
     onAddMaterial,
     taskId,
+    projectId,
   });
 
   const [expandingSegmentId, setExpandingSegmentId] = useState<string | null>(null);
