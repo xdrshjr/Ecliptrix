@@ -7,7 +7,16 @@ import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
+import { scanExploredCategories } from './historyScan';
 import { reconcileOverlapsAfterAgentOp } from './reconcile';
+
+/**
+ * Optional debug switch — when set, dumps the full final system prompt to
+ * stdout once per agent creation. Off by default in production.
+ *
+ * Spec: docs/plans/video-agent-prompt-persistence/spec.md §2.8.
+ */
+const PROMPT_DEBUG = process.env.VIDEO_AGENT_PROMPT_DEBUG === '1';
 
 /** Map provider_type from backend to pi-ai api/provider values. */
 function resolveModelFormat(providerType?: string): { api: KnownApi; provider: string } {
@@ -79,11 +88,37 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   const history = config.conversationHistory.slice(0, -1);
   const initialMessages = convertToAgentMessages(history);
 
-  // 6. Create Agent
-  const categorySummaries = registry.getCategorySummaries();
+  // 6. Build the L0 system prompt.
+  //    - exploredCategories: replays any advanced categories the user already
+  //      drilled into via explore_tools so the LLM never re-loses that
+  //      guidance on later turns (spec v2 §2.3 Layer B).
+  //    - registry: lets buildSystemPrompt pull live tool descriptions and
+  //      parameter schemas for the Core Workflow Toolkit (Layer A).
+  const exploredCategories = scanExploredCategories(config.conversationHistory);
+  const systemPrompt = buildSystemPrompt({
+    timelineState: config.timelineState,
+    materials: config.materials,
+    registry,
+    exploredCategories,
+  });
+
+  // Observability: log the prompt size and explored categories on every
+  // agent creation so we can verify the persistence fix is active and spot
+  // regressions where the prompt unexpectedly shrinks. The char-based
+  // estimate is a Chinese-aware floor (≈ 2 chars/token worst case) — see
+  // spec §2.8 / R8.
+  const tokenEstimate = Math.round(systemPrompt.length / 2);
+  console.log(
+    `[VideoEditingAgent] systemPrompt tokens≈${tokenEstimate} chars=${systemPrompt.length} exploredCategories=[${exploredCategories.join(',')}]`
+  );
+  if (PROMPT_DEBUG) {
+    console.log('[VideoEditingAgent] PROMPT_DEBUG dump:\n' + systemPrompt);
+  }
+
+  // 7. Create Agent
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(config.timelineState, config.materials, categorySummaries),
+      systemPrompt,
       model,
       thinkingLevel: 'off',
       tools,

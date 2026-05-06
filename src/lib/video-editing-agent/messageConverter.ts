@@ -3,10 +3,31 @@ import type { ChatMessage } from '@/types';
 import type { AgentToolCallRecord } from './types';
 
 /**
+ * Options for `convertToAgentMessages`.
+ *
+ * @beta — flag is wired but unused in v1; reserved for the optional
+ * compaction described in spec v2 §2.5 / §3 row 5.
+ */
+export interface ConvertToAgentMessagesOptions {
+  /**
+   * @beta When `true`, replace any prior `explore_tools` tool-result content
+   * with a 1-line stub (since the same expanded block now lives inside the
+   * system prompt's "Previously explored advanced categories" appendix).
+   * Off by default — only flip on after profiling shows the duplicated
+   * payload is causing measurable token bloat.
+   */
+  compactExploreToolsResults?: boolean;
+}
+
+/**
  * Convert app ChatMessage[] to pi-ai Message[] for agent history injection.
  * The LAST user message should be excluded — it's passed to agent.prompt() separately.
  */
-export function convertToAgentMessages(chatMessages: ChatMessage[]): Message[] {
+export function convertToAgentMessages(
+  chatMessages: ChatMessage[],
+  options: ConvertToAgentMessagesOptions = {}
+): Message[] {
+  const { compactExploreToolsResults = false } = options;
   const result: Message[] = [];
 
   for (const msg of chatMessages) {
@@ -50,11 +71,16 @@ export function convertToAgentMessages(chatMessages: ChatMessage[]): Message[] {
         // Add tool results
         for (const tc of msg.agentToolCalls as AgentToolCallRecord[]) {
           if (tc.result !== undefined) {
+            const isExploreCall = tc.name === 'explore_tools' && tc.status === 'completed';
+            const text =
+              compactExploreToolsResults && isExploreCall
+                ? `(explore_tools result for category "${(tc.params as Record<string, unknown>)?.category ?? 'unknown'}" — see "已加载的高级工具" section in the system prompt for full details.)`
+                : JSON.stringify(tc.result);
             const toolResult: ToolResultMessage = {
               role: 'toolResult',
               toolCallId: tc.id,
               toolName: tc.name,
-              content: [{ type: 'text', text: JSON.stringify(tc.result) }],
+              content: [{ type: 'text', text }],
               isError: tc.status === 'error',
               timestamp: new Date(msg.timestamp).getTime(),
             };

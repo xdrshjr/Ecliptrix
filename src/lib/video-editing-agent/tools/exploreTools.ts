@@ -1,7 +1,8 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
-import { ToolRegistry, ON_DEMAND_CATEGORY_IDS, CATEGORY_IDS } from '../registry';
+import { ToolRegistry, ON_DEMAND_CATEGORY_IDS } from '../registry';
 import { formatExploreToolsResult } from '../systemPrompt';
+import { getCategoryUsageHints } from '../promptParts';
 
 const parameters = Type.Object({
   category: Type.Union(
@@ -69,7 +70,7 @@ export function createExploreToolsTool(
         parameters: tool.parametersSchema,
       }));
 
-      const usageHints = buildUsageHints(categoryId);
+      const usageHints = getCategoryUsageHints(categoryId);
 
       // Format as human-readable text for the LLM using formatExploreToolsResult
       const formattedText = formatExploreToolsResult(
@@ -96,58 +97,3 @@ export function createExploreToolsTool(
   };
 }
 
-/**
- * Build category-specific usage hints to guide the LLM.
- */
-function buildUsageHints(categoryId: string): string {
-  switch (categoryId) {
-    case CATEGORY_IDS.SEARCH_TOOLS:
-      return (
-        'Search tools query external APIs (Pexels, Unsplash, Freesound). ' +
-        'Results are automatically added to the material library. ' +
-        'Use add_to_track to place them directly on the timeline.\n' +
-        'Tip: English keywords yield better results; Chinese queries are auto-translated.'
-      );
-    case CATEGORY_IDS.AI_GEN_TOOLS:
-      return (
-        'AI generation tools start async tasks. The tool returns a taskId and the generation runs in the background. ' +
-        'Results are automatically added to the material library when complete. ' +
-        'You can inform the user that generation has started and continue with other tasks.'
-      );
-    case CATEGORY_IDS.TTS_TOOLS:
-      return (
-        'TTS tools convert text to speech audio. Use generate_tts for a single piece of text (sync, ~2-5s), ' +
-        'or batch_generate_tts for multiple sentences/paragraphs. Generated audio is auto-added to the material library.\n\n' +
-        'When generating narration for a video script: use the narration_text from generate_video_script results as TTS input. ' +
-        'Never fabricate or write your own narration text.\n\n' +
-        'Popular voice types:\n' +
-        '  - zh_female_shuangkuaisisi_moon_bigtts  — 双快丝丝 (female, Chinese)\n' +
-        '  - zh_male_chunhou_moon_bigtts            — 醇厚 (male, Chinese)\n' +
-        '  - zh_female_tianmei_moon_bigtts           — 甜美 (female, Chinese)\n' +
-        '  - zh_male_yangguang_moon_bigtts           — 阳光 (male, Chinese)\n' +
-        '  - zh_female_wenrou_moon_bigtts            — 温柔 (female, Chinese)\n' +
-        '  - en_female_arabellaexpressive             — Arabella (female, English)\n' +
-        '  - en_male_caleb                            — Caleb (male, English)\n' +
-        '  - en_female_sarahexpressive                — Sarah (female, English)\n' +
-        'If voice_type is omitted, defaults to zh_female_shuangkuaisisi_moon_bigtts.'
-      );
-    case CATEGORY_IDS.SCRIPT_TOOLS:
-      return (
-        'Script tools help create and refine video scripts. Use generate_video_script to create a new script from a topic, ' +
-        'expand_video_script to elaborate on an existing script, or understand_video_script to generate a script from video analysis.'
-      );
-    case CATEGORY_IDS.STORYBOARD_TOOLS:
-      return (
-        'Storyboard tools work with visual storyboards. generate_storyboard creates shot breakdowns from a script, ' +
-        'describe_storyboard adds visual descriptions, batch_storyboard_video generates video for each shot, ' +
-        'and compose_storyboard assembles shots into a timeline.'
-      );
-    case CATEGORY_IDS.MATERIAL_TOOLS:
-      return (
-        'Material management tools let you manually add external URLs or remove unwanted materials from the library. ' +
-        'Note: search and AI generation results are auto-added, so this is mainly for manual management.'
-      );
-    default:
-      return 'Call the tools in this category as needed for your task.';
-  }
-}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
 import { backendConfig } from '@/lib/config/backend';
+import { buildEditingChatSystemPrompt } from '@/lib/video-editing-chat/buildEditingChatSystemPrompt';
 
 /**
  * Server-side intent-detection helper.
@@ -90,23 +91,17 @@ const getConfig = () => {
 };
 
 // 转换消息格式，添加视频编辑系统提示
+//
+// 系统提示由 buildEditingChatSystemPrompt() 统一生成（见
+// `src/lib/video-editing-chat/buildEditingChatSystemPrompt.ts`），保证不论
+// 用户是第几轮提问，AI 都能按统一的六大职责给出一致建议。Spec：
+// docs/plans/video-agent-prompt-persistence/spec.md §2.6。
 const formatMessages = (messages: ChatMessage[]) => {
-  // 添加系统提示，指导 AI 作为视频编辑助手
   const systemMessage = {
     role: 'system',
-    content: `你是一个专业的视频编辑 AI 助手。你的任务是帮助用户进行视频编辑相关的工作，包括：
-
-1. 脚本编写与优化：帮助用户创作和改进视频脚本
-2. 创意建议：提供视频创意、拍摄角度、剪辑手法等建议
-3. 技术指导：解答视频剪辑、特效、转场等技术问题
-4. 素材推荐：根据脚本内容推荐合适的视频素材、音乐、图片等
-5. 时间轴规划：帮助用户规划视频时间轴和节奏
-6. 文案润色：优化视频文案、字幕、标题等文本内容
-
-请保持专业、友好、简洁的沟通风格，提供实用的建议和具体的操作步骤。`
+    content: buildEditingChatSystemPrompt(),
   };
 
-  // 将系统消息和用户消息组合
   return [
     systemMessage,
     ...messages.map(msg => ({

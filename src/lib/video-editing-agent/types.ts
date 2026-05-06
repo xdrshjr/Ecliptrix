@@ -179,6 +179,22 @@ export interface VideoEditingAgentConfig {
   providerType?: string;
   timelineState: TimelineState;
   materials: MaterialItem[];
+  /**
+   * Full conversation history for this turn, including the latest user
+   * message at the tail. The history drives two surfaces inside
+   * `createVideoEditingAgent`:
+   *
+   *   1. **Message replay** — every entry except the trailing user message
+   *      is converted via `convertToAgentMessages` and seeded into the
+   *      pi-agent-core `Agent` so the LLM sees the same `assistant` /
+   *      `toolResult` pairs the user already saw.
+   *   2. **Explored-categories appendix** — `scanExploredCategories`
+   *      walks the same array to find any advanced tool categories the
+   *      user previously loaded via `explore_tools`. Those categories'
+   *      expanded blocks are then re-injected into the L0 system prompt
+   *      so the agent does not "forget how the tools work" on later turns
+   *      (spec: docs/plans/video-agent-prompt-persistence/spec.md §2.3).
+   */
   conversationHistory: ChatMessage[];
   /**
    * Base URL for internal API calls. Should point at the local Next.js

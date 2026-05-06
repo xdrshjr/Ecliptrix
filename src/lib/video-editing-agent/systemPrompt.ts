@@ -1,5 +1,11 @@
 import type { TimelineState, MaterialItem } from '@/types';
 import type { CategorySummary, ToolInfo } from './registry/ToolRegistry';
+import { ToolRegistry, type CategoryId } from './registry';
+import {
+  CORE_TOOLKIT_TOOL_NAMES,
+  WORKFLOW_RECIPES_MD,
+  getCategoryUsageHints,
+} from './promptParts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -36,28 +42,25 @@ const ALWAYS_AVAILABLE_TOOLS: { name: string; desc: string }[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Format the tool directory as a two-section tree: always-available tools
- * and advanced tool categories (requiring explore_tools to see details).
+ * Format the always-available tool directory.
+ *
+ * Note (spec v2 §3 row 1): the previous body also listed advanced categories
+ * by ID + one-line description. Layer A (`formatCoreToolkit`) now covers the
+ * tools the LLM actually calls every turn, so the redundant on-demand index
+ * has been dropped to keep the prompt below the 3500-token ceiling. The
+ * `categorySummaries` parameter is retained for binary compatibility with
+ * existing tests and any external caller, but is no longer rendered.
  *
  * @param categorySummaries - Summaries from ToolRegistry.getCategorySummaries()
+ *                            (currently unused by the body — see note above).
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function formatToolOverview(categorySummaries: CategorySummary[]): string {
   const lines: string[] = [];
 
-  // Section 1: Always-available tools
   lines.push('## 始终可用的工具');
   for (const tool of ALWAYS_AVAILABLE_TOOLS) {
     lines.push(`- ${tool.name}: ${tool.desc}`);
-  }
-
-  // Section 2: Advanced categories (on-demand, not alwaysAvailable)
-  const advancedCategories = categorySummaries.filter(c => !c.alwaysAvailable);
-  if (advancedCategories.length > 0) {
-    lines.push('');
-    lines.push('## 高级工具类别（调用 explore_tools 查看详情后可用）');
-    for (const cat of advancedCategories) {
-      lines.push(`- ${cat.id}: ${cat.description}`);
-    }
   }
 
   return lines.join('\n');
@@ -206,78 +209,253 @@ export function formatCompactSummary(
 }
 
 // ---------------------------------------------------------------------------
+// Layer A — formatCoreToolkit
+// ---------------------------------------------------------------------------
+
+/**
+ * Format one tool's parameter schema as a single "参数：" line, mirroring the
+ * style used by `formatExploreToolsResult` so the appearance is consistent.
+ */
+function formatParamSignature(parametersSchema: unknown): string | null {
+  if (!parametersSchema || typeof parametersSchema !== 'object') return null;
+  const schema = parametersSchema as Record<string, unknown>;
+  const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
+  const required = (schema.required as string[]) ?? [];
+  if (!properties) return null;
+
+  const paramParts: string[] = [];
+  for (const [key, prop] of Object.entries(properties)) {
+    const isRequired = required.includes(key);
+    const desc = (prop.description as string) ?? '';
+    const suffix = desc ? `, ${desc}` : '';
+    paramParts.push(`${key}(${isRequired ? '必填' : '可选'}${suffix})`);
+  }
+  return `参数：${paramParts.join(', ')}`;
+}
+
+/**
+ * Build the Layer A "Core Workflow Toolkit" section: every tool in
+ * `CORE_TOOLKIT_TOOL_NAMES` rendered with its name, description, and
+ * parameter signature pulled live from the registry.
+ *
+ * Drift handling (R3): if a name in `CORE_TOOLKIT_TOOL_NAMES` is missing
+ * from the registry, emit a `console.warn` and write a single
+ * "(currently unavailable)" stub line for that tool. We intentionally do
+ * NOT throw — that would 500 the user request inside `createVideoEditingAgent`.
+ */
+export function formatCoreToolkit(registry: ToolRegistry): string {
+  const allTools = registry.getAllTools();
+  const byName = new Map<string, (typeof allTools)[number]>();
+  for (const t of allTools) byName.set(t.name, t);
+
+  const lines: string[] = [];
+  lines.push('## 核心工作流工具');
+  lines.push('');
+  lines.push(
+    '以下工具已经默认注册在 Agent 工具集中。**任何一轮对话**你都可以直接调用，不需要先调用 explore_tools。'
+  );
+
+  for (const name of CORE_TOOLKIT_TOOL_NAMES) {
+    const tool = byName.get(name);
+    if (!tool) {
+      console.warn(
+        `[VideoEditingAgent] core toolkit name "${name}" not found in registry; falling back to one-line stub.`
+      );
+      lines.push('');
+      lines.push(`### ${name}`);
+      lines.push('(currently unavailable — call explore_tools if you need this tool)');
+      continue;
+    }
+    lines.push('');
+    lines.push(`### ${tool.name}`);
+    lines.push(tool.description);
+    const paramLine = formatParamSignature(tool.parameters);
+    if (paramLine) lines.push(paramLine);
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Layer C — formatWorkflowRecipes
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the static workflow-recipes block (Layer C). The body lives in
+ * `promptParts.WORKFLOW_RECIPES_MD` so it is shared with any future surface
+ * that needs the same recipes.
+ */
+export function formatWorkflowRecipes(): string {
+  return `## 工作流配方 (Workflow Recipes)\n\n${WORKFLOW_RECIPES_MD}`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer B — formatExploredCategoriesAppendix
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-category char ceiling for blocks rendered into the Layer B appendix.
+ * ≈ 600 tokens worst-case for mixed CN/EN. Anything past this gets truncated
+ * with a "see explore_tools" tail so the system prompt stays under its hard
+ * 14000-char ceiling even when many categories have been explored
+ * (spec v2 §7 R1).
+ */
+const APPENDIX_BLOCK_CHAR_CEILING = 2400;
+
+/**
+ * Total char ceiling across the entire Layer B appendix
+ * (spec v2 §2.4 — "Section 9: variable, ≤ 800 tokens" → ≈ 3200 chars).
+ */
+const APPENDIX_TOTAL_CHAR_CEILING = 3200;
+
+/**
+ * Truncate a per-category block to `APPENDIX_BLOCK_CHAR_CEILING`. The tail
+ * directs the LLM to call `explore_tools` for the full schema if it ever
+ * needs more detail than the truncated form provides.
+ */
+function truncateAppendixBlock(block: string, categoryId: string): string {
+  if (block.length <= APPENDIX_BLOCK_CHAR_CEILING) return block;
+  const head = block.slice(0, APPENDIX_BLOCK_CHAR_CEILING);
+  return (
+    head +
+    `\n…（内容已截断；如需完整参数说明，请调用 explore_tools({category: "${categoryId}"}) 重新加载）`
+  );
+}
+
+/**
+ * Render the "previously explored advanced categories" appendix (Layer B).
+ * For each category the user has already loaded via `explore_tools` in an
+ * earlier turn, include the same expanded block the explore_tools tool
+ * itself would produce — so the LLM sees the detailed schemas in `system`
+ * instead of having to dig them out of buried `toolResult` messages.
+ *
+ * Returns an empty string when `exploredCategories` is empty so the section
+ * header doesn't appear at all in the cache-friendly common case.
+ */
+export function formatExploredCategoriesAppendix(
+  registry: ToolRegistry,
+  exploredCategories: CategoryId[]
+): string {
+  if (exploredCategories.length === 0) return '';
+
+  const header = [
+    '## 已加载的高级工具',
+    '',
+    '用户在更早的对话中已经通过 explore_tools 加载过下列工具类别。即便它们不在"核心工作流工具"列表中，你也可以**直接调用**——下面是它们的参数说明：',
+  ];
+
+  const blocks: string[] = [];
+  let usedChars = 0;
+  let truncatedCategories: string[] = [];
+
+  for (const categoryId of exploredCategories) {
+    const info = registry.getCategoryToolInfo(categoryId);
+    if (!info) {
+      console.warn(
+        `[VideoEditingAgent] previously explored category "${categoryId}" not found in registry; skipping appendix entry.`
+      );
+      continue;
+    }
+    if (info.tools.length === 0) continue;
+
+    const raw = formatExploreToolsResult(
+      info.category.name,
+      info.category.id,
+      info.tools,
+      getCategoryUsageHints(categoryId)
+    );
+    const block = truncateAppendixBlock(raw, categoryId);
+
+    // Stop adding more blocks once we've used up the total appendix budget.
+    if (usedChars + block.length > APPENDIX_TOTAL_CHAR_CEILING) {
+      truncatedCategories = exploredCategories
+        .slice(exploredCategories.indexOf(categoryId))
+        .map(c => String(c));
+      break;
+    }
+
+    blocks.push('');
+    blocks.push(block);
+    usedChars += block.length;
+  }
+
+  if (blocks.length === 0) return '';
+
+  if (truncatedCategories.length > 0) {
+    blocks.push('');
+    blocks.push(
+      `（其余已加载类别 [${truncatedCategories.join(', ')}] 因 token 预算超限未在系统提示中列出；如需查看，请调用 explore_tools 重新加载。）`
+    );
+  }
+
+  return [...header, ...blocks].join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // buildSystemPrompt — L0 system prompt
 // ---------------------------------------------------------------------------
 
 /**
+ * Input shape for `buildSystemPrompt` (spec v2 §4.1).
+ *
+ * Replaces the older positional signature
+ * `(timelineState, materials, categorySummaries)`. There is exactly one
+ * caller in the codebase (`agent.ts`) and it is updated alongside this
+ * change.
+ */
+export interface BuildSystemPromptInput {
+  timelineState: TimelineState;
+  materials: MaterialItem[];
+  /** Live registry — used to pull tool descriptions and parameter schemas. */
+  registry: ToolRegistry;
+  /** Categories the user has previously loaded via explore_tools. */
+  exploredCategories: CategoryId[];
+}
+
+/**
  * Build the L0 system prompt for the video editing agent.
  *
- * Structure:
- *   1. Role (2 sentences)
- *   2. Rules (mandatory behavioral constraints)
- *   3. Tool directory (always-available + advanced categories)
- *   4. Project summary (aggregate stats)
- *   5. Workflow guide (decision tree for tool selection)
- *   6. Smart result handling (when to auto-add to timeline vs library only)
+ * Structure (spec §2.4):
+ *   1. Role and stance
+ *   2. Hard rules (anti-fabrication, failure-stop, BGM volume)
+ *   3. Always-available tools (10 baseline tools)
+ *   4. **Core Workflow Toolkit** (Layer A — NEW)
+ *   5. Project status
+ *   6. **Workflow Recipes** (Layer C — NEW)
+ *   7. Smart result handling
+ *   8. Hard constraints (video-track-longest, no overlap)
+ *   9. **Previously explored advanced categories** (Layer B — NEW)
  *
- * Token budget: < 600 tokens under any project size.
- *
- * @param timelineState - Current timeline state
- * @param materials - All materials in the library
- * @param categorySummaries - Category summaries from ToolRegistry
+ * Token budget: ≤ 3500 tokens (≈ 14000 chars worst-case for mixed CN/EN).
+ * The previous "< 600 tokens" budget no longer applies — Layer A intentionally
+ * inlines the per-tool schemas that used to live behind `explore_tools`.
  */
-export function buildSystemPrompt(
-  timelineState: TimelineState,
-  materials: MaterialItem[],
-  categorySummaries: CategorySummary[]
-): string {
-  return `你是一个全能视频编辑助手。分析用户需求，选择正确的工具，逐步执行编辑操作。
+export function buildSystemPrompt(input: BuildSystemPromptInput): string {
+  const { timelineState, materials, registry, exploredCategories } = input;
+  const categorySummaries = registry.getCategorySummaries();
 
-## 规则
+  const role = `你是一个全能视频编辑助手。分析用户需求，选择正确的工具，逐步执行编辑操作。`;
+
+  const rules = `## 规则
 - 你必须调用工具来执行任何操作。仅在文字中描述操作不会产生任何效果。
-- 对于高级功能，先调用 explore_tools 加载对应工具类别，然后使用。
 - 复合任务请自动拆解为多个步骤顺序执行。
 - 搜索/生成的结果会自动添加到素材库。AI生成任务为异步，启动后无需等待。
 - **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
 - **失败必须停止**：如果某个生成或搜索工具返回 "success: false"，你必须先向用户报告错误并停止当前流程，不要用编造的 ID 继续调用 add_to_track。连续 5 次工具失败后，Agent 将被自动中断。
 - **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
+- 对于罕见或本提示词未覆盖的高级工具，可调用 explore_tools 查看详情；常用工作流工具已在下方"核心工作流工具"中给出，无需先 explore。`;
 
-${formatToolOverview(categorySummaries)}
+  const overview = formatToolOverview(categorySummaries);
+  const coreToolkit = formatCoreToolkit(registry);
+  const projectStatus = `## 项目状态\n${formatCompactSummary(timelineState, materials)}`;
+  const workflowRecipes = formatWorkflowRecipes();
 
-## 项目状态
-${formatCompactSummary(timelineState, materials)}
-
-## 操作指南
-- 需要外部素材？→ explore_tools("search_tools") → search_video/search_image/search_audio
-- 需要 AI 创作内容？→ explore_tools("ai_gen_tools") → generate_ai_image/generate_ai_video
-- 需要语音旁白？→ explore_tools("tts_tools") → generate_tts
-- 需要写脚本？→ explore_tools("script_tools") → generate_video_script
-- 解说视频完整流程：generate_video_script → 用返回的 narration_text 调用 TTS → search_video/search_image → search_audio → add_to_track → 调整时长
-- 需要分镜？→ explore_tools("storyboard_tools") → generate_storyboard（**必须**传入 script 参数，使用前一步 generate_video_script 返回的脚本内容）
-- 对于复合需求（如"帮我做一个30秒视频"），务必将用户指定的时长传递给 generate_video_script 的 duration_target 参数。自动规划并按顺序执行多个步骤。
-
-## 脚本与解说文案工作流（重要）
-
-当用户要求制作带解说/旁白/台词的视频时，必须按以下流程操作：
-
-1. 调用 generate_video_script 生成脚本。返回结果中包含 segments 数组，每个 segment 含 narration_text（解说文案）。
-2. 使用返回结果中的 narration_text 调用 TTS 工具生成语音：
-   - 单段落：generate_tts(text: "段落1的narration_text")
-   - 多段落：batch_generate_tts(segments: [{text: "段落1的narration_text"}, ...])
-3. 根据 content_preview 中的画面描述和段落标题搜索视频/图片素材。
-4. 将素材、解说音频、背景音乐组装到时间线。
-
-⚠️ 关键规则：
-- TTS 的 text 参数**必须**使用 generate_video_script 返回的 segments 中的 narration_text
-- **绝对不要**自行编写、修改或编造解说文案
-- **绝对不要**使用 scriptText（画面描述）作为 TTS 文本
-
-## 智能结果处理
+  const smartHandling = `## 智能结果处理
 - 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track
 - 用户只说"找一些"/"生成一个"/"搜索" → 仅添加到素材库，不自动上轨
-- 不确定时 → 只入库，让用户自行决定
+- 不确定时 → 只入库，让用户自行决定`;
 
-## ⚠️ 强制约束：视频轨道时长规则
+  const hardConstraints = `## ⚠️ 强制约束：视频轨道时长规则
 以下规则为硬性约束，任何操作完成后都必须满足，没有例外：
 - **[HARD CONSTRAINT] 视频轨道必须是最长的轨道**：最终时间线中，视频轨道上素材的总时长必须 >= 所有其他轨道（音频、字幕等）的总时长。任何其他轨道的长度都不能超过视频轨道。
 - 如果某个操作导致非视频轨道超过视频轨道，工具会返回 warning 警告。**收到警告后你必须立即修正**：使用 resize_clip / trim_clip 缩短超出的轨道，或搜索更多视频素材填充视频轨道。
@@ -290,5 +468,23 @@ ${formatCompactSummary(timelineState, materials)}
 - add_to_track / move_clip / resize_clip / trim_clip / compose_storyboard 任意一次成功后，若返回 overlapWarning，**必须立即调用 auto_fix_overlaps 一次自动修复**；如希望保留刻意留白则用 move_clip 显式调整。
 - 一组复合编辑结束、即将向用户报告完成之前：先调用 check_timeline_overlaps；若 valid=false，则调用 auto_fix_overlaps，再 check_timeline_overlaps，循环直至 valid=true。
 - **死循环防护**：当 auto_fix_overlaps 连续 2 次返回 fixedCount=0（或 noop=true），立即停止修复循环。若 check_timeline_overlaps 仍报重叠（通常是 subtitle/locked 轨道造成），向用户说明无法自动修复并请求指示，不要继续无意义的工具调用。
-- check_timeline_overlaps / auto_fix_overlaps 仅用于编辑路径的自检；纯搜索 / 生成任务无需调用。`.trim();
+- check_timeline_overlaps / auto_fix_overlaps 仅用于编辑路径的自检；纯搜索 / 生成任务无需调用。`;
+
+  const exploredAppendix = formatExploredCategoriesAppendix(registry, exploredCategories);
+
+  // Order matches §2.4. Section 9 (appendix) is appended LAST so the
+  // deterministic prefix stays cache-stable for Anthropic prompt cache.
+  const sections: string[] = [
+    role,
+    rules,
+    overview,
+    coreToolkit,
+    projectStatus,
+    workflowRecipes,
+    smartHandling,
+    hardConstraints,
+  ];
+  if (exploredAppendix) sections.push(exploredAppendix);
+
+  return sections.join('\n\n').trim();
 }
