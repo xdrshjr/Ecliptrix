@@ -15,8 +15,12 @@ import 'server-only'
  *  - Always forwards `Authorization` and the legacy `x-session-token`
  *    headers from the incoming request, so backend SessionAuthMiddleware
  *    (T01) sees the user identity on every proxied call.
- *  - Forwards multipart bodies untouched (no Content-Type override —
- *    fetch sets the boundary).
+ *  - Forwards multipart bodies untouched by streaming the raw request
+ *    body (`req.body`) and forwarding the incoming `Content-Type` header
+ *    (boundary intact) and `Content-Length` if present. This preserves
+ *    `filename=...` attributes on file parts that would otherwise be
+ *    dropped by re-encoding through `req.formData()` / undici on the way
+ *    out of `fetch`.
  *  - Forwards JSON / text bodies as raw text and preserves Content-Type.
  *  - GET requests forward `?query=string` from the incoming URL.
  *  - On AbortError (timeout) returns 504 with a uniform timeout envelope.
@@ -216,15 +220,32 @@ async function executeProxy(
 
   // 4. Forward body (only for non-GET)
   let body: BodyInit | null = null
+  let isStreamBody = false
   if (method !== 'GET') {
     const incomingContentType = req.headers.get('content-type') ?? ''
 
     if (incomingContentType.toLowerCase().startsWith('multipart/form-data')) {
-      // Multipart: re-encode via FormData so fetch sets the boundary
-      // header itself. Do NOT propagate the incoming Content-Type, since
-      // its boundary won't match the new encoding.
-      const form = await req.formData()
-      body = form
+      // Multipart: stream the raw body through unchanged. We MUST forward
+      // the incoming Content-Type (with its boundary) and Content-Length
+      // (if present) so the upstream parser sees the same bytes the client
+      // sent. Re-encoding via `req.formData()` drops `filename=` attributes
+      // on file parts (Next.js 15 / undici behaviour) and breaks any
+      // backend that reads `request.form()` and type-checks for
+      // `UploadFile` (e.g. frame_pack_router.create_frame_pack).
+      const reqWithBody = req as unknown as { body: ReadableStream | null }
+      if (reqWithBody.body) {
+        body = reqWithBody.body
+        isStreamBody = true
+      } else {
+        // Defensive: if the runtime ever exposes no body stream, fall back
+        // to the buffered FormData path so the request still goes through.
+        body = await req.formData()
+      }
+      headers.set('Content-Type', incomingContentType)
+      const incomingContentLength = req.headers.get('content-length')
+      if (incomingContentLength) {
+        headers.set('Content-Length', incomingContentLength)
+      }
     } else if (incomingContentType) {
       // JSON / text / urlencoded: forward raw text + preserve Content-Type
       body = await req.text()
@@ -245,14 +266,21 @@ async function executeProxy(
 
   let backendResponse: Response
   try {
-    backendResponse = await fetch(targetUrl, {
+    const fetchInit: RequestInit & { duplex?: 'half' } = {
       method,
       headers,
       body,
       signal: abortCtrl.signal,
       // Hint to Next.js fetch instrumentation: don't cache proxied calls.
       cache: 'no-store',
-    })
+    }
+    // Node ≥ 18 fetch requires `duplex: 'half'` when the body is a
+    // ReadableStream (one-shot send, no read-back). Without it undici
+    // throws `TypeError: 'duplex' must be specified`.
+    if (isStreamBody) {
+      fetchInit.duplex = 'half'
+    }
+    backendResponse = await fetch(targetUrl, fetchInit)
   } catch (error: unknown) {
     clearTimeout(timeoutHandle)
     // AbortError → timeout

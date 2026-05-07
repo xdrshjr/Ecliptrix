@@ -70,13 +70,51 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
     else video.pause();
   };
 
-  const onRailClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  // Drag-scrub state. We remember whether the video was playing when the
+  // user grabbed the rail so we can resume from where they release.
+  const dragWasPlayingRef = useRef(false);
+  const isDraggingRef = useRef(false);
+
+  const seekFromClientX = (clientX: number) => {
     const rail = railRef.current;
     const video = videoRef.current;
     if (!rail || !video || !duration) return;
     const rect = rail.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     video.currentTime = ratio * duration;
+  };
+
+  const onRailPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const video = videoRef.current;
+    if (!railRef.current || !video || !duration) return;
+    // Capture on the outer wrapper (the element receiving the event) so
+    // pointermove / pointerup keep firing even when the cursor leaves it
+    // or the window entirely.
+    event.currentTarget.setPointerCapture(event.pointerId);
+    isDraggingRef.current = true;
+    dragWasPlayingRef.current = !video.paused;
+    if (!video.paused) video.pause();
+    seekFromClientX(event.clientX);
+    event.preventDefault();
+  };
+
+  const onRailPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    seekFromClientX(event.clientX);
+  };
+
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const video = videoRef.current;
+    if (video && dragWasPlayingRef.current) {
+      video.play().catch(() => undefined);
+    }
+    dragWasPlayingRef.current = false;
   };
 
   // Keyboard shortcuts (Space, ←/→, C). Bind on the wrapper div so they only
@@ -151,32 +189,43 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
         </button>
       </div>
 
+      {/* Outer pointer-target: 28 px tall (h-2 rail + py-2.5 padding) so the
+          user has a comfortable Fitts-law hit zone, while the visible rail
+          stays 8 px. setPointerCapture is on this element so drags continue
+          to fire pointermove / pointerup even when the cursor leaves it. */}
       <div
-        ref={railRef}
-        onClick={onRailClick}
-        className="relative h-2 rounded bg-muted cursor-pointer"
+        onPointerDown={onRailPointerDown}
+        onPointerMove={onRailPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className="relative py-2.5 cursor-pointer touch-none select-none"
       >
         <div
-          className="absolute inset-y-0 left-0 bg-primary/40 rounded"
-          style={{ width: `${ratio * 100}%` }}
-        />
-        {/* Capture markers */}
-        {duration > 0 &&
-          capturedTimestamps.map((ts, i) => {
-            const left = Math.min(100, Math.max(0, (ts / duration) * 100));
-            return (
-              <span
-                key={i}
-                className="absolute top-1/2 -translate-y-1/2 w-1 h-3.5 bg-amber-500 rounded-sm pointer-events-none"
-                style={{ left: `calc(${left}% - 2px)` }}
-              />
-            );
-          })}
-        {/* Cursor */}
-        <span
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-primary border-2 border-background pointer-events-none"
-          style={{ left: `calc(${ratio * 100}% - 6px)` }}
-        />
+          ref={railRef}
+          className="relative h-2 rounded bg-muted"
+        >
+          <div
+            className="absolute inset-y-0 left-0 bg-primary/40 rounded pointer-events-none"
+            style={{ width: `${ratio * 100}%` }}
+          />
+          {/* Capture markers */}
+          {duration > 0 &&
+            capturedTimestamps.map((ts, i) => {
+              const left = Math.min(100, Math.max(0, (ts / duration) * 100));
+              return (
+                <span
+                  key={i}
+                  className="absolute top-1/2 -translate-y-1/2 w-1 h-3.5 bg-amber-500 rounded-sm pointer-events-none"
+                  style={{ left: `calc(${left}% - 2px)` }}
+                />
+              );
+            })}
+          {/* Cursor */}
+          <span
+            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-primary border-2 border-background pointer-events-none"
+            style={{ left: `calc(${ratio * 100}% - 6px)` }}
+          />
+        </div>
       </div>
     </div>
   );

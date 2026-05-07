@@ -34,7 +34,7 @@ import type { BackendPath, RouteContext } from '../backend-proxy'
 interface FakeRequestInit {
   url?: string
   headers?: Record<string, string>
-  body?: string | FormData | null
+  body?: string | FormData | ReadableStream | Uint8Array | null
 }
 
 /** Build a minimal NextRequest-shaped object exposing the surface the
@@ -43,9 +43,22 @@ function makeRequest(init: FakeRequestInit = {}): any {
   const url = init.url ?? 'http://localhost:3000/api/test?a=1&b=2'
   const headersInit = init.headers ?? {}
   const headers = new Headers(headersInit)
+  let bodyStream: ReadableStream | null = null
+  if (init.body instanceof ReadableStream) {
+    bodyStream = init.body
+  } else if (init.body instanceof Uint8Array) {
+    const bytes = init.body
+    bodyStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes)
+        controller.close()
+      },
+    })
+  }
   return {
     headers,
     nextUrl: new URL(url),
+    body: bodyStream,
     text: async () => {
       if (init.body == null) return ''
       if (typeof init.body === 'string') return init.body
@@ -131,24 +144,74 @@ describe('T2 — POST with JSON body', () => {
 // ───────────────────────────────────────────────────────────────────────────
 // T3: POST with FormData (multipart)
 // ───────────────────────────────────────────────────────────────────────────
-describe('T3 — POST with multipart FormData', () => {
-  it('forwards FormData object and does NOT set Content-Type (fetch sets boundary)', async () => {
+describe('T3 — POST with multipart streams body unchanged', () => {
+  it('streams req.body, preserves the incoming boundary, sets duplex:half, and survives a filename round-trip', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ uploaded: true }))
-    const fd = new FormData()
-    fd.append('file', new Blob(['hello'], { type: 'text/plain' }), 'a.txt')
+    // Construct a real multipart body with a frame_001 part carrying a
+    // filename attribute. We hand this to the proxy as a raw byte stream
+    // — the same shape NextRequest exposes to the helper for an inbound
+    // browser upload — and assert the upstream fetch saw the bytes
+    // verbatim with the original Content-Type header.
+    const boundary = '----abc1234'
+    const crlf = '\r\n'
+    const partHeader =
+      `--${boundary}${crlf}` +
+      `Content-Disposition: form-data; name="frame_001"; filename="frame_001.jpg"${crlf}` +
+      `Content-Type: image/jpeg${crlf}${crlf}`
+    const partFooter = `${crlf}--${boundary}--${crlf}`
+    const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
+    const headerBytes = new TextEncoder().encode(partHeader)
+    const footerBytes = new TextEncoder().encode(partFooter)
+    const totalLen = headerBytes.length + jpegBytes.length + footerBytes.length
+    const bodyBytes = new Uint8Array(totalLen)
+    bodyBytes.set(headerBytes, 0)
+    bodyBytes.set(jpegBytes, headerBytes.length)
+    bodyBytes.set(footerBytes, headerBytes.length + jpegBytes.length)
+
     const req = makeRequest({
-      headers: { 'content-type': 'multipart/form-data; boundary=----abc' },
-      body: fd,
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        'content-length': String(totalLen),
+      },
+      body: bodyBytes,
     })
 
-    const res = await backendProxy.post(req, '/api/storage/upload-file')
+    const res = await backendProxy.post(req, '/api/frame-pack/create')
 
     expect(res.status).toBe(200)
     const [, calledOpts] = fetchMock.mock.calls[0]
-    expect(calledOpts.body).toBeInstanceOf(FormData)
-    // Content-Type must NOT be set by us — fetch will set it with the new
-    // boundary.
-    expect((calledOpts.headers as Headers).get('Content-Type')).toBeNull()
+    // Body must be the raw stream (NOT a re-encoded FormData)
+    expect(calledOpts.body).toBeInstanceOf(ReadableStream)
+    // Original Content-Type with intact boundary forwarded as-is
+    expect((calledOpts.headers as Headers).get('Content-Type')).toBe(
+      `multipart/form-data; boundary=${boundary}`,
+    )
+    // Content-Length forwarded
+    expect((calledOpts.headers as Headers).get('Content-Length')).toBe(
+      String(totalLen),
+    )
+    // Streaming a request body in Node fetch requires duplex: 'half'
+    expect(calledOpts.duplex).toBe('half')
+
+    // Round-trip: drain the forwarded stream and assert the filename
+    // attribute survived.
+    const reader = (calledOpts.body as ReadableStream).getReader()
+    const chunks: Uint8Array[] = []
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) chunks.push(value as Uint8Array)
+    }
+    const totalForwarded = chunks.reduce((n, c) => n + c.length, 0)
+    const flat = new Uint8Array(totalForwarded)
+    let off = 0
+    for (const c of chunks) {
+      flat.set(c, off)
+      off += c.length
+    }
+    const decoded = new TextDecoder().decode(flat)
+    expect(decoded).toContain('filename="frame_001.jpg"')
+    expect(decoded).toContain('name="frame_001"')
   })
 })
 
