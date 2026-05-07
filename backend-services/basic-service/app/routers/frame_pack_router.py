@@ -22,11 +22,11 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
-    UploadFile,
     status,
 )
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import UploadFile
 
 from app.database import get_db_session
 from app.dependencies.auth import get_current_user
