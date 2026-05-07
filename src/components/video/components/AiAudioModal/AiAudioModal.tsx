@@ -97,7 +97,7 @@ const AiAudioModal: React.FC<AiAudioModalProps> = ({ isOpen, onClose, onConfirm 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
     >
       <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl max-h-[85vh] flex flex-col">

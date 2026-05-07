@@ -403,7 +403,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
   if (!isOpen || !material || material.type !== 'video') return null;
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[200] p-4">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-modal p-4">
       <div className="w-[92vw] h-[88vh] bg-card rounded-md overflow-hidden border border-border">
         {/* 标题栏 */}
         <div className="h-16 bg-gradient-to-r from-muted to-card border-b border-border flex items-center justify-between px-8">

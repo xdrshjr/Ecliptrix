@@ -485,7 +485,7 @@ const WatermarkRemovalModal: React.FC<WatermarkRemovalModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-[200] p-4"
+      className="fixed inset-0 bg-black/30 flex items-center justify-center z-modal p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isProcessing) {
           onClose();

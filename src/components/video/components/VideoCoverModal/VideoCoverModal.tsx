@@ -268,7 +268,7 @@ export const VideoCoverModal: React.FC<VideoCoverModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label={t.videoCoverModal?.title ?? 'Video Cover'}
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-modal flex items-center justify-center"
       onClick={() => void handleClose()}
     >
       {/* Overlay */}

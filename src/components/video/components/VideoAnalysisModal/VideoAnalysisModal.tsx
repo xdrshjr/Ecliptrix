@@ -66,7 +66,7 @@ const VideoAnalysisModal: React.FC<VideoAnalysisModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-[200] p-4"
+      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-modal p-4"
       onClick={handleBackdropClose}
     >
       <div className="bg-card rounded-md max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">

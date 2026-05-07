@@ -61,7 +61,7 @@ const ProjectFormDialog: React.FC<ProjectFormDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60"
+      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}

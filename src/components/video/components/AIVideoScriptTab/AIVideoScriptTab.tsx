@@ -435,7 +435,7 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
 
       {/* Expand goal dialog */}
       {expandDialogSegmentId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setExpandDialogSegmentId(null)}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/50" onClick={() => setExpandDialogSegmentId(null)}>
           <div className="bg-card border border-border rounded-lg p-5 shadow-xl max-w-sm mx-4 w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-foreground mb-3">
               {t.storyboardScriptTab.expandTitle}

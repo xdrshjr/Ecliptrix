@@ -236,7 +236,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[200]"
+      className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-modal"
       onClick={handleBackdropClick}
     >
       {/* 工具栏 */}

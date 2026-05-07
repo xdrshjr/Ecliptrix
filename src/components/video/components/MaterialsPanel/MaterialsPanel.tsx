@@ -2680,7 +2680,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
       {/* 图片转视频效果选择弹窗 */}
       {showImageToVideoModal && selectedImageForConversion && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-modal p-4">
           <div className="bg-card rounded-md w-full max-w-6xl max-h-[90vh] flex flex-col">
             {/* 弹窗头部 */}
             <div className="px-6 py-4 border-b border-border flex-shrink-0">

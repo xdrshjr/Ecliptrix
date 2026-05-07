@@ -259,7 +259,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   const currentSearching = getCurrentSearching();
 
   return (
-      <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-[200]">
+      <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-modal">
       <div className="bg-card rounded-md w-full max-w-7xl h-5/6 flex flex-col overflow-hidden border border-border">
         {/* 模态框头部 - Apple风格 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted">

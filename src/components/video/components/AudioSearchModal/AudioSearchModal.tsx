@@ -161,7 +161,7 @@ const AudioSearchModal: React.FC<AudioSearchModalProps> = ({
   if (!isModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-modal">
       <div className="bg-card rounded-md border border-border w-full max-w-6xl h-5/6 flex flex-col">
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-4 border-b border-border">

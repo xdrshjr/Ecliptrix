@@ -185,7 +185,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-modal">
         <div className="bg-card rounded-md border border-border w-full max-w-7xl h-5/6 flex flex-col">
           {/* 标题栏 */}
           <div className="flex items-center justify-between p-6 border-b border-border">
@@ -440,7 +440,7 @@ const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
 
       {/* 图片预览模态框 */}
       {previewModalOpen && previewImage && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[250]">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-popover">
           <div className="max-w-4xl max-h-4xl bg-card rounded-md overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
               <div>

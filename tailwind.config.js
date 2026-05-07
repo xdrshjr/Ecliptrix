@@ -118,6 +118,18 @@ module.exports = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      zIndex: {
+        // Semantic z-index scale (see docs/diagnoses/ai-sidebar-zindex-overlay/analysis.md §7.4)
+        // Use these instead of arbitrary values like z-[200], z-[300], z-[9999].
+        base: '0',         // normal flow
+        sidebar: '10',     // left chat sidebar, sticky toolbars; must stay below modals
+        dropdown: '20',    // inline dropdowns / tooltips attached to flow elements
+        overlay: '900',    // full-screen backdrops shown on their own
+        modal: '1000',     // every fixed-positioned modal dialog root
+        popover: '1100',   // popovers/menus rendered above modals (e.g. modal-on-modal progress, preview)
+        toast: '1200',     // notification toasts
+        debug: '9999',     // dev-time debugging only
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

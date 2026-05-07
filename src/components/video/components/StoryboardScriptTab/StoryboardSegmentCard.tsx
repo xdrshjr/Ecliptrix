@@ -419,7 +419,7 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
       {/* Enlarged image modal */}
       {isImageEnlarged && segment.frameUrl && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-modal flex items-center justify-center bg-black/70"
           onClick={() => setIsImageEnlarged(false)}
         >
           <div className="relative max-w-[80vw] max-h-[80vh]">
@@ -445,7 +445,7 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
 
       {/* Expand goal dialog */}
       {showExpandDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowExpandDialog(false)}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/50" onClick={() => setShowExpandDialog(false)}>
           <div className="bg-card border border-border rounded-lg p-5 shadow-xl max-w-sm mx-4 w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-foreground mb-3">
               {t.storyboardScriptTab.expandTitle}

@@ -202,7 +202,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-modal p-4">
       <div className="bg-card rounded-md border border-border w-full max-w-6xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="px-8 py-6 border-b border-border flex-shrink-0">

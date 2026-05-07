@@ -397,7 +397,7 @@ const StoryboardScriptTab: React.FC<StoryboardScriptTabProps> = ({
 
       {/* Delete confirmation dialog */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/50">
           <div className="bg-card border border-border rounded-lg p-5 shadow-xl max-w-sm mx-4">
             <h3 className="text-sm font-semibold text-foreground mb-2">
               {t.storyboardScriptTab.confirmDelete}
