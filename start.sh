@@ -293,9 +293,13 @@ elif [ -f "$SCRIPT_DIR/package-lock.json" ]; then
     if [ ! -f "$SCRIPT_DIR/node_modules/.package-lock.json" ]; then
         NEED_NPM_INSTALL=true
         NPM_INSTALL_REASON="node_modules/.package-lock.json missing"
-    elif [ "$SCRIPT_DIR/package-lock.json" -nt "$SCRIPT_DIR/node_modules/.package-lock.json" ]; then
-        NEED_NPM_INSTALL=true
-        NPM_INSTALL_REASON="package-lock.json newer than node_modules/.package-lock.json"
+    else
+        CURRENT_LOCK_HASH=$(sha256sum < "$SCRIPT_DIR/package-lock.json" | awk '{print $1}')
+        SENTINEL_FILE="$SCRIPT_DIR/node_modules/.start-sh-lock-hash"
+        if [ ! -f "$SENTINEL_FILE" ] || [ "$(cat "$SENTINEL_FILE" 2>/dev/null)" != "$CURRENT_LOCK_HASH" ]; then
+            NEED_NPM_INSTALL=true
+            NPM_INSTALL_REASON="package-lock.json content differs from last successful install"
+        fi
     fi
 fi
 
@@ -305,10 +309,16 @@ if [ "$NEED_NPM_INSTALL" = true ]; then
     step "Running npm ci to sync dependencies / 运行 npm ci 同步依赖..."
     if npm ci 2>&1 | tee -a "$STARTUP_LOG"; then
         success "Node dependencies synced via npm ci / 前端依赖已同步"
+        if [ -f "$SCRIPT_DIR/package-lock.json" ]; then
+            sha256sum < "$SCRIPT_DIR/package-lock.json" | awk '{print $1}' > "$SCRIPT_DIR/node_modules/.start-sh-lock-hash"
+        fi
     else
         warn "npm ci failed, falling back to npm install / npm ci 失败，回退到 npm install"
         if npm install 2>&1 | tee -a "$STARTUP_LOG"; then
             success "Node dependencies synced via npm install / 前端依赖已同步"
+            if [ -f "$SCRIPT_DIR/package-lock.json" ]; then
+                sha256sum < "$SCRIPT_DIR/package-lock.json" | awk '{print $1}' > "$SCRIPT_DIR/node_modules/.start-sh-lock-hash"
+            fi
         else
             error "npm install failed / npm install 失败"
             handle_error
