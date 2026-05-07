@@ -283,6 +283,41 @@ if [ -d "$SCRIPT_DIR/.next" ] && [ -f "$SCRIPT_DIR/.next/BUILD_ID" ]; then
     fi
 fi
 
+# ============ Step 2.6: Sync Node dependencies ============
+NEED_NPM_INSTALL=false
+NPM_INSTALL_REASON=""
+if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+    NEED_NPM_INSTALL=true
+    NPM_INSTALL_REASON="node_modules/ missing"
+elif [ -f "$SCRIPT_DIR/package-lock.json" ]; then
+    if [ ! -f "$SCRIPT_DIR/node_modules/.package-lock.json" ]; then
+        NEED_NPM_INSTALL=true
+        NPM_INSTALL_REASON="node_modules/.package-lock.json missing"
+    elif [ "$SCRIPT_DIR/package-lock.json" -nt "$SCRIPT_DIR/node_modules/.package-lock.json" ]; then
+        NEED_NPM_INSTALL=true
+        NPM_INSTALL_REASON="package-lock.json newer than node_modules/.package-lock.json"
+    fi
+fi
+
+if [ "$NEED_NPM_INSTALL" = true ]; then
+    warn "Node dependencies out of sync ($NPM_INSTALL_REASON) / 前端依赖不同步"
+    cd "$SCRIPT_DIR"
+    step "Running npm ci to sync dependencies / 运行 npm ci 同步依赖..."
+    if npm ci 2>&1 | tee -a "$STARTUP_LOG"; then
+        success "Node dependencies synced via npm ci / 前端依赖已同步"
+    else
+        warn "npm ci failed, falling back to npm install / npm ci 失败，回退到 npm install"
+        if npm install 2>&1 | tee -a "$STARTUP_LOG"; then
+            success "Node dependencies synced via npm install / 前端依赖已同步"
+        else
+            error "npm install failed / npm install 失败"
+            handle_error
+        fi
+    fi
+fi
+
+echo ""
+
 # ============ Step 3: Build Frontend (production mode only) ============
 if [ "$DEV_MODE" = false ] || [ "$FORCE_REBUILD" = true ]; then
     header "[3/5] Building Frontend / 构建前端项目"
