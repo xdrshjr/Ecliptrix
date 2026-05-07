@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { MentionedImage } from '@/types';
 import { ImagePack, ImagePackType, listImagePacks } from '@/lib/api/imagePack';
+import { listFramePacks } from '@/lib/api/framePack';
 import { useLocale } from '@/contexts/LocaleContext';
 import MaterialLibraryGrid from './MaterialLibraryGrid';
 import { UserMaterial } from '@/lib/api/userMaterials';
@@ -19,15 +20,19 @@ interface ReferenceImagePanelProps {
   onReferenceImagesChange: (images: MentionedImage[]) => void;
   prompt: string;
   onPromptChange: (prompt: string) => void;
+  /** Owning project id — required to surface frame packs in the picker.
+   *  When undefined the frame tab still renders but reports no packs. */
+  projectId?: string;
 }
 
-type PickerTab = 'material' | 'storyboard' | 'character' | 'scene';
+type PickerTab = 'material' | 'storyboard' | 'character' | 'scene' | 'frame';
 
 const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
   referenceImages,
   onReferenceImagesChange,
   prompt,
   onPromptChange,
+  projectId,
 }) => {
   const { t } = useLocale();
   const mp = t.materialsPanel;
@@ -37,6 +42,7 @@ const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
     storyboard: null,
     character: null,
     scene: null,
+    frame: null,
   });
   const [loadingType, setLoadingType] = useState<ImagePackType | null>(null);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
@@ -45,14 +51,21 @@ const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
     if (packsByType[type] !== null) return;
     setLoadingType(type);
     try {
-      const packs = await listImagePacks(type);
+      let packs: ImagePack[] = [];
+      if (type === 'frame') {
+        if (projectId) {
+          packs = await listFramePacks(projectId);
+        }
+      } else {
+        packs = await listImagePacks(type);
+      }
       setPacksByType(prev => ({ ...prev, [type]: packs }));
     } catch {
       // silently ignore
     } finally {
       setLoadingType(null);
     }
-  }, [packsByType]);
+  }, [packsByType, projectId]);
 
   useEffect(() => {
     if (pickerTab !== 'material') {
@@ -135,7 +148,7 @@ const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
         </div>
         {active ? (
           <div className="grid grid-cols-3 gap-1.5">
-            {active.frames.slice(0, 9).map(f => {
+            {(type === 'frame' ? active.frames : active.frames.slice(0, 9)).map(f => {
               const selected = referenceImages.some(img => img.url === f.url);
               return (
                 <button
@@ -178,6 +191,7 @@ const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
     { key: 'storyboard', label: mp.referencePickerStoryboardPack || '分镜包' },
     { key: 'character', label: mp.referencePickerCharacterPack || '人物包' },
     { key: 'scene', label: mp.referencePickerScenePack || '场景包' },
+    { key: 'frame', label: mp.referencePickerFramePack || '帧包' },
   ];
 
   const atMax = referenceImages.length >= MAX_IMAGES;
@@ -252,6 +266,7 @@ const ReferenceImagePanel: React.FC<ReferenceImagePanelProps> = ({
             {pickerTab === 'storyboard' && renderPackGrid('storyboard')}
             {pickerTab === 'character' && renderPackGrid('character')}
             {pickerTab === 'scene' && renderPackGrid('scene')}
+            {pickerTab === 'frame' && renderPackGrid('frame')}
           </>
         )}
       </div>

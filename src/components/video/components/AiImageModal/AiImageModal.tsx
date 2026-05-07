@@ -18,13 +18,16 @@ interface AiImageModalProps {
   // before calling the API client. Hence the modal hands the parent the
   // params *without* projectId.
   onStoryboardGenerate?: (params: Omit<StoryboardGenerateParams, 'projectId'>) => Promise<StoryboardPack>;
+  /** Owning project id — forwarded to the reference picker so frame
+   *  packs (which are project-scoped) appear inside the picker tabs. */
+  projectId?: string;
 }
 
 type TabKey = ArkImageMode | 'storyboard';
 
 const TAB_KEYS: TabKey[] = ['basic', 'character', 'scene', 'storyboard'];
 
-const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm, onStoryboardGenerate }) => {
+const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm, onStoryboardGenerate, projectId }) => {
   const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabKey>('basic');
   const [submitted, setSubmitted] = useState(false);
@@ -240,13 +243,13 @@ const AiImageModal: React.FC<AiImageModalProps> = ({ isOpen, onClose, onConfirm,
         {/* Body */}
         <div className="flex-1 px-8 py-6 min-h-0 overflow-hidden">
           {activeTab === 'basic' && (
-            <BasicGenerationTab state={basicState} onChange={setBasicState} />
+            <BasicGenerationTab state={basicState} onChange={setBasicState} projectId={projectId} />
           )}
           {activeTab === 'character' && (
-            <CharacterModelingTab state={characterState} onChange={setCharacterState} />
+            <CharacterModelingTab state={characterState} onChange={setCharacterState} projectId={projectId} />
           )}
           {activeTab === 'scene' && (
-            <SceneModelingTab state={sceneState} onChange={setSceneState} />
+            <SceneModelingTab state={sceneState} onChange={setSceneState} projectId={projectId} />
           )}
           {activeTab === 'storyboard' && (
             <StoryboardTab

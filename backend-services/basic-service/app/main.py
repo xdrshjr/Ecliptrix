@@ -472,6 +472,11 @@ from app.routers import image_pack_router
 
 app.include_router(image_pack_router.router, prefix="/api")
 
+# Import and include Frame Pack router (video frame extraction packs)
+from app.routers import frame_pack_router
+
+app.include_router(frame_pack_router.router, prefix="/api")
+
 # Import and include Silence Removal router
 from app.routers import silence_removal_router
 

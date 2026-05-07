@@ -412,6 +412,21 @@ class VideoProjectService:
                     "Pack storage cleanup failed after project delete",
                     {"project_id": project_id, "error": str(exc)},
                 )
+            # Frame packs live in their own ``frame_pack/`` directory; the
+            # storyboard sweep only walks ``storyboard/`` so we additionally
+            # ask the frame_pack service to drop any matching dirs. The id
+            # list is shared (the ownership row is pack-type-agnostic) so
+            # passing the full snapshot is safe — non-frame ids resolve to
+            # ``_pack_dir = None`` and are skipped.
+            try:
+                from app.services import frame_pack_service
+
+                await frame_pack_service.cleanup_pack_storage(pack_ids)
+            except Exception as exc:
+                logger.warning(
+                    "Frame pack storage cleanup failed after project delete",
+                    {"project_id": project_id, "error": str(exc)},
+                )
         return True
 
     async def assert_project_writable(

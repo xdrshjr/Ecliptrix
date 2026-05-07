@@ -24,6 +24,8 @@ import CreateStoryboardPackModal from './CreateStoryboardPackModal';
 import { StoryboardPack, StoryboardFrame } from '@/types';
 import { listPacks, deletePack } from '@/lib/api/storyboard';
 import { listImagePacks, deleteImagePack, ImagePack } from '@/lib/api/imagePack';
+import { listFramePacks, deleteFramePack } from '@/lib/api/framePack';
+import FramePackView from './FramePackView';
 import { http, ApiError } from '@/lib/api/http-client';
 import MaterialCacheBadge from '../MaterialCacheBadge';
 
@@ -144,13 +146,22 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   // 人物/场景建模包状态
   const [characterPacks, setCharacterPacks] = useState<ImagePack[]>([]);
   const [scenePacks, setScenePacks] = useState<ImagePack[]>([]);
+  // 视频帧提取包状态
+  const [framePacks, setFramePacks] = useState<ImagePack[]>([]);
+  const [currentFramePack, setCurrentFramePack] = useState<ImagePack | null>(null);
+  const [framePackDeleteConfirm, setFramePackDeleteConfirm] = useState<{
+    isOpen: boolean;
+    packId: string | null;
+  }>({ isOpen: false, packId: null });
   // Ref 镜像：在"清除所有素材"确认回调里读取最新快照，避免闭包捕获造成漏删/重复删
   const storyboardPacksRef = useRef<StoryboardPack[]>([]);
   const characterPacksRef = useRef<ImagePack[]>([]);
   const scenePacksRef = useRef<ImagePack[]>([]);
+  const framePacksRef = useRef<ImagePack[]>([]);
   useEffect(() => { storyboardPacksRef.current = storyboardPacks; }, [storyboardPacks]);
   useEffect(() => { characterPacksRef.current = characterPacks; }, [characterPacks]);
   useEffect(() => { scenePacksRef.current = scenePacks; }, [scenePacks]);
+  useEffect(() => { framePacksRef.current = framePacks; }, [framePacks]);
   const [gridPackModal, setGridPackModal] = useState<{ isOpen: boolean; pack: ImagePack | null }>({
     isOpen: false,
     pack: null,
@@ -243,10 +254,24 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     }
   }, [logger]);
 
+  const refreshFramePacks = useCallback(async () => {
+    if (!projectId) {
+      setFramePacks([]);
+      return;
+    }
+    try {
+      const packs = await listFramePacks(projectId);
+      setFramePacks(packs);
+    } catch (error) {
+      logger.error('加载视频帧包列表失败', error instanceof Error ? error : new Error(String(error)));
+    }
+  }, [projectId, logger]);
+
   useEffect(() => {
     refreshStoryboardPacks();
     refreshCharacterPacks();
     refreshScenePacks();
+    refreshFramePacks();
     // Re-run when the bound project changes so switching projects swaps
     // the visible pack list. The other refresh helpers are stable across
     // projects (character/scene packs are global today) but kept here for
@@ -282,6 +307,37 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       logger.error('删除分镜包失败', error instanceof Error ? error : new Error(msg));
     }
   }, [storyboardPackDeleteConfirm.packId, currentStoryboardPack, projectId, showSuccess, showError, logger]);
+
+  // 确认删除 视频帧包
+  const handleConfirmDeleteFramePack = useCallback(async () => {
+    const packId = framePackDeleteConfirm.packId;
+    if (!packId) return;
+    setFramePackDeleteConfirm({ isOpen: false, packId: null });
+    if (!projectId) {
+      showError('无法删除视频帧包：缺少项目上下文');
+      return;
+    }
+    try {
+      await deleteFramePack(projectId, packId);
+      setFramePacks(prev => prev.filter(p => p.pack_id !== packId));
+      if (currentFramePack?.pack_id === packId) {
+        setCurrentFramePack(null);
+      }
+      showSuccess('视频帧包已删除');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`删除视频帧包失败: ${msg}`);
+      logger.error('删除视频帧包失败', error instanceof Error ? error : new Error(msg));
+    }
+  }, [framePackDeleteConfirm.packId, currentFramePack, projectId, showSuccess, showError, logger]);
+
+  // 视频帧提取包创建后立刻插入面板列表
+  const handleFramePackCreated = useCallback((pack: ImagePack) => {
+    setFramePacks(prev => {
+      const without = prev.filter(p => p.pack_id !== pack.pack_id);
+      return [pack, ...without];
+    });
+  }, []);
 
   // 确认删除 人物/场景 建模包
   const handleConfirmDeleteImagePack = useCallback(async () => {
@@ -539,7 +595,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   const handleClearAllWithStoryboards = useCallback(() => {
     setIsMenuOpen(false);
     // 直接使用 state 值判断，避免 ref 同步延迟导致误判
-    const packExtra = storyboardPacks.length + characterPacks.length + scenePacks.length;
+    const packExtra = storyboardPacks.length + characterPacks.length + scenePacks.length + framePacks.length;
 
     if (allMaterials.length === 0 && packExtra === 0) {
       showSuccess(t.materialsPanel.noMaterialsToClear);
@@ -551,6 +607,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       const sb = storyboardPacksRef.current;
       const ch = characterPacksRef.current;
       const sc = scenePacksRef.current;
+      const fp = framePacksRef.current;
 
       const tasks: Promise<unknown>[] = [
         // Each pack carries its own owning projectId from the backend; fall
@@ -563,6 +620,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         ),
         ...ch.map(p => deleteImagePack('character', p.pack_id)),
         ...sc.map(p => deleteImagePack('scene', p.pack_id)),
+        ...fp.map(p => deleteFramePack(projectId ?? '', p.pack_id)),
       ];
       const results = await Promise.allSettled(tasks);
       const failed = results.filter(r => r.status === 'rejected').length;
@@ -571,7 +629,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       setStoryboardPacks([]);
       setCharacterPacks([]);
       setScenePacks([]);
+      setFramePacks([]);
       setCurrentStoryboardPack(null);
+      setCurrentFramePack(null);
 
       if (failed > 0) {
         // 失败兜底：重新拉取真实列表，修正漂移
@@ -579,6 +639,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           refreshStoryboardPacks(),
           refreshCharacterPacks(),
           refreshScenePacks(),
+          refreshFramePacks(),
         ]);
         const tpl = (t.materialsPanel as { clearAllPartialFail?: string }).clearAllPartialFail
           ?? '部分素材包删除失败（{failed} 项），请稍后重试';
@@ -593,12 +654,14 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     storyboardPacks.length,
     characterPacks.length,
     scenePacks.length,
+    framePacks.length,
     showSuccess,
     showError,
     t,
     refreshStoryboardPacks,
     refreshCharacterPacks,
     refreshScenePacks,
+    refreshFramePacks,
   ]);
 
   // Click outside menu bar dropdown
@@ -1724,7 +1787,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           className="flex space-x-1 mb-4 p-1 bg-muted rounded-md overflow-x-auto scrollbar-thin"
           style={{ scrollbarWidth: 'thin' }}
         >
-          {(['all', 'video', 'audio', 'image', 'storyboard_pack', 'character_pack', 'scene_pack'] as const).map((type) => (
+          {(['all', 'video', 'audio', 'image', 'storyboard_pack', 'character_pack', 'scene_pack', 'frame_pack'] as const).map((type) => (
             <button
               key={type}
               data-material-type={type}
@@ -1744,7 +1807,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                type === 'image' ? t.materialsPanel.filterImage :
                type === 'storyboard_pack' ? t.materialsPanel.storyboardPack :
                type === 'character_pack' ? t.materialsPanel.filterCharacterPack :
-               t.materialsPanel.filterScenePack}
+               type === 'scene_pack' ? t.materialsPanel.filterScenePack :
+               (t.materialsPanel.filterFramePack ?? t.materialsPanel.framePack ?? '帧包')}
             </button>
           ))}
         </div>
@@ -1776,6 +1840,30 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               onDelete={handleDeleteStoryboardPack}
               onFrameClick={handleFramePreviewClick}
               onAddAllFramesToMaterials={handleAddAllFramesToMaterials}
+            />
+          </div>
+        ) : currentFramePack ? (
+          <div className="materials-grid-container">
+            <FramePackView
+              pack={currentFramePack}
+              onBack={() => setCurrentFramePack(null)}
+              onDelete={(packId) => setFramePackDeleteConfirm({ isOpen: true, packId })}
+              onFrameClick={(frame) => {
+                if (!frame.url) return;
+                setPreviewModal({
+                  isOpen: true,
+                  material: {
+                    id: `frame_pack_preview_${currentFramePack.pack_id}_${frame.index}`,
+                    name: `${currentFramePack.source_material_name ?? 'frame'} #${frame.index}`,
+                    type: 'image',
+                    format: 'jpg',
+                    size: 0,
+                    url: frame.url,
+                    thumbnailUrl: frame.url,
+                    createdAt: new Date(),
+                  },
+                });
+              }}
             />
           </div>
         ) : (
@@ -1817,7 +1905,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 点击AI图像生成创建分镜包
               </p>
             </div>
-          ) : materials.length === 0 && storyboardPacks.length === 0 && characterPacks.length === 0 && scenePacks.length === 0 ? (
+          ) : materials.length === 0 && storyboardPacks.length === 0 && characterPacks.length === 0 && scenePacks.length === 0 && framePacks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1865,6 +1953,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     pack={pack}
                     onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
                     onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'scene', packId: p.pack_id })}
+                  />
+                ))
+              }
+              {/* 视频帧提取包 */}
+              {(selectedMaterialType === 'all' || selectedMaterialType === 'frame_pack') &&
+                framePacks.map((pack) => (
+                  <GridPackCard
+                    key={`fp_${pack.pack_id}`}
+                    pack={pack}
+                    onClick={(p) => setCurrentFramePack(p)}
+                    onDelete={(p) => setFramePackDeleteConfirm({ isOpen: true, packId: p.pack_id })}
                   />
                 ))
               }
@@ -2512,6 +2611,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onCancel={() => setImagePackDeleteConfirm({ isOpen: false, packType: null, packId: null })}
       />
 
+      {/* 视频帧包删除确认对话框 */}
+      <ConfirmationDialog
+        isOpen={framePackDeleteConfirm.isOpen}
+        title={t.materialsPanel.deleteFramePack || 'Delete Frame Pack'}
+        message={t.materialsPanel.deleteFramePackConfirm || ''}
+        type="danger"
+        onConfirm={handleConfirmDeleteFramePack}
+        onCancel={() => setFramePackDeleteConfirm({ isOpen: false, packId: null })}
+      />
+
       {/* 分镜包预览弹窗 */}
       <StoryboardPackModal
         isOpen={storyboardPackModal.isOpen}
@@ -2800,6 +2909,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <AiImageModal
         isOpen={isAiImageModalOpen}
         onClose={() => setIsAiImageModalOpen(false)}
+        projectId={projectId}
         onConfirm={(params) => {
           setIsAiImageModalOpen(false);
           handleAiImageGenerate(params)
@@ -2840,6 +2950,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           setIsVideoProcessingOpen(false);
           handleWatermarkRemoval(material);
         }}
+        projectId={projectId}
+        onFramePackCreated={handleFramePackCreated}
       />
 
       {/* 最小化进度指示器（浮动右下角） */}

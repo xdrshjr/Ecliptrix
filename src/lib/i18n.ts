@@ -907,12 +907,18 @@ export interface Translations {
     storyboardPack: string;
     characterPack?: string;
     scenePack?: string;
+    framePack?: string;
     filterCharacterPack?: string;
     filterScenePack?: string;
+    filterFramePack?: string;
     deleteCharacterPack?: string;
     deleteCharacterPackConfirm?: string;
     deleteScenePack?: string;
     deleteScenePackConfirm?: string;
+    deleteFramePack?: string;
+    deleteFramePackConfirm?: string;
+    framePackBadge?: string;
+    referencePickerFramePack?: string;
     materialLibraryTab?: string;
     materialLibraryEmpty?: string;
     materialLibraryLoading?: string;
@@ -2052,6 +2058,31 @@ export interface Translations {
     duration: {
       minutes: string;
       seconds: string;
+    };
+    frameExtraction?: {
+      tab: string;
+      selectVideoHeading: string;
+      selectVideoEmpty: string;
+      ingestProgress: string;
+      ingestFailed: string;
+      ingestRetry: string;
+      ingestCancel: string;
+      capture: string;
+      previousFrame: string;
+      nextFrame: string;
+      playPause: string;
+      capturedListEmpty: string;
+      capturedListTitle: string;
+      capturedListCount: string;
+      removeFrame: string;
+      capReached: string;
+      doneNoFrames: string;
+      done: string;
+      saving: string;
+      saveSuccess: string;
+      saveFailed: string;
+      payloadTooLarge: string;
+      seekHint: string;
     };
   };
   workflowNodes: {
@@ -3391,12 +3422,18 @@ export const translations: Record<string, Translations> = {
       storyboardPack: 'Storyboard Pack',
       characterPack: 'Character Pack',
       scenePack: 'Scene Pack',
+      framePack: 'Frame Pack',
       filterCharacterPack: 'Character',
       filterScenePack: 'Scene',
+      filterFramePack: 'Frames',
       deleteCharacterPack: 'Delete Character Pack',
       deleteCharacterPackConfirm: 'Are you sure you want to delete this character pack? All frames and related data will be permanently deleted. References to its frames elsewhere will become invalid.',
       deleteScenePack: 'Delete Scene Pack',
       deleteScenePackConfirm: 'Are you sure you want to delete this scene pack? All frames and related data will be permanently deleted. References to its frames elsewhere will become invalid.',
+      deleteFramePack: 'Delete Frame Pack',
+      deleteFramePackConfirm: 'Are you sure you want to delete this frame pack? All extracted frames will be permanently deleted. References to its frames elsewhere will become invalid.',
+      framePackBadge: '{count} frames',
+      referencePickerFramePack: 'Frames',
       materialLibraryTab: 'Materials',
       materialLibraryEmpty: 'No materials — please upload in Materials panel first',
       materialLibraryLoading: 'Loading...',
@@ -4687,6 +4724,31 @@ export const translations: Record<string, Translations> = {
       duration: {
         minutes: 'min',
         seconds: 'sec',
+      },
+      frameExtraction: {
+        tab: 'Frame Extraction',
+        selectVideoHeading: 'Select a video to extract frames from',
+        selectVideoEmpty: 'No video materials available — upload one first',
+        ingestProgress: 'Caching video for frame capture…',
+        ingestFailed: 'Failed to cache video',
+        ingestRetry: 'Retry',
+        ingestCancel: 'Back',
+        capture: 'Capture frame',
+        previousFrame: 'Previous frame',
+        nextFrame: 'Next frame',
+        playPause: 'Play / pause',
+        capturedListEmpty: 'No frames captured yet — scrub to a moment and click Capture.',
+        capturedListTitle: 'Captured frames',
+        capturedListCount: '{count} / {max}',
+        removeFrame: 'Remove',
+        capReached: 'Reached the {max}-frame cap. Remove some frames to capture more.',
+        doneNoFrames: 'Capture at least one frame before saving.',
+        done: 'Save as pack',
+        saving: 'Saving…',
+        saveSuccess: 'Frame pack created',
+        saveFailed: 'Failed to save frame pack',
+        payloadTooLarge: 'Total upload size exceeds the limit. Remove some frames or lower JPEG quality.',
+        seekHint: 'Space: play/pause · ←/→: ±1 frame · C: capture',
       },
     },
     workflowNodes: {
@@ -6031,6 +6093,12 @@ export const translations: Record<string, Translations> = {
       storyboardPack: '分镜包',
       characterPack: '人物建模包',
       scenePack: '场景建模包',
+      framePack: '视频帧包',
+      filterFramePack: '帧',
+      deleteFramePack: '删除视频帧包',
+      deleteFramePackConfirm: '确定要删除此视频帧包吗？所有提取的视频帧将被永久删除，其他位置对其帧的引用也会失效。',
+      framePackBadge: '{count} 帧',
+      referencePickerFramePack: '帧包',
       filterCharacterPack: '人物包',
       filterScenePack: '场景包',
       deleteCharacterPack: '删除人物建模包',
@@ -7327,6 +7395,31 @@ export const translations: Record<string, Translations> = {
       duration: {
         minutes: '分',
         seconds: '秒',
+      },
+      frameExtraction: {
+        tab: '视频帧提取',
+        selectVideoHeading: '选择要提取帧的视频素材',
+        selectVideoEmpty: '暂无视频素材，请先上传',
+        ingestProgress: '正在缓存视频以便抓帧…',
+        ingestFailed: '视频缓存失败',
+        ingestRetry: '重试',
+        ingestCancel: '返回',
+        capture: '抓取当前帧',
+        previousFrame: '上一帧',
+        nextFrame: '下一帧',
+        playPause: '播放 / 暂停',
+        capturedListEmpty: '暂未抓取任何帧 — 拖动进度条到目标时刻后点击抓取。',
+        capturedListTitle: '已抓取的帧',
+        capturedListCount: '{count} / {max}',
+        removeFrame: '移除',
+        capReached: '已达 {max} 帧上限，请先移除部分帧再抓取。',
+        doneNoFrames: '请至少抓取一帧再保存。',
+        done: '保存为帧包',
+        saving: '保存中…',
+        saveSuccess: '视频帧包已创建',
+        saveFailed: '保存视频帧包失败',
+        payloadTooLarge: '上传总大小超出限制，请减少帧数或降低 JPEG 质量。',
+        seekHint: '空格：播放 / 暂停 · ←/→：上下一帧 · C：抓取',
       },
     },
     workflowNodes: {

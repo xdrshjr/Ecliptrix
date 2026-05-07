@@ -1,0 +1,185 @@
+'use client';
+
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
+
+interface FrameScrubBarProps {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  duration: number;
+  onCapture: () => void;
+  isAtCap: boolean;
+  capturedTimestamps: number[];
+  /** Frame rate hint used by the ±1-frame stepper. Falls back to 30 fps. */
+  frameRate?: number;
+}
+
+function formatTimestamp(sec: number): string {
+  if (!isFinite(sec) || sec < 0) return '0:00.00';
+  const minutes = Math.floor(sec / 60);
+  const remainder = sec - minutes * 60;
+  return `${minutes}:${remainder.toFixed(2).padStart(5, '0')}`;
+}
+
+const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
+  videoRef,
+  duration,
+  onCapture,
+  isAtCap,
+  capturedTimestamps,
+  frameRate,
+}) => {
+  const { t } = useLocale();
+  const fe = t.videoProcessing.frameExtraction;
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const railRef = useRef<HTMLDivElement | null>(null);
+
+  // Track currentTime / playback state.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onTime = () => setCurrentTime(video.currentTime);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    return () => {
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+    };
+  }, [videoRef]);
+
+  const stepFrame = (direction: 1 | -1) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const fps = frameRate && frameRate > 0 ? frameRate : 30;
+    const delta = direction / fps;
+    video.pause();
+    video.currentTime = Math.min(
+      duration > 0 ? duration : video.duration || 0,
+      Math.max(0, video.currentTime + delta),
+    );
+  };
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => undefined);
+    else video.pause();
+  };
+
+  const onRailClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rail = railRef.current;
+    const video = videoRef.current;
+    if (!rail || !video || !duration) return;
+    const rect = rail.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    video.currentTime = ratio * duration;
+  };
+
+  // Keyboard shortcuts (Space, ←/→, C). Bind on the wrapper div so they only
+  // fire while the scrub bar is focused.
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.code === 'Space') {
+      event.preventDefault();
+      togglePlay();
+    } else if (event.code === 'ArrowLeft') {
+      event.preventDefault();
+      stepFrame(-1);
+    } else if (event.code === 'ArrowRight') {
+      event.preventDefault();
+      stepFrame(1);
+    } else if (event.code === 'KeyC') {
+      event.preventDefault();
+      if (!isAtCap) onCapture();
+    }
+  };
+
+  const ratio = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+
+  return (
+    <div
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      className="border-t border-border bg-card px-3 py-2 flex flex-col gap-2 outline-none focus:ring-1 focus:ring-primary/30"
+    >
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="px-2 py-1 rounded bg-muted hover:bg-accent text-foreground"
+          title={fe?.playPause}
+        >
+          {isPlaying ? '⏸' : '▶'}
+        </button>
+        <button
+          type="button"
+          onClick={() => stepFrame(-1)}
+          className="px-2 py-1 rounded bg-muted hover:bg-accent text-foreground"
+          title={fe?.previousFrame}
+        >
+          ⟨
+        </button>
+        <button
+          type="button"
+          onClick={() => stepFrame(1)}
+          className="px-2 py-1 rounded bg-muted hover:bg-accent text-foreground"
+          title={fe?.nextFrame}
+        >
+          ⟩
+        </button>
+        <span className="font-mono">
+          {formatTimestamp(currentTime)} / {formatTimestamp(duration)}
+        </span>
+        <span className="ml-auto text-[10px] text-muted-foreground">
+          {fe?.seekHint}
+        </span>
+        <button
+          type="button"
+          onClick={onCapture}
+          disabled={isAtCap}
+          className={`ml-2 px-3 py-1 rounded text-xs font-medium transition-colors ${
+            isAtCap
+              ? 'bg-muted text-muted-foreground cursor-not-allowed'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90'
+          }`}
+        >
+          📸 {fe?.capture}
+        </button>
+      </div>
+
+      <div
+        ref={railRef}
+        onClick={onRailClick}
+        className="relative h-2 rounded bg-muted cursor-pointer"
+      >
+        <div
+          className="absolute inset-y-0 left-0 bg-primary/40 rounded"
+          style={{ width: `${ratio * 100}%` }}
+        />
+        {/* Capture markers */}
+        {duration > 0 &&
+          capturedTimestamps.map((ts, i) => {
+            const left = Math.min(100, Math.max(0, (ts / duration) * 100));
+            return (
+              <span
+                key={i}
+                className="absolute top-1/2 -translate-y-1/2 w-1 h-3.5 bg-amber-500 rounded-sm pointer-events-none"
+                style={{ left: `calc(${left}% - 2px)` }}
+              />
+            );
+          })}
+        {/* Cursor */}
+        <span
+          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-primary border-2 border-background pointer-events-none"
+          style={{ left: `calc(${ratio * 100}% - 6px)` }}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default FrameScrubBar;

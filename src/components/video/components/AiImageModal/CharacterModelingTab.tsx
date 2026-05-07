@@ -16,9 +16,10 @@ export interface CharacterModelingState {
 interface CharacterModelingTabProps {
   state: CharacterModelingState;
   onChange: React.Dispatch<React.SetStateAction<CharacterModelingState>>;
+  projectId?: string;
 }
 
-const CharacterModelingTab: React.FC<CharacterModelingTabProps> = ({ state, onChange }) => {
+const CharacterModelingTab: React.FC<CharacterModelingTabProps> = ({ state, onChange, projectId }) => {
   const { prompt, watermark, referenceImages, selectedTemplateId } = state;
   const MAX_PROMPT_LENGTH = 500;
 
@@ -100,6 +101,7 @@ const CharacterModelingTab: React.FC<CharacterModelingTabProps> = ({ state, onCh
           onReferenceImagesChange={(imgs) => onChange(prev => ({ ...prev, referenceImages: imgs }))}
           prompt={prompt}
           onPromptChange={(val) => onChange(prev => ({ ...prev, prompt: val }))}
+          projectId={projectId}
         />
       </div>
     </div>

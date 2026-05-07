@@ -1,0 +1,26 @@
+# Video Frame Extraction — frame pack configuration.
+#
+# Limits and concurrency for frame-pack creation. Frame packs hold up to
+# ``max_frames_per_pack`` JPEG snapshots captured client-side from a single
+# source video and uploaded as one multipart request.
+
+# Hard cap on frames a single pack can contain. Requests over this return
+# 400 frame_count_exceeds_limit. Mirrors the frontend cap surfaced as a
+# toast on the Frame Extraction tab.
+max_frames_per_pack: 200
+
+# Max concurrent /api/frame-pack/create executions across the whole process.
+# Disk-write heavy work — keep modest to avoid I/O contention with other
+# pack types.
+max_concurrent_creates: 4
+
+# JPEG quality (percent integer, 1-100). Used by the client capture loop;
+# the canvas API expects a 0-1 scale so the frontend converts via
+# ``qualityToCanvasScale = q => q / 100``.
+jpeg_quality: 92
+
+# Multipart body size cap, in megabytes. Enforced at three layers:
+#   (a) frontend pre-flight — sums blob.size before adding to FormData
+#   (b) router Content-Length check — short-circuits before reading body
+#   (c) reverse proxy (nginx client_max_body_size on production)
+max_request_mb: 256

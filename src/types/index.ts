@@ -531,7 +531,7 @@ export interface MentionedImage {
   name: string;
   url: string;
   source?: {
-    type: 'material' | 'storyboard' | 'character' | 'scene';
+    type: 'material' | 'storyboard' | 'character' | 'scene' | 'frame';
     packId?: string;
     frameIndex?: number;
     subView?: string | null;
@@ -697,8 +697,53 @@ export interface StoryboardScriptSegment {
   boundFromPack?: boolean;
 }
 
+// ========================
+// Frame Extraction types
+// ========================
+
+/** A single frame inside a frame pack — extends ImagePackFrame semantics with
+ *  per-frame timestamp + dimensions captured from the source video. */
+export interface FramePackFrame {
+  index: number;
+  filename: string;
+  url: string;
+  row?: number;
+  col?: number;
+  timestampSec?: number;
+  width?: number;
+  height?: number;
+  subView?: string | null;
+  description?: string | null;
+}
+
+/** A frame pack created by the Video Frame Extraction tab. Renders in the
+ *  Materials Panel under the image-pack category alongside storyboard /
+ *  character / scene packs. */
+export interface FramePack {
+  packId: string;
+  packType: 'frame';
+  prompt: string;
+  gridSize: string;
+  aspectRatio: string;
+  frameCount: number;
+  createdAt: string;
+  originalImageUrl: string;
+  sourceMaterialId?: string;
+  sourceMaterialName?: string;
+  sourceDurationSec?: number;
+  frames: FramePackFrame[];
+}
+
 // Materials Management related types
-export type MaterialType = 'video' | 'audio' | 'image' | 'subtitle' | 'storyboard_pack' | 'character_pack' | 'scene_pack';
+export type MaterialType =
+  | 'video'
+  | 'audio'
+  | 'image'
+  | 'subtitle'
+  | 'storyboard_pack'
+  | 'character_pack'
+  | 'scene_pack'
+  | 'frame_pack';
 
 // 下载状态类型
 export type MaterialDownloadStatus = 'idle' | 'downloading' | 'generating' | 'completed' | 'error';

@@ -61,9 +61,10 @@ export interface BasicGenerationState {
 interface BasicGenerationTabProps {
   state: BasicGenerationState;
   onChange: React.Dispatch<React.SetStateAction<BasicGenerationState>>;
+  projectId?: string;
 }
 
-const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange }) => {
+const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange, projectId }) => {
   const { t } = useLocale();
   const { prompt, size, count, watermark, referenceImages } = state;
   const MAX_PROMPT_LENGTH = 500;
@@ -159,6 +160,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
           onReferenceImagesChange={(imgs) => onChange(prev => ({ ...prev, referenceImages: imgs }))}
           prompt={prompt}
           onPromptChange={(val) => onChange(prev => ({ ...prev, prompt: val }))}
+          projectId={projectId}
         />
       </div>
     </div>

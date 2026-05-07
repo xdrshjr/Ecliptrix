@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MentionedImage } from '@/types';
-import { ImagePack, ImagePackType, listImagePacks } from '@/lib/api/imagePack';
+import { ImagePack, LegacyImagePackType, listImagePacks } from '@/lib/api/imagePack';
 import { useLocale } from '@/contexts/LocaleContext';
 import MaterialLibraryGrid from './MaterialLibraryGrid';
 import { UserMaterial } from '@/lib/api/userMaterials';
@@ -43,15 +43,15 @@ const MentionedImageInput: React.FC<MentionedImageInputProps> = ({
   // (when anchorFromUserAt is true), or to a plain insert position (false).
   const [pickerAnchor, setPickerAnchor] = useState<number>(0);
   const [anchorFromUserAt, setAnchorFromUserAt] = useState<boolean>(false);
-  const [packsByType, setPacksByType] = useState<Record<ImagePackType, ImagePack[] | null>>({
+  const [packsByType, setPacksByType] = useState<Record<LegacyImagePackType, ImagePack[] | null>>({
     storyboard: null,
     character: null,
     scene: null,
   });
-  const [loadingType, setLoadingType] = useState<ImagePackType | null>(null);
+  const [loadingType, setLoadingType] = useState<LegacyImagePackType | null>(null);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
 
-  const loadPacks = useCallback(async (type: ImagePackType) => {
+  const loadPacks = useCallback(async (type: LegacyImagePackType) => {
     if (packsByType[type] !== null) return;
     setLoadingType(type);
     try {
@@ -66,7 +66,7 @@ const MentionedImageInput: React.FC<MentionedImageInputProps> = ({
 
   useEffect(() => {
     if (showPicker && pickerTab !== 'material') {
-      loadPacks(pickerTab as ImagePackType);
+      loadPacks(pickerTab as LegacyImagePackType);
     }
   }, [showPicker, pickerTab, loadPacks]);
 
@@ -182,7 +182,7 @@ const MentionedImageInput: React.FC<MentionedImageInputProps> = ({
   }, [addImage]);
 
   const selectFrame = useCallback((
-    type: ImagePackType,
+    type: LegacyImagePackType,
     pack: ImagePack,
     frame: ImagePack['frames'][number],
   ) => {
@@ -195,7 +195,7 @@ const MentionedImageInput: React.FC<MentionedImageInputProps> = ({
     }, { keepPickerOpen: true });
   }, [addImage]);
 
-  const renderPackGrid = (type: ImagePackType) => {
+  const renderPackGrid = (type: LegacyImagePackType) => {
     const packs = packsByType[type];
     if (loadingType === type) {
       return <p className="text-xs text-muted-foreground text-center py-3">{mp.referencePickerLoading || 'Loading...'}</p>;

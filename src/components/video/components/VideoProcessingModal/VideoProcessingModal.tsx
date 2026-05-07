@@ -3,6 +3,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { MaterialItem } from '@/types';
 import SilenceRemovalTab from './SilenceRemovalTab';
+import FrameExtractionTab from './FrameExtractionTab';
+import type { ImagePack } from '@/lib/api/imagePack';
 import type { SilenceRemoveResult } from './ProcessingProgress';
 import { useLocale } from '@/contexts/LocaleContext';
 
@@ -14,13 +16,18 @@ export interface VideoProcessingModalProps {
   onMinimize?: (taskId: string, videoName: string) => void;
   taskId: string;
   onSelectMaterialForWatermark?: (material: MaterialItem) => void;
+  /** Owning project id — required by frame-pack creation. */
+  projectId?: string;
+  /** Called after a frame pack is created so the materials panel can
+   *  refresh its frame-pack list. */
+  onFramePackCreated?: (pack: ImagePack) => void;
 }
 
-type TabId = 'silence-removal' | 'watermark-removal';
+type TabId = 'silence-removal' | 'watermark-removal' | 'frame-extraction';
 
 interface TabDef {
   id: TabId;
-  labelKey: 'silenceRemoval' | 'watermarkRemoval';
+  labelKey: 'silenceRemoval' | 'watermarkRemoval' | 'frameExtraction';
   icon: React.ReactNode;
 }
 
@@ -49,6 +56,16 @@ const TABS: TabDef[] = [
       </svg>
     ),
   },
+  {
+    id: 'frame-extraction',
+    labelKey: 'frameExtraction',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M4 6h16M4 12h16M4 18h16M4 6v12M9 6v12M14 6v12M19 6v12" />
+      </svg>
+    ),
+  },
 ];
 
 // ---- Component ----
@@ -61,6 +78,8 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
   onMinimize,
   taskId,
   onSelectMaterialForWatermark,
+  projectId,
+  onFramePackCreated,
 }) => {
   const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabId>('silence-removal');
@@ -195,7 +214,11 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
               }`}
             >
               {tab.icon}
-              {tab.labelKey === 'silenceRemoval' ? t.videoProcessing.tab : t.materialsPanel.watermarkRemovalTab}
+              {tab.labelKey === 'silenceRemoval'
+                ? t.videoProcessing.tab
+                : tab.labelKey === 'watermarkRemoval'
+                  ? t.materialsPanel.watermarkRemovalTab
+                  : (t.videoProcessing.frameExtraction?.tab ?? 'Frame Extraction')}
             </button>
           ))}
         </div>
@@ -252,6 +275,13 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
                 </div>
               )}
             </div>
+          )}
+          {activeTab === 'frame-extraction' && (
+            <FrameExtractionTab
+              materials={materials}
+              projectId={projectId}
+              onFramePackCreated={onFramePackCreated}
+            />
           )}
         </div>
       </div>

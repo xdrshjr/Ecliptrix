@@ -46,12 +46,14 @@ logger = get_logger(__name__)
 STORYBOARD_STORAGE_DIR = "storyboard"
 CHARACTER_STORAGE_DIR = "character_pack"
 SCENE_STORAGE_DIR = "scene_pack"
+FRAME_STORAGE_DIR = "frame_pack"
 
 PACK_TYPE_STORYBOARD = "storyboard"
 PACK_TYPE_CHARACTER = "character"
 PACK_TYPE_SCENE = "scene"
+PACK_TYPE_FRAME = "frame"
 
-PackType = Literal["storyboard", "character", "scene"]
+PackType = Literal["storyboard", "character", "scene", "frame"]
 
 # Per-edge padding in pixels discarded when cropping each cell. Matches the
 # storyboard value; white separator lines are ~2-3 px wide so 4 px is safe.
@@ -116,6 +118,8 @@ def storage_dir_for(pack_type: str) -> str:
         return CHARACTER_STORAGE_DIR
     if pack_type == PACK_TYPE_SCENE:
         return SCENE_STORAGE_DIR
+    if pack_type == PACK_TYPE_FRAME:
+        return FRAME_STORAGE_DIR
     raise ValueError(f"Unknown pack_type: {pack_type!r}")
 
 
@@ -460,18 +464,28 @@ async def read_pack_metadata(pack_type: str, pack_id: str) -> dict:
 
 
 def _pack_dict_from_metadata(pack_type: str, date_str: str, meta: dict) -> dict:
-    """Enrich raw metadata with resolved URLs for the response payload."""
+    """Enrich raw metadata with resolved URLs for the response payload.
+
+    The ``file_ext`` field on metadata.json (introduced for frame packs) tells
+    us which extension the generic ``original.<ext>`` fallback should use.
+    Older storyboard / character / scene packs have no ``file_ext`` and
+    continue to default to ``"png"``.
+    """
     pack_id = meta["pack_id"]
+    file_ext = meta.get("file_ext", "png")
     frames = []
     for fr in meta.get("frames", []):
         frames.append({
             "index": fr["index"],
             "filename": fr["filename"],
             "url": frame_url(pack_type, date_str, pack_id, fr["filename"]),
-            "row": fr["row"],
-            "col": fr["col"],
+            "row": fr.get("row", 0),
+            "col": fr.get("col", 0),
             "sub_view": fr.get("sub_view"),
             "description": fr.get("description"),
+            "timestamp_sec": fr.get("timestamp_sec"),
+            "width": fr.get("width"),
+            "height": fr.get("height"),
         })
 
     return {
@@ -484,10 +498,14 @@ def _pack_dict_from_metadata(pack_type: str, date_str: str, meta: dict) -> dict:
         "sub_views": meta.get("sub_views", []),
         "created_at": meta.get("created_at", ""),
         "original_image_url": meta.get(
-            "original_image_url", frame_url(pack_type, date_str, pack_id, "original.png")
+            "original_image_url",
+            frame_url(pack_type, date_str, pack_id, f"original.{file_ext}"),
         ),
         "reference_image_url": meta.get("reference_image"),
         "frames": frames,
+        "source_material_id": meta.get("source_material_id"),
+        "source_material_name": meta.get("source_material_name"),
+        "source_duration_sec": meta.get("source_duration_sec"),
     }
 
 

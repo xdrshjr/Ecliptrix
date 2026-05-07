@@ -16,9 +16,10 @@ export interface SceneModelingState {
 interface SceneModelingTabProps {
   state: SceneModelingState;
   onChange: React.Dispatch<React.SetStateAction<SceneModelingState>>;
+  projectId?: string;
 }
 
-const SceneModelingTab: React.FC<SceneModelingTabProps> = ({ state, onChange }) => {
+const SceneModelingTab: React.FC<SceneModelingTabProps> = ({ state, onChange, projectId }) => {
   const { prompt, watermark, referenceImages, selectedTemplateId } = state;
   const MAX_PROMPT_LENGTH = 500;
 
@@ -100,6 +101,7 @@ const SceneModelingTab: React.FC<SceneModelingTabProps> = ({ state, onChange }) 
           onReferenceImagesChange={(imgs) => onChange(prev => ({ ...prev, referenceImages: imgs }))}
           prompt={prompt}
           onPromptChange={(val) => onChange(prev => ({ ...prev, prompt: val }))}
+          projectId={projectId}
         />
       </div>
     </div>
