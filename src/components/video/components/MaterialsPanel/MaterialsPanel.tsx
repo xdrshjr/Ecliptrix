@@ -2942,7 +2942,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <VideoProcessingModal
         isOpen={isVideoProcessingOpen}
         onClose={() => setIsVideoProcessingOpen(false)}
-        materials={materials.filter(m => m.type === 'video')}
+        materials={allMaterials.filter(m => m.type === 'video')}
         onSilenceRemoved={handleSilenceRemoved}
         onMinimize={handleVideoProcessingMinimize}
         taskId={taskId}

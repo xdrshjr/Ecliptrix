@@ -75,19 +75,30 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
   const dragWasPlayingRef = useRef(false);
   const isDraggingRef = useRef(false);
 
+  // Mirror stepFrame's prop-then-element fallback so the click-to-seek path
+  // is no longer gated on the prop reaching > 0 before the user clicks.
+  const resolveEffectiveDuration = (video: HTMLVideoElement): number => {
+    if (duration > 0 && Number.isFinite(duration)) return duration;
+    if (Number.isFinite(video.duration) && video.duration > 0) return video.duration;
+    return 0;
+  };
+
   const seekFromClientX = (clientX: number) => {
     const rail = railRef.current;
     const video = videoRef.current;
-    if (!rail || !video || !duration) return;
+    if (!rail || !video) return;
+    const effectiveDuration = resolveEffectiveDuration(video);
+    if (!effectiveDuration) return;
     const rect = rail.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    video.currentTime = ratio * duration;
+    video.currentTime = ratio * effectiveDuration;
   };
 
   const onRailPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== undefined && event.button !== 0) return;
     const video = videoRef.current;
-    if (!railRef.current || !video || !duration) return;
+    if (!railRef.current || !video) return;
+    if (!resolveEffectiveDuration(video)) return;
     // Capture on the outer wrapper (the element receiving the event) so
     // pointermove / pointerup keep firing even when the cursor leaves it
     // or the window entirely.
@@ -137,6 +148,10 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
   };
 
   const ratio = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  const elementDuration = videoRef.current?.duration;
+  const hasUsableDuration =
+    duration > 0 ||
+    (typeof elementDuration === 'number' && Number.isFinite(elementDuration) && elementDuration > 0);
 
   return (
     <div
@@ -198,8 +213,16 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
         onPointerMove={onRailPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="relative py-2.5 cursor-pointer touch-none select-none"
+        className={`relative py-2.5 touch-none select-none ${
+          hasUsableDuration ? 'cursor-pointer' : 'cursor-wait opacity-60'
+        }`}
+        aria-disabled={!hasUsableDuration}
       >
+        {!hasUsableDuration && (
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground pointer-events-none">
+            {fe?.loadingDuration}
+          </span>
+        )}
         <div
           ref={railRef}
           className="relative h-2 rounded bg-muted"

@@ -2083,6 +2083,7 @@ export interface Translations {
       saveFailed: string;
       payloadTooLarge: string;
       seekHint: string;
+      loadingDuration: string;
     };
   };
   workflowNodes: {
@@ -4749,6 +4750,7 @@ export const translations: Record<string, Translations> = {
         saveFailed: 'Failed to save frame pack',
         payloadTooLarge: 'Total upload size exceeds the limit. Remove some frames or lower JPEG quality.',
         seekHint: 'Space: play/pause · ←/→: ±1 frame · C: capture',
+        loadingDuration: 'Loading…',
       },
     },
     workflowNodes: {
@@ -7420,6 +7422,7 @@ export const translations: Record<string, Translations> = {
         saveFailed: '保存视频帧包失败',
         payloadTooLarge: '上传总大小超出限制，请减少帧数或降低 JPEG 质量。',
         seekHint: '空格：播放 / 暂停 · ←/→：上下一帧 · C：抓取',
+        loadingDuration: '加载中…',
       },
     },
     workflowNodes: {
