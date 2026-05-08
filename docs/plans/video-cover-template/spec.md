@@ -330,7 +330,10 @@ If a pre-existing auto-setter writes `cover_url` (e.g. project-card auto-pick), 
       "fontWeight": 700,
       "italic": false,
       "underline": false,
-      "align": "center"
+      "align": "center",
+      "x": 0.1,                 // normalized anchor, range [-0.5, 1.5]
+      "y": 0.4,                 // normalized anchor, range [-0.5, 1.5]
+      "width": 0.8              // normalized text-box width, range [0, 2.0]
     }
   ],
   "decorations": [

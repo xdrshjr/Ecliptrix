@@ -52,6 +52,9 @@ class CoverTextLayer(BaseModel):
     italic: bool = False
     underline: bool = False
     align: CoverTextAlign = "center"
+    x: float = Field(0.0, ge=-0.5, le=1.5)
+    y: float = Field(0.0, ge=-0.5, le=1.5)
+    width: float = Field(1.0, ge=0.0, le=2.0)
 
 
 class CoverDecoration(BaseModel):
