@@ -32,24 +32,51 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
   const fe = t.videoProcessing.frameExtraction;
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  // Single reactive source of truth for the rail's positioning quantity.
+  // Seeded from prop, then refreshed by loadedmetadata/durationchange so the
+  // visual cursor, progress fill and capture markers don't sit at 0 while
+  // the click-handlers happily seek via the <video> element fallback.
+  const seedDuration = duration > 0 && Number.isFinite(duration) ? duration : 0;
+  const [effectiveDuration, setEffectiveDuration] = useState<number>(seedDuration);
   const railRef = useRef<HTMLDivElement | null>(null);
 
-  // Track currentTime / playback state.
+  // Track currentTime / playback state and keep effectiveDuration in sync
+  // with the actual <video> element (covers late-arriving duration on some
+  // MP4s via durationchange).
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const onTime = () => setCurrentTime(video.currentTime);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const syncDuration = () => {
+      const d = video.duration;
+      if (Number.isFinite(d) && d > 0) setEffectiveDuration(d);
+    };
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('loadedmetadata', syncDuration);
+    video.addEventListener('durationchange', syncDuration);
+    if (video.readyState >= 1) syncDuration();
     return () => {
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('loadedmetadata', syncDuration);
+      video.removeEventListener('durationchange', syncDuration);
     };
   }, [videoRef]);
+
+  // Mirror prop changes into state when the prop tightens an upper bound.
+  useEffect(() => {
+    if (duration > 0 && Number.isFinite(duration) && duration !== effectiveDuration) {
+      setEffectiveDuration(duration);
+    }
+    // Intentionally only depends on `duration` — we don't want a state update
+    // to retrigger this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duration]);
 
   const stepFrame = (direction: 1 | -1) => {
     const video = videoRef.current;
@@ -57,10 +84,8 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
     const fps = frameRate && frameRate > 0 ? frameRate : 30;
     const delta = direction / fps;
     video.pause();
-    video.currentTime = Math.min(
-      duration > 0 ? duration : video.duration || 0,
-      Math.max(0, video.currentTime + delta),
-    );
+    const upper = effectiveDuration > 0 ? effectiveDuration : video.duration || 0;
+    video.currentTime = Math.min(upper, Math.max(0, video.currentTime + delta));
   };
 
   const togglePlay = () => {
@@ -75,10 +100,10 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
   const dragWasPlayingRef = useRef(false);
   const isDraggingRef = useRef(false);
 
-  // Mirror stepFrame's prop-then-element fallback so the click-to-seek path
-  // is no longer gated on the prop reaching > 0 before the user clicks.
-  const resolveEffectiveDuration = (video: HTMLVideoElement): number => {
-    if (duration > 0 && Number.isFinite(duration)) return duration;
+  // Resolve duration with one last element-fallback, in case the click
+  // arrives between metadata load and the next React render.
+  const resolveDuration = (video: HTMLVideoElement): number => {
+    if (effectiveDuration > 0) return effectiveDuration;
     if (Number.isFinite(video.duration) && video.duration > 0) return video.duration;
     return 0;
   };
@@ -87,18 +112,18 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
     const rail = railRef.current;
     const video = videoRef.current;
     if (!rail || !video) return;
-    const effectiveDuration = resolveEffectiveDuration(video);
-    if (!effectiveDuration) return;
+    const effective = resolveDuration(video);
+    if (!effective) return;
     const rect = rail.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    video.currentTime = ratio * effectiveDuration;
+    video.currentTime = ratio * effective;
   };
 
   const onRailPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== undefined && event.button !== 0) return;
     const video = videoRef.current;
     if (!railRef.current || !video) return;
-    if (!resolveEffectiveDuration(video)) return;
+    if (!resolveDuration(video)) return;
     // Capture on the outer wrapper (the element receiving the event) so
     // pointermove / pointerup keep firing even when the cursor leaves it
     // or the window entirely.
@@ -147,11 +172,8 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
     }
   };
 
-  const ratio = duration > 0 ? Math.min(1, currentTime / duration) : 0;
-  const elementDuration = videoRef.current?.duration;
-  const hasUsableDuration =
-    duration > 0 ||
-    (typeof elementDuration === 'number' && Number.isFinite(elementDuration) && elementDuration > 0);
+  const ratio = effectiveDuration > 0 ? Math.min(1, currentTime / effectiveDuration) : 0;
+  const hasUsableDuration = effectiveDuration > 0;
 
   return (
     <div
@@ -185,7 +207,7 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
           ⟩
         </button>
         <span className="font-mono">
-          {formatTimestamp(currentTime)} / {formatTimestamp(duration)}
+          {formatTimestamp(currentTime)} / {formatTimestamp(effectiveDuration)}
         </span>
         <span className="ml-auto text-[10px] text-muted-foreground">
           {fe?.seekHint}
@@ -232,9 +254,9 @@ const FrameScrubBar: React.FC<FrameScrubBarProps> = ({
             style={{ width: `${ratio * 100}%` }}
           />
           {/* Capture markers */}
-          {duration > 0 &&
+          {effectiveDuration > 0 &&
             capturedTimestamps.map((ts, i) => {
-              const left = Math.min(100, Math.max(0, (ts / duration) * 100));
+              const left = Math.min(100, Math.max(0, (ts / effectiveDuration) * 100));
               return (
                 <span
                   key={i}

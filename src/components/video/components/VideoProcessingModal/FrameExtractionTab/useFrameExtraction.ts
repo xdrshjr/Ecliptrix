@@ -29,6 +29,10 @@ export interface UseFrameExtractionOptions {
   source: MaterialItem | null;
   maxFrames?: number;
   jpegQualityPercent?: number;
+  /** Surface SecurityError / canvas-tainted captures back to the parent
+   *  so it can render them through the same in-panel error strip as
+   *  <video> load failures. */
+  onCaptureError?: (message: string) => void;
 }
 
 export interface UseFrameExtractionReturn {
@@ -71,7 +75,7 @@ async function blobToThumbDataUrl(
 export default function useFrameExtraction(
   opts: UseFrameExtractionOptions,
 ): UseFrameExtractionReturn {
-  const { maxFrames = DEFAULT_FRAME_CAP, jpegQualityPercent = DEFAULT_JPEG_QUALITY_PERCENT } = opts;
+  const { maxFrames = DEFAULT_FRAME_CAP, jpegQualityPercent = DEFAULT_JPEG_QUALITY_PERCENT, onCaptureError } = opts;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -103,9 +107,27 @@ export default function useFrameExtraction(
     ctx.drawImage(video, 0, 0);
 
     const quality = qualityToCanvasScale(jpegQualityPercent);
-    const blob: Blob | null = await new Promise((resolve) => {
-      canvas!.toBlob((b) => resolve(b), 'image/jpeg', quality);
-    });
+    let blob: Blob | null = null;
+    try {
+      blob = await new Promise<Blob | null>((resolve, reject) => {
+        try {
+          canvas!.toBlob((b) => resolve(b), 'image/jpeg', quality);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    } catch (err) {
+      // Tainted canvas (cross-origin <video> without CORS headers) throws
+      // SecurityError on toBlob. Surface a clear message instead of failing
+      // silently.
+      const isSecurity = err instanceof DOMException && err.name === 'SecurityError';
+      onCaptureError?.(
+        isSecurity
+          ? 'Frame capture is unavailable for this video — please cache it first.'
+          : ((err as Error)?.message ?? 'Frame capture failed'),
+      );
+      return;
+    }
     if (!blob) return;
 
     const thumbDataUrl = await blobToThumbDataUrl(video, THUMB_LONG_EDGE);
@@ -121,7 +143,7 @@ export default function useFrameExtraction(
         thumbDataUrl,
       },
     ]);
-  }, [frames.length, maxFrames, jpegQualityPercent]);
+  }, [frames.length, maxFrames, jpegQualityPercent, onCaptureError]);
 
   const remove = useCallback((id: string) => {
     setFrames((prev) => prev.filter((f) => f.id !== id));

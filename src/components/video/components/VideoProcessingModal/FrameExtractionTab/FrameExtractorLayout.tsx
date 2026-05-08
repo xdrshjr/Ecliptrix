@@ -8,6 +8,40 @@ import CapturedFramesList from './CapturedFramesList';
 import FrameScrubBar from './FrameScrubBar';
 import useFrameExtraction, { DEFAULT_FRAME_CAP } from './useFrameExtraction';
 
+// CORS allow-list for the <video crossOrigin="anonymous"> attribute.
+// Tagging a no-CORS host taints the canvas AND can cause the metadata
+// fetch to stall outright (the symptom that leaves the rail dead). Keep
+// this list narrow: only hosts that are documented to advertise
+// `Access-Control-Allow-Origin: *` on video objects belong here.
+//   - videos.pexels.com / *.pexels.com → ✅ documented CORS
+//   - ARK / TOS (volc...) → ❌ no CORS, must NOT be tagged
+const KNOWN_CORS_FRIENDLY_SUFFIXES = ['.pexels.com', 'pexels.com'] as const;
+
+function shouldTagCrossOrigin(playbackUrl: string): boolean {
+  if (!playbackUrl) return false;
+  if (typeof window === 'undefined') return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(playbackUrl, window.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.origin === window.location.origin) return false;
+  const host = parsed.hostname.toLowerCase();
+  return KNOWN_CORS_FRIENDLY_SUFFIXES.some((suffix) => host.endsWith(suffix));
+}
+
+function describeMediaError(err: MediaError | null | undefined): string | null {
+  if (!err) return null;
+  switch (err.code) {
+    case 1: return 'Aborted';
+    case 2: return 'Network error';
+    case 3: return 'Decode error';
+    case 4: return 'Source not supported (possible CORS block)';
+    default: return err.message || 'Unknown error';
+  }
+}
+
 interface FrameExtractorLayoutProps {
   source: MaterialItem;
   onBack: () => void;
@@ -26,16 +60,20 @@ const FrameExtractorLayout: React.FC<FrameExtractorLayoutProps> = ({
   const { t } = useLocale();
   const fe = t.videoProcessing.frameExtraction;
   const [duration, setDuration] = useState<number>(source.duration ?? 0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const { videoRef, frames, capture, remove, isAtCap } = useFrameExtraction({
     source,
     maxFrames: DEFAULT_FRAME_CAP,
+    onCaptureError: (msg) => setLoadError(msg),
   });
 
   const playbackUrl = useMemo(
     () => selectPlaybackUrl(source, { purpose: 'preview' }),
     [source],
   );
+
+  const tagCrossOrigin = useMemo(() => shouldTagCrossOrigin(playbackUrl), [playbackUrl]);
 
   // Whenever the source changes, sync duration from the actual <video>.
   useEffect(() => {
@@ -50,6 +88,15 @@ const FrameExtractorLayout: React.FC<FrameExtractorLayoutProps> = ({
     if (video.readyState >= 1) onMeta();
     return () => video.removeEventListener('loadedmetadata', onMeta);
   }, [videoRef, playbackUrl]);
+
+  useEffect(() => {
+    setLoadError(null);
+  }, [playbackUrl]);
+
+  const handleVideoError = () => {
+    const reason = describeMediaError(videoRef.current?.error);
+    setLoadError(reason ?? 'Video failed to load');
+  };
 
   const handleSeek = (timestampSec: number) => {
     const video = videoRef.current;
@@ -115,13 +162,19 @@ const FrameExtractorLayout: React.FC<FrameExtractorLayoutProps> = ({
                 ref={videoRef}
                 src={playbackUrl}
                 playsInline
-                crossOrigin="anonymous"
+                {...(tagCrossOrigin ? { crossOrigin: 'anonymous' as const } : {})}
+                onError={handleVideoError}
                 className="max-h-full max-w-full"
               />
             ) : (
               <span className="text-muted-foreground text-sm">{t.materialsPanel.noVideoMaterials}</span>
             )}
           </div>
+          {loadError && (
+            <div className="px-3 py-1.5 text-[11px] text-destructive bg-destructive/5 border-t border-destructive/20">
+              {loadError}
+            </div>
+          )}
           <FrameScrubBar
             videoRef={videoRef}
             duration={duration}
