@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { DataFormat } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface FormatSelectorProps {
   /** Label for the selector */
@@ -40,26 +41,8 @@ const FormatIcons: Record<DataFormat, React.ReactNode> = {
 };
 
 /**
- * Format display names
- */
-const FormatDisplayNames: Record<DataFormat, string> = {
-  'text/plain': 'Plain Text',
-  'application/json': 'JSON Object',
-  'array': 'Array',
-};
-
-/**
- * Format descriptions
- */
-const FormatDescriptions: Record<DataFormat, string> = {
-  'text/plain': 'Simple text string',
-  'application/json': 'JSON object with key-value pairs',
-  'array': 'Array of items',
-};
-
-/**
  * Format Selector Component
- * 
+ *
  * A clean, Figma-style dropdown for selecting data formats
  * Used in workflow node configuration panels
  */
@@ -71,7 +54,20 @@ const FormatSelector: React.FC<FormatSelectorProps> = ({
   helpText,
   disabled = false,
 }) => {
+  const { t } = useLocale();
   const formats: DataFormat[] = ['text/plain', 'application/json', 'array'];
+
+  const formatDisplayNames: Record<DataFormat, string> = {
+    'text/plain': t.workflowConfig.common.plainText,
+    'application/json': t.workflowConfig.common.jsonObject,
+    'array': t.workflowConfig.common.arrayLabel,
+  };
+
+  const formatDescriptions: Record<DataFormat, string> = {
+    'text/plain': t.workflowConfig.common.plainTextDesc,
+    'application/json': t.workflowConfig.common.jsonObjectDesc,
+    'array': t.workflowConfig.common.arrayDesc,
+  };
 
   const typeIcon = type === 'input' ? (
     <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -111,7 +107,7 @@ const FormatSelector: React.FC<FormatSelectorProps> = ({
         >
           {formats.map((format) => (
             <option key={format} value={format}>
-              {FormatDisplayNames[format]}
+              {formatDisplayNames[format]}
             </option>
           ))}
         </select>
@@ -131,10 +127,10 @@ const FormatSelector: React.FC<FormatSelectorProps> = ({
         </div>
         <div className="flex-1">
           <div className="text-xs font-medium text-foreground">
-            {FormatDisplayNames[value]}
+            {formatDisplayNames[value]}
           </div>
           <div className="text-xs text-muted-foreground">
-            {FormatDescriptions[value]}
+            {formatDescriptions[value]}
           </div>
         </div>
       </div>

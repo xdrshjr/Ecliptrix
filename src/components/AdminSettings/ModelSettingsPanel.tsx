@@ -40,7 +40,7 @@ interface ResolveConfigResponse {
     provider_name?: string | null;
     api_url?: string | null;
     model_name?: string | null;
-    source?: 'database' | 'environment' | 'none';
+    source?: 'database' | 'environment' | 'none' | 'error';
   };
 }
 
@@ -124,7 +124,7 @@ interface ResolvedConfig {
   provider_name: string | null;
   api_url: string | null;
   model_name: string | null;
-  source: 'database' | 'environment' | 'none';
+  source: 'database' | 'environment' | 'none' | 'error';
 }
 
 /* ── Icons ── */
@@ -675,9 +675,9 @@ const ModelSettingsPanel: React.FC = () => {
               };
             }
             return { ft, config: { function_type: ft, provider_name: null, api_url: data.config?.api_url || null, model_name: data.config?.model_name || null, source: 'environment' as const } };
-          } catch {
-            // Optional advanced-tab feature; per-function failure is non-fatal.
-            return { ft, config: { function_type: ft, provider_name: null, api_url: null, model_name: null, source: 'none' as const } };
+          } catch (err) {
+            console.error('[ModelSettingsPanel] resolve config failed for', ft, err);
+            return { ft, config: { function_type: ft, provider_name: null, api_url: null, model_name: null, source: 'error' as const } };
           }
         })
       );
@@ -1455,6 +1455,7 @@ const ModelSettingsPanel: React.FC = () => {
                   const config = effectiveConfigs[ft];
                   const isDb = config?.source === 'database';
                   const isEnv = config?.source === 'environment';
+                  const isError = config?.source === 'error';
                   return (
                     <tr key={ft} className="border-b border-border last:border-b-0">
                       <td className="py-2 px-2">
@@ -1462,7 +1463,9 @@ const ModelSettingsPanel: React.FC = () => {
                       </td>
                       <td className="py-2 px-2 text-foreground">
                         {config?.provider_name || (config?.api_url ? truncateUrl(config.api_url, 35) : (
-                          <span className="text-muted-foreground italic">{t.adminSettings.effectiveConfigNotConfigured}</span>
+                          <span className="text-muted-foreground italic">
+                            {isError ? t.adminSettings.effectiveConfigErrorDesc : t.adminSettings.effectiveConfigNotConfigured}
+                          </span>
                         ))}
                       </td>
                       <td className="py-2 px-2 font-mono text-foreground">
@@ -1471,14 +1474,25 @@ const ModelSettingsPanel: React.FC = () => {
                         )}
                       </td>
                       <td className="py-2 px-2">
-                        <span className={`px-1.5 py-0.5 rounded text-xs ${
-                          isDb
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-xs ${
+                            isDb
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                              : isEnv
+                                ? 'bg-muted text-muted-foreground'
+                                : isError
+                                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                  : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                          }`}
+                          title={isError ? t.adminSettings.effectiveConfigErrorDesc : undefined}
+                        >
+                          {isDb
+                            ? t.adminSettings.configFromDb
                             : isEnv
-                              ? 'bg-muted text-muted-foreground'
-                              : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                        }`}>
-                          {isDb ? t.adminSettings.configFromDb : isEnv ? t.adminSettings.configFromEnv : t.adminSettings.effectiveConfigNotConfigured}
+                              ? t.adminSettings.configFromEnv
+                              : isError
+                                ? t.adminSettings.effectiveConfigErrorBadge
+                                : t.adminSettings.effectiveConfigNotConfigured}
                         </span>
                       </td>
                     </tr>

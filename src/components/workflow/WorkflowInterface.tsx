@@ -161,13 +161,33 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           dlog('[WorkflowInterface] Loaded workflows:', response.data.length);
           
           // Convert loaded workflows to WorkflowTaskContent format
+          // Soft-migrate legacy `model: 'gpt-4'` placeholder on LLM-backed nodes
+          // (chat-llm / to-array / results-combine) so old workflows display as
+          // "not configured" until the user picks a real model.
+          const migrateNodes = (nodes: WorkflowNode[]): WorkflowNode[] =>
+            nodes.map((n) => {
+              const isLLMNode =
+                n.type === 'chat-llm' ||
+                n.type === 'to-array' ||
+                n.type === 'results-combine';
+              if (!isLLMNode) return n;
+              const cfg = n.data?.config as Record<string, unknown> | undefined;
+              if (cfg && cfg.model === 'gpt-4' && !cfg.modelId) {
+                const { model: _drop, ...rest } = cfg;
+                void _drop;
+                dlog('[migration] cleared legacy gpt-4 placeholder for node', n.id);
+                return { ...n, data: { ...n.data, config: rest as typeof n.data.config } };
+              }
+              return n;
+            });
+
           const workflows = response.data.map(record => ({
             id: record.workflow_id,
             name: record.workflow_name,
             data: {
               name: record.workflow_name,
               description: record.workflow_description || '',
-              nodes: record.nodes,
+              nodes: migrateNodes(record.nodes),
               connections: record.connections,
             },
           }));

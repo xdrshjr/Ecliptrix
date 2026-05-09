@@ -55,6 +55,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 }) => {
   const { t } = useLocale();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuItemsRef = useRef<Array<HTMLButtonElement | null>>([]);
+  const [contextMenuFocusIndex, setContextMenuFocusIndex] = useState<number>(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
@@ -250,7 +253,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         label: t.workflowInterface.canvas.nodeDefaults.chatLLM,
         type: 'chat-llm',
         config: {
-          model: 'gpt-4',
           temperature: 0.7,
           maxTokens: 2000,
         },
@@ -511,11 +513,24 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       if (contextMenu.visible) {
         dlog('[WorkflowCanvas] Closing context menu');
         setContextMenu({ visible: false, x: 0, y: 0 });
+        canvasRef.current?.focus();
       }
     };
 
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenu.visible]);
+
+  // Focus first menu item when context menu opens
+  useEffect(() => {
+    if (contextMenu.visible) {
+      setContextMenuFocusIndex(0);
+      // Defer to next frame so refs are populated
+      const id = window.requestAnimationFrame(() => {
+        contextMenuItemsRef.current[0]?.focus();
+      });
+      return () => window.cancelAnimationFrame(id);
+    }
   }, [contextMenu.visible]);
 
   // Handle node selection
@@ -990,7 +1005,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       {/* Canvas */}
       <div
         ref={canvasRef}
-        className="h-full w-full relative select-none"
+        tabIndex={-1}
+        className="h-full w-full relative select-none focus:outline-none"
         onContextMenu={handleContextMenu}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1289,139 +1305,148 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         })}
 
         {/* Context Menu */}
-        {contextMenu.visible && (
-          <div
-            className="absolute bg-card rounded-md shadow-lg border border-border py-2 z-50 min-w-[180px]"
-            style={{
-              left: `${contextMenu.x}px`,
-              top: `${contextMenu.y}px`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={handleAddStartNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+        {contextMenu.visible && (() => {
+          type MenuItem = { kind: 'item'; label: string; onClick: () => void; icon: React.ReactNode } | { kind: 'separator' };
+          const menuItems: MenuItem[] = [
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addStartNode, onClick: handleAddStartNode, icon: (
               <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addStartNode}</span>
-            </button>
-            
-            <button
-              onClick={handleAddEndNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addEndNode, onClick: handleAddEndNode, icon: (
               <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addEndNode}</span>
-            </button>
-            
-            <div className="h-px bg-border my-1" />
-            
-            <button
-              onClick={handleAddChatLLMNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'separator' },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addChatLLM, onClick: handleAddChatLLMNode, icon: (
               <svg className="w-4 h-4 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addChatLLM}</span>
-            </button>
-            
-            <button
-              onClick={handleAddTextInputNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addTextInput, onClick: handleAddTextInputNode, icon: (
               <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addTextInput}</span>
-            </button>
-            
-            <div className="h-px bg-border my-1" />
-            
-            <button
-              onClick={handleAddPexelsVideoSearchNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'separator' },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addPexelsVideoSearch, onClick: handleAddPexelsVideoSearchNode, icon: (
               <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addPexelsVideoSearch}</span>
-            </button>
-            
-            <button
-              onClick={handleAddTavilySearchNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addTavilySearch, onClick: handleAddTavilySearchNode, icon: (
               <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addTavilySearch}</span>
-            </button>
-            
-            <div className="h-px bg-border my-1" />
-            
-            <button
-              onClick={handleAddVolcanoTTSNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'separator' },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addVolcanoTTS, onClick: handleAddVolcanoTTSNode, icon: (
               <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addVolcanoTTS}</span>
-            </button>
-            
-            <div className="h-px bg-border my-1" />
-            
-            <button
-              onClick={handleAddToArrayNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'separator' },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addToArray, onClick: handleAddToArrayNode, icon: (
               <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addToArray}</span>
-            </button>
-            
-            <button
-              onClick={handleAddResultsCombineNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addResultsCombine, onClick: handleAddResultsCombineNode, icon: (
               <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addResultsCombine}</span>
-            </button>
-            
-            <div className="h-px bg-border my-1" />
-            
-            <button
-              onClick={handleAddAIVideoGenerateNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'separator' },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addAIVideoGenerate, onClick: handleAddAIVideoGenerateNode, icon: (
               <svg className="w-4 h-4 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addAIVideoGenerate}</span>
-            </button>
-            
-            <button
-              onClick={handleAddVideoExportNode}
-              className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors"
-            >
+            ) },
+            { kind: 'item', label: t.workflowInterface.canvas.contextMenu.addVideoExport, onClick: handleAddVideoExportNode, icon: (
               <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              <span className="text-sm text-foreground">{t.workflowInterface.canvas.contextMenu.addVideoExport}</span>
-            </button>
-          </div>
-        )}
+            ) },
+          ];
+          // Build a parallel array of indices into menuItems for items only (skipping separators)
+          const itemIndices: number[] = menuItems
+            .map((m, i) => (m.kind === 'item' ? i : -1))
+            .filter((i) => i !== -1);
+          // contextMenuFocusIndex is index into itemIndices
+          const focusItem = (idx: number) => {
+            const wrapped = (idx + itemIndices.length) % itemIndices.length;
+            setContextMenuFocusIndex(wrapped);
+            const itemIdx = itemIndices[wrapped];
+            contextMenuItemsRef.current[itemIdx]?.focus();
+          };
+          const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+            switch (e.key) {
+              case 'ArrowDown':
+                e.preventDefault();
+                focusItem(contextMenuFocusIndex + 1);
+                break;
+              case 'ArrowUp':
+                e.preventDefault();
+                focusItem(contextMenuFocusIndex - 1);
+                break;
+              case 'Home':
+                e.preventDefault();
+                focusItem(0);
+                break;
+              case 'End':
+                e.preventDefault();
+                focusItem(itemIndices.length - 1);
+                break;
+              case 'Escape':
+                e.preventDefault();
+                setContextMenu({ visible: false, x: 0, y: 0 });
+                canvasRef.current?.focus();
+                break;
+            }
+          };
+          // Reset refs array each render
+          contextMenuItemsRef.current = new Array(menuItems.length).fill(null);
+          return (
+            <div
+              ref={contextMenuRef}
+              role="menu"
+              aria-label={t.workflowInterface.canvas.contextMenu.menuAriaLabel}
+              onKeyDown={handleMenuKeyDown}
+              className="absolute bg-card rounded-md shadow-lg border border-border py-2 z-50 min-w-[180px]"
+              style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {menuItems.map((m, idx) => {
+                if (m.kind === 'separator') {
+                  return <div key={`sep-${idx}`} role="separator" className="h-px bg-border my-1" />;
+                }
+                const itemIdxInItems = itemIndices.indexOf(idx);
+                const isFocused = itemIdxInItems === contextMenuFocusIndex;
+                return (
+                  <button
+                    key={`item-${idx}`}
+                    role="menuitem"
+                    tabIndex={isFocused ? 0 : -1}
+                    ref={(el) => { contextMenuItemsRef.current[idx] = el; }}
+                    onClick={() => {
+                      m.onClick();
+                      canvasRef.current?.focus();
+                    }}
+                    onFocus={() => setContextMenuFocusIndex(itemIdxInItems)}
+                    className="w-full px-4 py-2 text-left hover:bg-accent flex items-center space-x-3 transition-colors focus:outline-none focus:bg-accent"
+                  >
+                    {m.icon}
+                    <span className="text-sm text-foreground">{m.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Instructions Overlay (when no nodes) */}
         {nodes.length === 0 && (

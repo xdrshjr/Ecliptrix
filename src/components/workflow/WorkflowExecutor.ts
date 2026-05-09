@@ -636,8 +636,8 @@ export class WorkflowExecutor {
     
     const config = node.data.config as ChatLLMNodeConfig;
     
-    if (!config?.model || !config?.systemPrompt) {
-      throw new Error('Chat LLM node is not fully configured. Please set model and system prompt.');
+    if (!config?.modelId || !config?.systemPrompt) {
+      throw new Error('Chat LLM node is not fully configured. Please select a model and set system prompt.');
     }
 
     this.addLog('info', node.id, 'Calling LLM API...', { 
@@ -899,8 +899,8 @@ export class WorkflowExecutor {
       timestamp: new Date().toISOString()
     });
     
-    if (!config?.model || !config?.systemPrompt) {
-      throw new Error('To Array node requires model and systemPrompt configuration. Please configure the node.');
+    if (!config?.modelId || !config?.systemPrompt) {
+      throw new Error('To Array node is not fully configured. Please select a model and set system prompt.');
     }
 
     // Extract user message from input
@@ -1005,8 +1005,8 @@ export class WorkflowExecutor {
       timestamp: new Date().toISOString()
     });
     
-    if (!config?.model || !config?.systemPrompt) {
-      throw new Error('Results Combine node requires model and systemPrompt configuration. Please configure the node.');
+    if (!config?.modelId || !config?.systemPrompt) {
+      throw new Error('Results Combine node is not fully configured. Please select a model and set system prompt.');
     }
 
     // Extract array from input

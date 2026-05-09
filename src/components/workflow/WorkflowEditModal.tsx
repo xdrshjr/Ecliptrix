@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { WorkflowNode } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface WorkflowEditModalProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const { t } = useLocale();
   const [editedName, setEditedName] = useState(workflowName);
   const [editedDescription, setEditedDescription] = useState(workflowDescription);
   const [isSaving, setIsSaving] = useState(false);
@@ -102,20 +104,21 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
     onClose();
   };
 
-  // Get node type display name
+  // Get node type display name (reuses canvas nodeDefaults i18n)
   const getNodeTypeDisplayName = (type: string): string => {
+    const nd = t.workflowInterface.canvas.nodeDefaults;
     const typeMap: Record<string, string> = {
-      'start': 'Start',
-      'end': 'End',
-      'chat-llm': 'Chat LLM',
-      'text-input': 'Text Input',
-      'pexels-video-search': 'Pexels Video Search',
-      'tavily-search': 'Tavily Search',
-      'volcano-tts': 'Volcano TTS',
-      'to-array': 'To Array',
-      'results-combine': 'Results Combine',
-      'ai-video-generate': 'AI Video Generate',
-      'video-export': 'Video Export',
+      'start': nd.start,
+      'end': nd.end,
+      'chat-llm': nd.chatLLM,
+      'text-input': nd.textInput,
+      'pexels-video-search': nd.pexelsSearch,
+      'tavily-search': nd.tavilySearch,
+      'volcano-tts': nd.volcanoTTS,
+      'to-array': nd.toArray,
+      'results-combine': nd.resultsCombine,
+      'ai-video-generate': nd.aiVideoGenerate,
+      'video-export': nd.videoExport,
     };
     return typeMap[type] || type;
   };
@@ -205,17 +208,17 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-foreground">
-                  Edit Workflow
+                  {t.workflowEditModal.title}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Modify workflow details and view nodes
+                  {t.workflowEditModal.subtitle}
                 </p>
               </div>
             </div>
             <button
               onClick={handleCancel}
               className="p-2 hover:bg-accent rounded-md transition-colors"
-              aria-label="Close modal"
+              aria-label={t.workflowEditModal.closeAriaLabel}
             >
               <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -230,7 +233,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
             {/* Workflow Name */}
             <div>
               <label htmlFor="workflow-name" className="block text-sm font-medium text-foreground mb-2">
-                Workflow Name <span className="text-red-500">*</span>
+                {t.workflowEditModal.nameLabel} <span className="text-red-500">*</span>
               </label>
               <input
                 id="workflow-name"
@@ -238,11 +241,13 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                 value={editedName}
                 onChange={(e) => setEditedName(e.target.value)}
                 className="w-full px-4 py-2.5 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-foreground placeholder-muted-foreground"
-                placeholder="Enter workflow name"
+                placeholder={t.workflowEditModal.namePlaceholder}
+                aria-invalid={!editedName.trim()}
+                aria-describedby={!editedName.trim() ? 'workflow-name-error' : undefined}
               />
               {!editedName.trim() && (
-                <p className="text-xs text-red-500 mt-1.5">
-                  Workflow name is required
+                <p id="workflow-name-error" role="alert" className="text-xs text-red-500 mt-1.5">
+                  {t.workflowEditModal.nameRequired}
                 </p>
               )}
             </div>
@@ -250,7 +255,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
             {/* Workflow Description */}
             <div>
               <label htmlFor="workflow-description" className="block text-sm font-medium text-foreground mb-2">
-                Description
+                {t.workflowEditModal.descriptionLabel}
               </label>
               <textarea
                 id="workflow-description"
@@ -258,7 +263,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                 onChange={(e) => setEditedDescription(e.target.value)}
                 rows={3}
                 className="w-full px-4 py-2.5 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-foreground placeholder-muted-foreground resize-none"
-                placeholder="Enter workflow description (optional)"
+                placeholder={t.workflowEditModal.descriptionPlaceholder}
               />
             </div>
 
@@ -266,13 +271,15 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <label className="block text-sm font-medium text-foreground">
-                  Workflow Nodes
+                  {t.workflowEditModal.nodesLabel}
                 </label>
                 <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">
-                  {nodes.length} {nodes.length === 1 ? 'node' : 'nodes'}
+                  {nodes.length === 1
+                    ? t.workflowEditModal.nodeCountSingular.replace('{count}', '1')
+                    : t.workflowEditModal.nodeCount.replace('{count}', String(nodes.length))}
                 </span>
               </div>
-              
+
               {nodes.length === 0 ? (
                 <div className="bg-muted rounded-md p-6 text-center">
                   <div className="w-12 h-12 bg-secondary rounded-md mx-auto mb-3 flex items-center justify-center">
@@ -281,16 +288,16 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                     </svg>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    No nodes in this workflow yet
+                    {t.workflowEditModal.emptyTitle}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Add nodes in the workflow canvas
+                    {t.workflowEditModal.emptyHint}
                   </p>
                 </div>
               ) : (
                 <div className="bg-muted rounded-md border border-border divide-y divide-border max-h-80 overflow-y-auto">
                   {nodes.map((node, index) => (
-                    <div 
+                    <div
                       key={node.id}
                       className="px-4 py-3 hover:bg-accent transition-colors"
                     >
@@ -334,10 +341,10 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
               {hasChanges ? (
                 <span className="flex items-center space-x-1">
                   <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                  <span>Unsaved changes</span>
+                  <span>{t.workflowEditModal.unsavedChanges}</span>
                 </span>
               ) : (
-                <span>No changes</span>
+                <span>{t.workflowEditModal.noChanges}</span>
               )}
             </div>
             <div className="flex items-center space-x-3">
@@ -345,7 +352,7 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                 onClick={handleCancel}
                 className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring"
               >
-                Cancel
+                {t.workflowEditModal.cancel}
               </button>
               <button
                 onClick={handleSave}
@@ -358,10 +365,10 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <span>Saving...</span>
+                    <span>{t.workflowEditModal.saving}</span>
                   </span>
                 ) : (
-                  'Save Changes'
+                  t.workflowEditModal.saveChanges
                 )}
               </button>
             </div>

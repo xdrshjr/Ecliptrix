@@ -139,6 +139,7 @@ export interface Translations {
     delete: string;
     loading: string;
     noUsers: string;
+    noUsersMatchFilter: string;
     fetchError: string;
     searchPlaceholder: string;
     addUser: string;
@@ -269,6 +270,8 @@ export interface Translations {
     effectiveConfigModel: string;
     effectiveConfigSource: string;
     effectiveConfigNotConfigured: string;
+    effectiveConfigErrorBadge: string;
+    effectiveConfigErrorDesc: string;
     testConnectionFormat: string;
     modelInfo: string;
     formatUsed: string;
@@ -590,6 +593,7 @@ export interface Translations {
     };
     canvas: {
       contextMenu: {
+        menuAriaLabel: string;
         addStartNode: string;
         addEndNode: string;
         addChatLLM: string;
@@ -2159,6 +2163,62 @@ export interface Translations {
       loadingDuration: string;
     };
   };
+  workflowEditModal: {
+    title: string;
+    subtitle: string;
+    closeAriaLabel: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    nameRequired: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    nodesLabel: string;
+    nodeCount: string;
+    nodeCountSingular: string;
+    emptyTitle: string;
+    emptyHint: string;
+    unsavedChanges: string;
+    noChanges: string;
+    cancel: string;
+    saving: string;
+    saveChanges: string;
+  };
+  workflowConfig: {
+    common: {
+      cancel: string;
+      saveConfiguration: string;
+      inputFormat: string;
+      outputFormat: string;
+      inputFormatHelp: string;
+      outputFormatHelp: string;
+      dataFormat: string;
+      plainText: string;
+      jsonObject: string;
+      arrayLabel: string;
+      plainTextDesc: string;
+      jsonObjectDesc: string;
+      arrayDesc: string;
+      loadFailed: string;
+      retry: string;
+      noModelsAvailable: string;
+      nodeIdLabel: string;
+    };
+    chatLLM: {
+      title: string;
+      systemPrompt: string;
+      systemPromptPlaceholder: string;
+      systemPromptHelp: string;
+      model: string;
+      modelHelp: string;
+      temperature: string;
+      temperatureLow: string;
+      temperatureHigh: string;
+      temperatureHelp: string;
+      maxTokens: string;
+      maxTokensHelp: string;
+      selectModelHint: string;
+    };
+  };
   workflowNodes: {
     ports: {
       input: string;
@@ -2870,6 +2930,7 @@ export const translations: Record<string, Translations> = {
       delete: 'Delete',
       loading: 'Loading...',
       noUsers: 'No users found',
+      noUsersMatchFilter: 'No users match your filters',
       fetchError: 'Failed to fetch users',
       searchPlaceholder: 'Search users...',
       addUser: 'Add User',
@@ -3000,6 +3061,8 @@ export const translations: Record<string, Translations> = {
       effectiveConfigModel: 'Model',
       effectiveConfigSource: 'Source',
       effectiveConfigNotConfigured: 'Not configured',
+      effectiveConfigErrorBadge: 'Fetch failed',
+      effectiveConfigErrorDesc: 'Failed to fetch effective config for this function type. Check backend connection or retry.',
       testConnectionFormat: 'Test Connection Format',
       modelInfo: 'Model Info',
       formatUsed: 'Format Used',
@@ -3321,6 +3384,7 @@ export const translations: Record<string, Translations> = {
       },
       canvas: {
         contextMenu: {
+          menuAriaLabel: 'Add node menu',
           addStartNode: 'Add Start Node',
           addEndNode: 'Add End Node',
           addChatLLM: 'Add Chat LLM',
@@ -4913,6 +4977,62 @@ export const translations: Record<string, Translations> = {
         loadingDuration: 'Loading…',
       },
     },
+    workflowEditModal: {
+      title: 'Edit Workflow',
+      subtitle: 'Modify workflow details and view nodes',
+      closeAriaLabel: 'Close modal',
+      nameLabel: 'Workflow Name',
+      namePlaceholder: 'Enter workflow name',
+      nameRequired: 'Workflow name is required',
+      descriptionLabel: 'Description',
+      descriptionPlaceholder: 'Enter workflow description (optional)',
+      nodesLabel: 'Workflow Nodes',
+      nodeCount: '{count} nodes',
+      nodeCountSingular: '1 node',
+      emptyTitle: 'No nodes in this workflow yet',
+      emptyHint: 'Add nodes in the workflow canvas',
+      unsavedChanges: 'Unsaved changes',
+      noChanges: 'No changes',
+      cancel: 'Cancel',
+      saving: 'Saving…',
+      saveChanges: 'Save Changes',
+    },
+    workflowConfig: {
+      common: {
+        cancel: 'Cancel',
+        saveConfiguration: 'Save Configuration',
+        inputFormat: 'Input Format',
+        outputFormat: 'Output Format',
+        inputFormatHelp: 'Format of data received from the previous node.',
+        outputFormatHelp: 'Format of data sent to the next node.',
+        dataFormat: 'Data Format',
+        plainText: 'Plain Text',
+        jsonObject: 'JSON Object',
+        arrayLabel: 'Array',
+        plainTextDesc: 'Simple text string',
+        jsonObjectDesc: 'JSON object with key-value pairs',
+        arrayDesc: 'Array of items',
+        loadFailed: 'Failed to load models. Please try again.',
+        retry: 'Retry',
+        noModelsAvailable: 'No models available',
+        nodeIdLabel: 'Node ID:',
+      },
+      chatLLM: {
+        title: 'Chat LLM Configuration',
+        systemPrompt: 'System Prompt',
+        systemPromptPlaceholder: 'Enter system prompt for the Chat LLM…',
+        systemPromptHelp: 'Define the behavior and context for the LLM conversation',
+        model: 'Model',
+        modelHelp: 'Select the LLM model to use for this node',
+        temperature: 'Temperature',
+        temperatureLow: '0.0 (Precise)',
+        temperatureHigh: '2.0 (Creative)',
+        temperatureHelp: 'Controls randomness: lower values make output more focused and deterministic',
+        maxTokens: 'Max Tokens',
+        maxTokensHelp: 'Maximum length of the generated response',
+        selectModelHint: 'Please select a model to enable this node.',
+      },
+    },
     workflowNodes: {
       ports: {
         input: 'Input',
@@ -5629,6 +5749,7 @@ export const translations: Record<string, Translations> = {
       delete: '删除',
       loading: '加载中...',
       noUsers: '暂无用户',
+      noUsersMatchFilter: '未找到符合条件的用户',
       fetchError: '获取用户列表失败',
       searchPlaceholder: '搜索用户...',
       addUser: '添加用户',
@@ -5759,6 +5880,8 @@ export const translations: Record<string, Translations> = {
       effectiveConfigModel: '模型',
       effectiveConfigSource: '来源',
       effectiveConfigNotConfigured: '未配置',
+      effectiveConfigErrorBadge: '获取失败',
+      effectiveConfigErrorDesc: '未能获取该功能类型的实际生效配置，请检查后端连接或刷新重试。',
       testConnectionFormat: '测试连接格式',
       modelInfo: '模型信息',
       formatUsed: '使用的格式',
@@ -6080,6 +6203,7 @@ export const translations: Record<string, Translations> = {
       },
       canvas: {
         contextMenu: {
+          menuAriaLabel: '添加节点菜单',
           addStartNode: '添加开始节点',
           addEndNode: '添加结束节点',
           addChatLLM: '添加聊天 LLM',
@@ -7670,6 +7794,62 @@ export const translations: Record<string, Translations> = {
         payloadTooLarge: '上传总大小超出限制，请减少帧数或降低 JPEG 质量。',
         seekHint: '空格：播放 / 暂停 · ←/→：上下一帧 · C：抓取',
         loadingDuration: '加载中…',
+      },
+    },
+    workflowEditModal: {
+      title: '编辑工作流',
+      subtitle: '修改工作流详情并查看节点',
+      closeAriaLabel: '关闭弹窗',
+      nameLabel: '工作流名称',
+      namePlaceholder: '请输入工作流名称',
+      nameRequired: '工作流名称不能为空',
+      descriptionLabel: '描述',
+      descriptionPlaceholder: '请输入工作流描述（可选）',
+      nodesLabel: '工作流节点',
+      nodeCount: '{count} 个节点',
+      nodeCountSingular: '{count} 个节点',
+      emptyTitle: '此工作流暂无节点',
+      emptyHint: '请在画布上添加节点',
+      unsavedChanges: '存在未保存的修改',
+      noChanges: '无变更',
+      cancel: '取消',
+      saving: '保存中…',
+      saveChanges: '保存修改',
+    },
+    workflowConfig: {
+      common: {
+        cancel: '取消',
+        saveConfiguration: '保存配置',
+        inputFormat: '输入格式',
+        outputFormat: '输出格式',
+        inputFormatHelp: '从上一个节点接收的数据格式。',
+        outputFormatHelp: '发送到下一个节点的数据格式。',
+        dataFormat: '数据格式',
+        plainText: '纯文本',
+        jsonObject: 'JSON 对象',
+        arrayLabel: '数组',
+        plainTextDesc: '简单文本字符串',
+        jsonObjectDesc: '包含键值对的 JSON 对象',
+        arrayDesc: '元素列表',
+        loadFailed: '模型加载失败，请重试。',
+        retry: '重试',
+        noModelsAvailable: '暂无可用模型',
+        nodeIdLabel: '节点 ID：',
+      },
+      chatLLM: {
+        title: 'Chat LLM 配置',
+        systemPrompt: '系统提示',
+        systemPromptPlaceholder: '请输入 Chat LLM 的系统提示…',
+        systemPromptHelp: '为 LLM 对话定义行为与上下文',
+        model: '模型',
+        modelHelp: '选择此节点使用的 LLM 模型',
+        temperature: '温度',
+        temperatureLow: '0.0（精确）',
+        temperatureHigh: '2.0（创意）',
+        temperatureHelp: '控制随机性：较低的值使输出更聚焦、更确定',
+        maxTokens: '最大 Token',
+        maxTokensHelp: '生成响应的最大长度',
+        selectModelHint: '请先选择一个模型以启用此节点。',
       },
     },
     workflowNodes: {

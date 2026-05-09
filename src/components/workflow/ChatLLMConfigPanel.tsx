@@ -60,7 +60,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
       }
     } catch (error) {
       console.error('[ChatLLMConfigPanel] Error loading models:', error);
-      setLoadError('Failed to load models. Please try again.');
+      setLoadError(t.workflowConfig.common.loadFailed);
     } finally {
       setIsLoadingModels(false);
     }
@@ -108,8 +108,8 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Chat LLM Configuration</h2>
-            <p className="text-xs text-muted-foreground">Node ID: {nodeId}</p>
+            <h2 className="text-lg font-semibold text-foreground">{t.workflowConfig.chatLLM.title}</h2>
+            <p className="text-xs text-muted-foreground">{t.workflowConfig.common.nodeIdLabel} {nodeId}</p>
           </div>
         </div>
         <button
@@ -129,7 +129,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
         <NodeTestPanel
           nodeId={nodeId}
           nodeType="chat-llm"
-          nodeLabel="Chat LLM"
+          nodeLabel={t.workflowConfig.chatLLM.title}
           nodeConfig={config}
         />
 
@@ -139,48 +139,53 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
             <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
             </svg>
-            <h3 className="text-sm font-semibold text-foreground">Data Format</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t.workflowConfig.common.dataFormat}</h3>
           </div>
-          
+
           <FormatSelector
-            label="Input Format"
+            label={t.workflowConfig.common.inputFormat}
             value={inputFormat}
             onChange={setInputFormat}
             type="input"
-            helpText="Format of data received from the previous node."
+            helpText={t.workflowConfig.common.inputFormatHelp}
           />
 
           <FormatSelector
-            label="Output Format"
+            label={t.workflowConfig.common.outputFormat}
             value={outputFormat}
             onChange={setOutputFormat}
             type="output"
-            helpText="Format of data sent to the next node."
+            helpText={t.workflowConfig.common.outputFormatHelp}
           />
         </div>
-        
+
         {/* System Prompt */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            System Prompt
+            {t.workflowConfig.chatLLM.systemPrompt}
           </label>
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
-            placeholder="Enter system prompt for the Chat LLM..."
+            placeholder={t.workflowConfig.chatLLM.systemPromptPlaceholder}
             rows={6}
             className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors resize-none text-sm text-foreground placeholder-muted-foreground"
           />
           <p className="text-xs text-muted-foreground">
-            Define the behavior and context for the LLM conversation
+            {t.workflowConfig.chatLLM.systemPromptHelp}
           </p>
         </div>
 
         {/* Model Selection */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            Model
+            {t.workflowConfig.chatLLM.model}
           </label>
+          {!isLoadingModels && !loadError && availableModels.length > 0 && !selectedModelId && (
+            <div role="status" className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-700 dark:text-amber-300">
+              {t.workflowConfig.chatLLM.selectModelHint}
+            </div>
+          )}
           {isLoadingModels ? (
             <div className="flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -197,7 +202,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
                 onClick={loadModels}
                 className="mt-2 text-xs text-red-600 hover:text-red-700 font-medium"
               >
-                Retry
+                {t.workflowConfig.common.retry}
               </button>
             </div>
           ) : (
@@ -207,7 +212,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
               className="w-full px-4 py-3 bg-muted border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors text-sm text-foreground cursor-pointer"
             >
               {availableModels.length === 0 ? (
-                <option value="">No models available</option>
+                <option value="">{t.workflowConfig.common.noModelsAvailable}</option>
               ) : (
                 availableModels.map((model) => (
                   <option key={model.id} value={model.id}>
@@ -218,7 +223,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
             </select>
           )}
           <p className="text-xs text-muted-foreground">
-            Select the LLM model to use for this node
+            {t.workflowConfig.chatLLM.modelHelp}
           </p>
         </div>
 
@@ -226,7 +231,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-foreground">
-              Temperature
+              {t.workflowConfig.chatLLM.temperature}
             </label>
             <span className="text-sm font-mono text-primary">{temperature.toFixed(2)}</span>
           </div>
@@ -240,11 +245,11 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
             className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>0.0 (Precise)</span>
-            <span>2.0 (Creative)</span>
+            <span>{t.workflowConfig.chatLLM.temperatureLow}</span>
+            <span>{t.workflowConfig.chatLLM.temperatureHigh}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Controls randomness: lower values make output more focused and deterministic
+            {t.workflowConfig.chatLLM.temperatureHelp}
           </p>
         </div>
 
@@ -252,7 +257,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-foreground">
-              Max Tokens
+              {t.workflowConfig.chatLLM.maxTokens}
             </label>
             <span className="text-sm font-mono text-primary">{maxTokens}</span>
           </div>
@@ -270,7 +275,7 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
             <span>8000</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Maximum length of the generated response
+            {t.workflowConfig.chatLLM.maxTokensHelp}
           </p>
         </div>
       </div>
@@ -282,14 +287,14 @@ const ChatLLMConfigPanel: React.FC<ChatLLMConfigPanelProps> = ({
             onClick={handleCancel}
             className="px-5 py-2.5 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-accent transition-colors"
           >
-            Cancel
+            {t.workflowConfig.common.cancel}
           </button>
           <button
             onClick={handleSave}
             disabled={isLoadingModels || !!loadError || !selectedModelId}
             className="px-5 py-2.5 text-sm font-medium text-primary-foreground bg-primary hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save Configuration
+            {t.workflowConfig.common.saveConfiguration}
           </button>
         </div>
       </div>

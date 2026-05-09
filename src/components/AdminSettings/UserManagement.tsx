@@ -117,6 +117,22 @@ function SortHeader({
 }
 
 // ---------------------------------------------------------------------------
+// Field error helper (a11y)
+// ---------------------------------------------------------------------------
+
+function FieldError({ id, message }: { id: string; message: string }) {
+  return (
+    <p id={id} role="alert" className="text-destructive text-xs mt-1">
+      {message}
+    </p>
+  );
+}
+
+function fieldErrorId(dialog: string, field: string): string {
+  return `${dialog}-${field}-error`;
+}
+
+// ---------------------------------------------------------------------------
 // Create User Dialog
 // ---------------------------------------------------------------------------
 
@@ -143,7 +159,7 @@ function CreateUserDialog({ open, onClose, onCreated, canManageAdmins, t }: Crea
     }
   }, [open]);
 
-  const validate = (): boolean => {
+  const validate = (): Record<string, string> => {
     const e: Record<string, string> = {};
     if (!form.username.trim()) e.username = t.adminSettings.usernameRequired;
     else if (form.username.trim().length < 3) e.username = t.adminSettings.usernameMinLength;
@@ -153,11 +169,22 @@ function CreateUserDialog({ open, onClose, onCreated, canManageAdmins, t }: Crea
     if (form.password !== form.confirmPassword) e.confirmPassword = ***REMOVED***;
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = t.adminSettings.emailInvalid;
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return e;
   };
 
   const handleSubmit = async () => {
-    if (!validate()) return;
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      const order = ['username', 'password', 'confirmPassword', 'email'];
+      const firstField = order.find((f) => newErrors[f]);
+      if (firstField) {
+        setTimeout(() => {
+          const el = document.getElementById(`createUser-${firstField}`);
+          (el as HTMLInputElement | null)?.focus();
+        }, 0);
+      }
+      return;
+    }
     try {
       setSubmitting(true);
       await userApi.createUser(form);
@@ -176,6 +203,7 @@ function CreateUserDialog({ open, onClose, onCreated, canManageAdmins, t }: Crea
 
   const inputClass = (field: string) =>
     `w-full px-3 py-2 bg-input text-foreground border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm ${errors[field] ? 'border-destructive' : 'border-border'}`;
+  const errId = (field: string) => fieldErrorId('createUser', field);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4" onClick={onClose}>
@@ -198,27 +226,71 @@ function CreateUserDialog({ open, onClose, onCreated, canManageAdmins, t }: Crea
           <div className="px-6 py-4 space-y-4">
             {/* Username */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.username} <span className="text-destructive">*</span></label>
-              <input type="text" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder={t.adminSettings.usernamePlaceholder} className={inputClass('username')} disabled={submitting} autoComplete="off" />
-              {errors.username && <p className="text-destructive text-xs mt-1">{errors.username}</p>}
+              <label htmlFor="createUser-username" className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.username} <span className="text-destructive">*</span></label>
+              <input
+                id="createUser-username"
+                type="text"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                placeholder={t.adminSettings.usernamePlaceholder}
+                className={inputClass('username')}
+                disabled={submitting}
+                autoComplete="off"
+                aria-invalid={!!errors.username}
+                aria-describedby={errors.username ? errId('username') : undefined}
+              />
+              {errors.username && <FieldError id={errId('username')} message={errors.username} />}
             </div>
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.password} <span className="text-destructive">*</span></label>
-              <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={t.adminSettings.passwordPlaceholder} className={inputClass('password')} disabled={submitting} autoComplete="new-password" />
-              {errors.password && <p className="text-destructive text-xs mt-1">{errors.password}</p>}
+              <label htmlFor="createUser-password" className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.password} <span className="text-destructive">*</span></label>
+              <input
+                id="createUser-password"
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder={t.adminSettings.passwordPlaceholder}
+                className={inputClass('password')}
+                disabled={submitting}
+                autoComplete="new-password"
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? errId('password') : undefined}
+              />
+              {errors.password && <FieldError id={errId('password')} message={errors.password} />}
             </div>
             {/* Confirm Password */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmPassword} <span className="text-destructive">*</span></label>
-              <input type="password" value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} placeholder={t.adminSettings.confirmPassword} className={inputClass('confirmPassword')} disabled={submitting} autoComplete="new-password" />
-              {errors.confirmPassword && <p className="text-destructive text-xs mt-1">{errors.confirmPassword}</p>}
+              <label htmlFor="createUser-confirmPassword" className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmPassword} <span className="text-destructive">*</span></label>
+              <input
+                id="createUser-confirmPassword"
+                type="password"
+                value={form.confirmPassword}
+                onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                placeholder={t.adminSettings.confirmPassword}
+                className={inputClass('confirmPassword')}
+                disabled={submitting}
+                autoComplete="new-password"
+                aria-invalid={!!errors.confirmPassword}
+                aria-describedby={errors.confirmPassword ? errId('confirmPassword') : undefined}
+              />
+              {errors.confirmPassword && <FieldError id={errId('confirmPassword')} message={errors.confirmPassword} />}
             </div>
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">{t.profile.email}</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t.adminSettings.emailPlaceholder} className={inputClass('email')} disabled={submitting} autoComplete="off" />
-              {errors.email && <p className="text-destructive text-xs mt-1">{errors.email}</p>}
+              <label htmlFor="createUser-email" className="block text-sm font-medium text-foreground mb-1">{t.profile.email}</label>
+              <input
+                id="createUser-email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder={t.adminSettings.emailPlaceholder}
+                className={inputClass('email')}
+                disabled={submitting}
+                autoComplete="off"
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? errId('email') : undefined}
+              />
+              {errors.email && <FieldError id={errId('email')} message={errors.email} />}
             </div>
             {/* Full Name */}
             <div>
@@ -276,7 +348,15 @@ function EditUserDialog({ open, user, onClose, onUpdated, canManageAdmins, t }: 
     const e: Record<string, string> = {};
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = t.adminSettings.emailInvalid;
     setErrors(e);
-    if (Object.keys(e).length > 0) return;
+    if (Object.keys(e).length > 0) {
+      const firstField = ['email'].find((f) => e[f]);
+      if (firstField) {
+        setTimeout(() => {
+          (document.getElementById(`editUser-${firstField}`) as HTMLInputElement | null)?.focus();
+        }, 0);
+      }
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -320,14 +400,24 @@ function EditUserDialog({ open, user, onClose, onUpdated, canManageAdmins, t }: 
           </div>
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.profile.email}</label>
-            <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t.adminSettings.emailPlaceholder} className={inputClass('email')} disabled={submitting} />
-            {errors.email && <p className="text-destructive text-xs mt-1">{errors.email}</p>}
+            <label htmlFor="editUser-email" className="block text-sm font-medium text-foreground mb-1">{t.profile.email}</label>
+            <input
+              id="editUser-email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder={t.adminSettings.emailPlaceholder}
+              className={inputClass('email')}
+              disabled={submitting}
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? fieldErrorId('editUser', 'email') : undefined}
+            />
+            {errors.email && <FieldError id={fieldErrorId('editUser', 'email')} message={errors.email} />}
           </div>
           {/* Full Name */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.fullName}</label>
-            <input type="text" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder={t.adminSettings.fullNamePlaceholder} className={inputClass('fullName')} disabled={submitting} />
+            <label htmlFor="editUser-fullName" className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.fullName}</label>
+            <input id="editUser-fullName" type="text" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder={t.adminSettings.fullNamePlaceholder} className={inputClass('fullName')} disabled={submitting} />
           </div>
           {/* Role */}
           <div>
@@ -409,7 +499,16 @@ function ResetPasswordDialog({ open, user, onClose, t }: ResetPasswordDialogProp
     else if (newPassword.length < 6) e.newPassword = ***REMOVED***;
     if (newPassword !== confirmPassword) e.confirmPassword = ***REMOVED***;
     setErrors(e);
-    if (Object.keys(e).length > 0) return;
+    if (Object.keys(e).length > 0) {
+      const order = ['newPassword', 'confirmPassword'];
+      const firstField = order.find((f) => e[f]);
+      if (firstField) {
+        setTimeout(() => {
+          (document.getElementById(`resetPassword-${firstField}`) as HTMLInputElement | null)?.focus();
+        }, 0);
+      }
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -486,19 +585,41 @@ function ResetPasswordDialog({ open, user, onClose, t }: ResetPasswordDialogProp
               className="space-y-3"
             >
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.newPassword}</label>
+                <label htmlFor="resetPassword-newPassword" className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.newPassword}</label>
                 <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t.adminSettings.newPasswordPlaceholder} className={inputClass('newPassword')} disabled={submitting} autoComplete="new-password" />
+                  <input
+                    id="resetPassword-newPassword"
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder={t.adminSettings.newPasswordPlaceholder}
+                    className={inputClass('newPassword')}
+                    disabled={submitting}
+                    autoComplete="new-password"
+                    aria-invalid={!!errors.newPassword}
+                    aria-describedby={errors.newPassword ? fieldErrorId('resetPassword', 'newPassword') : undefined}
+                  />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
                   </button>
                 </div>
-                {errors.newPassword && <p className="text-destructive text-xs mt-1">{errors.newPassword}</p>}
+                {errors.newPassword && <FieldError id={fieldErrorId('resetPassword', 'newPassword')} message={errors.newPassword} />}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmNewPassword}</label>
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t.adminSettings.confirmNewPassword} className={inputClass('confirmPassword')} disabled={submitting} autoComplete="new-password" />
-                {errors.confirmPassword && <p className="text-destructive text-xs mt-1">{errors.confirmPassword}</p>}
+                <label htmlFor="resetPassword-confirmPassword" className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmNewPassword}</label>
+                <input
+                  id="resetPassword-confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder={t.adminSettings.confirmNewPassword}
+                  className={inputClass('confirmPassword')}
+                  disabled={submitting}
+                  autoComplete="new-password"
+                  aria-invalid={!!errors.confirmPassword}
+                  aria-describedby={errors.confirmPassword ? fieldErrorId('resetPassword', 'confirmPassword') : undefined}
+                />
+                {errors.confirmPassword && <FieldError id={fieldErrorId('resetPassword', 'confirmPassword')} message={errors.confirmPassword} />}
               </div>
               {/* Hidden submit button enables Enter-to-submit; the visible action button lives in the dialog footer. */}
               <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
@@ -1028,12 +1149,19 @@ const UserManagement: React.FC = () => {
             </div>
           </div>
         ) : users.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <IconUsers className="w-16 h-16 mx-auto text-muted-foreground/40 mb-3" />
-              <p className="text-muted-foreground">{t.adminSettings.noUsers}</p>
-            </div>
-          </div>
+          (() => {
+            const isFiltering = search.trim() !== '' || roleFilter !== '' || statusFilter !== '';
+            return (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <IconUsers className="w-16 h-16 mx-auto text-muted-foreground/40 mb-3" />
+                  <p className="text-muted-foreground">
+                    {isFiltering ? t.adminSettings.noUsersMatchFilter : t.adminSettings.noUsers}
+                  </p>
+                </div>
+              </div>
+            );
+          })()
         ) : (
           <div className="min-w-full">
             <table className="min-w-full divide-y divide-border">

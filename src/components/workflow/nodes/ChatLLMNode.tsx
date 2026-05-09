@@ -15,12 +15,7 @@ const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
   const { t } = useLocale();
   
   const config = data.config as ChatLLMNodeConfig | undefined;
-  const isConfigured = !!(
-    config?.systemPrompt ||
-    config?.model ||
-    config?.temperature !== undefined ||
-    config?.maxTokens
-  );
+  const isConfigured = !!(config?.modelId);
   
   console.log('[ChatLLMNode] Rendering node:', { 
     id, 
@@ -52,7 +47,7 @@ const ChatLLMNode: React.FC<BaseNodeProps> = React.memo((props) => {
             <div className="text-xs space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">{t.workflowNodes.status.model}:</span>
-                <span className="text-foreground text-xs">{config?.model || t.workflowNodes.status.notSet}</span>
+                <span className="text-foreground text-xs">{config?.model || config?.modelId || t.workflowNodes.status.notSet}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">{t.workflowNodes.status.temperature}:</span>
