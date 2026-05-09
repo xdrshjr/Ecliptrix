@@ -278,7 +278,7 @@ async function parseSuccessBody<T>(response: Response): Promise<T> {
 // Core request implementation
 // ---------------------------------------------------------------------------
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 async function request<T>(
   method: HttpMethod,
@@ -718,6 +718,9 @@ export const http = {
   },
   put<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
     return request<T>('PUT', path, body, opts);
+  },
+  patch<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+    return request<T>('PATCH', path, body, opts);
   },
   del<T>(path: string, opts?: RequestOptions): Promise<T> {
     return request<T>('DELETE', path, undefined, opts);

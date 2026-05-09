@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ChatMessage, ExpertProfile } from '../types';
+import { formatTime } from '@/lib/utils/dateFormat';
 
 interface ExpertMessageProps {
   message: ChatMessage;
@@ -20,7 +21,7 @@ const ExpertMessage: React.FC<ExpertMessageProps> = ({ message, expert }) => {
           <div className="flex items-center space-x-2 mb-1">
             <h4 className="text-sm font-semibold text-foreground">未知专家</h4>
             <span className="text-xs text-muted-foreground">
-              {message.timestamp.toLocaleTimeString()}
+              {formatTime(message.timestamp)}
             </span>
           </div>
           <div className="bg-muted rounded-md p-4">
@@ -49,7 +50,7 @@ const ExpertMessage: React.FC<ExpertMessageProps> = ({ message, expert }) => {
           <h4 className="text-sm font-semibold text-foreground">{expert.name}</h4>
           <span className="text-xs text-muted-foreground">{expert.title}</span>
           <span className="text-xs text-muted-foreground">
-            {message.timestamp.toLocaleTimeString()}
+            {formatTime(message.timestamp)}
           </span>
         </div>
         

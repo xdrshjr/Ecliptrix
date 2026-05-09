@@ -5,6 +5,7 @@ import { Conversation } from '@/types';
 import MessageBubble from './MessageBubble';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { formatTime } from '@/lib/utils/dateFormat';
 
 interface ChatWindowProps {
   conversation: Conversation | undefined;
@@ -277,7 +278,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                {conversation.messages.length} {t.aiChat.messagesLabel} • {conversation.updatedAt.toLocaleTimeString()}
+                {conversation.messages.length} {t.aiChat.messagesLabel} • {formatTime(conversation.updatedAt)}
               </p>
             </div>
           </div>

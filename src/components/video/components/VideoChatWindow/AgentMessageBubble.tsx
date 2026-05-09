@@ -5,6 +5,7 @@ import type { ChatMessage } from '@/types';
 import MarkdownRenderer from '@/components/chat/MarkdownRenderer';
 import AgentToolCallCard from './AgentToolCallCard';
 import { useLocale } from '@/contexts/LocaleContext';
+import { formatTime } from '@/lib/utils/dateFormat';
 
 interface AgentMessageBubbleProps {
   message: ChatMessage;
@@ -81,7 +82,7 @@ const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, onUndo
 
         {/* Timestamp */}
         <div className="mt-1.5 text-xs text-muted-foreground">
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {formatTime(message.timestamp, undefined, { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
     </div>

@@ -163,6 +163,79 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
     warn.mockRestore();
   });
 
+  it('reviveState recursively revives chat conversation timestamps (iter10 Bug #1)', () => {
+    const conversation = {
+      id: 'c1',
+      title: 'Conv 1',
+      createdAt: '2026-05-10T12:00:00.000Z',
+      updatedAt: '2026-05-10T13:00:00.000Z',
+      messages: [
+        { id: 'm1', content: 'hi', timestamp: '2026-05-10T12:30:00.000Z' },
+        { id: 'm2', content: 'hello', timestamp: '2026-05-10T12:31:00.000Z' },
+      ],
+    };
+    const persisted = {
+      tasks: [
+        {
+          id: 't-chat',
+          title: 'Chat',
+          type: 'chat',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          content: { conversations: [conversation], activeConversationId: 'c1' },
+        },
+      ],
+      tabs: [{ id: 'tab-chat', taskId: 't-chat', title: 'Chat', isActive: true, type: 'chat' }],
+      activeTabId: 'tab-chat',
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+
+    const { result } = renderHook(() => useTasks());
+
+    const task = result.current.tasks[0] as any;
+    expect(task.content).toBeTruthy();
+    const conv = task.content.conversations[0];
+    expect(conv.createdAt).toBeInstanceOf(Date);
+    expect(conv.updatedAt).toBeInstanceOf(Date);
+    expect(conv.messages[0].timestamp).toBeInstanceOf(Date);
+    expect(conv.messages[1].timestamp).toBeInstanceOf(Date);
+  });
+
+  it('reviveState handles chat task with missing/empty messages array', () => {
+    const persisted = {
+      tasks: [
+        {
+          id: 't-chat',
+          title: 'Chat',
+          type: 'chat',
+          status: 'draft',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          content: {
+            conversations: [
+              {
+                id: 'c1',
+                title: 'No msgs',
+                createdAt: '2026-05-10T12:00:00.000Z',
+                updatedAt: '2026-05-10T12:00:00.000Z',
+              },
+            ],
+          },
+        },
+      ],
+      tabs: [{ id: 'tab-chat', taskId: 't-chat', title: 'Chat', isActive: true, type: 'chat' }],
+      activeTabId: 'tab-chat',
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+
+    const { result } = renderHook(() => useTasks());
+    const task = result.current.tasks[0] as any;
+    const conv = task.content.conversations[0];
+    expect(Array.isArray(conv.messages)).toBe(true);
+    expect(conv.messages).toHaveLength(0);
+  });
+
   it('localStorage.setItem throwing (quota) does not crash the persist effect', () => {
     const original = window.localStorage.setItem.bind(window.localStorage);
     window.localStorage.setItem = (key: string, value: string) => {

@@ -10,7 +10,7 @@ and derive ``user_id = str(current_user.id)`` server-side. Request bodies
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_session
@@ -136,6 +136,7 @@ async def list_video_projects(
     sort: str = Query("recent", pattern="^(recent|created|name)$"),
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    accept_language: Optional[str] = Header(None, alias="Accept-Language"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectListResponse:
@@ -148,6 +149,7 @@ async def list_video_projects(
         sort=sort,
         limit=limit,
         offset=offset,
+        locale=accept_language,
     )
     return VideoProjectListResponse(
         success=True,

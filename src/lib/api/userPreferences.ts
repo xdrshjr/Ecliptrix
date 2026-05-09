@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { http } from './http-client';
 
 export type NotificationPrefs = {
   email: boolean;
@@ -27,6 +28,10 @@ type PatchOpts = {
   rollback?: () => void;
 };
 
+interface UseUserPreferencesMutationOpts {
+  onError?: (err: unknown) => void;
+}
+
 const PATCH_DEBOUNCE_MS = 300;
 const STATUS_FLASH_MS = 2000;
 const ERROR_FLASH_MS = 4000;
@@ -39,7 +44,8 @@ const ERROR_FLASH_MS = 4000;
  * queue is sent as a single PATCH; on failure we run every queued
  * ``rollback`` callback in LIFO order so optimistic FE state is reverted.
  */
-export function useUserPreferencesMutation() {
+export function useUserPreferencesMutation(opts: UseUserPreferencesMutationOpts = {}) {
+  const { onError } = opts;
   const queue = useRef<Partial<UserPreferences>>({});
   const rollbacks = useRef<Array<() => void>>([]);
   const timer = useRef<number | null>(null);
@@ -49,29 +55,24 @@ export function useUserPreferencesMutation() {
     timer.current = null;
     if (Object.keys(queue.current).length === 0) return;
     setStatus('saving');
-    const body = JSON.stringify(queue.current);
+    const delta = queue.current;
     const cbs = rollbacks.current;
     queue.current = {};
     rollbacks.current = [];
     try {
-      const r = await fetch('/api/user/me/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        credentials: 'include',
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await http.patch('/api/user/me/preferences', delta);
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), STATUS_FLASH_MS);
-    } catch {
+    } catch (err) {
       setStatus('error');
       // Run rollbacks LIFO so the latest optimistic update is undone first.
       for (let i = cbs.length - 1; i >= 0; i--) {
         try { cbs[i](); } catch { /* ignore */ }
       }
+      try { onError?.(err); } catch { /* ignore */ }
       window.setTimeout(() => setStatus('idle'), ERROR_FLASH_MS);
     }
-  }, []);
+  }, [onError]);
 
   const patch = useCallback((opts: PatchOpts) => {
     queue.current = { ...queue.current, ...opts.delta };
@@ -93,12 +94,9 @@ export function useUserPreferencesMutation() {
 
 export async function fetchUserPreferences(): Promise<UserPreferences | null> {
   try {
-    const r = await fetch('/api/user/me/preferences', {
-      method: 'GET',
-      credentials: 'include',
-    });
-    if (!r.ok) return null;
-    const data = await r.json();
+    const data = await http.get<{ success?: boolean; preferences?: UserPreferences }>(
+      '/api/user/me/preferences',
+    );
     return (data?.preferences as UserPreferences) ?? null;
   } catch {
     return null;

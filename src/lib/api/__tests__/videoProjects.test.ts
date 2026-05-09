@@ -75,12 +75,15 @@ describe('videoProjects API client', () => {
 
   // ── Projects ───────────────────────────────────────────────────────────
 
-  it('listVideoProjects with no params hits a clean GET', async () => {
+  it('listVideoProjects with no params hits a clean GET (with Accept-Language header for collation, iter10 Bug #5)', async () => {
     const spy = vi
       .spyOn(httpModule.http, 'get')
       .mockResolvedValue(okEnvelope({ items: [], total: 0, limit: 100, offset: 0 }));
     await listVideoProjects();
-    expect(spy).toHaveBeenCalledWith('/api/video-projects');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toBe('/api/video-projects');
+    const opts = spy.mock.calls[0][1] as { headers?: Record<string, string> };
+    expect(opts?.headers?.['Accept-Language']).toBeDefined();
   });
 
   it('listVideoProjects encodes params as querystring', async () => {

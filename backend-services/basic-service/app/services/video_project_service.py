@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select, func
+from sqlalchemy import collate, or_, select, func, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logger import get_logger
@@ -31,6 +32,88 @@ logger = get_logger(__name__)
 
 
 SortKey = str  # 'recent' | 'created' | 'name'
+
+
+# ---------------------------------------------------------------------------
+# Locale-aware collation for sort=name (iter10 Bug #5).
+#
+# PostgreSQL's default collation depends on the cluster locale (often
+# zh_CN.UTF-8 on Chinese Linux installs), which gives the wrong intuitive
+# order for English locales. We map the user's Accept-Language to a
+# whitelisted PG collation, falling back to "C" (binary order) when the
+# requested collation isn't available on this DB.
+# ---------------------------------------------------------------------------
+
+_LOCALE_COLLATIONS: Dict[str, str] = {
+    "en": "en_US.utf8",
+    "zh": "zh_CN.utf8",
+}
+_FALLBACK_COLLATION = "C"
+
+# Cache populated on the first call that needs a locale-aware sort. The cache
+# lives for the lifetime of the process; PG-level collation changes require a
+# backend restart to take effect, which is acceptable.
+_available_collations: Optional[set] = None
+
+
+async def _ensure_collation_cache(db: AsyncSession) -> set:
+    global _available_collations
+    if _available_collations is not None:
+        return _available_collations
+    try:
+        result = await db.execute(text("SELECT collname FROM pg_collation"))
+        names = {row[0] for row in result.fetchall()}
+    except DBAPIError as err:
+        logger.warning(
+            "Failed to enumerate pg_collation, falling back to %s only: %s",
+            _FALLBACK_COLLATION,
+            err,
+        )
+        names = {_FALLBACK_COLLATION}
+    except Exception as err:  # SQLite or any other non-PG backend
+        logger.info(
+            "pg_collation enumeration unavailable on this backend, falling back to %s: %s",
+            _FALLBACK_COLLATION,
+            err,
+        )
+        names = {_FALLBACK_COLLATION}
+    _available_collations = names | {_FALLBACK_COLLATION}
+    return _available_collations
+
+
+def _resolve_locale_to_prefix(locale: Optional[str]) -> Optional[str]:
+    """Pick the first language tag from an Accept-Language header value and
+    reduce it to its primary subtag. Examples:
+
+      'en'                       -> 'en'
+      'en-US'                    -> 'en'
+      'zh-CN,zh;q=0.9'           -> 'zh'
+      None / ''                  -> None
+    """
+    if not locale:
+        return None
+    prefix = (
+        locale.split(",")[0]
+        .split(";")[0]
+        .split("-")[0]
+        .split("_")[0]
+        .strip()
+        .lower()
+    )
+    return prefix or None
+
+
+async def _resolve_collation(db: AsyncSession, locale: Optional[str]) -> str:
+    prefix = _resolve_locale_to_prefix(locale)
+    desired = _LOCALE_COLLATIONS.get(prefix or "", _FALLBACK_COLLATION)
+    available = await _ensure_collation_cache(db)
+    return desired if desired in available else _FALLBACK_COLLATION
+
+
+def _reset_collation_cache_for_tests() -> None:
+    """Test-only: clear the per-process cache between cases."""
+    global _available_collations
+    _available_collations = None
 
 
 def _iso(value: Optional[datetime]) -> str:
@@ -213,6 +296,7 @@ class VideoProjectService:
         sort: SortKey = "recent",
         limit: int = 100,
         offset: int = 0,
+        locale: Optional[str] = None,
     ) -> Tuple[List[VideoProjectListItem], int]:
         """Returns (items, total). ``project_data`` is intentionally excluded
         from the projection — list endpoints must stay light.
@@ -248,11 +332,23 @@ class VideoProjectService:
         count_stmt = select(func.count(VideoProject.id)).where(*filters)
         total = int((await db.execute(count_stmt)).scalar_one() or 0)
 
-        # Sort selection
+        # Sort selection. id.asc() is appended as a stable tiebreaker so that
+        # rows with equal primary keys produce a deterministic page boundary
+        # across calls (otherwise PG is free to swap them between pages).
         if sort == "name":
-            order = (VideoProject.name.asc(),)
+            collation = await _resolve_collation(db, locale)
+            if collation == _FALLBACK_COLLATION:
+                # 'C' collation is the PG default for SQL identifiers — use
+                # raw column order to avoid a no-op COLLATE that some PG
+                # versions reject for utf8 string columns.
+                order = (VideoProject.name.asc(), VideoProject.id.asc())
+            else:
+                order = (
+                    collate(VideoProject.name, collation).asc(),
+                    VideoProject.id.asc(),
+                )
         elif sort == "created":
-            order = (VideoProject.created_at.desc(),)
+            order = (VideoProject.created_at.desc(), VideoProject.id.asc())
         else:  # 'recent' (default)
             # last_opened_at first, then updated_at as fallback for never-opened rows
             order = (
@@ -260,6 +356,7 @@ class VideoProjectService:
                 if hasattr(VideoProject.last_opened_at.desc(), "nullslast")
                 else VideoProject.last_opened_at.desc(),
                 VideoProject.updated_at.desc(),
+                VideoProject.id.asc(),
             )
 
         stmt = (

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Conversation } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { formatDate } from '@/lib/utils/dateFormat';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -130,7 +131,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
                       </span>
                       <span className="text-xs text-muted-foreground">•</span>
                       <span className="text-xs text-muted-foreground">
-                        {conversation.updatedAt.toLocaleDateString()}
+                        {formatDate(conversation.updatedAt)}
                       </span>
                     </div>
                   </div>

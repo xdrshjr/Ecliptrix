@@ -18,11 +18,29 @@ interface PersistedState {
   activeTabId: string | null;
 }
 
+const reviveConversation = (c: any) => ({
+  ...c,
+  createdAt: new Date(c.createdAt),
+  updatedAt: new Date(c.updatedAt),
+  messages: Array.isArray(c.messages)
+    ? c.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
+    : [],
+});
+
+const reviveTaskContent = (type: TaskType, raw: any): any => {
+  if (!raw) return raw;
+  if (type === 'chat' && Array.isArray(raw.conversations)) {
+    return { ...raw, conversations: raw.conversations.map(reviveConversation) };
+  }
+  return raw;
+};
+
 const reviveState = (raw: PersistedState): AppState => ({
   tasks: (raw.tasks ?? []).map(t => ({
     ...t,
     createdAt: new Date(t.createdAt),
     updatedAt: new Date(t.updatedAt),
+    content: reviveTaskContent(t.type, t.content),
   })) as Task[],
   tabs: raw.tabs ?? [],
   activeTabId: raw.activeTabId ?? null,

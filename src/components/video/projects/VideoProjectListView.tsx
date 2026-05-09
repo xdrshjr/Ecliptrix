@@ -202,9 +202,15 @@ const VideoProjectListView: React.FC<VideoProjectListViewProps> = ({
   };
 
   const handleDeleteProject = (project: VideoProjectListItem) => {
+    const TRUNCATE_AT = 60;
+    const rawName = project.name?.trim() || t.videoProjects.untitled;
+    const safeName = rawName.length > TRUNCATE_AT ? rawName.slice(0, TRUNCATE_AT) + '…' : rawName;
+    // split/join replaces ALL occurrences of {name} (defensive against
+    // translators duplicating the placeholder in the template).
+    const interpolate = (template: string) => template.split('{name}').join(safeName);
     setConfirmation({
-      title: t.videoProjects.delete,
-      message: t.videoProjects.deleteConfirm,
+      title: interpolate(t.videoProjects.deleteConfirmTitle),
+      message: interpolate(t.videoProjects.deleteConfirm),
       onConfirm: async () => {
         try {
           await deleteVideoProject(project.id);

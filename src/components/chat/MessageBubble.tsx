@@ -7,6 +7,7 @@ import MarkdownRenderer from './MarkdownRenderer';
 import WorkflowExecutionMessage from './WorkflowExecutionMessage';
 import { copyToClipboard, showCopyFeedback } from '@/lib/clipboard';
 import { dlog } from '@/lib/utils/debugLog';
+import { formatTime } from '@/lib/utils/dateFormat';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -255,9 +256,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
           {/* Timestamp */}
           <div className={`mt-1.5 text-xs text-muted-foreground flex items-center space-x-2 ${isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}>
             <span>
-              {message.timestamp.toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+              {formatTime(message.timestamp, undefined, {
+                hour: '2-digit',
+                minute: '2-digit',
               })}
             </span>
             {message.isStreaming && (

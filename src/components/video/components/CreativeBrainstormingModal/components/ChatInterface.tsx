@@ -6,6 +6,7 @@ import { getExpertById } from '../data/expertProfiles';
 import ExpertMessage from './ExpertMessage';
 import UserInput from './UserInput';
 import { Translations } from '@/lib/i18n';
+import { formatTime } from '@/lib/utils/dateFormat';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -71,7 +72,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div className="max-w-xs lg:max-w-md bg-primary text-primary-foreground rounded-md px-4 py-2">
             <p className="text-sm">{message.content}</p>
             <p className="text-xs text-primary-foreground/70 mt-1">
-              {message.timestamp.toLocaleTimeString()}
+              {formatTime(message.timestamp)}
             </p>
           </div>
         </div>

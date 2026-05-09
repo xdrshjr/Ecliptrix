@@ -6,6 +6,7 @@ import WorkflowInterface from './workflow/WorkflowInterface';
 import ChatInterface from './chat/ChatInterface';
 import { VideoProjectListView, VideoEditorContainer } from './video/projects';
 import { useLocale } from '@/contexts/LocaleContext';
+import { formatDate } from '@/lib/utils/dateFormat';
 
 interface ContainerProps {
   activeTask: Task | null;
@@ -305,7 +306,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
             </span>
           </div>
           <p className="text-muted-foreground">
-            Created {activeTask.createdAt.toLocaleDateString()} • Last updated {activeTask.updatedAt.toLocaleDateString()}
+            Created {formatDate(activeTask.createdAt)} • Last updated {formatDate(activeTask.updatedAt)}
           </p>
         </div>
 

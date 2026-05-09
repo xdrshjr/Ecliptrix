@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import {
   fetchUserPreferences,
   useUserPreferencesMutation,
@@ -58,7 +59,10 @@ interface SettingsData {
 
 const OtherSettingsPanel: React.FC = () => {
   const { t, locale, setLocale } = useLocale();
-  const { patch, status } = useUserPreferencesMutation();
+  const { showError } = useNotification();
+  const { patch, status } = useUserPreferencesMutation({
+    onError: () => showError(t.profile.saveErrorNote),
+  });
 
   const [settings, setSettings] = useState<SettingsData>(() => ({
     ...loadToggles(),

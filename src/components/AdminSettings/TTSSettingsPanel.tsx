@@ -61,6 +61,12 @@ const TTSSettingsPanel: React.FC = () => {
   }
 
   const concurrency = getObj('concurrency', { concurrent_threads: 3, max_concurrent_threads: 10, request_timeout: 30, batch_timeout: 300 });
+  const concurrentThreads = concurrency.concurrent_threads as number;
+  const maxConcurrentThreads = concurrency.max_concurrent_threads as number;
+  const concurrencyInvariantViolated =
+    Number.isFinite(concurrentThreads) &&
+    Number.isFinite(maxConcurrentThreads) &&
+    concurrentThreads > maxConcurrentThreads;
   const retry = getObj('retry', { max_attempts: 3, delay_seconds: 1, backoff_factor: 2 });
   const limits = getObj('limits', { max_segments_per_batch: 50, max_text_length_per_segment: 5000, max_total_text_length: 100000 });
   const loggingConf = getObj('logging', { enable_detailed_logs: true, log_progress_interval: 1, log_level: 'INFO' });
@@ -82,7 +88,7 @@ const TTSSettingsPanel: React.FC = () => {
             <ResetDefaultsButton onReset={handleReset} loading={saving} />
             <button
               onClick={handleSave}
-              disabled={!isDirty || saving}
+              disabled={!isDirty || saving || concurrencyInvariantViolated}
               className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? t.adminSettings.saving : t.adminSettings.save}
@@ -92,8 +98,15 @@ const TTSSettingsPanel: React.FC = () => {
 
         {/* Section 1: Concurrency */}
         <SettingsSectionCard title={t.adminSettings.ttsConcurrency} description={t.adminSettings.ttsConcurrencyDesc}>
-          <NumberField label={t.adminSettings.ttsConcurrentThreads} value={concurrency.concurrent_threads as number} onChange={(v) => updateNested('concurrency', 'concurrent_threads', v)} min={1} max={10} />
-          <NumberField label={t.adminSettings.ttsMaxConcurrentThreads} value={concurrency.max_concurrent_threads as number} onChange={(v) => updateNested('concurrency', 'max_concurrent_threads', v)} min={1} max={20} />
+          <div className="space-y-2">
+            <NumberField label={t.adminSettings.ttsConcurrentThreads} value={concurrentThreads} onChange={(v) => updateNested('concurrency', 'concurrent_threads', v)} min={1} max={10} />
+            {concurrencyInvariantViolated && (
+              <p role="alert" className="text-xs text-destructive">
+                {t.adminSettings.ttsConcurrencyInvariantError}
+              </p>
+            )}
+          </div>
+          <NumberField label={t.adminSettings.ttsMaxConcurrentThreads} value={maxConcurrentThreads} onChange={(v) => updateNested('concurrency', 'max_concurrent_threads', v)} min={1} max={20} />
           <NumberField label={t.adminSettings.ttsRequestTimeout} value={concurrency.request_timeout as number} onChange={(v) => updateNested('concurrency', 'request_timeout', v)} min={5} max={120} />
           <NumberField label={t.adminSettings.ttsBatchTimeout} value={concurrency.batch_timeout as number} onChange={(v) => updateNested('concurrency', 'batch_timeout', v)} min={60} max={600} />
         </SettingsSectionCard>

@@ -385,6 +385,7 @@ export interface Translations {
     ttsConcurrencyDesc: string;
     ttsConcurrentThreads: string;
     ttsMaxConcurrentThreads: string;
+    ttsConcurrencyInvariantError: string;
     ttsRequestTimeout: string;
     ttsBatchTimeout: string;
     ttsRetry: string;
@@ -549,6 +550,7 @@ export interface Translations {
     rename: string;
     moveToCategory: string;
     delete: string;
+    deleteConfirmTitle: string;
     deleteConfirm: string;
     deleteCategoryConfirm: string;
     openProject: string;
@@ -3178,6 +3180,7 @@ export const translations: Record<string, Translations> = {
       ttsConcurrencyDesc: 'Control concurrent thread count and timeout settings',
       ttsConcurrentThreads: 'Concurrent threads',
       ttsMaxConcurrentThreads: 'Max concurrent threads',
+      ttsConcurrencyInvariantError: 'Concurrent threads cannot exceed max concurrent threads.',
       ttsRequestTimeout: 'Request timeout (s)',
       ttsBatchTimeout: 'Batch timeout (s)',
       ttsRetry: 'Retry Configuration',
@@ -3342,7 +3345,8 @@ export const translations: Record<string, Translations> = {
       rename: 'Rename',
       moveToCategory: 'Move to category',
       delete: 'Delete',
-      deleteConfirm: 'Delete this project? This cannot be undone.',
+      deleteConfirmTitle: 'Delete "{name}"?',
+      deleteConfirm: 'You are about to delete project "{name}". This cannot be undone.',
       deleteCategoryConfirm: 'Delete this category? Projects inside will become Uncategorized.',
       openProject: 'Open',
       lastOpened: 'Last opened',
@@ -5999,6 +6003,7 @@ export const translations: Record<string, Translations> = {
       ttsConcurrencyDesc: '控制并发线程数和超时设置',
       ttsConcurrentThreads: '并发线程数',
       ttsMaxConcurrentThreads: '最大并发线程数',
+      ttsConcurrencyInvariantError: '并发线程数不能超过最大并发线程数。',
       ttsRequestTimeout: '单请求超时（秒）',
       ttsBatchTimeout: '批处理总超时（秒）',
       ttsRetry: '重试配置',
@@ -6163,7 +6168,8 @@ export const translations: Record<string, Translations> = {
       rename: '重命名',
       moveToCategory: '移动到分类',
       delete: '删除',
-      deleteConfirm: '确认删除该项目？此操作不可撤销。',
+      deleteConfirmTitle: '删除 "{name}"？',
+      deleteConfirm: '即将删除项目 "{name}"，此操作不可撤销。',
       deleteCategoryConfirm: '确认删除该分类？分类下的项目将变为"未分类"。',
       openProject: '打开',
       lastOpened: '上次打开',

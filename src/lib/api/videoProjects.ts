@@ -98,6 +98,20 @@ export interface ListProjectsParams {
   offset?: number;
 }
 
+/**
+ * Returns the Accept-Language header value to send for locale-aware sorting
+ * (iter10 Bug #5). Reads the active locale from localStorage, falling back to
+ * 'en' so the backend always receives a deterministic value.
+ */
+function readListLocaleHeader(): string {
+  if (typeof window === 'undefined') return 'en';
+  try {
+    const stored = window.localStorage.getItem('ecliptrix-locale');
+    if (stored === 'zh-CN') return 'zh-CN';
+  } catch { /* ignore */ }
+  return 'en';
+}
+
 export async function listVideoProjects(
   params: ListProjectsParams = {},
 ): Promise<ProjectListData> {
@@ -113,7 +127,9 @@ export async function listVideoProjects(
       ? `/api/video-projects?${qs.toString()}`
       : '/api/video-projects';
 
-  const res = await http.get<BaseEnvelope<ProjectListData>>(path);
+  const res = await http.get<BaseEnvelope<ProjectListData>>(path, {
+    headers: { 'Accept-Language': readListLocaleHeader() },
+  });
   return res.data ?? { items: [], total: 0, limit: 100, offset: 0 };
 }
 
