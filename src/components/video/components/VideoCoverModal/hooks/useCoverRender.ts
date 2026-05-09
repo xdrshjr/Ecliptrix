@@ -57,12 +57,14 @@ export function useCoverRender(
       width: number,
       height: number,
     ): Promise<{ blob: Blob; dataUrl: string; width: number; height: number }> => {
-      const clientW = node.clientWidth || width;
-      const pixelRatio = clientW > 0 ? width / clientW : 2;
+      // `--cover-px` is now CSS-derived from `100cqw / nativeW`, so html-to-image
+      // can snapshot the subtree at full export width without any JS-side
+      // pixel-ratio coordination. pixelRatio:1 keeps bytes proportional to the
+      // requested canvas size and prevents accidental 2× upscaling.
       const blob = await htmlToImage.toBlob(node, {
         width,
         height,
-        pixelRatio,
+        pixelRatio: 1,
         cacheBust: false,
         canvasWidth: width,
         canvasHeight: height,

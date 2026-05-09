@@ -30,6 +30,8 @@ export const SourceToggle: React.FC<SourceToggleProps> = ({
     label: 'Source',
     frame: 'Frame',
     upload: 'Upload',
+    frameDisabledHint: 'Add a video clip to your timeline to pick a frame',
+    noFramesAvailable: 'No frames available — upload an image instead.',
   };
 
   return (
@@ -43,6 +45,7 @@ export const SourceToggle: React.FC<SourceToggleProps> = ({
         label={labels.frame}
         active={value === 'frame'}
         disabled={!!frameDisabled}
+        title={frameDisabled ? labels.frameDisabledHint : undefined}
         onClick={() => onChange('frame')}
       />
       <RadioPill
@@ -58,14 +61,17 @@ interface RadioPillProps {
   label: string;
   active: boolean;
   disabled?: boolean;
+  title?: string;
   onClick: () => void;
 }
 
-const RadioPill: React.FC<RadioPillProps> = ({ label, active, disabled, onClick }) => (
+const RadioPill: React.FC<RadioPillProps> = ({ label, active, disabled, title, onClick }) => (
   <button
     type="button"
     aria-pressed={active}
+    aria-label={title ?? label}
     disabled={disabled}
+    title={title}
     onClick={onClick}
     className={[
       'px-2 py-1 rounded-full border',

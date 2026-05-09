@@ -2,7 +2,12 @@
 
 import React, { useEffect, useRef } from 'react';
 
+import { useLocale } from '@/contexts/LocaleContext';
 import type { CoverTextLayer } from '../types';
+
+const KNOWN_LAYER_KEYS = new Set(['badge', 'title', 'subtitle', 'eyebrow', 'cta']);
+
+const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 interface EditableTextLayerProps {
   layer: CoverTextLayer;
@@ -34,6 +39,20 @@ export const EditableTextLayer: React.FC<EditableTextLayerProps> = ({
 }) => {
   const elRef = useRef<HTMLDivElement | null>(null);
   const isComposingRef = useRef(false);
+  const { t } = useLocale();
+
+  const a11yLabels = t.videoCoverModal?.a11y;
+  const layerKey = layer.key;
+  const ariaLabel = (() => {
+    if (!a11yLabels) return `${capitalize(layerKey)} text`;
+    if (KNOWN_LAYER_KEYS.has(layerKey)) {
+      const specificKey = `layer${capitalize(layerKey)}` as keyof typeof a11yLabels;
+      const v = a11yLabels[specificKey];
+      if (typeof v === 'string') return v;
+    }
+    return (a11yLabels.layerGeneric ?? '{key} text').replace('{key}', capitalize(layerKey));
+  })();
+  const placeholder = ariaLabel;
 
   // Keep DOM text in sync when ``layer.text`` changes from the outside
   // (template switch carries text over by key) — but only when not editing,
@@ -102,11 +121,14 @@ export const EditableTextLayer: React.FC<EditableTextLayerProps> = ({
   return (
     <div
       ref={elRef}
+      className="cover-text-layer"
       style={style}
       contentEditable={isEditing}
       suppressContentEditableWarning
       role="textbox"
       aria-multiline="true"
+      aria-label={ariaLabel}
+      data-placeholder={placeholder}
       onClick={(e) => {
         if (!isEditing) {
           e.stopPropagation();

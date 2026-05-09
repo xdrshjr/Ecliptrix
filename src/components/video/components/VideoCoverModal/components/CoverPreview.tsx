@@ -1,6 +1,6 @@
 'use client';
 
-import React, { forwardRef, useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useRef } from 'react';
 
 import { aspectRatioToSize } from '../utils/aspectRatioToSize';
 import type { CoverAspectRatio, CoverConfig, CoverTextLayer } from '../types';
@@ -24,9 +24,9 @@ interface CoverPreviewProps {
  * forwardRef container exposing the inner stage element to ``useCoverRender``
  * (so ``html-to-image`` snapshots the cover EXACTLY as the user sees it).
  *
- * The stage clamps to the project's selected aspect ratio. A ``--cover-px``
- * CSS variable is set so px-at-1080-short-side font sizes scale faithfully
- * regardless of the on-screen preview width.
+ * `--cover-px` is derived purely in CSS via `calc(100cqw / nativeW)` so the
+ * value is correct at any rendered width — including html-to-image's full
+ * native export size — without any JS coordination.
  */
 export const CoverPreview = forwardRef<HTMLDivElement, CoverPreviewProps>(
   function CoverPreview(props, ref) {
@@ -42,34 +42,24 @@ export const CoverPreview = forwardRef<HTMLDivElement, CoverPreviewProps>(
     } = props;
 
     const stageRef = useRef<HTMLDivElement | null>(null);
-    const [stageWidth, setStageWidth] = useState(0);
 
-    // Bridge the forwarded ref + our internal ref (ResizeObserver needs the
-    // raw DOM node).
     React.useImperativeHandle(ref, () => stageRef.current as HTMLDivElement, []);
-
-    useEffect(() => {
-      const el = stageRef.current;
-      if (!el) return;
-      const update = () => setStageWidth(el.clientWidth);
-      update();
-      const ro = new ResizeObserver(update);
-      ro.observe(el);
-      return () => ro.disconnect();
-    }, [aspectRatio]);
 
     const { width: nativeW } = aspectRatioToSize(aspectRatio);
     const ratioStyle: React.CSSProperties = {
       aspectRatio: aspectRatio.replace(':', ' / '),
-      // px-at-1080-short-side → on-screen px scaling factor used by the
-      // text layer / decoration components.
-      ['--cover-px' as unknown as string]: stageWidth > 0
-        ? `${stageWidth / nativeW}px`
-        : '0.0009259px',
+      // CSS containment context — enables `cqw` inside this subtree so
+      // descendants can reference the stage's own width regardless of where
+      // it is rendered (preview / html-to-image foreignObject / tests).
+      containerType: 'inline-size',
+      // 1cqw == 1% of the stage's content width. Dividing by the canvas's
+      // native width yields a per-px scale factor that resolves correctly at
+      // ANY container width — keeping preview and exported PNG visually
+      // identical without ResizeObserver / JS state.
+      ['--cover-px' as unknown as string]: `calc(100cqw / ${nativeW})`,
       backgroundImage: backgroundUrl ? `url(${cssUrl(backgroundUrl)})` : undefined,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
-      // Subtle checkerboard for transparent regions
       backgroundColor: '#0f172a',
     };
 

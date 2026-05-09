@@ -1142,6 +1142,8 @@ export interface Translations {
       label: string;
       frame: string;
       upload: string;
+      frameDisabledHint: string;
+      noFramesAvailable: string;
     };
     scrubber: {
       tooltip: string;
@@ -1159,6 +1161,9 @@ export interface Translations {
       bold: string;
       italic: string;
       underline: string;
+      colorSwatch: string;
+      colorInvalid: string;
+      sizeClamped: string;
     };
     upload: {
       hint: string;
@@ -1177,6 +1182,15 @@ export interface Translations {
       saveFailed: string;
       uploadFailed: string;
       renderFailed: string;
+    };
+    a11y: {
+      layerBadge: string;
+      layerTitle: string;
+      layerSubtitle: string;
+      layerEyebrow: string;
+      layerCta: string;
+      layerGeneric: string;
+      frameSlider: string;
     };
   };
   videoExport: {
@@ -3803,6 +3817,8 @@ export const translations: Record<string, Translations> = {
         label: 'Source',
         frame: 'Frame',
         upload: 'Upload',
+        frameDisabledHint: 'Add a video clip to your timeline to pick a frame',
+        noFramesAvailable: 'No frames available — upload an image instead.',
       },
       scrubber: {
         tooltip: 'Drag to pick a frame',
@@ -3820,6 +3836,9 @@ export const translations: Record<string, Translations> = {
         bold: 'Bold',
         italic: 'Italic',
         underline: 'Underline',
+        colorSwatch: 'Color picker',
+        colorInvalid: 'Use a hex like #fff or #ffffff',
+        sizeClamped: 'Clamped {from} → {to}',
       },
       upload: {
         hint: 'PNG / JPG up to 10 MB',
@@ -3838,6 +3857,15 @@ export const translations: Record<string, Translations> = {
         saveFailed: 'Failed to save cover',
         uploadFailed: 'Failed to upload background image',
         renderFailed: 'Failed to render cover',
+      },
+      a11y: {
+        layerBadge: 'Badge text',
+        layerTitle: 'Title text',
+        layerSubtitle: 'Subtitle text',
+        layerEyebrow: 'Eyebrow text',
+        layerCta: 'Call-to-action text',
+        layerGeneric: '{key} text',
+        frameSlider: 'Drag to pick a frame',
       },
     },
     videoExport: {
@@ -6484,6 +6512,8 @@ export const translations: Record<string, Translations> = {
         label: '来源',
         frame: '视频帧',
         upload: '上传',
+        frameDisabledHint: '请先在时间轴添加视频片段，再选取封面帧',
+        noFramesAvailable: '暂无可用帧 —— 请上传一张图片',
       },
       scrubber: {
         tooltip: '拖动选择封面帧',
@@ -6501,6 +6531,9 @@ export const translations: Record<string, Translations> = {
         bold: '加粗',
         italic: '斜体',
         underline: '下划线',
+        colorSwatch: '颜色选择器',
+        colorInvalid: '请输入十六进制颜色，如 #fff 或 #ffffff',
+        sizeClamped: '已自动调整：{from} → {to}',
       },
       upload: {
         hint: 'PNG / JPG，最大 10 MB',
@@ -6519,6 +6552,15 @@ export const translations: Record<string, Translations> = {
         saveFailed: '保存封面失败',
         uploadFailed: '上传背景图失败',
         renderFailed: '生成封面失败',
+      },
+      a11y: {
+        layerBadge: '徽章文字',
+        layerTitle: '标题文字',
+        layerSubtitle: '副标题文字',
+        layerEyebrow: '眉头文字',
+        layerCta: '行动号召文字',
+        layerGeneric: '{key} 文字',
+        frameSlider: '拖动以选取一帧',
       },
     },
     videoExport: {

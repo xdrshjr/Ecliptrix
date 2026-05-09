@@ -110,7 +110,13 @@ export const VideoCoverModal: React.FC<VideoCoverModalProps> = ({
     if (!isOpen) return;
     if (!state) return;
     if (state.imageSource === 'upload') {
-      setBackgroundUrl(state.uploadedImageUrl ?? null);
+      // When a saved upload exists, paint it. When the user just switched to
+      // upload-mode without an uploaded image yet, INTENTIONALLY leave the
+      // current backgroundUrl untouched so the previously-extracted frame
+      // remains as a "ghost" behind the empty drop zone (Bug #7).
+      if (state.uploadedImageUrl) {
+        setBackgroundUrl(state.uploadedImageUrl);
+      }
       return;
     }
     const ms = state.frameVirtualTimeMs ?? 0;
@@ -181,7 +187,9 @@ export const VideoCoverModal: React.FC<VideoCoverModalProps> = ({
       }
       return { ...prev, imageSource: 'upload', frameVirtualTimeMs: null };
     });
-    setBackgroundUrl(null);
+    // Critical: do NOT clear backgroundUrl here (Bug #7). The effect above
+    // owns the background and intentionally preserves the previously
+    // extracted frame as a "ghost" behind the empty upload drop zone.
   }, []);
 
   const handleScrubCommit = useCallback(
@@ -351,6 +359,12 @@ export const VideoCoverModal: React.FC<VideoCoverModalProps> = ({
                 onChange={handleSourceChange}
                 frameDisabled={frameExtraction.totalVirtualDurationSec <= 0}
               />
+              {frameExtraction.totalVirtualDurationSec <= 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  {t.videoCoverModal?.source?.noFramesAvailable ??
+                    'No frames available — upload an image instead.'}
+                </p>
+              )}
               {state?.imageSource === 'frame' ? (
                 <FrameScrubber
                   totalDurationSec={frameExtraction.totalVirtualDurationSec}

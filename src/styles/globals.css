@@ -821,3 +821,12 @@ html, body {
     font-size: 42px;
   }
 }
+
+/* Cover modal: show the layer's a11y label as a placeholder when the
+   contenteditable is empty so editors aren't dropped into a blank box. */
+.cover-text-layer[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
