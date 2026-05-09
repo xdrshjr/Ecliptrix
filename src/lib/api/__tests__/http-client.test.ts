@@ -519,4 +519,84 @@ describe('http-client', () => {
 
     window.removeEventListener('ecliptrix:session-expired', eventSpy);
   });
+
+  // -------------------------------------------------------------------------
+  // T19 — 401 on a public endpoint (requireAuth: false) → ApiError(401), no
+  // session-expired side-effects. Bug #1 (web-bug-report-20260509-iter2).
+  // -------------------------------------------------------------------------
+  it('T19: requireAuth:false + 401 throws ApiError(401) without clearing storage / dispatching / redirecting', async () => {
+    // No token seeded — requireAuth:false should not require one.
+    asMockFetch().mockResolvedValue(
+      makeJsonResponse(401, {
+        error_code: 'INVALID_CREDENTIALS',
+        message: 'Bad creds',
+      }),
+    );
+
+    const eventSpy = vi.fn();
+    window.addEventListener('ecliptrix:session-expired', eventSpy);
+
+    let thrown: unknown;
+    try {
+      await http.post('/api/auth/login', { username: 'a', password: 'b' }, { requireAuth: false });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect(thrown).not.toBeInstanceOf(SessionExpiredError);
+    expect((thrown as ApiError).status).toBe(401);
+    expect((thrown as ApiError).code).toBe('INVALID_CREDENTIALS');
+    expect((thrown as ApiError).message).toBe('Bad creds');
+    // No localStorage clearing.
+    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBeUndefined();
+    expect(STORAGE_STATE[SESSION_USER_KEY]).toBeUndefined();
+    // No navigation.
+    expect(mockLocation.href).toBe('');
+    // No event dispatch.
+    expect(eventSpy).not.toHaveBeenCalled();
+
+    window.removeEventListener('ecliptrix:session-expired', eventSpy);
+  });
+
+  // -------------------------------------------------------------------------
+  // T20 — 401 on a protected endpoint (requireAuth: true, default) still
+  // triggers the session-expired side-effects. Regression guard for T19.
+  // -------------------------------------------------------------------------
+  it('T20: default requireAuth:true + 401 still clears storage and redirects', async () => {
+    seedToken();
+    STORAGE_STATE[SESSION_USER_KEY] = JSON.stringify({ id: 'u1' });
+    asMockFetch().mockResolvedValue(makeJsonResponse(401, { error: 'unauthorized' }));
+
+    await expect(http.get('/api/protected')).rejects.toBeInstanceOf(SessionExpiredError);
+
+    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBeUndefined();
+    expect(mockLocation.href).toBe('/login?reason=session-expired');
+  });
+
+  // -------------------------------------------------------------------------
+  // T21 — Streaming variant: 401 on a public endpoint should also throw
+  // ApiError(401), not SessionExpiredError.
+  // -------------------------------------------------------------------------
+  it('T21: stream() requireAuth:false + 401 throws ApiError(401), no session-expired path', async () => {
+    asMockFetch().mockResolvedValue(makeJsonResponse(401, { message: 'Bad creds' }));
+
+    const eventSpy = vi.fn();
+    window.addEventListener('ecliptrix:session-expired', eventSpy);
+
+    let thrown: unknown;
+    try {
+      await http.stream('/api/auth/login', { username: 'a', password: 'b' }, { requireAuth: false });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect(thrown).not.toBeInstanceOf(SessionExpiredError);
+    expect((thrown as ApiError).status).toBe(401);
+    expect(mockLocation.href).toBe('');
+    expect(eventSpy).not.toHaveBeenCalled();
+
+    window.removeEventListener('ecliptrix:session-expired', eventSpy);
+  });
 });

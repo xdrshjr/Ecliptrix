@@ -10,6 +10,7 @@ Prefix: /api/system-settings (registered in main.py with prefix="/api")
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,7 @@ from app.models.system_settings_models import (
     BatchUpdateSettingsRequest,
     AuditLogEntry,
     AuditLogResponse,
+    validate_setting_payload,
 )
 from app.services.system_settings_service import system_settings_service
 from app.logger import get_logger
@@ -190,6 +192,26 @@ async def update_setting(
     """Update a single setting value. The authenticated user is recorded for audit."""
     _validate_category(category)
     try:
+        validate_setting_payload(category, key, request.value)
+    except ValidationError as ve:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                'category': category,
+                'key': key,
+                'errors': ve.errors(),
+            },
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                'category': category,
+                'key': key,
+                'errors': [{'msg': str(ve)}],
+            },
+        )
+    try:
         result = await system_settings_service.update_setting(
             category=category,
             key=key,
@@ -216,6 +238,25 @@ async def batch_update_settings(
 ):
     """Batch-update multiple settings within a category."""
     _validate_category(category)
+    try:
+        for key, value in request.settings.items():
+            validate_setting_payload(category, key, value)
+    except ValidationError as ve:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                'category': category,
+                'errors': ve.errors(),
+            },
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                'category': category,
+                'errors': [{'msg': str(ve)}],
+            },
+        )
     try:
         results = await system_settings_service.update_category(
             category=category,

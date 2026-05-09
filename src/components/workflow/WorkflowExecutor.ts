@@ -144,7 +144,11 @@ export class WorkflowExecutor {
       this.executionState.isRunning = false;
       this.executionState.currentNodeId = null;
       this.executionState.endTime = new Date();
-      this.addLog('error', undefined, `Workflow execution failed: ${error.message}`, { error });
+      this.addLog('error', undefined, `Workflow execution failed: ${error.message}`, {
+        error: error.message,
+        errorType: error.name,
+        stack: error.stack,
+      });
     }
 
     this.notifyStateChange();

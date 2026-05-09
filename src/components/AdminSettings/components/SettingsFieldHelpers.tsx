@@ -1,4 +1,10 @@
-import React from 'react';
+import React, { useEffect, useId, useState } from 'react';
+
+const clamp = (n: number, min?: number, max?: number) => {
+  if (min !== undefined && n < min) return min;
+  if (max !== undefined && n > max) return max;
+  return n;
+};
 
 export const NumberField: React.FC<{
   label: string;
@@ -7,20 +13,64 @@ export const NumberField: React.FC<{
   min?: number;
   max?: number;
   step?: number;
-}> = ({ label, value, onChange, min, max, step = 1 }) => (
-  <div className="flex items-center justify-between">
-    <label className="text-sm text-foreground">{label}</label>
-    <input
-      type="number"
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      min={min}
-      max={max}
-      step={step}
-      className="w-28 px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-    />
-  </div>
-);
+}> = ({ label, value, onChange, min, max, step = 1 }) => {
+  const hintId = useId();
+  const [raw, setRaw] = useState(String(value));
+  const [hint, setHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRaw(String(value));
+  }, [value]);
+
+  const commit = (s: string) => {
+    const n = Number(s);
+    if (!Number.isFinite(n)) {
+      setRaw(String(value));
+      return;
+    }
+    const clamped = clamp(n, min, max);
+    if (clamped !== n) {
+      setHint(`Auto-adjusted to ${clamped}`);
+      window.setTimeout(() => setHint(null), 3000);
+    }
+    setRaw(String(clamped));
+    if (clamped !== value) onChange(clamped);
+  };
+
+  const numeric = Number(raw);
+  const invalid =
+    !Number.isFinite(numeric) ||
+    (min !== undefined && numeric < min) ||
+    (max !== undefined && numeric > max);
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <label className="text-sm text-foreground">{label}</label>
+      <div className="flex items-center gap-2">
+        {hint && (
+          <span id={hintId} className="text-xs text-amber-500">{hint}</span>
+        )}
+        <input
+          type="number"
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              commit((e.target as HTMLInputElement).value);
+            }
+          }}
+          min={min}
+          max={max}
+          step={step}
+          aria-invalid={invalid || undefined}
+          aria-describedby={hint ? hintId : undefined}
+          className="w-28 px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+    </div>
+  );
+};
 
 export const SwitchField: React.FC<{
   label: string;

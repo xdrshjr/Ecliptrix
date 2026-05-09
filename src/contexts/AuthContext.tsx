@@ -283,7 +283,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('[AuthContext] Login error:', error);
-      return { success: false, error: 'Network error' };
+      const isTimeout =
+        error instanceof Error && error.name === 'TimeoutError';
+      const message = isTimeout
+        ? (t.auth.networkTimeout ?? 'Request timed out')
+        : (t.auth.networkError ?? 'Network error');
+      return { success: false, error: message };
     }
   };
 

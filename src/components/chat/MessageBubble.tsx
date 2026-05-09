@@ -6,6 +6,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import MarkdownRenderer from './MarkdownRenderer';
 import WorkflowExecutionMessage from './WorkflowExecutionMessage';
 import { copyToClipboard, showCopyFeedback } from '@/lib/clipboard';
+import { dlog } from '@/lib/utils/debugLog';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -54,13 +55,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
   const isIntentDetection = message.metadata?.type === 'intent_detection';
   const isIntentResult = message.metadata?.type === 'intent_result';
   
-  // 只在流式传输时记录日志
+  // Streaming-update log — gated by debugLog so it stays silent in prod
+  // unless the user opts in via window.__ECLIPTRIX_DEBUG__.
   if (message.isStreaming) {
-    console.log('[MessageBubble] 流式消息更新', { 
-      messageId: message.id, 
+    dlog('[MessageBubble] streaming message update', {
+      messageId: message.id,
       contentLength: message.content.length,
       isIntentDetection,
-      isIntentResult
+      isIntentResult,
     });
   }
 

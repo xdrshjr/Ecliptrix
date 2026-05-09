@@ -13,7 +13,7 @@
  * can invalidate the server-side session row.
  */
 
-import { http } from '@/lib/api/http-client';
+import { http, ApiError } from '@/lib/api/http-client';
 import type {
   LoginCredentials,
   SessionValidationRequest,
@@ -131,26 +131,39 @@ interface RawLoginEnvelope {
  * wrap this call in `try/catch` and map the error themselves.
  */
 export async function login(credentials: LoginCredentials): Promise<LoginResult> {
-  const raw = await http.post<RawLoginEnvelope>(
-    '/api/auth/login',
-    credentials,
-    { requireAuth: false },
-  );
+  try {
+    const raw = await http.post<RawLoginEnvelope>(
+      '/api/auth/login',
+      credentials,
+      { requireAuth: false },
+    );
 
-  if (raw && raw.success && raw.user) {
+    if (raw && raw.success && raw.user) {
+      return {
+        success: true,
+        user: normalizeUser(raw.user),
+        sessionToken: raw.session_token ?? raw.sessionToken ?? null,
+        message: raw.message,
+      };
+    }
+
     return {
-      success: true,
-      user: normalizeUser(raw.user),
-      sessionToken: raw.session_token ?? raw.sessionToken ?? null,
-      message: raw.message,
+      success: false,
+      error: raw?.error ?? raw?.message ?? 'Login failed',
+      message: raw?.message,
     };
+  } catch (err) {
+    // Backend rejection (401 invalid credentials, 4xx validation, etc.) →
+    // surface to caller inline without throwing. Network/timeout/5xx still
+    // propagate so AuthContext's catch can show the network-error message.
+    if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      return {
+        success: false,
+        error: err.message || 'Invalid username or password',
+      };
+    }
+    throw err;
   }
-
-  return {
-    success: false,
-    error: raw?.error ?? raw?.message ?? 'Login failed',
-    message: raw?.message,
-  };
 }
 
 /**
@@ -164,23 +177,33 @@ export async function register(payload: RegisterPayload): Promise<RegisterResult
     full_name: payload.fullName,
   };
 
-  const raw = await http.post<RawLoginEnvelope>('/api/auth/register', body, {
-    requireAuth: false,
-  });
+  try {
+    const raw = await http.post<RawLoginEnvelope>('/api/auth/register', body, {
+      requireAuth: false,
+    });
 
-  if (raw && raw.success && raw.user) {
+    if (raw && raw.success && raw.user) {
+      return {
+        success: true,
+        user: normalizeUser(raw.user),
+        message: raw.message,
+      };
+    }
+
     return {
-      success: true,
-      user: normalizeUser(raw.user),
-      message: raw.message,
+      success: false,
+      error: raw?.error ?? raw?.message ?? 'Registration failed',
+      message: raw?.message,
     };
+  } catch (err) {
+    if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      return {
+        success: false,
+        error: err.message || 'Registration failed',
+      };
+    }
+    throw err;
   }
-
-  return {
-    success: false,
-    error: raw?.error ?? raw?.message ?? 'Registration failed',
-    message: raw?.message,
-  };
 }
 
 /**

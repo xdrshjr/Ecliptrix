@@ -409,9 +409,24 @@ async function request<T>(
     const status = response.status;
 
     if (status === 401) {
-      // 4xx — never retried. Trigger global session-expired handling and throw.
-      handleSessionExpired();
-      throw new SessionExpiredError();
+      // 4xx — never retried.
+      if (requireAuth) {
+        // Authenticated endpoint: token is invalid/expired → global handling.
+        handleSessionExpired();
+        throw new SessionExpiredError();
+      }
+      // Public endpoint (requireAuth: false) — caller handles credential
+      // rejection inline. Do NOT clear localStorage / redirect / dispatch.
+      const parsed = await parseErrorBody(response);
+      throw new ApiError(
+        401,
+        parsed.errorCode ?? 'UNAUTHORIZED',
+        parsed.message ?? 'Unauthorized',
+        parsed.details ??
+          (parsed.rawBodyTruncated
+            ? { rawBodyTruncated: parsed.rawBodyTruncated }
+            : undefined),
+      );
     }
 
     if (status === 403) {
@@ -587,8 +602,21 @@ async function streamRequest(
   const status = response.status;
 
   if (status === 401) {
-    handleSessionExpired();
-    throw new SessionExpiredError();
+    if (requireAuth) {
+      handleSessionExpired();
+      throw new SessionExpiredError();
+    }
+    // Public endpoint — caller handles credential rejection inline.
+    const parsed = await parseErrorBody(response);
+    throw new ApiError(
+      401,
+      parsed.errorCode ?? 'UNAUTHORIZED',
+      parsed.message ?? 'Unauthorized',
+      parsed.details ??
+        (parsed.rawBodyTruncated
+          ? { rawBodyTruncated: parsed.rawBodyTruncated }
+          : undefined),
+    );
   }
 
   if (status === 403) {

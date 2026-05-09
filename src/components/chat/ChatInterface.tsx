@@ -8,6 +8,7 @@ import ChatTypeSelectionModal from './ChatTypeSelectionModal';
 import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 import { http, ApiError } from '@/lib/api/http-client';
 import { useLocale } from '@/contexts/LocaleContext';
+import { dlog } from '@/lib/utils/debugLog';
 
 interface ChatInterfaceProps {
   taskId: string;
@@ -37,18 +38,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isChatTypeModalOpen, setIsChatTypeModalOpen] = useState(chatContent.uiState?.isChatTypeModalOpen ?? false);
   const hasAutoInitialized = useRef(chatContent.uiState?.hasAutoInitialized ?? false);
 
-  console.log('[ChatInterface] Initializing/Restoring state:', {
-    taskId,
-    hasContent: !!content,
-    conversationsCount: chatContent.conversations.length,
-    activeConversationId: chatContent.activeConversationId,
-    hasAutoInitialized: hasAutoInitialized.current,
-    isLoading,
-    isChatTypeModalOpen,
-    timestamp: new Date().toISOString()
-  });
+  // Mount/restore log — moved out of the render path into a [taskId] effect
+  // so it doesn't fire on every parent re-render. (Previously triggered noisy
+  // log spam on every keystroke in the chat input.)
+  useEffect(() => {
+    dlog('[ChatInterface] Mount/restore state', {
+      taskId,
+      hasContent: !!content,
+      conversationsCount: chatContent.conversations.length,
+      activeConversationId: chatContent.activeConversationId,
+      hasAutoInitialized: hasAutoInitialized.current,
+      timestamp: new Date().toISOString(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
 
-  // Persist UI state to content whenever it changes
+  // Persist UI state to content whenever it changes.
+  //
+  // The deps array is intentionally narrow ([isLoading, isChatTypeModalOpen,
+  // taskId]). Adding `chatContent` / `onUpdateContent` would cause re-render
+  // storms — onUpdateContent updates chatContent in the parent, which makes a
+  // new chatContent reference, which re-runs this effect. The hasStateChanged
+  // guard already prevents the infinite-loop class of bug.
   useEffect(() => {
     const updatedContent: ChatTaskContent = {
       ...chatContent,
@@ -58,27 +69,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         hasAutoInitialized: hasAutoInitialized.current,
       },
     };
-    
-    // Only update if state actually changed to avoid infinite loops
-    const hasStateChanged = 
+
+    const hasStateChanged =
       chatContent.uiState?.isLoading !== isLoading ||
       chatContent.uiState?.isChatTypeModalOpen !== isChatTypeModalOpen ||
       chatContent.uiState?.hasAutoInitialized !== hasAutoInitialized.current;
 
     if (hasStateChanged) {
-      console.log('[ChatInterface] Persisting UI state:', {
+      dlog('[ChatInterface] Persisting UI state', {
         taskId,
         isLoading,
         isChatTypeModalOpen,
         hasAutoInitialized: hasAutoInitialized.current,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
       onUpdateContent(updatedContent);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, isChatTypeModalOpen, taskId]);
 
   const handleNewChatClick = useCallback(() => {
-    console.log('[ChatInterface] New Chat button clicked, opening chat type selection modal');
+    dlog('[ChatInterface] New Chat button clicked, opening chat type selection modal');
     setIsChatTypeModalOpen(true);
     onModalStateChange?.(true);
   }, [onModalStateChange]);
@@ -93,7 +104,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const now = new Date();
     const conversationId = `conv-${Date.now()}`;
     
-    console.log('[ChatInterface] Creating new conversation:', {
+    dlog('[ChatInterface] Creating new conversation:', {
       conversationId,
       chatType,
       workflowId,
@@ -134,7 +145,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     onUpdateContent(updatedContent);
-    console.log(`[ChatInterface] Created new conversation:`, {
+    dlog(`[ChatInterface] Created new conversation:`, {
       conversationId,
       chatType,
       workflowId,
@@ -145,19 +156,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [chatContent, onUpdateContent]);
 
   const handleCloseModal = useCallback(() => {
-    console.log('[ChatInterface] Closing chat type selection modal');
+    dlog('[ChatInterface] Closing chat type selection modal');
     setIsChatTypeModalOpen(false);
     onModalStateChange?.(false);
   }, [onModalStateChange]);
 
   const handleChatbotSelect = useCallback(() => {
-    console.log('[ChatInterface] Chatbot type selected for new conversation');
+    dlog('[ChatInterface] Chatbot type selected for new conversation');
     handleCreateConversation('chatbot');
     handleCloseModal();
   }, [handleCreateConversation, handleCloseModal]);
 
   const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string, nodes: any[], connections: any[]) => {
-    console.log('[ChatInterface] Workflow selected for new conversation:', {
+    dlog('[ChatInterface] Workflow selected for new conversation:', {
       workflowId,
       workflowName,
       nodesCount: nodes?.length || 0,
@@ -168,7 +179,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [handleCreateConversation, handleCloseModal]);
 
   const handleAgentSelect = useCallback(() => {
-    console.log('[ChatInterface] Agent type selected for new conversation (reserved for future)');
+    dlog('[ChatInterface] Agent type selected for new conversation (reserved for future)');
     handleCreateConversation('agent');
     handleCloseModal();
   }, [handleCreateConversation, handleCloseModal]);
@@ -179,7 +190,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (!hasAutoInitialized.current && chatContent.conversations.length === 0) {
       hasAutoInitialized.current = true;
       
-      console.log('[ChatInterface] Auto-initializing with default Basic Chatbot conversation:', {
+      dlog('[ChatInterface] Auto-initializing with default Basic Chatbot conversation:', {
         taskId,
         timestamp: new Date().toISOString()
       });
@@ -208,7 +219,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       onUpdateContent(initialContent);
       
-      console.log('[ChatInterface] Default Basic Chatbot conversation created successfully:', {
+      dlog('[ChatInterface] Default Basic Chatbot conversation created successfully:', {
         conversationId,
         chatType: 'chatbot',
         timestamp: now.toISOString()
@@ -245,10 +256,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [chatContent, onUpdateContent]);
 
   const updateConversationMessages = useCallback((conversationId: string, messages: ChatMessage[]) => {
-    console.log(`[Chat] Updating messages for conversation ${conversationId}, message count: ${messages.length}`);
+    dlog(`[Chat] Updating messages for conversation ${conversationId}, message count: ${messages.length}`);
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
-      console.log(`[Chat] Last message - role: ${lastMessage.role}, content length: ${lastMessage.content.length}, isStreaming: ${lastMessage.isStreaming}`);
+      dlog(`[Chat] Last message - role: ${lastMessage.role}, content length: ${lastMessage.content.length}, isStreaming: ${lastMessage.isStreaming}`);
     }
     
     const updatedConversations = chatContent.conversations.map(conv => {
@@ -276,11 +287,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return;
     }
 
-    console.log(`[Chat] Clearing messages for conversation: ${chatContent.activeConversationId}`);
+    dlog(`[Chat] Clearing messages for conversation: ${chatContent.activeConversationId}`);
     
     const updatedConversations = chatContent.conversations.map(conv => {
       if (conv.id === chatContent.activeConversationId) {
-        console.log(`[Chat] Cleared ${conv.messages.length} messages from conversation: ${conv.id}`);
+        dlog(`[Chat] Cleared ${conv.messages.length} messages from conversation: ${conv.id}`);
         return {
           ...conv,
           messages: [],
@@ -296,7 +307,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     onUpdateContent(updatedContent);
-    console.log('[Chat] Chat history cleared successfully, context cache reset');
+    dlog('[Chat] Chat history cleared successfully, context cache reset');
   }, [chatContent, onUpdateContent]);
 
   const handleSendMessage = useCallback(async (message: string) => {
@@ -362,7 +373,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const chatType = activeConversation.chatType || 'chatbot';
       const useWorkflow = chatType === 'workflow' && !!activeConversation.workflowId;
       
-      console.log('[ChatInterface] Sending message:', {
+      dlog('[ChatInterface] Sending message:', {
         chatType,
         useWorkflow,
         workflowId: activeConversation.workflowId,
@@ -376,7 +387,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       // Handle workflow execution with client-side executor (like Workflows task)
       if (useWorkflow && activeConversation.workflowNodes && activeConversation.workflowConnections) {
-        console.log('[ChatInterface] Executing workflow with client-side WorkflowExecutor');
+        dlog('[ChatInterface] Executing workflow with client-side WorkflowExecutor');
         
         let accumulatedContent = '';
         let workflowExecutionState: WorkflowExecutionState = {
@@ -392,7 +403,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           activeConversation.workflowNodes,
           activeConversation.workflowConnections,
           (newState: WorkflowExecutionState) => {
-            console.log('[ChatInterface] Workflow execution state updated:', {
+            dlog('[ChatInterface] Workflow execution state updated:', {
               isRunning: newState.isRunning,
               currentNodeId: newState.currentNodeId,
               logsCount: newState.logs.length,
@@ -454,9 +465,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         // Execute the workflow
         try {
-          console.log('[ChatInterface] Starting workflow execution');
+          dlog('[ChatInterface] Starting workflow execution');
           await executor.execute();
-          console.log('[ChatInterface] Workflow execution completed successfully');
+          dlog('[ChatInterface] Workflow execution completed successfully');
         } catch (error) {
           console.error('[ChatInterface] Workflow execution error:', error);
           accumulatedContent = `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -484,7 +495,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       // Handle regular chatbot conversation with API
-      console.log('[ChatInterface] Using regular chat API for chatbot conversation');
+      dlog('[ChatInterface] Using regular chat API for chatbot conversation');
       
       let response: Response;
       try {
@@ -504,36 +515,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       let accumulatedContent = '';
-      
+      let chunkCount = 0;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split('\n').filter(line => line.trim());
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') {
               break;
             }
-            
+
             try {
               const parsed = JSON.parse(data);
-              
+
               // Regular chat streaming
               if (parsed.content) {
                 accumulatedContent += parsed.content;
-                
-                // Update the assistant message with accumulated content
+                chunkCount += 1;
+
                 const updatedMessages = [...messagesWithUser, {
                   ...assistantMessage,
                   content: accumulatedContent,
                   isStreaming: true
                 }];
-                
-                console.log(`[Chat] Streaming update - accumulated content length: ${accumulatedContent.length}`);
+
+                // Throttle: log once every 50 chunks (plus the final-summary
+                // entry below covers the end-of-stream state).
+                if (chunkCount % 50 === 0) {
+                  dlog('[Chat] streaming progress', {
+                    chunks: chunkCount,
+                    totalLength: accumulatedContent.length,
+                  });
+                }
                 updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
               }
             } catch (e) {
@@ -550,11 +569,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         isStreaming: false
       }];
       
-      console.log(`[Chat] Streaming complete - final content length: ${accumulatedContent.length}`);
-      console.log(`[Chat] Final content preview: ${accumulatedContent.slice(0, 100)}...`);
+      dlog(`[Chat] Streaming complete - final content length: ${accumulatedContent.length}`);
+      dlog(`[Chat] Final content preview: ${accumulatedContent.slice(0, 100)}...`);
       updateConversationMessages(chatContent.activeConversationId!, finalMessages);
 
-      console.log(`Sent message and received response for conversation: ${chatContent.activeConversationId}`);
+      dlog(`[Chat] Sent message and received response for conversation: ${chatContent.activeConversationId}`);
       
     } catch (error) {
       console.error('Error sending message:', error);

@@ -4,6 +4,21 @@ import React, { useEffect, useRef, useState } from 'react';
 import { WorkflowExecutionLog, WorkflowNodeExecutionState } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 
+// JSON.stringify with Error-aware replacer. Plain JSON.stringify(new Error())
+// returns "{}" because Error's enumerable surface is empty; this surfaces the
+// useful fields so log entries don't render as `{ "error": {} }`.
+const safeStringify = (val: unknown, indent: number = 2): string =>
+  JSON.stringify(
+    val,
+    (_k, v) => {
+      if (v instanceof Error) {
+        return { name: v.name, message: v.message, stack: v.stack };
+      }
+      return v;
+    },
+    indent,
+  );
+
 interface WorkflowLogPanelProps {
   logs: WorkflowExecutionLog[];
   nodeStates: Record<string, WorkflowNodeExecutionState>;
@@ -84,7 +99,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
     try {
       // Handle common patterns
       if (details.input !== undefined) {
-        const inputStr = JSON.stringify(details.input, null, 2);
+        const inputStr = safeStringify(details.input);
         return (
           <div className="mt-1 text-xs">
             <span className="font-semibold text-foreground">{t.workflowInterface.logPanel.input}:</span>
@@ -95,7 +110,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
         );
       }
       if (details.output !== undefined) {
-        const outputStr = JSON.stringify(details.output, null, 2);
+        const outputStr = safeStringify(details.output);
         return (
           <div className="mt-1 text-xs">
             <span className="font-semibold text-foreground">{t.workflowInterface.logPanel.output}:</span>
@@ -107,7 +122,7 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
       }
       
       // Default: show all details
-      const detailsStr = JSON.stringify(details, null, 2);
+      const detailsStr = safeStringify(details);
       if (detailsStr.length > 200) {
         return (
           <details className="mt-1 group">

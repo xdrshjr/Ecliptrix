@@ -5,8 +5,8 @@ These models define the request/response shapes for the /api/system-settings end
 Downstream consumers (frontend proxy, UI panels) depend on these shapes.
 """
 
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Literal, Optional
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 # ── Category metadata ──
@@ -74,3 +74,74 @@ class AuditLogResponse(BaseModel):
     success: bool
     logs: List[AuditLogEntry]
     total: int
+
+
+# ── Per-category nested validators ──
+#
+# These models are used by `validate_setting_payload()` to enforce numeric
+# bounds before the system-settings router writes a value to the DB. They
+# intentionally use `extra='allow'` so YAML templates can introduce new
+# sub-keys without breaking older deployments — only the *declared* fields
+# are validated.
+
+class TTSConcurrency(BaseModel):
+    model_config = ConfigDict(extra='allow')
+    concurrent_threads: int = Field(ge=1, le=10)
+    max_concurrent_threads: int = Field(ge=1, le=20)
+    request_timeout: int = Field(ge=5, le=120)
+    batch_timeout: int = Field(ge=60, le=600)
+
+
+class TTSRetry(BaseModel):
+    model_config = ConfigDict(extra='allow')
+    max_attempts: int = Field(ge=0, le=10)
+    delay_seconds: int = Field(ge=1, le=30)
+    backoff_factor: int = Field(ge=1, le=5)
+
+
+class TTSLimits(BaseModel):
+    model_config = ConfigDict(extra='allow')
+    max_segments_per_batch: int = Field(ge=10, le=200)
+    max_text_length_per_segment: int = Field(ge=1000, le=10_000)
+    max_total_text_length: int = Field(ge=10_000, le=500_000)
+
+
+class TTSLoggingConfig(BaseModel):
+    model_config = ConfigDict(extra='allow')
+    enable_detailed_logs: bool
+    log_progress_interval: int = Field(ge=1, le=100)
+    log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR']
+
+
+# Map: category -> (key -> validator). Add upload/watermark/etc here as they
+# get explicit bounds; absent (category, key) pairs fall through unvalidated.
+CATEGORY_KEY_VALIDATORS: Dict[str, Dict[str, type[BaseModel]]] = {
+    'tts': {
+        'concurrency': TTSConcurrency,
+        'retry': TTSRetry,
+        'limits': TTSLimits,
+        'logging': TTSLoggingConfig,
+        # 'voices' is a freeform list; validated by VoiceListEditor on the FE.
+    },
+}
+
+
+def validate_setting_payload(
+    category: str, key: str, value: Any,
+) -> None:
+    """Raise ValidationError / ValueError if a known key is out of bounds.
+
+    No-op for unknown categories or keys — keeps the validator additive so
+    new settings panels don't have to declare bounds before shipping.
+    """
+    cat = CATEGORY_KEY_VALIDATORS.get(category)
+    if not cat:
+        return
+    model = cat.get(key)
+    if model is None:
+        return
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"Setting {category}.{key} expects an object, got {type(value).__name__}",
+        )
+    model.model_validate(value)

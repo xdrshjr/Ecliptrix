@@ -79,12 +79,39 @@ describe('auth API client', () => {
       }
     });
 
-    it('lets ApiError propagate without wrapping', async () => {
+    it('lets 5xx ApiError propagate without wrapping', async () => {
       const err = new ApiError(500, 'INTERNAL', 'auth down');
       vi.spyOn(httpModule.http, 'post').mockRejectedValue(err);
       await expect(
         login({ username: 'alice', password: 'pw' }),
       ).rejects.toBe(err);
+    });
+
+    // Bug #1 (web-bug-report-20260509-iter2): 401 from the public login
+    // endpoint must surface inline as `LoginFailure`, not throw — otherwise
+    // wrong-credentials look like "session expired" to the user.
+    it('converts 4xx ApiError into LoginFailure with backend message', async () => {
+      const err = new ApiError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
+      vi.spyOn(httpModule.http, 'post').mockRejectedValue(err);
+
+      const result = await login({ username: 'alice', password: 'wrong' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('用户名或密码错误');
+      }
+    });
+
+    it('converts 422 validation error into LoginFailure', async () => {
+      const err = new ApiError(422, 'VALIDATION_ERROR', 'Username is required');
+      vi.spyOn(httpModule.http, 'post').mockRejectedValue(err);
+
+      const result = await login({ username: '', password: 'x' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('Username is required');
+      }
     });
   });
 

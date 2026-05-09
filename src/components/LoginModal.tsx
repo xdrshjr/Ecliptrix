@@ -129,7 +129,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} noValidate className="space-y-6">
                 <div>
                   <label htmlFor="username" className="block text-sm font-medium text-muted-foreground mb-2">
                     {t.auth.username}
@@ -196,11 +196,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 </button>
               </form>
 
-              <div className="mt-6 text-center">
-                <p className="text-xs text-muted-foreground">
-                  Test credentials: admin / *
-                </p>
-              </div>
+              {process.env.NEXT_PUBLIC_SHOW_DEV_HINTS === 'true' && (
+                <div className="mt-6 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    Dev mode active — see internal docs for test credentials.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

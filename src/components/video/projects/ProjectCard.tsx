@@ -57,15 +57,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
       onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
       className={`group relative bg-card border border-border rounded-md hover:shadow-lg hover:border-primary/40 transition-all cursor-pointer ${
         menuOpen ? 'z-30' : ''
       }`}
@@ -88,9 +80,20 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
       {/* Body */}
       <div className="px-3 py-2.5 space-y-1">
         <div className="flex items-start gap-2">
-          <h3 className="flex-1 text-sm font-medium text-foreground truncate">
+          {/* Title is the focusable element — outer card div is no longer
+              role="button" so a11y warnings ("interactive descendant of
+              role=button") are gone. Outer onClick still preserves the
+              "click anywhere" ergonomic. */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+            }}
+            className="flex-1 text-left text-sm font-medium text-foreground truncate bg-transparent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+          >
             {project.name || t.videoProjects.untitled}
-          </h3>
+          </button>
 
           {/* Actions menu */}
           <div className="relative">

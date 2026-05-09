@@ -58,6 +58,8 @@ export interface Translations {
     invalidCredentials: string;
     requiredFields: string;
     loggingIn: string;
+    networkError: string;
+    networkTimeout: string;
   };
   profile: {
     title: string;
@@ -2733,6 +2735,8 @@ export const translations: Record<string, Translations> = {
       invalidCredentials: 'Invalid username or password',
       requiredFields: 'Username and password are required',
       loggingIn: 'Logging in...',
+      networkError: 'Network error — please try again',
+      networkTimeout: 'Request timed out — please try again',
     },
     profile: {
       title: 'User Profile',
@@ -5428,6 +5432,8 @@ export const translations: Record<string, Translations> = {
       invalidCredentials: '用户名或密码错误',
       requiredFields: '用户名和密码为必填项',
       loggingIn: '登录中...',
+      networkError: '网络异常，请稍后重试',
+      networkTimeout: '请求超时，请稍后重试',
     },
     profile: {
       title: '用户资料',

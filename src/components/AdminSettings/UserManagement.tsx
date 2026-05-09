@@ -206,50 +206,57 @@ function CreateUserDialog({ open, onClose, onCreated, canManageAdmins, t }: Crea
             <IconX className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-6 py-4 space-y-4">
-          {/* Username */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.username} <span className="text-destructive">*</span></label>
-            <input type="text" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder={t.adminSettings.usernamePlaceholder} className={inputClass('username')} disabled={submitting} />
-            {errors.username && <p className="text-destructive text-xs mt-1">{errors.username}</p>}
+        <form
+          noValidate
+          autoComplete="off"
+          onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+          className="contents"
+        >
+          <div className="px-6 py-4 space-y-4">
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.username} <span className="text-destructive">*</span></label>
+              <input type="text" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder={t.adminSettings.usernamePlaceholder} className={inputClass('username')} disabled={submitting} autoComplete="off" />
+              {errors.username && <p className="text-destructive text-xs mt-1">{errors.username}</p>}
+            </div>
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.password} <span className="text-destructive">*</span></label>
+              <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={t.adminSettings.passwordPlaceholder} className={inputClass('password')} disabled={submitting} autoComplete="new-password" />
+              {errors.password && <p className="text-destructive text-xs mt-1">{errors.password}</p>}
+            </div>
+            {/* Confirm Password */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmPassword} <span className="text-destructive">*</span></label>
+              <input type="password" value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} placeholder={t.adminSettings.confirmPassword} className={inputClass('confirmPassword')} disabled={submitting} autoComplete="new-password" />
+              {errors.confirmPassword && <p className="text-destructive text-xs mt-1">{errors.confirmPassword}</p>}
+            </div>
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">{t.profile.email}</label>
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t.adminSettings.emailPlaceholder} className={inputClass('email')} disabled={submitting} autoComplete="off" />
+              {errors.email && <p className="text-destructive text-xs mt-1">{errors.email}</p>}
+            </div>
+            {/* Full Name */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.fullName}</label>
+              <input type="text" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder={t.adminSettings.fullNamePlaceholder} className={inputClass('fullName')} disabled={submitting} autoComplete="off" />
+            </div>
+            {/* Role */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.userRole} <span className="text-destructive">*</span></label>
+              <select value={form.userRole} onChange={(e) => setForm({ ...form, userRole: e.target.value as CreateUserData['userRole'] })} className={inputClass('userRole')} disabled={submitting}>
+                {canManageAdmins && <option value="admin">{t.adminSettings.userRoleAdmin}</option>}
+                <option value="premium">{t.adminSettings.userRolePremium}</option>
+                <option value="regular">{t.adminSettings.userRoleRegular}</option>
+              </select>
+            </div>
           </div>
-          {/* Password */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.password} <span className="text-destructive">*</span></label>
-            <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={t.adminSettings.passwordPlaceholder} className={inputClass('password')} disabled={submitting} />
-            {errors.password && <p className="text-destructive text-xs mt-1">{errors.password}</p>}
+          <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent transition-colors" disabled={submitting}>{t.adminSettings.cancel}</button>
+            <button type="submit" className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50" disabled={submitting}>{submitting ? t.adminSettings.creating : t.adminSettings.createUser}</button>
           </div>
-          {/* Confirm Password */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmPassword} <span className="text-destructive">*</span></label>
-            <input type="password" value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} placeholder={t.adminSettings.confirmPassword} className={inputClass('confirmPassword')} disabled={submitting} />
-            {errors.confirmPassword && <p className="text-destructive text-xs mt-1">{errors.confirmPassword}</p>}
-          </div>
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.profile.email}</label>
-            <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t.adminSettings.emailPlaceholder} className={inputClass('email')} disabled={submitting} />
-            {errors.email && <p className="text-destructive text-xs mt-1">{errors.email}</p>}
-          </div>
-          {/* Full Name */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.fullName}</label>
-            <input type="text" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} placeholder={t.adminSettings.fullNamePlaceholder} className={inputClass('fullName')} disabled={submitting} />
-          </div>
-          {/* Role */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.userRole} <span className="text-destructive">*</span></label>
-            <select value={form.userRole} onChange={(e) => setForm({ ...form, userRole: e.target.value as CreateUserData['userRole'] })} className={inputClass('userRole')} disabled={submitting}>
-              {canManageAdmins && <option value="admin">{t.adminSettings.userRoleAdmin}</option>}
-              <option value="premium">{t.adminSettings.userRolePremium}</option>
-              <option value="regular">{t.adminSettings.userRoleRegular}</option>
-            </select>
-          </div>
-        </div>
-        <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent transition-colors" disabled={submitting}>{t.adminSettings.cancel}</button>
-          <button onClick={handleSubmit} className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50" disabled={submitting}>{submitting ? t.adminSettings.creating : t.adminSettings.createUser}</button>
-        </div>
+        </form>
       </div>
     </div>
   );
@@ -489,11 +496,16 @@ function ResetPasswordDialog({ open, user, onClose, t }: ResetPasswordDialogProp
               )}
             </div>
           ) : (
-            <div className="space-y-3">
+            <form
+              noValidate
+              autoComplete="off"
+              onSubmit={(e) => { e.preventDefault(); handleManualSet(); }}
+              className="space-y-3"
+            >
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.newPassword}</label>
                 <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t.adminSettings.newPasswordPlaceholder} className={inputClass('newPassword')} disabled={submitting} />
+                  <input type={showPassword ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t.adminSettings.newPasswordPlaceholder} className={inputClass('newPassword')} disabled={submitting} autoComplete="new-password" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
                   </button>
@@ -502,10 +514,12 @@ function ResetPasswordDialog({ open, user, onClose, t }: ResetPasswordDialogProp
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">{t.adminSettings.confirmNewPassword}</label>
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t.adminSettings.confirmNewPassword} className={inputClass('confirmPassword')} disabled={submitting} />
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t.adminSettings.confirmNewPassword} className={inputClass('confirmPassword')} disabled={submitting} autoComplete="new-password" />
                 {errors.confirmPassword && <p className="text-destructive text-xs mt-1">{errors.confirmPassword}</p>}
               </div>
-            </div>
+              {/* Hidden submit button enables Enter-to-submit; the visible action button lives in the dialog footer. */}
+              <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+            </form>
           )}
         </div>
         <div className="border-t border-border px-6 py-4 flex justify-end gap-3">
