@@ -2868,6 +2868,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         initialImageUrl={aiVideoInitialImage?.url}
         initialImageName={aiVideoInitialImage?.name}
         materials={materials}
+        projectId={projectId}
       />
 
       {/* AI音频弹窗 */}

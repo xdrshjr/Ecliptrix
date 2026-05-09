@@ -29,6 +29,10 @@ interface AiVideoModalProps {
    * 由调用方提供以便携带全文脚本上下文并更新外部 sentence 状态。
    */
   onGeneratePrompt?: (currentPrompt: string) => Promise<string | null>;
+  /** Owning project id — forwarded to ImagePickerSlot so the frame-pack tab
+   *  can lazy-load packs via listFramePacks(projectId). When undefined, the
+   *  frame-pack tab is hidden inside each slot. */
+  projectId?: string;
 }
 
 const AiVideoModal: React.FC<AiVideoModalProps> = ({
@@ -43,6 +47,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
   subtitle,
   sentenceActualDuration,
   onGeneratePrompt,
+  projectId,
 }) => {
   const { t } = useLocale();
   const [mode, setMode] = useState<GenerationMode>('description');
@@ -455,6 +460,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                       setDescImageNames(newNames);
                     }}
                     materials={materials}
+                    projectId={projectId}
                   />
                 ))}
               </div>
@@ -469,6 +475,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                   onSelect={(url, name) => { setFirstFrameUrl(url); setFirstFrameName(name); }}
                   onRemove={() => { setFirstFrameUrl(''); setFirstFrameName(''); }}
                   materials={materials}
+                  projectId={projectId}
                 />
                 {keyframeRefUrls.map((url, i) => (
                   <ImagePickerSlot
@@ -493,6 +500,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                       setKeyframeRefNames(newNames);
                     }}
                     materials={materials}
+                    projectId={projectId}
                   />
                 ))}
               </div>
@@ -523,6 +531,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                       setRefImageNames(newNames);
                     }}
                     materials={materials}
+                    projectId={projectId}
                   />
                 ))}
               </div>

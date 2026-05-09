@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { ImagePack } from '@/lib/api/imagePack';
+import { listFramePacks } from '@/lib/api/framePack';
 
 interface ImagePickerSlotProps {
   label: string;
@@ -11,7 +13,13 @@ interface ImagePickerSlotProps {
   onSelect: (url: string, name: string) => void;
   onRemove: () => void;
   materials?: MaterialItem[];
+  /** Owning project id. When set, the "frame pack" tab is rendered and
+   *  populated via listFramePacks(projectId). When undefined the tab is
+   *  hidden entirely. Changing this prop resets the slot's frame-pack cache. */
+  projectId?: string;
 }
+
+type PickerMode = 'materials' | 'framePack' | 'url';
 
 const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
   label,
@@ -20,13 +28,48 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
   onSelect,
   onRemove,
   materials = [],
+  projectId,
 }) => {
   const { t } = useLocale();
+  const mp = t.materialsPanel;
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'materials' | 'url'>('materials');
+  const [pickerMode, setPickerMode] = useState<PickerMode>('materials');
   const [urlInput, setUrlInput] = useState('');
 
+  const [framePacks, setFramePacks] = useState<ImagePack[] | null>(null);
+  const [framePacksLoading, setFramePacksLoading] = useState(false);
+  const [activeFramePackId, setActiveFramePackId] = useState<string | null>(null);
+
   const imageMaterials = materials.filter(m => m.type === 'image');
+
+  // Cache reset on projectId change — see spec §2.2 point 5.
+  useEffect(() => {
+    setFramePacks(null);
+    setFramePacksLoading(false);
+    setActiveFramePackId(null);
+  }, [projectId]);
+
+  // Lazy load frame packs — mirrors ReferenceImagePanel.loadPacks: errors are
+  // swallowed so framePacks stays null and a tab re-enter retries.
+  const loadFramePacks = useCallback(async () => {
+    if (!projectId) return;
+    if (framePacks !== null) return;
+    setFramePacksLoading(true);
+    try {
+      const packs = await listFramePacks(projectId);
+      setFramePacks(packs);
+    } catch {
+      // silently ignore
+    } finally {
+      setFramePacksLoading(false);
+    }
+  }, [projectId, framePacks]);
+
+  useEffect(() => {
+    if (pickerMode === 'framePack') {
+      void loadFramePacks();
+    }
+  }, [pickerMode, loadFramePacks]);
 
   const handleUrlSubmit = () => {
     const trimmed = urlInput.trim();
@@ -64,6 +107,8 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
     );
   }
 
+  const activeFramePack = framePacks?.find(p => p.pack_id === activeFramePackId) || null;
+
   return (
     <div className="flex-1 min-w-0">
       <div className="text-xs text-muted-foreground mb-1">{label}</div>
@@ -91,6 +136,18 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
             >
               {t.scriptPanel.aiVideoScript.fromMaterials}
             </button>
+            {projectId && (
+              <button
+                onClick={() => setPickerMode('framePack')}
+                className={`flex-1 text-xs py-1 rounded ${
+                  pickerMode === 'framePack'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                {mp.referencePickerFramePack || '帧包'}
+              </button>
+            )}
             <button
               onClick={() => setPickerMode('url')}
               className={`flex-1 text-xs py-1 rounded ${
@@ -127,6 +184,70 @@ const ImagePickerSlot: React.FC<ImagePickerSlotProps> = ({
                       />
                     </button>
                   ))}
+                </div>
+              )}
+            </div>
+          ) : pickerMode === 'framePack' ? (
+            <div>
+              {framePacksLoading ? (
+                <div className="text-xs text-muted-foreground text-center py-3">
+                  {mp.referencePickerLoading || '加载中…'}
+                </div>
+              ) : !framePacks || framePacks.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-3">
+                  {mp.referencePickerEmpty || '暂无可用包'}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex gap-1 overflow-x-auto pb-0.5">
+                    {framePacks.map(p => (
+                      <button
+                        key={p.pack_id}
+                        onClick={() => setActiveFramePackId(p.pack_id)}
+                        className={`flex-shrink-0 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+                          activeFramePackId === p.pack_id
+                            ? 'border-primary text-primary bg-primary/5'
+                            : 'border-border text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {(p.prompt || p.pack_id).slice(0, 12)}
+                      </button>
+                    ))}
+                  </div>
+                  {activeFramePack ? (
+                    activeFramePack.frames.length === 0 ? (
+                      <div className="text-xs text-muted-foreground text-center py-2">
+                        {mp.referencePickerEmpty || '暂无可用包'}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
+                        {activeFramePack.frames.map(f => {
+                          const frameName = f.sub_view || `frame_${f.index + 1}`;
+                          return (
+                            <button
+                              key={f.index}
+                              onClick={() => {
+                                onSelect(f.url, frameName);
+                                setShowPicker(false);
+                              }}
+                              className="aspect-square rounded overflow-hidden border border-border hover:border-primary transition-colors"
+                              title={frameName}
+                            >
+                              <img
+                                src={f.url}
+                                alt={frameName}
+                                className="w-full h-full object-cover"
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : (
+                    <div className="text-[10px] text-muted-foreground text-center py-1">
+                      {mp.referencePickerSelectPackHint || '选择一个包查看帧'}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

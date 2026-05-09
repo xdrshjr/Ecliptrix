@@ -2618,6 +2618,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           setSentenceAiModal({ open: false });
         }}
         materials={materials}
+        projectId={projectId}
         initialPrompt={sentenceAiModal.initialPrompt}
         initialDuration={sentenceAiModal.initialDuration}
         initialMode="description"
