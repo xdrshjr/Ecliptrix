@@ -274,14 +274,14 @@ export interface VideoPreview {
 
 // Logger types
 export interface LoggerConfig {
-  taskId: string;
+  taskId?: string;
   component: string;
 }
 
 export interface LogEntry {
   timestamp: string;
   level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-  taskId: string;
+  taskId?: string;
   component: string;
   action: string;
   data?: Record<string, any>;

@@ -49,6 +49,9 @@ const WatermarkSettingsPanel: React.FC = () => {
   const removal = getObj('removal', { concurrent_threads: 5, max_concurrent_threads: 10, batch_size: 50, batch_timeout: 60 });
   const loggingConf = getObj('logging', { enable_detailed_logs: true, log_progress_interval: 100, log_level: 'INFO', enable_thread_logging: true });
 
+  const concurrencyInvalid =
+    Number(removal.concurrent_threads) > Number(removal.max_concurrent_threads);
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 space-y-6 max-w-4xl">
@@ -60,7 +63,10 @@ const WatermarkSettingsPanel: React.FC = () => {
           <div className="flex items-center gap-3">
             {isDirty && <span className="text-xs text-amber-500 font-medium">{t.adminSettings.settingsUnsaved}</span>}
             <ResetDefaultsButton onReset={handleReset} loading={saving} />
-            <button onClick={handleSave} disabled={!isDirty || saving}
+            <button
+              onClick={handleSave}
+              disabled={!isDirty || saving || concurrencyInvalid}
+              aria-disabled={!isDirty || saving || concurrencyInvalid}
               className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {saving ? t.adminSettings.saving : t.adminSettings.save}
             </button>
@@ -72,6 +78,11 @@ const WatermarkSettingsPanel: React.FC = () => {
           <NumberField label={t.adminSettings.wmMaxConcurrentThreads} value={removal.max_concurrent_threads as number} onChange={(v) => updateNested('removal', 'max_concurrent_threads', v)} min={1} max={30} />
           <NumberField label={t.adminSettings.wmBatchFrames} value={removal.batch_size as number} onChange={(v) => updateNested('removal', 'batch_size', v)} min={10} max={200} />
           <NumberField label={t.adminSettings.wmBatchTimeout} value={removal.batch_timeout as number} onChange={(v) => updateNested('removal', 'batch_timeout', v)} min={10} max={300} />
+          {concurrencyInvalid && (
+            <p role="alert" className="text-xs text-destructive mt-1">
+              {t.adminSettings.wmConcurrencyInvalid}
+            </p>
+          )}
         </SettingsSectionCard>
 
         <SettingsSectionCard title={t.adminSettings.settingsLogging}>

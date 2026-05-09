@@ -2,6 +2,9 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { ImagePosition } from '@/types';
+import { VideoEditingLogger } from '../../utils/logger';
+
+const overlayLogger = new VideoEditingLogger({ component: 'ImageOverlay' });
 
 interface ImageOverlayProps {
   imageUrl: string;
@@ -37,15 +40,15 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     height: position.height * containerHeight
   };
 
-  // 添加调试日志
-  console.log(`[ImageOverlay] Rendering overlay ${imageId}`, {
+  overlayLogger.debug('render', {
+    imageId,
     position,
     containerWidth,
     containerHeight,
     pixelPosition,
     imageUrl,
     hasValidDimensions: containerWidth > 0 && containerHeight > 0,
-    hasValidPosition: pixelPosition.width > 0 && pixelPosition.height > 0
+    hasValidPosition: pixelPosition.width > 0 && pixelPosition.height > 0,
   });
 
   // 处理拖拽开始
@@ -66,10 +69,11 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
       y: e.clientY - rect.top
     });
 
-    console.log(`[ImageOverlay] 开始拖拽图片 ${imageId}`, {
+    overlayLogger.debug('drag-start', {
+      imageId,
       startPosition: position,
       mousePosition: { x: e.clientX, y: e.clientY },
-      containerSize: { width: containerWidth, height: containerHeight }
+      containerSize: { width: containerWidth, height: containerHeight },
     });
   }, [onSelect, imageId, position, containerWidth, containerHeight]);
 
@@ -97,9 +101,10 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
 
       onPositionChange(newPosition);
 
-      console.log(`[ImageOverlay] 拖拽图片 ${imageId} 位置更新`, {
+      overlayLogger.debug('drag-update', {
+        imageId,
         newPosition,
-        clampedPosition: { x: clampedX, y: clampedY }
+        clampedPosition: { x: clampedX, y: clampedY },
       });
     }
   }, [isDragging, isResizing, dragStart, containerWidth, containerHeight, position, onPositionChange, imageId]);
@@ -107,9 +112,7 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   // 处理拖拽结束
   const handleMouseUp = useCallback(() => {
     if (isDragging || isResizing) {
-      console.log(`[ImageOverlay] 结束拖拽图片 ${imageId}`, {
-        finalPosition: position
-      });
+      overlayLogger.debug('drag-end', { imageId, finalPosition: position });
     }
     
     setIsDragging(false);
@@ -122,7 +125,7 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     e.stopPropagation();
     
     setIsResizing(true);
-    console.log(`[ImageOverlay] 开始调整图片 ${imageId} 大小`);
+    overlayLogger.debug('resize-start', { imageId });
   }, [imageId]);
 
   // 处理调整大小移动
@@ -144,8 +147,9 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
 
     onPositionChange(newPosition);
 
-    console.log(`[ImageOverlay] 调整图片 ${imageId} 大小`, {
-      newSize: { width: newWidth, height: newHeight }
+    overlayLogger.debug('resize-update', {
+      imageId,
+      newSize: { width: newWidth, height: newHeight },
     });
   }, [isResizing, position, containerWidth, containerHeight, onPositionChange, imageId]);
 
@@ -170,28 +174,26 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     };
   }, [isDragging, isResizing, handleMouseMove, handleResizeMouseMove, handleMouseUp]);
 
-  // 检查是否有有效的尺寸
   if (containerWidth === 0 || containerHeight === 0) {
-    console.warn(`[ImageOverlay] Container dimensions are zero, not rendering overlay ${imageId}`);
+    overlayLogger.warn('container-zero', { imageId });
     return null;
   }
 
   if (pixelPosition.width === 0 || pixelPosition.height === 0) {
-    console.warn(`[ImageOverlay] Pixel position dimensions are zero, not rendering overlay ${imageId}`);
+    overlayLogger.warn('pixel-position-zero', { imageId });
     return null;
   }
 
   return (
     <div
       ref={overlayRef}
-      className={`absolute cursor-move select-none border-2 border-red-500 ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+      className={`absolute cursor-move select-none ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
       style={{
         left: `${pixelPosition.x}px`,
         top: `${pixelPosition.y}px`,
         width: `${pixelPosition.width}px`,
         height: `${pixelPosition.height}px`,
         zIndex: position.zIndex || 10,
-        backgroundColor: 'rgba(255, 0, 0, 0.2)' // 临时调试背景
       }}
       onMouseDown={handleMouseDown}
     >
@@ -200,15 +202,10 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         alt="Overlay"
         className="w-full h-full object-contain pointer-events-none"
         draggable={false}
-        onLoad={() => console.log(`[ImageOverlay] Image loaded: ${imageId}`)}
-        onError={() => console.error(`[ImageOverlay] Image failed to load: ${imageId}, URL: ${imageUrl}`)}
+        onLoad={() => overlayLogger.debug('image-loaded', { imageId })}
+        onError={() => overlayLogger.error('image-load-failed', { imageId, imageUrl })}
       />
-      
-      {/* 调试信息显示 */}
-      <div className="absolute top-0 left-0 bg-black text-white text-xs p-1 pointer-events-none">
-        {imageId}
-      </div>
-      
+
       {/* 选中时显示调整大小手柄 */}
       {isSelected && (
         <div

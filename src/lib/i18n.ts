@@ -108,6 +108,9 @@ export interface Translations {
     settingsSaveSuccess: string;
     settingsSaveError: string;
     autoSaveNote: string;
+    savingNote: string;
+    savedNote: string;
+    saveErrorNote: string;
   };
   adminSettings: {
     title: string;
@@ -473,6 +476,7 @@ export interface Translations {
     wmBatchTimeout: string;
     wmProgressIntervalFrames: string;
     wmThreadLogging: string;
+    wmConcurrencyInvalid: string;
     // Video Analysis Settings
     videoAnalysisSettings: string;
     videoAnalysisSettingsDesc: string;
@@ -1240,6 +1244,7 @@ export interface Translations {
     videoDurationValidationFailed: string;
   };
   scriptPanel: {
+    tabsLabel: string;
     tabs: {
       narrationScript: string;
       aiVideoScript: string;
@@ -1432,6 +1437,12 @@ export interface Translations {
       aiPromptGenerating: string;
       aiPromptRetry: string;
       aiPromptFailedToast: string;
+    };
+  };
+  videoEditing: {
+    autoMix: {
+      noMaterials: string;
+      noScriptMaterials: string;
     };
   };
   videoScript: {
@@ -2821,6 +2832,9 @@ export const translations: Record<string, Translations> = {
       settingsSaveSuccess: 'Settings saved successfully',
       settingsSaveError: 'Failed to save settings',
       autoSaveNote: 'Changes are saved automatically.',
+      savingNote: 'Saving…',
+      savedNote: 'Saved to your account',
+      saveErrorNote: 'Failed to save — will retry',
     },
     adminSettings: {
       title: 'Admin Settings',
@@ -3186,6 +3200,7 @@ export const translations: Record<string, Translations> = {
       wmBatchTimeout: 'Batch timeout (s)',
       wmProgressIntervalFrames: 'Progress interval (frames)',
       wmThreadLogging: 'Enable thread logging',
+      wmConcurrencyInvalid: 'Concurrent threads cannot exceed max concurrent threads.',
       // Video Analysis Settings
       videoAnalysisSettings: 'Video Analysis',
       videoAnalysisSettingsDesc: 'Configure video analysis queue, VLM processing, and frame extraction',
@@ -3961,6 +3976,7 @@ export const translations: Record<string, Translations> = {
       videoDurationValidationFailed: 'Total video duration must exceed the voice segment duration. Please add more videos.',
     },
          scriptPanel: {
+       tabsLabel: 'Script type',
        tabs: {
          narrationScript: 'Narration Script',
          aiVideoScript: 'AI Video Script',
@@ -4155,6 +4171,12 @@ export const translations: Record<string, Translations> = {
          aiPromptFailedToast: 'AI prompt generation failed: {reason}',
         },
      },
+   videoEditing: {
+     autoMix: {
+       noMaterials: 'Add video, audio, or image materials before running auto-mix.',
+       noScriptMaterials: 'Auto-mix needs audio and video generated from the text-script panel — run TTS and AI video matching first.',
+     },
+   },
    videoScript: {
      tab: {
        aiVideo: 'AI Video Script',
@@ -5562,6 +5584,9 @@ export const translations: Record<string, Translations> = {
       settingsSaveSuccess: '设置保存成功',
       settingsSaveError: '设置保存失败',
       autoSaveNote: '更改会自动保存。',
+      savingNote: '正在保存…',
+      savedNote: '已保存到您的账户',
+      saveErrorNote: '保存失败，请稍后重试',
     },
     adminSettings: {
       title: '管理员设置',
@@ -5927,6 +5952,7 @@ export const translations: Record<string, Translations> = {
       wmBatchTimeout: '批处理超时（秒）',
       wmProgressIntervalFrames: '进度记录间隔（帧）',
       wmThreadLogging: '启用线程日志',
+      wmConcurrencyInvalid: '并发线程数不能超过最大并发线程数。',
       // Video Analysis Settings
       videoAnalysisSettings: '视频分析设置',
       videoAnalysisSettingsDesc: '配置视频分析队列、VLM 处理和帧提取',
@@ -6702,6 +6728,7 @@ export const translations: Record<string, Translations> = {
       videoDurationValidationFailed: '当前所有添加的视频总长度必须大于语音段落的时间长度，请继续添加视频',
     },
          scriptPanel: {
+       tabsLabel: '脚本类型',
        tabs: {
          narrationScript: '解说脚本',
          aiVideoScript: 'AI视频脚本',
@@ -6896,6 +6923,12 @@ export const translations: Record<string, Translations> = {
          aiPromptFailedToast: 'AI 提示词生成失败：{reason}',
         },
      },
+   videoEditing: {
+     autoMix: {
+       noMaterials: '请先添加视频、音频或图片素材后再使用自动混剪。',
+       noScriptMaterials: '自动混剪需要由文本脚本生成的音频和视频素材，请先在「文本脚本」面板完成 TTS 与 AI 视频匹配。',
+     },
+   },
    videoScript: {
      tab: {
        aiVideo: 'AI视频脚本',

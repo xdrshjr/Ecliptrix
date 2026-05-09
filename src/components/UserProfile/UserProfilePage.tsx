@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
 import UserProfileSidebar from './UserProfileSidebar';
@@ -18,6 +18,31 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({ onClose, initialSecti
   const { t } = useLocale();
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState<ProfileSection>(initialSection);
+
+  useEffect(() => {
+    const trigger =
+      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      onClose();
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (trigger && document.body.contains(trigger)) {
+        try { trigger.focus(); } catch { /* ignore */ }
+      }
+    };
+  }, [onClose]);
 
   if (!user) {
     return null;

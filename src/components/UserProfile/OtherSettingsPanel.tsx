@@ -2,6 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import {
+  fetchUserPreferences,
+  useUserPreferencesMutation,
+  type UserPreferences,
+} from '@/lib/api/userPreferences';
 
 const STORAGE_KEY_TOGGLES = 'ecliptrix-other-settings';
 const STORAGE_KEY_THEME_PREF = 'ecliptrix-theme-pref';
@@ -53,6 +58,7 @@ interface SettingsData {
 
 const OtherSettingsPanel: React.FC = () => {
   const { t, locale, setLocale } = useLocale();
+  const { patch, status } = useUserPreferencesMutation();
 
   const [settings, setSettings] = useState<SettingsData>(() => ({
     ...loadToggles(),
@@ -62,6 +68,48 @@ const OtherSettingsPanel: React.FC = () => {
     },
   }));
 
+  // Hydrate from server on mount; server preferences win over localStorage.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const remote = await fetchUserPreferences();
+      if (cancelled || !remote) return;
+      setSettings({
+        notifications: {
+          email: remote.notifications.email,
+          push: remote.notifications.push,
+          marketing: remote.notifications.marketing,
+        },
+        privacy: {
+          profileVisible: remote.privacy.profile_visible,
+          activityVisible: remote.privacy.activity_visible,
+        },
+        preferences: {
+          theme: remote.theme,
+          language: remote.language,
+        },
+      });
+      try {
+        localStorage.setItem(
+          STORAGE_KEY_TOGGLES,
+          JSON.stringify({
+            notifications: remote.notifications,
+            privacy: {
+              profileVisible: remote.privacy.profile_visible,
+              activityVisible: remote.privacy.activity_visible,
+            },
+          })
+        );
+      } catch { /* ignore */ }
+      if (remote.language !== locale) {
+        setLocale(remote.language);
+      }
+      applyTheme(remote.theme);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sync language when locale changes externally
   useEffect(() => {
     setSettings(prev => ({
@@ -70,35 +118,91 @@ const OtherSettingsPanel: React.FC = () => {
     }));
   }, [locale]);
 
-  const handleToggle = (section: 'notifications' | 'privacy', key: string, value: boolean) => {
+  const persistTogglesLocally = (next: SettingsData) => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY_TOGGLES,
+        JSON.stringify({ notifications: next.notifications, privacy: next.privacy })
+      );
+    } catch { /* ignore */ }
+  };
+
+  const handleNotificationToggle = (key: 'email' | 'push' | 'marketing', value: boolean) => {
     setSettings(prev => {
+      const prevNotifications = prev.notifications;
       const next = {
         ...prev,
-        [section]: { ...prev[section], [key]: value },
+        notifications: { ...prevNotifications, [key]: value },
       };
-      // Persist toggles to localStorage
-      try {
-        localStorage.setItem(STORAGE_KEY_TOGGLES, JSON.stringify({ notifications: next.notifications, privacy: next.privacy }));
-      } catch { /* ignore */ }
+      persistTogglesLocally(next);
+      patch({
+        delta: { notifications: next.notifications as UserPreferences['notifications'] },
+        rollback: () => setSettings(s => {
+          const reverted = { ...s, notifications: prevNotifications };
+          persistTogglesLocally(reverted);
+          return reverted;
+        }),
+      });
+      return next;
+    });
+  };
+
+  const handlePrivacyToggle = (key: 'profileVisible' | 'activityVisible', value: boolean) => {
+    setSettings(prev => {
+      const prevPrivacy = prev.privacy;
+      const next = {
+        ...prev,
+        privacy: { ...prevPrivacy, [key]: value },
+      };
+      persistTogglesLocally(next);
+      patch({
+        delta: {
+          privacy: {
+            profile_visible: next.privacy.profileVisible,
+            activity_visible: next.privacy.activityVisible,
+          },
+        },
+        rollback: () => setSettings(s => {
+          const reverted = { ...s, privacy: prevPrivacy };
+          persistTogglesLocally(reverted);
+          return reverted;
+        }),
+      });
       return next;
     });
   };
 
   const handleLanguageChange = (language: 'en' | 'zh-CN') => {
+    const prevLanguage = settings.preferences.language;
     setSettings(prev => ({
       ...prev,
       preferences: { ...prev.preferences, language },
     }));
     setLocale(language);
+    patch({
+      delta: { language },
+      rollback: () => {
+        setSettings(s => ({ ...s, preferences: { ...s.preferences, language: prevLanguage } }));
+        setLocale(prevLanguage);
+      },
+    });
   };
 
   const handleThemeChange = useCallback((theme: 'light' | 'dark' | 'auto') => {
+    const prevTheme = settings.preferences.theme;
     setSettings(prev => ({
       ...prev,
       preferences: { ...prev.preferences, theme },
     }));
     applyTheme(theme);
-  }, []);
+    patch({
+      delta: { theme },
+      rollback: () => {
+        setSettings(s => ({ ...s, preferences: { ...s.preferences, theme: prevTheme } }));
+        applyTheme(prevTheme);
+      },
+    });
+  }, [settings.preferences.theme, patch]);
 
   // Listen for system color scheme changes when in auto mode
   useEffect(() => {
@@ -126,6 +230,15 @@ const OtherSettingsPanel: React.FC = () => {
       />
     </button>
   );
+
+  const noteText =
+    status === 'saving'
+      ? (t.profile.savingNote || 'Saving…')
+      : status === 'saved'
+        ? (t.profile.savedNote || 'Saved to your account')
+        : status === 'error'
+          ? (t.profile.saveErrorNote || 'Failed to save — will retry')
+          : (t.profile.autoSaveNote || 'Changes are saved automatically.');
 
   return (
     <div className="p-8 flex justify-center">
@@ -157,7 +270,7 @@ const OtherSettingsPanel: React.FC = () => {
               </div>
               <ToggleSwitch
                 enabled={settings.notifications.email}
-                onChange={(value) => handleToggle('notifications', 'email', value)}
+                onChange={(value) => handleNotificationToggle('email', value)}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -171,7 +284,7 @@ const OtherSettingsPanel: React.FC = () => {
               </div>
               <ToggleSwitch
                 enabled={settings.notifications.push}
-                onChange={(value) => handleToggle('notifications', 'push', value)}
+                onChange={(value) => handleNotificationToggle('push', value)}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -185,7 +298,7 @@ const OtherSettingsPanel: React.FC = () => {
               </div>
               <ToggleSwitch
                 enabled={settings.notifications.marketing}
-                onChange={(value) => handleToggle('notifications', 'marketing', value)}
+                onChange={(value) => handleNotificationToggle('marketing', value)}
               />
             </div>
           </div>
@@ -208,7 +321,7 @@ const OtherSettingsPanel: React.FC = () => {
               </div>
               <ToggleSwitch
                 enabled={settings.privacy.profileVisible}
-                onChange={(value) => handleToggle('privacy', 'profileVisible', value)}
+                onChange={(value) => handlePrivacyToggle('profileVisible', value)}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -222,7 +335,7 @@ const OtherSettingsPanel: React.FC = () => {
               </div>
               <ToggleSwitch
                 enabled={settings.privacy.activityVisible}
-                onChange={(value) => handleToggle('privacy', 'activityVisible', value)}
+                onChange={(value) => handlePrivacyToggle('activityVisible', value)}
               />
             </div>
           </div>
@@ -266,8 +379,12 @@ const OtherSettingsPanel: React.FC = () => {
 
         {/* Auto-save note */}
         <div className="pt-6 border-t border-border">
-          <p className="text-xs text-muted-foreground">
-            {t.profile.autoSaveNote || 'Changes are saved automatically.'}
+          <p
+            role="status"
+            aria-live="polite"
+            className={`text-xs ${status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}
+          >
+            {noteText}
           </p>
         </div>
       </div>

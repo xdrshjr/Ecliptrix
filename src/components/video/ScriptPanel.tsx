@@ -1900,8 +1900,34 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         </div>
 
         {/* Tab 栏 */}
-        <div className="flex space-x-1 mt-3 p-1 bg-muted rounded-md">
+        <div
+          role="tablist"
+          aria-label={t.scriptPanel.tabsLabel}
+          className="flex space-x-1 mt-3 p-1 bg-muted rounded-md"
+          onKeyDown={(e) => {
+            const order: Array<typeof activeTab> = ['narration', 'aiVideo', 'storyboard'];
+            const idx = order.indexOf(activeTab);
+            if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              setActiveTab(order[(idx + 1) % order.length]);
+            } else if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              setActiveTab(order[(idx - 1 + order.length) % order.length]);
+            } else if (e.key === 'Home') {
+              e.preventDefault();
+              setActiveTab(order[0]);
+            } else if (e.key === 'End') {
+              e.preventDefault();
+              setActiveTab(order[order.length - 1]);
+            }
+          }}
+        >
           <button
+            id="tab-narration"
+            role="tab"
+            aria-selected={activeTab === 'narration'}
+            aria-controls="panel-narration"
+            tabIndex={activeTab === 'narration' ? 0 : -1}
             className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               activeTab === 'narration' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -1910,6 +1936,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {t.scriptPanel.tabs.narrationScript}
           </button>
           <button
+            id="tab-aivideo"
+            role="tab"
+            aria-selected={activeTab === 'aiVideo'}
+            aria-controls="panel-aivideo"
+            tabIndex={activeTab === 'aiVideo' ? 0 : -1}
             className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               activeTab === 'aiVideo' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -1918,6 +1949,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             {t.scriptPanel.tabs.aiVideoScript}
           </button>
           <button
+            id="tab-storyboard"
+            role="tab"
+            aria-selected={activeTab === 'storyboard'}
+            aria-controls="panel-storyboard"
+            tabIndex={activeTab === 'storyboard' ? 0 : -1}
             className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               activeTab === 'storyboard' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -1929,6 +1965,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       </div>
 
       {/* Tab 内容区域 */}
+      <div
+        role="tabpanel"
+        id={`panel-${activeTab === 'aiVideo' ? 'aivideo' : activeTab}`}
+        aria-labelledby={`tab-${activeTab === 'aiVideo' ? 'aivideo' : activeTab}`}
+        className="flex-1 flex flex-col overflow-hidden min-h-0"
+      >
       {activeTab === 'storyboard' ? (
         onUpdateStoryboardScriptSegments ? (
           <StoryboardScriptTab
@@ -2651,8 +2693,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       />
       </>
       )}
+      </div>
     </div>
   );
 };
 
-export default ScriptPanel; 
+export default ScriptPanel;

@@ -29,6 +29,9 @@ from app.models.user_models import (
     UserCreateRequest,
     UserCreateResponse,
     ResetPasswordRequest,
+    UserPreferences,
+    UserPreferencesUpdate,
+    UserPreferencesResponse,
 )
 from app.models.db_models import User
 from app.services.user_service import user_service
@@ -153,6 +156,57 @@ async def get_user_profile(
             "error_type": type(e).__name__
         })
         raise HTTPException(status_code=500, detail="服务器内部错误")
+
+
+# ---------------------------------------------------------------------------
+# GET / PATCH /user/me/preferences
+# ---------------------------------------------------------------------------
+
+@router.get("/me/preferences", response_model=UserPreferencesResponse)
+async def get_my_preferences(
+    current_user: User = Depends(get_current_user),
+) -> UserPreferencesResponse:
+    """Return the calling user's preferences, falling back to defaults."""
+    raw = current_user.preferences or {}
+    return UserPreferencesResponse(
+        success=True,
+        preferences=UserPreferences.model_validate(raw),
+    )
+
+
+@router.patch("/me/preferences", response_model=UserPreferencesResponse)
+async def update_my_preferences(
+    payload: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserPreferencesResponse:
+    """Patch the calling user's preferences.
+
+    PATCH semantics: top-level fields use ``exclude_unset`` (untouched fields
+    keep their current value), but nested sub-objects (notifications/privacy)
+    are replaced as a whole — the FE always sends the full sub-object after
+    toggling one key, which avoids partial-of-partial PATCH gymnastics.
+    """
+    delta = payload.model_dump(exclude_unset=True)
+
+    if not delta:
+        return UserPreferencesResponse(
+            success=True,
+            preferences=UserPreferences.model_validate(current_user.preferences or {}),
+        )
+
+    current = dict(current_user.preferences or {})
+    merged = {**current, **delta}
+
+    # Validate the merged shape (raises 422 on unknown enum / forbidden keys).
+    validated = UserPreferences.model_validate(merged)
+
+    # Re-assign the whole dict so SQLAlchemy detects the JSON column mutation.
+    current_user.preferences = validated.model_dump()
+    await db.commit()
+    await db.refresh(current_user)
+
+    return UserPreferencesResponse(success=True, preferences=validated)
 
 
 # ---------------------------------------------------------------------------

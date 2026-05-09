@@ -6,7 +6,7 @@ Downstream consumers (frontend proxy, UI panels) depend on these shapes.
 """
 
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 # ── Category metadata ──
@@ -113,6 +113,37 @@ class TTSLoggingConfig(BaseModel):
     log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR']
 
 
+class WatermarkRemoval(BaseModel):
+    """Concurrency / batching for watermark removal worker pool.
+
+    Cross-field invariant: ``concurrent_threads`` must not exceed
+    ``max_concurrent_threads`` — otherwise the scheduler could request more
+    threads than the pool ceiling and silently starve work.
+    """
+    model_config = ConfigDict(extra='allow')
+    concurrent_threads: int = Field(ge=1, le=20)
+    max_concurrent_threads: int = Field(ge=1, le=30)
+    batch_size: int = Field(ge=10, le=200)
+    batch_timeout: int = Field(ge=10, le=300)
+
+    @model_validator(mode='after')
+    def _check_concurrency_ordering(self) -> 'WatermarkRemoval':
+        if self.concurrent_threads > self.max_concurrent_threads:
+            raise ValueError(
+                f"concurrent_threads ({self.concurrent_threads}) cannot exceed "
+                f"max_concurrent_threads ({self.max_concurrent_threads})"
+            )
+        return self
+
+
+class WatermarkLogging(BaseModel):
+    model_config = ConfigDict(extra='allow')
+    enable_detailed_logs: bool
+    log_progress_interval: int = Field(ge=1, le=1000)
+    log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR']
+    enable_thread_logging: bool
+
+
 # Map: category -> (key -> validator). Add upload/watermark/etc here as they
 # get explicit bounds; absent (category, key) pairs fall through unvalidated.
 CATEGORY_KEY_VALIDATORS: Dict[str, Dict[str, type[BaseModel]]] = {
@@ -122,6 +153,10 @@ CATEGORY_KEY_VALIDATORS: Dict[str, Dict[str, type[BaseModel]]] = {
         'limits': TTSLimits,
         'logging': TTSLoggingConfig,
         # 'voices' is a freeform list; validated by VoiceListEditor on the FE.
+    },
+    'watermark': {
+        'removal': WatermarkRemoval,
+        'logging': WatermarkLogging,
     },
 }
 

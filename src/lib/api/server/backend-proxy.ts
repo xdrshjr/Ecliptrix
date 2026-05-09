@@ -116,7 +116,7 @@ export interface ProxyErrorEnvelope {
 
 const DEFAULT_TIMEOUT_MS = 60_000
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 async function resolveBackendPath(
   backendPath: BackendPath,
@@ -383,6 +383,14 @@ export const backendProxy = {
     opts?: ProxyOptions,
   ): Promise<Response> {
     return executeProxy('PUT', req, backendPath, ctx, opts)
+  },
+  patch(
+    req: NextRequest,
+    backendPath: BackendPath,
+    ctx?: RouteContext,
+    opts?: ProxyOptions,
+  ): Promise<Response> {
+    return executeProxy('PATCH', req, backendPath, ctx, opts)
   },
   del(
     req: NextRequest,

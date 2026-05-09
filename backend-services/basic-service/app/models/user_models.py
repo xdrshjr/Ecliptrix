@@ -2,8 +2,8 @@
 User profile data models.
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
+from typing import Literal, Optional, Dict, Any
 from datetime import datetime
 
 
@@ -100,30 +100,48 @@ class UserProfileResponse(BaseModel):
         }
 
 
-class UserSettingsUpdate(BaseModel):
-    """用户设置更新数据模型"""
-    notifications: Optional[Dict[str, bool]] = Field(None, description="通知设置")
-    privacy: Optional[Dict[str, bool]] = Field(None, description="隐私设置")
-    preferences: Optional[Dict[str, Any]] = Field(None, description="偏好设置")
+class NotificationPrefs(BaseModel):
+    """Notification preferences sub-object."""
+    model_config = ConfigDict(extra='forbid')
+    email: bool = True
+    push: bool = False
+    marketing: bool = False
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "notifications": {
-                    "email": True,
-                    "push": False,
-                    "marketing": False
-                },
-                "privacy": {
-                    "profile_visible": True,
-                    "activity_visible": False
-                },
-                "preferences": {
-                    "theme": "light",
-                    "language": "zh-CN"
-                }
-            }
-        }
+
+class PrivacyPrefs(BaseModel):
+    """Privacy visibility sub-object."""
+    model_config = ConfigDict(extra='forbid')
+    profile_visible: bool = True
+    activity_visible: bool = False
+
+
+class UserPreferences(BaseModel):
+    """Authoritative server-side shape for /user/me/preferences."""
+    model_config = ConfigDict(extra='forbid')
+    notifications: NotificationPrefs = Field(default_factory=NotificationPrefs)
+    privacy: PrivacyPrefs = Field(default_factory=PrivacyPrefs)
+    language: Literal['en', 'zh-CN'] = 'zh-CN'
+    theme: Literal['light', 'dark', 'auto'] = 'dark'
+
+
+class UserPreferencesUpdate(BaseModel):
+    """PATCH body — every top-level field optional; sub-objects are full
+    replacements (FE always sends the whole sub-object after toggling a key)."""
+    model_config = ConfigDict(extra='forbid')
+    notifications: Optional[NotificationPrefs] = None
+    privacy: Optional[PrivacyPrefs] = None
+    language: Optional[Literal['en', 'zh-CN']] = None
+    theme: Optional[Literal['light', 'dark', 'auto']] = None
+
+
+class UserPreferencesResponse(BaseModel):
+    success: bool
+    preferences: UserPreferences
+
+
+# Back-compat alias for any legacy import sites that still reference the
+# loose dict-based shape. Prefer ``UserPreferencesUpdate`` for new code.
+UserSettingsUpdate = UserPreferencesUpdate
 
 
 class UserListResponse(BaseModel):

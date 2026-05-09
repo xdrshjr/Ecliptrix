@@ -2105,10 +2105,10 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                         alt={material.name}
                         className="w-full h-full object-cover pointer-events-none"
                         onLoad={() => {
-                          console.log(`[MaterialsPanel] 缩略图加载成功: ${material.name}`, {
+                          logger.debug('thumb-loaded', {
                             materialId: material.id,
                             thumbnailUrl: material.thumbnailUrl,
-                            materialType: material.type
+                            materialType: material.type,
                           });
                         }}
                         onError={(e) => {

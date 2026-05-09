@@ -35,6 +35,11 @@ class User(Base):
     session_device_info = Column(Text, nullable=True)
     session_ip_address = Column(String(50), nullable=True)
 
+    # Self-service preferences (notifications, privacy, language, theme).
+    # JSON (not JSONB) for SQLite test parity; queries use ORM-level mutation
+    # (re-assign whole dict) since SQLAlchemy doesn't auto-flag JSON mutations.
+    preferences = Column(JSON, nullable=False, default=dict, server_default='{}')
+
 
 class AgentWorkflow(Base):
     __tablename__ = "agent_workflows"

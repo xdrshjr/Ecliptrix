@@ -114,7 +114,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   onUpdateContent,
 }) => {
   // 获取国际化上下文
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   
   // 获取通知上下文
   const { showSuccess, showError } = useNotification();
@@ -1851,6 +1851,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 新增：AI自动混剪功能
   const handleAutoMixAudio = useCallback(() => {
+    if (materialManagement.allMaterials.length === 0) {
+      showError(t.videoEditing.autoMix.noMaterials, 5000);
+      return;
+    }
+
     console.log(`[VideoEditingInterface] 开始AI自动混剪`, {
       taskId,
       totalMaterialsCount: materialManagement.allMaterials.length,
@@ -1896,23 +1901,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
 
     if (scriptAudioMaterials.length === 0 && scriptVideoMaterials.length === 0) {
-      console.warn(`[VideoEditingInterface] 未找到从文本脚本转换的音频或视频素材`, {
-        taskId,
-        troubleshooting: {
-          message: '请确保：1) 已完成文本转语音 2) 已完成AI匹配视频 3) 素材包含正确的segment_id和segment_number元数据',
-          audioMaterialsWithSegmentData: materialManagement.allMaterials.filter(m => m.type === 'audio' && m.metadata?.segment_id).length,
-          videoMaterialsWithSegmentData: materialManagement.allMaterials.filter(m => m.type === 'video' && m.metadata?.segment_id).length
-        },
-        availableMaterials: materialManagement.allMaterials.map(m => ({
-          id: m.id,
-          name: m.name,
-          type: m.type,
-          hasSegmentId: !!m.metadata?.segment_id,
-          hasSegmentNumber: typeof m.metadata?.segment_number === 'number',
-          segmentId: m.metadata?.segment_id,
-          segmentNumber: m.metadata?.segment_number
-        }))
-      });
+      showError(t.videoEditing.autoMix.noScriptMaterials, 6000);
       return;
     }
 
@@ -1974,7 +1963,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       totalMaterialsProcessed: combinedMaterials.length,
       timestamp: Date.now()
     });
-  }, [taskId, materialManagement.allMaterials]);
+  }, [taskId, materialManagement.allMaterials, showError, t]);
 
   // 新增：AI混剪功能 - 显示模式选择弹窗
   const handleAIMixedEditing = useCallback(() => {
