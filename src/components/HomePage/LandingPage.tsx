@@ -131,16 +131,25 @@ const LandingPage: React.FC<LandingPageProps> = ({
                 : isLoadingDisabled
                   ? 'opacity-60 cursor-wait pointer-events-none'
                   : '';
+              const handleActivate = () => {
+                if (isComingSoon || isAuthLoading) return;
+                handleGetStarted(feature.type);
+              };
               return (
                 <div
                   key={index}
                   className={`landing-feature-card relative ${stateClass}`}
-                  onClick={() => {
-                    if (isComingSoon || isAuthLoading) return;
-                    handleGetStarted(feature.type);
+                  role="button"
+                  tabIndex={isComingSoon ? -1 : 0}
+                  aria-disabled={isComingSoon || isLoadingDisabled || undefined}
+                  aria-label={`${feature.title} — ${feature.description}`}
+                  onClick={handleActivate}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleActivate();
+                    }
                   }}
-                  role={isComingSoon ? 'button' : undefined}
-                  aria-disabled={isComingSoon || undefined}
                   title={isComingSoon ? t.landing.comingSoonHint : undefined}
                 >
                   <div className="landing-feature-icon bg-primary/10 text-primary">

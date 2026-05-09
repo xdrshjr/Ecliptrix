@@ -130,7 +130,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
         timestamp: new Date().toISOString()
       });
 
-      showWarning('请先登录后再使用任务功能', 4000);
+      showWarning(t.auth.loginRequiredForTasks, 4000);
       return;
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -10,11 +10,25 @@ interface LoginModalProps {
   onClose: () => void;
 }
 
+function getFocusable(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((el) => el.offsetParent !== null);
+}
+
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const { t } = useLocale();
   const { login } = useAuth();
   const notification = useNotification();
-  
+
+  const titleId = useId();
+  const errorId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -31,16 +45,46 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
-  // Close modal on escape key
+  // Focus the first field on open and restore focus on close
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+    if (!isOpen) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const id = window.requestAnimationFrame(() => {
+      usernameInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => {
+      window.cancelAnimationFrame(id);
+      previouslyFocusedRef.current?.focus?.();
+    };
+  }, [isOpen]);
+
+  // Combined keyboard handler: Escape closes, Tab/Shift+Tab traps focus
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const list = getFocusable(dialogRef.current);
+      if (list.length === 0) return;
+      const first = list[0]!;
+      const last = list[list.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (active && !dialogRef.current.contains(active)) {
+        e.preventDefault();
+        first.focus();
       }
     };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,12 +97,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
 
     if (!formData.username || !formData.password) {
-      console.warn('[LoginModal] Login validation failed:', {
-        hasUsername: !!formData.username,
-        hasPassword: !!formData.password,
-        error: 'missing required fields',
-        timestamp: new Date().toISOString()
-      });
       setError(t.auth.requiredFields);
       return;
     }
@@ -68,25 +106,15 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
     try {
       const result = await login(formData);
-      
+
       if (result.success) {
         onClose();
       } else {
-        console.warn('[LoginModal] Login failed:', {
-          username: formData.username,
-          error: result.error,
-          timestamp: new Date().toISOString()
-        });
         const errorMessage = result.error || t.auth.loginFailed;
         setError(errorMessage);
         notification.showError(errorMessage, 4000);
       }
-    } catch (err) {
-      console.error('[LoginModal] Login error occurred:', {
-        username: formData.username,
-        error: err,
-        timestamp: new Date().toISOString()
-      });
+    } catch {
       setError(t.auth.loginFailed);
       notification.showError(t.auth.loginFailed, 4000);
     } finally {
@@ -101,17 +129,26 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60"
+        aria-hidden="true"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl mx-4 bg-card rounded-md border border-border shadow-xl overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative w-full max-w-4xl mx-4 bg-card rounded-md border border-border shadow-xl overflow-hidden"
+      >
         {/* Close button */}
         <button
+          type="button"
           onClick={onClose}
+          aria-label={t.common.close}
           className="absolute top-4 right-4 z-10 w-8 h-8 rounded-md bg-muted hover:bg-accent flex items-center justify-center transition-colors"
         >
-          <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -121,7 +158,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           <div className="flex-1 p-8 lg:p-12">
             <div className="max-w-sm mx-auto">
               <div className="text-center mb-8">
-                <h2 className="text-2xl font-semibold text-foreground mb-2">
+                <h2 id={titleId} className="text-2xl font-semibold text-foreground mb-2">
                   {t.auth.welcomeBack}
                 </h2>
                 <p className="text-muted-foreground">
@@ -139,6 +176,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     name="username"
                     type="text"
                     autoComplete="username"
+                    ref={usernameInputRef}
+                    aria-invalid={!!error || undefined}
+                    aria-describedby={error ? errorId : undefined}
                     value={formData.username}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 bg-input border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors"
@@ -155,6 +195,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     name="password"
                     type="password"
                     autoComplete="current-password"
+                    aria-invalid={!!error || undefined}
+                    aria-describedby={error ? errorId : undefined}
                     value={formData.password}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 bg-input border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors"
@@ -163,7 +205,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <div
+                    id={errorId}
+                    role="alert"
+                    aria-live="assertive"
+                    aria-atomic="true"
+                    className="p-3 bg-destructive/10 border border-destructive/20 rounded-md"
+                  >
                     <p className="text-sm text-destructive">{error}</p>
                   </div>
                 )}
@@ -245,4 +293,4 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   );
 };
 
-export default LoginModal; 
+export default LoginModal;

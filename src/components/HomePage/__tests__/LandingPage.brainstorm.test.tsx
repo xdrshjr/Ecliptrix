@@ -37,7 +37,9 @@ describe('LandingPage — Bug #5 brainstorm coming-soon', () => {
   });
 
   it('comingSoon card carries aria-disabled and title tooltip', () => {
-    expect(src).toMatch(/aria-disabled=\{isComingSoon\s*\|\|\s*undefined\}/);
+    // iter9 Bug #3 widened aria-disabled to also cover the auth-loading state,
+    // so the expression is now `isComingSoon || isLoadingDisabled || undefined`.
+    expect(src).toMatch(/aria-disabled=\{isComingSoon\s*\|\|\s*isLoadingDisabled\s*\|\|\s*undefined\}/);
     expect(src).toMatch(/title=\{isComingSoon\s*\?\s*t\.landing\.comingSoonHint\s*:\s*undefined\}/);
   });
 

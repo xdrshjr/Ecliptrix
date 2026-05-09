@@ -21,7 +21,7 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   isBlurred = false,
 }) => {
   const { t } = useLocale();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { showWarning } = useNotification();
   const [isExpanded, setIsExpanded] = useState(false);
   const taskbarRef = useRef<HTMLDivElement>(null);
@@ -128,16 +128,11 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     onCloseTab(tabId);
   };
 
-  const handleTabClick = (e: React.MouseEvent, tab: Tab) => {
-    e.stopPropagation();
-
-    // 检查用户是否已登录
+  const selectTab = (tab: Tab) => {
     if (!isAuthenticated) {
-      showWarning('请先登录后再使用任务功能', 4000);
+      showWarning(t.auth.loginRequiredForTasks, 4000);
       return;
     }
-
-    // 如果任务栏未展开，先展开任务栏
     if (!isExpanded) {
       setIsExpanded(true);
     }
@@ -160,8 +155,22 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
             {tabs.map((tab) => (
               <div
                 key={tab.id}
+                role="button"
+                tabIndex={0}
+                aria-current={tab.isActive ? 'page' : undefined}
+                aria-label={getTaskLabel(tab.type)}
                 className={`taskbar-tab ${tab.isActive ? 'active' : ''}`}
-                onClick={(e) => handleTabClick(e, tab)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  selectTab(tab);
+                }}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectTab(tab);
+                  }
+                }}
                 title={!isExpanded ? getTaskLabel(tab.type) : undefined}
               >
                 <div className="tab-icon">
@@ -170,10 +179,13 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
                 <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
                   <span className="tab-title">{getTaskLabel(tab.type)}</span>
                   <button
+                    type="button"
                     onClick={(e) => handleTabClose(e, tab.id)}
+                    aria-label={t.common.closeTab.replace('{title}', getTaskLabel(tab.type))}
+                    title={t.common.closeTab.replace('{title}', getTaskLabel(tab.type))}
                     className="tab-close"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>

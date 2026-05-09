@@ -9,7 +9,21 @@ import {
   login as authLogin,
   validateSession as authValidateSession,
 } from '@/lib/api/auth';
-import { resetSessionExpiryFlag } from '@/lib/api/http-client';
+import {
+  ApiError,
+  TimeoutError,
+  resetSessionExpiryFlag,
+} from '@/lib/api/http-client';
+
+let lastNetworkWarnAt = 0;
+const NETWORK_WARN_THROTTLE_MS = 30_000;
+
+function isNetworkUnreachable(err: unknown): boolean {
+  return (
+    (err instanceof ApiError && err.code === 'NETWORK_ERROR') ||
+    err instanceof TimeoutError
+  );
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -142,6 +156,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return false;
       }
     } catch (error) {
+      if (isNetworkUnreachable(error)) {
+        const now = Date.now();
+        if (now - lastNetworkWarnAt > NETWORK_WARN_THROTTLE_MS) {
+          lastNetworkWarnAt = now;
+          const code = error instanceof ApiError ? error.code : 'TIMEOUT';
+          console.warn('[AuthContext] Session validation skipped:', code);
+        }
+        return false;
+      }
       console.error('[AuthContext] Session validation error:', error);
       return false;
     }

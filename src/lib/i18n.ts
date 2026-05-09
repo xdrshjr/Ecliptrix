@@ -11,6 +11,7 @@ export interface Translations {
     operational: string;
     close: string;
     closePanel: string;
+    closeTab: string;
     cancel: string;
     confirm: string;
     underDevelopment: string;
@@ -63,6 +64,7 @@ export interface Translations {
     loginFailed: string;
     invalidCredentials: string;
     requiredFields: string;
+    loginRequiredForTasks: string;
     loggingIn: string;
     networkError: string;
     networkTimeout: string;
@@ -2802,6 +2804,7 @@ export const translations: Record<string, Translations> = {
       operational: 'Operational',
       close: 'Close',
       closePanel: 'Close panel',
+      closeTab: 'Close tab {title}',
       cancel: 'Cancel',
       confirm: 'Confirm',
       underDevelopment: 'Feature under development...',
@@ -2854,6 +2857,7 @@ export const translations: Record<string, Translations> = {
       loginFailed: 'Login failed',
       invalidCredentials: 'Invalid username or password',
       requiredFields: 'Username and password are required',
+      loginRequiredForTasks: 'Please sign in to use task features',
       loggingIn: 'Logging in...',
       networkError: 'Network error — please try again',
       networkTimeout: 'Request timed out — please try again',
@@ -5621,6 +5625,7 @@ export const translations: Record<string, Translations> = {
       operational: '正常运行',
       close: '关闭',
       closePanel: '关闭面板',
+      closeTab: '关闭标签 {title}',
       cancel: '取消',
       confirm: '确定',
       underDevelopment: '功能开发中...',
@@ -5673,6 +5678,7 @@ export const translations: Record<string, Translations> = {
       loginFailed: '登录失败',
       invalidCredentials: '用户名或密码错误',
       requiredFields: '用户名和密码为必填项',
+      loginRequiredForTasks: '请先登录后再使用任务功能',
       loggingIn: '登录中...',
       networkError: '网络异常，请稍后重试',
       networkTimeout: '请求超时，请稍后重试',
