@@ -103,6 +103,20 @@ def _get_create_semaphore() -> asyncio.Semaphore:
     return _create_semaphore
 
 
+# Per-pack asyncio locks serialise read-modify-write of metadata.json
+# inside one process. Multi-worker deploys need a Postgres advisory lock
+# instead — see spec §10 follow-up.
+_pack_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _get_pack_lock(pack_id: str) -> asyncio.Lock:
+    lock = _pack_locks.get(pack_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _pack_locks[pack_id] = lock
+    return lock
+
+
 # ---------------------------------------------------------------------------
 # Layout helpers
 # ---------------------------------------------------------------------------
@@ -351,27 +365,33 @@ async def delete_pack(
                 {"pack_id": pack_id, "error": str(exc)},
             )
 
+    await _delete_pack_from_oss(date_str, pack_id)
+
+
+async def _delete_pack_from_oss(date_str: str, pack_id: str) -> None:
+    """Delete all OSS objects under a frame pack's prefix (best-effort)."""
     oss_client = get_oss_client()
-    if oss_client:
-        try:
-            prefix = f"{FRAME_STORAGE_DIR}/{date_str}/{pack_id}/"
+    if not oss_client:
+        return
+    try:
+        prefix = f"{FRAME_STORAGE_DIR}/{date_str}/{pack_id}/"
 
-            def _delete_prefix() -> None:
-                try:
-                    import oss2
+        def _delete_prefix() -> None:
+            try:
+                import oss2
 
-                    for obj in oss2.ObjectIterator(
-                        oss_client.bucket,
-                        prefix=oss_client.cfg.key_prefix + prefix,
-                    ):
-                        oss_client.bucket.delete_object(obj.key)
-                except Exception as inner_exc:
-                    logger.warning(f"OSS prefix deletion error: {inner_exc}")
+                for obj in oss2.ObjectIterator(
+                    oss_client.bucket,
+                    prefix=oss_client.cfg.key_prefix + prefix,
+                ):
+                    oss_client.bucket.delete_object(obj.key)
+            except Exception as inner_exc:
+                logger.warning(f"OSS prefix deletion error: {inner_exc}")
 
-            await asyncio.to_thread(_delete_prefix)
-            logger.info(f"Deleted OSS objects for frame pack {pack_id}")
-        except Exception as exc:
-            logger.warning(f"Failed to delete OSS objects for frame pack {pack_id}: {exc}")
+        await asyncio.to_thread(_delete_prefix)
+        logger.info(f"Deleted OSS objects for frame pack {pack_id}")
+    except Exception as exc:
+        logger.warning(f"Failed to delete OSS objects for frame pack {pack_id}: {exc}")
 
 
 async def cleanup_pack_storage(pack_ids: List[str]) -> None:
@@ -426,6 +446,215 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
                     "Failed to delete OSS objects during frame-pack cleanup",
                     {"pack_id": pid, "error": str(exc)},
                 )
+
+
+async def append_frames(
+    *,
+    db: AsyncSession,
+    user_id: str,
+    pack_id: str,
+    frames: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Append additional frames to an existing frame pack.
+
+    The caller (router) is responsible for parsing the multipart payload
+    and validating manifest/file ordinal pairing. This routine appends to
+    the on-disk pack while keeping ``metadata.json`` consistent under
+    per-pack lock + the shared create-semaphore.
+    """
+    if not frames:
+        raise ValueError("frames must not be empty")
+
+    semaphore = _get_create_semaphore()
+    async with semaphore:
+        async with _get_pack_lock(pack_id):
+            return await _append_frames_inner(
+                db=db,
+                user_id=user_id,
+                pack_id=pack_id,
+                frames=frames,
+            )
+
+
+async def _append_frames_inner(
+    *,
+    db: AsyncSession,
+    user_id: str,
+    pack_id: str,
+    frames: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    validate_pack_id(pack_id)
+    pack_directory = _pack_dir(pack_id)
+    if not pack_directory:
+        raise FileNotFoundError(f"Frame pack not found: {pack_id}")
+
+    metadata_path = os.path.join(pack_directory, "metadata.json")
+    if not os.path.isfile(metadata_path):
+        raise FileNotFoundError(f"metadata.json missing for frame pack: {pack_id}")
+
+    async with aiofiles.open(metadata_path, "r", encoding="utf-8") as f:
+        meta_text = await f.read()
+    metadata = json.loads(meta_text)
+    metadata_snapshot = meta_text  # for rollback
+
+    existing_frames: List[Dict[str, Any]] = list(metadata.get("frames") or [])
+    existing_max_ordinal = max(
+        (int(fr.get("index", 0)) for fr in existing_frames),
+        default=0,
+    )
+
+    cap = max_frames_per_pack()
+    if len(existing_frames) + len(frames) > cap:
+        raise ValueError(
+            f"frame_count_exceeds_limit: {len(existing_frames) + len(frames)} > {cap}"
+        )
+
+    written_files: List[str] = []
+    try:
+        new_frame_meta: List[Dict[str, Any]] = []
+        for i, fr in enumerate(frames, start=1):
+            ordinal = existing_max_ordinal + i
+            filename = f"frame_{ordinal:03d}.{FRAME_FILE_EXT}"
+            file_path = os.path.join(pack_directory, filename)
+            data: bytes = fr["data"]
+            async with aiofiles.open(file_path, "wb") as out:
+                await out.write(data)
+            written_files.append(file_path)
+            new_frame_meta.append({
+                "index": ordinal,
+                "filename": filename,
+                "timestamp_sec": float(fr.get("timestamp_sec", 0.0)),
+                "width": int(fr.get("width", 0)) or 0,
+                "height": int(fr.get("height", 0)) or 0,
+                "row": 0,
+                "col": ordinal - 1,
+            })
+
+        merged = existing_frames + new_frame_meta
+        merged.sort(key=lambda fr: float(fr.get("timestamp_sec", 0.0)))
+        metadata["frames"] = merged
+        metadata["frame_count"] = len(merged)
+        metadata["grid_size"] = f"1x{len(merged)}"
+
+        async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+
+        date_str = Path(pack_directory).parent.name
+        return grid_pack_service._pack_dict_from_metadata(
+            PACK_TYPE_FRAME, date_str, metadata
+        )
+    except Exception:
+        # Roll back: remove freshly-written frame files and restore metadata.json.
+        for path in written_files:
+            try:
+                os.remove(path)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    f"Rollback: failed to remove {path}: {cleanup_exc}"
+                )
+        try:
+            async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
+                await f.write(metadata_snapshot)
+        except Exception as cleanup_exc:
+            logger.warning(
+                f"Rollback: failed to restore metadata.json for {pack_id}: {cleanup_exc}"
+            )
+        raise
+
+
+async def delete_frame(
+    *,
+    db: AsyncSession,
+    pack_id: str,
+    frame_index: int,
+) -> Optional[Dict[str, Any]]:
+    """Delete a single frame from a pack. Returns ``None`` when the pack
+    became empty and was therefore removed entirely."""
+    async with _get_pack_lock(pack_id):
+        return await _delete_frame_inner(
+            db=db, pack_id=pack_id, frame_index=frame_index
+        )
+
+
+async def _delete_frame_inner(
+    *,
+    db: AsyncSession,
+    pack_id: str,
+    frame_index: int,
+) -> Optional[Dict[str, Any]]:
+    validate_pack_id(pack_id)
+    pack_directory = _pack_dir(pack_id)
+    if not pack_directory:
+        raise FileNotFoundError(f"Frame pack not found: {pack_id}")
+
+    metadata_path = os.path.join(pack_directory, "metadata.json")
+    if not os.path.isfile(metadata_path):
+        raise FileNotFoundError(f"metadata.json missing for frame pack: {pack_id}")
+
+    async with aiofiles.open(metadata_path, "r", encoding="utf-8") as f:
+        metadata = json.loads(await f.read())
+
+    frames_meta: List[Dict[str, Any]] = list(metadata.get("frames") or [])
+    target_idx = next(
+        (i for i, fr in enumerate(frames_meta) if int(fr.get("index", 0)) == frame_index),
+        None,
+    )
+    if target_idx is None:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error_code": "FRAME_NOT_FOUND",
+                "message": f"frame {frame_index} not found in pack {pack_id}",
+            },
+        )
+
+    target = frames_meta.pop(target_idx)
+    filename = str(target.get("filename") or f"frame_{frame_index:03d}.{FRAME_FILE_EXT}")
+    file_path = os.path.join(pack_directory, filename)
+    try:
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+    except Exception as exc:
+        logger.warning(
+            f"Failed to remove frame file {file_path}: {exc}"
+        )
+
+    if not frames_meta:
+        # Last frame removed → drop the whole pack (dir + ownership + OSS).
+        date_str = Path(pack_directory).parent.name
+        try:
+            shutil.rmtree(pack_directory, ignore_errors=True)
+        except Exception as exc:
+            logger.warning(
+                f"Failed to remove pack directory {pack_directory}: {exc}"
+            )
+        if db is not None:
+            from app.services import pack_ownership_service
+
+            try:
+                await pack_ownership_service.delete_by_pack(db, pack_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete frame pack ownership row",
+                    {"pack_id": pack_id, "error": str(exc)},
+                )
+        await _delete_pack_from_oss(date_str, pack_id)
+        # Clean the per-pack lock entry — pack no longer exists.
+        _pack_locks.pop(pack_id, None)
+        return None
+
+    metadata["frames"] = frames_meta
+    metadata["frame_count"] = len(frames_meta)
+    metadata["grid_size"] = f"1x{len(frames_meta)}"
+    async with aiofiles.open(metadata_path, "w", encoding="utf-8") as f:
+        await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+
+    date_str = Path(pack_directory).parent.name
+    return grid_pack_service._pack_dict_from_metadata(
+        PACK_TYPE_FRAME, date_str, metadata
+    )
 
 
 async def assert_pack_owned(

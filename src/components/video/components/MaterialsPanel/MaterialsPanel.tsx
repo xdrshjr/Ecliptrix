@@ -24,7 +24,7 @@ import CreateStoryboardPackModal from './CreateStoryboardPackModal';
 import { StoryboardPack, StoryboardFrame } from '@/types';
 import { listPacks, deletePack } from '@/lib/api/storyboard';
 import { listImagePacks, deleteImagePack, ImagePack } from '@/lib/api/imagePack';
-import { listFramePacks, deleteFramePack } from '@/lib/api/framePack';
+import { listFramePacks, deleteFramePack, deleteFrameFromPack } from '@/lib/api/framePack';
 import FramePackView from './FramePackView';
 import { http, ApiError } from '@/lib/api/http-client';
 import MaterialCacheBadge from '../MaterialCacheBadge';
@@ -153,6 +153,25 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     isOpen: boolean;
     packId: string | null;
   }>({ isOpen: false, packId: null });
+  // Append-mode context for the "Add Frames" entry. When non-null, the
+  // VideoProcessingModal is opened in frame-extraction append mode for
+  // this pack. Cleared on close.
+  const [framePackAppendCtx, setFramePackAppendCtx] = useState<{
+    packId: string;
+    sourceMaterialId: string;
+    sourceMaterialName: string;
+    sourceDurationSec: number;
+  } | null>(null);
+  // P1-5 click-debounce: keep the "Add Frames" button disabled from the
+  // moment it's clicked until the network request resolves (or the modal
+  // is closed without saving), so users can't double-tap into two
+  // concurrent appends against the same pack.
+  const [framePackAppendInFlight, setFramePackAppendInFlight] = useState<string | null>(null);
+  const [frameDeleteConfirm, setFrameDeleteConfirm] = useState<{
+    isOpen: boolean;
+    packId: string | null;
+    frameIndex: number | null;
+  }>({ isOpen: false, packId: null, frameIndex: null });
   // Ref 镜像：在"清除所有素材"确认回调里读取最新快照，避免闭包捕获造成漏删/重复删
   const storyboardPacksRef = useRef<StoryboardPack[]>([]);
   const characterPacksRef = useRef<ImagePack[]>([]);
@@ -338,6 +357,69 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       return [pack, ...without];
     });
   }, []);
+
+  // 帧包追加帧 / 单帧删除后的就地刷新。``updated == null`` 表示删完最后一帧，
+  // 后端把整个包也一并删了，这里需要从列表里把这个包剔除。
+  const handleFramePackUpdated = useCallback((updated: ImagePack | null, packId: string) => {
+    setFramePackAppendInFlight((cur) => (cur === packId ? null : cur));
+    if (updated == null) {
+      setFramePacks(prev => prev.filter(p => p.pack_id !== packId));
+      setCurrentFramePack(prev => (prev?.pack_id === packId ? null : prev));
+      return;
+    }
+    setFramePacks(prev => prev.map(p => p.pack_id === updated.pack_id ? updated : p));
+    setCurrentFramePack(prev => (prev?.pack_id === updated.pack_id ? updated : prev));
+  }, []);
+
+  // 用户在帧包详情页点「添加视频帧」→ 打开视频处理弹窗，进入帧提取 Tab，
+  // 进入 append 模式（同一个 pack）。
+  const handleOpenAddFrames = useCallback((pack: ImagePack) => {
+    if (framePackAppendInFlight === pack.pack_id) return;
+    setFramePackAppendInFlight(pack.pack_id);
+    setFramePackAppendCtx({
+      packId: pack.pack_id,
+      sourceMaterialId: pack.source_material_id ?? '',
+      sourceMaterialName: pack.source_material_name ?? '',
+      sourceDurationSec: pack.source_duration_sec ?? 0,
+    });
+    setIsVideoProcessingOpen(true);
+  }, [framePackAppendInFlight]);
+
+  // 单帧删除：先弹确认，确认后调接口；删完最后一帧时后端会把整个包也删掉，
+  // handleFramePackUpdated(null, ...) 会负责把它从列表里剔除。
+  const handleConfirmDeleteFrame = useCallback(async () => {
+    const { packId, frameIndex } = frameDeleteConfirm;
+    if (!packId || frameIndex == null) {
+      setFrameDeleteConfirm({ isOpen: false, packId: null, frameIndex: null });
+      return;
+    }
+    setFrameDeleteConfirm({ isOpen: false, packId: null, frameIndex: null });
+    if (!projectId) {
+      showError('无法删除帧：缺少项目上下文');
+      return;
+    }
+    try {
+      const updated = await deleteFrameFromPack({ projectId, packId, frameIndex });
+      handleFramePackUpdated(updated, packId);
+      if (updated == null) {
+        showSuccess(t.materialsPanel.framePackEmptiedRemoved ?? '已删除最后一帧，帧包同步移除');
+      } else {
+        showSuccess(t.materialsPanel.frameDeleted ?? '帧已删除');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showError(`${t.materialsPanel.deleteFrame ?? '删除帧'}: ${msg}`);
+    }
+  }, [
+    frameDeleteConfirm,
+    projectId,
+    handleFramePackUpdated,
+    showSuccess,
+    showError,
+    t.materialsPanel.framePackEmptiedRemoved,
+    t.materialsPanel.frameDeleted,
+    t.materialsPanel.deleteFrame,
+  ]);
 
   // 确认删除 人物/场景 建模包
   const handleConfirmDeleteImagePack = useCallback(async () => {
@@ -1848,6 +1930,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               pack={currentFramePack}
               onBack={() => setCurrentFramePack(null)}
               onDelete={(packId) => setFramePackDeleteConfirm({ isOpen: true, packId })}
+              onAddFrames={() => handleOpenAddFrames(currentFramePack)}
+              canAddFrames={
+                !!allMaterials.find((m) => m.id === currentFramePack.source_material_id)
+                && framePackAppendInFlight !== currentFramePack.pack_id
+              }
+              onDeleteFrame={(frameIndex) => setFrameDeleteConfirm({
+                isOpen: true,
+                packId: currentFramePack.pack_id,
+                frameIndex,
+              })}
               onFrameClick={(frame) => {
                 if (!frame.url) return;
                 setPreviewModal({
@@ -2621,6 +2713,16 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         onCancel={() => setFramePackDeleteConfirm({ isOpen: false, packId: null })}
       />
 
+      {/* 单帧删除确认对话框 */}
+      <ConfirmationDialog
+        isOpen={frameDeleteConfirm.isOpen}
+        title={t.materialsPanel.deleteFrameConfirmTitle || t.materialsPanel.deleteFrame || 'Delete frame'}
+        message={t.materialsPanel.deleteFrameConfirmBody || '确定要删除这一帧吗？此操作无法恢复。'}
+        type="danger"
+        onConfirm={handleConfirmDeleteFrame}
+        onCancel={() => setFrameDeleteConfirm({ isOpen: false, packId: null, frameIndex: null })}
+      />
+
       {/* 分镜包预览弹窗 */}
       <StoryboardPackModal
         isOpen={storyboardPackModal.isOpen}
@@ -2942,7 +3044,17 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       {/* 视频处理弹窗 */}
       <VideoProcessingModal
         isOpen={isVideoProcessingOpen}
-        onClose={() => setIsVideoProcessingOpen(false)}
+        onClose={() => {
+          setIsVideoProcessingOpen(false);
+          // Clear append ctx so the next "video processing" entry doesn't
+          // inherit append mode from a previous "Add Frames" run.
+          setFramePackAppendCtx(null);
+          // P1-5 caveat (§4.2.2 / §10): the request can't be aborted, so
+          // we clear the in-flight flag here too. Worst case: a still-in-
+          // flight append finishes and the ctx-less callback path becomes
+          // a no-op for the inFlight guard.
+          setFramePackAppendInFlight(null);
+        }}
         materials={allMaterials.filter(m => m.type === 'video')}
         onSilenceRemoved={handleSilenceRemoved}
         onMinimize={handleVideoProcessingMinimize}
@@ -2953,6 +3065,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         }}
         projectId={projectId}
         onFramePackCreated={handleFramePackCreated}
+        initialTab={framePackAppendCtx ? 'frame-extraction' : undefined}
+        framePackAppendCtx={framePackAppendCtx}
+        onFramePackUpdated={handleFramePackUpdated}
       />
 
       {/* 最小化进度指示器（浮动右下角） */}

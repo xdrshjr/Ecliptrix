@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import type { MaterialItem } from '@/types';
 import type { ImagePack } from '@/lib/api/imagePack';
-import { createFramePack } from '@/lib/api/framePack';
+import { appendFramesToPack, createFramePack } from '@/lib/api/framePack';
+import type { FramePackAppendCtx } from '../VideoProcessingModal';
 import FrameExtractorLayout from './FrameExtractorLayout';
 import type { CapturedFrame } from './useFrameExtraction';
 
@@ -21,12 +22,39 @@ interface FrameExtractionTabProps {
   /** Called after a frame pack is created so MaterialsPanel can refresh
    *  its frame-pack list without a full refetch. */
   onFramePackCreated?: (pack: ImagePack) => void;
+  /** When non-null, the tab runs in append mode: video selection is
+   *  skipped, save merges into the referenced pack instead of creating
+   *  a new one. */
+  appendCtx?: FramePackAppendCtx | null;
+  /** Append-mode response callback. ``pack`` is null when the pack was
+   *  emptied and removed (n/a for append; reserved for symmetry). */
+  onFramePackUpdated?: (pack: ImagePack | null, packId: string) => void;
+  /** Modal-level close proxy. In append mode the back button closes the
+   *  modal entirely (no second video to pick) — use the modal's own
+   *  handleClose so the auto-minimize guard is preserved. */
+  onRequestClose?: () => void;
+}
+
+function syntheticMaterialFromCtx(ctx: FramePackAppendCtx): MaterialItem {
+  return {
+    id: ctx.sourceMaterialId || `synthetic_${ctx.packId}`,
+    name: ctx.sourceMaterialName || 'source video',
+    type: 'video',
+    format: 'mp4',
+    size: 0,
+    url: '',
+    duration: ctx.sourceDurationSec ?? 0,
+    createdAt: new Date(),
+  };
 }
 
 const FrameExtractionTab: React.FC<FrameExtractionTabProps> = ({
   materials,
   projectId,
   onFramePackCreated,
+  appendCtx = null,
+  onFramePackUpdated,
+  onRequestClose,
 }) => {
   const { t } = useLocale();
   const { showSuccess, showError } = useNotification();
@@ -38,6 +66,31 @@ const FrameExtractionTab: React.FC<FrameExtractionTabProps> = ({
 
   const videos = materials.filter((m) => m.type === 'video');
 
+  // Reset state across append-mode boundaries (P1-2). The modal stays
+  // mounted between open/close cycles via hasEverOpened, so without this
+  // guard the next open would inherit stale phase/selectedVideo from the
+  // previous append run.
+  const prevAppendCtxRef = useRef(appendCtx);
+  useEffect(() => {
+    const wasAppend = prevAppendCtxRef.current != null;
+    const isAppend = appendCtx != null;
+    prevAppendCtxRef.current = appendCtx;
+
+    if (!wasAppend && isAppend) {
+      const matched = materials.find((m) => m.id === appendCtx!.sourceMaterialId)
+        ?? syntheticMaterialFromCtx(appendCtx!);
+      setSelectedVideo(matched);
+      setErrorMessage(null);
+      setPhase('extract');
+      return;
+    }
+    if (wasAppend && !isAppend) {
+      setSelectedVideo(null);
+      setErrorMessage(null);
+      setPhase('select');
+    }
+  }, [appendCtx, materials]);
+
   const handleSelectVideo = (video: MaterialItem) => {
     setSelectedVideo(video);
     setErrorMessage(null);
@@ -45,6 +98,12 @@ const FrameExtractionTab: React.FC<FrameExtractionTabProps> = ({
   };
 
   const handleBack = () => {
+    if (appendCtx) {
+      // Append mode: there's no "select video" page to fall back to —
+      // close the modal via the proxy that preserves auto-minimize.
+      onRequestClose?.();
+      return;
+    }
     setSelectedVideo(null);
     setErrorMessage(null);
     setPhase('select');
@@ -70,24 +129,37 @@ const FrameExtractionTab: React.FC<FrameExtractionTabProps> = ({
 
       setErrorMessage(null);
       setPhase('saving');
+      const frameInputs = frames.map((f, i) => ({
+        index: i + 1,
+        timestampSec: f.timestampSec,
+        width: f.width,
+        height: f.height,
+        blob: f.blob,
+      }));
       try {
-        const pack = await createFramePack({
-          projectId,
-          sourceMaterialId: selectedVideo.id,
-          sourceMaterialName: selectedVideo.name,
-          sourceDurationSec: selectedVideo.duration ?? 0,
-          frames: frames.map((f, i) => ({
-            index: i + 1,
-            timestampSec: f.timestampSec,
-            width: f.width,
-            height: f.height,
-            blob: f.blob,
-          })),
-        });
-        showSuccess(fe?.saveSuccess || 'Frame pack created');
-        onFramePackCreated?.(pack);
-        setSelectedVideo(null);
-        setPhase('select');
+        if (appendCtx) {
+          const pack = await appendFramesToPack({
+            projectId,
+            packId: appendCtx.packId,
+            frames: frameInputs,
+          });
+          showSuccess(t.materialsPanel.framePackUpdated ?? '已追加到帧包');
+          onFramePackUpdated?.(pack, appendCtx.packId);
+          // Defer to the modal's close path so auto-minimize guards apply.
+          onRequestClose?.();
+        } else {
+          const pack = await createFramePack({
+            projectId,
+            sourceMaterialId: selectedVideo.id,
+            sourceMaterialName: selectedVideo.name,
+            sourceDurationSec: selectedVideo.duration ?? 0,
+            frames: frameInputs,
+          });
+          showSuccess(fe?.saveSuccess || 'Frame pack created');
+          onFramePackCreated?.(pack);
+          setSelectedVideo(null);
+          setPhase('select');
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setErrorMessage(message);
@@ -95,7 +167,18 @@ const FrameExtractionTab: React.FC<FrameExtractionTabProps> = ({
         setPhase('extract');
       }
     },
-    [selectedVideo, projectId, fe, showSuccess, showError, onFramePackCreated],
+    [
+      selectedVideo,
+      projectId,
+      fe,
+      t.materialsPanel.framePackUpdated,
+      showSuccess,
+      showError,
+      onFramePackCreated,
+      appendCtx,
+      onFramePackUpdated,
+      onRequestClose,
+    ],
   );
 
   if (phase === 'extract' || phase === 'saving') {

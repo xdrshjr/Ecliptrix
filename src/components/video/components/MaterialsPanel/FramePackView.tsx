@@ -13,6 +13,16 @@ interface FramePackViewProps {
    *  frame as a reference image". When supplied, an extra button shows up
    *  on each frame card. */
   onUseFrameAsReference?: (frame: ImagePackFrame, pack: ImagePack) => void;
+  /** Open the "Add Frames" flow (re-opens VideoProcessingModal in append
+   *  mode targeting this pack). When omitted, the button is hidden. */
+  onAddFrames?: () => void;
+  /** Whether the "Add Frames" button is enabled. Disabled when the source
+   *  video is no longer in the materials library or when a previous
+   *  append is still in flight. */
+  canAddFrames?: boolean;
+  /** Remove a single frame from this pack. When omitted, the per-frame
+   *  delete affordance is hidden. */
+  onDeleteFrame?: (frameIndex: number) => void;
 }
 
 function formatTimestamp(sec: number | null | undefined): string | null {
@@ -28,6 +38,9 @@ const FramePackView: React.FC<FramePackViewProps> = ({
   onDelete,
   onFrameClick,
   onUseFrameAsReference,
+  onAddFrames,
+  canAddFrames,
+  onDeleteFrame,
 }) => {
   const { t } = useLocale();
   const mp = t.materialsPanel;
@@ -68,6 +81,17 @@ const FramePackView: React.FC<FramePackViewProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          {onAddFrames && (
+            <button
+              type="button"
+              disabled={!canAddFrames}
+              onClick={onAddFrames}
+              className="px-2 py-1 text-xs text-primary border border-primary/30 rounded hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={canAddFrames ? undefined : (mp.addFramesToPackDisabledHint ?? '原视频已不在素材库，请先重新导入')}
+            >
+              {mp.addFramesToPack ?? '添加视频帧'}
+            </button>
+          )}
           <button
             onClick={() => onDelete(pack.pack_id)}
             className="px-2 py-1 text-xs text-destructive border border-destructive/30 rounded hover:bg-destructive/10 transition-colors"
@@ -118,6 +142,18 @@ const FramePackView: React.FC<FramePackViewProps> = ({
                       className="absolute top-1 right-1 px-1.5 py-0.5 text-[10px] rounded bg-primary text-primary-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       use as ref
+                    </button>
+                  )}
+                  {onDeleteFrame && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onDeleteFrame(frame.index); }}
+                      className={`absolute ${onUseFrameAsReference ? 'top-1 right-7' : 'top-1 right-1'} w-6 h-6 rounded bg-destructive/80 hover:bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10`}
+                      title={mp.deleteFrame ?? 'Delete frame'}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   )}
                   <a

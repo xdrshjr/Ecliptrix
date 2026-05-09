@@ -8,7 +8,9 @@ cross-project access, deletion sweep).
 """
 from __future__ import annotations
 
+import asyncio
 import io
+import json
 import os
 
 import pytest
@@ -192,6 +194,239 @@ async def test_delete_pack_removes_disk_and_row(db_session, storage_root, monkey
         db=db_session, project_id=PROJECT_A, user_id=USER_1
     )
     assert listed == []
+
+
+@pytest.mark.asyncio
+async def test_append_success(db_session, storage_root, monkeypatch):
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+
+    base = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(1, 1.0), _frame_dict(2, 2.0), _frame_dict(3, 3.0)],
+    )
+    pack_id = base["pack_id"]
+
+    appended = await frame_pack_service.append_frames(
+        db=db_session,
+        user_id=USER_1,
+        pack_id=pack_id,
+        frames=[_frame_dict(1, 4.0), _frame_dict(2, 5.0)],
+    )
+    assert appended["frame_count"] == 5
+    timestamps = [f["timestamp_sec"] for f in appended["frames"]]
+    assert timestamps == sorted(timestamps)
+
+    pack_dir = frame_pack_service._pack_dir(pack_id)
+    assert pack_dir is not None
+    assert os.path.isfile(os.path.join(pack_dir, "frame_004.jpg"))
+    assert os.path.isfile(os.path.join(pack_dir, "frame_005.jpg"))
+
+
+@pytest.mark.asyncio
+async def test_append_cap_exceeded(db_session, storage_root, monkeypatch):
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+    monkeypatch.setitem(frame_pack_service._config(), "max_frames_per_pack", 4)
+    frame_pack_service._create_semaphore = None
+
+    base = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(i, float(i)) for i in range(1, 4)],
+    )
+    pack_id = base["pack_id"]
+    pack_dir = frame_pack_service._pack_dir(pack_id)
+    files_before = set(os.listdir(pack_dir))
+
+    with pytest.raises(ValueError) as excinfo:
+        await frame_pack_service.append_frames(
+            db=db_session,
+            user_id=USER_1,
+            pack_id=pack_id,
+            frames=[_frame_dict(1, 5.0), _frame_dict(2, 6.0)],
+        )
+    assert "frame_count_exceeds_limit" in str(excinfo.value)
+    # No leftover frame files from the failed attempt.
+    assert set(os.listdir(pack_dir)) == files_before
+
+
+@pytest.mark.asyncio
+async def test_append_partial_failure_rollback(db_session, storage_root, monkeypatch):
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+
+    base = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(1, 1.0)],
+    )
+    pack_id = base["pack_id"]
+    pack_dir = frame_pack_service._pack_dir(pack_id)
+    metadata_path = os.path.join(pack_dir, "metadata.json")
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        metadata_before = f.read()
+    files_before = set(os.listdir(pack_dir))
+
+    # Patch aiofiles.open so writing the SECOND frame raises.
+    real_open = frame_pack_service.aiofiles.open
+    call = {"n": 0}
+
+    def patched_open(*args, **kwargs):
+        # Only intercept binary writes (frame files), not metadata reads/writes.
+        mode = kwargs.get("mode") or (args[1] if len(args) > 1 else "r")
+        if "wb" in str(mode):
+            call["n"] += 1
+            if call["n"] == 2:
+                raise IOError("simulated disk failure")
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(frame_pack_service.aiofiles, "open", patched_open)
+
+    with pytest.raises(IOError):
+        await frame_pack_service.append_frames(
+            db=db_session,
+            user_id=USER_1,
+            pack_id=pack_id,
+            frames=[_frame_dict(1, 2.0), _frame_dict(2, 3.0)],
+        )
+
+    # Rollback: metadata restored, no new frame files left over.
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        metadata_after = f.read()
+    assert metadata_after == metadata_before
+    assert set(os.listdir(pack_dir)) == files_before
+
+
+@pytest.mark.asyncio
+async def test_delete_frame_success(db_session, storage_root, monkeypatch):
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+
+    pack = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(i, float(i)) for i in range(1, 6)],
+    )
+    pack_id = pack["pack_id"]
+    updated = await frame_pack_service.delete_frame(
+        db=db_session, pack_id=pack_id, frame_index=3
+    )
+    assert updated is not None
+    assert updated["frame_count"] == 4
+    indices = [f["index"] for f in updated["frames"]]
+    assert 3 not in indices
+    assert sorted(indices) == [1, 2, 4, 5]
+
+    pack_dir = frame_pack_service._pack_dir(pack_id)
+    assert pack_dir is not None
+    assert not os.path.isfile(os.path.join(pack_dir, "frame_003.jpg"))
+    assert os.path.isfile(os.path.join(pack_dir, "frame_001.jpg"))
+    assert os.path.isfile(os.path.join(pack_dir, "frame_005.jpg"))
+
+
+@pytest.mark.asyncio
+async def test_delete_frame_not_found(db_session, storage_root, monkeypatch):
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+
+    pack = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(1, 1.0), _frame_dict(2, 2.0)],
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        await frame_pack_service.delete_frame(
+            db=db_session, pack_id=pack["pack_id"], frame_index=99
+        )
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_last_frame_drops_pack(db_session, storage_root, monkeypatch):
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+
+    pack = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(1, 1.0)],
+    )
+    pack_id = pack["pack_id"]
+
+    result = await frame_pack_service.delete_frame(
+        db=db_session, pack_id=pack_id, frame_index=1
+    )
+    assert result is None
+    assert frame_pack_service._pack_dir(pack_id) is None
+    row = await pack_ownership_service.get(db_session, pack_id)
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_append_concurrent_same_pack(db_session, storage_root, monkeypatch):
+    """Concurrent appends to the same pack must not lose frames or
+    produce duplicate filenames — guarded by ``_pack_locks``."""
+    _patch_storage_root(monkeypatch, storage_root)
+    frame_pack_service._pack_locks.clear()
+
+    base = await frame_pack_service.create_pack(
+        db=db_session,
+        user_id=USER_1,
+        project_id=PROJECT_A,
+        source_material_id="m",
+        source_material_name="m",
+        source_duration_sec=10.0,
+        frames=[_frame_dict(1, 1.0)],
+    )
+    pack_id = base["pack_id"]
+    base_count = base["frame_count"]
+    delta = 2
+
+    async def one_append(seed: float):
+        return await frame_pack_service.append_frames(
+            db=db_session,
+            user_id=USER_1,
+            pack_id=pack_id,
+            frames=[_frame_dict(1, seed + 0.1), _frame_dict(2, seed + 0.2)],
+        )
+
+    results = await asyncio.gather(one_append(10.0), one_append(20.0))
+    final_count = max(r["frame_count"] for r in results)
+    assert final_count == base_count + 2 * delta
+
+    pack_dir = frame_pack_service._pack_dir(pack_id)
+    metadata_path = os.path.join(pack_dir, "metadata.json")
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        metadata = json.loads(f.read())
+    filenames = [fr["filename"] for fr in metadata["frames"]]
+    assert len(filenames) == len(set(filenames)), f"duplicate filenames: {filenames}"
+    assert metadata["frame_count"] == base_count + 2 * delta
 
 
 @pytest.mark.asyncio

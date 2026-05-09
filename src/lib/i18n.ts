@@ -918,6 +918,15 @@ export interface Translations {
     deleteFramePack?: string;
     deleteFramePackConfirm?: string;
     framePackBadge?: string;
+    addFramesToPack?: string;
+    addFramesToPackDisabledHint?: string;
+    addFramesToPackInFlight?: string;
+    deleteFrame?: string;
+    deleteFrameConfirmTitle?: string;
+    deleteFrameConfirmBody?: string;
+    frameDeleted?: string;
+    framePackUpdated?: string;
+    framePackEmptiedRemoved?: string;
     referencePickerFramePack?: string;
     materialLibraryTab?: string;
     materialLibraryEmpty?: string;
@@ -3434,6 +3443,15 @@ export const translations: Record<string, Translations> = {
       deleteFramePack: 'Delete Frame Pack',
       deleteFramePackConfirm: 'Are you sure you want to delete this frame pack? All extracted frames will be permanently deleted. References to its frames elsewhere will become invalid.',
       framePackBadge: '{count} frames',
+      addFramesToPack: 'Add Frames',
+      addFramesToPackDisabledHint: 'Original video is no longer in your library — re-import it first',
+      addFramesToPackInFlight: 'Adding frames…',
+      deleteFrame: 'Delete frame',
+      deleteFrameConfirmTitle: 'Delete frame',
+      deleteFrameConfirmBody: 'Delete this frame from the pack? This cannot be undone.',
+      frameDeleted: 'Frame deleted',
+      framePackUpdated: 'Frames added to pack',
+      framePackEmptiedRemoved: 'Last frame removed — pack deleted',
       referencePickerFramePack: 'Frames',
       materialLibraryTab: 'Materials',
       materialLibraryEmpty: 'No materials — please upload in Materials panel first',
@@ -6100,6 +6118,15 @@ export const translations: Record<string, Translations> = {
       deleteFramePack: '删除视频帧包',
       deleteFramePackConfirm: '确定要删除此视频帧包吗？所有提取的视频帧将被永久删除，其他位置对其帧的引用也会失效。',
       framePackBadge: '{count} 帧',
+      addFramesToPack: '添加视频帧',
+      addFramesToPackDisabledHint: '原视频已不在素材库，请先重新导入',
+      addFramesToPackInFlight: '正在添加帧…',
+      deleteFrame: '删除帧',
+      deleteFrameConfirmTitle: '删除帧',
+      deleteFrameConfirmBody: '确定要删除这一帧吗？此操作无法恢复。',
+      frameDeleted: '帧已删除',
+      framePackUpdated: '已追加到帧包',
+      framePackEmptiedRemoved: '已删除最后一帧，帧包同步移除',
       referencePickerFramePack: '帧包',
       filterCharacterPack: '人物包',
       filterScenePack: '场景包',

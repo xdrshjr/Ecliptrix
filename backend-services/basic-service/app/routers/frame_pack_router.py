@@ -20,6 +20,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Path,
     Query,
     Request,
     status,
@@ -104,62 +105,26 @@ def _require_project_id(value: Optional[str], *, where: str) -> str:
 _FRAME_FIELD_RE = re.compile(r"^frame_(\d+)$")
 
 
-# ---------------------------------------------------------------------------
-# POST /api/frame-pack/create
-# ---------------------------------------------------------------------------
-
-
-@router.post("/create", response_model=FramePackDetailResponse)
-async def create_frame_pack(
+async def _parse_multipart_frames(
     request: Request,
-    project_id: str = Form(...),
-    source_material_id: str = Form(...),
-    source_material_name: str = Form(...),
-    source_duration_sec: float = Form(...),
-    manifest: str = Form(...),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-) -> FramePackDetailResponse:
-    """Create a frame pack from an in-browser-captured set of JPEG snapshots.
+    *,
+    max_bytes: int,
+    cap_remaining: int,
+    manifest: str,
+) -> List[dict]:
+    """Shared multipart-frames parser used by ``create`` and ``append``.
 
-    Body shape — ``multipart/form-data``::
+    - Validates the JSON manifest shape.
+    - Walks the multipart body for ``frame_NNN`` file parts.
+    - Verifies manifest ↔ file ordinal pairing 1:1 and aggregate byte cap.
+    - Returns the parsed ``frames_payload`` list (each entry has
+      ``index``/``timestamp_sec``/``width``/``height``/``data``).
 
-        project_id            (Form)
-        source_material_id    (Form)
-        source_material_name  (Form)
-        source_duration_sec   (Form, float)
-        manifest              (Form, JSON string)
-        frame_001..frame_NNN  (File, image/jpeg)
-
-    See spec §4.1 for the full contract. Body-size enforcement runs at
-    three layers (P1-4) — this handler covers the (b) ``Content-Length``
-    short-circuit.
+    ``cap_remaining`` is how many additional frames the pack still allows
+    (for ``create`` it equals ``max_frames_per_pack()``; for ``append`` it
+    equals ``cap - existing_count``). Caller is responsible for passing
+    something non-negative.
     """
-    user_id = str(current_user.id)
-    project_id_resolved = _require_project_id(project_id, where="frame pack creation")
-
-    # (b) Reject oversize uploads BEFORE consuming the multipart body.
-    content_length = request.headers.get("content-length")
-    max_bytes = frame_pack_service.max_request_bytes()
-    if content_length is not None:
-        try:
-            cl_int = int(content_length)
-        except ValueError:
-            cl_int = -1
-        if cl_int > max_bytes:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail={
-                    "error_code": "PAYLOAD_TOO_LARGE",
-                    "message": f"upload exceeds {max_bytes} bytes",
-                },
-            )
-
-    await video_project_service.assert_project_writable(
-        db=db, user_id=user_id, project_id=project_id_resolved
-    )
-
-    # Parse manifest.
     try:
         manifest_data = json.loads(manifest)
     except json.JSONDecodeError as exc:
@@ -180,17 +145,17 @@ async def create_frame_pack(
             },
         )
 
-    cap = frame_pack_service.max_frames_per_pack()
-    if len(frame_specs) > cap:
+    if len(frame_specs) > cap_remaining:
         raise HTTPException(
             status_code=400,
             detail={
                 "error_code": "FRAME_COUNT_EXCEEDS_LIMIT",
-                "message": f"too many frames: {len(frame_specs)} > {cap}",
+                "message": (
+                    f"too many frames: {len(frame_specs)} > {cap_remaining} remaining"
+                ),
             },
         )
 
-    # Pull all frame_NNN files out of the multipart payload, ordered by NNN.
     form = await request.form()
     file_fields: List[tuple[int, UploadFile]] = []
     for field_name, value in form.multi_items():
@@ -224,12 +189,9 @@ async def create_frame_pack(
             },
         )
 
-    # (P1-2) The manifest entry's ``index`` MUST equal the file's NNN ordinal.
-    # We pair manifest[i] with file_fields[i] (both ordered by ordinal) and
-    # 400 on any mismatch.
     sorted_specs = sorted(frame_specs, key=lambda fr: int(fr.get("index", 0)))
     aggregate_size = 0
-    frames_payload = []
+    frames_payload: List[dict] = []
     for spec, (ordinal, upload) in zip(sorted_specs, file_fields):
         try:
             spec_index = int(spec["index"])
@@ -271,6 +233,76 @@ async def create_frame_pack(
             "height": int(spec.get("height", 0) or 0),
             "data": data,
         })
+
+    return frames_payload
+
+
+def _enforce_content_length(request: Request, max_bytes: int) -> None:
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        return
+    try:
+        cl_int = int(content_length)
+    except ValueError:
+        cl_int = -1
+    if cl_int > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error_code": "PAYLOAD_TOO_LARGE",
+                "message": f"upload exceeds {max_bytes} bytes",
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/frame-pack/create
+# ---------------------------------------------------------------------------
+
+
+@router.post("/create", response_model=FramePackDetailResponse)
+async def create_frame_pack(
+    request: Request,
+    project_id: str = Form(...),
+    source_material_id: str = Form(...),
+    source_material_name: str = Form(...),
+    source_duration_sec: float = Form(...),
+    manifest: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> FramePackDetailResponse:
+    """Create a frame pack from an in-browser-captured set of JPEG snapshots.
+
+    Body shape — ``multipart/form-data``::
+
+        project_id            (Form)
+        source_material_id    (Form)
+        source_material_name  (Form)
+        source_duration_sec   (Form, float)
+        manifest              (Form, JSON string)
+        frame_001..frame_NNN  (File, image/jpeg)
+
+    See spec §4.1 for the full contract. Body-size enforcement runs at
+    three layers (P1-4) — this handler covers the (b) ``Content-Length``
+    short-circuit.
+    """
+    user_id = str(current_user.id)
+    project_id_resolved = _require_project_id(project_id, where="frame pack creation")
+
+    max_bytes = frame_pack_service.max_request_bytes()
+    _enforce_content_length(request, max_bytes)
+
+    await video_project_service.assert_project_writable(
+        db=db, user_id=user_id, project_id=project_id_resolved
+    )
+
+    cap = frame_pack_service.max_frames_per_pack()
+    frames_payload = await _parse_multipart_frames(
+        request,
+        max_bytes=max_bytes,
+        cap_remaining=cap,
+        manifest=manifest,
+    )
 
     try:
         pack = await frame_pack_service.create_pack(
@@ -409,3 +441,163 @@ async def delete_frame_pack(
     except Exception as exc:
         logger.error(f"Failed to delete frame pack {pack_id}: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to delete pack: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# POST /api/frame-pack/{pack_id}/append
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{pack_id}/append", response_model=FramePackDetailResponse)
+async def append_frame_pack(
+    pack_id: str,
+    request: Request,
+    project_id: str = Form(...),
+    manifest: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> FramePackDetailResponse:
+    """Append additional in-browser-captured JPEG frames to an existing pack.
+
+    Body shape mirrors :func:`create_frame_pack` minus the
+    ``source_material_*`` form fields (those are inherited from the
+    pack's existing ``metadata.json``).
+    """
+    user_id = str(current_user.id)
+    project_id_resolved = _require_project_id(project_id, where="frame pack append")
+
+    max_bytes = frame_pack_service.max_request_bytes()
+    _enforce_content_length(request, max_bytes)
+
+    bound_project_id = await frame_pack_service.assert_pack_owned(
+        db=db, pack_id=pack_id, user_id=user_id
+    )
+    if bound_project_id != project_id_resolved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="FRAME_PACK_NOT_FOUND",
+        )
+
+    cap = frame_pack_service.max_frames_per_pack()
+    try:
+        existing_pack = await frame_pack_service.get_pack(pack_id)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="FRAME_PACK_NOT_FOUND",
+        )
+    cap_remaining = max(0, cap - int(existing_pack.get("frame_count") or 0))
+    if cap_remaining == 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "FRAME_COUNT_EXCEEDS_LIMIT",
+                "message": f"pack already at cap ({cap})",
+            },
+        )
+
+    frames_payload = await _parse_multipart_frames(
+        request,
+        max_bytes=max_bytes,
+        cap_remaining=cap_remaining,
+        manifest=manifest,
+    )
+
+    try:
+        pack = await frame_pack_service.append_frames(
+            db=db,
+            user_id=user_id,
+            pack_id=pack_id,
+            frames=frames_payload,
+        )
+        return FramePackDetailResponse(
+            success=True,
+            message=f"Frame pack updated: {pack['frame_count']} frames",
+            data=FramePack(**pack),
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        code = "FRAME_COUNT_EXCEEDS_LIMIT" if msg.startswith("frame_count_exceeds_limit") else "INVALID_MANIFEST"
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": code, "message": msg},
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="FRAME_PACK_NOT_FOUND",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to append frame pack {pack_id}: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "FRAME_PACK_APPEND_FAILED",
+                "message": str(exc),
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/frame-pack/{pack_id}/frames/{index}?project_id=...
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{pack_id}/frames/{index}", response_model=FramePackDetailResponse)
+async def delete_frame_from_pack(
+    pack_id: str,
+    index: int = Path(..., gt=0),
+    project_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> FramePackDetailResponse:
+    user_id = str(current_user.id)
+    project_id_resolved = _require_project_id(project_id, where="frame delete")
+    bound_project_id = await frame_pack_service.assert_pack_owned(
+        db=db, pack_id=pack_id, user_id=user_id
+    )
+    if bound_project_id != project_id_resolved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="FRAME_PACK_NOT_FOUND",
+        )
+
+    try:
+        updated = await frame_pack_service.delete_frame(
+            db=db, pack_id=pack_id, frame_index=index
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="FRAME_PACK_NOT_FOUND",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            f"Failed to delete frame {index} from pack {pack_id}: {exc}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "FRAME_DELETE_FAILED",
+                "message": str(exc),
+            },
+        )
+
+    if updated is None:
+        # Last frame removed — pack is gone. Return a placeholder shape so
+        # the frontend can still receive an envelope and act on frame_count == 0.
+        return FramePackDetailResponse(
+            success=True,
+            message="Frame pack deleted (last frame removed)",
+            data=FramePack(pack_id=pack_id, frame_count=0),
+        )
+    return FramePackDetailResponse(
+        success=True,
+        message="Frame deleted",
+        data=FramePack(**updated),
+    )

@@ -8,6 +8,13 @@ import type { ImagePack } from '@/lib/api/imagePack';
 import type { SilenceRemoveResult } from './ProcessingProgress';
 import { useLocale } from '@/contexts/LocaleContext';
 
+export type FramePackAppendCtx = {
+  packId: string;
+  sourceMaterialId: string;
+  sourceMaterialName: string;
+  sourceDurationSec: number;
+};
+
 export interface VideoProcessingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,6 +28,15 @@ export interface VideoProcessingModalProps {
   /** Called after a frame pack is created so the materials panel can
    *  refresh its frame-pack list. */
   onFramePackCreated?: (pack: ImagePack) => void;
+  /** Force-active tab on next open. Used by the "Add Frames" entry to
+   *  jump directly into the frame-extraction tab in append mode. */
+  initialTab?: TabId;
+  /** When non-null, the frame-extraction tab runs in append mode against
+   *  the referenced pack instead of creating a new pack on save. */
+  framePackAppendCtx?: FramePackAppendCtx | null;
+  /** Append-mode response callback. ``pack`` is null when the pack was
+   *  emptied and the backend therefore removed it. */
+  onFramePackUpdated?: (pack: ImagePack | null, packId: string) => void;
 }
 
 type TabId = 'silence-removal' | 'watermark-removal' | 'frame-extraction';
@@ -80,6 +96,9 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
   onSelectMaterialForWatermark,
   projectId,
   onFramePackCreated,
+  initialTab,
+  framePackAppendCtx,
+  onFramePackUpdated,
 }) => {
   const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabId>('silence-removal');
@@ -90,6 +109,16 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
   useEffect(() => {
     if (isOpen && !hasEverOpened) setHasEverOpened(true);
   }, [isOpen, hasEverOpened]);
+
+  // Force-switch active tab on each fresh open when caller provides initialTab.
+  // Tracks the previous isOpen so the switch only fires on the false→true edge.
+  const prevIsOpenRef = useRef(isOpen);
+  useEffect(() => {
+    if (isOpen && !prevIsOpenRef.current && initialTab) {
+      setActiveTab(initialTab);
+    }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, initialTab]);
 
   // Track whether SilenceRemovalTab is actively processing (for auto-minimize on close)
   const processingInfoRef = useRef<{ taskId: string; videoName: string } | null>(null);
@@ -281,6 +310,9 @@ const VideoProcessingModal: React.FC<VideoProcessingModalProps> = ({
               materials={materials}
               projectId={projectId}
               onFramePackCreated={onFramePackCreated}
+              appendCtx={framePackAppendCtx ?? null}
+              onFramePackUpdated={onFramePackUpdated}
+              onRequestClose={handleClose}
             />
           )}
         </div>
