@@ -1409,8 +1409,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             format: 'mp3',
             size: response.concatenated_file_size || audioBlob.size,
             duration: response.total_duration || Math.ceil(segment.sentences.reduce((sum, s) => sum + s.text.length, 0) * 0.15),
-            url: localUrl, // 使用本地URL
-            serverUrl: response.concatenated_audio_url, // 保存服务器URL，用于导出合成
+            // iter5: persist server URL so reloads don't yield a dead blob:.
+            // The same-session local cache is now resolved at read-time via
+            // selectAudioPlaybackUrl + localAudioManager (keyed on metadata.fileName).
+            url: response.concatenated_audio_url,
+            serverUrl: response.concatenated_audio_url,
             createdAt: new Date(),
             description: t.scriptPanel.messages.speechConvertDescription
               .replace('{index}', String(segmentNumber))
@@ -1423,7 +1426,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               segment_id: segment.id,
               segment_number: segmentNumber,
               task_id: taskId,
-              server_file_name: fileName,
+              fileName,                  // iter5: align with LocalAudioManager / MaterialsPanel
+              server_file_name: fileName, // kept for backward-compat with historical workflow_data
               actual_duration: response.total_duration,
               duration_method: 'concatenated_sentences',
               originalUrl: response.concatenated_audio_url,

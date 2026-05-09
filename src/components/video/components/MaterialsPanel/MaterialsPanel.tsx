@@ -5,6 +5,7 @@ import { UseMaterialManagementReturn } from '../../types';
 import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import localAudioManager from '@/lib/utils/localAudioManager';
+import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useLocale } from '@/contexts/LocaleContext';
 import MediaPreviewModal from '../MediaPreviewModal/MediaPreviewModal';
@@ -1082,30 +1083,24 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         audioRef.current.pause();
       }
       
-      // 确定要使用的音频URL
-      let audioUrl = material.url;
-      let isLocalFile = false;
-      
-      // 检查是否有本地文件可用
-      if (material.metadata?.fileName) {
-        const localUrl = localAudioManager.getAudioFileUrl(material.metadata.fileName);
-        if (localUrl) {
-          audioUrl = localUrl;
-          isLocalFile = true;
-          logger.info('使用本地音频文件', {
-            materialId: material.id,
-            fileName: material.metadata.fileName,
-            localUrl: localUrl
-          });
-        } else {
-          logger.info('本地音频文件不可用，使用远程URL', {
-            materialId: material.id,
-            fileName: material.metadata.fileName,
-            originalUrl: material.metadata.originalUrl || material.url
-          });
-        }
+      // iter5: resolve via selectAudioPlaybackUrl — local cache → serverUrl →
+      // originalUrl → non-blob url. Avoids the "ghost audio" reload bug.
+      const resolvedUrl = selectAudioPlaybackUrl(material);
+      if (!resolvedUrl) {
+        showError(
+          t.materialsPanel.audioBrokenBlob ??
+          'Audio source unavailable. Please regenerate the speech.'
+        );
+        return;
       }
-      
+      const audioUrl = resolvedUrl;
+      const isLocalFile = audioUrl.startsWith('blob:');
+      logger.info('解析音频播放 URL', {
+        materialId: material.id,
+        audioUrl,
+        isLocalFile,
+      });
+
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       
@@ -1137,34 +1132,29 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       
       audio.onerror = (event) => {
         setPlayingAudio(null);
-        
-        // 如果本地文件播放失败，尝试使用远程URL
-        if (isLocalFile && material.metadata?.originalUrl) {
-          logger.error('本地音频播放失败，尝试远程URL', new Error('Local audio playback failed'), {
+
+        // 如果本地 blob 播放失败，剔除 fileName 让 selectAudioPlaybackUrl 跳到 serverUrl/originalUrl
+        if (isLocalFile) {
+          const { fileName: _omitFileName, server_file_name: _omitServerFileName, ...restMeta } = material.metadata ?? {};
+          const materialWithoutLocal = {
+            ...material,
+            metadata: restMeta,
+          } as MaterialItem;
+          logger.error('本地音频播放失败，回退到服务器 URL', new Error('Local audio playback failed'), {
             materialId: material.id,
             materialName: material.name,
             localUrl: audioUrl,
-            originalUrl: material.metadata.originalUrl
           });
-          
-          // 递归调用，但这次强制使用远程URL
-          const materialWithRemoteUrl = {
-            ...material,
-            url: material.metadata.originalUrl,
-            metadata: {
-              ...material.metadata,
-              fileName: undefined // 清除fileName以避免再次尝试本地文件
-            }
-          };
-          handleAudioPlayPause(materialWithRemoteUrl);
+          handleAudioPlayPause(materialWithoutLocal);
           return;
         }
-        
+
         logger.error('音频播放失败', new Error('Audio playback failed'), {
           materialId: material.id,
           materialName: material.name,
           url: audioUrl,
-          isLocalFile: isLocalFile
+          isLocalFile,
+          eventType: (event as Event)?.type,
         });
       };
       

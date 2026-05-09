@@ -5,6 +5,7 @@ import { MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
+import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 
 interface MediaPreviewModalProps {
   isOpen: boolean;
@@ -388,7 +389,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
           <div className="flex flex-col items-center space-y-6 bg-black bg-opacity-50 rounded-md p-8">
             <audio
               ref={audioRef}
-              src={material.url}
+              src={selectAudioPlaybackUrl(material) ?? material.url}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleEnded}

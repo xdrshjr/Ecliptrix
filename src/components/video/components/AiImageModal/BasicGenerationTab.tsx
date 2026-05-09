@@ -108,7 +108,7 @@ const BasicGenerationTab: React.FC<BasicGenerationTabProps> = ({ state, onChange
                 }`}
               >
                 {sizeIcon(preset.icon, size === preset.value)}
-                <span>{t.basicGenerationTab[SIZE_LABEL_KEYS[preset.value] as keyof typeof t.basicGenerationTab]}</span>
+                <span className="truncate min-w-0">{t.basicGenerationTab[SIZE_LABEL_KEYS[preset.value] as keyof typeof t.basicGenerationTab]}</span>
               </button>
             ))}
           </div>

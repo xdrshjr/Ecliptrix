@@ -1,6 +1,11 @@
 /**
  * Local Audio File Manager
  * 管理本地音频文件的存储、访问和清理
+ *
+ * NOTE (iter5): blob URLs cannot survive a Document reload, so persisting
+ * cache metadata in localStorage misled UX into thinking historical files
+ * were still playable. `loadCacheFromStorage` is now a no-op and the legacy
+ * key is purged on first load. See docs/diagnoses/iter5-bug-report-20260509/.
  */
 
 export interface LocalAudioFile {
@@ -192,43 +197,26 @@ class LocalAudioManager {
   }
 
   /**
-   * 从localStorage加载缓存元数据
+   * iter5: no-op. Blob URLs become dead on reload, so persisted metadata only
+   * misled UX into claiming a recoverable cache. Legacy localStorage entries
+   * are purged here so users don't keep ghost rows.
    */
   private loadCacheFromStorage(): void {
     if (typeof localStorage === 'undefined') return;
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) {
-        const metadata = JSON.parse(stored);
-        console.log('[LocalAudioManager] 从存储加载缓存元数据', {
-          fileCount: Object.keys(metadata).length
-        });
+      if (localStorage.getItem(this.STORAGE_KEY) !== null) {
+        localStorage.removeItem(this.STORAGE_KEY);
       }
     } catch (error) {
-      console.error('[LocalAudioManager] 加载缓存元数据失败', error);
+      console.error('[LocalAudioManager] 清理遗留缓存元数据失败', error);
     }
   }
 
   /**
-   * 保存缓存元数据到localStorage
+   * iter5: no-op. See loadCacheFromStorage above.
    */
   private saveCacheToStorage(): void {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const metadata: Record<string, { fileName: string; createdAt: string; size: number }> = {};
-      
-      this.audioCache.forEach((audioFile, fileName) => {
-        metadata[fileName] = {
-          fileName: audioFile.fileName,
-          createdAt: audioFile.createdAt.toISOString(),
-          size: audioFile.size
-        };
-      });
-
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(metadata));
-    } catch (error) {
-      console.error('[LocalAudioManager] 保存缓存元数据失败', error);
-    }
+    /* intentionally empty */
   }
 
   /**

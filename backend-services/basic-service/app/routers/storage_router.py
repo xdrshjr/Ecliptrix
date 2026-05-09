@@ -310,14 +310,21 @@ async def get_user_materials(
     page: int = 1,
     page_size: int = 20,
     material_type: Optional[str] = None,
+    dedupe: bool = True,
 ):
-    """Get user materials list with pagination."""
+    """Get user materials list with pagination.
+
+    iter5: ``dedupe`` defaults to True — collapses duplicate uploads of the
+    same ``(name, size)`` so the reference-image picker stops showing N copies
+    of one image. Pass ``dedupe=false`` to opt out.
+    """
     try:
         logger.info("User materials query request", {
             "user_id": user_id,
             "page": page,
             "page_size": page_size,
             "material_type": material_type,
+            "dedupe": dedupe,
         })
 
         result = await storage_service.list_user_materials(
@@ -325,6 +332,7 @@ async def get_user_materials(
             material_type=material_type,
             page=page,
             page_size=page_size,
+            dedupe=dedupe,
         )
 
         if not result["success"]:

@@ -7,6 +7,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal } from '../components';
 import { useVideoCache } from '../hooks/useVideoCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
+import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import { useTimelineExport } from '../hooks/useTimelineExport';
 import {
   useTimelineStore,
@@ -655,7 +656,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
       const audioItemsForTranscription = allAudioItems.map(item => {
         const material = materials?.find(m => m.id === item.materialId);
-        const audioUrl = material?.serverUrl || material?.url || '';
+        // iter5: never send blob: URLs to backend transcription.
+        const resolved = material ? selectAudioPlaybackUrl(material) : null;
+        const audioUrl = resolved && !resolved.startsWith('blob:')
+          ? resolved
+          : (material?.serverUrl || '');
         return {
           id: item.id,
           name: item.name,

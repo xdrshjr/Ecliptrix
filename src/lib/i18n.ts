@@ -83,6 +83,7 @@ export interface Translations {
     save: string;
     saving: string;
     cancel: string;
+    noChanges: string;
     saveSuccess: string;
     saveError: string;
     notifications: string;
@@ -954,6 +955,8 @@ export interface Translations {
     materialLibraryPage?: string;
     materialLibraryLoginRequired?: string;
     materialLibraryError?: string;
+    materialLibraryReferenceLabel?: string;
+    audioBrokenBlob?: string;
     referencePickerLocalUpload?: string;
     referencePickerStoryboardPack?: string;
     referencePickerCharacterPack?: string;
@@ -1341,6 +1344,11 @@ export interface Translations {
       loadingVoices: string;
       loadFailed: string;
       noVoicesAvailable: string;
+      searchPlaceholder: string;
+      genderAll: string;
+      genderMale: string;
+      genderFemale: string;
+      noVoicesMatched: string;
       categories: {
         '通用场景': string;
         '趣味方言': string;
@@ -2694,6 +2702,12 @@ export interface Translations {
     generating: string;
     startGenerate: string;
   };
+  notFound: {
+    title: string;
+    description: string;
+    goHome: string;
+    goBack: string;
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -2782,6 +2796,7 @@ export const translations: Record<string, Translations> = {
       save: 'Save Changes',
       saving: 'Saving...',
       cancel: 'Cancel',
+      noChanges: 'No changes',
       saveSuccess: 'Profile updated successfully',
       saveError: 'Failed to update profile',
       notifications: 'Notifications',
@@ -3525,6 +3540,8 @@ export const translations: Record<string, Translations> = {
       materialLibraryPage: 'Page {page}/{total}',
       materialLibraryLoginRequired: 'Please log in to view materials',
       materialLibraryError: 'Load failed — click to retry',
+      materialLibraryReferenceLabel: 'Reference image: {name}',
+      audioBrokenBlob: 'Audio source unavailable. Please regenerate the speech.',
       referencePickerLocalUpload: 'Local upload',
       referencePickerStoryboardPack: 'Storyboard',
       referencePickerCharacterPack: 'Character',
@@ -4048,6 +4065,11 @@ export const translations: Record<string, Translations> = {
          loadingVoices: 'Loading voices...',
          loadFailed: 'Failed to load voice types',
          noVoicesAvailable: 'No voices available',
+         searchPlaceholder: 'Search voices…',
+         genderAll: 'All',
+         genderMale: 'Male',
+         genderFemale: 'Female',
+         noVoicesMatched: 'No voices matched',
          categories: {
            '通用场景': 'General Scenes',
            '趣味方言': 'Fun Dialects',
@@ -5198,12 +5220,12 @@ export const translations: Record<string, Translations> = {
       promptLabel: 'Prompt',
       promptPlaceholder: 'Describe the image you want to generate... Select reference images from the right panel, or type @[image name] to reference',
       sizeLabel: 'Image Size',
-      size1kSquare: '1K Square',
-      size2kSquare: '2K Square',
-      size169Landscape: '16:9 Landscape',
-      size916Portrait: '9:16 Portrait',
-      size169Wide: '16:9 Wide',
-      size916Wide: '9:16 Wide',
+      size1kSquare: '1:1 (1024×1024)',
+      size2kSquare: '1:1 (2048×2048)',
+      size169Landscape: '16:9 (1280×720)',
+      size916Portrait: '9:16 (720×1280)',
+      size169Wide: '16:9 (1024×576)',
+      size916Wide: '9:16 (576×1024)',
       countLabel: 'Generation Count',
       countUnit: 'images',
       watermarkLabel: 'Add Watermark',
@@ -5423,6 +5445,12 @@ export const translations: Record<string, Translations> = {
       generating: 'Generating...',
       startGenerate: 'Start Generating',
     },
+    notFound: {
+      title: 'Page not found',
+      description: "The page you're looking for doesn't exist or has been moved.",
+      goHome: 'Back to home',
+      goBack: 'Go back',
+    },
   },
   'zh-CN': {
     common: {
@@ -5509,6 +5537,7 @@ export const translations: Record<string, Translations> = {
       save: '保存更改',
       saving: '保存中...',
       cancel: '取消',
+      noChanges: '无变更',
       saveSuccess: '资料更新成功',
       saveError: '资料更新失败',
       notifications: '通知设置',
@@ -6252,6 +6281,8 @@ export const translations: Record<string, Translations> = {
       materialLibraryPage: '第 {page}/{total} 页',
       materialLibraryLoginRequired: '请先登录以查看素材库',
       materialLibraryError: '加载失败，点击重试',
+      materialLibraryReferenceLabel: '参考图：{name}',
+      audioBrokenBlob: '音频源不可用，请重新生成朗读。',
       referencePickerStoryboardPack: '分镜包',
       referencePickerCharacterPack: '人物包',
       referencePickerLocalUpload: '本地上传',
@@ -6775,6 +6806,11 @@ export const translations: Record<string, Translations> = {
          loadingVoices: '正在加载音色...',
          loadFailed: '加载音色类型失败',
          noVoicesAvailable: '暂无可用音色',
+         searchPlaceholder: '搜索声音…',
+         genderAll: '全部',
+         genderMale: '男声',
+         genderFemale: '女声',
+         noVoicesMatched: '无匹配声音',
          categories: {
            '通用场景': '通用场景',
            '趣味方言': '趣味方言',
@@ -7924,12 +7960,12 @@ export const translations: Record<string, Translations> = {
       promptLabel: '提示词',
       promptPlaceholder: '描述你想要生成的图片内容... 从右侧选择参考图，或直接在提示词中输入 @[图片名] 引用',
       sizeLabel: '图片尺寸',
-      size1kSquare: '1K 方形',
-      size2kSquare: '2K 方形',
-      size169Landscape: '16:9 横屏',
-      size916Portrait: '9:16 竖屏',
-      size169Wide: '16:9 宽屏',
-      size916Wide: '9:16 竖屏宽',
+      size1kSquare: '1:1 (1024×1024)',
+      size2kSquare: '1:1 (2048×2048)',
+      size169Landscape: '16:9 (1280×720)',
+      size916Portrait: '9:16 (720×1280)',
+      size169Wide: '16:9 (1024×576)',
+      size916Wide: '9:16 (576×1024)',
       countLabel: '生成数量',
       countUnit: '张',
       watermarkLabel: '添加水印',
@@ -8148,6 +8184,12 @@ export const translations: Record<string, Translations> = {
       footerNoVideo: '将根据对话内容生成脚本',
       generating: '生成中...',
       startGenerate: '开始生成',
+    },
+    notFound: {
+      title: '页面未找到',
+      description: '您访问的页面不存在或已被移除。',
+      goHome: '返回首页',
+      goBack: '返回上一页',
     },
   },
 };

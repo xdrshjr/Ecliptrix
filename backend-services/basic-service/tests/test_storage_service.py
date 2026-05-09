@@ -131,3 +131,51 @@ def test_validate_file_type(storage_svc):
     assert storage_svc._validate_file_type("video/mp4", "video") is True
     assert storage_svc._validate_file_type("text/plain", "video") is False
     assert storage_svc._validate_file_type("text/plain", "files") is True
+
+
+# ---------------------------------------------------------------------------
+# iter5 Bug#3: list_user_materials dedupes by (name, size).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_list_user_materials_dedupes(storage_svc, storage_root):
+    """When the same image is uploaded under multiple task subdirectories
+    the listing collapses to a single row (newest copy kept).
+    """
+    user_id = "ux"
+    user_dir_a = storage_root / "image" / "2026" / "05" / "01" / f"user_{user_id}" / "task_a"
+    user_dir_b = storage_root / "image" / "2026" / "05" / "02" / f"user_{user_id}" / "task_b"
+    user_dir_a.mkdir(parents=True)
+    user_dir_b.mkdir(parents=True)
+    payload = b"\x89PNG\r\n\x1a\nfake-bytes"
+    (user_dir_a / "foo.png").write_bytes(payload)
+    (user_dir_b / "foo.png").write_bytes(payload)
+    (user_dir_b / "bar.png").write_bytes(payload + b"X")
+
+    result = await storage_svc.list_user_materials(user_id=user_id, material_type="image")
+
+    assert result["success"] is True
+    assert result["total"] == 2  # foo.png deduped; bar.png kept
+    names = sorted(m["name"] for m in result["materials"])
+    assert names == sorted(["foo.png", "bar.png"])
+
+
+@pytest.mark.asyncio
+async def test_list_user_materials_dedupe_false(storage_svc, storage_root):
+    """Passing dedupe=False preserves duplicates."""
+    user_id = "uy"
+    base = storage_root / "image" / "2026" / "05"
+    a = base / "01" / f"user_{user_id}" / "task_a"
+    b = base / "02" / f"user_{user_id}" / "task_b"
+    a.mkdir(parents=True)
+    b.mkdir(parents=True)
+    payload = b"\x89PNG\r\n\x1a\nfake"
+    (a / "foo.png").write_bytes(payload)
+    (b / "foo.png").write_bytes(payload)
+
+    result = await storage_svc.list_user_materials(
+        user_id=user_id, material_type="image", dedupe=False,
+    )
+
+    assert result["success"] is True
+    assert result["total"] == 2

@@ -4,6 +4,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { http, ApiError } from '@/lib/api/http-client';
 import { VideoEditingLogger } from '../utils/logger';
+import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -312,9 +313,14 @@ export const useVideoExport = ({
             // Find the material to get the URL
             const material = materials?.find(m => m.id === item.materialId);
             if (material) {
-              // 优先使用服务器URL，如果没有则使用普通URL
-              const audioUrl = material.serverUrl || material.url;
-              
+              // iter5: never send a blob: URL to the backend. selectAudioPlaybackUrl
+              // returns serverUrl / originalUrl in preference; falls through to
+              // material.url only when it is not a blob.
+              const resolved = selectAudioPlaybackUrl(material);
+              const audioUrl = resolved && !resolved.startsWith('blob:')
+                ? resolved
+                : (material.serverUrl || '');
+
               logger.debug('处理音频项目', {
                 itemId: item.id,
                 itemName: item.name,

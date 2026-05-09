@@ -121,18 +121,20 @@ const MaterialLibraryGrid: React.FC<MaterialLibraryGridProps> = ({
                     : 'border-border hover:border-primary/50'
                 } ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 title={m.name}
+                aria-label={(mp.materialLibraryReferenceLabel ?? '参考图：{name}').replace('{name}', m.name)}
+                aria-pressed={selected}
               >
                 <img
                   src={m.thumbnail_url || m.url}
-                  alt={m.name}
+                  alt=""
                   className="w-full aspect-square object-cover"
                 />
                 {selected && (
-                  <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] flex items-center justify-center">
+                  <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] flex items-center justify-center">
                     ✓
                   </span>
                 )}
-                <span className="absolute bottom-0 inset-x-0 bg-foreground/70 text-background text-[8px] py-0.5 text-center truncate">
+                <span aria-hidden="true" className="absolute bottom-0 inset-x-0 bg-foreground/70 text-background text-[8px] py-0.5 text-center truncate">
                   {m.name}
                 </span>
               </button>

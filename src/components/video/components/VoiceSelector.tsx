@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useId, useMemo } from 'react';
 import { VoiceType, getVoiceTypes } from '@/lib/api/tts';
 import { useLocale } from '@/contexts/LocaleContext';
 import { VideoEditingLogger } from '../utils/logger';
@@ -11,17 +11,22 @@ interface VoiceSelectorProps {
   className?: string;
 }
 
+type GenderFilter = 'all' | 'male' | 'female';
+
 const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   selectedVoiceId,
   onVoiceChange,
   className = ''
 }) => {
-  // 获取国际化翻译
   const { t, locale } = useLocale();
   const [voiceTypes, setVoiceTypes] = useState<Record<string, VoiceType>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
+
+  const listboxId = useId();
 
   const logger = useMemo(
     () => new VideoEditingLogger({ taskId: 'global', component: 'VoiceSelector' }),
@@ -30,13 +35,26 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
   useEffect(() => {
     loadVoiceTypes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale]);
+
+  // iter5: Escape closes the dropdown for keyboard users.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen]);
 
   const loadVoiceTypes = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       logger.debug('加载音色列表');
 
       const response = await getVoiceTypes(locale);
@@ -45,10 +63,6 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
         logger.debug('音色列表加载成功', {
           count: Object.keys(response.data).length,
           categories: Array.from(new Set(Object.values(response.data).map(v => v.category))),
-          voicesByCategory: Object.values(response.data).reduce((acc, voice) => {
-            acc[voice.category] = (acc[voice.category] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>)
         });
       } else {
         throw new Error(response.message || '获取音色列表失败');
@@ -65,38 +79,45 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   const handleVoiceSelect = (voiceId: string) => {
     logger.debug('用户选择音色', {
       previousVoice: selectedVoiceId,
-      previousVoiceName: voiceTypes[selectedVoiceId]?.name,
-      previousCategory: voiceTypes[selectedVoiceId]?.category,
       newVoice: voiceId,
       newVoiceName: voiceTypes[voiceId]?.name,
-      newCategory: voiceTypes[voiceId]?.category,
-      gender: voiceTypes[voiceId]?.gender,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
+
     onVoiceChange(voiceId);
     setIsOpen(false);
   };
 
   const selectedVoice = voiceTypes[selectedVoiceId];
-  const voiceList = Object.values(voiceTypes);
+  const voiceList = useMemo(() => Object.values(voiceTypes), [voiceTypes]);
 
-  // 按分类分组音色
-  const voicesByCategory = voiceList.reduce((acc, voice) => {
-    const category = voice.category || '其他';
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(voice);
-    return acc;
-  }, {} as Record<string, VoiceType[]>);
+  // iter5: search + gender filter
+  const filteredVoices = useMemo(() => {
+    const kw = searchTerm.trim().toLowerCase();
+    return voiceList.filter(v => {
+      const matchKw = !kw
+        || v.name.toLowerCase().includes(kw)
+        || (v.description ?? '').toLowerCase().includes(kw)
+        || (v.category ?? '').toLowerCase().includes(kw);
+      const matchGender =
+        genderFilter === 'all' ||
+        (v.gender ?? '').toLowerCase() === genderFilter;
+      return matchKw && matchGender;
+    });
+  }, [voiceList, searchTerm, genderFilter]);
 
-  // 获取国际化的分类名称
+  const voicesByCategory = useMemo(() =>
+    filteredVoices.reduce((acc, voice) => {
+      const category = voice.category || '其他';
+      (acc[category] ??= []).push(voice);
+      return acc;
+    }, {} as Record<string, VoiceType[]>),
+  [filteredVoices]);
+
   const getCategoryDisplayName = (category: string): string => {
     return t.scriptPanel.voiceSelector.categories[category as keyof typeof t.scriptPanel.voiceSelector.categories] || category;
   };
 
-  // 分类排序（确保通用场景在前）
   const categoryOrder = ['通用场景', '趣味方言', '角色扮演', '播报解说', '有声阅读'];
   const sortedCategories = Object.keys(voicesByCategory).sort((a, b) => {
     const indexA = categoryOrder.indexOf(a);
@@ -107,7 +128,6 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     return a.localeCompare(b);
   });
 
-  // 分类对应的图标颜色
   const getCategoryColor = (category: string) => {
     const colors = {
       '通用场景': 'bg-blue-500',
@@ -147,22 +167,17 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     );
   }
 
+  const totalVisible = filteredVoices.length;
+
   return (
     <div className={`relative ${className}`}>
-      {/* 当前选中的音色显示 */}
       <button
-        onClick={() => {
-          const newIsOpen = !isOpen;
-          logger.debug('音色选择面板状态变化', {
-            isOpen: newIsOpen,
-            currentVoice: selectedVoiceId,
-            currentVoiceName: voiceTypes[selectedVoiceId]?.name,
-            currentCategory: voiceTypes[selectedVoiceId]?.category,
-            timestamp: new Date().toISOString()
-          });
-          setIsOpen(newIsOpen);
-        }}
+        type="button"
+        onClick={() => setIsOpen(prev => !prev)}
         className="flex items-center space-x-2 px-3 py-2 bg-card border border-border rounded-md hover:border-border transition-colors w-full text-left"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={listboxId}
       >
         <div className="flex items-center space-x-2 flex-1">
           <div className={`w-3 h-3 rounded-full ${
@@ -177,31 +192,84 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             </span>
           )}
         </div>
-        <svg 
+        <svg
           className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
             isOpen ? 'transform rotate-180' : ''
-          }`} 
-          fill="none" 
-          stroke="currentColor" 
+          }`}
+          fill="none"
+          stroke="currentColor"
           viewBox="0 0 24 24"
+          aria-hidden="true"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
-      {/* 下拉菜单 - 按分类显示 */}
       {isOpen && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-md z-50 max-h-80 overflow-y-auto">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label={t.scriptPanel.voiceSelector.voiceType}
+          className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-md z-50 max-h-80 overflow-y-auto"
+        >
+          {/* iter5: search + gender filter */}
+          <div
+            className="sticky top-0 bg-card border-b border-border p-2 flex flex-col gap-2"
+            // Filter UI is not part of the listbox semantics
+            role="presentation"
+          >
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={t.scriptPanel.voiceSelector.searchPlaceholder}
+              aria-label={t.scriptPanel.voiceSelector.searchPlaceholder}
+              className="w-full border border-border rounded px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-pink-500"
+            />
+            <div className="flex gap-1" role="radiogroup" aria-label={t.scriptPanel.voiceSelector.voiceType}>
+              {([
+                ['all', t.scriptPanel.voiceSelector.genderAll],
+                ['male', t.scriptPanel.voiceSelector.genderMale],
+                ['female', t.scriptPanel.voiceSelector.genderFemale],
+              ] as Array<[GenderFilter, string]>).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={genderFilter === value}
+                  onClick={() => setGenderFilter(value)}
+                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                    genderFilter === value
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card text-foreground border-border hover:border-primary/50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {totalVisible === 0 && (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              {voiceList.length === 0
+                ? t.scriptPanel.voiceSelector.noVoicesAvailable
+                : t.scriptPanel.voiceSelector.noVoicesMatched}
+            </div>
+          )}
+
           {sortedCategories.map((category, categoryIndex) => (
-            <div key={category} className={`p-2 ${categoryIndex > 0 ? 'border-t border-border' : ''}`}>
+            <div key={category} role="group" aria-label={getCategoryDisplayName(category)} className={`p-2 ${categoryIndex > 0 ? 'border-t border-border' : ''}`}>
               <div className="text-xs font-medium text-muted-foreground px-2 py-1 flex items-center">
-                <div className={`w-3 h-3 rounded-full ${getCategoryColor(category)} mr-2`}></div>
+                <div className={`w-3 h-3 rounded-full ${getCategoryColor(category)} mr-2`} aria-hidden="true"></div>
                 {getCategoryDisplayName(category)}
                 <span className="ml-1 text-muted-foreground">({voicesByCategory[category].length})</span>
               </div>
               {voicesByCategory[category].map((voice) => (
                 <button
                   key={voice.id}
+                  role="option"
+                  aria-selected={selectedVoiceId === voice.id}
                   onClick={() => handleVoiceSelect(voice.id)}
                   className={`w-full text-left px-3 py-2 rounded-md hover:bg-accent transition-colors ${
                     selectedVoiceId === voice.id ? 'bg-primary/10 text-primary' : 'text-foreground'
@@ -213,7 +281,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
                       <div className="text-xs text-muted-foreground mt-0.5">{voice.description}</div>
                     </div>
                     {selectedVoiceId === voice.id && (
-                      <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -222,24 +290,18 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
               ))}
             </div>
           ))}
-
-          {voiceList.length === 0 && (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              {t.scriptPanel.voiceSelector.noVoicesAvailable}
-            </div>
-          )}
         </div>
       )}
 
-      {/* 点击外部关闭下拉菜单 */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 z-40" 
+        <div
+          className="fixed inset-0 z-40"
           onClick={() => setIsOpen(false)}
+          aria-hidden="true"
         />
       )}
     </div>
   );
 };
 
-export default VoiceSelector; 
+export default VoiceSelector;

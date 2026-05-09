@@ -196,25 +196,28 @@ const UserInfoPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        {hasChanges && (
-          <div className="mt-8 flex items-center space-x-4 pt-6 border-t border-border">
-            <button
-              onClick={handleSave}
-              disabled={isLoading}
-              className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isLoading ? t.profile.saving : t.profile.save}
-            </button>
-            <button
-              onClick={handleReset}
-              disabled={isLoading}
-              className="px-4 py-2 border border-border text-foreground text-sm font-medium rounded-md hover:bg-accent focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {t.profile.cancel}
-            </button>
-          </div>
-        )}
+        {/* Action Buttons — iter5: render persistently with disabled state so
+            users see immediate, predictable affordance instead of buttons that
+            appear/disappear with every keystroke. */}
+        <div className="mt-8 flex items-center space-x-4 pt-6 border-t border-border">
+          <button
+            onClick={handleSave}
+            disabled={!hasChanges || isLoading}
+            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? t.profile.saving : t.profile.save}
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={!hasChanges || isLoading}
+            className="px-4 py-2 border border-border text-foreground text-sm font-medium rounded-md hover:bg-accent focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {t.profile.cancel}
+          </button>
+          {!hasChanges && (
+            <span className="text-xs text-muted-foreground">{t.profile.noChanges}</span>
+          )}
+        </div>
       </div>
     </div>
   );

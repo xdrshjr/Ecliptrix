@@ -505,11 +505,17 @@ class StorageService:
         material_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
+        dedupe: bool = True,
     ) -> Dict[str, Any]:
         """List materials belonging to *user_id*, with pagination.
 
         Walks the storage root searching for ``user_{user_id}`` directories
         and collects file information.
+
+        When *dedupe* is True (default, iter5), entries with the same
+        ``(name, size)`` are collapsed to the newest one — fixes the duplicate
+        reference-image rows users see after the same file is uploaded under
+        multiple task subdirectories.
         """
         user_prefix = f"user_{user_id}"
         all_files: List[Dict[str, Any]] = []
@@ -547,6 +553,28 @@ class StorageService:
 
         # Sort newest first
         all_files.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        # iter5: dedupe by (name, size) keeping the newest copy.
+        if dedupe:
+            seen: set = set()
+            unique: List[Dict[str, Any]] = []
+            for f in all_files:
+                try:
+                    key = (f.get("name", ""), int(f.get("size", 0) or 0))
+                except (TypeError, ValueError):
+                    key = (f.get("name", ""), 0)
+                if key in seen:
+                    continue
+                seen.add(key)
+                unique.append(f)
+            removed = len(all_files) - len(unique)
+            if removed > 0:
+                logger.info("User materials deduped", {
+                    "user_id": user_id,
+                    "removed": removed,
+                    "kept": len(unique),
+                })
+            all_files = unique
 
         total = len(all_files)
         total_pages = (total + page_size - 1) // page_size if total > 0 else 0
