@@ -112,6 +112,7 @@ class AgentWorkflowService:
                 existing.description = request.workflow_description
                 existing.workflow_data = workflow_data_json
                 await db.flush()
+                await db.refresh(existing, attribute_names=["created_at", "updated_at"])
 
                 workflow_record = self._record_to_model(existing)
             else:
@@ -131,6 +132,7 @@ class AgentWorkflowService:
                 )
                 db.add(new_workflow)
                 await db.flush()
+                await db.refresh(new_workflow, attribute_names=["created_at", "updated_at"])
 
                 workflow_record = self._record_to_model(new_workflow)
 
@@ -155,9 +157,8 @@ class AgentWorkflowService:
             })
             return {
                 "success": False,
-                "message": f"Failed to save workflow: {error_msg}",
+                "message": "Failed to save workflow",
                 "error_code": "SAVE_ERROR",
-                "error": error_msg
             }
 
     async def load_workflows(
@@ -234,9 +235,8 @@ class AgentWorkflowService:
             })
             return {
                 "success": False,
-                "message": f"Failed to load workflows: {error_msg}",
+                "message": "Failed to load workflows",
                 "error_code": "LOAD_ERROR",
-                "error": error_msg
             }
 
     async def delete_workflow(
@@ -308,9 +308,8 @@ class AgentWorkflowService:
             })
             return {
                 "success": False,
-                "message": f"Failed to delete workflow: {error_msg}",
+                "message": "Failed to delete workflow",
                 "error_code": "DELETE_ERROR",
-                "error": error_msg
             }
 
 

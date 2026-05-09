@@ -513,6 +513,7 @@ export interface Translations {
     workflow: string;
     videoEditing: string;
     brainstorming: string;
+    brainstormingComingSoon: string;
     aiChat: string;
   };
   videoProjects: {
@@ -630,6 +631,8 @@ export interface Translations {
       selectWorkflowPrompt: string;
       description: string;
       viewDescription: string;
+      runHintNoWorkflow: string;
+      runHintMissingStart: string;
     };
     notifications: {
       loadedWorkflows: string;
@@ -835,6 +838,17 @@ export interface Translations {
     typeSubtitle: string;
     noMaterials: string;
     emptyDescription: string;
+    empty: {
+      allTitle: string;        allDesc: string;
+      videoTitle: string;      videoDesc: string;
+      audioTitle: string;      audioDesc: string;
+      imageTitle: string;      imageDesc: string;
+      frameTitle: string;      frameDesc: string;
+      characterTitle: string;  characterDesc: string;
+      sceneTitle: string;      sceneDesc: string;
+      storyboardTitle: string; storyboardDesc: string;
+      dragHint: string;
+    };
     searchVideos: string;
     searchAudios: string;
     searchAudiosTooltip: string;
@@ -3198,6 +3212,7 @@ export const translations: Record<string, Translations> = {
       workflow: 'WorkFlow',
       videoEditing: 'Video Editing',
       brainstorming: 'Brainstorming',
+      brainstormingComingSoon: 'Brainstorming is coming soon.',
       aiChat: 'AI Chat',
     },
     videoProjects: {
@@ -3315,6 +3330,8 @@ export const translations: Record<string, Translations> = {
         selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
         description: 'Description',
         viewDescription: 'View description',
+        runHintNoWorkflow: 'Select a workflow first.',
+        runHintMissingStart: 'Add a Start node before running.',
       },
       notifications: {
         loadedWorkflows: 'Loaded {count} workflow(s)',
@@ -3384,6 +3401,25 @@ export const translations: Record<string, Translations> = {
       typeSubtitle: 'Subtitle',
       noMaterials: 'No Materials',
       emptyDescription: 'Materials library is empty. Click the \'Search Videos\' button below to add high-quality video materials.',
+      empty: {
+        allTitle: 'No materials yet',
+        allDesc: 'Library is empty. Use "Upload" or "AI Create" to start adding.',
+        videoTitle: 'No video materials',
+        videoDesc: 'Use "Upload" to add a video, or "Search Videos" to pull one from the library.',
+        audioTitle: 'No audio materials',
+        audioDesc: 'Use "Upload" to add audio, or "AI Create" to generate TTS.',
+        imageTitle: 'No image materials',
+        imageDesc: 'Use "Upload" to add images, or "AI Create" to generate one.',
+        frameTitle: 'No frame packs',
+        frameDesc: 'Use "Video Tools → Frame Extraction" to pull frames from a video.',
+        characterTitle: 'No character packs',
+        characterDesc: 'Generate one via "AI Character Modeling".',
+        sceneTitle: 'No scene packs',
+        sceneDesc: 'Generate one via "AI Scene Modeling".',
+        storyboardTitle: 'No storyboard packs',
+        storyboardDesc: 'Click "AI Image Generation" to create a storyboard pack.',
+        dragHint: 'Or drag and drop files here to upload.',
+      },
       searchVideos: 'Search Videos',
       searchAudios: 'Search Audios',
       searchAudiosTooltip: 'Search Online Audios',
@@ -5903,6 +5939,7 @@ export const translations: Record<string, Translations> = {
       workflow: '工作流',
       videoEditing: '视频编辑',
       brainstorming: '头脑风暴',
+      brainstormingComingSoon: '头脑风暴功能即将推出',
       aiChat: 'AI对话',
     },
     videoProjects: {
@@ -6020,6 +6057,8 @@ export const translations: Record<string, Translations> = {
         selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
         description: '描述',
         viewDescription: '查看描述',
+        runHintNoWorkflow: '请先选择一个工作流',
+        runHintMissingStart: '请先添加 Start 节点再运行',
       },
       notifications: {
         loadedWorkflows: '已加载 {count} 个工作流',
@@ -6089,6 +6128,25 @@ export const translations: Record<string, Translations> = {
       typeSubtitle: '字幕',
       noMaterials: '暂无素材',
       emptyDescription: '素材库为空，点击下方「搜索视频」按钮来添加高质量的视频素材',
+      empty: {
+        allTitle: '暂无素材',
+        allDesc: '素材库为空，使用「上传素材」或「AI 创建」开始添加',
+        videoTitle: '暂无视频素材',
+        videoDesc: '点击「上传素材」上传视频，或「搜索视频」从素材库添加',
+        audioTitle: '暂无音频素材',
+        audioDesc: '点击「上传素材」上传音频，或使用「AI 创建」生成 TTS',
+        imageTitle: '暂无图片素材',
+        imageDesc: '点击「上传素材」上传图片，或「AI 创建」生成图片',
+        frameTitle: '暂无帧素材',
+        frameDesc: '使用「视频处理 → 视频帧提取」从视频中抽取帧',
+        characterTitle: '暂无人物建模包',
+        characterDesc: '使用「AI 人物建模」生成',
+        sceneTitle: '暂无场景包',
+        sceneDesc: '使用「AI 场景建模」生成',
+        storyboardTitle: '暂无分镜包',
+        storyboardDesc: '点击「AI 图像生成」创建分镜包',
+        dragHint: '或者直接拖拽文件到此处上传',
+      },
       searchVideos: '搜索视频',
       searchAudios: '搜索音频',
       searchAudiosTooltip: '搜索在线音频',

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { UseMaterialManagementReturn } from '../../types';
 import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
@@ -181,6 +181,49 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   useEffect(() => { characterPacksRef.current = characterPacks; }, [characterPacks]);
   useEffect(() => { scenePacksRef.current = scenePacks; }, [scenePacks]);
   useEffect(() => { framePacksRef.current = framePacks; }, [framePacks]);
+
+  // Visible-after-filter sets used by the empty-state branch.
+  // Bug-fix iter4 #3: empty-state must reflect the *filtered* visible set, not the raw `materials.length`.
+  // Otherwise picking a tab whose backing collection is empty (e.g., "image" when only audio exists)
+  // shows an empty grid instead of the proper "no image materials" hint.
+  const visibleMaterials = useMemo(() => (
+    selectedMaterialType === 'all'
+      ? materials.filter(m => m.type !== 'storyboard_pack')
+      : materials.filter(m => m.type === selectedMaterialType)
+  ), [materials, selectedMaterialType]);
+
+  const visiblePacks = useMemo(() => {
+    switch (selectedMaterialType) {
+      case 'storyboard_pack': return storyboardPacks as Array<StoryboardPack | ImagePack>;
+      case 'character_pack': return characterPacks as Array<StoryboardPack | ImagePack>;
+      case 'scene_pack':     return scenePacks as Array<StoryboardPack | ImagePack>;
+      case 'frame_pack':     return framePacks as Array<StoryboardPack | ImagePack>;
+      case 'all':            return [
+        ...storyboardPacks,
+        ...characterPacks,
+        ...scenePacks,
+        ...framePacks,
+      ] as Array<StoryboardPack | ImagePack>;
+      default: return [] as Array<StoryboardPack | ImagePack>;
+    }
+  }, [selectedMaterialType, storyboardPacks, characterPacks, scenePacks, framePacks]);
+
+  const isFilteredEmpty = visibleMaterials.length === 0 && visiblePacks.length === 0;
+
+  const emptyHint = useMemo(() => {
+    const m = t.materialsPanel.empty;
+    switch (selectedMaterialType) {
+      case 'video':           return { title: m.videoTitle,      desc: m.videoDesc };
+      case 'audio':           return { title: m.audioTitle,      desc: m.audioDesc };
+      case 'image':           return { title: m.imageTitle,      desc: m.imageDesc };
+      case 'frame_pack':      return { title: m.frameTitle,      desc: m.frameDesc };
+      case 'character_pack':  return { title: m.characterTitle,  desc: m.characterDesc };
+      case 'scene_pack':      return { title: m.sceneTitle,      desc: m.sceneDesc };
+      case 'storyboard_pack': return { title: m.storyboardTitle, desc: m.storyboardDesc };
+      case 'all':
+      default:                return { title: m.allTitle,        desc: m.allDesc };
+    }
+  }, [selectedMaterialType, t]);
   const [gridPackModal, setGridPackModal] = useState<{ isOpen: boolean; pack: ImagePack | null }>({
     isOpen: false,
     pack: null,
@@ -1984,32 +2027,19 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
           )}
 
-          {/* Empty state for storyboard_pack filter with no packs */}
-          {selectedMaterialType === 'storyboard_pack' && storyboardPacks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4">
-              <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">暂无分镜包</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-sm">
-                点击AI图像生成创建分镜包
-              </p>
-            </div>
-          ) : materials.length === 0 && storyboardPacks.length === 0 && characterPacks.length === 0 && scenePacks.length === 0 && framePacks.length === 0 ? (
+          {isFilteredEmpty ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">{t.materialsPanel.noMaterials}</h3>
+              <h3 className="text-lg font-medium text-foreground mb-2">{emptyHint.title}</h3>
               <p className="text-sm text-muted-foreground text-center max-w-sm">
-                {t.materialsPanel.emptyDescription}
+                {emptyHint.desc}
               </p>
               <p className="text-sm text-muted-foreground text-center max-w-sm mt-2">
-                或者直接拖拽文件到此处上传
+                {t.materialsPanel.empty.dragHint}
               </p>
             </div>
           ) : (

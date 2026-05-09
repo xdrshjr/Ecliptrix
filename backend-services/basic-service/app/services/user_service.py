@@ -782,40 +782,33 @@ class UserService:
 
     async def get_user_stats(self, db: AsyncSession, current_user: Optional[User] = None) -> Dict[str, Any]:
         """
-        Get aggregated user statistics.
-        Stats show accurate aggregate counts; only the user LIST is permission-filtered.
+        Get aggregated user statistics with the same permission filter as the
+        user-list endpoint, so stats and list totals stay consistent.
+
+        - admin caller: stats exclude admin and root rows (matches list view).
+        - root caller (or no current_user): stats include all rows.
         """
         try:
-            # Stats are aggregate data — show accurate counts regardless of caller role.
-            # The user list endpoint handles per-row permission filtering separately.
+            base_filter = []
+            if current_user is not None and not current_user.is_root:
+                # Mirror get_all_users() permission filter.
+                base_filter = [User.is_admin == False, User.is_root == False]  # noqa: E712
 
-            total = (await db.execute(
-                select(func.count(User.id))
-            )).scalar() or 0
+            def _scalar(extra=None):
+                stmt = select(func.count(User.id))
+                for f in base_filter:
+                    stmt = stmt.where(f)
+                if extra is not None:
+                    stmt = stmt.where(extra)
+                return stmt
 
-            admin_count = (await db.execute(
-                select(func.count(User.id)).where(User.user_role == "admin")
-            )).scalar() or 0
-
-            premium_count = (await db.execute(
-                select(func.count(User.id)).where(User.user_role == "premium")
-            )).scalar() or 0
-
-            regular_count = (await db.execute(
-                select(func.count(User.id)).where(User.user_role == "regular")
-            )).scalar() or 0
-
-            active_count = (await db.execute(
-                select(func.count(User.id)).where(User.is_active == True)
-            )).scalar() or 0
-
-            disabled_count = (await db.execute(
-                select(func.count(User.id)).where(User.is_active == False)
-            )).scalar() or 0
-
-            online_count = (await db.execute(
-                select(func.count(User.id)).where(User.active_session_token.isnot(None))
-            )).scalar() or 0
+            total          = (await db.execute(_scalar())).scalar() or 0
+            admin_count    = (await db.execute(_scalar(User.user_role == "admin"))).scalar() or 0
+            premium_count  = (await db.execute(_scalar(User.user_role == "premium"))).scalar() or 0
+            regular_count  = (await db.execute(_scalar(User.user_role == "regular"))).scalar() or 0
+            active_count   = (await db.execute(_scalar(User.is_active == True))).scalar() or 0  # noqa: E712
+            disabled_count = (await db.execute(_scalar(User.is_active == False))).scalar() or 0  # noqa: E712
+            online_count   = (await db.execute(_scalar(User.active_session_token.isnot(None)))).scalar() or 0
 
             return {
                 "success": True,

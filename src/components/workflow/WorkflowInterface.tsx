@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { WorkflowTaskContent, WorkflowNode, WorkflowConnection, WorkflowExecutionState } from '@/types';
 import WorkflowSidebar from './WorkflowSidebar';
 import WorkflowCanvas from './WorkflowCanvas';
@@ -12,6 +12,8 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { saveAgentWorkflow, loadAgentWorkflows, deleteAgentWorkflow } from '@/lib/api/workflow';
+import { sanitizeErrorMessage } from '@/lib/sanitizeError';
+import { dlog, dwarn } from '@/lib/utils/debugLog';
 
 interface WorkflowInterfaceProps {
   taskId: string;
@@ -33,7 +35,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   onUpdateContent,
   onNavigateToVideoEditing,
 }) => {
-  console.log('[WorkflowInterface] Rendering interface:', {
+  dlog('[WorkflowInterface] Rendering interface:', {
     taskId,
     hasContent: !!content,
     workflowsCount: content?.workflows?.length || 0,
@@ -85,7 +87,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   // Description tooltip state
   const [isDescriptionTooltipOpen, setIsDescriptionTooltipOpen] = useState(false);
 
-  console.log('[WorkflowInterface] Restoring UI state:', {
+  dlog('[WorkflowInterface] Restoring UI state:', {
     activeRightTab,
     workflowChatStatesCount: Object.keys(workflowChatStates).length,
     executionStateLogsCount: executionState.logs.length,
@@ -118,7 +120,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       JSON.stringify(content.executionState) !== JSON.stringify(executionState);
 
     if (hasStateChanged) {
-      console.log('[WorkflowInterface] Persisting UI state:', {
+      dlog('[WorkflowInterface] Persisting UI state:', {
         taskId,
         activeRightTab,
         workflowChatStatesCount: Object.keys(workflowChatStates).length,
@@ -136,7 +138,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     const loadWorkflows = async () => {
       // Skip if already auto-loaded or if content already exists
       if (hasAutoLoaded.current || content) {
-        console.log('[WorkflowInterface] Skipping auto-load:', {
+        dlog('[WorkflowInterface] Skipping auto-load:', {
           hasAutoLoaded: hasAutoLoaded.current,
           hasContent: !!content,
           timestamp: new Date().toISOString()
@@ -145,18 +147,18 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       }
 
       if (!isAuthenticated || !user) {
-        console.log('[WorkflowInterface] User not authenticated, skipping workflow load');
+        dlog('[WorkflowInterface] User not authenticated, skipping workflow load');
         return;
       }
 
       try {
         hasAutoLoaded.current = true; // Mark as auto-loaded to prevent re-loading
-        console.log('[WorkflowInterface] Loading workflows for user:', user.id);
+        dlog('[WorkflowInterface] Loading workflows for user:', user.id);
         
         const response = await loadAgentWorkflows(user.id);
         
         if (response.success && response.data.length > 0) {
-          console.log('[WorkflowInterface] Loaded workflows:', response.data.length);
+          dlog('[WorkflowInterface] Loaded workflows:', response.data.length);
           
           // Convert loaded workflows to WorkflowTaskContent format
           const workflows = response.data.map(record => ({
@@ -181,23 +183,26 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
             },
           };
           
-          console.log('[WorkflowInterface] Setting loaded workflows as content');
+          dlog('[WorkflowInterface] Setting loaded workflows as content');
           onUpdateContent(loadedContent);
           
           notification.showSuccess(t.workflowInterface.notifications.loadedWorkflows.replace('{count}', String(workflows.length)), 2000);
         } else {
-          console.log('[WorkflowInterface] No workflows found, initializing default');
+          dlog('[WorkflowInterface] No workflows found, initializing default');
           initializeDefaultContent();
         }
       } catch (error) {
         console.error('[WorkflowInterface] Error loading workflows:', error);
-        notification.showError(t.workflowInterface.notifications.failedToLoad, 3000);
+        notification.showError(
+          sanitizeErrorMessage(error, t.workflowInterface.notifications.failedToLoad),
+          3000,
+        );
         initializeDefaultContent();
       }
     };
 
     const initializeDefaultContent = () => {
-      console.log('[WorkflowInterface] Initializing default workflow content');
+      dlog('[WorkflowInterface] Initializing default workflow content');
       
       const defaultContent: WorkflowTaskContent = {
         activeWorkflowId: 'search-chat-agent',
@@ -233,7 +238,19 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     w => w.id === content.activeWorkflowId
   );
 
-  console.log('[WorkflowInterface] Active workflow:', {
+  const hasStartNode = useMemo(
+    () => Boolean(activeWorkflow?.data.nodes?.some((n) => n.type === 'start')),
+    [activeWorkflow?.data.nodes]
+  );
+
+  const isRunDisabled = !activeWorkflow || executionState.isRunning || !hasStartNode;
+  const runDisabledTitle = !activeWorkflow
+    ? t.workflowInterface.editor.runHintNoWorkflow
+    : !hasStartNode
+      ? t.workflowInterface.editor.runHintMissingStart
+      : '';
+
+  dlog('[WorkflowInterface] Active workflow:', {
     activeWorkflowId: content?.activeWorkflowId,
     activeWorkflowName: activeWorkflow?.name,
     nodesCount: activeWorkflow?.data.nodes.length || 0
@@ -243,7 +260,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const activeWorkflowId = content?.activeWorkflowId || '';
   const activeChatState = workflowChatStates[activeWorkflowId] || { messages: [], contextCleared: false };
   
-  console.log('[WorkflowInterface] Active chat state:', {
+  dlog('[WorkflowInterface] Active chat state:', {
     workflowId: activeWorkflowId,
     messagesCount: activeChatState.messages.length,
     contextCleared: activeChatState.contextCleared
@@ -253,7 +270,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const handleSelectWorkflow = useCallback((workflowId: string) => {
     if (!content) return;
     
-    console.log('[WorkflowInterface] Selecting workflow:', { workflowId });
+    dlog('[WorkflowInterface] Selecting workflow:', { workflowId });
     
     onUpdateContent({
       ...content,
@@ -274,7 +291,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     const newWorkflowId = `workflow-${Date.now()}`;
     const defaultName = t.workflowInterface.notifications.newWorkflowDefaultName;
     
-    console.log('[WorkflowInterface] Adding new workflow:', {
+    dlog('[WorkflowInterface] Adding new workflow:', {
       workflowId: newWorkflowId,
       workflowName: defaultName,
       timestamp: new Date().toISOString()
@@ -299,7 +316,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     
     onUpdateContent(updatedContent);
     
-    console.log('[WorkflowInterface] New workflow added and selected:', {
+    dlog('[WorkflowInterface] New workflow added and selected:', {
       workflowId: newWorkflowId,
       totalWorkflows: updatedContent.workflows.length,
       activeWorkflowId: updatedContent.activeWorkflowId
@@ -307,7 +324,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
 
     // Auto-save the new workflow to database
     try {
-      console.log('[WorkflowInterface] Auto-saving new workflow to database:', {
+      dlog('[WorkflowInterface] Auto-saving new workflow to database:', {
         workflow_id: newWorkflowId,
         workflow_name: defaultName
       });
@@ -322,7 +339,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       });
 
       if (response.success) {
-        console.log('[WorkflowInterface] New workflow auto-saved successfully:', {
+        dlog('[WorkflowInterface] New workflow auto-saved successfully:', {
           workflow_id: response.data.workflow_id,
           version: response.data.version,
         });
@@ -348,7 +365,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       return;
     }
     
-    console.log('[WorkflowInterface] Renaming workflow:', {
+    dlog('[WorkflowInterface] Renaming workflow:', {
       workflowId,
       newName,
       timestamp: new Date().toISOString()
@@ -378,14 +395,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       workflows: updatedWorkflows,
     });
     
-    console.log('[WorkflowInterface] Workflow renamed successfully in local state:', {
+    dlog('[WorkflowInterface] Workflow renamed successfully in local state:', {
       workflowId,
       newName
     });
 
     // Auto-save the renamed workflow to database
     try {
-      console.log('[WorkflowInterface] Auto-saving renamed workflow to database:', {
+      dlog('[WorkflowInterface] Auto-saving renamed workflow to database:', {
         workflow_id: workflowId,
         old_name: workflowToRename.name,
         new_name: newName
@@ -401,7 +418,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       });
 
       if (response.success) {
-        console.log('[WorkflowInterface] Renamed workflow auto-saved successfully:', {
+        dlog('[WorkflowInterface] Renamed workflow auto-saved successfully:', {
           workflow_id: response.data.workflow_id,
           version: response.data.version,
         });
@@ -419,7 +436,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
 
   // Handle edit workflow
   const handleEditWorkflow = useCallback((workflowId: string) => {
-    console.log('[WorkflowInterface] Opening edit modal for workflow:', { workflowId });
+    dlog('[WorkflowInterface] Opening edit modal for workflow:', { workflowId });
     setEditingWorkflowId(workflowId);
     setIsEditModalOpen(true);
   }, []);
@@ -434,7 +451,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       return;
     }
     
-    console.log('[WorkflowInterface] Saving workflow changes from modal:', {
+    dlog('[WorkflowInterface] Saving workflow changes from modal:', {
       workflowId: editingWorkflowId,
       name,
       description,
@@ -468,11 +485,11 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       workflows: updatedWorkflows,
     });
     
-    console.log('[WorkflowInterface] Workflow updated in local state');
+    dlog('[WorkflowInterface] Workflow updated in local state');
 
     // Auto-save to database
     try {
-      console.log('[WorkflowInterface] Auto-saving workflow changes to database');
+      dlog('[WorkflowInterface] Auto-saving workflow changes to database');
 
       const response = await saveAgentWorkflow({
         user_id: user.id,
@@ -484,7 +501,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       });
 
       if (response.success) {
-        console.log('[WorkflowInterface] Workflow changes saved successfully:', {
+        dlog('[WorkflowInterface] Workflow changes saved successfully:', {
           workflow_id: response.data.workflow_id,
           version: response.data.version,
         });
@@ -502,7 +519,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   
   // Handle close edit modal
   const handleCloseEditModal = useCallback(() => {
-    console.log('[WorkflowInterface] Closing edit modal');
+    dlog('[WorkflowInterface] Closing edit modal');
     setIsEditModalOpen(false);
     setEditingWorkflowId(null);
   }, []);
@@ -529,7 +546,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       return;
     }
 
-    console.log('[WorkflowInterface] Deleting workflow:', {
+    dlog('[WorkflowInterface] Deleting workflow:', {
       workflowId,
       workflowName: workflowToDelete.name,
       timestamp: new Date().toISOString()
@@ -540,7 +557,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       const response = await deleteAgentWorkflow(user.id, workflowId);
 
       if (response.success) {
-        console.log('[WorkflowInterface] Workflow deleted from backend successfully:', {
+        dlog('[WorkflowInterface] Workflow deleted from backend successfully:', {
           workflow_id: workflowId
         });
 
@@ -552,7 +569,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
         if (content.activeWorkflowId === workflowId) {
           // Select the first remaining workflow
           newActiveWorkflowId = updatedWorkflows.length > 0 ? updatedWorkflows[0].id : null;
-          console.log('[WorkflowInterface] Active workflow was deleted, switching to:', {
+          dlog('[WorkflowInterface] Active workflow was deleted, switching to:', {
             newActiveWorkflowId,
             newActiveWorkflowName: updatedWorkflows.find(w => w.id === newActiveWorkflowId)?.name
           });
@@ -564,7 +581,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
           activeWorkflowId: newActiveWorkflowId,
         });
 
-        console.log('[WorkflowInterface] Workflow deleted successfully:', {
+        dlog('[WorkflowInterface] Workflow deleted successfully:', {
           workflowId,
           workflowName: workflowToDelete.name,
           remainingWorkflows: updatedWorkflows.length,
@@ -579,7 +596,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     } catch (error) {
       console.error('[WorkflowInterface] Error deleting workflow:', error);
       notification.showError(
-        error instanceof Error ? error.message : t.workflowInterface.notifications.failedToDelete,
+        sanitizeErrorMessage(error, t.workflowInterface.notifications.failedToDelete),
         4000
       );
     }
@@ -589,7 +606,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const handleNodesChange = useCallback((nodes: WorkflowNode[]) => {
     if (!content || !content.activeWorkflowId) return;
     
-    console.log('[WorkflowInterface] Updating nodes:', { 
+    dlog('[WorkflowInterface] Updating nodes:', { 
       workflowId: content.activeWorkflowId,
       nodesCount: nodes.length 
     });
@@ -616,7 +633,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const handleConnectionsChange = useCallback((connections: WorkflowConnection[]) => {
     if (!content || !content.activeWorkflowId) return;
     
-    console.log('[WorkflowInterface] Updating connections:', { 
+    dlog('[WorkflowInterface] Updating connections:', { 
       workflowId: content.activeWorkflowId,
       connectionsCount: connections.length 
     });
@@ -643,7 +660,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const handleNodesAndConnectionsChange = useCallback((nodes: WorkflowNode[], connections: WorkflowConnection[]) => {
     if (!content || !content.activeWorkflowId) return;
     
-    console.log('[WorkflowInterface] Updating nodes and connections:', { 
+    dlog('[WorkflowInterface] Updating nodes and connections:', { 
       workflowId: content.activeWorkflowId,
       nodesCount: nodes.length,
       connectionsCount: connections.length 
@@ -672,7 +689,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   const handleClearChatHistory = useCallback(() => {
     if (!activeWorkflowId) return;
     
-    console.log('[WorkflowInterface] Clearing chat history for workflow:', {
+    dlog('[WorkflowInterface] Clearing chat history for workflow:', {
       workflowId: activeWorkflowId,
       previousMessagesCount: activeChatState.messages.length,
       timestamp: new Date().toISOString()
@@ -686,14 +703,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       }
     }));
     
-    console.log('[WorkflowInterface] Chat history cleared successfully');
+    dlog('[WorkflowInterface] Chat history cleared successfully');
   }, [activeWorkflowId, activeChatState.messages.length]);
 
   // Handle clear context for current workflow
   const handleClearContext = useCallback(() => {
     if (!activeWorkflowId) return;
     
-    console.log('[WorkflowInterface] Clearing context for workflow:', {
+    dlog('[WorkflowInterface] Clearing context for workflow:', {
       workflowId: activeWorkflowId,
       timestamp: new Date().toISOString()
     });
@@ -718,7 +735,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     // Clear the executor instance
     setWorkflowExecutor(null);
     
-    console.log('[WorkflowInterface] Context cleared successfully:', {
+    dlog('[WorkflowInterface] Context cleared successfully:', {
       workflowId: activeWorkflowId,
       messagesPreserved: activeChatState.messages.length
     });
@@ -727,14 +744,14 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   // Handle workflow execution
   const handleRunWorkflow = useCallback(async (userInput?: string | null) => {
     if (!activeWorkflow || executionState.isRunning) {
-      console.warn('[WorkflowInterface] Cannot run workflow:', {
+      dwarn('[WorkflowInterface] Cannot run workflow:', {
         hasActiveWorkflow: !!activeWorkflow,
         isRunning: executionState.isRunning
       });
       return;
     }
 
-    console.log('[WorkflowInterface] Starting workflow execution', {
+    dlog('[WorkflowInterface] Starting workflow execution', {
       hasUserInput: !!userInput,
       userInputLength: userInput?.length || 0,
       contextCleared: activeChatState.contextCleared
@@ -756,7 +773,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       activeWorkflow.data.nodes,
       activeWorkflow.data.connections,
       (newState) => {
-        console.log('[WorkflowInterface] Execution state updated:', {
+        dlog('[WorkflowInterface] Execution state updated:', {
           isRunning: newState.isRunning,
           currentNodeId: newState.currentNodeId,
           logsCount: newState.logs.length,
@@ -777,13 +794,13 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     
     // Start execution
     try {
-      console.log('[WorkflowInterface] Calling executor.execute()');
+      dlog('[WorkflowInterface] Calling executor.execute()');
       await executor.execute();
-      console.log('[WorkflowInterface] Executor.execute() completed successfully');
+      dlog('[WorkflowInterface] Executor.execute() completed successfully');
     } catch (error) {
       console.error('[WorkflowInterface] Workflow execution failed:', error);
     } finally {
-      console.log('[WorkflowInterface] Workflow execution finished (finally block)');
+      dlog('[WorkflowInterface] Workflow execution finished (finally block)');
       // Clear user input after execution
       setCurrentUserInput(null);
     }
@@ -792,7 +809,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
   // Handle workflow abort
   const handleAbortWorkflow = useCallback(() => {
     if (workflowExecutor) {
-      console.log('[WorkflowInterface] Aborting workflow execution');
+      dlog('[WorkflowInterface] Aborting workflow execution');
       workflowExecutor.abort();
     }
   }, [workflowExecutor]);
@@ -812,7 +829,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     try {
       setIsSaving(true);
       
-      console.log('[WorkflowInterface] Saving workflow:', {
+      dlog('[WorkflowInterface] Saving workflow:', {
         workflow_id: activeWorkflow.id,
         workflow_name: activeWorkflow.name,
         nodes_count: activeWorkflow.data.nodes.length,
@@ -829,7 +846,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
       });
 
       if (response.success) {
-        console.log('[WorkflowInterface] Workflow saved successfully:', {
+        dlog('[WorkflowInterface] Workflow saved successfully:', {
           workflow_id: response.data.workflow_id,
           version: response.data.version,
         });
@@ -844,7 +861,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
     } catch (error) {
       console.error('[WorkflowInterface] Error saving workflow:', error);
       notification.showError(
-        error instanceof Error ? error.message : t.workflowInterface.notifications.workflowSaveFailed,
+        sanitizeErrorMessage(error, t.workflowInterface.notifications.workflowSaveFailed),
         5000
       );
     } finally {
@@ -902,7 +919,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
               <div className="flex items-center px-6 pt-4 space-x-1">
                 <button
                   onClick={() => {
-                    console.log('[WorkflowInterface] Switching to Chat tab');
+                    dlog('[WorkflowInterface] Switching to Chat tab');
                     setActiveRightTab('chat');
                   }}
                   className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
@@ -921,7 +938,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
 
                 <button
                   onClick={() => {
-                    console.log('[WorkflowInterface] Switching to Workflow tab');
+                    dlog('[WorkflowInterface] Switching to Workflow tab');
                     setActiveRightTab('workflow');
                   }}
                   className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
@@ -1021,9 +1038,12 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                   
                   {!executionState.isRunning ? (
                     <button
+                      type="button"
                       className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-[var(--primary-hover)] transition-colors text-sm font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => handleRunWorkflow()}
-                      disabled={!activeWorkflow}
+                      onClick={() => { if (!isRunDisabled) handleRunWorkflow(); }}
+                      disabled={isRunDisabled}
+                      title={runDisabledTitle || undefined}
+                      aria-label={runDisabledTitle || t.workflowInterface.editor.run}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -1059,7 +1079,7 @@ const WorkflowInterface: React.FC<WorkflowInterfaceProps> = ({
                   onAbortWorkflow={handleAbortWorkflow}
                   messages={activeChatState.messages}
                   onMessagesChange={(messages) => {
-                    console.log('[WorkflowInterface] Updating chat messages for workflow:', {
+                    dlog('[WorkflowInterface] Updating chat messages for workflow:', {
                       workflowId: activeWorkflowId,
                       newMessagesCount: messages.length,
                       timestamp: new Date().toISOString()

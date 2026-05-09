@@ -185,7 +185,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         </svg>
       ),
       label: t.timeline.toolbar.effects,
-      shortcut: t.timeline.shortcuts.effectsShortcut
+      shortcut: t.timeline.shortcuts.effectsShortcut,
+      comingSoon: true,
+      disabled: true,
     },
     {
       id: 'transitions',
@@ -196,7 +198,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         </svg>
       ),
       label: t.timeline.toolbar.transitions,
-      shortcut: t.timeline.shortcuts.transitionsShortcut
+      shortcut: t.timeline.shortcuts.transitionsShortcut,
+      comingSoon: true,
+      disabled: true,
     },
     {
       id: 'subtitles',
@@ -237,8 +241,16 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           }
         `}
         disabled={button.disabled}
-        aria-label={button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
-        title={button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
+        aria-label={
+          button.comingSoon
+            ? `${button.label} — ${t.timeline.messages.featureComingSoon}`
+            : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
+        }
+        title={
+          button.comingSoon
+            ? t.timeline.messages.featureComingSoon
+            : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
+        }
       >
         <span className={button.disabled ? 'opacity-50' : ''}>
           {button.icon}
@@ -247,7 +259,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         {/* 悬停提示 — also shows on keyboard focus (round 17 a11y pattern) */}
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
           <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
-            {button.shortcut ? `${button.label} (${button.shortcut})` : button.label}
+            {button.comingSoon
+              ? t.timeline.messages.featureComingSoon
+              : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2">
               <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
             </div>

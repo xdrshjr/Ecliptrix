@@ -623,11 +623,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   }, [showSuccess, showInfo, t]);
 
   const handleAddEffect = useCallback(() => {
-    showInfo(t.timeline.messages.effectsRequireSelection, 4000);
+    showInfo(t.timeline.messages.featureComingSoon, 3000);
   }, [showInfo, t]);
 
   const handleAddTransition = useCallback(() => {
-    showInfo(t.timeline.messages.transitionsRequireSelection, 4000);
+    showInfo(t.timeline.messages.featureComingSoon, 3000);
   }, [showInfo, t]);
 
   // ---------------------------------------------------------------------------

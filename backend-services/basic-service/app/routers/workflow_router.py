@@ -85,7 +85,7 @@ async def save_agent_workflow(
         })
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save workflow: {str(e)}"
+            detail="Failed to save workflow"
         )
 
 
@@ -140,7 +140,7 @@ async def load_agent_workflows(
         })
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to load workflows: {str(e)}"
+            detail="Failed to load workflows"
         )
 
 
@@ -208,7 +208,7 @@ async def delete_agent_workflow(
         })
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete workflow: {str(e)}"
+            detail="Failed to delete workflow"
         )
 
 

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { dlog } from '@/lib/utils/debugLog';
 
 interface WorkflowItem {
   id: string;
@@ -37,7 +38,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const { t } = useLocale();
 
-  console.log('[WorkflowSidebar] Rendering sidebar:', {
+  dlog('[WorkflowSidebar] Rendering sidebar:', {
     workflowsCount: workflows.length,
     activeWorkflowId,
     timestamp: new Date().toISOString()
@@ -53,7 +54,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
             className="p-1.5 hover:bg-accent rounded-lg transition-colors"
             title={t.workflowInterface.sidebar.addNew}
             onClick={() => {
-              console.log('[WorkflowSidebar] Add new workflow clicked');
+              dlog('[WorkflowSidebar] Add new workflow clicked');
               onAddWorkflow();
             }}
           >
@@ -97,7 +98,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                   {/* Workflow Icon */}
                   <button
                     onClick={() => {
-                      console.log('[WorkflowSidebar] Workflow selected:', { workflowId: workflow.id });
+                      dlog('[WorkflowSidebar] Workflow selected:', { workflowId: workflow.id });
                       onSelectWorkflow(workflow.id);
                     }}
                     className={`
@@ -121,7 +122,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
                         onBlur={() => {
-                          console.log('[WorkflowSidebar] Renaming workflow:', { 
+                          dlog('[WorkflowSidebar] Renaming workflow:', { 
                             workflowId: workflow.id, 
                             oldName: workflow.name, 
                             newName: editingName 
@@ -144,11 +145,11 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                     ) : (
                       <div 
                         onClick={() => {
-                          console.log('[WorkflowSidebar] Workflow selected:', { workflowId: workflow.id });
+                          dlog('[WorkflowSidebar] Workflow selected:', { workflowId: workflow.id });
                           onSelectWorkflow(workflow.id);
                         }}
                         onDoubleClick={() => {
-                          console.log('[WorkflowSidebar] Edit mode activated for workflow:', { workflowId: workflow.id });
+                          dlog('[WorkflowSidebar] Edit mode activated for workflow:', { workflowId: workflow.id });
                           setEditingWorkflowId(workflow.id);
                           setEditingName(workflow.name);
                         }}
@@ -185,7 +186,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          console.log('[WorkflowSidebar] Edit button clicked for workflow:', { workflowId: workflow.id });
+                          dlog('[WorkflowSidebar] Edit button clicked for workflow:', { workflowId: workflow.id });
                           if (onEditWorkflow) {
                             onEditWorkflow(workflow.id);
                           }
@@ -206,7 +207,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  console.log('[WorkflowSidebar] Delete confirmed for workflow:', { workflowId: workflow.id });
+                                  dlog('[WorkflowSidebar] Delete confirmed for workflow:', { workflowId: workflow.id });
                                   onDeleteWorkflow(workflow.id);
                                   setShowDeleteConfirm(null);
                                 }}
@@ -220,7 +221,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  console.log('[WorkflowSidebar] Delete cancelled for workflow:', { workflowId: workflow.id });
+                                  dlog('[WorkflowSidebar] Delete cancelled for workflow:', { workflowId: workflow.id });
                                   setShowDeleteConfirm(null);
                                 }}
                                 className="p-1 hover:bg-accent rounded transition-colors"
@@ -235,7 +236,7 @@ const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                console.log('[WorkflowSidebar] Delete button clicked for workflow:', { workflowId: workflow.id });
+                                dlog('[WorkflowSidebar] Delete button clicked for workflow:', { workflowId: workflow.id });
                                 setShowDeleteConfirm(workflow.id);
                               }}
                               className="p-1 hover:bg-red-50 rounded transition-colors"

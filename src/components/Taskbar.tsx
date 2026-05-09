@@ -23,7 +23,7 @@ const Taskbar: React.FC<TaskbarProps> = ({
 }) => {
   const { t } = useLocale();
   const { isAuthenticated, user } = useAuth();
-  const { showWarning } = useNotification();
+  const { showWarning, showInfo } = useNotification();
   const [showTaskMenu, setShowTaskMenu] = useState(false);
 
   const getTaskIcon = (type: TaskType) => {
@@ -185,11 +185,21 @@ const Taskbar: React.FC<TaskbarProps> = ({
               <span className="text-sm">{t.tasks.workflow}</span>
             </button>
             <button
-              onClick={() => handleCreateTask('brainstorm')}
-              className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                showInfo(t.tasks.brainstormingComingSoon, 3000);
+                setShowTaskMenu(false);
+              }}
+              className="w-full px-4 py-2 text-left flex items-center space-x-3 opacity-50 cursor-not-allowed"
+              aria-disabled="true"
+              title={t.tasks.brainstormingComingSoon}
             >
               {getTaskIcon('brainstorm')}
               <span className="text-sm">{t.tasks.brainstorming}</span>
+              <span className="ml-auto text-[10px] text-muted-foreground border border-border rounded px-1">
+                {t.landing.comingSoonBadge}
+              </span>
             </button>
           </div>
         )}

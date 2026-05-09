@@ -21,6 +21,7 @@ import {
 } from '@/types';
 import { convertFormat, detectFormat } from '@/lib/utils/formatConverter';
 import { http, ApiError } from '@/lib/api/http-client';
+import { dlog, dwarn } from '@/lib/utils/debugLog';
 
 export type ExecutionCallback = (state: WorkflowExecutionState) => void;
 
@@ -59,7 +60,7 @@ export class WorkflowExecutor {
       };
     });
     
-    console.log('[WorkflowExecutor] Initialized with user input:', {
+    dlog('[WorkflowExecutor] Initialized with user input:', {
       hasUserInput: !!this.userInput,
       userInputLength: this.userInput?.length || 0
     });
@@ -69,26 +70,33 @@ export class WorkflowExecutor {
    * Start workflow execution from the Start node
    */
   async execute(): Promise<void> {
-    console.log('[WorkflowExecutor] Starting workflow execution', {
+    dlog('[WorkflowExecutor] Starting workflow execution', {
       nodesCount: this.nodes.length,
       connectionsCount: this.connections.length,
       timestamp: new Date().toISOString()
     });
 
+    // Deep-defense guard: surface a soft warning instead of throwing through catch path.
+    // The Run button is the primary gate (disabled when no Start node) — this protects
+    // hotkey / programmatic entry points.
+    const startNode = this.nodes.find(node => node.type === 'start');
+    if (!startNode) {
+      this.addLog('warning', undefined, 'Cannot run: no Start node in workflow');
+      this.executionState.isRunning = false;
+      this.executionState.currentNodeId = null;
+      this.notifyStateChange();
+      return;
+    }
+
     this.abortController = new AbortController();
     this.executionState.isRunning = true;
     this.executionState.startTime = new Date();
     this.executionState.logs = [];
-    
+
     this.addLog('info', undefined, 'Workflow execution started');
     this.notifyStateChange();
 
     try {
-      // Find the Start node
-      const startNode = this.nodes.find(node => node.type === 'start');
-      if (!startNode) {
-        throw new Error('No Start node found in workflow');
-      }
 
       this.addLog('info', startNode.id, `Found Start node: ${startNode.data.label}`);
 
@@ -124,7 +132,7 @@ export class WorkflowExecutor {
       
       const duration = this.executionState.endTime.getTime() - this.executionState.startTime!.getTime();
       
-      console.log('[WorkflowExecutor] Workflow execution completed:', {
+      dlog('[WorkflowExecutor] Workflow execution completed:', {
         duration: `${(duration / 1000).toFixed(2)}s`,
         finalOutput: previousOutput,
         timestamp: new Date().toISOString()
@@ -159,7 +167,7 @@ export class WorkflowExecutor {
    */
   abort(): void {
     if (this.abortController) {
-      console.log('[WorkflowExecutor] Aborting workflow execution');
+      dlog('[WorkflowExecutor] Aborting workflow execution');
       this.abortController.abort();
       this.addLog('warning', undefined, 'Workflow execution aborted');
     }
@@ -223,7 +231,7 @@ export class WorkflowExecutor {
     // Detect current format
     const currentFormat = detectFormat(input);
     
-    console.log('[WorkflowExecutor] Converting input format:', {
+    dlog('[WorkflowExecutor] Converting input format:', {
       nodeId: node.id,
       from: currentFormat,
       to: inputFormat,
@@ -265,7 +273,7 @@ export class WorkflowExecutor {
     // Detect current format
     const currentFormat = detectFormat(output);
     
-    console.log('[WorkflowExecutor] Converting output format:', {
+    dlog('[WorkflowExecutor] Converting output format:', {
       nodeId: node.id,
       from: currentFormat,
       to: outputFormat,
@@ -302,7 +310,7 @@ export class WorkflowExecutor {
     // Create safe input preview for logging
     const inputPreview = this.createSafeLogObject(convertedInput);
     
-    console.log(`[WorkflowExecutor] ========== Executing Node ==========`, {
+    dlog(`[WorkflowExecutor] ========== Executing Node ==========`, {
       nodeId: node.id,
       nodeType: node.type,
       nodeLabel: node.data.label,
@@ -398,7 +406,7 @@ export class WorkflowExecutor {
       // Create safe output for logging
       const outputPreview = this.createSafeLogObject(output);
       
-      console.log(`[WorkflowExecutor] ========== Node Completed ==========`, {
+      dlog(`[WorkflowExecutor] ========== Node Completed ==========`, {
         nodeId: node.id,
         nodeLabel: node.data.label,
         duration: `${duration}ms`,
@@ -449,7 +457,7 @@ export class WorkflowExecutor {
    * Execute Start node
    */
   private async executeStartNode(node: WorkflowNode): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Start node', {
+    dlog('[WorkflowExecutor] Executing Start node', {
       hasUserInput: !!this.userInput,
       hasConfigInput: !!(node.data.config as StartNodeConfig)?.input
     });
@@ -462,14 +470,14 @@ export class WorkflowExecutor {
     if (this.userInput) {
       // User input from chat interface takes highest priority
       inputContent = this.userInput;
-      console.log('[WorkflowExecutor] Using user input from chat interface:', {
+      dlog('[WorkflowExecutor] Using user input from chat interface:', {
         inputLength: inputContent.length
       });
     } else {
       // Otherwise use configured input
       const config = node.data.config as StartNodeConfig;
       inputContent = config?.input || '';
-      console.log('[WorkflowExecutor] Using configured input:', {
+      dlog('[WorkflowExecutor] Using configured input:', {
         inputLength: inputContent.length,
         hasConfigInput: !!config?.input
       });
@@ -486,7 +494,7 @@ export class WorkflowExecutor {
    * Execute Text Input node
    */
   private async executeTextInputNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Text Input node', { input });
+    dlog('[WorkflowExecutor] Executing Text Input node', { input });
     
     const config = node.data.config as TextInputNodeConfig;
     
@@ -619,7 +627,7 @@ export class WorkflowExecutor {
     // Safely serialize input for logging (avoid circular references)
     const safeInputLog = this.safeSerialize(input).substring(0, 200);
     
-    console.log('[WorkflowExecutor] Executing Chat LLM node', { 
+    dlog('[WorkflowExecutor] Executing Chat LLM node', { 
       nodeId: node.id,
       inputPreview: safeInputLog,
       inputType: typeof input,
@@ -659,7 +667,7 @@ export class WorkflowExecutor {
       throw new Error('Chat LLM node requires a valid input message.');
     }
     
-    console.log('[WorkflowExecutor] Extracted user message', {
+    dlog('[WorkflowExecutor] Extracted user message', {
       messageLength: userMessage.length,
       messagePreview: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : '')
     });
@@ -739,7 +747,7 @@ export class WorkflowExecutor {
         }
       }
 
-      console.log('[WorkflowExecutor] LLM response received', {
+      dlog('[WorkflowExecutor] LLM response received', {
         nodeId: node.id,
         responseLength: accumulatedContent.length,
         contentPreview: accumulatedContent.substring(0, 100) + (accumulatedContent.length > 100 ? '...' : ''),
@@ -776,7 +784,7 @@ export class WorkflowExecutor {
    * Execute Volcano TTS node
    */
   private async executeVolcanoTTSNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Volcano TTS node', { 
+    dlog('[WorkflowExecutor] Executing Volcano TTS node', { 
       nodeId: node.id,
       input,
       timestamp: new Date().toISOString()
@@ -837,7 +845,7 @@ export class WorkflowExecutor {
         throw httpError;
       }
       
-      console.log('[WorkflowExecutor] TTS response received', {
+      dlog('[WorkflowExecutor] TTS response received', {
         nodeId: node.id,
         success: result.success,
         audioUrl: result.concatenated_audio_url,
@@ -882,7 +890,7 @@ export class WorkflowExecutor {
     const elementType = config?.elementType || 'string';
     const hasObjectSchema = !!(config?.objectSchema && config.objectSchema.length > 0);
     
-    console.log('[WorkflowExecutor] Executing To Array node with schema', { 
+    dlog('[WorkflowExecutor] Executing To Array node with schema', { 
       nodeId: node.id,
       elementType,
       hasObjectSchema,
@@ -939,7 +947,7 @@ export class WorkflowExecutor {
         throw httpError;
       }
       
-      console.log('[WorkflowExecutor] To Array conversion response received', {
+      dlog('[WorkflowExecutor] To Array conversion response received', {
         nodeId: node.id,
         success: result.success,
         outputLength: Array.isArray(result.output) ? result.output.length : 0,
@@ -991,7 +999,7 @@ export class WorkflowExecutor {
   private async executeResultsCombineNode(node: WorkflowNode, input: any): Promise<any> {
     const config = node.data.config as any;
     
-    console.log('[WorkflowExecutor] Executing Results Combine node', { 
+    dlog('[WorkflowExecutor] Executing Results Combine node', { 
       nodeId: node.id,
       input,
       timestamp: new Date().toISOString()
@@ -1050,7 +1058,7 @@ export class WorkflowExecutor {
       for (let i = 0; i < inputArray.length; i++) {
         const item = inputArray[i];
         
-        console.log(`[WorkflowExecutor] Transforming item ${i + 1}/${inputArray.length}`, {
+        dlog(`[WorkflowExecutor] Transforming item ${i + 1}/${inputArray.length}`, {
           nodeId: node.id,
           itemIndex: i
         });
@@ -1111,7 +1119,7 @@ export class WorkflowExecutor {
         }
       }
 
-      console.log('[WorkflowExecutor] Results Combine completed', {
+      dlog('[WorkflowExecutor] Results Combine completed', {
         nodeId: node.id,
         totalItems: inputArray.length,
         successCount,
@@ -1152,7 +1160,7 @@ export class WorkflowExecutor {
    * Execute Tavily Search node
    */
   private async executeTavilySearchNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Tavily Search node', { 
+    dlog('[WorkflowExecutor] Executing Tavily Search node', { 
       nodeId: node.id,
       input,
       timestamp: new Date().toISOString()
@@ -1213,7 +1221,7 @@ export class WorkflowExecutor {
         keywords
       });
 
-      console.log('[WorkflowExecutor] Tavily search completed', {
+      dlog('[WorkflowExecutor] Tavily search completed', {
         nodeId: node.id,
         resultsCount: results.length
       });
@@ -1236,7 +1244,7 @@ export class WorkflowExecutor {
    * Supports both single string input and string array input
    */
   private async executePexelsVideoSearchNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Pexels Video Search node', { 
+    dlog('[WorkflowExecutor] Executing Pexels Video Search node', { 
       nodeId: node.id,
       input,
       inputType: typeof input,
@@ -1252,7 +1260,7 @@ export class WorkflowExecutor {
     // Parse input to extract keywords array based on input format
     let keywordsArray: string[] = [];
     
-    console.log('[WorkflowExecutor] Parsing input with format:', { inputFormat, outputFormat });
+    dlog('[WorkflowExecutor] Parsing input with format:', { inputFormat, outputFormat });
     
     // Step 1: Extract keywords from input or config
     if (input) {
@@ -1262,7 +1270,7 @@ export class WorkflowExecutor {
           keywordsArray = input.map(item => 
             typeof item === 'string' ? item : JSON.stringify(item)
           ).filter(k => k && k.trim().length > 0);
-          console.log('[WorkflowExecutor] Parsed array input:', { count: keywordsArray.length });
+          dlog('[WorkflowExecutor] Parsed array input:', { count: keywordsArray.length });
         } else {
           // Convert single value to array
           const keyword = typeof input === 'string' ? input : 
@@ -1270,7 +1278,7 @@ export class WorkflowExecutor {
           if (keyword && keyword.trim().length > 0) {
             keywordsArray = [keyword];
           }
-          console.log('[WorkflowExecutor] Converted single input to array');
+          dlog('[WorkflowExecutor] Converted single input to array');
         }
       } else if (inputFormat === 'text/plain') {
         // Expect plain text input
@@ -1279,30 +1287,30 @@ export class WorkflowExecutor {
         if (keyword && keyword.trim().length > 0) {
           keywordsArray = [keyword];
         }
-        console.log('[WorkflowExecutor] Parsed text/plain input:', { keyword });
+        dlog('[WorkflowExecutor] Parsed text/plain input:', { keyword });
       } else {
         // application/json - auto-detect input type
         if (Array.isArray(input)) {
           keywordsArray = input.map(item => 
             typeof item === 'string' ? item : JSON.stringify(item)
           ).filter(k => k && k.trim().length > 0);
-          console.log('[WorkflowExecutor] Auto-detected array input:', { count: keywordsArray.length });
+          dlog('[WorkflowExecutor] Auto-detected array input:', { count: keywordsArray.length });
         } else if (typeof input === 'string') {
           keywordsArray = [input];
-          console.log('[WorkflowExecutor] Auto-detected string input');
+          dlog('[WorkflowExecutor] Auto-detected string input');
         } else if (input?.keywords) {
           const kw = input.keywords;
           keywordsArray = Array.isArray(kw) ? kw : [kw];
-          console.log('[WorkflowExecutor] Extracted from input.keywords');
+          dlog('[WorkflowExecutor] Extracted from input.keywords');
         } else if (input?.text) {
           keywordsArray = [input.text];
-          console.log('[WorkflowExecutor] Extracted from input.text');
+          dlog('[WorkflowExecutor] Extracted from input.text');
         } else if (input?.message) {
           keywordsArray = [input.message];
-          console.log('[WorkflowExecutor] Extracted from input.message');
+          dlog('[WorkflowExecutor] Extracted from input.message');
         } else {
           keywordsArray = [JSON.stringify(input)];
-          console.log('[WorkflowExecutor] Stringified input object');
+          dlog('[WorkflowExecutor] Stringified input object');
         }
       }
     }
@@ -1310,7 +1318,7 @@ export class WorkflowExecutor {
     // Fallback to config keywords if no input keywords
     if (keywordsArray.length === 0 && config?.keywords) {
       keywordsArray = [config.keywords];
-      console.log('[WorkflowExecutor] Using config keywords as fallback');
+      dlog('[WorkflowExecutor] Using config keywords as fallback');
     }
     
     // Validate we have keywords
@@ -1318,7 +1326,7 @@ export class WorkflowExecutor {
       throw new Error('Pexels Video Search node requires keywords. Please configure keywords or provide them as input.');
     }
     
-    console.log('[WorkflowExecutor] Processing keywords:', { 
+    dlog('[WorkflowExecutor] Processing keywords:', { 
       count: keywordsArray.length, 
       keywords: keywordsArray 
     });
@@ -1348,7 +1356,7 @@ export class WorkflowExecutor {
         const keyword = keywordsArray[i].trim();
         if (!keyword) continue;
         
-        console.log(`[WorkflowExecutor] Searching for keyword ${i + 1}/${keywordsArray.length}: "${keyword}"`);
+        dlog(`[WorkflowExecutor] Searching for keyword ${i + 1}/${keywordsArray.length}: "${keyword}"`);
         
         this.addLog('info', node.id, `Searching: "${keyword}" (${i + 1}/${keywordsArray.length})`, { 
           keyword,
@@ -1378,7 +1386,7 @@ export class WorkflowExecutor {
           continue; // Continue with next keyword instead of failing completely
         }
         
-        console.log(`[WorkflowExecutor] Search response for "${keyword}":`, {
+        dlog(`[WorkflowExecutor] Search response for "${keyword}":`, {
           success: data.success,
           totalFound: data.total_found,
           videosCount: data.videos?.length || 0
@@ -1423,7 +1431,7 @@ export class WorkflowExecutor {
         totalFound: totalFoundCount
       });
       
-      console.log('[WorkflowExecutor] All searches completed:', {
+      dlog('[WorkflowExecutor] All searches completed:', {
         totalVideos: allVideoResults.length,
         searches: keywordsArray.length
       });
@@ -1434,11 +1442,11 @@ export class WorkflowExecutor {
       if (outputFormat === 'array') {
         // Return simple array of video URLs
         formattedOutput = allVideoResults.map((v: any) => v.videoUrl);
-        console.log('[WorkflowExecutor] Output formatted as array:', { count: formattedOutput.length });
+        dlog('[WorkflowExecutor] Output formatted as array:', { count: formattedOutput.length });
       } else if (outputFormat === 'text/plain') {
         // Return newline-separated URLs
         formattedOutput = allVideoResults.map((v: any) => v.videoUrl).join('\n');
-        console.log('[WorkflowExecutor] Output formatted as text/plain');
+        dlog('[WorkflowExecutor] Output formatted as text/plain');
       } else {
         // application/json - return detailed object
         formattedOutput = {
@@ -1449,7 +1457,7 @@ export class WorkflowExecutor {
           keywordCount: keywordsArray.length,
           count: allVideoResults.length,
         };
-        console.log('[WorkflowExecutor] Output formatted as JSON object');
+        dlog('[WorkflowExecutor] Output formatted as JSON object');
       }
 
       return formattedOutput;
@@ -1468,7 +1476,7 @@ export class WorkflowExecutor {
    * Execute AI Video Generate node
    */
   private async executeAIVideoGenerateNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing AI Video Generate node', { 
+    dlog('[WorkflowExecutor] Executing AI Video Generate node', { 
       nodeId: node.id,
       input,
       timestamp: new Date().toISOString()
@@ -1535,7 +1543,7 @@ export class WorkflowExecutor {
         throw new Error(result.message || 'AI Video Generate failed');
       }
 
-      console.log('[WorkflowExecutor] AI Video Generate completed successfully', {
+      dlog('[WorkflowExecutor] AI Video Generate completed successfully', {
         nodeId: node.id,
         hasTimelineData: !!result.timelineData,
       });
@@ -1564,7 +1572,7 @@ export class WorkflowExecutor {
    * Execute Video Export node
    */
   private async executeVideoExportNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing Video Export node', { 
+    dlog('[WorkflowExecutor] Executing Video Export node', { 
       nodeId: node.id,
       input,
       timestamp: new Date().toISOString()
@@ -1630,7 +1638,7 @@ export class WorkflowExecutor {
         throw new Error(result.message || 'Video Export failed');
       }
 
-      console.log('[WorkflowExecutor] Video Export completed successfully', {
+      dlog('[WorkflowExecutor] Video Export completed successfully', {
         nodeId: node.id,
         materialsCount: result.materials?.length || 0,
       });
@@ -1660,7 +1668,7 @@ export class WorkflowExecutor {
    * Execute End node
    */
   private async executeEndNode(node: WorkflowNode, input: any): Promise<any> {
-    console.log('[WorkflowExecutor] Executing End node', { input });
+    dlog('[WorkflowExecutor] Executing End node', { input });
     await this.simulateDelay(300);
     
     // End node just receives the final output
@@ -1693,7 +1701,7 @@ export class WorkflowExecutor {
 
     this.executionState.logs.push(log);
     
-    console.log(`[WorkflowExecutor] Log [${level}]:`, message, details || '');
+    dlog(`[WorkflowExecutor] Log [${level}]:`, message, details || '');
   }
 
   /**

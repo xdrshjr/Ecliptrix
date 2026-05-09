@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { dlog, dwarn } from '@/lib/utils/debugLog';
 import { WorkflowNode, WorkflowConnection, WorkflowNodePosition, ChatLLMNodeConfig, TextInputNodeConfig, StartNodeConfig, PexelsVideoSearchNodeConfig, TavilySearchNodeConfig, VolcanoTTSNodeConfig, ToArrayNodeConfig, ResultsCombineNodeConfig, AIVideoGenerateNodeConfig, VideoExportNodeConfig, WorkflowNodeExecutionState } from '@/types';
 import ChatLLMNode from './nodes/ChatLLMNode';
 import StartNode from './nodes/StartNode';
@@ -87,7 +88,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const lastMousePositionRef = useRef<{ x: number; y: number } | null>(null);
   const hasMovedRef = useRef(false); // 标记是否真正发生了移动
 
-  console.log('[WorkflowCanvas] Rendering canvas:', {
+  dlog('[WorkflowCanvas] Rendering canvas:', {
     nodesCount: nodes.length,
     connectionsCount: connections.length,
     selectedNodeId,
@@ -122,7 +123,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     // Fallback: calculate based on node position (for rendering before DOM is ready)
     const node = nodes.find(n => n.id === nodeId);
     if (!node) {
-      console.warn('[WorkflowCanvas] Node not found for port position:', { nodeId });
+      dwarn('[WorkflowCanvas] Node not found for port position:', { nodeId });
       return null;
     }
     
@@ -183,7 +184,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       
-      console.log('[WorkflowCanvas] Context menu opened:', { x, y });
+      dlog('[WorkflowCanvas] Context menu opened:', { x, y });
       setContextMenu({ visible: true, x, y });
     }
   }, []);
@@ -203,7 +204,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Start node:', {
+    dlog('[WorkflowCanvas] Adding new Start node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -227,7 +228,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new End node:', {
+    dlog('[WorkflowCanvas] Adding new End node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -256,7 +257,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Chat LLM node:', {
+    dlog('[WorkflowCanvas] Adding new Chat LLM node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -283,7 +284,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Text Input node:', {
+    dlog('[WorkflowCanvas] Adding new Text Input node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -311,7 +312,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Pexels Video Search node:', {
+    dlog('[WorkflowCanvas] Adding new Pexels Video Search node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -339,7 +340,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Tavily Search node:', {
+    dlog('[WorkflowCanvas] Adding new Tavily Search node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -368,7 +369,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Volcano TTS node:', {
+    dlog('[WorkflowCanvas] Adding new Volcano TTS node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -398,7 +399,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new To Array node:', {
+    dlog('[WorkflowCanvas] Adding new To Array node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -429,7 +430,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Results Combine node:', {
+    dlog('[WorkflowCanvas] Adding new Results Combine node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -466,7 +467,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new AI Video Generate node:', {
+    dlog('[WorkflowCanvas] Adding new AI Video Generate node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -495,7 +496,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       },
     };
 
-    console.log('[WorkflowCanvas] Adding new Video Export node:', {
+    dlog('[WorkflowCanvas] Adding new Video Export node:', {
       nodeId: newNode.id,
       position: newNode.position
     });
@@ -508,7 +509,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   useEffect(() => {
     const handleClickOutside = () => {
       if (contextMenu.visible) {
-        console.log('[WorkflowCanvas] Closing context menu');
+        dlog('[WorkflowCanvas] Closing context menu');
         setContextMenu({ visible: false, x: 0, y: 0 });
       }
     };
@@ -519,18 +520,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
   // Handle node selection
   const handleNodeClick = useCallback((nodeId: string) => {
-    console.log('[WorkflowCanvas] Node selected:', { nodeId });
+    dlog('[WorkflowCanvas] Node selected:', { nodeId });
     setSelectedNodeId(nodeId);
   }, []);
 
   // Handle node double click
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
-    console.log('[WorkflowCanvas] Node double clicked:', { nodeId });
+    dlog('[WorkflowCanvas] Node double clicked:', { nodeId });
     
     // Check if the clicked node supports configuration
     const node = nodes.find(n => n.id === nodeId);
     if (node && (node.type === 'chat-llm' || node.type === 'text-input' || node.type === 'start' || node.type === 'pexels-video-search' || node.type === 'tavily-search' || node.type === 'volcano-tts' || node.type === 'to-array' || node.type === 'results-combine' || node.type === 'ai-video-generate' || node.type === 'video-export')) {
-      console.log('[WorkflowCanvas] Opening config panel for node:', { 
+      dlog('[WorkflowCanvas] Opening config panel for node:', { 
         nodeId, 
         nodeType: node.type 
       });
@@ -543,7 +544,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     if (!configPanelNodeId) return;
     
     const node = nodes.find(n => n.id === configPanelNodeId);
-    console.log('[WorkflowCanvas] Saving config for node:', { 
+    dlog('[WorkflowCanvas] Saving config for node:', { 
       nodeId: configPanelNodeId,
       nodeType: node?.type,
       config 
@@ -563,30 +564,30 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     });
     
     onNodesChange(updatedNodes);
-    console.log('[WorkflowCanvas] Config saved successfully');
+    dlog('[WorkflowCanvas] Config saved successfully');
   }, [configPanelNodeId, nodes, onNodesChange]);
 
   // Handle config panel close
   const handleConfigPanelClose = useCallback(() => {
-    console.log('[WorkflowCanvas] Closing config panel');
+    dlog('[WorkflowCanvas] Closing config panel');
     setConfigPanelNodeId(null);
   }, []);
 
   // Handle connection selection
   const handleConnectionClick = useCallback((connectionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log('[WorkflowCanvas] Connection selected:', { connectionId });
+    dlog('[WorkflowCanvas] Connection selected:', { connectionId });
     setSelectedConnectionId(connectionId);
     setSelectedNodeId(null); // Deselect any selected node
   }, []);
 
   // Handle connection deletion
   const handleDeleteConnection = useCallback((connectionId: string) => {
-    console.log('[WorkflowCanvas] Deleting connection:', { connectionId });
+    dlog('[WorkflowCanvas] Deleting connection:', { connectionId });
     const updatedConnections = connections.filter(conn => conn.id !== connectionId);
     onConnectionsChange(updatedConnections);
     setSelectedConnectionId(null);
-    console.log('[WorkflowCanvas] Connection deleted successfully');
+    dlog('[WorkflowCanvas] Connection deleted successfully');
   }, [connections, onConnectionsChange]);
 
   // Handle port mouse down (start connection)
@@ -607,7 +608,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     const portCenterX = portRect.left + portRect.width / 2 - rect.left;
     const portCenterY = portRect.top + portRect.height / 2 - rect.top;
     
-    console.log('[WorkflowCanvas] Starting connection from port:', { 
+    dlog('[WorkflowCanvas] Starting connection from port:', { 
       nodeId, 
       portType, 
       portId,
@@ -639,7 +640,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const handleConnectionMouseUp = useCallback((e: React.MouseEvent) => {
     if (!connectingPort) return;
     
-    console.log('[WorkflowCanvas] Connection mouse up, checking target');
+    dlog('[WorkflowCanvas] Connection mouse up, checking target');
     
     // Find the target port element
     const targetElement = document.elementFromPoint(e.clientX, e.clientY);
@@ -650,7 +651,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       const targetPortType = portElement.getAttribute('data-port-type') as 'input' | 'output';
       const targetPortId = portElement.getAttribute('data-port-id');
       
-      console.log('[WorkflowCanvas] Found target port:', { 
+      dlog('[WorkflowCanvas] Found target port:', { 
         targetNodeId, 
         targetPortType, 
         targetPortId 
@@ -683,13 +684,13 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             targetHandle: targetPortId,
           };
           
-          console.log('[WorkflowCanvas] Creating new connection:', newConnection);
+          dlog('[WorkflowCanvas] Creating new connection:', newConnection);
           onConnectionsChange([...connections, newConnection]);
         } else {
-          console.log('[WorkflowCanvas] Connection already exists, skipping');
+          dlog('[WorkflowCanvas] Connection already exists, skipping');
         }
       } else {
-        console.log('[WorkflowCanvas] Invalid connection attempt:', {
+        dlog('[WorkflowCanvas] Invalid connection attempt:', {
           reason: connectingPort.portType === 'input' 
             ? 'Cannot connect from input port' 
             : targetPortType === 'output' 
@@ -698,7 +699,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         });
       }
     } else {
-      console.log('[WorkflowCanvas] No valid target port found');
+      dlog('[WorkflowCanvas] No valid target port found');
     }
     
     // Reset connection state
@@ -708,7 +709,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
   // Handle node deletion
   const handleDeleteNode = useCallback((nodeId: string) => {
-    console.log('[WorkflowCanvas] Deleting node:', { nodeId });
+    dlog('[WorkflowCanvas] Deleting node:', { nodeId });
     
     // Remove node
     const updatedNodes = nodes.filter(node => node.id !== nodeId);
@@ -718,7 +719,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       conn => conn.source !== nodeId && conn.target !== nodeId
     );
     
-    console.log('[WorkflowCanvas] Node deletion - updated counts:', {
+    dlog('[WorkflowCanvas] Node deletion - updated counts:', {
       nodeId,
       previousNodesCount: nodes.length,
       updatedNodesCount: updatedNodes.length,
@@ -728,10 +729,10 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Use combined update to avoid stale closure issues
     if (onNodesAndConnectionsChange) {
-      console.log('[WorkflowCanvas] Using combined update for nodes and connections');
+      dlog('[WorkflowCanvas] Using combined update for nodes and connections');
       onNodesAndConnectionsChange(updatedNodes, updatedConnections);
     } else {
-      console.log('[WorkflowCanvas] Using separate updates for nodes and connections (fallback)');
+      dlog('[WorkflowCanvas] Using separate updates for nodes and connections (fallback)');
       onNodesChange(updatedNodes);
       onConnectionsChange(updatedConnections);
     }
@@ -745,7 +746,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // Only handle canvas panning in pan mode and when not clicking on nodes
     if (isPanMode && !e.defaultPrevented && e.button === 0) {
-      console.log('[WorkflowCanvas] Canvas pan started:', {
+      dlog('[WorkflowCanvas] Canvas pan started:', {
         mouseX: e.clientX,
         mouseY: e.clientY,
         currentOffset: canvasOffset,
@@ -777,7 +778,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         const offsetX = e.clientX - rect.left - (node.position.x + canvasOffset.x) * scale;
         const offsetY = e.clientY - rect.top - (node.position.y + canvasOffset.y) * scale;
         
-        console.log('[WorkflowCanvas] Node drag started:', { 
+        dlog('[WorkflowCanvas] Node drag started:', { 
           nodeId, 
           offsetX, 
           offsetY,
@@ -829,7 +830,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         // 标记已经发生了移动
         if (!hasMovedRef.current) {
           hasMovedRef.current = true;
-          console.log('[WorkflowCanvas] Node movement started:', { nodeId: draggingNode.id });
+          dlog('[WorkflowCanvas] Node movement started:', { nodeId: draggingNode.id });
         }
         
         // 存储鼠标位置，用于 RAF 回调
@@ -869,7 +870,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     // Handle canvas pan end
     if (isDraggingCanvas && canvasDragStart) {
-      console.log('[WorkflowCanvas] Canvas pan ended:', {
+      dlog('[WorkflowCanvas] Canvas pan ended:', {
         newOffset: canvasOffset,
         timestamp: new Date().toISOString()
       });
@@ -881,7 +882,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     
     if (draggingNode && isDraggingRef.current) {
       const hasMoved = hasMovedRef.current;
-      console.log('[WorkflowCanvas] Node drag ended:', { 
+      dlog('[WorkflowCanvas] Node drag ended:', { 
         nodeId: draggingNode.id, 
         hasMoved 
       });
@@ -896,7 +897,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       if (hasMoved) {
         const finalPosition = dragPositionRef.current[draggingNode.id];
         if (finalPosition) {
-          console.log('[WorkflowCanvas] Node drag completed, updating position:', {
+          dlog('[WorkflowCanvas] Node drag completed, updating position:', {
             nodeId: draggingNode.id,
             finalPosition
           });
@@ -913,12 +914,12 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           delete dragPositionRef.current[draggingNode.id];
           
           // Force re-render connections after node position update
-          console.log('[WorkflowCanvas] Forcing connection re-render after node move');
+          dlog('[WorkflowCanvas] Forcing connection re-render after node move');
           setConnectionRenderKey(prev => prev + 1);
         }
       } else {
         // 如果没有移动（单击），不做任何位置更新，只清理临时数据
-        console.log('[WorkflowCanvas] Click detected (no movement), skipping position update');
+        dlog('[WorkflowCanvas] Click detected (no movement), skipping position update');
         delete dragPositionRef.current[draggingNode.id];
       }
       
@@ -936,14 +937,14 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       // Delete selected node with Delete key only (Backspace disabled to prevent accidental deletion)
       if (e.key === 'Delete' && selectedNodeId) {
         e.preventDefault();
-        console.log('[WorkflowCanvas] Deleting node via keyboard (Delete key):', { nodeId: selectedNodeId });
+        dlog('[WorkflowCanvas] Deleting node via keyboard (Delete key):', { nodeId: selectedNodeId });
         handleDeleteNode(selectedNodeId);
       }
       
       // Delete selected connection with Delete key only (Backspace disabled to prevent accidental deletion)
       if (e.key === 'Delete' && selectedConnectionId) {
         e.preventDefault();
-        console.log('[WorkflowCanvas] Deleting connection via keyboard (Delete key):', { connectionId: selectedConnectionId });
+        dlog('[WorkflowCanvas] Deleting connection via keyboard (Delete key):', { connectionId: selectedConnectionId });
         handleDeleteConnection(selectedConnectionId);
       }
     };
@@ -964,7 +965,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   // Toggle pan mode
   const handleTogglePanMode = useCallback(() => {
     const newPanMode = !isPanMode;
-    console.log('[WorkflowCanvas] Toggling pan mode:', {
+    dlog('[WorkflowCanvas] Toggling pan mode:', {
       previousMode: isPanMode ? 'pan' : 'node-drag',
       newMode: newPanMode ? 'pan' : 'node-drag',
       timestamp: new Date().toISOString()
@@ -995,7 +996,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         onMouseUp={handleMouseUp}
         onMouseDown={handleCanvasMouseDown}
         onClick={() => {
-          console.log('[WorkflowCanvas] Canvas clicked, deselecting node and connection');
+          dlog('[WorkflowCanvas] Canvas clicked, deselecting node and connection');
           setSelectedNodeId(null);
           setSelectedConnectionId(null);
         }}
@@ -1447,7 +1448,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         <button
           onClick={() => {
             const newScale = Math.max(0.5, scale - 0.1);
-            console.log('[WorkflowCanvas] Zoom out:', { newScale });
+            dlog('[WorkflowCanvas] Zoom out:', { newScale });
             setScale(newScale);
           }}
           className="p-2 hover:bg-accent rounded transition-colors"
@@ -1465,7 +1466,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         <button
           onClick={() => {
             const newScale = Math.min(2, scale + 0.1);
-            console.log('[WorkflowCanvas] Zoom in:', { newScale });
+            dlog('[WorkflowCanvas] Zoom in:', { newScale });
             setScale(newScale);
           }}
           className="p-2 hover:bg-accent rounded transition-colors"
@@ -1496,7 +1497,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
         <button
           onClick={() => {
-            console.log('[WorkflowCanvas] Reset zoom and position');
+            dlog('[WorkflowCanvas] Reset zoom and position');
             setScale(1);
             setCanvasOffset({ x: 0, y: 0 });
           }}
