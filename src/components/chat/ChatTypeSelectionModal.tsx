@@ -4,30 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { loadAgentWorkflows, WorkflowRecord } from '@/lib/api/workflow';
-
-/**
- * English-only relative-time helper. Returns null when the timestamp is missing
- * or unparsable so callers can skip rendering the row.
- */
-const relativeTimeEN = (iso?: string | null): string | null => {
-  if (!iso) return null;
-  const ts = Date.parse(iso);
-  if (Number.isNaN(ts)) return null;
-  const diffMs = Date.now() - ts;
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return 'just now';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d ago`;
-  try {
-    return new Date(ts).toLocaleDateString();
-  } catch {
-    return null;
-  }
-};
+import { formatRelativeTime } from '@/lib/relativeTime';
 
 interface ChatTypeSelectionModalProps {
   isOpen: boolean;
@@ -55,7 +32,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
   onSelectAgent,
 }) => {
   const { user, isAuthenticated } = useAuth();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([]);
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
@@ -190,7 +167,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
             <button
               onClick={onClose}
               className="p-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Close"
+              aria-label={t.common.close}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -364,7 +341,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
                     const nodeCount = workflow.nodes?.length ?? 0;
                     const isEmpty = nodeCount === 0;
                     const idShort = (workflow.workflow_id ?? '').replace(/-/g, '').slice(-6);
-                    const updatedLabel = relativeTimeEN(workflow.updated_at || workflow.created_at);
+                    const updatedLabel = formatRelativeTime(workflow.updated_at || workflow.created_at, locale, t, '') || null;
 
                     return (
                       <button

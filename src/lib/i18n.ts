@@ -10,9 +10,12 @@ export interface Translations {
     systemStatus: string;
     operational: string;
     close: string;
+    closePanel: string;
     cancel: string;
     confirm: string;
     underDevelopment: string;
+    colon: string;
+    relativeTime: { justNow: string };
   };
   header: {
     brandSubtitle: string;
@@ -520,9 +523,13 @@ export interface Translations {
     brainstorming: string;
     brainstormingComingSoon: string;
     aiChat: string;
+    types: { workflow: string; video: string; brainstorm: string; chat: string };
+    defaultPageTitle: string;
   };
   videoProjects: {
     title: string;
+    projectActions: string;
+    closeMenu: string;
     all: string;
     recent: string;
     uncategorized: string;
@@ -2734,9 +2741,12 @@ export const translations: Record<string, Translations> = {
       systemStatus: 'System Status',
       operational: 'Operational',
       close: 'Close',
+      closePanel: 'Close panel',
       cancel: 'Cancel',
       confirm: 'Confirm',
       underDevelopment: 'Feature under development...',
+      colon: ': ',
+      relativeTime: { justNow: 'Just now' },
     },
     header: {
       brandSubtitle: 'Where light and shadow collide',
@@ -3244,9 +3254,13 @@ export const translations: Record<string, Translations> = {
       brainstorming: 'Brainstorming',
       brainstormingComingSoon: 'Brainstorming is coming soon.',
       aiChat: 'AI Chat',
+      types: { workflow: 'Workflow', video: 'Video Editing', brainstorm: 'Brainstorming', chat: 'AI Chat' },
+      defaultPageTitle: 'Ecliptrix — Where light and shadow collide',
     },
     videoProjects: {
       title: 'Video Projects',
+      projectActions: 'Project actions',
+      closeMenu: 'Close menu',
       all: 'All projects',
       recent: 'Recently opened',
       uncategorized: 'Uncategorized',
@@ -4376,7 +4390,7 @@ export const translations: Record<string, Translations> = {
    },
     storyboardScriptTab: {
       selectStoryboardPack: 'Please select a storyboard pack to start',
-      selectStoryboardPackHint: 'Select a generated storyboard pack from the dropdown above',
+      selectStoryboardPackHint: 'Select a generated storyboard pack from the dropdown below',
       generateSingleVideo: 'Generate Video',
       generateMultiple: 'Generate {count} Candidates',
       selectVideo: 'Select this video',
@@ -5486,9 +5500,12 @@ export const translations: Record<string, Translations> = {
       systemStatus: '系统状态',
       operational: '正常运行',
       close: '关闭',
+      closePanel: '关闭面板',
       cancel: '取消',
       confirm: '确定',
       underDevelopment: '功能开发中...',
+      colon: '：',
+      relativeTime: { justNow: '刚刚' },
     },
     header: {
       brandSubtitle: '光与影之交汇',
@@ -5996,9 +6013,13 @@ export const translations: Record<string, Translations> = {
       brainstorming: '头脑风暴',
       brainstormingComingSoon: '头脑风暴功能即将推出',
       aiChat: 'AI对话',
+      types: { workflow: '工作流', video: '视频编辑', brainstorm: '头脑风暴', chat: 'AI 对话' },
+      defaultPageTitle: 'Ecliptrix — 光影交汇之处',
     },
     videoProjects: {
       title: '视频项目',
+      projectActions: '项目操作',
+      closeMenu: '关闭菜单',
       all: '全部项目',
       recent: '最近打开',
       uncategorized: '未分类',
@@ -7128,7 +7149,7 @@ export const translations: Record<string, Translations> = {
    },
     storyboardScriptTab: {
       selectStoryboardPack: '请选择一个分镜包开始',
-      selectStoryboardPackHint: '在上方下拉菜单中选择已生成的分镜包',
+      selectStoryboardPackHint: '请在下方下拉菜单中选择已生成的分镜包',
       generateSingleVideo: '生成视频',
       generateMultiple: '生成 {count} 个候选视频',
       selectVideo: '选择此视频',

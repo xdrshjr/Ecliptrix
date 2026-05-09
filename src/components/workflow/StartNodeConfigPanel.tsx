@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { StartNodeConfig, DataFormat } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import NodeTestPanel from './NodeTestPanel';
 import FormatSelector from './FormatSelector';
 
@@ -23,11 +24,13 @@ const StartNodeConfigPanel: React.FC<StartNodeConfigPanelProps> = ({
   onSave,
   onClose,
 }) => {
-  console.log('[StartNodeConfigPanel] Rendering panel:', { 
-    nodeId, 
+  console.log('[StartNodeConfigPanel] Rendering panel:', {
+    nodeId,
     config,
     initialInputLength: config.input?.length || 0
   });
+
+  const { t } = useLocale();
 
   // State management
   const [input, setInput] = useState(config.input || '');
@@ -97,7 +100,7 @@ const StartNodeConfigPanel: React.FC<StartNodeConfigPanelProps> = ({
         <button
           onClick={handleCancel}
           className="w-8 h-8 rounded-lg hover:bg-accent transition-colors flex items-center justify-center"
-          aria-label="Close panel"
+          aria-label={t.common.closePanel}
         >
           <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

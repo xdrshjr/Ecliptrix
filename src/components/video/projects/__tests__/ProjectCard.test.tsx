@@ -41,7 +41,21 @@ describe('ProjectCard a11y refactor', () => {
     expect(cardSrc).toMatch(/<div[\s\S]*?onClick=\{onOpen\}/);
   });
 
-  it('kebab actions button still stops propagation so it does not open the project', () => {
-    expect(cardSrc).toMatch(/aria-label="Project actions"/);
+  it('kebab actions button uses i18n aria-label (videoProjects.projectActions)', () => {
+    expect(cardSrc).toMatch(/aria-label=\{t\.videoProjects\.projectActions\}/);
+  });
+
+  it('actions menu has role="menu" and items have role="menuitem"', () => {
+    expect(cardSrc).toMatch(/role="menu"/);
+    expect(cardSrc.match(/role="menuitem"/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('actions menu trigger declares aria-haspopup="menu" and aria-expanded', () => {
+    expect(cardSrc).toMatch(/aria-haspopup="menu"/);
+    expect(cardSrc).toMatch(/aria-expanded=\{menuOpen\}/);
+  });
+
+  it('uses formatRelativeTime utility for last-opened display', () => {
+    expect(cardSrc).toMatch(/import\s+\{[^}]*formatRelativeTime[^}]*\}\s+from\s+['"]@\/lib\/relativeTime['"]/);
   });
 });

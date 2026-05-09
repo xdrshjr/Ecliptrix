@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 
 export interface AIMixingMode {
@@ -24,6 +24,8 @@ const AIMixingModeSelectionModal: React.FC<AIMixingModeSelectionModalProps> = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const [selectedMode, setSelectedMode] = useState<'quick' | 'professional'>('quick');
   const [frameInterval, setFrameInterval] = useState<number>(5);
+  const quickRef = useRef<HTMLDivElement>(null);
+  const proRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -112,15 +114,29 @@ const AIMixingModeSelectionModal: React.FC<AIMixingModeSelectionModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="px-6 py-6 space-y-4">
+        <div role="radiogroup" aria-labelledby="ai-mixing-mode-title" className="px-6 py-6 space-y-4">
           {/* 快速混剪选项 */}
-          <div 
+          <div
+            ref={quickRef}
+            role="radio"
+            tabIndex={selectedMode === 'quick' ? 0 : -1}
+            aria-checked={selectedMode === 'quick'}
             className={`relative p-4 rounded-md border-2 cursor-pointer transition-all duration-200 ${
-              selectedMode === 'quick' 
-                ? 'border-primary bg-primary/10' 
+              selectedMode === 'quick'
+                ? 'border-primary bg-primary/10'
                 : 'border-border hover:border-border hover:bg-muted'
             }`}
             onClick={() => setSelectedMode('quick')}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                setSelectedMode('quick');
+              } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedMode('professional');
+                proRef.current?.focus();
+              }
+            }}
           >
             <div className="flex items-start space-x-3">
               <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
@@ -153,13 +169,27 @@ const AIMixingModeSelectionModal: React.FC<AIMixingModeSelectionModalProps> = ({
           </div>
 
           {/* 专业混剪选项 */}
-          <div 
+          <div
+            ref={proRef}
+            role="radio"
+            tabIndex={selectedMode === 'professional' ? 0 : -1}
+            aria-checked={selectedMode === 'professional'}
             className={`relative p-4 rounded-md border-2 cursor-pointer transition-all duration-200 ${
-              selectedMode === 'professional' 
-                ? 'border-primary bg-primary/10' 
+              selectedMode === 'professional'
+                ? 'border-primary bg-primary/10'
                 : 'border-border hover:border-border hover:bg-muted'
             }`}
             onClick={() => setSelectedMode('professional')}
+            onKeyDown={(e) => {
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                setSelectedMode('professional');
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedMode('quick');
+                quickRef.current?.focus();
+              }
+            }}
           >
             <div className="flex items-start space-x-3">
               <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${

@@ -40,17 +40,6 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     height: position.height * containerHeight
   };
 
-  overlayLogger.debug('render', {
-    imageId,
-    position,
-    containerWidth,
-    containerHeight,
-    pixelPosition,
-    imageUrl,
-    hasValidDimensions: containerWidth > 0 && containerHeight > 0,
-    hasValidPosition: pixelPosition.width > 0 && pixelPosition.height > 0,
-  });
-
   // 处理拖拽开始
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return; // 只处理左键点击
@@ -174,15 +163,8 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     };
   }, [isDragging, isResizing, handleMouseMove, handleResizeMouseMove, handleMouseUp]);
 
-  if (containerWidth === 0 || containerHeight === 0) {
-    overlayLogger.warn('container-zero', { imageId });
-    return null;
-  }
-
-  if (pixelPosition.width === 0 || pixelPosition.height === 0) {
-    overlayLogger.warn('pixel-position-zero', { imageId });
-    return null;
-  }
+  if (containerWidth === 0 || containerHeight === 0) return null;
+  if (pixelPosition.width === 0 || pixelPosition.height === 0) return null;
 
   return (
     <div

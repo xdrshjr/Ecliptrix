@@ -15,10 +15,11 @@ const FILE = resolve(__dirname, '..', 'ChatTypeSelectionModal.tsx');
 const src = readFileSync(FILE, 'utf-8');
 
 describe('ChatTypeSelectionModal — Bug #4 source structure', () => {
-  it('defines a relativeTimeEN helper that returns null for missing/invalid input', () => {
-    expect(src).toMatch(/const\s+relativeTimeEN\s*=/);
-    expect(src).toMatch(/if\s*\(!iso\)\s*return\s+null;/);
-    expect(src).toMatch(/Number\.isNaN\(ts\)/);
+  it('uses the shared formatRelativeTime utility (iter7 Bug #3 — removed inline relativeTimeEN)', () => {
+    expect(src).toMatch(/import\s+\{[^}]*formatRelativeTime[^}]*\}\s+from\s+['"]@\/lib\/relativeTime['"]/);
+    expect(src).toMatch(/formatRelativeTime\(workflow\.updated_at\s*\|\|\s*workflow\.created_at,\s*locale,\s*t/);
+    // The previous English-only inline helper must be gone.
+    expect(src).not.toMatch(/const\s+relativeTimeEN\s*=/);
   });
 
   it('sortedWorkflows useMemo sorts newest-first using updated_at then created_at', () => {

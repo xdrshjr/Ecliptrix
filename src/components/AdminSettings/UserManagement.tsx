@@ -8,6 +8,7 @@ import RoleBadge, { resolveUserRole } from '@/components/ui/RoleBadge';
 import type { UserInfo, UserStats, UserListParams, LoginHistoryRecord, CreateUserData } from '@/types/auth';
 import * as userApi from '@/lib/api/userManagement';
 import type { UpdateUserData } from '@/lib/api/userManagement';
+import { formatRelativeTime as formatRelativeTimeShared } from '@/lib/relativeTime';
 
 // ---------------------------------------------------------------------------
 // Inline SVG Icons (no external icon library)
@@ -48,24 +49,6 @@ const IconEyeOff = ({ className }: IconProps) => svgBase(className, 'M17.94 17.9
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatRelativeTime(dateString?: string): string {
-  if (!dateString) return '-';
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return '< 1 min';
-    if (diffMin < 60) return `${diffMin}m`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h`;
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 30) return `${diffDay}d`;
-    return date.toLocaleDateString();
-  } catch {
-    return '-';
-  }
-}
 
 function formatDateTime(dateString?: string, locale?: string): string {
   if (!dateString) return '-';
@@ -1105,7 +1088,7 @@ const UserManagement: React.FC = () => {
                       </td>
                       {/* Last Login */}
                       <td className="px-4 py-3 text-sm text-muted-foreground" title={formatDateTime(user.lastLoginAt, locale)}>
-                        {formatRelativeTime(user.lastLoginAt)}
+                        {formatRelativeTimeShared(user.lastLoginAt, locale, t, '-')}
                       </td>
                       {/* Created */}
                       <td className="px-4 py-3 text-sm text-muted-foreground">

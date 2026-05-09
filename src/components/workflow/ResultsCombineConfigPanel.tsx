@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ResultsCombineNodeConfig, LLMModel, DataFormat } from '@/types';
 import { fetchLLMModels } from '@/lib/api/llm';
+import { useLocale } from '@/contexts/LocaleContext';
 import NodeTestPanel from './NodeTestPanel';
 import FormatSelector from './FormatSelector';
 
@@ -25,6 +26,8 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
   onClose,
 }) => {
   console.log('[ResultsCombineConfigPanel] Rendering panel:', { nodeId, config });
+
+  const { t } = useLocale();
 
   // State management
   const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || '');
@@ -143,7 +146,7 @@ const ResultsCombineConfigPanel: React.FC<ResultsCombineConfigPanelProps> = ({
         <button
           onClick={handleCancel}
           className="w-8 h-8 rounded-lg hover:bg-accent transition-colors flex items-center justify-center"
-          aria-label="Close panel"
+          aria-label={t.common.closePanel}
         >
           <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

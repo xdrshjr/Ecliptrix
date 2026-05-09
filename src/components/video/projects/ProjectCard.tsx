@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { VideoProjectListItem } from '@/types';
+import { formatRelativeTime } from '@/lib/relativeTime';
 
 interface ProjectCardProps {
   project: VideoProjectListItem;
@@ -11,8 +12,6 @@ interface ProjectCardProps {
   onDelete: () => void;
 }
 
-/** Deterministic gradient cover based on the project ID — used when no
- *  explicit cover_url is set. Derived from a 31-bit hash of the id. */
 function gradientFromId(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) {
@@ -23,33 +22,48 @@ function gradientFromId(id: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 60% 55%) 0%, hsl(${hue2} 60% 45%) 100%)`;
 }
 
-function formatRelative(iso: string | undefined, neverLabel: string): string {
-  if (!iso) return neverLabel;
-  try {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return neverLabel;
-    const diff = Date.now() - date.getTime();
-    const minutes = Math.floor(diff / 60_000);
-    if (minutes < 1) return date.toLocaleTimeString();
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}d`;
-    return date.toLocaleDateString();
-  } catch {
-    return neverLabel;
-  }
-}
-
 const ProjectCard: React.FC<ProjectCardProps> = ({
   project,
   onOpen,
   onRename,
   onDelete,
 }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<HTMLButtonElement[]>([]);
+
+  // Esc closes menu and restores focus to trigger.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
+  // Focus first item when menu opens.
+  useEffect(() => {
+    if (menuOpen && itemRefs.current[0]) itemRefs.current[0].focus();
+  }, [menuOpen]);
+
+  const onItemKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    const items = itemRefs.current.filter(Boolean);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(idx + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(idx - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'Tab') {
+      setMenuOpen(false);
+    }
+  };
 
   const cover = project.cover_url
     ? { backgroundImage: `url(${project.cover_url})` }
@@ -62,8 +76,6 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         menuOpen ? 'z-30' : ''
       }`}
     >
-      {/* Cover — overflow-hidden lives here (not on the card root) so the
-          actions menu can escape the card bounds. */}
       <div
         className="aspect-video bg-cover bg-center relative rounded-t-[5px] overflow-hidden"
         style={cover}
@@ -77,13 +89,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         )}
       </div>
 
-      {/* Body */}
       <div className="px-3 py-2.5 space-y-1">
         <div className="flex items-start gap-2">
-          {/* Title is the focusable element — outer card div is no longer
-              role="button" so a11y warnings ("interactive descendant of
-              role=button") are gone. Outer onClick still preserves the
-              "click anywhere" ergonomic. */}
           <button
             type="button"
             onClick={(e) => {
@@ -95,16 +102,18 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             {project.name || t.videoProjects.untitled}
           </button>
 
-          {/* Actions menu */}
           <div className="relative">
             <button
+              ref={triggerRef}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuOpen((v) => !v);
               }}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
-              aria-label="Project actions"
+              aria-label={t.videoProjects.projectActions}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="5" r="1.5" />
@@ -120,29 +129,38 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpen(false);
+                    triggerRef.current?.focus();
                   }}
                 />
                 <div
+                  role="menu"
+                  aria-label={t.videoProjects.projectActions}
                   className="absolute right-0 top-full mt-1 z-20 min-w-[140px] bg-popover border border-border rounded-md shadow-lg py-1"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
+                    ref={(el) => { if (el) itemRefs.current[0] = el; }}
+                    role="menuitem"
                     type="button"
+                    onKeyDown={(e) => onItemKeyDown(e, 0)}
                     onClick={() => {
                       setMenuOpen(false);
                       onRename();
                     }}
-                    className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent"
+                    className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none"
                   >
                     {t.videoProjects.rename}
                   </button>
                   <button
+                    ref={(el) => { if (el) itemRefs.current[1] = el; }}
+                    role="menuitem"
                     type="button"
+                    onKeyDown={(e) => onItemKeyDown(e, 1)}
                     onClick={() => {
                       setMenuOpen(false);
                       onDelete();
                     }}
-                    className="w-full px-3 py-1.5 text-left text-sm text-destructive hover:bg-accent"
+                    className="w-full px-3 py-1.5 text-left text-sm text-destructive hover:bg-accent focus:bg-accent focus:outline-none"
                   >
                     {t.videoProjects.delete}
                   </button>
@@ -159,9 +177,11 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         )}
 
         <div className="text-[11px] text-muted-foreground/80">
-          {t.videoProjects.lastOpened}:{' '}
-          {formatRelative(
+          {t.videoProjects.lastOpened}{t.common.colon}
+          {formatRelativeTime(
             project.last_opened_at || project.updated_at,
+            locale,
+            t,
             t.videoProjects.neverOpened,
           )}
         </div>

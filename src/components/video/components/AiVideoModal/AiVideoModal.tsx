@@ -244,7 +244,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
             <button
               onClick={handleClose}
               className="w-8 h-8 rounded-md bg-muted hover:bg-accent transition-colors flex items-center justify-center"
-              aria-label="Close"
+              aria-label={t.common.close}
             >
               <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

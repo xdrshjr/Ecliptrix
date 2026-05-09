@@ -67,6 +67,11 @@ export class VideoEditingLogger {
    * 记录警告级别日志
    */
   warn(action: string, data?: Record<string, any>) {
+    // Gate: suppress in production unless explicitly enabled via NEXT_PUBLIC_VIDEO_EDIT_DEBUG.
+    // Errors continue to surface via error(); warnings are non-actionable in prod.
+    if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_VIDEO_EDIT_DEBUG) {
+      return;
+    }
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level: 'WARN',

@@ -14,16 +14,34 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// vitest in this project does not include @vitejs/plugin-react, so we cannot
+// import the real LocaleContext.tsx (it would trip vite's import-analysis JSX
+// parser). useTasks only reads `t` from this hook, so a static stub at the
+// module boundary is sufficient for the persistence contract under test.
+vi.mock('@/contexts/LocaleContext', () => {
+  const en = {
+    tasks: {
+      types: { workflow: 'WorkFlow', video: 'Video Editing', brainstorm: 'Brainstorming', chat: 'AI Chat' },
+      defaultPageTitle: 'Ecliptrix - Where light and shadow collide',
+    },
+  };
+  return {
+    useLocale: () => ({ locale: 'en', setLocale: () => {}, t: en }),
+  };
+});
+
 import { renderHook, act } from '@testing-library/react';
 import { useTasks } from '../useTasks';
 
 const STORAGE_KEY = 'ecliptrix-tasks-state-v1';
+const DEFAULT_EN_TITLE = 'Ecliptrix - Where light and shadow collide';
 
 describe('useTasks persistence (iter3 Bug #1)', () => {
   beforeEach(() => {
     localStorage.clear();
     window.history.replaceState({}, '', '/');
-    document.title = 'Ecliptrix - Where light and shadow collide';
+    document.title = DEFAULT_EN_TITLE;
   });
 
   it('createTask persists state to LS, syncs URL, updates title', async () => {
@@ -33,19 +51,16 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
       result.current.createTask('chat');
     });
 
-    // Wait for the persist effect to run (microtask + effect flush is sync in act).
     const raw = localStorage.getItem(STORAGE_KEY);
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw!);
     expect(parsed.tasks.length).toBeGreaterThan(0);
     expect(parsed.activeTabId).toBeTruthy();
 
-    // URL must contain ?tab=chat&task=...
     const search = new URLSearchParams(window.location.search);
     expect(search.get('tab')).toBe('chat');
     expect(search.get('task')).toBeTruthy();
 
-    // document.title carries the active task title.
     expect(document.title.startsWith('AI Chat')).toBe(true);
   });
 
@@ -133,7 +148,7 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
     const search = new URLSearchParams(window.location.search);
     expect(search.get('tab')).toBeNull();
     expect(search.get('task')).toBeNull();
-    expect(document.title).toBe('Ecliptrix - Where light and shadow collide');
+    expect(document.title).toBe(DEFAULT_EN_TITLE);
   });
 
   it('JSON.parse failure does not throw and starts fresh', () => {
@@ -163,7 +178,6 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
           result.current.createTask('workflow');
         });
       }).not.toThrow();
-      // State still updated in-memory.
       expect(result.current.tasks.length).toBeGreaterThan(0);
     } finally {
       window.localStorage.setItem = original;

@@ -2142,15 +2142,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       hasValidDimensions: containerDimensions.width > 0 && containerDimensions.height > 0,
                       overlays: overlays.map(o => ({
                         id: o.id,
-                        url: o.url,
                         position: o.position
                       }))
                     });
 
-                    if (containerDimensions.width === 0 || containerDimensions.height === 0) {
-                      logger.warn('container dimensions are zero', {});
-                    }
-                    
                     return overlays.map((overlay) => (
                       <ImageOverlay
                         key={overlay.id}

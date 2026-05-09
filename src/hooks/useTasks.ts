@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Task, Tab, TaskType, AppState } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 
 const STORAGE_KEY = 'ecliptrix-tasks-state-v1';
-const DEFAULT_TITLE = 'Ecliptrix - Where light and shadow collide';
+const FALLBACK_TITLE = 'Ecliptrix - Where light and shadow collide';
 
 interface PersistedTask extends Omit<Task, 'createdAt' | 'updatedAt'> {
   createdAt: string;
@@ -37,7 +38,26 @@ const serializeState = (state: AppState): PersistedState => ({
   activeTabId: state.activeTabId,
 });
 
+const LEGACY_TITLE_TO_TYPE: Record<string, TaskType> = {
+  'Video Editing': 'video',
+  'AI Chat': 'chat',
+  'Brainstorming': 'brainstorm',
+  'WorkFlow': 'workflow',
+  'Workflow': 'workflow',
+};
+
 export const useTasks = () => {
+  const { t } = useLocale();
+
+  const buildTaskTypeLabel = useCallback((type: TaskType): string => {
+    switch (type) {
+      case 'workflow':   return t.tasks.types.workflow;
+      case 'video':      return t.tasks.types.video;
+      case 'brainstorm': return t.tasks.types.brainstorm;
+      case 'chat':       return t.tasks.types.chat;
+    }
+  }, [t.tasks.types]);
+
   const createInitialState = (): AppState => ({
     tasks: [],
     tabs: [],
@@ -60,6 +80,27 @@ export const useTasks = () => {
     }
 
     if (nextState) {
+      // Legacy LS migration: rewrite canonical English task titles to current locale.
+      // Idempotent: after rewrite, titles no longer match the legacy clinic, so the
+      // mapping is a one-shot. User-customized names are left untouched.
+      nextState = {
+        ...nextState,
+        tasks: nextState.tasks.map(task => {
+          const matchedType = LEGACY_TITLE_TO_TYPE[task.title];
+          if (matchedType && matchedType === task.type) {
+            return { ...task, title: buildTaskTypeLabel(task.type) };
+          }
+          return task;
+        }),
+        tabs: nextState.tabs.map(tab => {
+          const matchedType = LEGACY_TITLE_TO_TYPE[tab.title];
+          if (matchedType && matchedType === tab.type) {
+            return { ...tab, title: buildTaskTypeLabel(tab.type) };
+          }
+          return tab;
+        }),
+      };
+
       try {
         const search = new URLSearchParams(window.location.search);
         const taskParam = search.get('task');
@@ -79,6 +120,9 @@ export const useTasks = () => {
       setAppState(nextState);
     }
     setHydrated(true);
+    // We deliberately want this to run only once on mount; buildTaskTypeLabel
+    // depends on locale but legacy migration should reflect the locale at mount time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist effect: writes LS + replaces URL + updates document.title whenever
@@ -90,7 +134,6 @@ export const useTasks = () => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState(appState)));
     } catch (e) {
-      // Quota exceeded or LS unavailable — degrade silently to in-memory.
       console.warn('[useTasks] Failed to persist state:', e);
     }
 
@@ -118,26 +161,17 @@ export const useTasks = () => {
     if (typeof document !== 'undefined') {
       document.title = activeTask
         ? `${activeTask.title} · Ecliptrix`
-        : DEFAULT_TITLE;
+        : (t.tasks.defaultPageTitle || FALLBACK_TITLE);
     }
-  }, [appState, hydrated]);
+  }, [appState, hydrated, t.tasks.defaultPageTitle]);
 
   const createTask = useCallback((type: TaskType) => {
     const now = new Date();
     const timestamp = now.getTime();
 
-    const taskTypeNames = {
-      content: 'Content Creation',
-      video: 'Video Editing',
-      brainstorm: 'Brainstorming',
-      workflow: 'WorkFlow',
-      chat: 'AI Chat',
-    };
-
     const isFirstTaskFromLanding = appState.tasks.length === 0;
 
     if (isFirstTaskFromLanding) {
-      // 创建所有四种类型的任务
       const allTaskTypes: TaskType[] = ['chat', 'video', 'workflow', 'brainstorm'];
       const newTasks: Task[] = [];
       const newTabs: Tab[] = [];
@@ -149,7 +183,7 @@ export const useTasks = () => {
 
         const task: Task = {
           id: taskId,
-          title: taskTypeNames[taskType],
+          title: buildTaskTypeLabel(taskType),
           type: taskType,
           status: 'draft',
           createdAt: now,
@@ -179,18 +213,16 @@ export const useTasks = () => {
         activeTabId,
       });
     } else {
-      // 后续创建任务的逻辑（已有任务时）
       const taskId = `task-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
       const tabId = `tab-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // 计算同类型任务的数量
       const sameTypeTasksCount = appState.tasks.filter(t => t.type === type).length;
       const taskNumber = sameTypeTasksCount + 1;
 
-      // 如果是第一个该类型的任务，不显示数字
+      const baseLabel = buildTaskTypeLabel(type);
       const taskTitle = taskNumber === 1
-        ? taskTypeNames[type]
-        : `${taskTypeNames[type]} ${taskNumber}`;
+        ? baseLabel
+        : `${baseLabel} ${taskNumber}`;
 
       const newTask: Task = {
         id: taskId,
@@ -216,7 +248,7 @@ export const useTasks = () => {
         activeTabId: tabId,
       }));
     }
-  }, [appState.tasks, appState.tabs.length]);
+  }, [appState.tasks, appState.tabs.length, buildTaskTypeLabel]);
 
   const selectTab = useCallback((tabId: string) => {
     setAppState(prev => ({
@@ -234,13 +266,11 @@ export const useTasks = () => {
       const remainingTabs = prev.tabs.filter(tab => tab.id !== tabId);
       let newActiveTabId = prev.activeTabId;
 
-      // If we're closing the active tab, select another one
       if (prev.activeTabId === tabId && remainingTabs.length > 0) {
         const tabIndex = prev.tabs.findIndex(tab => tab.id === tabId);
         const nextTab = remainingTabs[Math.min(tabIndex, remainingTabs.length - 1)];
         newActiveTabId = nextTab.id;
 
-        // Update isActive for the new active tab
         remainingTabs.forEach(tab => {
           tab.isActive = tab.id === newActiveTabId;
         });

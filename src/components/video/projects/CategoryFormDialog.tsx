@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { Modal } from '@/components/ui/Modal';
 import type { VideoProjectCategory } from '@/types';
 
 export interface CategoryFormValues {
@@ -35,8 +36,6 @@ const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
     }
   }, [isOpen, initial]);
 
-  if (!isOpen) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -49,18 +48,13 @@ const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-    >
+    <Modal isOpen={isOpen} onClose={onCancel} labelledBy="category-form-title">
       <form
         onSubmit={handleSubmit}
         className="bg-card rounded-md shadow-xl border border-border w-full max-w-sm"
       >
         <div className="px-6 pt-6 pb-2">
-          <h3 className="text-lg font-semibold text-foreground">
+          <h3 id="category-form-title" className="text-lg font-semibold text-foreground">
             {mode === 'create' ? t.videoProjects.newCategory : t.videoProjects.rename}
           </h3>
         </div>
@@ -101,7 +95,7 @@ const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 };
 
