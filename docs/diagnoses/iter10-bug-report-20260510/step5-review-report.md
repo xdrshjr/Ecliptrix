@@ -120,18 +120,25 @@ Tests: 6 vitest files / 50 cases + 2 pytest files / 29 cases all pass; tsc clean
 
 ## 4. 提交记录
 
-将在 commit 完成后填写：
-
-- **Commit hash**: 见 step 6 输出
+- **Commit hash**: `90fff47`
 - **Branch**: `main`
-- **Files changed**: 21 modified + 6 new (5 vitest/pytest fixtures + 1 dateFormat util) + 3 diagnosis docs (`bug-report.md`, `fix-plan.md`, `fix-plan-reviewed.md`) + this report
-- **LOC**: ~290 src + ~220 test + ~830 doc
+- **Files changed**: 30（21 modified + 9 created — 含 dateFormat util、5 测试文件、4 诊断文档）
+- **LOC**: 2474 insertions / 46 deletions
+- **Push**: `main` 当前 ahead origin/main 50+ commits；本轮**未执行 `git push`**，沿用前几轮 iter 的"按需推送"约定（push 由用户根据发布节奏触发）。
 
 ---
 
 ## 5. 部署 Dev Server
 
-按 iter9/iter8 流程，提交后通过 `dev/deploy_dev_20260420.py` 推送到开发服务器；如脚本不在工作树跟踪范围内，则手动 SFTP + restart 后端。具体执行结果记录在 step 6 之后追加。
+执行 `python dev/deploy_dev_20260420.py`：
+
+- **目标**: 192.168.1.123 (kt-NF5568M4, 用户 `kt`)
+- **流程**: SFTP mirror src/public/backend app/alembic/scripts/config/sql + 个别根文件 → `npm run build`（exit 0）→ 重启 uvicorn :8000 → 重启 next start :3010
+- **健康检查**:
+  - `ss -lntp`: 8000 (uvicorn pid 500420) + 3010 (next-server pid 500841) 监听正常
+  - `GET http://127.0.0.1:8000/docs` → `http=200`
+  - `GET http://127.0.0.1:3010` → `http=200`
+- **结论**: dev server 已加载 iter10 修复。
 
 ---
 
