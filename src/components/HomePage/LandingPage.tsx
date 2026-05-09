@@ -41,7 +41,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.videoEditing,
       description: t.landing.videoEditingDesc,
-      type: 'video' as TaskType
+      type: 'video' as TaskType,
     },
     {
       icon: (
@@ -51,7 +51,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.workflow,
       description: t.landing.workflowDesc,
-      type: 'workflow' as TaskType
+      type: 'workflow' as TaskType,
     },
     {
       icon: (
@@ -61,7 +61,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
       ),
       title: t.tasks.aiChat,
       description: t.landing.aiChatDesc,
-      type: 'chat' as TaskType
+      type: 'chat' as TaskType,
     },
     {
       icon: (
@@ -70,9 +70,10 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </svg>
       ),
       title: t.tasks.brainstorming,
-      description: t.landing.brainstormingDesc,
-      type: 'brainstorm' as TaskType
-    }
+      description: t.landing.brainstormingDescPreview,
+      type: 'brainstorm' as TaskType,
+      comingSoon: true,
+    },
   ];
 
   return (
@@ -122,19 +123,39 @@ const LandingPage: React.FC<LandingPageProps> = ({
         {/* Features Section */}
         <section className="landing-features">
           <div className="landing-features-grid">
-            {features.map((feature, index) => (
-              <div
-                key={index}
-                className={`landing-feature-card ${isAuthLoading ? 'opacity-60 cursor-wait pointer-events-none' : ''}`}
-                onClick={() => handleGetStarted(feature.type)}
-              >
-                <div className="landing-feature-icon bg-primary/10 text-primary">
-                  {feature.icon}
+            {features.map((feature, index) => {
+              const isComingSoon = feature.comingSoon === true;
+              const isLoadingDisabled = isAuthLoading && !isComingSoon;
+              const stateClass = isComingSoon
+                ? 'opacity-60 cursor-not-allowed'
+                : isLoadingDisabled
+                  ? 'opacity-60 cursor-wait pointer-events-none'
+                  : '';
+              return (
+                <div
+                  key={index}
+                  className={`landing-feature-card relative ${stateClass}`}
+                  onClick={() => {
+                    if (isComingSoon || isAuthLoading) return;
+                    handleGetStarted(feature.type);
+                  }}
+                  role={isComingSoon ? 'button' : undefined}
+                  aria-disabled={isComingSoon || undefined}
+                  title={isComingSoon ? t.landing.comingSoonHint : undefined}
+                >
+                  <div className="landing-feature-icon bg-primary/10 text-primary">
+                    {feature.icon}
+                  </div>
+                  <h3 className="landing-feature-title">{feature.title}</h3>
+                  <p className="landing-feature-description">{feature.description}</p>
+                  {isComingSoon && (
+                    <span className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200/60 pointer-events-none">
+                      {t.landing.comingSoonBadge}
+                    </span>
+                  )}
                 </div>
-                <h3 className="landing-feature-title">{feature.title}</h3>
-                <p className="landing-feature-description">{feature.description}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 

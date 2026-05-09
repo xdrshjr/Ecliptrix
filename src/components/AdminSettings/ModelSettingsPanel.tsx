@@ -910,7 +910,15 @@ const ModelSettingsPanel: React.FC = () => {
 
       {/* Provider Add/Edit Form */}
       {providerForm && (
-        <div className="mt-4 p-4 rounded-lg border border-primary/30 bg-card space-y-4">
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (savingProvider || !providerForm.name || !providerForm.api_url) return;
+            handleSaveProvider();
+          }}
+          className="mt-4 p-4 rounded-lg border border-primary/30 bg-card space-y-4"
+        >
           <h3 className="text-sm font-medium text-foreground">
             {providerForm.id ? t.adminSettings.modelEditProvider : t.adminSettings.modelAddProvider}
           </h3>
@@ -984,6 +992,7 @@ const ModelSettingsPanel: React.FC = () => {
             <div className="relative">
               <input
                 type={showApiKey ? 'text' : 'password'}
+                autoComplete="new-password"
                 value={***REMOVED*** ? providerForm.api_key : ''}
                 onChange={e => setProviderForm(prev => prev ? { ...prev, api_key: e.target.value, api_key_changed: true } : null)}
                 onFocus={() => {
@@ -1113,6 +1122,7 @@ const ModelSettingsPanel: React.FC = () => {
           <div className="flex items-center justify-between pt-2">
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => handleTestProviderConnection(providerForm.id || 'new')}
                 disabled={testingProvider !== null || !providerForm.api_url || (!providerForm.api_key && !providerForm.id)}
                 className="px-3 py-1.5 text-sm font-medium border border-border rounded-md text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1121,6 +1131,7 @@ const ModelSettingsPanel: React.FC = () => {
               </button>
               {!isCodingProvider(providerForm.provider_type) && providerForm.api_key && providerForm.api_url && (
                 <button
+                  type="button"
                   onClick={() => handleFetchModelsForProvider(providerForm.id || 'new')}
                   disabled={fetchingModels !== null}
                   className="px-3 py-1.5 text-sm font-medium border border-border rounded-md text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1131,13 +1142,14 @@ const ModelSettingsPanel: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => { setProviderForm(null); setProviderTestResult(null); }}
                 className="px-3 py-1.5 text-sm font-medium border border-border rounded-md text-foreground hover:bg-accent transition-colors"
               >
                 {t.adminSettings.cancel}
               </button>
               <button
-                onClick={handleSaveProvider}
+                type="submit"
                 disabled={savingProvider || !providerForm.name || !providerForm.api_url}
                 className="px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
@@ -1145,7 +1157,7 @@ const ModelSettingsPanel: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </form>
       )}
     </div>
   );

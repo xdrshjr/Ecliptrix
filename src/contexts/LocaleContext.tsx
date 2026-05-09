@@ -15,16 +15,26 @@ interface LocaleProviderProps {
   children: React.ReactNode;
 }
 
+const applyLocaleToDom = (locale: SupportedLocale) => {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = locale === 'zh-CN' ? 'zh-CN' : 'en';
+};
+
 export const LocaleProvider: React.FC<LocaleProviderProps> = ({ children }) => {
   const [locale, setLocaleState] = useState<SupportedLocale>(defaultLocale);
   const [translations, setTranslations] = useState<Translations>(getTranslations(defaultLocale));
 
-  // Load locale from localStorage on mount
+  // Load locale from localStorage on mount and sync <html lang>.
   useEffect(() => {
-    const savedLocale = localStorage.getItem('ecliptrix-locale') as SupportedLocale;
+    const savedLocale = localStorage.getItem('ecliptrix-locale') as SupportedLocale | null;
     if (savedLocale && (savedLocale === 'en' || savedLocale === 'zh-CN')) {
       setLocaleState(savedLocale);
       setTranslations(getTranslations(savedLocale));
+      applyLocaleToDom(savedLocale);
+    } else {
+      // No saved locale — defensively sync DOM with the default so the
+      // <html lang> attribute matches state from the very first paint.
+      applyLocaleToDom(defaultLocale);
     }
   }, []);
 
@@ -32,9 +42,7 @@ export const LocaleProvider: React.FC<LocaleProviderProps> = ({ children }) => {
     setLocaleState(newLocale);
     setTranslations(getTranslations(newLocale));
     localStorage.setItem('ecliptrix-locale', newLocale);
-    
-    // Update document language attribute
-    document.documentElement.lang = newLocale === 'zh-CN' ? 'zh-CN' : 'en';
+    applyLocaleToDom(newLocale);
   };
 
   const value: LocaleContextType = {
@@ -56,4 +64,4 @@ export const useLocale = (): LocaleContextType => {
     throw new Error('useLocale must be used within a LocaleProvider');
   }
   return context;
-}; 
+};

@@ -277,6 +277,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
           </div>
           <h2 className="text-2xl font-semibold text-foreground mb-2">{t.tasks.brainstorming}</h2>
           <p className="text-muted-foreground mb-1">{t.common.underDevelopment}</p>
+          <p className="text-sm text-muted-foreground/80">{t.landing.comingSoonHint}</p>
         </div>
       </div>
     );

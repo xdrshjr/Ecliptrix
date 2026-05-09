@@ -1,9 +1,33 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { loadAgentWorkflows, WorkflowRecord } from '@/lib/api/workflow';
+
+/**
+ * English-only relative-time helper. Returns null when the timestamp is missing
+ * or unparsable so callers can skip rendering the row.
+ */
+const relativeTimeEN = (iso?: string | null): string | null => {
+  if (!iso) return null;
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return null;
+  const diffMs = Date.now() - ts;
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  try {
+    return new Date(ts).toLocaleDateString();
+  } catch {
+    return null;
+  }
+};
 
 interface ChatTypeSelectionModalProps {
   isOpen: boolean;
@@ -84,8 +108,28 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
     onClose();
   };
 
+  // Sort workflows newest-first; fall back to created_at when updated_at is missing.
+  const sortedWorkflows = useMemo(() => {
+    const ts = (w: WorkflowRecord): number => {
+      const u = Date.parse(w.updated_at || '');
+      if (!Number.isNaN(u)) return u;
+      const c = Date.parse(w.created_at || '');
+      return Number.isNaN(c) ? 0 : c;
+    };
+    return [...workflows].sort((a, b) => ts(b) - ts(a));
+  }, [workflows]);
+
+  const emptyWorkflowCount = useMemo(
+    () => workflows.filter(w => (w.nodes?.length ?? 0) === 0).length,
+    [workflows]
+  );
+
   // Handle workflow selection
   const handleSelectWorkflow = (workflow: WorkflowRecord) => {
+    if ((workflow.nodes?.length ?? 0) === 0) {
+      // Empty workflows are disabled — no-op (defensive guard for keyboard handlers).
+      return;
+    }
     console.log('[ChatTypeSelectionModal] Workflow selected:', {
       workflow_id: workflow.workflow_id,
       workflow_name: workflow.workflow_name,
@@ -93,7 +137,7 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
       connectionsCount: workflow.connections?.length || 0
     });
     onSelectWorkflow(
-      workflow.workflow_id, 
+      workflow.workflow_id,
       workflow.workflow_name,
       workflow.nodes || [],
       workflow.connections || []
@@ -316,62 +360,98 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
               ) : (
                 // Workflows Grid
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {workflows.map((workflow) => (
-                    <button
-                      key={workflow.workflow_id}
-                      onClick={() => handleSelectWorkflow(workflow)}
-                      className="group relative p-5 bg-card border border-border rounded-md hover:border-primary/40 transition-colors duration-200 text-left"
-                    >
-                      {/* Workflow Icon */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="w-12 h-12 bg-primary/15 rounded-md flex items-center justify-center transition-transform">
-                          <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                        </div>
-                        
-                        {/* Active Badge */}
-                        {workflow.is_active && (
-                          <span className="px-2 py-1 bg-green-500/15 text-green-500 text-xs font-medium rounded-lg">
-                            {t.aiChat.chatTypeModal.active}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Workflow Info */}
-                      <div className="space-y-2">
-                        <h3 className="text-base font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors">
-                          {workflow.workflow_name}
-                        </h3>
-                        
-                        {workflow.workflow_description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {workflow.workflow_description}
-                          </p>
-                        )}
+                  {sortedWorkflows.map((workflow) => {
+                    const nodeCount = workflow.nodes?.length ?? 0;
+                    const isEmpty = nodeCount === 0;
+                    const idShort = (workflow.workflow_id ?? '').replace(/-/g, '').slice(-6);
+                    const updatedLabel = relativeTimeEN(workflow.updated_at || workflow.created_at);
 
-                        {/* Workflow Stats */}
-                        <div className="flex items-center space-x-3 text-xs text-muted-foreground pt-2">
-                          <div className="flex items-center space-x-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                    return (
+                      <button
+                        type="button"
+                        key={workflow.workflow_id}
+                        onClick={() => handleSelectWorkflow(workflow)}
+                        disabled={isEmpty}
+                        aria-disabled={isEmpty || undefined}
+                        title={isEmpty ? t.aiChat.chatTypeModal.emptyWorkflowHint : undefined}
+                        className={`group relative p-5 bg-card border rounded-md transition-colors duration-200 text-left ${
+                          isEmpty
+                            ? 'border-dashed border-border opacity-50 cursor-not-allowed'
+                            : 'border-border hover:border-primary/40'
+                        }`}
+                      >
+                        {/* Workflow Icon */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="w-12 h-12 bg-primary/15 rounded-md flex items-center justify-center transition-transform">
+                            <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
-                            <span>{workflow.nodes?.length || 0} {t.aiChat.chatTypeModal.nodes}</span>
                           </div>
-                          
-                          <div className="flex items-center space-x-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                            </svg>
-                            <span>v{workflow.version}</span>
+
+                          {/* Active Badge */}
+                          {workflow.is_active && (
+                            <span className="px-2 py-1 bg-green-500/15 text-green-500 text-xs font-medium rounded-lg">
+                              {t.aiChat.chatTypeModal.active}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Workflow Info */}
+                        <div className="space-y-2">
+                          <h3 className={`text-base font-semibold line-clamp-1 transition-colors ${
+                            isEmpty
+                              ? 'text-muted-foreground'
+                              : 'text-foreground group-hover:text-primary'
+                          }`}>
+                            {workflow.workflow_name}
+                          </h3>
+
+                          {workflow.workflow_description && (
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {workflow.workflow_description}
+                            </p>
+                          )}
+
+                          {/* Workflow Stats */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground pt-2">
+                            <div className="flex items-center space-x-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                              </svg>
+                              <span>{nodeCount} {t.aiChat.chatTypeModal.nodes}</span>
+                            </div>
+
+                            <div className="flex items-center space-x-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                              </svg>
+                              <span>v{workflow.version}</span>
+                            </div>
+
+                            {idShort && (
+                              <div
+                                className="flex items-center space-x-1"
+                                aria-label={`${t.aiChat.chatTypeModal.idLabel} ${idShort}`}
+                              >
+                                <span className="font-mono opacity-70">·#{idShort}</span>
+                              </div>
+                            )}
+
+                            {updatedLabel && (
+                              <div className="flex items-center space-x-1">
+                                <span>{t.aiChat.chatTypeModal.updatedAt.replace('{time}', updatedLabel)}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                      
-                      {/* Hover Indicator */}
-                      <div className="absolute inset-0 rounded-md ring-2 ring-ring ring-opacity-0 group-hover:ring-opacity-100 transition-colors pointer-events-none" />
-                    </button>
-                  ))}
+
+                        {/* Hover Indicator */}
+                        {!isEmpty && (
+                          <div className="absolute inset-0 rounded-md ring-2 ring-ring ring-opacity-0 group-hover:ring-opacity-100 transition-colors pointer-events-none" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -441,7 +521,11 @@ const ChatTypeSelectionModal: React.FC<ChatTypeSelectionModalProps> = ({
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
               {selectedSection === 'workflow' && !isLoadingWorkflows && !workflowError && workflows.length > 0 && (
-                t.aiChat.chatTypeModal.workflowsAvailable.replace('{count}', String(workflows.length))
+                emptyWorkflowCount > 0
+                  ? t.aiChat.chatTypeModal.workflowsAvailableWithEmpty
+                      .replace('{count}', String(workflows.length))
+                      .replace('{empty}', String(emptyWorkflowCount))
+                  : t.aiChat.chatTypeModal.workflowsAvailable.replace('{count}', String(workflows.length))
               )}
             </p>
             <button

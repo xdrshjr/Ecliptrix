@@ -33,6 +33,9 @@ export interface Translations {
     workflowDesc: string;
     aiChatDesc: string;
     brainstormingDesc: string;
+    brainstormingDescPreview: string;
+    comingSoonBadge: string;
+    comingSoonHint: string;
     aiModels: string;
     workflowTemplates: string;
     creativePossibilities: string;
@@ -1102,6 +1105,7 @@ export interface Translations {
       exportVideo: string;
       exporting: string;
       exportingProgress: string;
+      emptyTimeline: string;
     };
     placeholders: {
       noMaterialsInTimeline: string;
@@ -1989,6 +1993,10 @@ export interface Translations {
       runCodeSafely: string;
       cancel: string;
       workflowsAvailable: string;
+      workflowsAvailableWithEmpty: string;
+      emptyWorkflowHint: string;
+      idLabel: string;
+      updatedAt: string;
     };
   };
   videoProcessing: {
@@ -2710,6 +2718,9 @@ export const translations: Record<string, Translations> = {
       workflowDesc: 'Build powerful AI workflows with visual node-based editor',
       aiChatDesc: 'Intelligent AI conversations for content creation and assistance',
       brainstormingDesc: 'Generate creative ideas and concepts for your projects',
+      brainstormingDescPreview: 'Coming soon — a creative ideation workshop for sparking new project concepts',
+      comingSoonBadge: 'Coming Soon',
+      comingSoonHint: 'This feature is in development. Stay tuned!',
       aiModels: 'AI Models',
       workflowTemplates: 'Workflow Templates',
       creativePossibilities: 'Creative Possibilities',
@@ -3779,6 +3790,7 @@ export const translations: Record<string, Translations> = {
         exportVideo: 'Export Video',
         exporting: 'Exporting',
         exportingProgress: 'Exporting ({progress}%)',
+        emptyTimeline: 'Add video, image, or audio materials to the timeline before exporting',
       },
              placeholders: {
          noMaterialsInTimeline: 'No video materials in timeline\nPlease add video materials to timeline before playing',
@@ -4681,6 +4693,10 @@ export const translations: Record<string, Translations> = {
         runCodeSafely: 'Run code safely',
         cancel: 'Cancel',
         workflowsAvailable: '{count} workflow(s) available',
+        workflowsAvailableWithEmpty: '{count} workflow(s) available · {empty} empty',
+        emptyWorkflowHint: 'Add nodes to this workflow before using it',
+        idLabel: 'ID',
+        updatedAt: 'Updated {time}',
       },
     },
     videoProcessing: {
@@ -5407,6 +5423,9 @@ export const translations: Record<string, Translations> = {
       workflowDesc: '可视化节点编辑器构建强大AI工作流',
       aiChatDesc: '智能AI对话助力内容创作与辅助',
       brainstormingDesc: '为您的项目生成创意想法和概念',
+      brainstormingDescPreview: '即将推出 · 创意构思灵感工坊，为项目激发全新概念',
+      comingSoonBadge: '即将推出',
+      comingSoonHint: '该功能正在开发中，敬请期待。',
       aiModels: 'AI模型',
       workflowTemplates: '工作流模板',
       creativePossibilities: '创意无限可能',
@@ -6476,6 +6495,7 @@ export const translations: Record<string, Translations> = {
         exportVideo: '导出视频',
         exporting: '导出中',
         exportingProgress: '导出中 ({progress}%)',
+        emptyTimeline: '请先添加视频/图片/音频素材到时间轴后再导出',
       },
              placeholders: {
          noMaterialsInTimeline: '时间轴中没有视频素材\n请在时间轴中添加视频素材后播放',
@@ -7378,6 +7398,10 @@ export const translations: Record<string, Translations> = {
         runCodeSafely: '安全运行代码',
         cancel: '取消',
         workflowsAvailable: '{count} 个工作流可用',
+        workflowsAvailableWithEmpty: '{count} 个工作流可用 · {empty} 个为空',
+        emptyWorkflowHint: '请先在工作流编辑器中为该工作流添加节点',
+        idLabel: '编号',
+        updatedAt: '更新于 {time}',
       },
     },
     videoProcessing: {

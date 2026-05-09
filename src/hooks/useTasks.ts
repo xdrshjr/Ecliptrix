@@ -3,6 +3,40 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Task, Tab, TaskType, AppState } from '@/types';
 
+const STORAGE_KEY = 'ecliptrix-tasks-state-v1';
+const DEFAULT_TITLE = 'Ecliptrix - Where light and shadow collide';
+
+interface PersistedTask extends Omit<Task, 'createdAt' | 'updatedAt'> {
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PersistedState {
+  tasks: PersistedTask[];
+  tabs: Tab[];
+  activeTabId: string | null;
+}
+
+const reviveState = (raw: PersistedState): AppState => ({
+  tasks: (raw.tasks ?? []).map(t => ({
+    ...t,
+    createdAt: new Date(t.createdAt),
+    updatedAt: new Date(t.updatedAt),
+  })) as Task[],
+  tabs: raw.tabs ?? [],
+  activeTabId: raw.activeTabId ?? null,
+});
+
+const serializeState = (state: AppState): PersistedState => ({
+  tasks: state.tasks.map(t => ({
+    ...t,
+    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : new Date(t.createdAt as unknown as string).toISOString(),
+    updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : new Date(t.updatedAt as unknown as string).toISOString(),
+  })),
+  tabs: state.tabs,
+  activeTabId: state.activeTabId,
+});
+
 export const useTasks = () => {
   const createInitialState = (): AppState => ({
     tasks: [],
@@ -11,6 +45,82 @@ export const useTasks = () => {
   });
 
   const [appState, setAppState] = useState<AppState>(() => createInitialState());
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydration: read LS (and URL ?task=) once on mount.
+  useEffect(() => {
+    let nextState: AppState | null = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        nextState = reviveState(JSON.parse(raw) as PersistedState);
+      }
+    } catch (e) {
+      console.warn('[useTasks] Failed to restore state, starting fresh:', e);
+    }
+
+    if (nextState) {
+      try {
+        const search = new URLSearchParams(window.location.search);
+        const taskParam = search.get('task');
+        if (taskParam) {
+          const tab = nextState.tabs.find(t => t.taskId === taskParam);
+          if (tab) {
+            nextState = {
+              ...nextState,
+              tabs: nextState.tabs.map(t => ({ ...t, isActive: t.id === tab.id })),
+              activeTabId: tab.id,
+            };
+          }
+        }
+      } catch {
+        /* search 解析失败不阻塞恢复 */
+      }
+      setAppState(nextState);
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist effect: writes LS + replaces URL + updates document.title whenever
+  // appState changes. Strict guard on hydrated — initial paint must NOT clobber LS.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (typeof window === 'undefined') return;
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState(appState)));
+    } catch (e) {
+      // Quota exceeded or LS unavailable — degrade silently to in-memory.
+      console.warn('[useTasks] Failed to persist state:', e);
+    }
+
+    const activeTab = appState.activeTabId
+      ? appState.tabs.find(t => t.id === appState.activeTabId)
+      : null;
+    const activeTask = activeTab
+      ? appState.tasks.find(t => t.id === activeTab.taskId)
+      : null;
+
+    try {
+      const url = new URL(window.location.href);
+      if (activeTab && activeTask) {
+        url.searchParams.set('tab', activeTab.type);
+        url.searchParams.set('task', activeTask.id);
+      } else {
+        url.searchParams.delete('tab');
+        url.searchParams.delete('task');
+      }
+      window.history.replaceState(window.history.state, '', url.toString());
+    } catch (e) {
+      console.warn('[useTasks] Failed to sync URL:', e);
+    }
+
+    if (typeof document !== 'undefined') {
+      document.title = activeTask
+        ? `${activeTask.title} · Ecliptrix`
+        : DEFAULT_TITLE;
+    }
+  }, [appState, hydrated]);
 
   const createTask = useCallback((type: TaskType) => {
     const now = new Date();

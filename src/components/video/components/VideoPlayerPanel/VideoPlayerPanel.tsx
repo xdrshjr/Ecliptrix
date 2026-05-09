@@ -366,6 +366,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     return compositionPlayback?.videoSequences?.[0]?.id || null;
   }, [compositionPlayback?.videoSequences?.[0]?.id]);
 
+  // Whether any track in the timeline has at least one item — gates the export button.
+  const hasAnyExportableItem = useMemo(
+    () => (timelineState?.tracks ?? []).some(track => (track.items?.length ?? 0) > 0),
+    [timelineState],
+  );
+
   // 新增：音频管理函数 - 创建或获取音频元素
   const getOrCreateAudioElement = useCallback((audioSequence: any) => {
     const audioId = audioSequence.id;
@@ -1979,7 +1985,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           {timelineState && timelineState.tracks.length > 0 && (
             <button
               onClick={handleVideoExport}
-              disabled={videoExport.isExporting}
+              disabled={videoExport.isExporting || !hasAnyExportableItem}
+              title={
+                !hasAnyExportableItem && !videoExport.isExporting
+                  ? t.videoPlayerPanel.export.emptyTimeline
+                  : undefined
+              }
               className={`
                 flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed
                 ${videoExport.isExporting
@@ -1987,10 +1998,15 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   : 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80'
                 }
               `}
-              tabIndex={0}
-              aria-label={videoExport.isExporting ? `${t.videoPlayerPanel.export.exporting} (${selectedAspectRatio.id})...` : `${t.videoPlayerPanel.export.exportVideo} (${selectedAspectRatio.id})`}
+              aria-label={
+                videoExport.isExporting
+                  ? `${t.videoPlayerPanel.export.exporting} (${selectedAspectRatio.id})...`
+                  : !hasAnyExportableItem
+                    ? t.videoPlayerPanel.export.emptyTimeline
+                    : `${t.videoPlayerPanel.export.exportVideo} (${selectedAspectRatio.id})`
+              }
               onKeyDown={(e) => {
-                if ((e.key === 'Enter' || e.key === ' ') && !videoExport.isExporting) {
+                if ((e.key === 'Enter' || e.key === ' ') && !videoExport.isExporting && hasAnyExportableItem) {
                   e.preventDefault();
                   handleVideoExport();
                 }
