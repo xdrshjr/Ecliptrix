@@ -80,8 +80,13 @@ export const useVideoPlayback = (
       timelineTime: currentTimelineTime
     });
 
-    // 如果开始播放且提供了timeline时间，则从timeline时间开始
-    if (newPlayingState && currentTimelineTime !== undefined && currentTimelineTime !== currentTime) {
+    // 如果开始播放且提供了timeline时间，则从timeline时间开始。
+    // 修复 R6：用 0.05s 容差替代严格不等，避免浮点回声引发重入式 setState。
+    if (
+      newPlayingState &&
+      currentTimelineTime !== undefined &&
+      Math.abs(currentTimelineTime - currentTime) > 0.05
+    ) {
       logger.info('从timeline当前位置开始预览播放', {
         previousTime: currentTime.toFixed(2),
         timelineTime: currentTimelineTime.toFixed(2),

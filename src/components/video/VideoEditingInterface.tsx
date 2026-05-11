@@ -391,15 +391,23 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         target.tagName === 'TEXTAREA' ||
         target.contentEditable === 'true' ||
         !!target.closest('input, textarea, [contenteditable="true"]');
-      if (isInInputField || !videoPlayerRef.current) return;
+      const ref = videoPlayerRef.current;
+      if (isInInputField || !ref) return;
 
       event.preventDefault();
+      // 修复 R1：让 panel 自己回答"是否在播放"，避免父级镜像状态时序滞后。
+      const isPlayingNow = typeof ref.isPlaying === 'function' ? ref.isPlaying() : false;
       logger.debug('全局空格键触发播放/暂停', {
         taskId,
         timelineCurrentTime: timelineCurrentTimeRef.current.toFixed(2),
         focusedElement: target.tagName,
+        isPlayingNow,
       });
-      videoPlayerRef.current.handlePlayPauseFromTimeline(timelineCurrentTimeRef.current);
+      if (isPlayingNow) {
+        void ref.pauseFromTimeline();
+      } else {
+        void ref.seekAndPlayFromTimeline(timelineCurrentTimeRef.current);
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);

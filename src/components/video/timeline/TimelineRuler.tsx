@@ -384,6 +384,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
           {/* 播放头 */}
           <div
+            data-testid="timeline-playhead"
             className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
             style={{
               left: `${currentTime * pixelsPerSecond}px`,
