@@ -118,3 +118,100 @@ describe('VideoPlayerPanel — timeline-playhead-resume-playback', () => {
     expect(region).not.toMatch(/\.currentTime\s*=/);
   });
 });
+
+describe('VideoPlayerPanel — v3 follow-up fix (timeline-playhead-resume-v3)', () => {
+  // Slice handleCompositionSeek's body (between its useCallback opener and its
+  // closing `}, [...])` dep-list). The closing is recognised by the next
+  // top-level identifier definition (`const handleTimeSeekClick`).
+  const compositionSeekBody = (() => {
+    const start = src.indexOf('const handleCompositionSeek = useCallback');
+    expect(start).toBeGreaterThan(-1);
+    const end = src.indexOf('const handleTimeSeekClick', start);
+    expect(end).toBeGreaterThan(start);
+    return src.slice(start, end);
+  })();
+
+  const seekAndPlayBody = (() => {
+    const start = src.indexOf('const seekAndPlayFromTimeline = useCallback');
+    expect(start).toBeGreaterThan(-1);
+    // Closes before the isPlayingForRefRef declaration.
+    const end = src.indexOf('const isPlayingForRefRef', start);
+    expect(end).toBeGreaterThan(start);
+    return src.slice(start, end);
+  })();
+
+  const pauseBody = (() => {
+    const start = src.indexOf('const pauseFromTimeline = useCallback');
+    expect(start).toBeGreaterThan(-1);
+    const end = src.indexOf('const seekAndPlayFromTimeline', start);
+    expect(end).toBeGreaterThan(start);
+    return src.slice(start, end);
+  })();
+
+  it('seekAndPlayFromTimeline writes isCompositionPlayingRef.current = true synchronously (R3)', () => {
+    expect(seekAndPlayBody).toMatch(/isCompositionPlayingRef\.current\s*=\s*true/);
+    // The synchronous ref write must be present alongside setIsCompositionPlaying(true).
+    expect(seekAndPlayBody).toMatch(/setIsCompositionPlaying\(true\)/);
+  });
+
+  it('pauseFromTimeline writes isCompositionPlayingRef.current = false synchronously (R3)', () => {
+    expect(pauseBody).toMatch(/isCompositionPlayingRef\.current\s*=\s*false/);
+    expect(pauseBody).toMatch(/setIsCompositionPlaying\(false\)/);
+  });
+
+  it('handleCompositionSeek contains the v3 timeline-echo short-circuit (R7)', () => {
+    // Match the conditional with source === 'timeline' AND isCompositionPlayingRef.current
+    // AND Math.abs(...currentTime - mappedVideoTime) < 0.1, plus an early return.
+    expect(compositionSeekBody).toMatch(
+      /source\s*===\s*'timeline'[\s\S]+?isCompositionPlayingRef\.current[\s\S]+?Math\.abs\(\s*videoRef\.current\.currentTime\s*-\s*mappedVideoTime\s*\)\s*<\s*0\.1/,
+    );
+    // And the branch ends with `return;`.
+    expect(compositionSeekBody).toMatch(
+      /Math\.abs\(\s*videoRef\.current\.currentTime\s*-\s*mappedVideoTime\s*\)\s*<\s*0\.1[\s\S]+?return;/,
+    );
+  });
+
+  it('every wasPlayingBefore initialization inside handleCompositionSeek reads from the ref', () => {
+    // Every wasPlayingBefore = <X> assignment must read isCompositionPlayingRef.current,
+    // not the bare isCompositionPlaying state.
+    const initRegex = /wasPlayingBefore\s*=\s*([A-Za-z_$][\w$.]*)/g;
+    const rhsSeen: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = initRegex.exec(compositionSeekBody)) !== null) {
+      rhsSeen.push(match[1]);
+    }
+    expect(rhsSeen.length).toBeGreaterThan(0);
+    for (const rhs of rhsSeen) {
+      expect(rhs).toMatch(/^isCompositionPlayingRef\.current$/);
+    }
+    // Defence: no bare `isCompositionPlaying` read inside the function body
+    // for either wasPlayingBefore or the logger's wasPlayingBefore field.
+    expect(compositionSeekBody).not.toMatch(/wasPlayingBefore\s*=\s*isCompositionPlaying\b/);
+    expect(compositionSeekBody).not.toMatch(/wasPlayingBefore:\s*isCompositionPlaying\b/);
+  });
+
+  it('handleCompositionSeek dep-list omits isCompositionPlaying and compositionCurrentTime (R5)', () => {
+    // Walk every `}, [ ... ]);` closure inside the body and use the last one
+    // (the useCallback dep-list). Tolerant of trailing comments / whitespace.
+    const depRegex = /\}\s*,\s*\[([^\]]+)\]\s*\)\s*;/g;
+    let lastDeps: string | null = null;
+    let match: RegExpExecArray | null;
+    while ((match = depRegex.exec(compositionSeekBody)) !== null) {
+      lastDeps = match[1];
+    }
+    expect(lastDeps).not.toBeNull();
+    const deps = lastDeps as string;
+    // Bare identifier should not appear (whitespace / comma bounded).
+    expect(deps).not.toMatch(/(^|[\s,])isCompositionPlaying([\s,]|$)/);
+    expect(deps).not.toMatch(/(^|[\s,])compositionCurrentTime([\s,]|$)/);
+  });
+
+  it('logged previousCompositionTime reads from the ref, not the closure state', () => {
+    expect(compositionSeekBody).toMatch(
+      /previousCompositionTime:\s*compositionCurrentTimeRef\.current\.toFixed\(2\)/,
+    );
+    expect(compositionSeekBody).not.toMatch(
+      /previousCompositionTime:\s*compositionCurrentTime\.toFixed\(2\)/,
+    );
+  });
+});

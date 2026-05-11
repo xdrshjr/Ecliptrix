@@ -236,6 +236,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     timelineCurrentTimeRef.current = timelineCurrentTime;
   }, [timelineCurrentTime]);
 
+  // v3 (timeline-playhead-resume-v3): stamp every playback-driven time write
+  // so handleTimelineTimeChange can recognise its own echo and skip the seek
+  // round-trip. Reset to -Infinity on Space-key dispatch (see §3 / §4.1).
+  const playbackDrivenTimeUpdateRef = useRef<number>(Number.NEGATIVE_INFINITY);
+
   logger.debug('Restoring UI state', {
     taskId,
     hasContent: !!content,
@@ -403,6 +408,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         focusedElement: target.tagName,
         isPlayingNow,
       });
+      // v3 R2: reset the playback-driven stamp BEFORE invoking play/pause so a
+      // subsequent user scrub to a value numerically equal to the last
+      // playback-driven tick is not misread as a playback echo.
+      playbackDrivenTimeUpdateRef.current = Number.NEGATIVE_INFINITY;
       if (isPlayingNow) {
         void ref.pauseFromTimeline();
       } else {
@@ -467,6 +476,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 处理从视频播放器到timeline的时间同步
   const handleVideoTimeUpdate = useCallback((currentTime: number) => {
+    // v3: stamp BEFORE setState so handleTimelineTimeChange's playback-echo
+    // gate (Math.abs(time - playbackDrivenTimeUpdateRef.current) < 0.05) sees
+    // the latest playback-driven value by the time the store subscription
+    // re-enters with the same time.
+    playbackDrivenTimeUpdateRef.current = currentTime;
     setTimelineCurrentTime(currentTime);
   }, []);
 
@@ -1514,12 +1528,28 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 处理从timeline到视频播放器的时间同步
   const handleTimelineTimeChange = useCallback((time: number) => {
+    // v3 (timeline-playhead-resume-v3): break the playback-driven feedback loop.
+    // When <video> drives the timeline (timeupdate → setTimelineCurrentTime →
+    // store.setCurrentTime → store.subscribe → here), the incoming `time` is
+    // numerically within 0.05 s of the last playback-driven stamp. In that case
+    // we mirror the value into our state but MUST NOT forward to the player —
+    // re-asking the player to seek to its own time produces the wrong-index
+    // reverse-map storm described in §2.2.1.
+    const lastPlaybackDrivenTime = playbackDrivenTimeUpdateRef.current;
+    const isPlaybackEcho = Math.abs(time - lastPlaybackDrivenTime) < 0.05;
     logger.debug('Timeline时间变化同步到视频播放器', {
       newTime: time.toFixed(2),
       previousTime: timelineCurrentTime.toFixed(2),
+      lastPlaybackDrivenTime: Number.isFinite(lastPlaybackDrivenTime) ? lastPlaybackDrivenTime.toFixed(2) : 'none',
+      source: isPlaybackEcho ? 'playback' : 'user',
     });
     setTimelineCurrentTime(time);
-    
+
+    if (isPlaybackEcho) {
+      // Playback-driven echo — skip the round-trip composition seek.
+      return;
+    }
+
     // 如果是组合播放模式，同步到组合播放器
     if (timelineComposition.compositionPlayback?.isCompositionMode) {
       timelineComposition.handleCompositionSeek(time);

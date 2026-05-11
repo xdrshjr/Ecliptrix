@@ -1691,6 +1691,25 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     // 强制拉回片段开头。
     const mappedVideoTime = mapTimelineTimeToVideoTime(targetSequence, videoTime);
 
+    // v3 (R7): defence-in-depth short-circuit. If a timeline-sourced seek lands
+    // within 0.1 s of the current <video>.currentTime while playback is in
+    // flight, drop it. The primary gate lives in VideoEditingInterface's
+    // handleTimelineTimeChange (0.05 s); this guard catches any residual
+    // re-entry from another path. Window is narrower than legitimate user
+    // scrubs (≥ 6 frames at 60 fps).
+    if (
+      source === 'timeline' &&
+      isCompositionPlayingRef.current &&
+      Math.abs(videoRef.current.currentTime - mappedVideoTime) < 0.1
+    ) {
+      logger.debug('handleCompositionSeek: timeline echo dropped', {
+        delta: Math.abs(videoRef.current.currentTime - mappedVideoTime).toFixed(3),
+        compositionTime: compositionTime.toFixed(2),
+      });
+      releaseSeekLock();
+      return;
+    }
+
     logger.userAction('组合播放视频跳转', source === 'timeline' ? 'timelineCompositionSeek' : 'playerCompositionSeek', {
       compositionTime: compositionTime.toFixed(2),
       targetSequenceName: targetSequence.name,
@@ -1698,15 +1717,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       videoTime: videoTime.toFixed(2),
       mappedVideoTime: mappedVideoTime.toFixed(2),
       source,
-      previousCompositionTime: compositionCurrentTime.toFixed(2),
-      wasPlayingBefore: isCompositionPlaying,
+      previousCompositionTime: compositionCurrentTimeRef.current.toFixed(2),
+      wasPlayingBefore: isCompositionPlayingRef.current,
       isSeekingLocked: true
     });
 
     // 立即更新视频播放器
     if (targetSequence && videoRef.current) {
       try {
-        const wasPlayingBefore = isCompositionPlaying;
+        // v3: read play state from the ref so the value is coherent even if the
+        // surrounding closure was captured before setIsCompositionPlaying(true)
+        // had flushed through useEffect.
+        const wasPlayingBefore = isCompositionPlayingRef.current;
         
         // 如果视频源不同，需要切换视频
         const targetPreviewSrc = getSequencePreviewSrc(targetSequence);
@@ -1836,7 +1858,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       onCompositionSeek(compositionTime);
     }
 
-  }, [compositionPlayback, compositionCurrentTime, isCompositionPlaying, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, onSequenceIndexUpdate, logger, lockSeekUntilSeeked, releaseSeekLock, updateCompositionCurrentTime]);
+    // v3 (R5): drop `isCompositionPlaying` and `compositionCurrentTime` from
+    // deps — all reads now route through `isCompositionPlayingRef` /
+    // `compositionCurrentTimeRef`, so callback identity no longer thrashes on
+    // every play/pause or 4 Hz timeupdate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compositionPlayback, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, onSequenceIndexUpdate, logger, lockSeekUntilSeeked, releaseSeekLock, updateCompositionCurrentTime]);
 
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
@@ -1960,6 +1987,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       if (currentVideo) {
         currentVideo.pause();
       }
+      // v3 R3: write the ref synchronously alongside setState so any read in
+      // the same microtask sees the new value (the useEffect mirror has a
+      // one-tick delay that the defence short-circuit cannot tolerate).
+      isCompositionPlayingRef.current = false;
       await syncAudioPlayback(compositionCurrentTimeRef.current, false);
       setIsCompositionPlaying(false);
       if (onCompositionPlayPause) onCompositionPlayPause();
@@ -2068,6 +2099,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       preloadUpcomingSequences(targetSequenceIndex + 1, 3);
       await syncAudioPlayback(timelineTime, true);
 
+      // v3 R3: write the ref synchronously before setState so the first
+      // timeupdate echoing back through handleCompositionSeek sees the
+      // post-play value (the useEffect mirror only flushes after the next
+      // render, leaving a one-tick window where the ref reads stale `false`).
+      isCompositionPlayingRef.current = true;
       setIsCompositionPlaying(true);
       if (onCompositionPlayPause) onCompositionPlayPause();
     } else {
