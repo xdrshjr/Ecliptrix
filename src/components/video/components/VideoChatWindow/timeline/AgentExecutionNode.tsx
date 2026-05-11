@@ -48,7 +48,11 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
 
   const steps = node.toolCalls.map(toolCallToStepData);
   const completedCount = steps.filter(
-    (s) => s.status === 'completed' || s.status === 'error' || s.status === 'undone'
+    (s) =>
+      s.status === 'completed' ||
+      s.status === 'error' ||
+      s.status === 'undone' ||
+      s.status === 'cancelled'
   ).length;
   const totalCount = steps.length;
   const hasErrors = steps.some((s) => s.status === 'error');

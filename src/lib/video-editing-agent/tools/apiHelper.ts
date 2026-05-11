@@ -53,12 +53,33 @@ export async function toolFetch(
     ...restInit
   } = init ?? {};
 
-  // Build the abort signal: always include a timeout signal, and combine with
-  // any caller-provided signal so that either can cancel the request.
+  // Build the abort signal: always include a timeout signal, combine with
+  // any caller-provided signal AND the route-wide context.abortSignal so any
+  // of {caller signal, per-request timeout, route-wide abort} can short-
+  // circuit the fetch. AbortSignal.any is feature-detected — on older Node
+  // (< 19) we fall back to relaying manually via a fresh AbortController so
+  // a cancel from any input still aborts the underlying fetch.
   const timeoutSignal = AbortSignal.timeout(timeout);
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutSignal])
-    : timeoutSignal;
+  const signals: AbortSignal[] = [timeoutSignal];
+  if (callerSignal) signals.push(callerSignal);
+  if (context.abortSignal) signals.push(context.abortSignal);
+  const hasAbortSignalAny = typeof AbortSignal !== 'undefined' && 'any' in AbortSignal;
+  let signal: AbortSignal;
+  if (signals.length === 1) {
+    signal = signals[0];
+  } else if (hasAbortSignalAny) {
+    signal = (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any(signals);
+  } else {
+    const relay = new AbortController();
+    for (const s of signals) {
+      if (s.aborted) {
+        relay.abort();
+        break;
+      }
+      s.addEventListener('abort', () => relay.abort(), { once: true });
+    }
+    signal = relay.signal;
+  }
 
   // Merge headers — ensure Content-Type defaults to application/json but
   // callers can override by passing their own Content-Type. Normalise the

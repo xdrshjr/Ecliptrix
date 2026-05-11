@@ -72,6 +72,11 @@ const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({ toolCall }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         )}
+        {toolCall.status === 'cancelled' && (
+          <svg className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
 
         {/* Tool name */}
         <span className="font-medium text-foreground">{displayName}</span>

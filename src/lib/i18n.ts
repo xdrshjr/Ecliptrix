@@ -1935,6 +1935,18 @@ export interface Translations {
     thinkingInProgress: string;
     thinkingComplete: string;
     aiAnalyzingLabel: string;
+    /** Tooltip / aria-label on the red stop button shown while the agent is busy. */
+    stopAgentTooltip: string;
+    /** Label on the secondary ghost stop button inside the busy bar. */
+    stopButtonLabel: string;
+    /** Busy-bar label while the agent is in the thinking phase. */
+    agentBusyThinking: string;
+    /** Busy-bar label while the agent is running a tool. `{tool}` is replaced. */
+    agentBusyTool: string;
+    /** Busy-bar label when the agent has no specific tool / phase signal. */
+    agentBusyWorking: string;
+    /** Label for tool calls that ended in the `cancelled` status. */
+    agentToolCancelled: string;
   };
   workflowChat: {
     title: string;
@@ -4753,6 +4765,12 @@ export const translations: Record<string, Translations> = {
       thinkingInProgress: 'Thinking...',
       thinkingComplete: 'Thought Process',
       aiAnalyzingLabel: 'AI Analyzing...',
+      stopAgentTooltip: 'Stop the agent',
+      stopButtonLabel: 'Stop',
+      agentBusyThinking: 'Agent is thinking…',
+      agentBusyTool: 'Agent is running {tool}…',
+      agentBusyWorking: 'Agent is working…',
+      agentToolCancelled: 'Cancelled',
     },
     workflowChat: {
       title: 'Workflow Assistant',
@@ -7576,6 +7594,12 @@ export const translations: Record<string, Translations> = {
       thinkingInProgress: '思考中...',
       thinkingComplete: '思考过程',
       aiAnalyzingLabel: 'AI 分析中...',
+      stopAgentTooltip: '停止 Agent',
+      stopButtonLabel: '停止',
+      agentBusyThinking: 'Agent 思考中…',
+      agentBusyTool: 'Agent 正在执行 {tool}…',
+      agentBusyWorking: 'Agent 执行中…',
+      agentToolCancelled: '已取消',
     },
     workflowChat: {
       title: '工作流助手',

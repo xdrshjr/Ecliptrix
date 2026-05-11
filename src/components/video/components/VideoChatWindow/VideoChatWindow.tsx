@@ -20,6 +20,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Conversation, ChatMessage } from '@/types';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
 import { TimelineChatPanel, WelcomeGuide } from './timeline';
+import AgentBusyBar from './AgentBusyBar';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -342,6 +343,16 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         </div>
       </div>
 
+      {/* Agent busy status bar — narrow strip that appears between the
+          action-buttons bar and the input form while the agent is
+          executing. Conditionally rendered so idle-state DOM is unchanged. */}
+      {agentIsExecuting && (
+        <AgentBusyBar
+          executionState={executionState}
+          onCancel={handleCancel}
+        />
+      )}
+
       {/* Input Area */}
       <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card dark:bg-zinc-900">
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
@@ -374,25 +385,43 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
-          {/* Send Button */}
-          <button
-            type="submit"
-            disabled={!inputMessage.trim() || inputDisabled}
-            className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
-            title={t.videoChatWindow.sendMessageTooltip}
-            style={{ width: '32px', height: '32px' }}
-          >
-            {inputDisabled ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          {/* Send / Stop Button — polymorphic. While the agent is executing
+              it renders as a red Stop button that calls onCancel. Otherwise
+              it acts as the regular submit button. */}
+          {agentIsExecuting ? (
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors flex items-center justify-center shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              title={t.videoChatWindow.stopAgentTooltip}
+              aria-label={t.videoChatWindow.stopAgentTooltip}
+              data-testid="agent-stop-button"
+              style={{ width: '32px', height: '32px' }}
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5" />
               </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            )}
-          </button>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!inputMessage.trim() || inputDisabled}
+              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
+              title={t.videoChatWindow.sendMessageTooltip}
+              style={{ width: '32px', height: '32px' }}
+            >
+              {inputDisabled ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
+          )}
         </form>
       </div>
     </div>

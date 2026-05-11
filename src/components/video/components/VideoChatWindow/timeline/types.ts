@@ -73,7 +73,7 @@ export interface AgentResponseNodeData {
 // ToolStep display state
 // ---------------------------------------------------------------------------
 
-export type ToolStepStatus = 'executing' | 'completed' | 'error' | 'undone';
+export type ToolStepStatus = 'executing' | 'completed' | 'error' | 'undone' | 'cancelled';
 
 export interface ToolStepData {
   id: string;

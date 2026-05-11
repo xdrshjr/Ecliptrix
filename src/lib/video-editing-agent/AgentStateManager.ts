@@ -28,7 +28,7 @@ export interface InternalToolCallRecord {
   id: string;
   name: string;
   params: Record<string, unknown>;
-  status: 'executing' | 'completed' | 'error';
+  status: 'executing' | 'completed' | 'error' | 'cancelled';
   result?: unknown;
 }
 
@@ -67,6 +67,7 @@ export class AgentStateManager {
   private errorMessage: string | null = null;
   private thinkingContent = '';
   private isThinking = false;
+  private isCancelled = false;
 
   // -- Subscription --
   private listeners = new Set<StateChangeListener>();
@@ -110,7 +111,7 @@ export class AgentStateManager {
   /** Update a tool call's status and result. */
   updateToolStatus(
     toolCallId: string,
-    status: 'completed' | 'error',
+    status: 'completed' | 'error' | 'cancelled',
     result: unknown,
   ): void {
     const idx = this.toolCalls.findIndex(tc => tc.id === toolCallId);
@@ -149,6 +150,41 @@ export class AgentStateManager {
     this.isThinking = false;
     // Flush immediately on finalize — don't defer since the stream is done
     this.flushNow();
+  }
+
+  /**
+   * Seal the in-flight execution as user-cancelled. Any tool call still in
+   * `executing` is demoted to `cancelled`; the assistant message is flagged
+   * `isCancelled` so the next-turn `messageConverter` injects the proper
+   * "previous turn was stopped" system note.
+   *
+   * Idempotent — calling twice is a no-op after the first call.
+   *
+   * @param appendMarker — when true, append `\n\n_[Stopped by user]_` to
+   *   accumulated content (only if non-empty). Set to false for the
+   *   conversation-switch / unmount path which should not pollute the
+   *   resume system note (spec §2.6.2).
+   */
+  markCancelled(options: { appendMarker?: boolean } = {}): void {
+    if (this.isCancelled) return;
+    this.isCancelled = true;
+    const { appendMarker = true } = options;
+    for (let i = 0; i < this.toolCalls.length; i++) {
+      if (this.toolCalls[i].status === 'executing') {
+        this.toolCalls[i] = { ...this.toolCalls[i], status: 'cancelled' };
+      }
+    }
+    if (appendMarker && this.accumulatedContent.trim().length > 0) {
+      this.accumulatedContent += '\n\n_[Stopped by user]_';
+    }
+    this.isFinalized = true;
+    this.isThinking = false;
+    this.flushNow();
+  }
+
+  /** Whether the execution has been sealed as user-cancelled. */
+  getIsCancelled(): boolean {
+    return this.isCancelled;
   }
 
   // -----------------------------------------------------------------------
@@ -274,6 +310,7 @@ export class AgentStateManager {
       pendingOperations: [...this.pendingOperations],
       thinkingContent: this.thinkingContent || undefined,
       isThinking: this.isThinking,
+      isCancelled: this.isCancelled || undefined,
     };
   }
 

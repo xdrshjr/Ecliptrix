@@ -315,6 +315,21 @@ export async function POST(request: NextRequest) {
     const lastEventIdHeader = request.headers.get('Last-Event-ID');
     const lastEventId = lastEventIdHeader !== null ? parseInt(lastEventIdHeader, 10) : -1;
 
+    // Capture the request's AbortSignal once at the top — Next.js POST
+    // handlers expose `request.signal` (best-effort for streaming responses
+    // on Node runtime). The canonical disconnect signal for streaming
+    // responses is the ReadableStream's `cancel(reason)` callback (see
+    // Path B below) — we wire both, going through the same idempotent
+    // `abortBundle.trigger()` so double-fires are safe.
+    const reqSignal = (request as unknown as { signal?: AbortSignal }).signal;
+
+    // We need to share the abortBundle between start() and cancel() on the
+    // ReadableStream constructor. The bundle is constructed lazily inside
+    // start() because it depends on the live `agent` / `toolContext` /
+    // `controller` references that only exist there. cancel() therefore
+    // dereferences this slot via the closure.
+    let triggerClientAbort: ((reason?: string) => void) | null = null;
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -336,10 +351,91 @@ export async function POST(request: NextRequest) {
           console.log(`[VideoEditingAgent] Reconnection detected — client last event ID: ${lastEventId}`);
         }
 
+        // ────────────────────────────────────────────────────────────────
+        // Abort bundle — single idempotent kill-switch shared by:
+        //   • request.signal listener (Path A — Node-runtime best-effort)
+        //   • ReadableStream.cancel(reason) (Path B — canonical for stream
+        //     disconnects)
+        //   • the AGENT_TIMEOUT watchdog (Path C — existing)
+        //   • the thinking-phase teardown (so a Stop during the thinking
+        //     phase emits the cancelled event and exits cleanly)
+        //
+        // Constructed BEFORE the thinking phase so the request-signal
+        // listener can be attached immediately.
+        // ────────────────────────────────────────────────────────────────
+        const thinkingAbort = new AbortController();
+        const toolAbort = new AbortController();
+        const pendingToolCallIds = new Set<string>();
+
+        // Forward declarations — populated once agent / cleanupHeartbeat /
+        // timeoutId are in scope. Wrapped in refs so trigger() reads the
+        // live values rather than snapshotting them at construction time.
+        const refs: {
+          agent: import('@mariozechner/pi-agent-core').Agent | null;
+          toolContext: import('@/lib/video-editing-agent/types').ToolContext | null;
+          cleanupHeartbeat: (() => void) | null;
+          timeoutId: ReturnType<typeof setTimeout> | undefined;
+        } = {
+          agent: null,
+          toolContext: null,
+          cleanupHeartbeat: null,
+          timeoutId: undefined,
+        };
+
+        type AbortReason = 'client_aborted' | 'server_timeout' | 'thinking_aborted';
+        let abortTriggered = false;
+        let resolveAbortPromise: ((reason: AbortReason) => void) | null = null;
+        const abortPromise = new Promise<AbortReason>((resolve) => {
+          resolveAbortPromise = resolve;
+        });
+
+        const triggerAbort = (reason: AbortReason): void => {
+          if (abortTriggered) return;
+          abortTriggered = true;
+          console.log(`[VideoEditingAgent] Abort triggered: ${reason}`);
+          try { refs.agent?.abort(); } catch { /* already disposed */ }
+          try { toolAbort.abort(); } catch { /* already aborted */ }
+          try { thinkingAbort.abort(); } catch { /* already aborted */ }
+          refs.cleanupHeartbeat?.();
+          if (refs.timeoutId !== undefined) {
+            clearTimeout(refs.timeoutId);
+            refs.timeoutId = undefined;
+          }
+          // P1-7: drop in-flight tool entries from the shared operations
+          // map so they cannot leak into a future tool_result or replay.
+          if (refs.toolContext) {
+            pendingToolCallIds.forEach((id) => {
+              refs.toolContext?.operations.delete(id);
+            });
+          }
+          try { send({ type: 'cancelled', reason, timestamp: Date.now() }); } catch { /* controller may be closed */ }
+          resolveAbortPromise?.(reason);
+        };
+
+        triggerClientAbort = (_reason?: string) => triggerAbort('client_aborted');
+
+        // Path A — best-effort request.signal listener
+        if (reqSignal) {
+          if (reqSignal.aborted) {
+            triggerAbort('client_aborted');
+          } else {
+            reqSignal.addEventListener(
+              'abort',
+              () => triggerAbort('client_aborted'),
+              { once: true },
+            );
+          }
+        }
+
         try {
-          // Thinking phase: analyze the task before executing
-          // Uses the request's AbortSignal via combined signal for cancellation support
-          const requestSignal = (request as unknown as { [key: string]: unknown }).signal as AbortSignal || new AbortController().signal;
+          // Thinking phase — combined signal so a route-level abort during
+          // thinking tears the LLM stream down immediately. Feature-detect
+          // AbortSignal.any so deployments on Node < 19 do not crash.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const thinkingCombinedSignal: AbortSignal = (typeof AbortSignal !== 'undefined' && 'any' in AbortSignal)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ? (AbortSignal as any).any([thinkingAbort.signal, reqSignal ?? new AbortController().signal])
+            : thinkingAbort.signal;
           await performThinkingPhase(
             send,
             encoder,
@@ -349,8 +445,15 @@ export async function POST(request: NextRequest) {
             effectiveTimelineState,
             effectiveMaterials,
             config,
-            requestSignal,
+            thinkingCombinedSignal,
           );
+
+          // If abort happened during thinking, bail out before constructing
+          // the agent — the cancelled SSE event was already emitted by
+          // triggerAbort and the finally block below closes the stream.
+          if (abortTriggered) {
+            return;
+          }
 
           // Use loopback, NOT new URL(request.url).origin — in production the
           // origin is the public HTTPS domain which the server-side container
@@ -370,14 +473,24 @@ export async function POST(request: NextRequest) {
             projectId,
           });
 
+          // Wire the route-wide tool-abort signal into the ToolContext so
+          // every internal fetch and SDK race honours the same kill-switch.
+          toolContext.abortSignal = toolAbort.signal;
+          refs.agent = agent;
+          refs.toolContext = toolContext;
+
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           let rejectTimeout: ((err: Error) => void) | undefined;
           const resetTimeout = () => {
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
-              agent.abort();
+              // Route the watchdog through triggerAbort so client-abort
+              // and server-timeout share one idempotent code path
+              // (avoids double-close on the SSE controller).
+              triggerAbort('server_timeout');
               rejectTimeout?.(new Error('Agent timeout'));
             }, AGENT_TIMEOUT);
+            refs.timeoutId = timeoutId;
           };
 
           const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -415,8 +528,30 @@ export async function POST(request: NextRequest) {
             }
             activeToolCount = 0;
           };
+          refs.cleanupHeartbeat = cleanupHeartbeat;
 
-          subscribeAgentEvents(agent, toolContext, send, resetTimeout, startToolHeartbeat, stopToolHeartbeat);
+          // Track in-flight tool-call IDs so triggerAbort can drop their
+          // entries from toolContext.operations (P1-7). The agent event
+          // subscription already fires `tool_call` / `tool_result` events
+          // through `send`, so we wire a parallel observer below.
+          const onToolExecutionStart = () => {
+            startToolHeartbeat();
+          };
+          const onToolExecutionEnd = () => {
+            stopToolHeartbeat();
+          };
+
+          // Hook the agent's own event stream so we can track pending
+          // tool-call IDs without changing subscribeAgentEvents' signature.
+          const trackUnsub = agent.subscribe((event) => {
+            if (event.type === 'tool_execution_start') {
+              pendingToolCallIds.add(event.toolCallId);
+            } else if (event.type === 'tool_execution_end') {
+              pendingToolCallIds.delete(event.toolCallId);
+            }
+          });
+
+          subscribeAgentEvents(agent, toolContext, send, resetTimeout, onToolExecutionStart, onToolExecutionEnd);
 
           const timeoutPromise = new Promise<never>((_, reject) => {
             rejectTimeout = reject;
@@ -424,29 +559,53 @@ export async function POST(request: NextRequest) {
           });
 
           try {
+            // Three-leg race per spec §2.4.4 — the abortPromise leg
+            // guarantees the route returns within ~1s of user-clicked Stop
+            // even if pi-agent-core's prompt() does not settle after
+            // agent.abort().
             await Promise.race([
               agent.prompt(lastUserMessage),
               timeoutPromise,
+              abortPromise.then((reason) => {
+                throw new Error(`aborted_by_user:${reason}`);
+              }),
             ]);
           } finally {
             clearTimeout(timeoutId);
             cleanupHeartbeat();
+            try { trackUnsub(); } catch { /* already unsubscribed */ }
           }
 
           console.log('[VideoEditingAgent] Agent completed successfully');
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          console.error('[VideoEditingAgent] Error:', message);
 
-          if (message === 'Agent timeout') {
+          if (message.startsWith('aborted_by_user:')) {
+            // Cancelled SSE event was already emitted from inside
+            // triggerAbort — no additional error event needed.
+            console.log('[VideoEditingAgent] Aborted (cancelled event already sent):', message);
+          } else if (message === 'Agent timeout') {
+            // Watchdog already routed through triggerAbort — but emit a
+            // human-facing error event so the UI shows the timeout message
+            // instead of just a silent cancellation.
+            console.error('[VideoEditingAgent] Error:', message);
             send({ type: 'error', message: `Agent timed out after ${AGENT_TIMEOUT / 1000}s of inactivity. Completed operations have been preserved. Try breaking the task into smaller steps.` });
           } else {
+            console.error('[VideoEditingAgent] Error:', message);
             send({ type: 'error', message: `Agent error: ${message}` });
           }
         } finally {
-          send('[DONE]');
-          controller.close();
+          try { send('[DONE]'); } catch { /* controller may already be closed */ }
+          try { controller.close(); } catch { /* already closed by triggerAbort */ }
         }
+      },
+      cancel(reason) {
+        // Path B — canonical signal for streaming-response disconnect on
+        // Next.js 15 App Router (Node runtime). request.signal is best-
+        // effort; this is the path guaranteed to fire when the client
+        // tears down the stream mid-flight.
+        console.log('[VideoEditingAgent] ReadableStream.cancel fired:', reason);
+        triggerClientAbort?.(typeof reason === 'string' ? reason : 'stream_cancelled');
       },
     });
 

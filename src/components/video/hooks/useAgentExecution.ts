@@ -342,24 +342,65 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   ]);
 
   // -----------------------------------------------------------------------
-  // cancelExecution
+  // cancelByUser / cancelByNavigation (spec §2.6)
   // -----------------------------------------------------------------------
+  //
+  // Two cancel paths so user-initiated stops and incidental teardowns
+  // (conversation switch, unmount) do not produce identical artifacts in
+  // the conversation history.
+  //
+  //   • cancelByUser()      — primary path; flags `isCancelled`, appends
+  //     `_[Stopped by user]_` marker, seals in-flight tools as `cancelled`.
+  //     Next turn's messageConverter injects the resume system note.
+  //
+  //   • cancelByNavigation() — incidental; stops the stream only. Leaves
+  //     `isCancelled` undefined so navigating back and continuing the turn
+  //     does NOT confuse the LLM with a "the user stopped you" message.
 
-  const cancelExecution = useCallback(() => {
+  const sealMessage = useCallback(
+    (options: { byUser: boolean }): void => {
+      const sm = stateManagerRef.current;
+      if (!sm) return;
+      if (options.byUser) {
+        sm.markCancelled({ appendMarker: true });
+      } else {
+        // Navigation/unmount path — demote in-flight tool calls but DO NOT
+        // flag the assistant message as cancelled (spec §2.6.2).
+        sm.markCancelled({ appendMarker: false });
+      }
+      sm.destroy();
+
+      const convId = activeConversationIdRef.current;
+      if (convId) {
+        const finalMsg = sm.toMessageUpdate(timelineSnapshotRef.current);
+        if (!options.byUser) {
+          // Per spec §2.6.2 — keep isCancelled false for the nav path so
+          // the next-turn converter does not emit the resume system note.
+          finalMsg.isCancelled = undefined;
+        }
+        const baseMessages = messagesBeforeAgentRef.current;
+        updateConvMessagesRef.current(convId, [...baseMessages, finalMsg]);
+      }
+    },
+    [],
+  );
+
+  const cancelByUser = useCallback(() => {
     cancelExecState();
-    stateManagerRef.current?.finalize();
-    stateManagerRef.current?.destroy();
+    sealMessage({ byUser: true });
+    console.log('[useAgentExecution] Execution cancelled by user');
+  }, [cancelExecState, sealMessage]);
 
-    // Finalize the message in conversations so isStreaming = false
-    const convId = activeConversationIdRef.current;
-    if (convId && stateManagerRef.current) {
-      const finalMsg = stateManagerRef.current.toMessageUpdate(timelineSnapshotRef.current);
-      const baseMessages = messagesBeforeAgentRef.current;
-      updateConversationMessages(convId, [...baseMessages, finalMsg]);
-    }
+  const cancelByNavigation = useCallback(() => {
+    cancelExecState();
+    sealMessage({ byUser: false });
+    console.log('[useAgentExecution] Execution cancelled by navigation/unmount');
+  }, [cancelExecState, sealMessage]);
 
-    console.log('[useAgentExecution] Execution cancelled');
-  }, [cancelExecState, updateConversationMessages]);
+  // Back-compat alias — external callers (VideoChatWindow stop button) go
+  // through cancelByUser. The exposed name `cancelExecution` stays for the
+  // existing prop wiring in VideoEditingInterface.
+  const cancelExecution = cancelByUser;
 
   // -----------------------------------------------------------------------
   // undoAllOperations — restore timeline snapshot from agent message
@@ -432,34 +473,66 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // -----------------------------------------------------------------------
   // Cleanup stale streaming messages on mount (e.g. after page refresh)
   // -----------------------------------------------------------------------
+  //
+  // Per spec §2.6.3 — the on-mount sweep makes the resume contract
+  // identical regardless of how the prior turn ended:
+  //   • `isStreaming: true` is demoted to false.
+  //   • The same messages are flagged `isCancelled: true` so the next-turn
+  //     converter knows to inject the resume system note.
+  //   • Any tool call still in `executing` status is demoted to `cancelled`.
+  //   • Empty stub turns (no content, no tool calls) are dropped.
 
   useEffect(() => {
     for (const conv of conversations) {
-      const hasStale = conv.messages.some(m => m.isStreaming);
-      if (hasStale) {
-        const cleaned = conv.messages.map(msg =>
-          msg.isStreaming ? { ...msg, isStreaming: false } : msg
-        );
-        updateConversationMessages(conv.id, cleaned);
+      const dirty = conv.messages.some(
+        m => m.isStreaming || (m.agentToolCalls?.some(tc => tc.status === 'executing'))
+      );
+      if (!dirty) continue;
+      const cleaned: ChatMessage[] = [];
+      for (const msg of conv.messages) {
+        const hasInFlightTool = msg.agentToolCalls?.some(tc => tc.status === 'executing');
+        if (!msg.isStreaming && !hasInFlightTool) {
+          cleaned.push(msg);
+          continue;
+        }
+        const isStub =
+          !msg.content &&
+          (!msg.agentToolCalls || msg.agentToolCalls.length === 0);
+        if (isStub) {
+          // Drop empty turns — matches existing behaviour where a stub is
+          // never displayed to the user.
+          continue;
+        }
+        cleaned.push({
+          ...msg,
+          isStreaming: false,
+          isCancelled: true,
+          agentToolCalls: msg.agentToolCalls?.map(tc =>
+            tc.status === 'executing' ? { ...tc, status: 'cancelled' as const } : tc
+          ),
+        });
       }
+      updateConversationMessages(conv.id, cleaned);
     }
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // -----------------------------------------------------------------------
-  // Cancel execution on conversation switch
+  // Cancel execution on conversation switch (uses cancelByNavigation —
+  // navigating away should NOT pollute the prior conversation's resume
+  // system note, per spec §2.6.2 / P1-4).
   // -----------------------------------------------------------------------
 
   useEffect(() => {
     if (agentIsExecuting) {
-      cancelExecution();
+      cancelByNavigation();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId]);
 
   // -----------------------------------------------------------------------
-  // Cleanup on unmount
+  // Cleanup on unmount (same nav-style teardown)
   // -----------------------------------------------------------------------
 
   useEffect(() => {

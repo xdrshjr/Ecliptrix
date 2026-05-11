@@ -82,6 +82,10 @@ export interface ChatMessage {
   timelineSnapshot?: TimelineState;
   pendingOperations?: Array<AgentTimelineOperation | { type: string; [key: string]: unknown }>;
   isUndone?: boolean;
+  /** True when the user explicitly stopped this agent turn (or it was sealed
+   *  by the on-mount sweep after a hard refresh). Used by messageConverter to
+   *  emit a "previous turn was stopped" system note on resume. */
+  isCancelled?: boolean;
   // Agent thinking mode fields
   thinkingContent?: string;
   isThinking?: boolean;
@@ -91,7 +95,7 @@ export interface AgentToolCallRecord {
   id: string;
   name: string;
   params: Record<string, unknown>;
-  status: 'executing' | 'completed' | 'error' | 'undone';
+  status: 'executing' | 'completed' | 'error' | 'undone' | 'cancelled';
   result?: unknown;
 }
 

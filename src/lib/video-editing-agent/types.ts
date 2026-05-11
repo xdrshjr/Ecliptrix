@@ -31,6 +31,15 @@ export interface ToolContext {
    * a structured error rather than fall back to a global call.
    */
   projectId?: string;
+  /**
+   * AbortSignal that fires when the route-wide abort is triggered (client
+   * disconnect, server timeout, or user-clicked Stop). Tools that issue
+   * `fetch()` MUST forward this signal so in-flight requests tear down
+   * along with the agent loop; tools wrapping a synchronous SDK should
+   * race their await against this signal so the tool function returns
+   * promptly even if the SDK has no native cancel API.
+   */
+  abortSignal?: AbortSignal;
   /** Map of toolCallId → operation produced by that tool call */
   operations: Map<string, AgentOperation>;
   /** Called by tools to record an operation and update local state */
@@ -149,7 +158,12 @@ export type SSEEvent =
       operation: AgentOperation | null;
     }
   | { type: 'script_delta'; content: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | {
+      type: 'cancelled';
+      reason: 'client_aborted' | 'server_timeout' | 'thinking_aborted';
+      timestamp?: number;
+    };
 
 // --- API Route Request ---
 

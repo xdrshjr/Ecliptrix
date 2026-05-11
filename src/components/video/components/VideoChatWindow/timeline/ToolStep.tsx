@@ -96,6 +96,22 @@ const StatusIcon: React.FC<{ status: ToolStepStatus }> = ({ status }) => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
         </motion.svg>
       );
+
+    case 'cancelled':
+      return (
+        <motion.svg
+          className="w-3.5 h-3.5 text-muted-foreground dark:text-zinc-500 flex-shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          variants={iconScaleInVariants}
+          initial="initial"
+          animate="animate"
+        >
+          <circle cx="12" cy="12" r="9" strokeWidth={2} />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9l6 6m0-6l-6 6" />
+        </motion.svg>
+      );
   }
 };
 

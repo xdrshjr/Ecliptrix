@@ -520,7 +520,11 @@ export class SSEStreamManager {
   }
 
   private isStreamEndEvent(event: SSEEvent): boolean {
-    return event.type === 'agent_end';
+    // `cancelled` is a terminal event (server-side abort propagated as SSE).
+    // Treating it as stream-end here lets the consumer's `onEvent` see it
+    // before the manager moves to onComplete; the AgentEventRouter routes
+    // it through `markCancelled` rather than the normal finalize path.
+    return event.type === 'agent_end' || event.type === 'cancelled';
   }
 
   // ---------------------------------------------------------------------------

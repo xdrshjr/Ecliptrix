@@ -106,6 +106,18 @@ export class AgentEventRouter {
         this.stateManager.finalize();
         break;
 
+      case 'cancelled':
+        // Server-side abort propagated through SSE — seal the in-flight
+        // tool calls as `cancelled` and mark the message `isCancelled` so
+        // the next-turn messageConverter injects the resume system note.
+        // For server-timeout vs client-aborted, the appendMarker is only
+        // true for client_aborted (user clicked stop) — server timeout
+        // gets its own user-facing error event from the route.
+        this.stateManager.markCancelled({
+          appendMarker: event.reason === 'client_aborted' || event.reason === 'thinking_aborted',
+        });
+        break;
+
       case 'script_delta':
         this.handleScriptDelta(event.content);
         break;

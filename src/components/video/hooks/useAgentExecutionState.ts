@@ -186,6 +186,26 @@ export function useAgentExecutionState() {
           updateState({ pendingMessage: accumulatedTextRef.current });
           break;
 
+        case 'cancelled':
+          // Server-side abort propagated — move the in-flight tool into
+          // completedTools (as an error-styled entry, since this UI-level
+          // `ToolCallRecord` union does not carry a distinct 'cancelled'
+          // value) so the busy-bar / live indicator stop showing a phantom
+          // in-flight tool after the stream ends.
+          setState(prev => {
+            if (!prev.currentTool) return prev;
+            const sealed: ToolCallRecord = {
+              ...prev.currentTool,
+              status: 'error',
+            };
+            return {
+              ...prev,
+              completedTools: [...prev.completedTools, sealed],
+              currentTool: null,
+            };
+          });
+          break;
+
         // agent_start, turn_start, message_start, message_end, turn_end —
         // no execution-state changes needed; forward to consumer.
         default:

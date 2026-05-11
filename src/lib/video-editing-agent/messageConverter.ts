@@ -30,6 +30,20 @@ export function convertToAgentMessages(
   const { compactExploreToolsResults = false } = options;
   const result: Message[] = [];
 
+  // Locate the LAST assistant message that was sealed as cancelled — the
+  // resume system note is emitted at most once, for the most recent
+  // cancelled assistant (spec §2.7 / P1-9). Older cancelled assistants are
+  // visible to the LLM via their cancelled toolResult; piling on a system
+  // note per-cancellation would just bloat the prompt.
+  let lastCancelledAssistantIndex = -1;
+  for (let i = chatMessages.length - 1; i >= 0; i--) {
+    const m = chatMessages[i];
+    if (m.role === 'assistant' && m.isCancelled) {
+      lastCancelledAssistantIndex = i;
+      break;
+    }
+  }
+
   for (const msg of chatMessages) {
     if (msg.role === 'user') {
       const userMsg: UserMessage = {
@@ -68,8 +82,30 @@ export function convertToAgentMessages(
         };
         result.push(assistantMsg);
 
-        // Add tool results
+        // Add tool results — every assistant toolCall MUST have a paired
+        // toolResult, otherwise the next LLM call returns
+        // `400 invalid_request: tool_use without tool_result` on the
+        // anthropic-messages provider (spec §2.7 / P1-10). For cancelled
+        // and still-executing branches we synthesise an isError result.
         for (const tc of msg.agentToolCalls as AgentToolCallRecord[]) {
+          // status === 'cancelled' or 'executing' (defensive — the on-mount
+          // sweep should have demoted any lingering 'executing' before we
+          // get here, but treat it identically to cancelled if it slips
+          // through).
+          if (tc.status === 'cancelled' || tc.status === 'executing') {
+            const cancelledBody = `{"error":"cancelled_by_user","detail":"${tc.name} was interrupted by the user before it could complete"}`;
+            const toolResult: ToolResultMessage = {
+              role: 'toolResult',
+              toolCallId: tc.id,
+              toolName: tc.name,
+              content: [{ type: 'text', text: cancelledBody }],
+              isError: true,
+              timestamp: new Date(msg.timestamp).getTime(),
+            };
+            result.push(toolResult);
+            continue;
+          }
+
           if (tc.result !== undefined) {
             const isExploreCall = tc.name === 'explore_tools' && tc.status === 'completed';
             const text =
@@ -103,6 +139,25 @@ export function convertToAgentMessages(
       }
     }
     // Skip 'system' messages — they're handled via systemPrompt
+  }
+
+  // Resume-after-cancel system note (spec §2.7).
+  //
+  // pi-ai's Message union has no `system` role — the agent already takes a
+  // single `systemPrompt` field that we can't extend from here. So the
+  // note is synthesised as a UserMessage with explicit "[System note: …]"
+  // framing, which is the standard cross-provider workaround. It is
+  // appended exactly once, only when the most recent assistant in the
+  // history was sealed as cancelled — limiting the note to "most recent"
+  // prevents N stop/resume cycles from injecting N notes (P1-9).
+  if (lastCancelledAssistantIndex !== -1) {
+    const note: UserMessage = {
+      role: 'user',
+      content:
+        '[System note] The previous assistant turn was stopped by the user. Acknowledge briefly, then resume from the current timeline state — do NOT re-execute the cancelled tool unless the user explicitly asks.',
+      timestamp: Date.now(),
+    };
+    result.push(note);
   }
 
   return result;
