@@ -352,12 +352,35 @@ class Settings(BaseModel):
     )
 
     # Volcano TTS Configuration
-    volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID")
+    #
+    # The synthesis call moved to the V3 大模型语音合成 API on 2026-05-15
+    # (endpoint /api/v3/tts/unidirectional). V3 uses a single X-Api-Key header
+    # + an X-Api-Resource-Id picker — there is no per-call appid/token/cluster
+    # in the request body anymore. The legacy V1 (`appid`/`access_token`/
+    # `secret_key`) fields are preserved because the ASR / voice-clone routers
+    # still chain-fall back to them; do NOT remove without auditing those.
+    volcano_tts_api_key: str = Field(
+        default="",
+        description=(
+            "Volcano TTS V3 API Key (from the new console). Drives "
+            "X-Api-Key on /api/v3/tts/unidirectional. Required for V3."
+        ),
+    )
+    volcano_tts_resource_id: str = Field(
+        default="seed-tts-1.0",
+        description=(
+            "Volcano TTS V3 resource id — picks the product/billing tier. "
+            "Common values: 'seed-tts-1.0' (character-billed 1.0 voices, "
+            "default), 'seed-tts-2.0' (2.0 voices), 'seed-tts-1.0-concurr' "
+            "(concurrency-billed 1.0)."
+        ),
+    )
+    volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID (LEGACY V1 — still used by ASR/voice-clone fallback chains)")
     volcano_tts_access_token: str = Field(
-        default="", description="Volcano TTS Access Token"
+        default="", description="Volcano TTS Access Token (LEGACY V1)"
     )
     volcano_tts_secret_key: str = Field(
-        default="", description="Volcano TTS Secret Key"
+        default="", description="Volcano TTS Secret Key (LEGACY V1)"
     )
 
     # Volcano ASR (Recording File Recognition / vc) Configuration
@@ -663,6 +686,8 @@ def get_settings() -> Settings:
         vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),
         vl_llm_api_type=os.getenv("VL_LLM_API_TYPE", "openai"),
         pexels_api_keys=pexels_api_keys,
+        volcano_tts_api_key=os.getenv("VOLCANO_TTS_API_KEY", ""),
+        volcano_tts_resource_id=os.getenv("VOLCANO_TTS_RESOURCE_ID", "seed-tts-1.0"),
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),

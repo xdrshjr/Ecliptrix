@@ -28,114 +28,160 @@ MOCK_MODE = getattr(settings, 'tts_mock_mode', False)
 
 
 class TTSClient:
-    """Volcano TTS API client."""
-    
-    def __init__(self, appid: str, access_token: str):
-        self.appid = appid
-        self.access_token = access_token
-        self.base_url = "https://openspeech.bytedance.com/api/v1/tts"
-    
+    """
+    Volcano TTS API client — V3 大模型语音合成.
+
+    Migrated on 2026-05-15 from the legacy /api/v1/tts (Authorization:
+    Bearer;<token> + app.appid/token/cluster body) to V3 HTTP Chunked
+    /api/v3/tts/unidirectional. The new console issues a single API Key
+    that is passed via X-Api-Key; X-Api-Resource-Id picks the product
+    tier (seed-tts-1.0 character-billed, seed-tts-2.0, etc.) and also
+    selects which voice family is acceptable.
+    """
+
+    def __init__(self, api_key: str, resource_id: str = "seed-tts-1.0"):
+        self.api_key = api_key
+        self.resource_id = resource_id
+        self.base_url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+
     def synthesize_speech(
         self,
         text: str,
         output_file: str,
-        voice_type: str = "zh_female_wanqudashu_moon_bigtts",
+        voice_type: str = "zh_female_qingxinnvsheng_uranus_bigtts",
         speed_ratio: float = 1.0
     ) -> bool:
         """
-        调用火山引擎语音合成API，将文本转换为语音并保存到本地
-        
+        调用火山引擎语音合成 V3 API，将文本转换为语音并保存到本地。
+
         Args:
             text: 要合成的文本
             output_file: 输出文件路径
-            voice_type: 音色类型
-            speed_ratio: 语速比例
-            
+            voice_type: 音色类型（与 resource_id 必须匹配；seed-tts-1.0 用
+                `*_moon_bigtts` / `*_streaming` 系列，seed-tts-2.0 用
+                `*_mars_bigtts` 系列）
+            speed_ratio: 语速比例（1.0 = 正常）。V3 内部以 speech_rate
+                [-50, 100] 表达——本方法做线性映射并截断到合法区间。
+
         Returns:
             bool: 是否成功
         """
         global MOCK_MODE
-        
+
         req_id = str(uuid.uuid4())
-        
-        # 构造请求参数
+
+        # V1 speed_ratio (0.5–2.0) → V3 speech_rate (-50–100). Linear mapping
+        # so 1.0 stays at 0 (服务端默认值, 不影响默认调用).
+        speech_rate = max(-50, min(100, round((speed_ratio - 1.0) * 100)))
+
         request_data = {
-            "app": {
-                "appid": self.appid,
-                "token": self.access_token,
-                "cluster": "volcano_tts"
-            },
             "user": {
                 "uid": f"user_{uuid.uuid4().hex[:8]}"
             },
-            "audio": {
-                "voice_type": voice_type,
-                "encoding": "mp3",
-                "speed_ratio": speed_ratio,
-                "rate": 24000,
-                "bitrate": 160
-            },
-            "request": {
-                "reqid": req_id,
+            "req_params": {
                 "text": text,
-                "operation": "query"
-            }
+                "speaker": voice_type,
+                "audio_params": {
+                    "format": "mp3",
+                    "sample_rate": 24000,
+                    "speech_rate": speech_rate,
+                },
+            },
         }
-        
+
         headers = {
-            "Authorization": f"Bearer;{self.access_token}",
-            "Content-Type": "application/json"
+            "X-Api-Key": self.api_key,
+            "X-Api-Resource-Id": self.resource_id,
+            "X-Api-Connect-Id": req_id,
+            "Content-Type": "application/json",
         }
-        
+
         try:
             logger.info(f"开始语音合成", {
                 "text_preview": text[:100] + "..." if len(text) > 100 else text,
                 "request_id": req_id,
                 "voice_type": voice_type,
                 "speed_ratio": speed_ratio,
+                "speech_rate": speech_rate,
+                "resource_id": self.resource_id,
                 "output_file": output_file,
                 "mock_mode": MOCK_MODE
             })
-            
+
             # 如果是模拟模式，直接生成模拟音频文件（仅用于开发测试）
             if MOCK_MODE:
                 return self._create_mock_audio_file(output_file, text, req_id)
-            
+
             response = requests.post(
                 self.base_url,
                 headers=headers,
                 data=json.dumps(request_data),
                 timeout=30
             )
-            
-            # 检查HTTP状态码
+
+            # 检查HTTP状态码 — V3 接口在凭据/资源/参数错误时仍可能返回 200，
+            # 真正的状态需要从 NDJSON 行里读取 code 字段。
             if response.status_code != 200:
                 response_body = response.text[:500] if response.text else "(empty)"
                 logger.error(
                     f"TTS API HTTP错误: status={response.status_code}, "
-                    f"appid={self.appid}, "
+                    f"resource_id={self.resource_id}, "
                     f"response={response_body}"
                 )
                 return False
-            
-            result = response.json()
-            
-            if result.get("code") != 3000:
-                error_msg = f"API错误: {result.get('code')} - {result.get('message')}"
-                logger.error(error_msg, {
+
+            # V3 HTTP Chunked 响应是 NDJSON：每行是一个 JSON 对象。
+            # 两类帧：
+            #   1) 音频块: {"code":0,"message":"","data":"<base64 mp3 chunk>"}
+            #   2) 控制帧: {"code":20000000,"message":"ok",...}（CodeOK，
+            #      文档第 4 节"新框架错误码"）— 标记 session/连接整体成功，
+            #      可能不带 data。
+            # 其它 code 值（45000000 客户端错误 / 55000000 服务端错误 / etc）
+            # 均视为真错误，整批放弃。
+            OK_CODES = {0, 20000000}
+            audio_chunks: list[bytes] = []
+            for raw_line in response.text.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.error(f"TTS V3 响应解析失败: 非 JSON 行", {
+                        "request_id": req_id,
+                        "line_preview": line[:200],
+                    })
+                    return False
+
+                chunk_code = chunk.get("code")
+                if chunk_code is not None and chunk_code not in OK_CODES:
+                    logger.error(
+                        f"TTS API错误: code={chunk_code} - "
+                        f"{chunk.get('message')} "
+                        f"[voice_type={voice_type}, resource_id={self.resource_id}, "
+                        f"request_id={req_id}]",
+                        {"request_id": req_id, "chunk": chunk, "voice_type": voice_type},
+                    )
+                    return False
+
+                data_b64 = chunk.get("data")
+                if data_b64:
+                    try:
+                        audio_chunks.append(base64.b64decode(data_b64))
+                    except (base64.binascii.Error, ValueError) as e:
+                        logger.error(f"音频块 base64 解码失败", {
+                            "request_id": req_id,
+                            "error": str(e),
+                        })
+                        return False
+
+            if not audio_chunks:
+                logger.error("未获取到音频数据 (NDJSON 流没有 data 块)", {
                     "request_id": req_id,
-                    "api_response": result
                 })
                 return False
 
-            # 获取base64编码的音频数据
-            audio_data_b64 = result.get("data")
-            if not audio_data_b64:
-                logger.error("未获取到音频数据", {"request_id": req_id})
-                return False
-
-            # base64解码并保存文件
-            audio_data = base64.b64decode(audio_data_b64)
+            audio_data = b"".join(audio_chunks)
             
             # 验证解码后的音频数据
             if len(audio_data) == 0:
@@ -196,14 +242,13 @@ class TTSClient:
                 })
                 return False
 
-            # 记录成功信息
-            duration = result.get("addition", {}).get("duration", "未知")
+            # 记录成功信息（V3 不在响应中返回 duration，下游用 ffprobe 探测）
             logger.info(f"语音合成成功", {
                 "request_id": req_id,
                 "output_file": output_file,
                 "file_size": len(audio_data),
                 "written_size": written_size,
-                "duration_ms": duration
+                "chunks": len(audio_chunks),
             })
 
             return True
@@ -280,13 +325,21 @@ class TTSService:
     """Text-to-Speech service."""
     
     def __init__(self):
-        self.appid = settings.volcano_tts_appid
-        self.access_token = ***REMOVED***
+        # V3 凭据（X-Api-Key + X-Api-Resource-Id）。legacy appid/access_token
+        # 保留只为旧的 ASR / 声音克隆调用链兜底，本服务不再使用。
+        self.api_key = ***REMOVED***
+        self.resource_id = settings.volcano_tts_resource_id
         self.audio_dir = "static/audio/generated"
 
-        # 启动时记录 token 状态，方便排查 403 问题
-        token_preview = f"{self.access_token[:6]}...{self.access_token[-4:]}" if len(self.access_token) > 10 else "(empty or short)"
-        logger.info(f"TTSService 初始化: appid={self.appid}, token={token_preview}")
+        # 启动时记录 key 状态，方便排查 403 问题
+        key_preview = (
+            f"{self.api_key[:6]}...{self.api_key[-4:]}"
+            if len(self.api_key) > 10 else "(empty or short)"
+        )
+        logger.info(
+            f"TTSService 初始化: api_key={key_preview}, "
+            f"resource_id={self.resource_id}"
+        )
 
         # 确保音频目录存在
         os.makedirs(self.audio_dir, exist_ok=True)
@@ -410,17 +463,17 @@ class TTSService:
         return estimated_duration
     
     def validate_config(self) -> None:
-        """验证TTS配置是否完整"""
-        if not self.appid or not self.access_token:
+        """验证TTS配置是否完整 (V3)"""
+        if not self.api_key:
             raise HTTPException(
                 status_code=500,
-                detail="TTS配置不完整：请检查VOLCANO_TTS_APPID和VOLCANO_TTS_ACCESS_TOKEN环境变量"
+                detail="TTS配置不完整：请检查 VOLCANO_TTS_API_KEY 环境变量（V3 API Key，从新版火山控制台获取）"
             )
     
     def convert_text_to_speech(
         self,
         text: str,
-        voice_type: str = "zh_male_shaonianzixin_moon_bigtts",
+        voice_type: str = "zh_male_shaonianzixin_uranus_bigtts",
         speed_ratio: float = 1.0,
         segment_id: Optional[str] = None,
         task_id: Optional[str] = None
@@ -478,7 +531,7 @@ class TTSService:
                     "mock_mode": MOCK_MODE
                 })
                 
-                tts_client = TTSClient(self.appid, self.access_token)
+                tts_client = TTSClient(self.api_key, self.resource_id)
                 success = tts_client.synthesize_speech(
                     text=text,
                     output_file=output_path,
@@ -660,7 +713,7 @@ class TTSService:
     def convert_text_to_speech_local(
         self,
         text: str,
-        voice_type: str = "zh_male_shaonianzixin_moon_bigtts",
+        voice_type: str = "zh_male_shaonianzixin_uranus_bigtts",
         speed_ratio: float = 1.0,
         output_path: str = None,
         segment_id: Optional[str] = None,
@@ -724,7 +777,7 @@ class TTSService:
                 "mock_mode": MOCK_MODE,
             })
 
-            tts_client = TTSClient(self.appid, self.access_token)
+            tts_client = TTSClient(self.api_key, self.resource_id)
             success = tts_client.synthesize_speech(
                 text=text,
                 output_file=output_path,
@@ -1111,57 +1164,65 @@ class TTSService:
         # 获取当前语言的翻译映射
         translations = category_translations.get(locale, category_translations['zh-CN'])
         
+        # Curated fallback — the authoritative voice catalog lives in DB
+        # (system_settings.tts.voices) and in scripts/migrate_voices_to_2_0.py.
+        # This fallback only fires when YAML is missing AND DB read failed;
+        # six well-distributed 2.0 voices keep the UI usable in that case.
+        # Uses literal value strings to avoid coupling to the VoiceType enum,
+        # which still carries legacy 1.0 (`*_moon_bigtts`) entries.
+        general = translations.get("通用场景", "通用场景")
+        roleplay = translations.get("角色扮演", "角色扮演")
         voice_types = {
-            VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value: VoiceTypeInfo(
-                id=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS.value,
-                name="温柔女声",
+            "zh_female_qingxinnvsheng_uranus_bigtts": VoiceTypeInfo(
+                id="zh_female_qingxinnvsheng_uranus_bigtts",
+                name="清新女声 2.0",
                 language="zh-CN",
                 gender="female",
-                description="温柔甜美的女性声音，适合讲解和叙述",
-                category=translations.get("通用场景", "通用场景")
+                description="清新自然的女性声音，适合讲解和叙述",
+                category=general,
             ),
-            VoiceType.ZH_FEMALE_SWEET.value: VoiceTypeInfo(
-                id=VoiceType.ZH_FEMALE_SWEET.value,
-                name="甜美女声",
-                language="zh-CN",
-                gender="female", 
-                description="清甜可爱的女性声音，适合轻松愉快的内容",
-                category=translations.get("通用场景", "通用场景")
-            ),
-            VoiceType.ZH_FEMALE_GENTLE.value: VoiceTypeInfo(
-                id=VoiceType.ZH_FEMALE_GENTLE.value,
-                name="温和女声",
+            "zh_female_linjianvhai_uranus_bigtts": VoiceTypeInfo(
+                id="zh_female_linjianvhai_uranus_bigtts",
+                name="邻家女孩 2.0",
                 language="zh-CN",
                 gender="female",
-                description="温和亲切的女性声音，适合教育和介绍类内容",
-                category=translations.get("通用场景", "通用场景")
+                description="亲切自然的女性声音",
+                category=general,
             ),
-            VoiceType.ZH_MALE_WARM.value: VoiceTypeInfo(
-                id=VoiceType.ZH_MALE_WARM.value,
-                name="温暖男声",
-                language="zh-CN", 
-                gender="male",
-                description="温暖磁性的男性声音，适合深度内容和专业讲解",
-                category=translations.get("通用场景", "通用场景")
+            "zh_female_wenroushunv_uranus_bigtts": VoiceTypeInfo(
+                id="zh_female_wenroushunv_uranus_bigtts",
+                name="温柔淑女 2.0",
+                language="zh-CN",
+                gender="female",
+                description="温柔知性的女性声音",
+                category=general,
             ),
-            VoiceType.ZH_MALE_POWERFUL.value: VoiceTypeInfo(
-                id=VoiceType.ZH_MALE_POWERFUL.value,
-                name="有力男声",
+            "zh_male_shaonianzixin_uranus_bigtts": VoiceTypeInfo(
+                id="zh_male_shaonianzixin_uranus_bigtts",
+                name="少年梓辛 2.0",
                 language="zh-CN",
                 gender="male",
-                description="有力坚定的男性声音，适合激励和宣传内容",
-                category=translations.get("通用场景", "通用场景")
+                description="清澈的男性声音，适合年轻化内容",
+                category=general,
             ),
-            VoiceType.ZH_MALE_STEADY.value: VoiceTypeInfo(
-                id=VoiceType.ZH_MALE_STEADY.value,
-                name="稳重男声",
+            "zh_male_yangguangqingnian_uranus_bigtts": VoiceTypeInfo(
+                id="zh_male_yangguangqingnian_uranus_bigtts",
+                name="阳光青年 2.0",
                 language="zh-CN",
                 gender="male",
-                description="稳重可靠的男性声音，适合新闻和正式内容",
-                category=translations.get("通用场景", "通用场景")
-            )
+                description="积极向上的男性声音",
+                category=general,
+            ),
+            "zh_male_aojiaobazong_uranus_bigtts": VoiceTypeInfo(
+                id="zh_male_aojiaobazong_uranus_bigtts",
+                name="傲娇霸总 2.0",
+                language="zh-CN",
+                gender="male",
+                description="霸道总裁的男性声音",
+                category=roleplay,
+            ),
         }
-        
+
         return voice_types
 
 
