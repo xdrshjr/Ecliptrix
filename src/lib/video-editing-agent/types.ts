@@ -191,6 +191,13 @@ export interface VideoEditingAgentConfig {
   llmModel: string;
   /** Provider type from model settings, used to select API format (e.g. 'kimi_coding', 'anthropic') */
   providerType?: string;
+  /**
+   * Explicit API protocol from `model_providers.api_format` ('openai' | 'anthropic').
+   * Takes precedence over providerType — needed for custom providers (e.g. a
+   * GLM provider pointed at an Anthropic-compatible endpoint) where
+   * providerType='custom' carries no protocol hint.
+   */
+  apiType?: 'openai' | 'anthropic';
   timelineState: TimelineState;
   materials: MaterialItem[];
   /**
