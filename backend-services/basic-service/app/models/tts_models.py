@@ -75,7 +75,7 @@ class TTSRequest(BaseModel):
     
     text: str = Field(..., description="Text to convert to speech", max_length=10000)
     voice_type: str = Field(
-        default="zh_male_shaonianzixin_moon_bigtts",
+        default="zh_male_shaonianzixin_uranus_bigtts",
         description="Voice type for speech synthesis"
     )
     speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.1, le=3.0)
@@ -121,7 +121,7 @@ class BatchTTSRequest(BaseModel):
         max_items=50
     )
     voice_type: str = Field(
-        default="zh_male_shaonianzixin_moon_bigtts",
+        default="zh_male_shaonianzixin_uranus_bigtts",
         description="Voice type for speech synthesis"
     )
     speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.1, le=3.0)
@@ -325,7 +325,7 @@ class SentenceBatchTTSRequest(BaseModel):
         max_items=20
     )
     voice_type: str = Field(
-        default="zh_male_shaonianzixin_moon_bigtts",
+        default="zh_male_shaonianzixin_uranus_bigtts",
         description="Voice type for speech synthesis"
     )
     speed_ratio: float = Field(default=1.0, description="Speech speed ratio", ge=0.1, le=3.0)

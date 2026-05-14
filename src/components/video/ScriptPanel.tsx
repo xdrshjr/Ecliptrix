@@ -144,7 +144,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [expandedScriptSegments, setExpandedScriptSegments] = useState<Set<string>>(new Set());
 
   // TTS相关状态
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('zh_male_shaonianzixin_moon_bigtts');
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('zh_male_shaonianzixin_uranus_bigtts');
   const [convertingSegments, setConvertingSegments] = useState<Set<string>>(new Set());
   const [ttsProgress, setTtsProgress] = useState<Record<string, number>>({});
   const [completedSegments, setCompletedSegments] = useState<Set<string>>(new Set());

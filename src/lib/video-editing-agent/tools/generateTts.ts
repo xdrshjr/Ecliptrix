@@ -7,7 +7,7 @@ import { toolFetch, parseToolResponse } from './apiHelper';
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_VOICE_TYPE = 'zh_female_shuangkuaisisi_moon_bigtts';
+const DEFAULT_VOICE_TYPE = 'zh_female_qingxinnvsheng_uranus_bigtts';
 const MAX_TEXT_LENGTH = 5000;
 
 // ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ const parameters = Type.Object({
   voice_type: Type.Optional(
     Type.String({
       description:
-        'Voice ID. Popular options: zh_female_shuangkuaisisi_moon_bigtts (female, default), zh_male_shaonianzixin_moon_bigtts (male), zh_female_tianmeixiaoyuan_moon_bigtts (sweet female), zh_male_jieshuoxiaoming_moon_bigtts (narrator), en_female_anna_mars_bigtts (English female). Use explore_tools("tts_tools") to see all available voices. Defaults to zh_female_shuangkuaisisi_moon_bigtts.',
+        'Voice ID (Volcano TTS 2.0, *_uranus_bigtts). Popular options: zh_female_qingxinnvsheng_uranus_bigtts (female, default), zh_female_shuangkuaisisi_uranus_bigtts (crisp female), zh_male_shaonianzixin_uranus_bigtts (male), zh_female_tianmeixiaoyuan_uranus_bigtts (sweet female), zh_male_jieshuoxiaoming_uranus_bigtts (narrator), en_female_dacey_uranus_bigtts (English female). Use explore_tools("tts_tools") to see all available voices. Defaults to zh_female_qingxinnvsheng_uranus_bigtts.',
     }),
   ),
   speed: Type.Optional(

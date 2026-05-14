@@ -45,16 +45,18 @@ export const CORE_TOOLKIT_TOOL_NAMES: readonly string[] = [
  * Voice-type table lifted from the TTS usage hints. Embedded directly in
  * Layer A so the agent can pick a voice without first calling explore_tools.
  */
-export const TTS_VOICE_TABLE_MD = `常用音色（voice_type）：
-  - zh_female_shuangkuaisisi_moon_bigtts  — 双快丝丝 (female, Chinese)
-  - zh_male_chunhou_moon_bigtts            — 醇厚 (male, Chinese)
-  - zh_female_tianmei_moon_bigtts           — 甜美 (female, Chinese)
-  - zh_male_yangguang_moon_bigtts           — 阳光 (male, Chinese)
-  - zh_female_wenrou_moon_bigtts            — 温柔 (female, Chinese)
-  - en_female_arabellaexpressive             — Arabella (female, English)
-  - en_male_caleb                            — Caleb (male, English)
-  - en_female_sarahexpressive                — Sarah (female, English)
-省略 voice_type 时默认使用 zh_female_shuangkuaisisi_moon_bigtts。`;
+export const TTS_VOICE_TABLE_MD = `常用音色（voice_type, Volcano TTS 2.0 / *_uranus_bigtts）：
+  - zh_female_qingxinnvsheng_uranus_bigtts  — 清新女声 2.0 (female, Chinese)
+  - zh_female_linjianvhai_uranus_bigtts      — 邻家女孩 2.0 (female, Chinese)
+  - zh_female_shuangkuaisisi_uranus_bigtts   — 爽快思思 2.0 (female, Chinese)
+  - zh_female_wenroushunv_uranus_bigtts      — 温柔淑女 2.0 (female, Chinese)
+  - zh_male_shaonianzixin_uranus_bigtts      — 少年梓辛 2.0 (male, Chinese)
+  - zh_male_yangguangqingnian_uranus_bigtts  — 阳光青年 2.0 (male, Chinese)
+  - zh_male_yuanboxiaoshu_uranus_bigtts      — 渊博小叔 2.0 (male, Chinese)
+  - zh_male_dongfanghaoran_uranus_bigtts     — 东方浩然 2.0 (male, Chinese)
+  - en_female_dacey_uranus_bigtts             — Dacey (female, American English)
+  - en_male_tim_uranus_bigtts                  — Tim (male, American English)
+省略 voice_type 时默认使用 zh_female_qingxinnvsheng_uranus_bigtts。所有可选音色见 /api/tts/voices；不要使用 *_moon_bigtts (1.0) — 已停用。`;
 
 /**
  * Workflow recipes (Layer C). Promoted from the old "operation guide" hints
