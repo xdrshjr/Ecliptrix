@@ -62,6 +62,13 @@ export class BufferError extends Error {
   }
 }
 
+export interface LastSwapResult {
+  /** Whether the synchronous swap reached the fast path (false = fallback). */
+  usedFallback: boolean;
+  /** Wall-clock cost of the swap call itself, in ms. */
+  latencyMs: number;
+}
+
 export class AbBufferController implements IAbBufferController {
   private _slotA: BufferSlot;
   private _slotB: BufferSlot;
@@ -72,6 +79,8 @@ export class AbBufferController implements IAbBufferController {
   private readonly _errorHandlers = new Set<
     (err: { code: number | string; el: BufferRole }) => void
   >();
+  /** Phase 4 §F6 — last swap diagnostic state. */
+  private _lastSwap: LastSwapResult = { usedFallback: false, latencyMs: 0 };
 
   constructor(opts: AbBufferOptions = {}) {
     this._opts = {
@@ -230,6 +239,10 @@ export class AbBufferController implements IAbBufferController {
   // ------------------------------------------------------------------
 
   swapActive(): HTMLVideoElement {
+    const start =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
     const oldActive = this._slot('active');
     const prewarm = this._slot('prewarm');
     const oldEl = oldActive.el;
@@ -239,6 +252,7 @@ export class AbBufferController implements IAbBufferController {
       if (!oldEl) {
         throw new BufferError('no-element', oldActive.sequenceId ?? '<unknown>');
       }
+      this._lastSwap = { usedFallback: true, latencyMs: _elapsed(start) };
       return oldEl;
     }
     const fastPathReady =
@@ -261,6 +275,7 @@ export class AbBufferController implements IAbBufferController {
         // ignore — caller (engine) handles play_rejected via subscribeError
       }
       this._compositor?.setActiveSource(newActive);
+      this._lastSwap = { usedFallback: false, latencyMs: _elapsed(start) };
       return newActive;
     }
     // Fallback — sync-return old active, kick off async rebind on the
@@ -269,7 +284,17 @@ export class AbBufferController implements IAbBufferController {
       throw new BufferError('no-element', oldActive.sequenceId ?? '<unknown>');
     }
     this._handleSwapFallback();
+    this._lastSwap = { usedFallback: true, latencyMs: _elapsed(start) };
     return oldEl;
+  }
+
+  /**
+   * Phase 4 §F6 / §4.2: diagnostic accessor used by PlaybackEngine to
+   * decide whether the most recent swap took the fast path. Returns a
+   * defensive copy so callers cannot mutate internal state.
+   */
+  getLastSwapResult(): LastSwapResult {
+    return { ...this._lastSwap };
   }
 
   getActiveElement(): HTMLVideoElement | null {
@@ -393,6 +418,14 @@ export class AbBufferController implements IAbBufferController {
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
+
+function _elapsed(startMs: number): number {
+  const now =
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  return Math.max(0, now - startMs);
+}
 
 function _normalizeSrc(src: string | null | undefined): string {
   if (!src) return '';

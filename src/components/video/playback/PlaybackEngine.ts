@@ -28,12 +28,16 @@ import {
   VISIBILITY_RESUME_MAX_MS,
 } from './internal/constants';
 import type {
+  IKillSwitchMonitor,
   IPlaybackEngine,
+  IProxyHitMeter,
   PlaybackEngineAttachDeps,
   PlaybackIntent,
   PlaybackPhase,
+  ProxyTier,
 } from './types';
 import type { VideoSequenceItem } from '../types';
+import type { MaterialItem } from '@/types';
 
 export interface PlaybackEngineDeps {
   clock?: PlaybackClock;
@@ -85,6 +89,29 @@ export class PlaybackEngine implements IPlaybackEngine {
   private _lastDrawnAtReport = 0;
   private _lastDroppedAtReport = 0;
 
+  // Phase 4 (§3.2.1) — boundary swap latency timer. Set just before the
+  // synchronous swapActive call and cleared after the resulting telemetry
+  // record is emitted. ``null`` means "no swap in flight".
+  private _pendingSwapStart: number | null = null;
+
+  // Phase 4 (§3.2.1) — last gauge emission wall time. We emit the slow
+  // gauges (cache_memory_mb, preview_proxy_cached_hit_rate) on a 60s
+  // cadence inside the tick loop so they don't pile up every frame.
+  private _lastGaugeEmitMs = 0;
+
+  // Phase 4 (§3.2.4 / F12). Stored when ``attach`` is called; the engine
+  // forwards regression / stalled events to the monitor before it
+  // forwards them to telemetry.
+  private _killSwitchMonitor: IKillSwitchMonitor | null = null;
+
+  // Phase 4 (§3.2.1 / F12). Single point that records P-tier hits — see
+  // ``attachActiveMaterial`` below. ``selectPlaybackUrl`` stays pure.
+  private _proxyHitMeter: IProxyHitMeter | null = null;
+
+  // Track previous phase to deduplicate stalled transitions before they
+  // reach the monitor (R-P2-5).
+  private _lastPhaseForMonitor: PlaybackPhase = 'idle';
+
   // Drift state
   private _lastDriftSampleWall = 0;
   private _hardResyncTrip = 0;
@@ -117,6 +144,8 @@ export class PlaybackEngine implements IPlaybackEngine {
       throw new Error('PlaybackEngine.attach: instance has been disposed');
     }
     this._deps = deps;
+    this._killSwitchMonitor = deps.killSwitchMonitor ?? null;
+    this._proxyHitMeter = deps.proxyHitMeter ?? null;
     try {
       this.compositor.attach(deps.canvas, deps.viewport ?? undefined);
       // Bridge resolver + timeline lookup into the buffer so it can find
@@ -159,9 +188,37 @@ export class PlaybackEngine implements IPlaybackEngine {
         lastT: Number(lastT.toFixed(3)),
         attempted: Number(attempted.toFixed(3)),
       });
+      // Phase 4 §3.2.4: feed the rolling killswitch monitor on the same
+      // event the telemetry SDK observes — keeps frontend / backend
+      // counters in lock-step.
+      try {
+        this._killSwitchMonitor?.noteRegression();
+      } catch {
+        // ignore
+      }
     });
 
     this._clockUnsub = this.clock.subscribe((comp, deltaMs) => this._onTick(comp, deltaMs));
+
+    // Phase 4 §3.2.1 — compositor surfaces the 1s dropped-frame-rate
+    // gauge so the aggregator can roll it up. Engine still owns the
+    // TICK_FPS rolling window so the two paths don't double-count.
+    try {
+      this.compositor.setDroppedFrameRateListener?.((sample) => {
+        this._telemetry?.record(
+          PLAYBACK_EVENTS.CANVAS_DROPPED_FRAME_RATE,
+          sample.rate,
+          {
+            cause: 'compositor_1s',
+            drawn: sample.drawn,
+            dropped: sample.dropped,
+            windowMs: Math.round(sample.windowMs),
+          },
+        );
+      });
+    } catch {
+      // ignore (test doubles may not expose setDroppedFrameRateListener)
+    }
 
     if (typeof document !== 'undefined') {
       this._visibilityHandler = () => {
@@ -544,15 +601,22 @@ export class PlaybackEngine implements IPlaybackEngine {
             return;
           }
           let newActive: HTMLVideoElement;
+          this._pendingSwapStart = this._now();
           try {
             newActive = this.buffer.swapActive();
           } catch (err) {
+            this._pendingSwapStart = null;
             this._fatal(`swap_failed:${(err as Error)?.message ?? 'unknown'}`);
             return;
           }
           // swap returned old active (fallback) — engine already parked in
           // 'preparing' via subscribeError. Skip frame for this tick.
           if (this.buffer.getActiveElement() === newActive && newActive !== activeEl) {
+            const swapMs = this._now() - (this._pendingSwapStart ?? this._now());
+            this._pendingSwapStart = null;
+            this._telemetry?.record(PLAYBACK_EVENTS.SWAP_LATENCY_MS, swapMs, {
+              fallback: 'false',
+            });
             // fast path: roles flipped, newActive is the prewarmed buffer.
             this._activeSeq = {
               index: seqCtx.index + 1,
@@ -577,6 +641,10 @@ export class PlaybackEngine implements IPlaybackEngine {
             // Reanchor clock without restarting rAF.
             this.clock.reanchor(comp);
           }
+          // Else: swap returned old active (fallback path); the
+          // pending timer stays set so _handleSwapFallbackRebind can
+          // emit swap_latency_ms with fallback=true once the async
+          // rebind completes.
         }
       }
 
@@ -603,9 +671,46 @@ export class PlaybackEngine implements IPlaybackEngine {
 
       this._maybeReportFirstFrame();
       this._maybeReportFps(deltaMs);
+      this._maybeEmitSlowGauges();
       this._maybeCorrectDrift(seq.index, localTime);
     } catch (err) {
       this._fatal(`tick_error:${(err as Error)?.message ?? 'unknown'}`);
+    }
+  }
+
+  /**
+   * Phase 4 (§3.2.1). Emit the slow gauges on a 60s cadence inside the
+   * tick loop so we don't add yet another timer. ``cache_memory_mb`` is
+   * read from an injected provider via window globals so we don't drag
+   * the VideoCacheAdapter into this module's import graph.
+   */
+  private _maybeEmitSlowGauges(): void {
+    const now = this._now();
+    if (this._lastGaugeEmitMs !== 0 && now - this._lastGaugeEmitMs < 60_000) return;
+    this._lastGaugeEmitMs = now;
+    if (this._proxyHitMeter && this._telemetry) {
+      try {
+        this._telemetry.record(
+          PLAYBACK_EVENTS.PREVIEW_PROXY_CACHED_HIT_RATE,
+          this._proxyHitMeter.snapshotHitRate(),
+        );
+      } catch {
+        // ignore
+      }
+    }
+    if (this._telemetry) {
+      try {
+        const provider = (globalThis as { __ecliptrixCacheMemoryMb?: () => number })
+          .__ecliptrixCacheMemoryMb;
+        if (typeof provider === 'function') {
+          const value = provider();
+          if (Number.isFinite(value)) {
+            this._telemetry.record(PLAYBACK_EVENTS.CACHE_MEMORY_MB, value);
+          }
+        }
+      } catch {
+        // ignore — never poison the tick
+      }
     }
   }
 
@@ -637,8 +742,19 @@ export class PlaybackEngine implements IPlaybackEngine {
       };
       this._prewarmTriggered = false;
       this.clock.reanchor(cur.startTime + cur.duration);
+      // Phase 4 §3.2.1: fallback path closes the timer started in
+      // `_onTick`. fallback=true so the backend aggregator can keep
+      // a separate P95 dimension.
+      if (this._pendingSwapStart !== null) {
+        const swapMs = this._now() - this._pendingSwapStart;
+        this._pendingSwapStart = null;
+        this._telemetry?.record(PLAYBACK_EVENTS.SWAP_LATENCY_MS, swapMs, {
+          fallback: 'true',
+        });
+      }
       this._setPhase('playing');
     } catch (err) {
+      this._pendingSwapStart = null;
       this._fatal(`swap_fallback:${(err as Error)?.message ?? 'unknown'}`);
     }
   }
@@ -829,6 +945,39 @@ export class PlaybackEngine implements IPlaybackEngine {
       to: next,
       ts: Math.round(this._now()),
     });
+    // Phase 4 §3.2.4 + R-P2-5: edge-trigger noteStalled so each stall
+    // counts once per (non-stalled → stalled) transition.
+    if (next === 'stalled' && prev !== 'stalled') {
+      try {
+        this._killSwitchMonitor?.noteStalled();
+      } catch {
+        // ignore
+      }
+    }
+    this._lastPhaseForMonitor = next;
     this._listeners.forEach((l) => l(next));
+  }
+
+  /**
+   * Phase 4 (§3.2.1 / R-P1-6). Single point that records the URL tier
+   * for the active material so the hit-rate gauge has one sample per
+   * actual playback start. Callers in PreviewSurface / VideoPlayerPanel
+   * compute the tier from ``selectPlaybackUrl`` and pass it here.
+   *
+   * Also accepts the active material so future cache-state telemetry
+   * can reach the SDK without re-resolving the URL.
+   */
+  attachActiveMaterial(_material: MaterialItem | null | undefined, tier: ProxyTier | null): void {
+    if (this._disposed || !tier) return;
+    try {
+      this._proxyHitMeter?.recordTier(tier);
+    } catch {
+      // ignore
+    }
+    try {
+      this._telemetry?.count(PLAYBACK_EVENTS.PROXY_URL_USED, { tier });
+    } catch {
+      // ignore
+    }
   }
 }

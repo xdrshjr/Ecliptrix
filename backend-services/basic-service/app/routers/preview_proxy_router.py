@@ -117,6 +117,16 @@ async def request_preview_proxy(req: PreviewProxyRequest) -> PreviewProxyEnvelop
         )
     except PreviewProxyError as exc:
         raise _as_http(exc) from exc
+    logger.info(
+        "preview_proxy.enqueue",
+        extra={
+            "material_id": resolved_id,
+            "profile": req.profile or DEFAULT_PROFILE,
+            "status": status,
+            "tasks_queued": svc.get_queue_depth(),
+            "failure_total": svc.last_failure_count(),
+        },
+    )
     return PreviewProxyEnvelope(
         success=True,
         data=PreviewProxyTaskData(
@@ -139,6 +149,17 @@ async def preview_proxy_status(
         snap = await svc.get_status(material_id, profile=profile)
     except PreviewProxyError as exc:
         raise _as_http(exc) from exc
+    transcode_ms = svc.last_transcode_duration_ms(material_id)
+    if transcode_ms is not None:
+        logger.info(
+            "preview_proxy.status",
+            extra={
+                "material_id": material_id,
+                "status": snap.get("status"),
+                "transcode_duration_ms": transcode_ms,
+                "failure_total": svc.last_failure_count(),
+            },
+        )
     return PreviewProxyStatusEnvelope(
         success=True,
         data=PreviewProxyStatusData(
@@ -167,6 +188,15 @@ async def preview_proxy_file(
     except PreviewProxyError as exc:
         raise _as_http(exc) from exc
     if snap["status"] != "cached" or not snap["preview_proxy_url"]:
+        logger.info(
+            "preview_proxy.file",
+            extra={
+                "material_id": material_id,
+                "status": snap.get("status"),
+                "served": False,
+                "failure_total": svc.last_failure_count(),
+            },
+        )
         raise HTTPException(
             status_code=404,
             detail={
@@ -174,4 +204,13 @@ async def preview_proxy_file(
                 "message": f"preview-proxy not yet cached for {material_id}",
             },
         )
+    logger.info(
+        "preview_proxy.file",
+        extra={
+            "material_id": material_id,
+            "status": snap.get("status"),
+            "served": True,
+            "failure_total": svc.last_failure_count(),
+        },
+    )
     return RedirectResponse(url=snap["preview_proxy_url"], status_code=302)

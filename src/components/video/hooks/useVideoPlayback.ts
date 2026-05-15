@@ -8,7 +8,17 @@ import { isPlaybackV2Enabled } from '@/lib/playbackFlags';
 /**
  * useVideoPlayback Hook
  * 管理视频播放状态和控制
- * 
+ *
+ * @deprecated Phase 4 §G8 / F11 — legacy preview pipeline. Active code path
+ *   is now the v2 PlaybackEngine wired through PreviewSurface. This hook is
+ *   retained behind the playback v2 kill-switch (`isPlaybackV2Enabled()===false`)
+ *   so dogfood users can roll back. Slated for removal once
+ *   `PLAYBACK_V2_ROLLOUT_PERCENT=100` has held for ≥ 1 week without rollback
+ *   events. Track sunset in `docs/plans/video-editor-playback-optimization/
+ *   master-plan.md` §十一.
+ *
+ *   TODO(playback-v2 sunset, owner: TBD): delete this hook + its callers.
+ *
  * @param taskId - 任务ID，用于日志记录
  * @param onTimeUpdate - 时间更新回调，用于同步到timeline
  * @returns 视频播放相关的状态和控制方法

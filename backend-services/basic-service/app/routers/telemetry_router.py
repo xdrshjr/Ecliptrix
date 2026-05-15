@@ -1,22 +1,33 @@
 """
-Playback telemetry intake (spec 08 §5.1).
+Playback telemetry intake (spec 08 §5.1, Phase 4 §3.2.5 / §4.1.3).
 
-Accepts batched events from the v2 playback frontend SDK and writes them to
-the structured ``logs/app.log`` stream. No persistent storage: spec 08 §一
-explicitly defers Prometheus / Sentry integration.
+Accepts batched events from the v2 playback frontend SDK, validates the
+PII shape of ``userId`` (must be the 12-hex-char hash produced by the
+client SDK), feeds known metrics into the in-process aggregator, and
+writes every event to the structured ``logs/app.log`` stream. Unknown
+metric names are still logged (with ``unknown_metric=true``) — never
+dropped, so the dashboard can surface "frontend forgot to register".
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.logger import get_logger
+from app.services.playback_metrics_aggregator import (
+    PlaybackMetricsAggregator,
+    get_playback_metrics_aggregator,
+)
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
 logger = get_logger(__name__)
+
+
+_USER_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{12}$")
 
 
 class PlaybackTelemetryEvent(BaseModel):
@@ -33,15 +44,37 @@ class PlaybackTelemetryPayload(BaseModel):
     userId: Optional[str] = None
     events: List[PlaybackTelemetryEvent]
 
+    @field_validator("userId", mode="before")
+    @classmethod
+    def _strip_invalid_user_id(cls, v: Optional[str]) -> Optional[str]:
+        """Drop anything that isn't the SDK-hashed 12-hex form (INV11)."""
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str) or not _USER_ID_PATTERN.match(v):
+            return None
+        return v.lower()
+
 
 @router.post("/playback", status_code=status.HTTP_204_NO_CONTENT)
 async def ingest_playback_telemetry(payload: PlaybackTelemetryPayload) -> None:
     if not payload.events:
         return None
-    # Structured log line per event so any future log shipper can extract
-    # them. We keep the message short and rely on extra fields for the
-    # metric values.
+    aggregator: PlaybackMetricsAggregator = get_playback_metrics_aggregator()
     for ev in payload.events:
+        is_known = PlaybackMetricsAggregator.is_known_metric(ev.name)
+        if is_known:
+            # Fire-and-forget into the aggregator; await keeps the lock
+            # contention bounded (single-process, single-loop).
+            try:
+                await aggregator.record_event(name=ev.name, value=ev.value)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "playback.telemetry.aggregator_error",
+                    extra={
+                        "metric": ev.name,
+                        "error": str(exc),
+                    },
+                )
         logger.info(
             "playback.telemetry",
             extra={
@@ -53,6 +86,7 @@ async def ingest_playback_telemetry(payload: PlaybackTelemetryPayload) -> None:
                 "task_id": payload.taskId,
                 "flag_variant": payload.flagVariant,
                 "user_id": payload.userId,
+                "unknown_metric": (not is_known),
             },
         )
     return None

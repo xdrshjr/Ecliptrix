@@ -185,6 +185,10 @@ export interface ICanvasCompositor {
   setOverlays(overlays: OverlayPayload[]): void;
   captureFrame(): string | null;
   getStats(): CompositorStats;
+  /** Phase 4 §3.2.1: 1s throttled dropped-frame-rate sampler. */
+  setDroppedFrameRateListener?(
+    listener: ((sample: { rate: number; drawn: number; dropped: number; windowMs: number }) => void) | null,
+  ): void;
 }
 
 export interface IPlayheadController {
@@ -246,4 +250,40 @@ export interface PlaybackEngineAttachDeps {
    * killswitch flag and remount.
    */
   onKillSwitch?: (reason: string) => void;
+  /**
+   * Phase 4 (§3.2.4 / §4.2.1): client-side rolling counter for regression /
+   * stalled events. Engine drives noteRegression / noteStalled; the
+   * monitor decides when to call ``tripPlaybackV2KillSwitch``.
+   */
+  killSwitchMonitor?: IKillSwitchMonitor | null;
+  /**
+   * Phase 4 (§3.2.1 / §4.2.2): hit-rate meter for proxy URL tiers. Engine
+   * drives `recordTier` once per `attachActiveMaterial` so the recorded
+   * frequency equals actual playback starts (R-P1-6).
+   */
+  proxyHitMeter?: IProxyHitMeter | null;
+}
+
+/**
+ * Phase 4 (§3.2.4 / F12). The engine surface remains the same; the monitor
+ * lives entirely in PreviewSurface so the engine can be unit-tested without
+ * a real localStorage write.
+ */
+export interface IKillSwitchMonitor {
+  noteRegression(): void;
+  noteStalled(): void;
+  isTripped(): boolean;
+  getCounts(): { regression: number; stalled: number };
+  dispose(): void;
+}
+
+/**
+ * Phase 4 (§3.2.1 / F12). Mirrors the runtime ProxyHitMeter shape.
+ */
+export type ProxyTier = 'P1' | 'P2' | 'P3' | 'P4' | 'P5';
+
+export interface IProxyHitMeter {
+  recordTier(tier: ProxyTier): void;
+  snapshotHitRate(): number;
+  reset(): void;
 }

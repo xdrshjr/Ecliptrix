@@ -27,12 +27,15 @@ import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
 import { isPlaybackV2Enabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
 import {
+  KillSwitchMonitor,
   PlaybackEngine,
+  ProxyHitMeter,
   type OverlayPayload,
   type PlaybackTimelineFacade,
   type PlaybackSequenceResolver,
 } from '../../playback';
 import PreviewSurface from './PreviewSurface';
+import { PlaybackVariantSwitcher } from '../../playback/components/PlaybackVariantSwitcher';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -44,6 +47,23 @@ interface AspectRatio {
 }
 
 const TIME_EPSILON = 0.001;
+
+/**
+ * Phase 4 §4.3 — read `NEXT_PUBLIC_*` thresholds for the kill-switch
+ * monitor. Next.js inlines these at build time so the values are baked
+ * into the bundle. Falls back to `fallback` when the env var is unset,
+ * empty, or not a positive integer.
+ */
+function _readPositiveIntEnv(name: string, fallback: number): number {
+  const raw =
+    typeof process !== 'undefined' && process.env
+      ? process.env[name as keyof NodeJS.ProcessEnv]
+      : undefined;
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
 
 type PendingCompositionSeek = {
   compositionTime: number;
@@ -155,8 +175,25 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // ImperativeHandle methods; for now keeping the reference here ensures
   // tree-shaking does not drop the playback module.
   const playbackEngineRef = useRef<PlaybackEngine | null>(null);
+  // Phase 4 §3.2.4 / §3.2.1 — kill-switch + proxy hit-rate counters live
+  // alongside the engine for the lifetime of the v2 mount. They are
+  // singleton per-panel-instance, so toggling the flag mid-session
+  // (which requires reload) gives them a fresh starting point.
+  const killSwitchMonitorRef = useRef<KillSwitchMonitor | null>(null);
+  const proxyHitMeterRef = useRef<ProxyHitMeter | null>(null);
   if (playbackV2Enabled && !playbackEngineRef.current) {
     playbackEngineRef.current = new PlaybackEngine();
+    killSwitchMonitorRef.current = new KillSwitchMonitor({
+      regressionThreshold: _readPositiveIntEnv(
+        'NEXT_PUBLIC_PLAYBACK_V2_KILLSWITCH_REGRESSION',
+        50,
+      ),
+      stalledThreshold: _readPositiveIntEnv(
+        'NEXT_PUBLIC_PLAYBACK_V2_KILLSWITCH_STALLED',
+        30,
+      ),
+    });
+    proxyHitMeterRef.current = new ProxyHitMeter();
   }
   // Spec §3.2.8 — when engine signals an unrecoverable error, trip the
   // kill-switch and remount the panel so subsequent renders fall back to
@@ -2652,8 +2689,27 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                         resolver: v2Resolver,
                         overlaysProvider: v2OverlaysProvider,
                         onKillSwitch: handleV2KillSwitch,
+                        killSwitchMonitor: killSwitchMonitorRef.current,
+                        proxyHitMeter: proxyHitMeterRef.current,
                       }}
                     />
+                  )}
+                  {/* Phase 4 §3.2.6 / F3 — dev-only variant switcher. Renders
+                      null in production via the component's first statement,
+                      so it cannot ship to end users even if this branch is
+                      mounted. */}
+                  {playbackV2Enabled && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 6,
+                        right: 6,
+                        zIndex: 5,
+                        pointerEvents: 'auto',
+                      }}
+                    >
+                      <PlaybackVariantSwitcher />
+                    </div>
                   )}
                   {/* 视频元素 - 完全填充容器，保持宽高比稳定 */}
                   <video

@@ -14,6 +14,7 @@ router will be mounted alongside.
 from __future__ import annotations
 
 import os
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -70,8 +71,26 @@ async def proxy(
     # the FastAPI StaticFiles mount via the X-Material-Local-Url header so
     # the client can avoid the proxy hop on the next request.
     if cache_path.exists() and not range_header:
+        logger.info(
+            "media_proxy.serve",
+            extra={
+                "cache_state": "hit",
+                "upstream_latency_ms": 0,
+                "bytes_total": cache_path.stat().st_size,
+                "material_id": material_id,
+            },
+        )
         return _serve_local(svc, target, cache_path, full=True)
     if cache_path.exists() and range_header:
+        logger.info(
+            "media_proxy.serve",
+            extra={
+                "cache_state": "hit_range",
+                "upstream_latency_ms": 0,
+                "bytes_total": cache_path.stat().st_size,
+                "material_id": material_id,
+            },
+        )
         return _serve_local(svc, target, cache_path, full=False, range_header=range_header)
 
     # Cache miss → fetch upstream while teeing into ``cache_path``. Per-key
@@ -92,11 +111,22 @@ async def proxy(
         finally:
             lock.release()
 
+    upstream_started = time.monotonic()
     try:
         status_code, headers, body_iter, _done = await svc.stream_upstream(
             target, range_header
         )
     except MediaProxyError as exc:
+        logger.warning(
+            "media_proxy.serve",
+            extra={
+                "cache_state": "miss_error",
+                "upstream_latency_ms": int((time.monotonic() - upstream_started) * 1000),
+                "bytes_total": None,
+                "material_id": material_id,
+                "error_code": exc.error_code,
+            },
+        )
         raise HTTPException(
             status_code=exc.status_code,
             detail={"error_code": exc.error_code, "message": exc.message},
@@ -105,6 +135,24 @@ async def proxy(
     headers.setdefault("X-Proxy-Cache", "miss")
     headers["X-Material-Local-Url"] = svc.local_url_for_target(
         target, os.path.basename(cache_path)
+    )
+    try:
+        upstream_latency_ms = int((time.monotonic() - upstream_started) * 1000)
+        content_length_header = headers.get("Content-Length") or headers.get(
+            "content-length"
+        )
+        bytes_total = int(content_length_header) if content_length_header else None
+    except (TypeError, ValueError):
+        bytes_total = None
+        upstream_latency_ms = 0
+    logger.info(
+        "media_proxy.serve",
+        extra={
+            "cache_state": "miss",
+            "upstream_latency_ms": upstream_latency_ms,
+            "bytes_total": bytes_total,
+            "material_id": material_id,
+        },
     )
 
     async def _gen():

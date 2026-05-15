@@ -530,6 +530,27 @@ class Settings(BaseModel):
     app_name: str = Field(default="Basic Service API", description="Application name")
     app_version: str = Field(default="1.0.0", description="Application version")
 
+    # Playback v2 (Phase 4) — telemetry aggregation + admin observability.
+    playback_v2_telemetry_agg_window_min: int = Field(
+        default=15,
+        description="Rolling window (minutes) used by PlaybackMetricsAggregator.",
+    )
+    playback_v2_telemetry_agg_retention_hours: int = Field(
+        default=24,
+        description=(
+            "How many hours of 1-minute counter buckets the playback metrics "
+            "aggregator retains in memory."
+        ),
+    )
+    playback_v2_aggregator_requires_single_worker: bool = Field(
+        default=True,
+        description=(
+            "When true, /api/admin/playback-metrics flags responses as "
+            "degraded if more than one gunicorn/uvicorn worker is detected. "
+            "Spec Phase 4 §3.2.7 / R-P1-3."
+        ),
+    )
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False)
 
 
@@ -831,6 +852,18 @@ def get_settings() -> Settings:
         key_prefix=os.getenv("OSS_KEY_PREFIX", ""),
     )
 
+    # Playback v2 Phase 4 settings.
+    pv2_window = int(
+        os.getenv("PLAYBACK_V2_TELEMETRY_AGG_WINDOW_MIN") or 15
+    )
+    pv2_retention = int(
+        os.getenv("PLAYBACK_V2_TELEMETRY_AGG_RETENTION_HOURS") or 24
+    )
+    pv2_single_worker = (
+        os.getenv("PLAYBACK_V2_AGGREGATOR_REQUIRES_SINGLE_WORKER", "true").lower()
+        != "false"
+    )
+
     return Settings(
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_api_url=os.getenv("LLM_API_URL", ""),
@@ -905,6 +938,9 @@ def get_settings() -> Settings:
         port=int(os.getenv("PORT", "8000")),
         debug=os.getenv("DEBUG", "false").lower() == "true",
         temp_dir=os.getenv("TEMP_DIR", "temp"),
+        playback_v2_telemetry_agg_window_min=pv2_window,
+        playback_v2_telemetry_agg_retention_hours=pv2_retention,
+        playback_v2_aggregator_requires_single_worker=pv2_single_worker,
     )
 
 

@@ -138,6 +138,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to load system settings: {str(e)}", exc_info=True)
 
+    # Playback v2 Phase 4 — flag multi-worker deployments because the
+    # in-memory metrics aggregator is process-local. Spec §3.2.7.
+    if getattr(settings, "playback_v2_aggregator_requires_single_worker", True):
+        raw_workers = (
+            os.environ.get("GUNICORN_WORKERS")
+            or os.environ.get("UVICORN_WORKERS")
+            or os.environ.get("WEB_CONCURRENCY")
+        )
+        try:
+            worker_count = int(raw_workers) if raw_workers else 1
+        except (TypeError, ValueError):
+            worker_count = 1
+        if worker_count > 1:
+            logger.warning(
+                "Playback v2 aggregator is in-memory but detected worker_count=%s; "
+                "/api/admin/playback-metrics will report degraded=true (spec §3.2.7).",
+                worker_count,
+            )
+
     logger.info("Application startup completed")
 
     yield
@@ -521,6 +540,11 @@ app.include_router(config_router.router, prefix="/api")
 from app.routers import video_cover as video_cover_router
 
 app.include_router(video_cover_router.router, prefix="/api")
+
+# Import and include Admin Playback router (Phase 4 — admin-only ops endpoints)
+from app.routers import admin_playback_router
+
+app.include_router(admin_playback_router.router, prefix="/api")
 
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"

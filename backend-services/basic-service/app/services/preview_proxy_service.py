@@ -110,6 +110,22 @@ class PreviewProxyService:
         # In-memory progress cache, throttled DB writes.
         self._progress_cache: Dict[str, int] = {}
         self._inflight: Dict[str, asyncio.Task] = {}
+        # Phase 4 (spec §6.2 / B6): cheap counters surfaced to logs/admin.
+        self._failure_total = 0
+        self._last_transcode_ms: Dict[str, int] = {}
+        self._transcode_started_at: Dict[str, float] = {}
+
+    # ------------------------------------------------------------------ observability helpers
+    def get_queue_depth(self) -> int:
+        """Approximate in-flight transcode count (spec Phase 4 §6.2 / B6)."""
+        return len(self._inflight)
+
+    def last_failure_count(self) -> int:
+        """Total failures observed since process start (spec Phase 4 B6)."""
+        return self._failure_total
+
+    def last_transcode_duration_ms(self, material_id: str) -> Optional[int]:
+        return self._last_transcode_ms.get(material_id)
 
     # ------------------------------------------------------------------ init
 
@@ -292,6 +308,7 @@ class PreviewProxyService:
             row.preview_proxy_status = "running"
             row.preview_proxy_progress = 0
             await session.commit()
+        self._transcode_started_at[material_id] = time.monotonic()
 
         if not input_path or not os.path.exists(input_path):
             return (False, f"input file missing: {input_path}")
@@ -342,6 +359,11 @@ class PreviewProxyService:
             return (False, f"ffmpeg exit={proc.returncode}: {tail.strip()}")
 
         # Success — finalize.
+        started_at = self._transcode_started_at.pop(material_id, None)
+        if started_at is not None:
+            self._last_transcode_ms[material_id] = int(
+                (time.monotonic() - started_at) * 1000
+            )
         await self._finalize_success(material_id, profile, output_path)
         return (True, None)
 
@@ -461,6 +483,8 @@ class PreviewProxyService:
             row.preview_proxy_progress = 0
             await session.commit()
         self._progress_cache.pop(material_id, None)
+        self._transcode_started_at.pop(material_id, None)
+        self._failure_total += 1
 
     def _cleanup_partial(self, output_path: Path) -> None:
         try:

@@ -20,6 +20,8 @@ import React, {
 } from 'react';
 import {
   PlaybackEngine,
+  type IKillSwitchMonitor,
+  type IProxyHitMeter,
   type OverlayPayload,
   type PlaybackEngineAttachDeps,
   type PlaybackTimelineFacade,
@@ -42,6 +44,13 @@ export interface PreviewSurfaceV2Wiring {
    * playbackFlags kill-switch and reload the panel.
    */
   onKillSwitch?: (reason: string) => void;
+  /**
+   * Phase 4 §F12 — optional monitors injected by the parent. Either one
+   * left undefined means "do not record" for that dimension; the engine
+   * still works unchanged.
+   */
+  killSwitchMonitor?: IKillSwitchMonitor | null;
+  proxyHitMeter?: IProxyHitMeter | null;
 }
 
 export interface PreviewSurfaceProps {
@@ -123,6 +132,8 @@ const PreviewSurface = forwardRef<PreviewSurfaceHandle, PreviewSurfaceProps>(
         overlaysProvider: v2.overlaysProvider,
         viewport: v2.viewport,
         onKillSwitch: v2.onKillSwitch,
+        killSwitchMonitor: v2.killSwitchMonitor ?? null,
+        proxyHitMeter: v2.proxyHitMeter ?? null,
       };
       try {
         v2.engine.attach(attachDeps);

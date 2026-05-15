@@ -132,6 +132,15 @@ export function selectPlaybackUrl(
  * media-proxy layer rather than going straight to the CDN.
  *
  * Spec §3.2.6 / §5.4.
+ *
+ * **Purity contract (Phase 4 §F9 / R-P1-6).** This function — and
+ * {@link selectPlaybackUrl} — must remain side-effect-free. ~50 callers
+ * inside `useMemo` / SWR `select` rely on it being idempotent; recording
+ * hit-rate samples here would multiply the count by every cache miss in
+ * the React tree. The single canonical point for proxy-tier hit-rate
+ * accounting is `PlaybackEngine.attachActiveMaterial`, which fires
+ * exactly once per active-material change. Do NOT call
+ * `proxyHitMeter.recordTier(...)` from inside this module.
  */
 export function effectivePreviewUrl(
   material: MaterialItem | PlaybackInput | undefined | null,

@@ -25,8 +25,16 @@ import type {
 } from './types';
 
 const DEFAULT_LETTERBOX_COLOR = '#000';
+const DROPPED_RATE_EMIT_INTERVAL_MS = 1000;
 
 export type { CompositorStats } from './types';
+
+export interface DroppedFrameRateEmit {
+  rate: number;
+  drawn: number;
+  dropped: number;
+  windowMs: number;
+}
 
 export class CanvasCompositor implements ICanvasCompositor {
   private _canvas: HTMLCanvasElement | null = null;
@@ -45,12 +53,32 @@ export class CanvasCompositor implements ICanvasCompositor {
   private _belowRecoverHold = 0;
   private _now: () => number;
 
+  // Phase 4 (§3.2.1 / F7) — last wall time we emitted the dropped-rate
+  // gauge. Seeded on first call regardless of monotonic time origin so
+  // the throttle works for `_now()` clocks that start at 0 (tests, jsdom).
+  private _lastEmitMs = 0;
+  private _emitSeeded = false;
+  private _drawnAtLastEmit = 0;
+  private _droppedAtLastEmit = 0;
+  private _onDroppedRate: ((sample: DroppedFrameRateEmit) => void) | null = null;
+
   constructor(now?: () => number) {
     this._now =
       now ??
       (typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now.bind(performance)
         : Date.now);
+  }
+
+  /**
+   * Phase 4 (§3.2.1 / F7): subscribe to the throttled dropped-frame-rate
+   * sampler. The callback receives one sample roughly every 1s while
+   * drawing is active. Pass `null` to detach.
+   */
+  setDroppedFrameRateListener(
+    listener: ((sample: DroppedFrameRateEmit) => void) | null,
+  ): void {
+    this._onDroppedRate = listener;
   }
 
   attach(canvas: HTMLCanvasElement, viewport?: ICanvasViewport): void {
@@ -73,6 +101,10 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._imageCache.clear();
     this._drawWindow = [];
     this._belowRecoverHold = 0;
+    this._emitSeeded = false;
+    this._lastEmitMs = 0;
+    this._drawnAtLastEmit = 0;
+    this._droppedAtLastEmit = 0;
   }
 
   setLetterbox(viewport: ICanvasViewport | null): void {
@@ -132,6 +164,33 @@ export class CanvasCompositor implements ICanvasCompositor {
     const drawMs = this._now() - start;
     this._stats.lastDrawMs = drawMs;
     this._updateAdaptiveFps(drawMs);
+    this._maybeEmitDroppedRate();
+  }
+
+  private _maybeEmitDroppedRate(): void {
+    if (!this._onDroppedRate) return;
+    const now = this._now();
+    if (!this._emitSeeded) {
+      this._emitSeeded = true;
+      this._lastEmitMs = now;
+      this._drawnAtLastEmit = this._stats.drawnFrames;
+      this._droppedAtLastEmit = this._stats.droppedFrames;
+      return;
+    }
+    const windowMs = now - this._lastEmitMs;
+    if (windowMs < DROPPED_RATE_EMIT_INTERVAL_MS) return;
+    const drawnDelta = this._stats.drawnFrames - this._drawnAtLastEmit;
+    const droppedDelta = this._stats.droppedFrames - this._droppedAtLastEmit;
+    const total = drawnDelta + droppedDelta;
+    const rate = total > 0 ? droppedDelta / total : 0;
+    this._lastEmitMs = now;
+    this._drawnAtLastEmit = this._stats.drawnFrames;
+    this._droppedAtLastEmit = this._stats.droppedFrames;
+    try {
+      this._onDroppedRate({ rate, drawn: drawnDelta, dropped: droppedDelta, windowMs });
+    } catch {
+      // Telemetry must never break draw.
+    }
   }
 
   captureFrame(): string | null {

@@ -385,6 +385,33 @@ graph TD
 - **回滚策略**：`PLAYBACK_V2_ENABLED=false` 即可瞬间回到旧路径；后端代理端点保留（旧路径不会调用）。
 - **数据兼容**：`cached_materials` 仅新增字段不修改已有字段；旧版前端忽略新字段。
 
+### 11.1 实施状态表（Round Status）
+
+> 每完成一个实施轮次（Round）在此追加一行；Phase 4 §G6 / G8 要求与
+> `rollout-playbook.md` 的实际执行步骤保持同步。
+
+| Round | Phase | 交付项 | Commit 短哈希 | 状态 |
+|-------|-------|--------|---------------|------|
+| 1 | Phase 1 | playback/ scaffold, media-proxy, telemetry SDK, config-flag endpoint | `4f897eb` | 完成 |
+| 2 | Phase 1 | state-machine + canvas compositor + PreviewSurface v2 | `8828370` | 完成 |
+| 3 | Phase 1 | A/B buffer 实现 + preview-proxy 转码 + selectPlaybackUrl P1-P5 | `efd7d01` | 完成 |
+| 4 | Phase 1 | Phase 4 观测面板 / 运维端点 / kill-switch / rollout-playbook | TBD（本轮） | 进行中 |
+
+### 11.2 Sunset 表（legacy 路径退役计划）
+
+| 模块 | 当前状态 | 触发条件 | 拆除责任 Round |
+|------|----------|----------|----------------|
+| `src/components/video/hooks/useVideoPlayback.ts` | `@deprecated`（Phase 4 F11） | `PLAYBACK_V2_ROLLOUT_PERCENT=100` 持续 ≥ 1 周且无 kill-switch trip 事件 | Round 5 |
+| `VideoPlayerPanel.tsx` 内 `playbackV2Enabled === false` 分支 | `@deprecated`（Phase 4 F10） | 同上 | Round 5 |
+| `useVideoCache.ts` 中 `mockVideoPreview` 兼容路径 | 跟随 useVideoPlayback 一并删除 | 同上 | Round 5 |
+
+> Round 5 之前任何尝试删除这些文件的 PR 必须先核对：
+> 1. `rollout-playbook.md` §「灰度推进」表显示 100% 持续时间已满足；
+> 2. `/api/admin/playback-metrics?window=1h` 在 `degraded=false` 状态下连续
+>    7 天没有触发 §4.4 阈值；
+> 3. `localStorage.ecliptrix-playback-v2-killswitch` 在 dogfood 群体中
+>    无新增 trip（由 rollout-playbook 反馈渠道收集）。
+
 ---
 
 ## 十二、评审结论（Review Verdict）
