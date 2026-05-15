@@ -47,6 +47,35 @@ export interface PlaybackTelemetryOptions {
 const DEFAULT_FLUSH_MS = 5000;
 const DEFAULT_ENDPOINT = '/api/telemetry/playback';
 
+/**
+ * Event-name constants for Phase 2.
+ *
+ * Spec: docs/plans/video-editor-playback-v2-phase2/spec.md §5.4
+ *       docs/plans/video-editor-playback-optimization/specs/08-telemetry-feature-flag-rollout.md §3.1
+ *
+ * Group A — already defined in spec 08 §3.1, reused here as-is.
+ * Group B — Phase 2 extensions that the dashboard renders as raw events
+ *           until spec 08 v3 lands them officially.
+ */
+export const PLAYBACK_EVENTS = {
+  // Group A (spec 08 §3.1)
+  CLICK_TO_FIRST_FRAME_MS: 'playback.click_to_first_frame_ms',
+  SEEK_TO_FIRST_FRAME_MS: 'playback.seek_to_first_frame_ms',
+  STALLED_EVENT: 'playback.stalled_event',
+  CANVAS_DROPPED_FRAME_RATE: 'playback.canvas_dropped_frame_rate',
+  PLAYHEAD_REGRESSION: 'playback.playhead_regression',
+  RATE_CHANGE: 'playback.rate_change',
+  ERROR: 'playback.error',
+  // Group B (Phase 2 extension; pending spec 08 v3)
+  PHASE_CHANGED: 'playback.phase.changed',
+  TICK_FPS: 'playback.tick.fps',
+  PREPARING_TIMEOUT: 'playback.preparing.timeout',
+  DRAW_DROPPED: 'playback.draw.dropped',
+  SEEK: 'playback.seek',
+} as const;
+
+export type PlaybackEventName = (typeof PLAYBACK_EVENTS)[keyof typeof PLAYBACK_EVENTS];
+
 export class PlaybackTelemetry {
   private readonly _opts: Required<Omit<PlaybackTelemetryOptions, 'userId' | 'fetchImpl'>> & {
     userId?: string;

@@ -22,8 +22,15 @@
 const STORAGE_KEY = 'ecliptrix-playback-v2';
 const SESSION_REMOTE_KEY = 'ecliptrix-playback-v2-remote';
 const URL_QUERY_KEY = 'playback_v2';
+/**
+ * Spec: docs/plans/video-editor-playback-v2-phase2/spec.md §3.2.8.
+ * When v2 hits an unrecoverable error it writes here; subsequent reads of
+ * the flag return false (highest priority) until cleared.
+ */
+const KILL_SWITCH_KEY = 'ecliptrix-playback-v2-killswitch';
 
 export type PlaybackFlagSource =
+  | 'kill-switch'
   | 'url-query'
   | 'local-storage'
   | 'session-remote'
@@ -49,6 +56,12 @@ export function isPlaybackV2Enabled(): boolean {
 export function resolvePlaybackFlag(): PlaybackFlagResolution {
   if (typeof window === 'undefined') {
     return { enabled: false, source: 'default' };
+  }
+
+  // (Phase 2 spec §3.2.8) Kill-switch — highest priority. Once tripped,
+  // v2 stays off regardless of other sources until manually cleared.
+  if (readKillSwitch()) {
+    return { enabled: false, source: 'kill-switch' };
   }
 
   // (Spec 08) URL query override, dev/staging only.
@@ -106,12 +119,36 @@ export function clearRemotePlaybackFlagCache(): void {
 }
 
 /**
+ * Trip the v2 kill-switch. After this returns, {@link isPlaybackV2Enabled}
+ * is `false` everywhere until {@link clearPlaybackV2KillSwitch} is called.
+ * Spec §3.2.8.
+ */
+export function tripPlaybackV2KillSwitch(reason: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(KILL_SWITCH_KEY, `${reason}:${Date.now()}`);
+  } catch {
+    // ignore
+  }
+}
+
+export function clearPlaybackV2KillSwitch(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(KILL_SWITCH_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Storage key constants exposed for tests / DevTools.
  */
 export const PLAYBACK_FLAG_KEYS = {
   storage: STORAGE_KEY,
   sessionRemote: SESSION_REMOTE_KEY,
   urlQuery: URL_QUERY_KEY,
+  killSwitch: KILL_SWITCH_KEY,
 } as const;
 
 const REMOTE_TTL_MS = 10 * 60 * 1000;
@@ -165,6 +202,14 @@ function readSessionRemoteFlag(): boolean | null {
     return parsed.value;
   } catch {
     return null;
+  }
+}
+
+function readKillSwitch(): boolean {
+  try {
+    return window.localStorage.getItem(KILL_SWITCH_KEY) != null;
+  } catch {
+    return false;
   }
 }
 

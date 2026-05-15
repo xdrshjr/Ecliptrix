@@ -345,3 +345,5 @@ graph TD
 ## 评审修订（v2，2026-05-15）
 
 - §4.4 / §6：撤回"新增 `cursorCompositionTime` 字段"，改为复用既有 `currentTime` 并语义升级；新增 §4.4.1 迁移与回退条款；明确仅 `PlayheadController` + ruler 拖动两条路径允许写入。修订理由：master-plan v2 §0.2 F2。本 spec 其余段落出现的 "compositionTime" 名词均指同一真值，落地映射到 store 的 `currentTime`。
+
+- §4.4 / §6 (Phase 2 实施确认，2026-05-16)：实施 docs/plans/video-editor-playback-v2-phase2 时已落地——PlaybackEngine v2 的写入路径全部经由 PlayheadController.bindOnWrite → timeline.setCurrentTime；未新增 cursorCompositionTime 字段，与本节修订一致。

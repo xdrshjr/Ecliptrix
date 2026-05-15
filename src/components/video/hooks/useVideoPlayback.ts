@@ -3,6 +3,7 @@ import { UseVideoPlaybackReturn, PreviewQuality } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { mockVideoPreview } from '../data';
 import { formatTimelineTime } from '@/components/video/timeline/timeFormat';
+import { isPlaybackV2Enabled } from '@/lib/playbackFlags';
 
 /**
  * useVideoPlayback Hook
@@ -169,9 +170,14 @@ export const useVideoPlayback = (
   );
 
   // 模拟视频播放时间更新
+  // Spec: docs/plans/video-editor-playback-v2-phase2/spec.md §四(R5).
+  // When playback v2 is enabled, the engine drives the cursor; this legacy
+  // simulator must not run in parallel or it produces a double-driver.
+  const playbackV2Enabled = useMemo(() => isPlaybackV2Enabled(), []);
   useEffect(() => {
+    if (playbackV2Enabled) return;
     let intervalId: NodeJS.Timeout;
-    
+
     if (isPlaying) {
       logger.info('开始视频播放模拟', {
         startTime: currentTime,
@@ -216,7 +222,7 @@ export const useVideoPlayback = (
         clearInterval(intervalId);
       }
     };
-  }, [isPlaying, playbackRate, logger]);
+  }, [isPlaying, playbackRate, logger, playbackV2Enabled]);
 
   // 注意：键盘快捷键支持已移至VideoEditingInterface级别，以支持全局空格键播放/暂停功能
 

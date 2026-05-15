@@ -8,12 +8,19 @@
 export { PlaybackEngine } from './PlaybackEngine';
 export type { PlaybackEngineDeps } from './PlaybackEngine';
 export { PlaybackClock } from './PlaybackClock';
-export { PlayheadController } from './PlayheadController';
+export type { PlaybackClockOptions } from './PlaybackClock';
+export { PlayheadController, bindToTimelineStore } from './PlayheadController';
 export type { PlayheadControllerOptions } from './PlayheadController';
 export { AbBufferController } from './AbBufferController';
 export type { AbBufferElements } from './AbBufferController';
 export { CanvasCompositor } from './CanvasCompositor';
-export type { CompositorStats } from './CanvasCompositor';
+export { PlaybackTelemetry, PLAYBACK_EVENTS } from './telemetry';
+export type {
+  PlaybackTelemetryOptions,
+  TelemetryEvent,
+  TelemetryTags,
+  PlaybackEventName,
+} from './telemetry';
 export type {
   IPlaybackEngine,
   IPlaybackClock,
@@ -25,4 +32,11 @@ export type {
   PlaybackPhase,
   PreviewFrame,
   SequenceTarget,
+  OverlayPayload,
+  SubtitlePayload,
+  SubtitleStyle,
+  CompositorStats,
+  PlaybackTimelineFacade,
+  PlaybackSequenceResolver,
+  PlaybackEngineAttachDeps,
 } from './types';

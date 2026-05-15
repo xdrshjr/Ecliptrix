@@ -24,11 +24,16 @@ const src = readFileSync(FILE, 'utf-8');
 
 describe('VideoPlayerPanel — playback v2 feature flag', () => {
   it('imports isPlaybackV2Enabled from @/lib/playbackFlags', () => {
-    expect(src).toMatch(/import\s*\{\s*isPlaybackV2Enabled\s*\}\s*from\s*['"]@\/lib\/playbackFlags['"]/);
+    // Phase 2 (spec docs/plans/video-editor-playback-v2-phase2) groups
+    // additional flag-helpers in the same import; the named binding may be
+    // anywhere in a multi-line import list.
+    expect(src).toMatch(/import\s*\{[^}]*\bisPlaybackV2Enabled\b[^}]*\}\s*from\s*['"]@\/lib\/playbackFlags['"]/);
   });
 
   it('imports PlaybackEngine from the new playback module', () => {
-    expect(src).toMatch(/import\s*\{\s*PlaybackEngine\s*\}\s*from\s*['"]\.\.\/\.\.\/playback['"]/);
+    // Same reason as above — Round 2 expands the import to include facades
+    // (PlaybackTimelineFacade / PlaybackSequenceResolver / OverlayPayload).
+    expect(src).toMatch(/import\s*\{[\s\S]*?\bPlaybackEngine\b[\s\S]*?\}\s*from\s*['"]\.\.\/\.\.\/playback['"]/);
   });
 
   it('locks the flag with useMemo(..., []) at mount per spec 01 §5.1', () => {

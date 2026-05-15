@@ -25,8 +25,14 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
-import { isPlaybackV2Enabled } from '@/lib/playbackFlags';
-import { PlaybackEngine } from '../../playback';
+import { isPlaybackV2Enabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
+import {
+  PlaybackEngine,
+  type OverlayPayload,
+  type PlaybackTimelineFacade,
+  type PlaybackSequenceResolver,
+} from '../../playback';
+import PreviewSurface from './PreviewSurface';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -152,6 +158,21 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   if (playbackV2Enabled && !playbackEngineRef.current) {
     playbackEngineRef.current = new PlaybackEngine();
   }
+  // Spec §3.2.8 — when engine signals an unrecoverable error, trip the
+  // kill-switch and remount the panel so subsequent renders fall back to
+  // legacy. The killswitch makes isPlaybackV2Enabled() return false on the
+  // next mount of the panel (flag is locked at mount per spec 01 §5.1).
+  const handleV2KillSwitch = useCallback((reason: string) => {
+    tripPlaybackV2KillSwitch(reason);
+    if (typeof window !== 'undefined') {
+      // Soft reload — let React unmount cleanly so engine.dispose() runs.
+      try {
+        window.location.reload();
+      } catch {
+        // ignore — tests / SSR
+      }
+    }
+  }, []);
 
   // 基于翻译的视频比例配置
   const ASPECT_RATIOS = useMemo((): AspectRatio[] => [
@@ -365,6 +386,60 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     },
     [materials, getSequencePreviewSrc, logger],
   );
+
+  // ----------------------------------------------------------------------
+  // Playback v2 — facade / resolver / overlays provider (spec §3.1, §5.1).
+  // Built unconditionally but only consumed when `playbackV2Enabled` is true.
+  // ----------------------------------------------------------------------
+  const v2Sequences = useMemo(
+    () => compositionPlayback?.videoSequences ?? [],
+    [compositionPlayback],
+  );
+  const v2TotalDuration = useMemo(
+    () => v2Sequences.reduce((sum, s) => sum + (s.duration || 0), 0),
+    [v2Sequences],
+  );
+  const v2Timeline = useMemo<PlaybackTimelineFacade>(
+    () => ({
+      getCurrentTime: () => currentTimelineTime ?? compositionCurrentTimeRef.current ?? 0,
+      setCurrentTime: (t: number) => {
+        if (onTimelineTimeUpdate) onTimelineTimeUpdate(t);
+        if (onCompositionTimeUpdate) onCompositionTimeUpdate(t);
+      },
+      getTotalDuration: () => v2TotalDuration,
+      findSequenceAtCompositionTime: (t: number) => {
+        const r = findSequenceAtCompositionTime(v2Sequences, t);
+        if (!r) return null;
+        return {
+          sequence: r.sequence,
+          index: r.index,
+          offset: r.offset,
+          startTime: r.startTime,
+        };
+      },
+      getSequences: () => v2Sequences,
+    }),
+    [
+      currentTimelineTime,
+      onTimelineTimeUpdate,
+      onCompositionTimeUpdate,
+      v2TotalDuration,
+      v2Sequences,
+    ],
+  );
+  const v2Resolver = useMemo<PlaybackSequenceResolver>(
+    () => ({
+      resolveSrc: (seq) =>
+        resolveSequencePlaybackUrl(seq, materials || [])?.url ??
+        getSequencePreviewSrc(seq),
+      mapToMediaTime: (seq, sequenceOffset) =>
+        mapTimelineTimeToVideoTime(seq, sequenceOffset),
+    }),
+    [materials, getSequencePreviewSrc],
+  );
+  // Phase 2 ships without compositor overlays; Phase 3 will project the
+  // ImageOverlay / Subtitle React tree into OverlayPayload shapes here.
+  const v2OverlaysProvider = useCallback<() => OverlayPayload[]>(() => [], []);
 
   // 仅引导态使用：包一层 try/catch，把 NoPlayableSourceError 翻译成 toast。
   const surfaceNoPlayableSource = useCallback(
@@ -1650,6 +1725,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
+    // Playback v2 intercept — when the flag is on, dispatch to the engine
+    // and skip the legacy bootstrap path entirely (spec §3.1).
+    if (playbackV2Enabled && playbackEngineRef.current) {
+      const engine = playbackEngineRef.current;
+      const phase = engine.getPhase();
+      if (phase === 'playing' || phase === 'preparing') {
+        engine.dispatch({ kind: 'pause' });
+      } else {
+        engine.dispatch({ kind: 'play' });
+      }
+      return;
+    }
     if (playbackMode === 'composition') {
       logger.userAction('组合播放/暂停切换', 'compositionPlayPauseButton', {
         currentState: isCompositionPlaying ? '播放中' : '已暂停',
@@ -1880,7 +1967,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, currentTimelineTime, onCompositionPlayPause, onSequenceIndexUpdate, handlePlayPause, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, lockSeekUntilSeeked, releaseSeekLock, logger, updateCompositionCurrentTime, assignSequenceSrc, surfaceNoPlayableSource]);
+  }, [playbackV2Enabled, playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, currentTimelineTime, onCompositionPlayPause, onSequenceIndexUpdate, handlePlayPause, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, lockSeekUntilSeeked, releaseSeekLock, logger, updateCompositionCurrentTime, assignSequenceSrc, surfaceNoPlayableSource]);
 
   // 新增：核心组合播放跳转函数，可被timeline和播放器UI调用
   const handleCompositionSeek = useCallback(async (
@@ -2533,14 +2620,37 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   }}
                   onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
                 >
+                  {/* Playback v2 — real canvas + hidden video managed by PlaybackEngine.
+                      Spec docs/plans/video-editor-playback-v2-phase2/spec.md §4.1. */}
+                  {playbackV2Enabled && playbackEngineRef.current && (
+                    <PreviewSurface
+                      variant="v2"
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        zIndex: 2,
+                      }}
+                      v2={{
+                        engine: playbackEngineRef.current,
+                        timeline: v2Timeline,
+                        resolver: v2Resolver,
+                        overlaysProvider: v2OverlaysProvider,
+                        onKillSwitch: handleV2KillSwitch,
+                      }}
+                    />
+                  )}
                   {/* 视频元素 - 完全填充容器，保持宽高比稳定 */}
                   <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
-                    style={{ 
-                      width: '100%', 
+                    style={{
+                      width: '100%',
                       height: '100%',
-                      display: 'block', // 确保video元素正确显示
+                      // v2 hides the legacy element so it never competes with
+                      // the canvas surface for playback / audio resources.
+                      display: playbackV2Enabled ? 'none' : 'block',
                       backgroundColor: 'transparent' // 避免背景色影响
                     }}
                     preload="metadata"
