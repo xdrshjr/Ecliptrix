@@ -388,12 +388,62 @@ class Settings(BaseModel):
     # NOTE: a Volcano APPID's TTS authorization is independent from its ASR
     # authorization — when the same APPID does not have ASR enabled, transcription
     # will fail. In that case set VOLCANO_ASR_* explicitly to an ASR-enabled APPID.
-    volcano_asr_appid: str = Field(default="", description="Volcano ASR App ID")
+    volcano_asr_appid: str = Field(default="", description="Volcano ASR App ID (LEGACY V1, used only by voice-clone or legacy code paths)")
     volcano_asr_access_token: str = Field(
-        default="", description="Volcano ASR Access Token"
+        default="", description="Volcano ASR Access Token (LEGACY V1)"
     )
     volcano_asr_secret_key: str = Field(
-        default="", description="Volcano ASR Secret Key"
+        default="", description="Volcano ASR Secret Key (LEGACY V1)"
+    )
+
+    # ASR streaming (大模型流式语音识别 WebSocket). Migrated 2026-05-15 — the
+    # previous V3 file-submit path required a publicly fetchable audio URL,
+    # which production cannot guarantee. The streaming endpoint authenticates
+    # with the legacy-console headers (X-Api-App-Key + X-Api-Access-Key) we
+    # already provision via VOLCANO_ASR_APPID / ***REMOVED***.
+    # `volcano_asr_api_key` is retained for forward compatibility with the
+    # new-console single-key handshake; it is **not** required for the
+    # WebSocket path.
+    volcano_asr_api_key: str = Field(
+        default="",
+        description=(
+            "Volcano ASR new-console API Key (single X-Api-Key handshake). "
+            "Not required by the WebSocket streaming path — kept for the "
+            "future migration to the new-console UUID key."
+        ),
+    )
+    volcano_asr_resource_id: str = Field(
+        default="volc.bigasr.sauc.duration",
+        description=(
+            "Volcano ASR streaming resource id (X-Api-Resource-Id header). "
+            "Choose the variant that matches the billing tier enabled on the "
+            "Volcano console: "
+            "'volc.bigasr.sauc.duration' (豆包流式语音识别 1.0, 小时版, default), "
+            "'volc.bigasr.sauc.concurrent' (豆包流式语音识别 1.0, 并发版), "
+            "'volc.seedasr.sauc.duration' (2.0 小时版), "
+            "'volc.seedasr.sauc.concurrent' (2.0 并发版)."
+        ),
+    )
+    asr_max_clip_seconds: int = Field(
+        default=300,
+        description=(
+            "Hard cap on per-clip audio duration before the ASR service "
+            "rejects the request with ASR_CLIP_TOO_LONG. The streaming "
+            "nostream endpoint's practical upload budget is ~300 s; longer "
+            "clips should be split client-side."
+        ),
+    )
+
+    # Public-facing base URL for this deployment. Retained for legacy callers
+    # (V3 file-submit, voice-clone audio fetch links). The new ASR WebSocket
+    # path streams bytes directly and does **not** read this value.
+    public_base_url: str = Field(
+        default="",
+        description=(
+            "Public HTTPS base URL of this deployment (no trailing slash). "
+            "Optional — no longer required by the ASR path. "
+            "Example: https://ecliptrix.com"
+        ),
     )
 
     # Volcano Voice Clone Configuration
@@ -700,6 +750,14 @@ def get_settings() -> Settings:
         volcano_asr_secret_key=os.getenv(
             "VOLCANO_ASR_SECRET_KEY", os.getenv("VOLCANO_TTS_SECRET_KEY", "")
         ),
+        volcano_asr_api_key=os.getenv(
+            "VOLCANO_ASR_API_KEY", os.getenv("VOLCANO_TTS_API_KEY", "")
+        ),
+        volcano_asr_resource_id=os.getenv(
+            "VOLCANO_ASR_RESOURCE_ID", "volc.bigasr.sauc.duration"
+        ),
+        asr_max_clip_seconds=int(os.getenv("ASR_MAX_CLIP_SECONDS", "300")),
+        public_base_url=os.getenv("PUBLIC_BASE_URL", ""),
         volcano_voice_clone_app_key=os.getenv(
             "VOLCANO_VOICE_CLONE_APP_KEY", os.getenv("VOLCANO_TTS_APPID", "")
         ),

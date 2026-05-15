@@ -111,14 +111,14 @@ async def transcribe_audio(
         logger.info(f"临时文件保存成功: {temp_file_path}, 大小: {file_size} bytes")
 
         # 处理音频转字幕
-        result = audio_transcription_service.process_audio_file(
-            audio_path=temp_file_path,
-            language=language,
+        result = await audio_transcription_service.aprocess_audio_file(
+            temp_file_path,
+            language,
             use_itn=use_itn,
             use_punc=use_punc,
             max_lines=max_lines,
             words_per_line=words_per_line,
-            generate_srt_file=generate_srt_file
+            generate_srt_file=generate_srt_file,
         )
 
         if result["success"]:
@@ -127,7 +127,7 @@ async def transcribe_audio(
                 "subtitle_count": result.get("subtitle_count", 0),
                 "processing_time": result["processing_time"]
             })
-            
+
             return AudioTranscriptionResponse(
                 job_id=result["job_id"],
                 subtitles=result["subtitles"],
@@ -139,16 +139,17 @@ async def transcribe_audio(
             )
         else:
             logger.error("音频转字幕失败", {
-                "error": result["error"],
+                "error": result.get("error") or result.get("error_message"),
                 "processing_time": result["processing_time"]
             })
-            
+
             return AudioTranscriptionErrorResponse(
-                error=result["error"],
-                error_code="TRANSCRIPTION_FAILED",
+                error=result.get("error") or result.get("error_message") or "TRANSCRIPTION_FAILED",
+                error_code=result.get("error_code") or "TRANSCRIPTION_FAILED",
                 details={
-                    "processing_time": result["processing_time"]
-                }
+                    "processing_time": result["processing_time"],
+                    **(result.get("error_details") or {}),
+                },
             )
 
     except Exception as e:
@@ -157,7 +158,7 @@ async def transcribe_audio(
             error=f"音频转字幕处理异常: {str(e)}",
             error_code="INTERNAL_ERROR"
         )
-    
+
     finally:
         # 清理临时文件
         if temp_file_path and os.path.exists(temp_file_path):
@@ -246,14 +247,14 @@ async def transcribe_local_audio(
             )
 
         # 处理音频转字幕
-        result = audio_transcription_service.process_audio_file(
-            audio_path=actual_file_path,
-            language=language,
+        result = await audio_transcription_service.aprocess_audio_file(
+            actual_file_path,
+            language,
             use_itn=use_itn,
             use_punc=use_punc,
             max_lines=max_lines,
             words_per_line=words_per_line,
-            generate_srt_file=generate_srt_file
+            generate_srt_file=generate_srt_file,
         )
 
         if result["success"]:
@@ -262,7 +263,7 @@ async def transcribe_local_audio(
                 "subtitle_count": result.get("subtitle_count", 0),
                 "processing_time": result["processing_time"]
             })
-            
+
             return AudioTranscriptionResponse(
                 job_id=result["job_id"],
                 subtitles=result["subtitles"],
@@ -274,16 +275,17 @@ async def transcribe_local_audio(
             )
         else:
             logger.error("本地音频转字幕失败", {
-                "error": result["error"],
+                "error": result.get("error") or result.get("error_message"),
                 "processing_time": result["processing_time"]
             })
-            
+
             return AudioTranscriptionErrorResponse(
-                error=result["error"],
-                error_code="TRANSCRIPTION_FAILED",
+                error=result.get("error") or result.get("error_message") or "TRANSCRIPTION_FAILED",
+                error_code=result.get("error_code") or "TRANSCRIPTION_FAILED",
                 details={
-                    "processing_time": result["processing_time"]
-                }
+                    "processing_time": result["processing_time"],
+                    **(result.get("error_details") or {}),
+                },
             )
 
     except Exception as e:
@@ -306,9 +308,8 @@ async def health_check():
     Returns:
         服务健康状态信息
     """
+    from datetime import datetime
     try:
-        # 检查服务配置
-        from datetime import datetime
         service_status = {
             "service": "audio_transcription",
             "status": "healthy",
@@ -316,14 +317,15 @@ async def health_check():
             "config": {
                 "appid_configured": bool(audio_transcription_service.appid),
                 "access_token_configured": bool(audio_transcription_service.access_token),
-                "secret_key_configured": bool(audio_transcription_service.secret_key),
-                "base_url": audio_transcription_service.base_url
-            }
+                "resource_id_configured": bool(audio_transcription_service.resource_id),
+                "resource_id": audio_transcription_service.resource_id,
+                "ws_url": audio_transcription_service.ws_url,
+            },
         }
-        
+
         logger.info("音频转字幕服务健康检查", service_status)
         return service_status
-        
+
     except Exception as e:
         logger.error(f"音频转字幕服务健康检查失败: {str(e)}")
         return {
@@ -382,13 +384,13 @@ async def batch_transcribe_audio(
         logger.info(f"开始批量音频转录处理，参数: language={request.language}, use_itn={request.use_itn}, use_punc={request.use_punc}")
         
         # 调用服务层进行批量转录
-        transcription_results = audio_transcription_service.transcribe_audio_urls(
-            audio_items=audio_items_data,
+        transcription_results = await audio_transcription_service.atranscribe_audio_urls(
+            audio_items_data,
             language=request.language,
             use_itn=request.use_itn,
             use_punc=request.use_punc,
             max_lines=request.max_lines,
-            words_per_line=request.words_per_line
+            words_per_line=request.words_per_line,
         )
         
         # 统计结果
@@ -532,11 +534,15 @@ async def search_audios(request: AudioSearchRequest) -> AudioSearchResponse:
         )
 
 
-@router.get("/health")
-async def audio_health_check():
+@router.get("/search/health")
+async def audio_search_health_check():
     """
-    Health check endpoint for audio search service.
-    
+    Health check endpoint for audio search (Freesound) service.
+
+    Renamed from `/audio/health` on 2026-05-15 to stop shadowing the
+    ASR-transcription health endpoint at the same path. See
+    `docs/plans/asr-websocket-streaming-fix/spec.md` RV-01.
+
     Returns:
         dict: Service health status
     """
