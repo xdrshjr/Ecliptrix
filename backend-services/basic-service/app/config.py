@@ -503,6 +503,12 @@ class Settings(BaseModel):
     # OSS Configuration
     oss: OSSConfig = Field(default_factory=OSSConfig)
 
+    # Media Proxy Configuration (spec 05)
+    media_proxy: "MediaProxyConfig" = Field(
+        default_factory=lambda: MediaProxyConfig(),
+        description="Same-origin proxy for remote video/image CDNs (spec 05).",
+    )
+
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
 
@@ -519,6 +525,29 @@ class Settings(BaseModel):
     app_version: str = Field(default="1.0.0", description="Application version")
 
     model_config = ConfigDict(env_file=".env", case_sensitive=False)
+
+
+class MediaProxyConfig(BaseModel):
+    """Same-origin remote-asset proxy (spec 05 §五).
+
+    Field defaults match the values in
+    ``backend-services/basic-service/config/media-proxy-config.yaml``; the
+    YAML loader in :func:`get_settings` overrides them at startup, and a
+    handful of env vars (``MEDIA_PROXY_MAX_SIZE_MB`` etc.) take final
+    precedence per CLAUDE.md "Priority: new env > YAML > default".
+    """
+
+    allowed_domains: List[str] = Field(default_factory=list)
+    signed_url_domains: List[str] = Field(default_factory=list)
+    fetch_timeout_seconds: int = 30
+    upstream_connect_timeout_seconds: int = 5
+    max_size_mb: int = 1024
+    concurrent_downloads: int = 16
+    hot_cache_dir: str = "static/uploads/cached_materials"
+    enable_http: bool = False
+    per_ip_rate_limit_per_min: int = 100
+    stream_chunk_size: int = 65536
+    oss_bucket_subprefix: str = "media-proxy-cache/"
 
 
 def load_yaml_config(config_path: str) -> Dict[str, Any]:
@@ -549,12 +578,14 @@ def get_settings() -> Settings:
     )
     upload_config_path = os.path.join(config_dir, "upload-config.yaml")
     storyboard_config_path = os.path.join(config_dir, "storyboard-config.yaml")
+    media_proxy_config_path = os.path.join(config_dir, "media-proxy-config.yaml")
 
     batch_tts_yaml_config = load_yaml_config(batch_tts_config_path)
     youtube_yaml_config = load_yaml_config(youtube_config_path)
     watermark_removal_yaml_config = load_yaml_config(watermark_removal_config_path)
     upload_yaml_config = load_yaml_config(upload_config_path)
     storyboard_yaml_config = load_yaml_config(storyboard_config_path)
+    media_proxy_yaml_config = load_yaml_config(media_proxy_config_path)
 
     # Create batch TTS config from YAML
     batch_tts_config = BatchTTSConfig()
@@ -703,6 +734,34 @@ def get_settings() -> Settings:
         invite_code=invite_code,
     )
 
+    # Create Media Proxy configuration (spec 05 §五)
+    mp_yaml = (media_proxy_yaml_config.get("proxy", {}) or {})
+    mp_oss_yaml = (media_proxy_yaml_config.get("oss", {}) or {})
+    media_proxy_config = MediaProxyConfig(
+        allowed_domains=list(mp_yaml.get("allowed_domains") or []),
+        signed_url_domains=list(mp_yaml.get("signed_url_domains") or []),
+        fetch_timeout_seconds=int(mp_yaml.get("fetch_timeout_seconds", 30)),
+        upstream_connect_timeout_seconds=int(
+            mp_yaml.get("upstream_connect_timeout_seconds", 5)
+        ),
+        max_size_mb=int(
+            os.getenv("MEDIA_PROXY_MAX_SIZE_MB") or mp_yaml.get("max_size_mb", 1024)
+        ),
+        concurrent_downloads=int(
+            os.getenv("MEDIA_PROXY_CONCURRENT_DOWNLOADS")
+            or mp_yaml.get("concurrent_downloads", 16)
+        ),
+        hot_cache_dir=str(
+            mp_yaml.get("hot_cache_dir", "static/uploads/cached_materials")
+        ),
+        enable_http=bool(mp_yaml.get("enable_http", False)),
+        per_ip_rate_limit_per_min=int(mp_yaml.get("per_ip_rate_limit_per_min", 100)),
+        stream_chunk_size=int(mp_yaml.get("stream_chunk_size", 65536)),
+        oss_bucket_subprefix=str(
+            mp_oss_yaml.get("bucket_subprefix", "media-proxy-cache/")
+        ),
+    )
+
     # Create OSS configuration
     oss_config = OSSConfig(
         enabled=os.getenv("OSS_ENABLED", "false").lower() == "true",
@@ -781,6 +840,7 @@ def get_settings() -> Settings:
         storage=storage_config,
         storyboard=storyboard_config,
         oss=oss_config,
+        media_proxy=media_proxy_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),

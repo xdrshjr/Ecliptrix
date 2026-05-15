@@ -25,6 +25,8 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
+import { isPlaybackV2Enabled } from '@/lib/playbackFlags';
+import { PlaybackEngine } from '../../playback';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -137,6 +139,19 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 初始化视频缓存Hook
   const videoCache = useVideoCache(taskId);
+
+  // Playback v2 feature flag — locked at mount via useMemo per spec 01 §5.
+  // Spec 01 §5.1 requires flag changes to take effect only on full reload to
+  // avoid mid-session state divergence.
+  const playbackV2Enabled = useMemo(() => isPlaybackV2Enabled(), []);
+  // Engine instance is allocated for the v2 branch; the legacy path ignores
+  // it. Spec 02 will wire real intent fan-out into VideoPlayerPanel's
+  // ImperativeHandle methods; for now keeping the reference here ensures
+  // tree-shaking does not drop the playback module.
+  const playbackEngineRef = useRef<PlaybackEngine | null>(null);
+  if (playbackV2Enabled && !playbackEngineRef.current) {
+    playbackEngineRef.current = new PlaybackEngine();
+  }
 
   // 基于翻译的视频比例配置
   const ASPECT_RATIOS = useMemo((): AspectRatio[] => [

@@ -497,6 +497,21 @@ from app.routers import video_project_router
 
 app.include_router(video_project_router.router, prefix="/api")
 
+# Import and include Media Proxy router (spec 05 — same-origin remote asset proxy)
+from app.routers import media_proxy_router
+
+app.include_router(media_proxy_router.router, prefix="/api")
+
+# Import and include Telemetry router (spec 08 — playback v2 batch intake)
+from app.routers import telemetry_router
+
+app.include_router(telemetry_router.router, prefix="/api")
+
+# Import and include Config router (spec 08 — runtime feature-flag resolution)
+from app.routers import config_router
+
+app.include_router(config_router.router, prefix="/api")
+
 # Import and include Video Cover router (per-project thumbnail/cover authoring)
 from app.routers import video_cover as video_cover_router
 

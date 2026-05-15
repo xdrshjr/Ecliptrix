@@ -3,7 +3,7 @@ SQLAlchemy ORM models for database tables.
 """
 
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON, Float, Integer, ForeignKey, UniqueConstraint, Index, func
+from sqlalchemy import BigInteger, Column, String, Boolean, DateTime, Text, JSON, Float, Integer, ForeignKey, UniqueConstraint, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -146,6 +146,12 @@ class CachedMaterial(Base):
     ref_count = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Media-proxy hot-cache fields (spec 05). Populated by media_proxy_service
+    # when a remote asset streams through /api/media/proxy.
+    proxy_status = Column(String(16), nullable=False, default="absent")
+    proxy_bytes_cached = Column(BigInteger, nullable=False, default=0)
+    proxy_last_updated = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="uq_cached_materials_source_id"),
