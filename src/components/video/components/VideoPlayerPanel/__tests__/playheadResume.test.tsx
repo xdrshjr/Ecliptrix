@@ -64,11 +64,14 @@ describe('VideoPlayerPanel — timeline-playhead-resume-playback', () => {
     expect(region).toMatch(/commitSeekThenPlay/);
   });
 
-  it('cross-source seek runs commitSeekThenPlay INSIDE the canplay handler (R4)', () => {
-    // Verifies the seek+play chains *after* canplay rather than racing it.
+  it('cross-source seek runs commitSeekThenPlay AFTER assignSequenceSrc resolves (R4)', () => {
+    // After the video-reentry-play-no-source-fix, the explicit canplay listener
+    // here was replaced with `await assignSequenceSrc(...)` which internally
+    // races loadedmetadata / canplay / error / timeout. The semantic guarantee
+    // (seek+play happens after the load completes) is preserved.
     const region = src.split('const seekAndPlayFromTimeline')[1] || '';
     expect(region).toMatch(
-      /addEventListener\('canplay',[\s\S]+?commitSeekThenPlay\(/,
+      /await\s+assignSequenceSrc\([\s\S]+?commitSeekThenPlay\(/,
     );
   });
 

@@ -1155,6 +1155,7 @@ export interface Translations {
       selectAspectRatio: string;
       selected: string;
     };
+    errorNoPlayableSource: string;
   };
   videoExportProgressModal: {
     title: string;
@@ -3970,6 +3971,7 @@ export const translations: Record<string, Translations> = {
         selectAspectRatio: 'Select aspect ratio',
         selected: 'selected',
       },
+      errorNoPlayableSource: 'Video source not playable. Please re-import the material or check the network.',
     },
     videoExportProgressModal: {
       title: 'Export Video',
@@ -6799,6 +6801,7 @@ export const translations: Record<string, Translations> = {
         selectAspectRatio: '选择宽高比',
         selected: '已选中',
       },
+      errorNoPlayableSource: '视频源不可播放，请重新导入素材或检查网络。',
     },
     videoExportProgressModal: {
       title: '导出视频',

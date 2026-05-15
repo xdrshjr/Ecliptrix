@@ -1167,6 +1167,10 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleAiImageGenerate,
     handleStoryboardGenerate,
     handleClearAllMaterials,
+    // Exposed for the preview pipeline so VideoPlayerPanel can repair stale
+    // cacheUrl entries when assignVideoSrcChecked falls back. See
+    // docs/plans/video-reentry-play-no-source-fix/spec.md §3.2a.
+    patchMaterialCache,
   };
 };
 
