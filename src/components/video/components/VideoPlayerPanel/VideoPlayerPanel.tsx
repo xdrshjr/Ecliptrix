@@ -11,7 +11,7 @@ import {
 } from '../../utils/timelineMapping';
 import { useVideoExport } from '../../hooks/useVideoExport';
 import { useVideoCache } from '../../hooks/useVideoCache';
-import { selectPlaybackUrl } from '../../lib/selectPlaybackUrl';
+import { selectPlaybackUrl, effectivePreviewUrl } from '../../lib/selectPlaybackUrl';
 import { resolveSequencePlaybackUrl } from '../../lib/resolveSequencePlaybackUrl';
 import {
   assignVideoSrcChecked,
@@ -429,9 +429,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   );
   const v2Resolver = useMemo<PlaybackSequenceResolver>(
     () => ({
-      resolveSrc: (seq) =>
-        resolveSequencePlaybackUrl(seq, materials || [])?.url ??
-        getSequencePreviewSrc(seq),
+      resolveSrc: (seq) => {
+        // Phase-3 §3.2.6 — when the sequence's material is hydrated with
+        // preview-proxy / cache fields we route through effectivePreviewUrl
+        // (P1–P5). Falls through to the legacy resolver chain otherwise.
+        const material = (materials || []).find((m) => m.id === seq.materialId);
+        if (material) {
+          const ep = effectivePreviewUrl(material, {
+            preferPreviewProxy: true,
+            fallback: 'proxy',
+          });
+          if (ep) return ep;
+        }
+        return (
+          resolveSequencePlaybackUrl(seq, materials || [])?.url ??
+          getSequencePreviewSrc(seq)
+        );
+      },
       mapToMediaTime: (seq, sequenceOffset) =>
         mapTimelineTimeToVideoTime(seq, sequenceOffset),
     }),

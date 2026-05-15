@@ -48,3 +48,25 @@ export const KILL_SWITCH_LS_KEY = 'ecliptrix-playback-v2-killswitch';
 
 /** Spec §3.2. PlayheadController throttle window. */
 export const PLAYHEAD_THROTTLE_MS = 16;
+
+// ---------------------------------------------------------------------------
+// Phase 3 — A/B Buffer + Preview Proxy
+// ---------------------------------------------------------------------------
+
+/** Phase-3 spec §3.2.3 / spec 04 §3.2. Lead time before sequence end at which prewarmNext fires. */
+export const PREWARM_LEAD_SEC = 1.0;
+
+/** Phase-3 spec §3.2.5 / spec 04 §5.5. Skip prewarm when next sequence shorter than this. */
+export const SHORT_CLIP_THRESHOLD_SEC = 1.5;
+
+/** Phase-3 spec §3.2.2 / spec 04. Max wait for `loadedmetadata` during bindActive. */
+export const BIND_LOADEDMETA_TIMEOUT_MS = 1000;
+
+/** Phase-3 spec §3.2.2 / spec 04. Max wait for `seeked` before forcing rebind. */
+export const BIND_SEEK_TIMEOUT_MS = 500;
+
+/** Phase-3 spec §3.2.1 / spec 07. MediaProxyClient watch poll cadence. */
+export const PREVIEW_PROXY_POLL_INTERVAL_MS = 2000;
+
+/** Phase-3 spec §3.2.1. Hard upper bound on preview-proxy watch budget (10 minutes). */
+export const PREVIEW_PROXY_POLL_BUDGET_MS = 600_000;

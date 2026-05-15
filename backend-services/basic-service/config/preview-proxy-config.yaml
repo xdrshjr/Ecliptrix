@@ -1,0 +1,47 @@
+# Preview Proxy configuration
+# Spec: docs/plans/video-editor-playback-optimization/specs/06-backend-preview-proxy-transcode.md §五
+#       docs/plans/video-editor-playback-v2-phase3/spec.md §3.2.7
+#
+# Override individual values via env vars:
+#   PREVIEW_PROXY_ENABLED          (bool — disables endpoint when "false")
+#   PREVIEW_PROXY_MAX_CONCURRENT   (parallel ffmpeg subprocesses)
+#   PREVIEW_PROXY_TIMEOUT_SECONDS  (per-job timeout for ffmpeg)
+#   PREVIEW_PROXY_OUTPUT_DIR       (output dir under STORAGE_ROOT)
+
+preview_proxy:
+  enabled: true
+  # Max concurrent ffmpeg jobs. Phase 3 ships with 2 to keep CPU pressure
+  # bounded on the 4-core dev box; bump in production via env.
+  max_concurrent_transcode: 2
+  # Per-job timeout in seconds. Long enough for a typical 1080p 30s clip on
+  # a slow CPU; if exceeded the subprocess is killed and the row is marked
+  # failed.
+  timeout_seconds: 600
+  # Status DB-write throttle (ms). Sub-second progress updates are noisy.
+  progress_write_interval_ms: 1000
+  # Retry once when ffmpeg exits non-zero before marking failed.
+  retry_attempts: 1
+  # Output directory under STORAGE_ROOT.
+  output_dir: "static/uploads/preview-proxies"
+
+# Profiles supported (first phase: 480p baseline only).
+# Spec 06 §四.2 dictates the exact ffmpeg arg set; service hard-codes the
+# baseline arguments rather than reading them here so the spec contract stays
+# explicit. This block is informational / future-proofing only.
+profiles:
+  preview-480p:
+    width: 854
+    height: 480
+    video_codec: "libx264"
+    profile: "baseline"
+    level: "3.1"
+    crf: 28
+    preset: "veryfast"
+    audio_codec: "aac"
+    audio_bitrate: "96k"
+    container: "mp4"
+    movflags: "+faststart+frag_keyframe+empty_moov"
+
+oss:
+  enabled_via: "OSS_ENABLED"
+  bucket_subprefix: "preview-proxies/"

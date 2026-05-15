@@ -785,6 +785,17 @@ export interface MaterialItem {
   cacheStatus?: MaterialCacheStatus;
   cacheUrl?: string; // 同源相对路径，例如 /api/storage/files/cached_materials/pexels/<file>.mp4
   cacheError?: string; // 缓存失败时的简短错误信息
+  // Phase 3 — backend preview-proxy + media-proxy mirror fields. Hydrated
+  // from /api/material/{ingest,lookup} responses; consumed by selectPlaybackUrl
+  // P1–P5 priority. See docs/plans/video-editor-playback-v2-phase3/spec.md §6.2.
+  previewProxyStatus?: 'absent' | 'queued' | 'running' | 'cached' | 'failed';
+  previewProxyProfile?: string;
+  previewProxyLocalUrl?: string;
+  previewProxyOssUrl?: string;
+  previewProxyProgress?: number;
+  proxyStatus?: 'absent' | 'partial' | 'cached' | 'error';
+  bytes?: number;
+  bitrate?: number;
   // 新增：上传状态相关字段
   uploadStatus?: MaterialUploadStatus; // 上传状态
   uploadProgress?: number; // 上传进度 (0-100)

@@ -54,14 +54,18 @@ export interface VideoCacheConfig {
 }
 
 const DEFAULT_CONFIG: VideoCacheConfig = {
-  // Bumped from 10 → 20 to absorb a typical multi-track timeline of remote
-  // assets. evict() is reliable now (see Rev-9 / F29) so the larger pool
+  // Phase-3 spec §4.1 G7 / N2: bumped from 20 → 32 so the typical
+  // cross-source multi-track timeline (many remote + preview-proxy assets)
+  // fits without thrashing the LRU. evict() is reliable so larger pool
   // doesn't leak DOM nodes.
-  maxCacheSize: 20,
+  maxCacheSize: 32,
   preloadTimeout: 30_000,
   enableLRU: true,
   sameOriginOnly: true,
 };
+
+/** Same-origin URL prefix served by the media-proxy router (spec 05). */
+export const MEDIA_PROXY_ORIGIN_PREFIX = '/api/media/proxy?';
 
 /**
  * Decide whether a URL is "ours" — i.e. served by the same origin or via
@@ -75,6 +79,10 @@ export function isSameOriginVideoUrl(url: string): boolean {
   // Relative paths under /api/storage/files/ are always same-origin once
   // the browser resolves them.
   if (url.startsWith('/api/storage/files/')) return true;
+  // Phase-3: media-proxy / preview-proxy endpoints are also same-origin so
+  // we cache assets that flow through them (spec §4.3 G7).
+  if (url.startsWith(MEDIA_PROXY_ORIGIN_PREFIX)) return true;
+  if (url.startsWith('/api/media/preview-proxy')) return true;
   if (url.startsWith('/')) return true;
   if (url.startsWith('blob:')) return true;
   if (url.startsWith('data:')) return true;
@@ -85,6 +93,9 @@ export function isSameOriginVideoUrl(url: string): boolean {
     if (u.origin === window.location.origin) return true;
     // Also accept absolute URLs that point at our static mount.
     if (u.pathname.startsWith('/api/storage/files/')) {
+      return u.host === window.location.host;
+    }
+    if (u.pathname.startsWith('/api/media/proxy') || u.pathname.startsWith('/api/media/preview-proxy')) {
       return u.host === window.location.host;
     }
     return false;
@@ -317,6 +328,96 @@ export class VideoCacheAdapter implements IVideoCachePort {
     if (el.parentNode) {
       el.parentNode.removeChild(el);
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Phase-3 helpers (spec §4.3 G7 / §3.2.6)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Touch a cache entry's `lastAccessed` so it's not the next victim of
+   * LRU eviction. Cheap — a single Map lookup. Phase-3 spec INV7 / G7.
+   */
+  markUsed(materialId: string): void {
+    const entry = this.cache.get(materialId);
+    if (!entry) return;
+    entry.lastAccessed = Date.now();
+  }
+
+  /**
+   * Preload a windowed slice of the upcoming timeline so the next swap
+   * doesn't cold-start the network. Concurrency is capped at 3 to avoid
+   * flooding the proxy / browser-level connection limit (INV7).
+   *
+   * Items already loaded are touched via {@link markUsed}. Cross-origin
+   * URLs (when `sameOriginOnly`) are silently no-op'd by `preloadVideo`.
+   */
+  async preloadSequenceWindow(
+    items: Array<{ materialId: string; url: string }>,
+  ): Promise<void> {
+    if (!Array.isArray(items) || items.length === 0) return;
+    const MAX_CONCURRENT = 3;
+    const queue = items.slice();
+    let active = 0;
+    return new Promise<void>((resolve) => {
+      const tryNext = () => {
+        if (queue.length === 0 && active === 0) {
+          resolve();
+          return;
+        }
+        while (active < MAX_CONCURRENT && queue.length > 0) {
+          const next = queue.shift()!;
+          active += 1;
+          // Touch existing entries so they don't evict before swap.
+          if (this.cache.has(next.materialId)) {
+            this.markUsed(next.materialId);
+            active -= 1;
+            tryNext();
+            continue;
+          }
+          this.preloadVideo(next.materialId, next.url)
+            .catch(() => {
+              // preloadVideo wraps reject into 'error' state; nothing
+              // more for the window helper to do.
+            })
+            .finally(() => {
+              active -= 1;
+              tryNext();
+            });
+        }
+      };
+      tryNext();
+    });
+  }
+
+  /** Approximate memory snapshot for diagnostics — bytes are best-effort. */
+  getMemoryStats(): {
+    elements: number;
+    capacity: number;
+    estimatedBytes: number;
+  } {
+    let estimatedBytes = 0;
+    this.cache.forEach((entry) => {
+      const el = entry.element;
+      const w = el.videoWidth || 0;
+      const h = el.videoHeight || 0;
+      const dur = el.duration || 0;
+      // Rough heuristic — baseline H.264 ~0.25 bytes/pixel/sec at 5 Mbps.
+      // This is wildly approximate but useful for logging trends.
+      if (w > 0 && h > 0 && dur > 0) {
+        estimatedBytes += Math.round(w * h * dur * 0.25);
+      }
+    });
+    return {
+      elements: this.cache.size,
+      capacity: this.config.maxCacheSize,
+      estimatedBytes,
+    };
+  }
+
+  /** Test seam — exposes the configured capacity without exporting fields. */
+  get _capacity(): number {
+    return this.config.maxCacheSize;
   }
 
   // -----------------------------------------------------------------------

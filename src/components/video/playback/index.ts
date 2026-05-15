@@ -11,8 +11,8 @@ export { PlaybackClock } from './PlaybackClock';
 export type { PlaybackClockOptions } from './PlaybackClock';
 export { PlayheadController, bindToTimelineStore } from './PlayheadController';
 export type { PlayheadControllerOptions } from './PlayheadController';
-export { AbBufferController } from './AbBufferController';
-export type { AbBufferElements } from './AbBufferController';
+export { AbBufferController, BufferError } from './AbBufferController';
+export type { AbBufferElements, AbBufferOptions } from './AbBufferController';
 export { CanvasCompositor } from './CanvasCompositor';
 export { PlaybackTelemetry, PLAYBACK_EVENTS } from './telemetry';
 export type {

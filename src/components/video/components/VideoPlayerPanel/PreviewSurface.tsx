@@ -114,6 +114,10 @@ const PreviewSurface = forwardRef<PreviewSurfaceHandle, PreviewSurfaceProps>(
       const attachDeps: PlaybackEngineAttachDeps = {
         canvas,
         activeVideo: video,
+        // Phase-3 §3.4 — supply the second buffer element so spec 04
+        // prewarm/swap fast-paths can engage. When the v2 mount only has
+        // one element bound the buffer degrades to single-video mode.
+        prewarmVideo: videoBRef.current,
         timeline: v2.timeline,
         resolver: v2.resolver,
         overlaysProvider: v2.overlaysProvider,

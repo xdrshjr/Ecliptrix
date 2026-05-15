@@ -502,6 +502,11 @@ from app.routers import media_proxy_router
 
 app.include_router(media_proxy_router.router, prefix="/api")
 
+# Import and include Preview Proxy router (spec 06 — FFmpeg low-bitrate ladder)
+from app.routers import preview_proxy_router
+
+app.include_router(preview_proxy_router.router, prefix="/api")
+
 # Import and include Telemetry router (spec 08 — playback v2 batch intake)
 from app.routers import telemetry_router
 

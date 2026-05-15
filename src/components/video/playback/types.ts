@@ -135,10 +135,45 @@ export interface IPlaybackClock {
 }
 
 export interface IAbBufferController {
+  /** Hot-swap the underlying `<video>` ref pair (PreviewSurface owns DOM). */
+  setElements(els: { a: HTMLVideoElement | null; b: HTMLVideoElement | null }): void;
+  /** Wire the compositor so swap fast-paths can flip the active source synchronously. */
+  setCompositor(c: ICanvasCompositor): void;
+  /** Wire the resolver used to derive a playable URL for a sequence. */
+  setResolver(r: PlaybackSequenceResolver): void;
+  /**
+   * Bind the active buffer to ``sequenceId`` at ``localTime``. Loads metadata,
+   * seeks, waits for ``seeked`` (or times out → hard rebind once). Returns
+   * the active `<video>` element.
+   */
   bindActive(sequenceId: string, localTime: number): Promise<HTMLVideoElement>;
+  /** Pre-load the next sequence into the prewarm buffer (no-op when idle). */
   prewarmNext(sequenceId: string): Promise<void>;
+  /**
+   * Same-tick boundary swap (phase-3 spec §5.1 / INV2).
+   *
+   * Always synchronous and always returns an `HTMLVideoElement`:
+   * - Fast path: prewarm is HAVE_FUTURE_DATA(3) and src matches → flip
+   *   role + return the new active. Old active is paused inside.
+   * - Fallback: prewarm not ready → return the old active and asynchronously
+   *   trigger ``bindActive(nextSeq.id, 0)``; report via ``subscribeError``
+   *   with ``{ code: 'short_clip_handover', el: 'active' }`` so the engine
+   *   parks in 'preparing' until the rebind completes.
+   *
+   * Returning a Promise here is forbidden — Engine `_onTick` does not await.
+   */
+  swapActive(): HTMLVideoElement;
   getActiveElement(): HTMLVideoElement | null;
+  getPrewarmElement(): HTMLVideoElement | null;
   releaseAll(): void;
+  /**
+   * Subscribe to errors surfaced by either buffer (active or prewarm).
+   * Returns an unsubscribe function. Phase-3 spec §3.4 — replaces the
+   * Round 2 direct `<video>` error binding inside the engine.
+   */
+  subscribeError(
+    handler: (err: { code: number | string; el: 'active' | 'prewarm' }) => void,
+  ): () => void;
 }
 
 export interface ICanvasCompositor {
@@ -182,11 +217,25 @@ export interface PlaybackSequenceResolver {
   resolveSrc: (sequence: VideoSequenceItem) => string | null;
   /** Map a sequence-local timeline offset to the underlying media time. */
   mapToMediaTime: (sequence: VideoSequenceItem, sequenceOffset: number) => number;
+  /**
+   * Look up a sequence by id. Phase-3 addition (recorded in spec §10 F1):
+   * the spec'd ``IAbBufferController.bindActive`` takes ``sequenceId``
+   * but the buffer needs the full sequence to call ``resolveSrc``. The
+   * engine wires this from ``timeline.getSequences()``.
+   */
+  getSequenceById?: (sequenceId: string) => VideoSequenceItem | null;
 }
 
 export interface PlaybackEngineAttachDeps {
   canvas: HTMLCanvasElement;
+  /** Equivalent to buffer A (the buffer-controller wires it up internally). */
   activeVideo: HTMLVideoElement;
+  /**
+   * Equivalent to buffer B (phase-3). Optional during rollback so single-video
+   * mounts still attach; when null the buffer degrades to one element and
+   * spec 04 prewarm/swap fast-paths cannot trigger.
+   */
+  prewarmVideo?: HTMLVideoElement | null;
   timeline: PlaybackTimelineFacade;
   resolver: PlaybackSequenceResolver;
   overlaysProvider: () => OverlayPayload[];

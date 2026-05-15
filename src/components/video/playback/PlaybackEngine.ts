@@ -2,13 +2,15 @@
  * Playback v2 — orchestration state machine.
  *
  * Spec: docs/plans/video-editor-playback-v2-phase2/spec.md §3.2 / §5.1
+ *       docs/plans/video-editor-playback-v2-phase3/spec.md §3.2.2 / §3.2.3 / §3.4
  *       docs/plans/video-editor-playback-optimization/specs/02-playback-state-machine.md §3.2
  *
- * Round 2 implementation: real state machine, single-sequence rAF driving,
- * drift correction, kill-switch fallback, and telemetry hooks.
+ * Phase 3 refactor: removes the direct `<video>` reference (`_activeVideo`)
+ * and routes all element access through the {@link AbBufferController}. The
+ * tick loop now also handles boundary prewarm + same-tick swap.
  */
 
-import { AbBufferController } from './AbBufferController';
+import { AbBufferController, BufferError } from './AbBufferController';
 import { CanvasCompositor } from './CanvasCompositor';
 import { PlaybackClock } from './PlaybackClock';
 import { PlayheadController } from './PlayheadController';
@@ -20,6 +22,8 @@ import {
   DRIFT_SOFT_MS,
   DRIFT_SOFT_RATE_DELTA,
   PREPARING_TIMEOUT_MS,
+  PREWARM_LEAD_SEC,
+  SHORT_CLIP_THRESHOLD_SEC,
   TICK_FPS_REPORT_INTERVAL_MS,
   VISIBILITY_RESUME_MAX_MS,
 } from './internal/constants';
@@ -29,6 +33,7 @@ import type {
   PlaybackIntent,
   PlaybackPhase,
 } from './types';
+import type { VideoSequenceItem } from '../types';
 
 export interface PlaybackEngineDeps {
   clock?: PlaybackClock;
@@ -42,6 +47,7 @@ export interface PlaybackEngineDeps {
 
 interface SequenceContext {
   index: number;
+  id: string;
   startTime: number;
   duration: number;
 }
@@ -58,8 +64,8 @@ export class PlaybackEngine implements IPlaybackEngine {
 
   // Attached deps
   private _deps: PlaybackEngineAttachDeps | null = null;
-  private _activeVideo: HTMLVideoElement | null = null;
   private _clockUnsub: (() => void) | null = null;
+  private _bufferErrorUnsub: (() => void) | null = null;
 
   // Runtime state
   private _rate = 1;
@@ -71,6 +77,7 @@ export class PlaybackEngine implements IPlaybackEngine {
   private _seekAbortToken = 0;
   private _killed = false;
   private _disposed = false;
+  private _prewarmTriggered = false;
 
   // Watchdog / sample / fps reporting
   private _prepareTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -90,7 +97,6 @@ export class PlaybackEngine implements IPlaybackEngine {
 
   // Visibility
   private _visibilityHandler: (() => void) | null = null;
-  private _videoErrorHandler: (() => void) | null = null;
 
   constructor(deps: PlaybackEngineDeps = {}) {
     this.clock = deps.clock ?? new PlaybackClock();
@@ -111,9 +117,30 @@ export class PlaybackEngine implements IPlaybackEngine {
       throw new Error('PlaybackEngine.attach: instance has been disposed');
     }
     this._deps = deps;
-    this._activeVideo = deps.activeVideo;
     try {
       this.compositor.attach(deps.canvas, deps.viewport ?? undefined);
+      // Bridge resolver + timeline lookup into the buffer so it can find
+      // sequences by id (phase-3 spec §3.4 / spec §10 F1).
+      const enhancedResolver = {
+        ...deps.resolver,
+        getSequenceById: (sequenceId: string): VideoSequenceItem | null => {
+          if (deps.resolver.getSequenceById) {
+            return deps.resolver.getSequenceById(sequenceId);
+          }
+          try {
+            const all = deps.timeline.getSequences();
+            return all.find((s) => s.id === sequenceId) ?? null;
+          } catch {
+            return null;
+          }
+        },
+      };
+      this.buffer.setElements({
+        a: deps.activeVideo,
+        b: deps.prewarmVideo ?? null,
+      });
+      this.buffer.setCompositor(this.compositor);
+      this.buffer.setResolver(enhancedResolver);
       this.compositor.setActiveSource(deps.activeVideo);
     } catch (err) {
       this._fatal(`compositor_attach_failed:${(err as Error)?.message ?? 'unknown'}`);
@@ -147,21 +174,28 @@ export class PlaybackEngine implements IPlaybackEngine {
       document.addEventListener('visibilitychange', this._visibilityHandler);
     }
 
-    if (this._activeVideo) {
-      this._videoErrorHandler = () => {
-        const code = this._activeVideo?.error?.code;
-        if (code === 3 /* DECODE */ || code === 4 /* SRC_NOT_SUPPORTED */) {
-          this._fatal(`video_error:${code}`);
-        } else {
-          this._telemetry?.count(PLAYBACK_EVENTS.STALLED_EVENT, {
-            reason: 'media_event',
-            code: code ?? 0,
-          });
-          this._setPhase('stalled');
-        }
-      };
-      this._activeVideo.addEventListener('error', this._videoErrorHandler);
-    }
+    this._bufferErrorUnsub = this.buffer.subscribeError((err) => {
+      const code = err.code;
+      if (typeof code === 'number' && (code === 3 /* DECODE */ || code === 4 /* SRC_NOT_SUPPORTED */)) {
+        this._fatal(`video_error:${code}`);
+        return;
+      }
+      if (code === 'short_clip_handover') {
+        // swapActive fallback path — engine parks in 'preparing' until the
+        // async bindActive completes (spec §3.2.3 (b) fallback branch).
+        this._telemetry?.count(PLAYBACK_EVENTS.STALLED_EVENT, {
+          reason: 'short_clip_handover',
+        });
+        this._setPhase('preparing');
+        void this._handleSwapFallbackRebind();
+        return;
+      }
+      this._telemetry?.count(PLAYBACK_EVENTS.STALLED_EVENT, {
+        reason: 'media_event',
+        code: typeof code === 'number' ? code : 0,
+      });
+      this._setPhase('stalled');
+    });
   }
 
   dispatch(intent: PlaybackIntent): void {
@@ -213,6 +247,8 @@ export class PlaybackEngine implements IPlaybackEngine {
     this.clock.stop();
     this._clockUnsub?.();
     this._clockUnsub = null;
+    this._bufferErrorUnsub?.();
+    this._bufferErrorUnsub = null;
     if (this._prepareTimerId !== null) {
       clearTimeout(this._prepareTimerId);
       this._prepareTimerId = null;
@@ -225,12 +261,8 @@ export class PlaybackEngine implements IPlaybackEngine {
       document.removeEventListener('visibilitychange', this._visibilityHandler);
       this._visibilityHandler = null;
     }
-    if (this._activeVideo && this._videoErrorHandler) {
-      this._activeVideo.removeEventListener('error', this._videoErrorHandler);
-      this._videoErrorHandler = null;
-    }
     try {
-      this._activeVideo?.pause();
+      this._activeEl()?.pause();
     } catch {
       // ignore
     }
@@ -258,6 +290,7 @@ export class PlaybackEngine implements IPlaybackEngine {
       hardResyncTrip: this._hardResyncTrip,
       killed: this._killed,
       disposed: this._disposed,
+      prewarmTriggered: this._prewarmTriggered,
     };
   }
 
@@ -266,7 +299,7 @@ export class PlaybackEngine implements IPlaybackEngine {
   // ------------------------------------------------------------------
 
   private async _handlePlay(): Promise<void> {
-    if (!this._deps || !this._activeVideo) return;
+    if (!this._deps) return;
     if (this._phase === 'playing' || this._phase === 'preparing') return;
 
     this._intentStartWall = this._now();
@@ -286,14 +319,25 @@ export class PlaybackEngine implements IPlaybackEngine {
         return;
       }
 
-      await this._loadSequenceIfNeeded(seq, comp - seq.startTime);
+      this._armPrepareWatchdog();
+      let video: HTMLVideoElement;
+      try {
+        video = await this.buffer.bindActive(seq.id, comp - seq.startTime);
+      } catch (err) {
+        this._clearPrepareWatchdog();
+        const reason = err instanceof BufferError ? err.reason : (err as Error)?.message;
+        this._telemetry?.count(PLAYBACK_EVENTS.ERROR, {
+          code: 'bind_active_failed',
+          message: reason ?? 'unknown',
+        });
+        this._setPhase('stalled');
+        return;
+      }
 
-      const video = this._activeVideo;
       video.playbackRate = this._rate;
       video.volume = this._volume;
       video.muted = this._volume <= 0;
 
-      this._armPrepareWatchdog();
       try {
         await video.play();
       } catch (err) {
@@ -307,6 +351,8 @@ export class PlaybackEngine implements IPlaybackEngine {
       }
       this._clearPrepareWatchdog();
 
+      this._activeSeq = seq;
+      this._prewarmTriggered = false;
       this.clock.start(comp, this._now(), this._rate);
       this._setPhase('playing');
     } catch (err) {
@@ -317,9 +363,10 @@ export class PlaybackEngine implements IPlaybackEngine {
   private _handlePause(): void {
     if (!this._deps) return;
     this.clock.stop();
-    if (this._activeVideo) {
+    const el = this._activeEl();
+    if (el) {
       try {
-        this._activeVideo.pause();
+        el.pause();
       } catch {
         // ignore
       }
@@ -328,7 +375,7 @@ export class PlaybackEngine implements IPlaybackEngine {
   }
 
   private async _handleSeek(t: number): Promise<void> {
-    if (!this._deps || !this._activeVideo) return;
+    if (!this._deps) return;
     const wasPlaying = this._phase === 'playing';
     const token = ++this._seekAbortToken;
     this.clock.stop();
@@ -340,28 +387,24 @@ export class PlaybackEngine implements IPlaybackEngine {
       return;
     }
     const localOffset = Math.max(0, t - seq.startTime);
+    let video: HTMLVideoElement;
     try {
-      await this._loadSequenceIfNeeded(seq, localOffset);
+      video = await this.buffer.bindActive(seq.id, localOffset);
     } catch (err) {
       this._fatal(`seek_load:${(err as Error)?.message ?? 'unknown'}`);
       return;
     }
     if (token !== this._seekAbortToken) return;
 
-    const mediaT = this._mapToMediaTime(seq.index, localOffset);
-    try {
-      this._activeVideo.currentTime = mediaT;
-    } catch {
-      // ignore
-    }
-
+    this._activeSeq = seq;
+    this._prewarmTriggered = false;
     this.playhead.forceSet(t);
     this._intentStartWall = this._now();
     this._firstFrameAfterIntent = true;
 
     if (wasPlaying) {
       try {
-        await this._activeVideo.play();
+        await video.play();
       } catch (err) {
         this._telemetry?.count(PLAYBACK_EVENTS.ERROR, {
           code: 'play_rejected_after_seek',
@@ -379,7 +422,7 @@ export class PlaybackEngine implements IPlaybackEngine {
         compositionTime: t,
         sequenceIndex: seq.index,
         sequenceLocalTime: localOffset,
-        source: this._activeVideo,
+        source: video,
       });
       this._setPhase('paused');
     }
@@ -390,8 +433,9 @@ export class PlaybackEngine implements IPlaybackEngine {
     const prev = this._rate;
     this._rate = rate;
     this.clock.setRate(rate);
-    if (this._activeVideo) {
-      this._activeVideo.playbackRate = rate;
+    const el = this._activeEl();
+    if (el) {
+      el.playbackRate = rate;
     }
     this._telemetry?.record(PLAYBACK_EVENTS.RATE_CHANGE, undefined, { from: prev, to: rate });
   }
@@ -400,9 +444,10 @@ export class PlaybackEngine implements IPlaybackEngine {
     if (!Number.isFinite(volume)) return;
     const v = Math.max(0, Math.min(1, volume));
     this._volume = v;
-    if (this._activeVideo) {
-      this._activeVideo.volume = v;
-      this._activeVideo.muted = v <= 0;
+    const el = this._activeEl();
+    if (el) {
+      el.volume = v;
+      el.muted = v <= 0;
     }
   }
 
@@ -411,9 +456,10 @@ export class PlaybackEngine implements IPlaybackEngine {
     this._bgPauseWallTime = this._now();
     this._bgPauseCompTime = this.clock.getCompositionTime();
     this.clock.stop();
-    if (this._activeVideo) {
+    const el = this._activeEl();
+    if (el) {
       try {
-        this._activeVideo.pause();
+        el.pause();
       } catch {
         // ignore
       }
@@ -421,7 +467,7 @@ export class PlaybackEngine implements IPlaybackEngine {
   }
 
   private async _handleReturnToForeground(): Promise<void> {
-    if (!this._deps || !this._activeVideo) return;
+    if (!this._deps) return;
     if (!this._wasRunningBeforeBg || this._bgPauseWallTime === null) return;
     const wallDelta = this._now() - this._bgPauseWallTime;
     this._bgPauseWallTime = null;
@@ -432,9 +478,10 @@ export class PlaybackEngine implements IPlaybackEngine {
         return;
       }
       const local = Math.max(0, this._bgPauseCompTime - seq.startTime);
+      let video: HTMLVideoElement;
       try {
-        this._activeVideo.currentTime = this._mapToMediaTime(seq.index, local);
-        await this._activeVideo.play();
+        video = await this.buffer.bindActive(seq.id, local);
+        await video.play();
       } catch (err) {
         this._telemetry?.count(PLAYBACK_EVENTS.ERROR, {
           code: 'play_rejected_after_visibility',
@@ -443,6 +490,7 @@ export class PlaybackEngine implements IPlaybackEngine {
         this._setPhase('paused');
         return;
       }
+      this._activeSeq = seq;
       this.clock.start(this._bgPauseCompTime, this._now(), this._rate);
       this._setPhase('playing');
     } else {
@@ -451,19 +499,21 @@ export class PlaybackEngine implements IPlaybackEngine {
   }
 
   // ------------------------------------------------------------------
-  // rAF tick
+  // rAF tick — phase-3 boundary detection
   // ------------------------------------------------------------------
 
   private _onTick(comp: number, deltaMs: number): void {
-    if (this._disposed || this._killed || !this._deps || !this._activeVideo) return;
+    if (this._disposed || this._killed || !this._deps) return;
+    const activeEl = this._activeEl();
+    if (!activeEl) return;
     try {
       const tl = this._deps.timeline;
       const total = tl.getTotalDuration();
       if (total > 0 && comp >= total) {
         this.clock.stop();
-        if (this._activeVideo && !this._activeVideo.paused) {
+        if (activeEl && !activeEl.paused) {
           try {
-            this._activeVideo.pause();
+            activeEl.pause();
           } catch {
             // ignore
           }
@@ -471,6 +521,63 @@ export class PlaybackEngine implements IPlaybackEngine {
         this.playhead.forceSet(total);
         this._setPhase('ended');
         return;
+      }
+
+      // (a) Prewarm next sequence ahead of boundary. Phase-3 §3.2.3 (a).
+      const seqCtx = this._activeSeq;
+      if (seqCtx && this._phase === 'playing') {
+        const end = seqCtx.startTime + seqCtx.duration;
+        if (!this._prewarmTriggered && comp >= end - PREWARM_LEAD_SEC) {
+          const next = this._sequenceAtIndex(seqCtx.index + 1);
+          if (next && (next.duration ?? 0) >= SHORT_CLIP_THRESHOLD_SEC) {
+            void this.buffer.prewarmNext(next.id);
+            this._prewarmTriggered = true;
+          }
+        }
+
+        // (b) Boundary swap. Phase-3 §3.2.3 (b) / INV2.
+        if (comp >= end) {
+          const next = this._sequenceAtIndex(seqCtx.index + 1);
+          if (!next) {
+            this.dispatch({ kind: 'pause' });
+            this._setPhase('ended');
+            return;
+          }
+          let newActive: HTMLVideoElement;
+          try {
+            newActive = this.buffer.swapActive();
+          } catch (err) {
+            this._fatal(`swap_failed:${(err as Error)?.message ?? 'unknown'}`);
+            return;
+          }
+          // swap returned old active (fallback) — engine already parked in
+          // 'preparing' via subscribeError. Skip frame for this tick.
+          if (this.buffer.getActiveElement() === newActive && newActive !== activeEl) {
+            // fast path: roles flipped, newActive is the prewarmed buffer.
+            this._activeSeq = {
+              index: seqCtx.index + 1,
+              id: next.id,
+              startTime: next.startTime ?? end,
+              duration: next.duration ?? 0,
+            };
+            this._prewarmTriggered = false;
+            try {
+              newActive.playbackRate = this._rate;
+              newActive.muted = this._volume === 0;
+              newActive.volume = this._volume;
+            } catch {
+              // ignore
+            }
+            try {
+              void newActive.play();
+            } catch {
+              // ignore — error path covered via subscribeError
+            }
+            this.compositor.setActiveSource(newActive);
+            // Reanchor clock without restarting rAF.
+            this.clock.reanchor(comp);
+          }
+        }
       }
 
       const seq = this._resolveSequenceAt(comp);
@@ -484,11 +591,12 @@ export class PlaybackEngine implements IPlaybackEngine {
         // ignore overlays errors (do not poison frame)
       }
 
+      const draw = this._activeEl();
       this.compositor.drawFrame({
         compositionTime: comp,
         sequenceIndex: seq.index,
         sequenceLocalTime: localTime,
-        source: this._activeVideo,
+        source: draw,
       });
 
       this.playhead.reportCompositionTime(comp);
@@ -505,33 +613,38 @@ export class PlaybackEngine implements IPlaybackEngine {
   // Helpers
   // ------------------------------------------------------------------
 
-  private async _loadSequenceIfNeeded(
-    target: SequenceContext,
-    localOffset: number,
-  ): Promise<void> {
-    if (!this._deps || !this._activeVideo) return;
-    const desiredSrc = this._resolveSrc(target.index);
-    if (!desiredSrc) {
-      throw new Error('no playable src for sequence ' + target.index);
-    }
-    const video = this._activeVideo;
-    const sameSrc =
-      this._activeSeq?.index === target.index &&
-      normalizeSrc(video.currentSrc) === normalizeSrc(desiredSrc);
-    if (!sameSrc) {
-      video.src = desiredSrc;
-      video.load();
-      await waitForReady(video, PREPARING_TIMEOUT_MS);
-    }
-    this._activeSeq = target;
-    const mediaT = this._mapToMediaTime(target.index, localOffset);
-    if (Math.abs(video.currentTime - mediaT) > 0.05) {
+  private async _handleSwapFallbackRebind(): Promise<void> {
+    if (!this._deps) return;
+    const cur = this._activeSeq;
+    if (!cur) return;
+    const next = this._sequenceAtIndex(cur.index + 1);
+    if (!next) return;
+    try {
+      const el = await this.buffer.bindActive(next.id, 0);
+      el.playbackRate = this._rate;
+      el.volume = this._volume;
+      el.muted = this._volume <= 0;
       try {
-        video.currentTime = mediaT;
+        await el.play();
       } catch {
         // ignore
       }
+      this._activeSeq = {
+        index: cur.index + 1,
+        id: next.id,
+        startTime: next.startTime ?? cur.startTime + cur.duration,
+        duration: next.duration ?? 0,
+      };
+      this._prewarmTriggered = false;
+      this.clock.reanchor(cur.startTime + cur.duration);
+      this._setPhase('playing');
+    } catch (err) {
+      this._fatal(`swap_fallback:${(err as Error)?.message ?? 'unknown'}`);
     }
+  }
+
+  private _activeEl(): HTMLVideoElement | null {
+    return this.buffer.getActiveElement();
   }
 
   private _resolveSequenceAt(comp: number): SequenceContext | null {
@@ -540,17 +653,16 @@ export class PlaybackEngine implements IPlaybackEngine {
     if (!r) return null;
     return {
       index: r.index,
+      id: r.sequence.id,
       startTime: r.startTime,
       duration: r.sequence.duration,
     };
   }
 
-  private _resolveSrc(index: number): string | null {
+  private _sequenceAtIndex(index: number): VideoSequenceItem | null {
     if (!this._deps) return null;
     const seqs = this._deps.timeline.getSequences();
-    const seq = seqs[index];
-    if (!seq) return null;
-    return this._deps.resolver.resolveSrc(seq);
+    return seqs[index] ?? null;
   }
 
   private _mapToMediaTime(index: number, sequenceOffset: number): number {
@@ -628,13 +740,14 @@ export class PlaybackEngine implements IPlaybackEngine {
   }
 
   private _maybeCorrectDrift(seqIndex: number, localTime: number): void {
-    if (!this._activeVideo) return;
+    const el = this._activeEl();
+    if (!el) return;
     const now = this._now();
     if (now - this._lastDriftSampleWall < DRIFT_SAMPLE_INTERVAL_MS) return;
     this._lastDriftSampleWall = now;
 
     const expectedMediaT = this._mapToMediaTime(seqIndex, localTime);
-    const actualMediaT = this._activeVideo.currentTime;
+    const actualMediaT = el.currentTime;
     const drift = Math.abs(actualMediaT - expectedMediaT) * 1000; // ms
 
     if (drift < DRIFT_SOFT_MS) {
@@ -645,7 +758,7 @@ export class PlaybackEngine implements IPlaybackEngine {
       // Soft correction.
       const direction = actualMediaT < expectedMediaT ? 1 : -1;
       try {
-        this._activeVideo.playbackRate = this._rate * (1 + direction * DRIFT_SOFT_RATE_DELTA);
+        el.playbackRate = this._rate * (1 + direction * DRIFT_SOFT_RATE_DELTA);
       } catch {
         // ignore
       }
@@ -654,9 +767,10 @@ export class PlaybackEngine implements IPlaybackEngine {
       }
       this._softCorrectionTimerId = setTimeout(() => {
         this._softCorrectionTimerId = null;
-        if (this._activeVideo) {
+        const cur = this._activeEl();
+        if (cur) {
           try {
-            this._activeVideo.playbackRate = this._rate;
+            cur.playbackRate = this._rate;
           } catch {
             // ignore
           }
@@ -667,7 +781,7 @@ export class PlaybackEngine implements IPlaybackEngine {
     }
     // Hard resync.
     try {
-      this._activeVideo.currentTime = expectedMediaT;
+      el.currentTime = expectedMediaT;
     } catch {
       // ignore
     }
@@ -694,7 +808,7 @@ export class PlaybackEngine implements IPlaybackEngine {
       // ignore
     }
     try {
-      this._activeVideo?.pause();
+      this._activeEl()?.pause();
     } catch {
       // ignore
     }
@@ -717,50 +831,4 @@ export class PlaybackEngine implements IPlaybackEngine {
     });
     this._listeners.forEach((l) => l(next));
   }
-}
-
-function normalizeSrc(src: string | null | undefined): string {
-  if (!src) return '';
-  try {
-    const u = new URL(src, typeof window !== 'undefined' ? window.location.href : 'http://localhost/');
-    return u.href;
-  } catch {
-    return src;
-  }
-}
-
-async function waitForReady(video: HTMLVideoElement, timeoutMs: number): Promise<void> {
-  if (video.readyState >= 3) return; // HAVE_FUTURE_DATA
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const cleanup = () => {
-      video.removeEventListener('loadeddata', onReady);
-      video.removeEventListener('canplay', onReady);
-      video.removeEventListener('error', onError);
-      if (timer) clearTimeout(timer);
-    };
-    const onReady = () => {
-      if (settled) return;
-      if (video.readyState >= 2) {
-        settled = true;
-        cleanup();
-        resolve();
-      }
-    };
-    const onError = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error('video load error'));
-    };
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error('video load timeout'));
-    }, timeoutMs);
-    video.addEventListener('loadeddata', onReady);
-    video.addEventListener('canplay', onReady);
-    video.addEventListener('error', onError);
-  });
 }

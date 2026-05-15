@@ -509,6 +509,12 @@ class Settings(BaseModel):
         description="Same-origin proxy for remote video/image CDNs (spec 05).",
     )
 
+    # Preview Proxy Configuration (spec 06 / phase-3)
+    preview_proxy: "PreviewProxyConfig" = Field(
+        default_factory=lambda: PreviewProxyConfig(),
+        description="FFmpeg low-bitrate transcode pipeline for hi-bitrate assets (spec 06).",
+    )
+
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
 
@@ -550,6 +556,25 @@ class MediaProxyConfig(BaseModel):
     oss_bucket_subprefix: str = "media-proxy-cache/"
 
 
+class PreviewProxyConfig(BaseModel):
+    """FFmpeg low-bitrate transcode pipeline (spec 06 §五 / phase-3 §3.2.7).
+
+    Field defaults match
+    ``backend-services/basic-service/config/preview-proxy-config.yaml``; the
+    YAML loader in :func:`get_settings` overrides them at startup, and a
+    handful of env vars take final precedence per CLAUDE.md "Priority: new
+    env > YAML > default".
+    """
+
+    enabled: bool = True
+    max_concurrent_transcode: int = 2
+    timeout_seconds: int = 600
+    progress_write_interval_ms: int = 1000
+    retry_attempts: int = 1
+    output_dir: str = "static/uploads/preview-proxies"
+    oss_bucket_subprefix: str = "preview-proxies/"
+
+
 def load_yaml_config(config_path: str) -> Dict[str, Any]:
     """Load YAML configuration file."""
     try:
@@ -579,6 +604,7 @@ def get_settings() -> Settings:
     upload_config_path = os.path.join(config_dir, "upload-config.yaml")
     storyboard_config_path = os.path.join(config_dir, "storyboard-config.yaml")
     media_proxy_config_path = os.path.join(config_dir, "media-proxy-config.yaml")
+    preview_proxy_config_path = os.path.join(config_dir, "preview-proxy-config.yaml")
 
     batch_tts_yaml_config = load_yaml_config(batch_tts_config_path)
     youtube_yaml_config = load_yaml_config(youtube_config_path)
@@ -586,6 +612,7 @@ def get_settings() -> Settings:
     upload_yaml_config = load_yaml_config(upload_config_path)
     storyboard_yaml_config = load_yaml_config(storyboard_config_path)
     media_proxy_yaml_config = load_yaml_config(media_proxy_config_path)
+    preview_proxy_yaml_config = load_yaml_config(preview_proxy_config_path)
 
     # Create batch TTS config from YAML
     batch_tts_config = BatchTTSConfig()
@@ -762,6 +789,37 @@ def get_settings() -> Settings:
         ),
     )
 
+    # Create Preview Proxy configuration (spec 06 / phase-3 §3.2.7)
+    pp_yaml = (preview_proxy_yaml_config.get("preview_proxy", {}) or {})
+    pp_oss_yaml = (preview_proxy_yaml_config.get("oss", {}) or {})
+    pp_enabled_env = os.getenv("PREVIEW_PROXY_ENABLED")
+    if pp_enabled_env is not None and pp_enabled_env != "":
+        pp_enabled = pp_enabled_env.lower() == "true"
+    else:
+        pp_enabled = bool(pp_yaml.get("enabled", True))
+    preview_proxy_config = PreviewProxyConfig(
+        enabled=pp_enabled,
+        max_concurrent_transcode=int(
+            os.getenv("PREVIEW_PROXY_MAX_CONCURRENT")
+            or pp_yaml.get("max_concurrent_transcode", 2)
+        ),
+        timeout_seconds=int(
+            os.getenv("PREVIEW_PROXY_TIMEOUT_SECONDS")
+            or pp_yaml.get("timeout_seconds", 600)
+        ),
+        progress_write_interval_ms=int(
+            pp_yaml.get("progress_write_interval_ms", 1000)
+        ),
+        retry_attempts=int(pp_yaml.get("retry_attempts", 1)),
+        output_dir=str(
+            os.getenv("PREVIEW_PROXY_OUTPUT_DIR")
+            or pp_yaml.get("output_dir", "static/uploads/preview-proxies")
+        ),
+        oss_bucket_subprefix=str(
+            pp_oss_yaml.get("bucket_subprefix", "preview-proxies/")
+        ),
+    )
+
     # Create OSS configuration
     oss_config = OSSConfig(
         enabled=os.getenv("OSS_ENABLED", "false").lower() == "true",
@@ -841,6 +899,7 @@ def get_settings() -> Settings:
         storyboard=storyboard_config,
         oss=oss_config,
         media_proxy=media_proxy_config,
+        preview_proxy=preview_proxy_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
