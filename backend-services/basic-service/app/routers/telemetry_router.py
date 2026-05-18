@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from app.logger import get_logger
@@ -55,10 +55,14 @@ class PlaybackTelemetryPayload(BaseModel):
         return v.lower()
 
 
-@router.post("/playback", status_code=status.HTTP_204_NO_CONTENT)
-async def ingest_playback_telemetry(payload: PlaybackTelemetryPayload) -> None:
+@router.post(
+    "/playback",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def ingest_playback_telemetry(payload: PlaybackTelemetryPayload) -> Response:
     if not payload.events:
-        return None
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     aggregator: PlaybackMetricsAggregator = get_playback_metrics_aggregator()
     for ev in payload.events:
         is_known = PlaybackMetricsAggregator.is_known_metric(ev.name)
@@ -89,4 +93,4 @@ async def ingest_playback_telemetry(payload: PlaybackTelemetryPayload) -> None:
                 "unknown_metric": (not is_known),
             },
         )
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
