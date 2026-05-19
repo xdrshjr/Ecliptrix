@@ -22,6 +22,8 @@ from app.routers import api_router
 from app.models import ErrorResponse
 from app.database import init_db, close_db
 from app.middleware.auth_middleware import SessionAuthMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.security.log_redact import redact_headers
 
 
 # Initialize logging
@@ -33,6 +35,10 @@ logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+# spec/05 V05-D — hpack DEBUG path logged 2 834 Bearer JWTs into
+# logs/app.log; quiet HTTP/2 internals to avoid future leakage.
+logging.getLogger("hpack").setLevel(logging.WARNING)
+logging.getLogger("h2").setLevel(logging.WARNING)
 
 # Configure watchfiles logging to reduce noise during video processing
 # When extracting video frames to temp directories, watchfiles detects these changes
@@ -168,12 +174,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 # Create FastAPI application
+# spec/06 V06-C — disable interactive docs / openapi.json in production so we
+# do not hand attackers a free endpoint enumeration. Dev keeps them on so
+# `npm run dev` + `uvicorn --reload` workflows continue to work unchanged.
+_is_dev_env = (getattr(settings, "env", "production") or "production").lower() in (
+    "development",
+    "dev",
+)
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="A basic FastAPI service with comprehensive logging and configuration management",
     lifespan=lifespan,
     debug=settings.debug,
+    docs_url="/docs" if _is_dev_env else None,
+    redoc_url="/redoc" if _is_dev_env else None,
+    openapi_url="/openapi.json" if _is_dev_env else None,
 )
 
 
@@ -191,14 +207,61 @@ app = FastAPI(
 # requests.)
 app.add_middleware(SessionAuthMiddleware)
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add CORS middleware (spec 02 §3 V02-A — env-driven allowlist).
+#
+# Production: only origins listed in CORS_ALLOWED_ORIGINS are allowed.
+# Empty list + ENV=production = deny all cross-origin (safe default).
+# Development: localhost:3000 / :3010 / 127.0.0.1:3000 / :3010 are merged in
+# automatically so `npm run dev` against a separately-running backend keeps
+# working without touching .env.
+#
+# CORS_LEGACY_WILDCARD=1 restores the pre-fix wildcard. EMERGENCY ROLLBACK
+# ONLY — known-vulnerable configuration.
+_dev_localhost_origins = [
+    "http://localhost:3000",
+    "http://localhost:3010",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3010",
+]
+_env_marker = (getattr(settings, "env", "production") or "production").lower()
+_configured_origins = list(getattr(settings, "cors_allowed_origins", []) or [])
+if _env_marker in ("development", "dev"):
+    _cors_origins = list(dict.fromkeys(_configured_origins + _dev_localhost_origins))
+else:
+    _cors_origins = _configured_origins
+
+if getattr(settings, "cors_legacy_wildcard", False):
+    logger.warning(
+        "CORS_LEGACY_WILDCARD=1 — restoring wildcard CORS. This is a "
+        "KNOWN VULNERABILITY (V02-A). Disable as soon as the rollback "
+        "window closes."
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    if _env_marker == "production" and not _cors_origins:
+        logger.warning(
+            "CORS_ALLOWED_ORIGINS is empty in production — all cross-origin "
+            "requests will be blocked. Set CORS_ALLOWED_ORIGINS in .env to "
+            "your frontend hostname(s)."
+        )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=bool(getattr(settings, "cors_allow_credentials", True)),
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    )
+
+# Add security response headers middleware (spec 02 §3 V02-B).
+# Registered AFTER CORS so it ends up OUTSIDE the CORS layer (Starlette LIFO).
+# Uses setdefault so it never overwrites a header explicitly set by a handler.
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.middleware("http")
@@ -215,9 +278,11 @@ async def logging_middleware(request: Request, call_next):
     """
     start_time = time.time()
 
-    # Log request
+    # Log request (spec/05 V05-D — headers are redacted before logging
+    # so Authorization / Cookie / X-Session-Token / X-Api-Key are not
+    # written to disk).
     logger.info(f"Request: {request.method} {request.url}")
-    logger.debug(f"Request headers: {dict(request.headers)}")
+    logger.debug(f"Request headers: {redact_headers(request.headers)}")
 
     try:
         # Process request
@@ -577,13 +642,17 @@ app.mount(
     name="timeline_exports",
 )
 
-# Mount static files for user uploads (storage service)
+# Storage files (spec/01 §V01-C): the anonymous StaticFiles mount was
+# replaced with an authenticated router that enforces an ownership model
+# (cached_materials/ public to any authenticated user; per-user paths
+# only readable by owner or admin) and sets X-Content-Type-Options:nosniff.
+# Still uses FileResponse internally so kernel sendfile is preserved.
 uploads_dir = (
     settings.storage.root if hasattr(settings, "storage") else "static/uploads"
 )
 os.makedirs(uploads_dir, exist_ok=True)
-app.mount(
-    "/api/storage/files", StaticFiles(directory=uploads_dir), name="storage_files"
-)
+from app.routers import storage_files_router  # noqa: E402
+
+app.include_router(storage_files_router.router, prefix="/api")
 
 logger.info("FastAPI application configured successfully")

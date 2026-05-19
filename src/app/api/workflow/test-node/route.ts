@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { verifySessionFromRequest } from '@/lib/auth/sessionGuard';
 
 // Type definitions for data formats
 type DataFormat = 'text/plain' | 'application/json' | 'array';
@@ -93,10 +94,28 @@ function convertFormat(from: DataFormat, to: DataFormat, data: any): any {
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     console.log('[API] POST /api/workflow/test-node - Request received');
-    
+
+    // V01-B (spec/01): require an authenticated session before executing
+    // any workflow node. Without this, anonymous callers can burn LLM /
+    // Tavily / Pexels / TTS quota and leak workflow context. We verify by
+    // delegating to the backend's `/api/auth/validate-session` endpoint
+    // so the token check uses the canonical DB state.
+    const session = await verifySessionFromRequest(request);
+    if (!session.valid) {
+      console.warn('[API] test-node rejected unauthenticated request:', session.reason);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'unauthorized',
+          message: '未提供有效的认证凭证',
+        },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const { node_id, node_type, node_label, node_config, input } = body;
 

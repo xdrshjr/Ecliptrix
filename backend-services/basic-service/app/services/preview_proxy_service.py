@@ -49,6 +49,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import settings
 from app.logger import get_logger
 from app.models.db_models import CachedMaterial
+from app.security.url_guard import (
+    FFMPEG_LOCAL_PROTOCOL_WHITELIST,
+    URLGuardError,
+    validate_local_path_for_ffmpeg,
+)
 from app.services import oss_client as oss_module
 from app.services.material_download_service import get_material_download_service
 from app.services.preview_proxy_queue import preview_proxy_queue
@@ -73,6 +78,10 @@ def _ffmpeg_args(input_path: str, output_path: str, profile: str) -> list[str]:
         "ffmpeg",
         "-y",
         "-loglevel", "error",
+        # Spec 03 §3.4 — lock FFmpeg to the local-input protocol set so a
+        # row whose local_path was tampered with cannot fall back to
+        # http/https/rtsp/concat exfil channels.
+        "-protocol_whitelist", FFMPEG_LOCAL_PROTOCOL_WHITELIST,
         "-i", input_path,
         "-vf", "scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264",
@@ -313,6 +322,17 @@ class PreviewProxyService:
         if not input_path or not os.path.exists(input_path):
             return (False, f"input file missing: {input_path}")
 
+        # Spec 03 §3.4 (V03-C/E) — refuse to transcode anything outside
+        # STORAGE_ROOT / cached_materials / temp. cached_materials.local_path
+        # is normally written by material_download_service, but a tampered
+        # DB row should not be able to coerce FFmpeg into reading /etc/passwd.
+        try:
+            allowed_roots = self._ffmpeg_allowed_roots()
+            validated = validate_local_path_for_ffmpeg(input_path, allowed_roots)
+            input_path = str(validated)
+        except URLGuardError as guard_exc:
+            return (False, f"input path rejected: {guard_exc}")
+
         out_dir = self.output_root / material_id
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / "480p.mp4"
@@ -485,6 +505,24 @@ class PreviewProxyService:
         self._progress_cache.pop(material_id, None)
         self._transcode_started_at.pop(material_id, None)
         self._failure_total += 1
+
+    def _ffmpeg_allowed_roots(self) -> list[Path]:
+        """Return the set of directories an FFmpeg input must live under.
+
+        Mirrors spec 03 §3.4: ``STORAGE_ROOT``, the preview-proxy output
+        dir, the media-proxy hot cache, and the temp dir. Paths are passed
+        unresolved; ``validate_local_path_for_ffmpeg`` will normalize them.
+        """
+        roots: list[Path] = []
+        for raw in (
+            settings.storage.root,
+            self._cfg.output_dir,
+            settings.media_proxy.hot_cache_dir,
+            settings.temp_dir,
+        ):
+            if raw:
+                roots.append(Path(raw))
+        return roots
 
     def _cleanup_partial(self, output_path: Path) -> None:
         try:

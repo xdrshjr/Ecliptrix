@@ -89,14 +89,44 @@ ALLOWLIST_PREFIX: Tuple[str, ...] = (
     "/api/audio/subtitles/",
 )
 
+# ---------------------------------------------------------------------------
+# Hard-protect list (spec/01 §V01-A — root-level router defense in depth)
+# ---------------------------------------------------------------------------
+#
+# Endpoints exposed by routers that are mounted at the FastAPI root (i.e.
+# without ``prefix="/api"`` in ``main.py``) and whose URL therefore does not
+# follow the conventional ``/api/...`` shape. The middleware's allowlist is
+# already a deny-by-default policy, so any path not in the allowlist already
+# requires auth. We keep this explicit "always require auth" list as defence
+# in depth: if someone in the future re-mounts the allowlist patterns more
+# permissively (e.g. allowlists ``/`` or extends prefixes by mistake), these
+# entries still force a token check.
+#
+# Match algorithm: an exact path equality OR ``path == p`` / ``path.startswith(p + "/")``.
+HARD_PROTECT_PATHS: Tuple[str, ...] = (
+    "/api/workflow/ai-video-generate",
+    "/api/workflow/video-export",
+    "/api/intent-detection",
+)
+
+
+def _is_hard_protected(path: str) -> bool:
+    """Return True if ``path`` falls under a hard-protect rule (defence in depth)."""
+    for p in HARD_PROTECT_PATHS:
+        if path == p or path.startswith(p + "/"):
+            return True
+    return False
+
 
 def _is_allowlisted(path: str) -> bool:
     """Return True if ``path`` is exempt from auth enforcement.
 
-    Algorithm: try the O(1) exact set first, then iterate the prefix tuple.
-    The prefix list is intentionally tiny (2 entries) so a linear scan is
-    cheaper than building a trie.
+    Algorithm: hard-protect list wins over allowlists (defence in depth), then
+    try the O(1) exact set, then iterate the prefix tuple. The prefix list is
+    intentionally tiny so a linear scan is cheaper than building a trie.
     """
+    if _is_hard_protected(path):
+        return False
     if path in ALLOWLIST_EXACT:
         return True
     for prefix in ALLOWLIST_PREFIX:
@@ -106,11 +136,15 @@ def _is_allowlisted(path: str) -> bool:
 
 
 def _extract_token(request: Request) -> Optional[str]:
-    """Extract a session token from request headers.
+    """Extract a session token from request headers or cookies.
 
-    Returns ``None`` when no candidate header is present. The two
-    ``Authorization`` branches mirror ``app.dependencies.auth._extract_token``
-    exactly to preserve backwards compatibility for in-flight clients.
+    Returns ``None`` when no candidate header or cookie is present. Mirrors
+    ``app.dependencies.auth._extract_token`` exactly so the middleware and
+    the dependency see the same token in all cases.
+
+    Cookie fallback (spec/01 V01-C) is required so that browser media tags
+    (``<video src=...>``, ``<audio src=...>``) which cannot send custom
+    headers can still authenticate against the ``storage_files_router``.
     """
     auth_header = request.headers.get("authorization")
     if auth_header:
@@ -122,6 +156,10 @@ def _extract_token(request: Request) -> Optional[str]:
     legacy = request.headers.get("x-session-token")
     if legacy:
         return legacy.strip()
+
+    cookie_token = request.cookies.get("ecliptrix-session-token")
+    if cookie_token:
+        return cookie_token.strip()
 
     return None
 
@@ -261,4 +299,5 @@ __all__: Iterable[str] = (
     "SessionAuthMiddleware",
     "ALLOWLIST_EXACT",
     "ALLOWLIST_PREFIX",
+    "HARD_PROTECT_PATHS",
 )

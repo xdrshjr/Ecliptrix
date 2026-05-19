@@ -31,3 +31,36 @@ tsconfig.tsbuildinfo
 
 # Playwright CLI cache — regenerated as needed.
 .playwright-cli/
+
+# === Secrets (spec/05 V05-B) ===
+# Blanket-block .env files anywhere in the tree, allowlist templates.
+.env
+.env.*
+**/.env
+**/.env.*
+!**/env.template
+!**/.env.example
+!ops/config.env
+
+# === Python ===
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# === Next.js / Node ===
+out/
+*.tsbuildinfo
+
+# === Editors ===
+.vscode/
+
+# === Logs (spec/05 V05-D — 历史泄露 2834 次 Bearer JWT) ===
+*.log
+backend-services/basic-service/logs/
+
+# === Cached materials (large remote-fetched binaries) ===
+backend-services/basic-service/static/cached_materials/
+
+# === Transitional safety net for spec/05 V05-A recovery (.env*.local.backup) ===
+*.local.backup

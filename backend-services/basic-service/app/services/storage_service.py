@@ -70,27 +70,262 @@ class StorageService:
         """Return the URL that serves a stored file via the static mount."""
         return f"/api/storage/files/{relative_path}"
 
+    # ------------------------------------------------------------------
+    # Path / filename hardening (spec/04 V04-A, V04-B, V04-C)
+    # ------------------------------------------------------------------
+
+    # Maximum length (in bytes, after UTF-8 encoding) of a relative path
+    # passed to ``_validate_path``. Filesystems differ but 4096 is a safe
+    # cap (Linux PATH_MAX), well below ext4/NTFS limits, and short enough
+    # to fend off pathological inputs that try to exhaust the resolver.
+    _MAX_RELATIVE_PATH_BYTES = 4096
+
+    # Filename hard cap (post-sanitization). Stored uploads under
+    # ``STORAGE_ROOT`` carry uuid prefixes added by the router, so we want
+    # the *user-controlled* portion to stay well under common 255-byte
+    # filesystem name limits.
+    _MAX_FILENAME_LENGTH = 200
+
+    # Dangerous filename characters: directory separators, Windows-reserved
+    # chars, control bytes. These are unconditionally replaced.
+    # We intentionally KEEP Unicode letters (incl. CJK) so legitimate
+    # Chinese/Japanese/Korean filenames survive \u2014 see spec \u00a77 "risk" row.
+    _UNSAFE_FILENAME_CHARS_RE = re.compile(
+        r'[/\\:*?"<>|\x00-\x1f\x7f]'
+    )
+
+    # Executable / script extensions that must never round-trip through
+    # the public download path as-is (V04-B: stored XSS / RCE vectors).
+    # The download router (``storage_files_router``) also enforces
+    # ``Content-Disposition: attachment`` for these extensions; the
+    # sanitizer adds a defense-in-depth layer by REWRITING the extension
+    # at upload time.
+    _DANGEROUS_EXTENSIONS = frozenset({
+        ".html", ".htm", ".svg", ".xml", ".xhtml",
+        ".js", ".mjs", ".cjs",
+        ".php", ".phtml", ".phar",
+        ".py", ".pyc", ".pyo",
+        ".sh", ".bash", ".zsh", ".bat", ".cmd", ".ps1",
+        ".exe", ".com", ".scr", ".dll", ".so",
+        ".jsp", ".asp", ".aspx",
+        ".htaccess",
+    })
+
+    # Windows-reserved device names. Even with a benign extension these
+    # cause weird behaviour on Win32 filesystems.
+    _WINDOWS_RESERVED_BASENAMES = frozenset({
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    })
+
     def _validate_path(self, relative_path: str) -> Path:
         """Resolve a relative path and guard against directory traversal.
 
+        Strict checks (spec/04 V04-A):
+          1. Reject ``None`` / empty / whitespace-only input.
+          2. Reject embedded NUL bytes (``\\x00``).
+          3. Reject paths whose UTF-8 byte length exceeds
+             ``_MAX_RELATIVE_PATH_BYTES``.
+          4. Reject absolute paths (POSIX leading ``/``, Windows leading
+             ``\\``, Windows drive prefix like ``C:``, and UNC ``\\\\``).
+          5. Resolve via ``Path.resolve(strict=False)`` and ensure the
+             result lies under ``STORAGE_ROOT`` via ``is_relative_to``
+             \u2014 this defeats ``..`` segments, encoded ``../`` ladders, and
+             surprise junction/symlink redirection in already-existing
+             parent dirs (``resolve`` follows symlinks).
+          6. If the target itself already exists and is a symlink, refuse
+             \u2014 uploading to a symlink would let an attacker plant a link
+             pointing outside the root and overwrite arbitrary files
+             (TOCTOU). Pre-existing symlinks in STORAGE_ROOT are an ops
+             concern; new code must not honour them.
+
+        Args:
+            relative_path: User-supplied path fragment to validate.
+
+        Returns:
+            The absolute, resolved ``Path`` inside ``STORAGE_ROOT``.
+
         Raises:
-            ValueError: When the resolved path escapes the storage root.
+            ValueError: On any rule violation. The message is generic to
+                avoid leaking layout details to attackers.
         """
-        target = (self.root / relative_path).resolve()
-        root_resolved = self.root.resolve()
-        if not str(target).startswith(str(root_resolved)):
-            raise ValueError(f"Path traversal detected: {relative_path}")
+        if relative_path is None:
+            raise ValueError("relative path is empty")
+        if not isinstance(relative_path, (str, os.PathLike)):
+            raise ValueError("relative path must be a string")
+        rel_str = str(relative_path)
+        if not rel_str or not rel_str.strip():
+            raise ValueError("relative path is empty")
+
+        # Reject NUL byte (Rule 2) before anything else can interpret it
+        # as a C-string terminator.
+        if "\x00" in rel_str:
+            raise ValueError("relative path contains NUL byte")
+
+        # Reject control characters that have no place in a filesystem path.
+        if any(ord(ch) < 32 for ch in rel_str):
+            raise ValueError("relative path contains control characters")
+
+        # Rule 3 \u2014 UTF-8 byte length cap.
+        try:
+            encoded_len = len(rel_str.encode("utf-8"))
+        except UnicodeEncodeError as exc:
+            raise ValueError("relative path is not valid UTF-8") from exc
+        if encoded_len > self._MAX_RELATIVE_PATH_BYTES:
+            raise ValueError("relative path too long")
+
+        # Rule 4 \u2014 explicitly reject absolute paths and drive prefixes
+        # BEFORE the join. Without this, ``Path("/") / "/etc"`` collapses
+        # to ``/etc`` and bypasses the prefix check on some Pythons.
+        if rel_str.startswith(("/", "\\")):
+            raise ValueError("absolute paths are not allowed")
+        # Windows drive prefix or UNC. ``Path(rel).is_absolute()`` catches
+        # both but we also check the first segment for an explicit drive
+        # letter so that e.g. ``C:relative`` (drive-relative) is rejected.
+        first_segment = re.split(r"[/\\]", rel_str, maxsplit=1)[0]
+        if re.match(r"^[A-Za-z]:", first_segment):
+            raise ValueError("Windows drive prefix is not allowed")
+        try:
+            if Path(rel_str).is_absolute():
+                raise ValueError("absolute paths are not allowed")
+        except (OSError, ValueError) as exc:
+            # ``is_absolute`` can throw on malformed UNC etc. \u2014 treat as
+            # rejection.
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError("malformed path") from exc
+
+        # Reject ``..`` segments explicitly. ``resolve()`` would also
+        # neutralise them but checking first gives a clearer error and
+        # avoids any platform-specific resolver weirdness on non-existent
+        # paths.
+        normalized_segments = re.split(r"[/\\]+", rel_str)
+        if any(seg == ".." for seg in normalized_segments):
+            raise ValueError("relative path may not contain '..' segments")
+
+        root_resolved = self.root.resolve(strict=False)
+        try:
+            target = (self.root / rel_str).resolve(strict=False)
+        except (OSError, RuntimeError) as exc:
+            # Symlink loops or otherwise unresolvable paths.
+            raise ValueError("path could not be resolved") from exc
+
+        # Rule 5 \u2014 ``is_relative_to`` is the strict containment check
+        # available from Python 3.9+. Project requires Python 3.10+
+        # (per CLAUDE.md) so we can rely on it.
+        if not target.is_relative_to(root_resolved):
+            raise ValueError("path escapes storage root")
+
+        # Rule 6 \u2014 refuse to write through an existing symlink.
+        # ``Path.is_symlink`` does NOT follow the link, which is exactly
+        # what we want.
+        if target.is_symlink():
+            raise ValueError("target path is a symbolic link")
+
         return target
 
     def _sanitize_filename(self, filename: str) -> str:
-        """Strip dangerous characters from a filename, keeping it safe for disk."""
-        # Remove directory separators and null bytes
-        name = filename.replace("/", "").replace("\\", "").replace("\0", "")
-        # Remove leading dots (hidden files / parent traversal)
+        """Sanitise a filename for safe disk + URL use (spec/04 V04-B/C).
+
+        Defence layers:
+          * Drop control characters and Windows-reserved metacharacters
+            (``/ \\ : * ? " < > |``).
+          * Strip path-traversal sequences (``..``) and directory
+            separators \u2014 a filename must not span directories.
+          * Preserve Unicode letters & digits (Chinese / Japanese /
+            Korean / emoji-free names all survive).
+          * Cap the resulting length at ``_MAX_FILENAME_LENGTH`` to fit
+            common filesystem name limits.
+          * Rewrite dangerous executable / script extensions
+            (``.html``, ``.svg``, ``.js``, ``.php``, ``.sh`` etc.) to
+            ``.txt`` so the download path cannot serve a malicious
+            content-type by inferring from extension. The
+            ``storage_files_router`` adds a second layer that forces
+            ``Content-Disposition: attachment`` for any residual
+            dangerous extension that escaped this rewrite (e.g. legacy
+            files written before this code shipped).
+          * Reject Windows-reserved device names like ``CON``/``NUL``.
+
+        Args:
+            filename: User-supplied filename. May be ``None`` (legacy
+                callers) \u2014 treated as ``"unnamed_file"``.
+
+        Returns:
+            A non-empty sanitised filename suitable for use as the
+            on-disk basename.
+        """
+        if not filename:
+            return "unnamed_file"
+
+        name = str(filename)
+
+        # Unicode normalize to NFC so visually-identical names map to
+        # the same byte sequence (defeats homoglyph confusion in path
+        # checks downstream).
+        import unicodedata
+        name = unicodedata.normalize("NFC", name)
+
+        # Remove NUL bytes and other control chars / dangerous chars.
+        name = self._UNSAFE_FILENAME_CHARS_RE.sub("_", name)
+
+        # Drop directory traversal sequences explicitly. After the
+        # separator replacement above, ".." remains as plain text but we
+        # still want it gone to keep the stem clean.
+        # Replace runs of "." that would collapse to ``..`` ``..../``.
+        name = re.sub(r"\.{2,}", "_", name)
+
+        # Strip leading dots (hidden files on POSIX, also defeats
+        # filenames like ``.htaccess`` resolving to a server config).
         name = name.lstrip(".")
-        # Keep only safe characters
-        name = re.sub(r"[^a-zA-Z0-9._\-\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "_", name)
-        return name if name else "unnamed_file"
+
+        # Replace remaining whitespace runs with single underscores
+        # so the resulting filename has no spaces (URL-safer).
+        name = re.sub(r"\s+", "_", name)
+
+        # Collapse adjacent underscores for readability.
+        name = re.sub(r"_+", "_", name)
+
+        if not name:
+            return "unnamed_file"
+
+        # Split stem / extension for the dangerous-ext rewrite. We use
+        # the LAST dot only; multi-dot names like ``foo.tar.gz`` will
+        # only get their final extension rewritten, which is the
+        # intended behaviour.
+        if "." in name:
+            stem, dot, ext = name.rpartition(".")
+            ext_lower = ("." + ext).lower()
+            if ext_lower in self._DANGEROUS_EXTENSIONS:
+                # Rewrite to .txt so the file is preserved (for audit /
+                # forensics) but cannot execute or render. Preserve the
+                # original extension as a marker in the stem so admins
+                # can see what was uploaded.
+                name = f"{stem}_{ext}.txt"
+            else:
+                # Force the extension itself to lowercase so case-
+                # variant attacks like ``EVIL.HTML`` cannot bypass the
+                # blacklist on the download side.
+                name = f"{stem}{dot}{ext.lower()}"
+
+        # Windows-reserved-name check on the stem only.
+        stem_for_check = name.rsplit(".", 1)[0].upper()
+        if stem_for_check in self._WINDOWS_RESERVED_BASENAMES:
+            name = f"_{name}"
+
+        # Enforce length cap. We truncate the STEM, preserving the
+        # extension so MIME inference still works downstream.
+        if len(name) > self._MAX_FILENAME_LENGTH:
+            if "." in name:
+                stem, dot, ext = name.rpartition(".")
+                # Keep at most _MAX_FILENAME_LENGTH - len(ext) - 1 chars
+                # for the stem.
+                keep = max(1, self._MAX_FILENAME_LENGTH - len(ext) - 1)
+                name = f"{stem[:keep]}{dot}{ext}"
+            else:
+                name = name[: self._MAX_FILENAME_LENGTH]
+
+        return name or "unnamed_file"
 
     def _validate_file_type(self, content_type: str, folder: str) -> bool:
         """Check whether *content_type* is permitted for *folder*."""

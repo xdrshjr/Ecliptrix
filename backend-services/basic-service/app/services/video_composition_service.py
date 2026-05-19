@@ -22,6 +22,13 @@ import cv2
 
 from app.logger import get_logger
 from app.config import settings
+from app.security.url_guard import (
+    FFMPEG_LOCAL_PROTOCOL_WHITELIST,
+    FFMPEG_REMOTE_PROTOCOL_WHITELIST,
+    URLGuardError,
+    validate_external_url,
+    validate_local_path_for_ffmpeg,
+)
 from app.services.oss_client import get_oss_client
 from app.models import (
     VideoCompositionRequest,
@@ -486,11 +493,23 @@ class VideoCompositionService:
         ffmpeg_path = self._get_ffmpeg_path()
         if not ffmpeg_path:
             return {"success": False, "error": "ffmpeg not available"}
-        
-        # Use ffmpeg to download video
+
+        # Spec 03 §3.3 (V03-E) — gate the remote URL before letting
+        # FFmpeg open it. Combined with the protocol whitelist below this
+        # blocks file:// / rtsp:// / http://169.254.169.254 from sneaking
+        # in via timeline JSON.
+        try:
+            video_url = validate_external_url(video_url)
+        except URLGuardError as guard_exc:
+            logger.warning(f"[Thread {thread_id}] FFmpeg download URL rejected: {guard_exc}")
+            return {"success": False, "error": f"URL rejected: {guard_exc}"}
+
+        # Use ffmpeg to download video — restrict to remote protocols only
+        # (no file:// fallback even if the URL contains tricks).
         download_cmd = [
             ffmpeg_path,
             '-y',
+            '-protocol_whitelist', FFMPEG_REMOTE_PROTOCOL_WHITELIST,
             '-i', video_url,
             '-c', 'copy',
             video_path
@@ -631,9 +650,25 @@ class VideoCompositionService:
         """
         Start video composition asynchronously and return immediately with composition_id.
         """
+        # Spec 03 §3.3 / §3.4 (V03-E) — fail fast on SSRF or local-path
+        # attacks embedded in timeline JSON. We only validate the URL
+        # shape here; per-call defense (FFmpeg protocol whitelist + path
+        # resolution) is still applied downstream.
+        try:
+            self._guard_request_urls(request)
+        except URLGuardError as guard_exc:
+            logger.warning(f"Composition request rejected by url_guard: {guard_exc}")
+            return VideoCompositionResponse(
+                success=False,
+                message=f"Composition request rejected: {guard_exc}",
+                composition_id="",
+                status="failed",
+                progress=0.0,
+            )
+
         composition_id = str(uuid.uuid4())
         start_time = time.time()
-        
+
         logger.info(f"Starting async video composition {composition_id} for task {request.task_id}")
         logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}")
         logger.info(f"Total composition duration: {request.total_duration}s")
@@ -1503,6 +1538,60 @@ class VideoCompositionService:
         '/api/audio/subtitles/': os.path.join('static', 'audio', 'subtitles'),
     }
 
+    def _guard_request_urls(self, request: VideoCompositionRequest) -> None:
+        """Validate every user-controlled URL in a composition request.
+
+        For http(s) URLs we delegate to :func:`validate_external_url` so
+        SSRF targets are rejected before any worker thread spins up. For
+        same-origin storage URLs (``/api/storage/files/...`` etc.) and
+        bare local paths we defer validation to ``_convert_url_to_local_path``
+        — those are the cheap branches that get hit per-clip anyway.
+
+        Raises :class:`URLGuardError` on the first offending URL.
+        """
+        for items in (request.video_items, request.audio_items, request.image_items):
+            for item in items:
+                url = getattr(item, "url", None)
+                if not isinstance(url, str) or not url:
+                    continue
+                lower = url.lower().strip()
+                if lower.startswith("http://") or lower.startswith("https://"):
+                    validate_external_url(url)
+                    continue
+                # Explicitly reject sketchy schemes inline so the error
+                # message names the source.
+                for forbidden in ("file:", "ftp:", "rtsp:", "rtmp:",
+                                  "gopher:", "data:", "blob:", "javascript:"):
+                    if lower.startswith(forbidden):
+                        raise URLGuardError(
+                            f"item url '{url}' uses disallowed scheme '{forbidden}'"
+                        )
+
+    def _ffmpeg_allowed_local_roots(self) -> list[Path]:
+        """Spec 03 §3.4 (V03-E) — directories an FFmpeg input may live under.
+
+        Includes the backend service root (covers static/uploads, the
+        per-mount audio/subtitle dirs, and composed outputs), the
+        configured STORAGE_ROOT, the media-proxy hot cache, the configured
+        temp dir, and the system temp dir (used by ``tempfile.gettempdir``
+        in the composition pipeline).
+        """
+        roots: list[Path] = [self._SERVICE_ROOT]
+        for raw in (
+            settings.storage.root,
+            settings.media_proxy.hot_cache_dir,
+            settings.temp_dir,
+            tempfile.gettempdir(),
+            str(self.output_dir),
+        ):
+            if not raw:
+                continue
+            p = Path(raw)
+            if not p.is_absolute():
+                p = self._SERVICE_ROOT / p
+            roots.append(p)
+        return roots
+
     def _convert_url_to_local_path(self, url: str) -> str:
         """
         Convert a server URL to local file path.
@@ -1553,9 +1642,19 @@ class VideoCompositionService:
             return local_path
 
         if url.startswith('http://') or url.startswith('https://'):
-            # For HTTP URLs, return as-is (ffmpeg can handle them)
-            logger.info(f"Using HTTP URL directly: {url}")
-            return url
+            # Spec 03 §3.3 (V03-E) — even for "pass-through" FFmpeg input
+            # URLs, run url_guard so attacker-controlled timeline JSON
+            # cannot smuggle ``http://127.0.0.1/...`` or
+            # ``http://169.254.169.254`` past the composition pipeline.
+            try:
+                safe_url = validate_external_url(url)
+            except URLGuardError as guard_exc:
+                logger.warning(f"Video composition URL rejected: {guard_exc}")
+                raise FileNotFoundError(
+                    f"URL rejected by security guard: {guard_exc}"
+                ) from guard_exc
+            logger.info(f"Using HTTP URL directly: {safe_url}")
+            return safe_url
 
         # Assume it's already a local file path. Anchor relative paths to the
         # service root so callers don't have to depend on CWD.
@@ -1571,6 +1670,23 @@ class VideoCompositionService:
         if not os.path.exists(local_path):
             logger.error(f"Local file does not exist: {local_path}")
             raise FileNotFoundError(f"Audio file not found: {local_path}")
+
+        # Spec 03 §3.4 (V03-E) — block ``/etc/passwd`` and similar absolute
+        # paths from sneaking into FFmpeg via timeline JSON. Validate against
+        # the union of legitimate roots (STORAGE_ROOT, cached materials,
+        # temp dirs, service root). On failure we raise FileNotFoundError to
+        # match the existing contract of this helper.
+        try:
+            validated = validate_local_path_for_ffmpeg(
+                local_path, self._ffmpeg_allowed_local_roots()
+            )
+            local_path = str(validated)
+        except URLGuardError as guard_exc:
+            logger.warning(f"Video composition local path rejected: {guard_exc}")
+            raise FileNotFoundError(
+                f"Path rejected by security guard: {guard_exc}"
+            ) from guard_exc
+
         return local_path
 
     def _extract_video_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str) -> list:

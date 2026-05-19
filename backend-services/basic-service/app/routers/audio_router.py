@@ -99,9 +99,15 @@ async def transcribe_audio(
         temp_dir = os.path.join("temp", "audio")
         os.makedirs(temp_dir, exist_ok=True)
         
-        # 生成临时文件名
-        file_extension = os.path.splitext(file.filename)[1] if file.filename else '.mp3'
-        temp_filename = f"audio_{int(time.time())}_{hash(file.filename or 'unknown')}{file_extension}"
+        # 生成临时文件名 — sanitise the extension to defeat path-traversal
+        # attempts via the filename (spec/04 V04-A defense in depth).
+        from app.services.storage_service import storage_service as _ss
+        safe_basename = _ss._sanitize_filename(file.filename or "audio.mp3")
+        file_extension = os.path.splitext(safe_basename)[1] or '.mp3'
+        # Use a uuid prefix instead of ``hash(file.filename)`` so that
+        # collisions across users / requests cannot trigger overwrite.
+        import uuid as _uuid
+        temp_filename = f"audio_{int(time.time())}_{_uuid.uuid4().hex[:12]}{file_extension}"
         temp_file_path = os.path.join(temp_dir, temp_filename)
         
         # 写入临时文件

@@ -24,6 +24,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.logger import get_logger
+from app.security.url_guard import URLGuardError, validate_external_url
 from app.services.preview_proxy_service import (
     DEFAULT_PROFILE,
     PreviewProxyError,
@@ -107,6 +108,19 @@ async def request_preview_proxy(req: PreviewProxyRequest) -> PreviewProxyEnvelop
                 "message": "material_id or source_url required",
             },
         )
+    # Spec 03 §3.3 (V03-C) — when only a source_url was provided, gate it
+    # through url_guard before material_download_service ingests it.
+    if req.source_url:
+        try:
+            req.source_url = validate_external_url(req.source_url)
+        except URLGuardError as guard_exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_code": "preview_proxy.validation",
+                    "message": f"source_url rejected: {guard_exc}",
+                },
+            ) from guard_exc
     svc = get_preview_proxy_service()
     try:
         task_id, status, url, resolved_id = await svc.ensure_or_enqueue(

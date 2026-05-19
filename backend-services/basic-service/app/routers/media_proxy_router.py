@@ -21,6 +21,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.logger import get_logger
+from app.security.url_guard import URLGuardError, validate_external_url
 from app.services.media_proxy_service import (
     MediaProxyError,
     ProxyTarget,
@@ -55,6 +56,22 @@ async def proxy(
                 "message": "Use /api/media/preview-proxy for non-original quality",
             },
         )
+
+    # Spec 03 §3.3 (V03-D) — defense-in-depth scheme/host check before
+    # the media-proxy service does its allowlist + DNS resolution. The
+    # service-level resolve_target is already strict, but running the
+    # shared url_guard here keeps error semantics aligned across yt-dlp,
+    # preview-proxy and media-proxy callers.
+    try:
+        u = validate_external_url(u)
+    except URLGuardError as guard_exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "proxy.invalid_url",
+                "message": f"URL rejected: {guard_exc}",
+            },
+        ) from guard_exc
 
     try:
         await svc.check_rate_limit(_client_ip(request))
@@ -169,6 +186,19 @@ async def proxy_status(
     material_id: Optional[str] = Query(default=None),
 ):
     svc = get_media_proxy_service()
+    if u:
+        # Spec 03 §3.3 — even read-only status checks should not echo
+        # SSRF targets back to the caller.
+        try:
+            u = validate_external_url(u)
+        except URLGuardError as guard_exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_code": "proxy.invalid_url",
+                    "message": f"URL rejected: {guard_exc}",
+                },
+            ) from guard_exc
     info = await svc.status(u, material_id=material_id)
     return {
         "success": True,

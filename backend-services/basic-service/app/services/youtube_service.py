@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import yt_dlp
 from app.logger import get_logger
 from app.config import get_settings
+from app.security.url_guard import URLGuardError, validate_external_url
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse, YoutubeVideoInfo,
     YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
@@ -130,6 +131,10 @@ class YouTubeService:
             'ignoreerrors': False,
             'retries': 5,
             'fragment_retries': 5,
+            # Spec 03 §3.2 — keep TLS validation on (default in yt-dlp,
+            # but pinned here for safety) and cap socket timeouts so a
+            # malicious / slow upstream cannot stall the worker.
+            'nocheckcertificate': False,
             'socket_timeout': 30,
             'extractor_args': {
                 'youtube': {
@@ -262,6 +267,10 @@ class YouTubeService:
                 'socket_timeout': 15,
                 'retries': 1,
                 'fragment_retries': 1,
+                # Spec 03 §3.2 — keep TLS validation on; search target is
+                # always YouTube's own host so the URL guard is not needed
+                # here (the query is interpolated into ``ytsearch{N}:``).
+                'nocheckcertificate': False,
             }
 
             if self.proxy:
@@ -393,13 +402,25 @@ class YouTubeService:
             YoutubeVideoInfoResponse: 视频信息响应
         """
         logger.info(f"获取YouTube视频信息 - URL: {request.url}")
-        
+
+        # Spec 03 §3.2 (V03-A) — block SSRF before handing the URL to
+        # yt-dlp's extractor chain (yt-dlp accepts file://, http://localhost,
+        # cloud-metadata IPs, etc. by default).
+        try:
+            safe_url = validate_external_url(request.url)
+        except URLGuardError as guard_exc:
+            logger.warning(f"YouTube info URL rejected by url_guard: {guard_exc}")
+            return YoutubeVideoInfoResponse(
+                success=False,
+                error=f"URL rejected: {guard_exc}",
+            )
+
         try:
             base_opts = {'quiet': True}
             ydl_opts = self._get_robust_ydl_options(base_opts)
-            
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(request.url, download=False)
+                info = ydl.extract_info(safe_url, download=False)
                 
                 # 安全地处理可能为None的数值字段
                 duration = info.get('duration')
@@ -417,7 +438,7 @@ class YouTubeService:
                 video_info = YoutubeVideoInfo(
                     id=info.get('id', ''),
                     title=info.get('title', 'Unknown'),
-                    url=request.url,
+                    url=safe_url,
                     duration=duration,
                     uploader=info.get('uploader', 'Unknown'),
                     upload_date=info.get('upload_date', 'Unknown'),
@@ -455,10 +476,21 @@ class YouTubeService:
             YoutubeVideoDownloadResponse: 下载结果
         """
         logger.info(f"开始下载YouTube视频 - URL: {request.url}")
-        
+
+        # Spec 03 §3.2 (V03-A) — gate the URL before any yt-dlp work.
+        try:
+            safe_url = validate_external_url(request.url)
+        except URLGuardError as guard_exc:
+            logger.warning(f"YouTube download URL rejected by url_guard: {guard_exc}")
+            return YoutubeVideoDownloadResponse(
+                success=False,
+                message="URL rejected by security guard",
+                error=str(guard_exc),
+            )
+
         try:
             # 首先获取视频信息用于文件名生成
-            info_request = YoutubeVideoInfoRequest(url=request.url)
+            info_request = YoutubeVideoInfoRequest(url=safe_url)
             info_result = self.get_video_info(info_request)
             
             if not info_result.success or not info_result.video:
@@ -548,7 +580,7 @@ class YouTubeService:
             # 首先尝试完整的格式选择器
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([request.url])
+                    ydl.download([safe_url])
                     download_successful = True
             except Exception as e:
                 last_error = str(e)
@@ -568,7 +600,7 @@ class YouTubeService:
                         fallback_opts['format'] = fallback_format
                         
                         with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                            ydl.download([request.url])
+                            ydl.download([safe_url])
                             download_successful = True
                             logger.info(f"回退格式下载成功: {fallback_format}")
                             break

@@ -1,0 +1,537 @@
+{
+  "version": "2.0",
+  "created_at": "2026-05-19T18:25:43.541473+00:00",
+  "agents": {
+    "google-dev-01": {
+      "role": "DEV",
+      "tokens": 115,
+      "tokens_confirmed": 115,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:12.510691+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D1: passed review (auth, 18+22 tests)",
+          "timestamp": "2026-05-19T18:53:40.569249+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -15,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 85,
+          "provisional_after": 15,
+          "reason": "PROCESS: git stash drop discarded parallel agents work",
+          "timestamp": "2026-05-19T18:53:40.751781+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 110,
+          "confirmed_after": 95,
+          "provisional_after": 15,
+          "reason": "D12: Integration test pass — 146/146 + 3 skipped",
+          "timestamp": "2026-05-19T19:19:13.647397+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 110,
+          "confirmed_after": 110,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 115,
+          "confirmed_after": 115,
+          "provisional_after": 0,
+          "reason": "C1: Integration pass collective bonus",
+          "timestamp": "2026-05-19T19:19:14.930812+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        }
+      ]
+    },
+    "google-dev-02": {
+      "role": "DEV",
+      "tokens": 130,
+      "tokens_confirmed": 130,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:12.708997+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D1: passed review (CORS + headers)",
+          "timestamp": "2026-05-19T18:53:40.098036+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 110,
+          "provisional_after": 15,
+          "reason": "D12: Integration test pass — 146/146 + 3 skipped",
+          "timestamp": "2026-05-19T19:19:13.778177+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 125,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 130,
+          "confirmed_after": 130,
+          "provisional_after": 0,
+          "reason": "C1: Integration pass collective bonus",
+          "timestamp": "2026-05-19T19:19:15.077359+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        }
+      ]
+    },
+    "google-dev-03": {
+      "role": "DEV",
+      "tokens": 130,
+      "tokens_confirmed": 130,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:12.968207+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D1: passed review (SSRF guard, 31 tests)",
+          "timestamp": "2026-05-19T18:53:40.250971+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 110,
+          "provisional_after": 15,
+          "reason": "D12: Integration test pass — 146/146 + 3 skipped",
+          "timestamp": "2026-05-19T19:19:13.920047+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 125,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 130,
+          "confirmed_after": 130,
+          "provisional_after": 0,
+          "reason": "C1: Integration pass collective bonus",
+          "timestamp": "2026-05-19T19:19:15.216890+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        }
+      ]
+    },
+    "google-dev-04": {
+      "role": "DEV",
+      "tokens": 130,
+      "tokens_confirmed": 130,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.109940+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D1: passed review (path traversal + upload, 37 tests + 0 regressions)",
+          "timestamp": "2026-05-19T19:07:23.926124+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 110,
+          "provisional_after": 15,
+          "reason": "D12: Integration test pass — 146/146 + 3 skipped",
+          "timestamp": "2026-05-19T19:19:14.059116+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 125,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 130,
+          "confirmed_after": 130,
+          "provisional_after": 0,
+          "reason": "C1: Integration pass collective bonus",
+          "timestamp": "2026-05-19T19:19:15.369570+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        }
+      ]
+    },
+    "google-dev-05": {
+      "role": "DEV",
+      "tokens": 130,
+      "tokens_confirmed": 130,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.248029+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 115,
+          "confirmed_after": 100,
+          "provisional_after": 15,
+          "reason": "D1: passed review (secrets, 18 tests)",
+          "timestamp": "2026-05-19T18:53:40.413093+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 110,
+          "provisional_after": 15,
+          "reason": "D12: Integration test pass — 146/146 + 3 skipped",
+          "timestamp": "2026-05-19T19:19:14.198553+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 125,
+          "confirmed_after": 125,
+          "provisional_after": 0,
+          "reason": "Escrow release: 15 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 130,
+          "confirmed_after": 130,
+          "provisional_after": 0,
+          "reason": "C1: Integration pass collective bonus",
+          "timestamp": "2026-05-19T19:19:15.501085+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 15,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        }
+      ]
+    },
+    "google-dev-06": {
+      "role": "DEV",
+      "tokens": 120,
+      "tokens_confirmed": 120,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.395179+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 105,
+          "confirmed_after": 100,
+          "provisional_after": 5,
+          "reason": "D2: PARTIAL — Write blocked by harness; correct REPORT.md content delivered via response (orchestrator wrote file)",
+          "timestamp": "2026-05-19T19:19:13.513962+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 115,
+          "confirmed_after": 110,
+          "provisional_after": 5,
+          "reason": "D12: Integration test pass — 146/146 + 3 skipped",
+          "timestamp": "2026-05-19T19:19:14.332282+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 115,
+          "confirmed_after": 115,
+          "provisional_after": 0,
+          "reason": "Escrow release: 5 provisional tokens confirmed (Phase 1)",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 120,
+          "confirmed_after": 120,
+          "provisional_after": 0,
+          "reason": "C1: Integration pass collective bonus",
+          "timestamp": "2026-05-19T19:19:15.652358+00:00"
+        }
+      ],
+      "escrow_history": [
+        {
+          "action": "confirm",
+          "phase": 1,
+          "delta": 5,
+          "reason": "Phase 1 integration tests passed",
+          "timestamp": "2026-05-19T19:19:14.459712+00:00"
+        }
+      ]
+    },
+    "google-reviewer-01": {
+      "role": "REV",
+      "tokens": 100,
+      "tokens_confirmed": 100,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.536890+00:00"
+        }
+      ],
+      "escrow_history": []
+    },
+    "google-reviewer-02": {
+      "role": "REV",
+      "tokens": 100,
+      "tokens_confirmed": 100,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.683574+00:00"
+        }
+      ],
+      "escrow_history": []
+    },
+    "google-reviewer-03": {
+      "role": "REV",
+      "tokens": 100,
+      "tokens_confirmed": 100,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.824041+00:00"
+        }
+      ],
+      "escrow_history": []
+    },
+    "google-tester-01": {
+      "role": "TEST",
+      "tokens": 100,
+      "tokens_confirmed": 100,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:13.961304+00:00"
+        }
+      ],
+      "escrow_history": []
+    },
+    "google-tester-02": {
+      "role": "TEST",
+      "tokens": 100,
+      "tokens_confirmed": 100,
+      "tokens_provisional": 0,
+      "status": "active",
+      "replaced_by": null,
+      "history": [
+        {
+          "event": "init",
+          "delta": 100,
+          "status": "confirmed",
+          "balance_after": 100,
+          "confirmed_after": 100,
+          "provisional_after": 0,
+          "reason": "Initial allocation",
+          "timestamp": "2026-05-19T18:26:14.099726+00:00"
+        }
+      ],
+      "escrow_history": []
+    }
+  },
+  "eliminated": [],
+  "phase_reports": []
+}

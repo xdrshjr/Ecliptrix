@@ -22,11 +22,15 @@ logger = get_logger(__name__)
 
 
 def _extract_token(request: Request) -> Optional[str]:
-    """Extract session token from request headers.
+    """Extract session token from request headers or cookies.
 
     Checks (in order):
       1. Authorization header — "Bearer <token>" or raw token
       2. X-Session-Token header
+      3. ``ecliptrix-session-token`` cookie (spec/01 V01-C — required so
+         browser ``<video src="...">`` / ``<audio src="...">`` tags can
+         authenticate against ``storage_files_router`` since media tags
+         cannot send custom Authorization headers)
     """
     auth_header = request.headers.get("authorization")
     if auth_header:
@@ -38,6 +42,12 @@ def _extract_token(request: Request) -> Optional[str]:
     session_header = request.headers.get("x-session-token")
     if session_header:
         return session_header.strip()
+
+    # Cookie fallback for media-tag requests. Starlette's ``request.cookies``
+    # is a parsed dict; if the key isn't present we return None below.
+    cookie_token = request.cookies.get("ecliptrix-session-token")
+    if cookie_token:
+        return cookie_token.strip()
 
     return None
 

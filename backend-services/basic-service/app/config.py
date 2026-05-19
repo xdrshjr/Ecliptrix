@@ -530,6 +530,59 @@ class Settings(BaseModel):
     app_name: str = Field(default="Basic Service API", description="Application name")
     app_version: str = Field(default="1.0.0", description="Application version")
 
+    # Security: URL guard dev escape hatch (spec 03 §7). When True the
+    # private-IP / loopback / link-local check in
+    # ``app.security.url_guard.validate_external_url`` is bypassed so
+    # developers can point yt-dlp / FFmpeg at local mock servers. MUST be
+    # left False (the default) in production.
+    url_guard_allow_private: bool = Field(
+        default=False,
+        description=(
+            "Dev-only: bypass the private-IP block in validate_external_url. "
+            "Set URL_GUARD_ALLOW_PRIVATE=1 in .env to enable. Never enable in prod."
+        ),
+    )
+
+    # Deployment environment marker (spec 02 V02-A). Drives CORS allowlist
+    # behaviour, HSTS emission, and (future) misc env-aware switches.
+    # Read from ENV or APP_ENV; default "production" (safe-by-default).
+    env: str = Field(
+        default="production",
+        description=(
+            "Deployment environment: 'production' (default), 'development', "
+            "'dev', or 'staging'. Set via ENV or APP_ENV env var."
+        ),
+    )
+
+    # CORS configuration (spec 02 V02-A — replaces `allow_origins=['*']`).
+    # `cors_allowed_origins` is a list parsed from CORS_ALLOWED_ORIGINS env
+    # (comma-separated). EMPTY in production = deny all cross-origin
+    # (safe-by-default). In dev, localhost:3000/3010/127.0.0.1:3000/3010
+    # are merged in automatically by main.py.
+    cors_allowed_origins: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Comma-separated list of origins allowed for cross-origin "
+            "requests (spec 02 V02-A). Empty in prod = block all cross-origin."
+        ),
+    )
+    cors_allow_credentials: bool = Field(
+        default=True,
+        description=(
+            "Whether browsers may send credentials (cookies, Authorization "
+            "header) on cross-origin requests. Only meaningful for origins "
+            "in `cors_allowed_origins`."
+        ),
+    )
+    cors_legacy_wildcard: bool = Field(
+        default=False,
+        description=(
+            "EMERGENCY ROLLBACK: when True, restore `allow_origins=['*']` + "
+            "`allow_credentials=True`. This is a KNOWN VULNERABILITY (V02-A). "
+            "Set CORS_LEGACY_WILDCARD=1 in .env only during incident response."
+        ),
+    )
+
     # Playback v2 (Phase 4) — telemetry aggregation + admin observability.
     playback_v2_telemetry_agg_window_min: int = Field(
         default=15,
@@ -941,6 +994,24 @@ def get_settings() -> Settings:
         playback_v2_telemetry_agg_window_min=pv2_window,
         playback_v2_telemetry_agg_retention_hours=pv2_retention,
         playback_v2_aggregator_requires_single_worker=pv2_single_worker,
+        url_guard_allow_private=(
+            os.getenv("URL_GUARD_ALLOW_PRIVATE", "false").lower()
+            in {"1", "true", "yes", "on"}
+        ),
+        env=(os.getenv("ENV") or os.getenv("APP_ENV") or "production").strip() or "production",
+        cors_allowed_origins=[
+            o.strip()
+            for o in (os.getenv("CORS_ALLOWED_ORIGINS") or "").split(",")
+            if o.strip()
+        ],
+        cors_allow_credentials=(
+            os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower()
+            in {"1", "true", "yes", "on"}
+        ),
+        cors_legacy_wildcard=(
+            os.getenv("CORS_LEGACY_WILDCARD", "false").lower()
+            in {"1", "true", "yes", "on"}
+        ),
     )
 
 

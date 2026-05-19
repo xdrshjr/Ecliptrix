@@ -3,18 +3,25 @@ Intent Detection Router
 用户意图检测API路由
 """
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from app.models.intent_detection_models import (
     IntentDetectionRequest,
     IntentDetectionResponse
 )
 from app.services.intent_detection_service import intent_detection_service
+from app.dependencies.auth import get_current_user
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
-# 创建路由器
-router = APIRouter(prefix="/api/intent-detection", tags=["Intent Detection"])
+# 创建路由器 — V01-A: enforce auth on every endpoint. This router is mounted
+# at root (no /api prefix) in main.py so middleware prefix-matching cannot
+# be relied on; we add an explicit router-level Depends.
+router = APIRouter(
+    prefix="/api/intent-detection",
+    tags=["Intent Detection"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/detect", response_model=IntentDetectionResponse)
