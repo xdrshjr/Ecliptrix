@@ -1219,11 +1219,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       let actualSequenceIndex = 0;
       let foundSequence = false;
       let currentSequence = null;
-      
+
       // 首先尝试基于当前状态的序列索引进行验证
       const stateSequenceIndex = compositionPlayback.currentSequenceIndex;
       const stateSequence = compositionPlayback.videoSequences[stateSequenceIndex];
-      
+
+      // F1: materialId-preferred 匹配。
+      // <video>.src 受 cacheUrl/blob/远端原始 URL 多种形态影响（cacheUrl 上线后 src 与
+      // getSequencePreviewSrc 必不同源），单纯 URL 比对会让 Tier1/Tier2 全部 miss。
+      // materialId 是跨形态的不变量，state 一侧的 materialId 即"当前播放素材"的身份。
+      const playingMaterialId = stateSequence?.materialId;
+      const sequenceMatchesPlayingSource = (sequence: VideoSequenceItem): boolean => {
+        if (playingMaterialId && sequence.materialId) {
+          return sequence.materialId === playingMaterialId;
+        }
+        return normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(sequence));
+      };
+
       // 计算 stateSequence 在 timeline 上的起止区间，用于双重校验。
       // Why: 多 sequence 共用同一 URL 时，仅靠 URL 同源会粘在旧 stateSequenceIndex 上，
       // 导致 timeupdate 用错的 sequence 反映射并把光标拉回旧片段开头。
@@ -1245,7 +1257,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
       // 检查状态中的序列是否与当前播放的视频URL匹配，且 compositionCurrentTime 落在区间内
       if (stateSequence &&
-          normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(stateSequence)) &&
+          sequenceMatchesPlayingSource(stateSequence) &&
           stateInRange) {
         // 状态序列匹配当前视频URL，直接使用
         actualSequenceIndex = stateSequenceIndex;
@@ -1270,7 +1282,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           const isLastSequence = i === compositionPlayback.videoSequences.length - 1;
           
           // 检查URL匹配且当前组合时间落在这个序列的时间范围内
-          if (normalizeVideoUrl(currentVideoSrc) === normalizeVideoUrl(getSequencePreviewSrc(sequence)) &&
+          if (sequenceMatchesPlayingSource(sequence) &&
               lookupCompositionTime >= sequenceStartTime &&
               (
                 lookupCompositionTime < sequenceEndTime ||
