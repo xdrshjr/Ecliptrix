@@ -44,6 +44,18 @@ class MaterialIngestResultEntry(BaseModel):
     # Backend cache failure message (e.g. ffmpeg stderr tail). Surfaced so the
     # frontend can show a retry tooltip without an extra round-trip.
     error_message: Optional[str] = None
+    # Spec 05 hot-cache state mirror; lets the frontend skip an extra GET
+    # against /api/media/proxy/status during initial material hydration.
+    proxy_status: Optional[str] = None
+    proxy_bytes_cached: Optional[int] = None
+    # Phase-3 preview-proxy fields (spec 06 §六 / phase-3 spec §3.2.8).
+    # Populated whenever a row exists; clients use these to drive P1–P5
+    # selection in selectPlaybackUrl without an additional round-trip.
+    preview_proxy_status: Optional[str] = None
+    preview_proxy_profile: Optional[str] = None
+    preview_proxy_local_url: Optional[str] = None
+    preview_proxy_oss_url: Optional[str] = None
+    preview_proxy_progress: Optional[int] = None
 
 
 class MaterialIngestResponse(BaseModel):
@@ -72,6 +84,12 @@ async def ingest_materials(request: MaterialIngestRequest) -> MaterialIngestResp
             # access the canonical fields used by `local_url_for`.
             local_url: Optional[str] = None
             error_message: Optional[str] = None
+            proxy_fields: dict = {}
+
+            # Only resolve local_url for ready rows. enqueue() returns a
+            # status snapshot but no row object, so re-query when ready to
+            # access the canonical fields used by `local_url_for`. Pending
+            # rows skip the extra query (covered by perf-invariant test).
             if current_status == "ready" or current_status == "failed":
                 row = await svc.lookup_async(
                     url=item.url,
@@ -82,6 +100,7 @@ async def ingest_materials(request: MaterialIngestRequest) -> MaterialIngestResp
                     local_url = svc.local_url_for(row)
                     if (row.status or "") == "failed":
                         error_message = row.error_message
+                    proxy_fields = _proxy_fields_from_row(row)
             results.append(
                 MaterialIngestResultEntry(
                     source=item.source,
@@ -91,6 +110,7 @@ async def ingest_materials(request: MaterialIngestRequest) -> MaterialIngestResp
                     local_path=local_path,
                     local_url=local_url,
                     error_message=error_message,
+                    **proxy_fields,
                 )
             )
         except Exception as exc:
@@ -141,6 +161,7 @@ async def lookup_material(
         )
 
     local_url = svc.local_url_for(row)
+    proxy_fields = _proxy_fields_from_row(row)
     return MaterialIngestResultEntry(
         source=row.source or "",
         source_id=row.source_id or "",
@@ -149,4 +170,26 @@ async def lookup_material(
         local_path=row.local_path,
         local_url=local_url,
         error_message=row.error_message if (row.status or "") == "failed" else None,
+        **proxy_fields,
     )
+
+
+def _proxy_fields_from_row(row) -> dict:
+    """Project CachedMaterial proxy / preview-proxy columns into the response shape.
+
+    Returns only keys the model defines; unset DB columns become ``None``
+    (Pydantic serialises them out).
+    """
+    return {
+        "proxy_status": getattr(row, "proxy_status", None) or None,
+        "proxy_bytes_cached": int(getattr(row, "proxy_bytes_cached", 0) or 0) or None,
+        "preview_proxy_status": getattr(row, "preview_proxy_status", None) or None,
+        "preview_proxy_profile": getattr(row, "preview_proxy_profile", None),
+        "preview_proxy_local_url": getattr(row, "preview_proxy_local_url", None),
+        "preview_proxy_oss_url": getattr(row, "preview_proxy_oss_url", None),
+        "preview_proxy_progress": (
+            int(getattr(row, "preview_proxy_progress", 0) or 0)
+            if getattr(row, "preview_proxy_status", None) not in (None, "absent")
+            else None
+        ),
+    }

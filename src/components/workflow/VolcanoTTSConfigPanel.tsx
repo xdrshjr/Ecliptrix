@@ -44,7 +44,7 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
 
   // State management
   const [text, setText] = useState(config.text || '');
-  const [voiceType, setVoiceType] = useState(config.voiceType || 'zh_male_shaonianzixin_moon_bigtts');
+  const [voiceType, setVoiceType] = useState(config.voiceType || 'zh_male_shaonianzixin_uranus_bigtts');
   const [speedRatio, setSpeedRatio] = useState(config.speedRatio || 1.0);
   const [inputFormat, setInputFormat] = useState<DataFormat>(config.inputFormat || 'application/json');
   const [outputFormat, setOutputFormat] = useState<DataFormat>(config.outputFormat || 'application/json');
@@ -60,7 +60,7 @@ const VolcanoTTSConfigPanel: React.FC<VolcanoTTSConfigPanelProps> = ({
   useEffect(() => {
     console.log('[VolcanoTTSConfigPanel] Config updated, refreshing content');
     setText(config.text || '');
-    setVoiceType(config.voiceType || 'zh_male_shaonianzixin_moon_bigtts');
+    setVoiceType(config.voiceType || 'zh_male_shaonianzixin_uranus_bigtts');
     setSpeedRatio(config.speedRatio || 1.0);
     setInputFormat(config.inputFormat || 'application/json');
     setOutputFormat(config.outputFormat || 'application/json');

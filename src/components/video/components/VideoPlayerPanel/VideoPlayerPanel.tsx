@@ -11,12 +11,31 @@ import {
 } from '../../utils/timelineMapping';
 import { useVideoExport } from '../../hooks/useVideoExport';
 import { useVideoCache } from '../../hooks/useVideoCache';
-import { selectPlaybackUrl } from '../../lib/selectPlaybackUrl';
+import { selectPlaybackUrl, effectivePreviewUrl } from '../../lib/selectPlaybackUrl';
+import { resolveSequencePlaybackUrl } from '../../lib/resolveSequencePlaybackUrl';
+import {
+  assignVideoSrcChecked,
+  type AssignFailureReason,
+} from '../../lib/assignVideoSrcChecked';
+import { NoPlayableSourceError } from '../../errors';
+import type { RemoteMaterialPatch } from '../../hooks/useRemoteMaterialPrefetch';
 import VideoExportProgressModal from './VideoExportProgressModal';
 import ImageOverlay from './ImageOverlay';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
+import { isPlaybackV2Enabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
+import {
+  KillSwitchMonitor,
+  PlaybackEngine,
+  ProxyHitMeter,
+  type OverlayPayload,
+  type PlaybackTimelineFacade,
+  type PlaybackSequenceResolver,
+} from '../../playback';
+import PreviewSurface from './PreviewSurface';
+import { PlaybackVariantSwitcher } from '../../playback/components/PlaybackVariantSwitcher';
 
 // 视频比例类型定义
 interface AspectRatio {
@@ -28,6 +47,23 @@ interface AspectRatio {
 }
 
 const TIME_EPSILON = 0.001;
+
+/**
+ * Phase 4 §4.3 — read `NEXT_PUBLIC_*` thresholds for the kill-switch
+ * monitor. Next.js inlines these at build time so the values are baked
+ * into the bundle. Falls back to `fallback` when the env var is unset,
+ * empty, or not a positive integer.
+ */
+function _readPositiveIntEnv(name: string, fallback: number): number {
+  const raw =
+    typeof process !== 'undefined' && process.env
+      ? process.env[name as keyof NodeJS.ProcessEnv]
+      : undefined;
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
 
 type PendingCompositionSeek = {
   compositionTime: number;
@@ -57,6 +93,12 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   // 新增：导出功能相关props
   timelineState?: TimelineState;
   materials?: MaterialItem[];
+  /**
+   * Patch a material's cache fields (e.g. reset cacheStatus to 'pending'
+   * when assignVideoSrcChecked discovers a stale cacheUrl). Wired to
+   * useMaterialManagement.patchMaterialCache. See spec §3.2a.
+   */
+  onPatchMaterialCache?: (id: string, patch: RemoteMaterialPatch) => void;
   // 新增：图片叠加位置更新回调
   onImagePositionChange?: (itemId: string, position: ImagePosition) => void;
   // 新增：项目元信息，供 Cover 模态使用（无 projectId 时按钮隐藏）
@@ -109,11 +151,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   onSequenceIndexUpdate,
   timelineState,
   materials,
+  onPatchMaterialCache,
   onImagePositionChange,
   projectId,
   projectName,
 }, ref) => {
   const { t } = useLocale();
+  const { showError } = useNotification();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'VideoPlayerPanel'
@@ -121,6 +165,51 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 初始化视频缓存Hook
   const videoCache = useVideoCache(taskId);
+
+  // Playback v2 feature flag — locked at mount via useMemo per spec 01 §5.
+  // Spec 01 §5.1 requires flag changes to take effect only on full reload to
+  // avoid mid-session state divergence.
+  const playbackV2Enabled = useMemo(() => isPlaybackV2Enabled(), []);
+  // Engine instance is allocated for the v2 branch; the legacy path ignores
+  // it. Spec 02 will wire real intent fan-out into VideoPlayerPanel's
+  // ImperativeHandle methods; for now keeping the reference here ensures
+  // tree-shaking does not drop the playback module.
+  const playbackEngineRef = useRef<PlaybackEngine | null>(null);
+  // Phase 4 §3.2.4 / §3.2.1 — kill-switch + proxy hit-rate counters live
+  // alongside the engine for the lifetime of the v2 mount. They are
+  // singleton per-panel-instance, so toggling the flag mid-session
+  // (which requires reload) gives them a fresh starting point.
+  const killSwitchMonitorRef = useRef<KillSwitchMonitor | null>(null);
+  const proxyHitMeterRef = useRef<ProxyHitMeter | null>(null);
+  if (playbackV2Enabled && !playbackEngineRef.current) {
+    playbackEngineRef.current = new PlaybackEngine();
+    killSwitchMonitorRef.current = new KillSwitchMonitor({
+      regressionThreshold: _readPositiveIntEnv(
+        'NEXT_PUBLIC_PLAYBACK_V2_KILLSWITCH_REGRESSION',
+        50,
+      ),
+      stalledThreshold: _readPositiveIntEnv(
+        'NEXT_PUBLIC_PLAYBACK_V2_KILLSWITCH_STALLED',
+        30,
+      ),
+    });
+    proxyHitMeterRef.current = new ProxyHitMeter();
+  }
+  // Spec §3.2.8 — when engine signals an unrecoverable error, trip the
+  // kill-switch and remount the panel so subsequent renders fall back to
+  // legacy. The killswitch makes isPlaybackV2Enabled() return false on the
+  // next mount of the panel (flag is locked at mount per spec 01 §5.1).
+  const handleV2KillSwitch = useCallback((reason: string) => {
+    tripPlaybackV2KillSwitch(reason);
+    if (typeof window !== 'undefined') {
+      // Soft reload — let React unmount cleanly so engine.dispose() runs.
+      try {
+        window.location.reload();
+      } catch {
+        // ignore — tests / SSR
+      }
+    }
+  }, []);
 
   // 基于翻译的视频比例配置
   const ASPECT_RATIOS = useMemo((): AspectRatio[] => [
@@ -176,6 +265,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const preloadTriggeredRef = useRef<Set<number>>(new Set());
   // 过渡代数计数器 - 每次 src 切换时递增，让旧的 loadeddata 回调失效
   const transitionIdRef = useRef(0);
+  // 引导态：在首个 sequence 的 src 解析完成前，handlePlayPause 必须等待
+  // 而不是立刻调用 play()，否则会触发 MEDIA_ERR_SRC_NOT_SUPPORTED。
+  // 详见 docs/plans/video-reentry-play-no-source-fix/spec.md §3.2 Layer 3。
+  const bootstrapStateRef = useRef<{
+    status: 'idle' | 'resolving' | 'ready' | 'failed';
+    attempted: string[];
+  }>({ status: 'idle', attempted: [] });
   // 记录点击静音按钮前的音量值，便于取消静音时恢复
   const previousVolumeRef = useRef<number>(volume > 0 ? volume : 1);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
@@ -285,6 +381,134 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     []
   );
 
+  // 保留 onPatchMaterialCache 的 ref，避免把它塞进每个 useCallback 的 deps。
+  const onPatchMaterialCacheRef = useRef(onPatchMaterialCache);
+  useEffect(() => {
+    onPatchMaterialCacheRef.current = onPatchMaterialCache;
+  }, [onPatchMaterialCache]);
+
+  // 统一收口的 <video>.src 写入。负责：
+  //   1. 走 resolveSequencePlaybackUrl 拿主候选 + 回退链；
+  //   2. 通过 assignVideoSrcChecked 让元素事件驱动重试；
+  //   3. 对同源失败回调 patchMaterialCache，让 prefetch 下次重新拉取。
+  // 详见 docs/plans/video-reentry-play-no-source-fix/spec.md §3.2 / §3.2a。
+  const assignSequenceSrc = useCallback(
+    async (
+      video: HTMLVideoElement,
+      seq: VideoSequenceItem,
+      transitionId: number,
+    ): Promise<{ assigned: string; source: 'primary' | 'fallback' }> => {
+      const resolved = resolveSequencePlaybackUrl(seq, materials || []);
+      const primary = resolved?.url || getSequencePreviewSrc(seq);
+      const fallbacks = resolved ? resolved.fallbacks : [];
+      return assignVideoSrcChecked(video, primary, {
+        fallbacks,
+        transitionId,
+        getCurrentId: () => transitionIdRef.current,
+        onCandidateFailed: (failedUrl, reason: AssignFailureReason) => {
+          if (reason !== 'same-origin-error') return;
+          if (!seq.materialId) return;
+          const patcher = onPatchMaterialCacheRef.current;
+          if (!patcher) return;
+          patcher(seq.materialId, {
+            cacheStatus: 'pending',
+            cacheUrl: undefined,
+          });
+          logger.warn('cacheUrl probe failed, marking for re-ingest', {
+            materialId: seq.materialId,
+            failedUrl,
+          });
+        },
+      });
+    },
+    [materials, getSequencePreviewSrc, logger],
+  );
+
+  // ----------------------------------------------------------------------
+  // Playback v2 — facade / resolver / overlays provider (spec §3.1, §5.1).
+  // Built unconditionally but only consumed when `playbackV2Enabled` is true.
+  // ----------------------------------------------------------------------
+  const v2Sequences = useMemo(
+    () => compositionPlayback?.videoSequences ?? [],
+    [compositionPlayback],
+  );
+  const v2TotalDuration = useMemo(
+    () => v2Sequences.reduce((sum, s) => sum + (s.duration || 0), 0),
+    [v2Sequences],
+  );
+  const v2Timeline = useMemo<PlaybackTimelineFacade>(
+    () => ({
+      getCurrentTime: () => currentTimelineTime ?? compositionCurrentTimeRef.current ?? 0,
+      setCurrentTime: (t: number) => {
+        if (onTimelineTimeUpdate) onTimelineTimeUpdate(t);
+        if (onCompositionTimeUpdate) onCompositionTimeUpdate(t);
+      },
+      getTotalDuration: () => v2TotalDuration,
+      findSequenceAtCompositionTime: (t: number) => {
+        const r = findSequenceAtCompositionTime(v2Sequences, t);
+        if (!r) return null;
+        return {
+          sequence: r.sequence,
+          index: r.index,
+          offset: r.offset,
+          startTime: r.startTime,
+        };
+      },
+      getSequences: () => v2Sequences,
+    }),
+    [
+      currentTimelineTime,
+      onTimelineTimeUpdate,
+      onCompositionTimeUpdate,
+      v2TotalDuration,
+      v2Sequences,
+    ],
+  );
+  const v2Resolver = useMemo<PlaybackSequenceResolver>(
+    () => ({
+      resolveSrc: (seq) => {
+        // Phase-3 §3.2.6 — when the sequence's material is hydrated with
+        // preview-proxy / cache fields we route through effectivePreviewUrl
+        // (P1–P5). Falls through to the legacy resolver chain otherwise.
+        const material = (materials || []).find((m) => m.id === seq.materialId);
+        if (material) {
+          const ep = effectivePreviewUrl(material, {
+            preferPreviewProxy: true,
+            fallback: 'proxy',
+          });
+          if (ep) return ep;
+        }
+        return (
+          resolveSequencePlaybackUrl(seq, materials || [])?.url ??
+          getSequencePreviewSrc(seq)
+        );
+      },
+      mapToMediaTime: (seq, sequenceOffset) =>
+        mapTimelineTimeToVideoTime(seq, sequenceOffset),
+    }),
+    [materials, getSequencePreviewSrc],
+  );
+  // Phase 2 ships without compositor overlays; Phase 3 will project the
+  // ImageOverlay / Subtitle React tree into OverlayPayload shapes here.
+  const v2OverlaysProvider = useCallback<() => OverlayPayload[]>(() => [], []);
+
+  // 仅引导态使用：包一层 try/catch，把 NoPlayableSourceError 翻译成 toast。
+  const surfaceNoPlayableSource = useCallback(
+    (attempted: string[], context: Record<string, unknown>) => {
+      logger.error(
+        '所有候选源均无法播放，弹出 errorNoPlayableSource',
+        new Error('NoPlayableSource'),
+        { attempted, ...context },
+      );
+      try {
+        showError(t.videoPlayerPanel.errorNoPlayableSource);
+      } catch {
+        // showError 在测试环境下可能未挂载 NotificationProvider —— 忽略。
+      }
+    },
+    [logger, showError, t.videoPlayerPanel.errorNoPlayableSource],
+  );
+
   // 捕获当前视频帧到 canvas 并显示，防止 src 切换时黑屏
   const captureFrameToCanvas = useCallback(() => {
     const video = videoRef.current;
@@ -379,6 +603,19 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const firstSequenceId = useMemo(() => {
     return compositionPlayback?.videoSequences?.[0]?.id || null;
   }, [compositionPlayback?.videoSequences?.[0]?.id]);
+
+  // 当 useRemoteMaterialPrefetch patch 了 material.cacheUrl 之后，bootstrap
+  // 必须重新跑一次以选中新的同源候选；只追 sequence.url 是看不到 cacheUrl 变化的。
+  // 详见 docs/plans/video-reentry-play-no-source-fix/spec.md §3.2 Layer 1 / P1-2。
+  const resolvedFirstSrc = useMemo(() => {
+    const firstSeq = compositionPlayback?.videoSequences?.[0];
+    if (!firstSeq) return null;
+    return resolveSequencePlaybackUrl(firstSeq, materials || []);
+  }, [
+    compositionPlayback?.videoSequences?.[0]?.id,
+    compositionPlayback?.videoSequences?.[0]?.materialId,
+    materials,
+  ]);
 
   // Whether any track in the timeline has at least one item — gates the export button.
   const hasAnyExportableItem = useMemo(
@@ -864,22 +1101,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           }
 
           const bootstrapTid = ++transitionIdRef.current;
-          const targetSrc = cachedVideo ? cachedVideo.src : newSrc;
-
-          if (cachedVideo) {
-            logger.info('首个视频缓存命中，快速加载', {
-              materialId: firstSequence.materialId,
-              sequenceName: firstSequence.name,
-              cacheHitRate: videoCache.cacheStats.cacheHitRate + '%'
-            });
-          } else {
-            logger.info('首个视频缓存未命中，传统加载', {
-              materialId: firstSequence.materialId,
-              cacheState: firstSequence.materialId ? videoCache.getCacheState(firstSequence.materialId) : 'no-material-id'
-            });
-          }
-
-          currentVideo.src = targetSrc;
 
           const handleBootstrapCanPlay = () => {
             if (transitionIdRef.current !== bootstrapTid) return;
@@ -897,6 +1118,55 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             if (transitionIdRef.current !== bootstrapTid) return;
             currentVideo.removeEventListener('canplay', handleBootstrapCanPlay);
           }, 5000);
+
+          bootstrapStateRef.current = { status: 'resolving', attempted: [] };
+          // 统一走 assignVideoSrcChecked：缓存命中时把 cachedVideo.src 作为
+          // 主候选，resolver 链作为兜底；缓存未命中直接走 resolver 链。
+          // 这样 §7.4 DoD 的 grep（findall \.src\s*=）只命中音频 src 写入。
+          const bootstrapAssign: Promise<{ assigned: string }> = (() => {
+            if (cachedVideo) {
+              logger.info('首个视频缓存命中，快速加载', {
+                materialId: firstSequence.materialId,
+                sequenceName: firstSequence.name,
+                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%'
+              });
+              const resolved = resolveSequencePlaybackUrl(firstSequence, materials || []);
+              const fallbackChain = resolved
+                ? [resolved.url, ...resolved.fallbacks].filter(u => u !== cachedVideo!.src)
+                : [];
+              return assignVideoSrcChecked(currentVideo, cachedVideo.src, {
+                fallbacks: fallbackChain,
+                transitionId: bootstrapTid,
+                getCurrentId: () => transitionIdRef.current,
+              });
+            }
+            logger.info('首个视频缓存未命中，传统加载', {
+              materialId: firstSequence.materialId,
+              cacheState: firstSequence.materialId ? videoCache.getCacheState(firstSequence.materialId) : 'no-material-id'
+            });
+            return assignSequenceSrc(currentVideo, firstSequence, bootstrapTid);
+          })();
+
+          bootstrapAssign
+            .then(({ assigned }) => {
+              if (transitionIdRef.current !== bootstrapTid) return;
+              bootstrapStateRef.current = { status: 'ready', attempted: [assigned] };
+            })
+            .catch((err: unknown) => {
+              if (transitionIdRef.current !== bootstrapTid) return;
+              if (err instanceof NoPlayableSourceError) {
+                bootstrapStateRef.current = { status: 'failed', attempted: err.attempted };
+                surfaceNoPlayableSource(err.attempted, {
+                  sequenceIndex: 0,
+                  sequenceName: firstSequence.name,
+                });
+              } else {
+                bootstrapStateRef.current = { status: 'failed', attempted: [] };
+                logger.error('bootstrap assignVideoSrc 抛出未知异常', err as Error, {
+                  sequenceName: firstSequence.name,
+                });
+              }
+            });
         } else {
           // src 未变化：直接同步写入。
           currentVideo.currentTime = resolvedTarget;
@@ -924,7 +1194,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, compositionPlayback?.videoSequences.length, firstSequenceId, updateCompositionCurrentTime]);
+    // resolvedFirstSrc?.url 进 deps 是为了让 prefetch 写回 cacheUrl 后
+    // 重新跑 bootstrap，命中新的同源候选；assignSequenceSrc 在 callback 里读取
+    // 最新 materials，故无需把 materials 直接挂在这里。
+  }, [playbackMode, compositionPlayback?.videoSequences.length, firstSequenceId, resolvedFirstSrc?.url, updateCompositionCurrentTime, assignSequenceSrc, surfaceNoPlayableSource]);
 
   // 修复 R5：拖动播放头时驱动 <video>.currentTime 跟随游标。
   // 仅在暂停态、未处于其他 seek 锁内、且与当前帧偏差 > 0.05s 才落实写入。
@@ -1093,35 +1366,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             // 捕获当前帧到canvas，防止切换src时黑屏
             captureFrameToCanvas();
 
-            if (cachedVideo) {
-              // 缓存命中：使用预加载的视频，减少切换延迟
-              logger.info('缓存命中，快速切换视频', {
-                nextIndex,
-                materialId: nextSequence.materialId,
-                sequenceName: nextSequence.name,
-                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%',
-                containerStability: '容器尺寸已固定，防止切换闪烁'
-              });
-
-              currentVideo.src = cachedVideo.src;
-            } else {
-              // 缓存未命中：使用传统方式
-              logger.info('缓存未命中，传统加载', {
-                nextIndex,
-                materialId: nextSequence.materialId,
-                sequenceName: nextSequence.name,
-                cacheState: nextSequence.materialId ? videoCache.getCacheState(nextSequence.materialId) : 'no-material-id',
-                containerStability: '容器尺寸已固定，防止切换闪烁'
-              });
-
-              // 预览路径走 selectPlaybackUrl，远程素材命中本地缓存时
-              // 直接读取 /api/storage/files/cached_materials/...；导出路径
-              // 不会调用这里，故 cacheUrl 不会污染合成请求。
-              currentVideo.src =
-                selectPlaybackUrl(nextSequence, { purpose: 'preview' }) ||
-                nextSequence.url;
-            }
-
             // 等待视频加载完成后再播放，避免黑屏闪烁
             const pendingSeek = {
               compositionTime: nextVideoStartTime,
@@ -1132,30 +1376,94 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             pendingCompositionSeekRef.current = pendingSeek;
             compositionCurrentTimeRef.current = nextVideoStartTime;
             const tid = ++transitionIdRef.current;
-            const handleLoaded = () => {
-              if (transitionIdRef.current !== tid) return; // 已被更新的过渡取代，忽略
-              if (videoRef.current) {
-                lockSeekUntilSeeked(videoRef.current, pendingSeek);
-                videoRef.current.currentTime = nextClipStart;
-                if (isCompositionPlayingRef.current) {
-                  videoRef.current.play().catch(error => {
-                    logger.error('播放下一个视频失败', error, {
-                      nextIndex,
-                      sequenceName: nextSequence.name,
-                      clipStart: nextClipStart.toFixed(2)
-                    });
+
+            const onAssigned = () => {
+              if (transitionIdRef.current !== tid) return;
+              if (!videoRef.current) return;
+              lockSeekUntilSeeked(videoRef.current, pendingSeek);
+              videoRef.current.currentTime = nextClipStart;
+              if (isCompositionPlayingRef.current) {
+                videoRef.current.play().catch(error => {
+                  logger.error('播放下一个视频失败', error, {
+                    nextIndex,
+                    sequenceName: nextSequence.name,
+                    clipStart: nextClipStart.toFixed(2)
                   });
-                }
-                hideCanvasBuffer();
+                });
+              }
+              hideCanvasBuffer();
+            };
+
+            const onAssignFailed = (err: unknown) => {
+              if (transitionIdRef.current !== tid) return;
+              releaseSeekLock();
+              hideCanvasBuffer();
+              if (err instanceof NoPlayableSourceError) {
+                surfaceNoPlayableSource(err.attempted, {
+                  nextIndex,
+                  sequenceName: nextSequence.name,
+                });
+              } else {
+                logger.error('切换下一个视频时 assignVideoSrcChecked 失败', err as Error, {
+                  nextIndex,
+                  sequenceName: nextSequence.name,
+                });
               }
             };
-            videoRef.current.addEventListener('canplay', handleLoaded, { once: true });
-            setTimeout(() => {
-              if (transitionIdRef.current !== tid) return; // 过期超时，忽略
-              if (videoRef.current) videoRef.current.removeEventListener('canplay', handleLoaded);
+
+            // 5s 兜底，处理 assignVideoSrcChecked 卡住的极端情况。
+            const fallbackTimer = setTimeout(() => {
+              if (transitionIdRef.current !== tid) return;
               releaseSeekLock();
               hideCanvasBuffer();
             }, 5000);
+
+            if (cachedVideo) {
+              // 缓存命中：videoCache 持有的 src 是预加载好的 blob/同源 URL。
+              // 仍走 assignVideoSrcChecked 以统一事件协议；resolver 链作为回退。
+              logger.info('缓存命中，快速切换视频', {
+                nextIndex,
+                materialId: nextSequence.materialId,
+                sequenceName: nextSequence.name,
+                cacheHitRate: videoCache.cacheStats.cacheHitRate + '%',
+                containerStability: '容器尺寸已固定，防止切换闪烁'
+              });
+              const resolved = resolveSequencePlaybackUrl(nextSequence, materials || []);
+              const fallbackChain = resolved
+                ? [resolved.url, ...resolved.fallbacks].filter(u => u !== cachedVideo!.src)
+                : [];
+              assignVideoSrcChecked(currentVideo, cachedVideo.src, {
+                fallbacks: fallbackChain,
+                transitionId: tid,
+                getCurrentId: () => transitionIdRef.current,
+              })
+                .then(() => {
+                  clearTimeout(fallbackTimer);
+                  onAssigned();
+                })
+                .catch(err => {
+                  clearTimeout(fallbackTimer);
+                  onAssignFailed(err);
+                });
+            } else {
+              // 缓存未命中：走 resolver + 元素事件重试。
+              logger.info('缓存未命中，传统加载', {
+                nextIndex,
+                materialId: nextSequence.materialId,
+                sequenceName: nextSequence.name,
+                cacheState: nextSequence.materialId ? videoCache.getCacheState(nextSequence.materialId) : 'no-material-id',
+                containerStability: '容器尺寸已固定，防止切换闪烁'
+              });
+              assignSequenceSrc(currentVideo, nextSequence, tid)
+                .then(() => {
+                  clearTimeout(fallbackTimer);
+                  onAssigned();
+                })
+                .catch(err => {
+                  clearTimeout(fallbackTimer);
+                  onAssignFailed(err);
+                });
+            }
           }
 
           // 新增：切换到下一个视频时同步音频
@@ -1197,7 +1505,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         }
       }
     }
-  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, captureFrameToCanvas, hideCanvasBuffer, preloadUpcomingSequences, lockSeekUntilSeeked, releaseSeekLock, logger]);
+  }, [playbackMode, compositionPlayback, onNextSequence, onCompositionPlayPause, captureFrameToCanvas, hideCanvasBuffer, preloadUpcomingSequences, lockSeekUntilSeeked, releaseSeekLock, logger, assignSequenceSrc, materials, surfaceNoPlayableSource]);
 
   // 更新组合播放时间
   const handleTimeUpdate = useCallback(() => {
@@ -1480,6 +1788,18 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
+    // Playback v2 intercept — when the flag is on, dispatch to the engine
+    // and skip the legacy bootstrap path entirely (spec §3.1).
+    if (playbackV2Enabled && playbackEngineRef.current) {
+      const engine = playbackEngineRef.current;
+      const phase = engine.getPhase();
+      if (phase === 'playing' || phase === 'preparing') {
+        engine.dispatch({ kind: 'pause' });
+      } else {
+        engine.dispatch({ kind: 'play' });
+      }
+      return;
+    }
     if (playbackMode === 'composition') {
       logger.userAction('组合播放/暂停切换', 'compositionPlayPauseButton', {
         currentState: isCompositionPlaying ? '播放中' : '已暂停',
@@ -1496,6 +1816,48 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           // 新增：同步暂停音频
           await syncAudioPlayback(compositionCurrentTime, false);
         } else {
+          // 第二次进入项目立即点 ▶ 时，bootstrap 可能还在 resolving。直接 play()
+          // 会拿到空 / 失效 src 并触发 MEDIA_ERR_SRC_NOT_SUPPORTED。先等 bootstrap
+          // 完成或显式失败，再继续。详见 spec.md §3.2 Layer 3。
+          if (bootstrapStateRef.current.status === 'failed') {
+            surfaceNoPlayableSource(bootstrapStateRef.current.attempted, {
+              source: 'handlePlayPauseClick:bootstrapFailed',
+            });
+            return;
+          }
+          if (
+            bootstrapStateRef.current.status === 'resolving' &&
+            currentVideo.readyState < HTMLMediaElement.HAVE_METADATA
+          ) {
+            logger.info('handlePlayPauseClick: 等待 bootstrap 完成', {
+              readyState: currentVideo.readyState,
+            });
+            const waitOk = await new Promise<boolean>(resolve => {
+              const timer = setTimeout(() => {
+                cleanup();
+                resolve(false);
+              }, 5000);
+              const cleanup = () => {
+                clearTimeout(timer);
+                currentVideo.removeEventListener('loadedmetadata', onReady);
+                currentVideo.removeEventListener('canplay', onReady);
+              };
+              const onReady = () => {
+                cleanup();
+                resolve(true);
+              };
+              currentVideo.addEventListener('loadedmetadata', onReady, { once: true });
+              currentVideo.addEventListener('canplay', onReady, { once: true });
+            });
+            // 读到局部变量，避免 TS 将 ref 联合类型窄化到此前 if 检查的字面量。
+            const postWaitStatus: string = bootstrapStateRef.current.status;
+            if (!waitOk && postWaitStatus !== 'ready') {
+              surfaceNoPlayableSource(bootstrapStateRef.current.attempted, {
+                source: 'handlePlayPauseClick:bootstrapTimeout',
+              });
+              return;
+            }
+          }
           // 开始组合播放
           if (compositionPlayback && compositionPlayback.videoSequences.length > 0) {
             // 使用timeline当前时间确定播放起始位置
@@ -1560,10 +1922,16 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 // 视频源不同，等待canplay后再播放
                 isSeekingRef.current = true;
                 const tid = ++transitionIdRef.current;
-                currentVideo.src = targetPreviewSrc;
-                const handleLoaded = () => {
+                const fallbackTimer = setTimeout(() => {
                   if (transitionIdRef.current !== tid) return;
-                  if (videoRef.current) {
+                  releaseSeekLock();
+                  hideCanvasBuffer();
+                }, 5000);
+                assignSequenceSrc(currentVideo, targetSequence, tid)
+                  .then(() => {
+                    clearTimeout(fallbackTimer);
+                    if (transitionIdRef.current !== tid) return;
+                    if (!videoRef.current) return;
                     lockSeekUntilSeeked(videoRef.current, pendingSeek);
                     videoRef.current.currentTime = clampedVideoTime;
                     videoRef.current.play().catch(error => {
@@ -1584,15 +1952,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       }
                     });
                     hideCanvasBuffer();
-                  }
-                };
-                currentVideo.addEventListener('canplay', handleLoaded, { once: true });
-                setTimeout(() => {
-                  if (transitionIdRef.current !== tid) return;
-                  currentVideo.removeEventListener('canplay', handleLoaded);
-                  releaseSeekLock();
-                  hideCanvasBuffer();
-                }, 5000);
+                  })
+                  .catch((err: unknown) => {
+                    clearTimeout(fallbackTimer);
+                    if (transitionIdRef.current !== tid) return;
+                    releaseSeekLock();
+                    hideCanvasBuffer();
+                    if (err instanceof NoPlayableSourceError) {
+                      surfaceNoPlayableSource(err.attempted, {
+                        sequenceIndex: targetSequenceIndex,
+                        sequenceName: targetSequence.name,
+                      });
+                    } else {
+                      logger.error('handlePlayPause 切换 src 失败', err as Error, {
+                        sequenceName: targetSequence.name,
+                      });
+                    }
+                  });
               } else {
                 // 视频源相同，直接设置时间并播放
                 lockSeekUntilSeeked(currentVideo, pendingSeek);
@@ -1654,7 +2030,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         });
       }
     }
-  }, [playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, currentTimelineTime, onCompositionPlayPause, onSequenceIndexUpdate, handlePlayPause, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, lockSeekUntilSeeked, releaseSeekLock, logger, updateCompositionCurrentTime]);
+  }, [playbackV2Enabled, playbackMode, isCompositionPlaying, compositionPlayback, compositionCurrentTime, isPlaying, currentTime, videoPreview.duration, currentTimelineTime, onCompositionPlayPause, onSequenceIndexUpdate, handlePlayPause, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, preloadUpcomingSequences, lockSeekUntilSeeked, releaseSeekLock, logger, updateCompositionCurrentTime, assignSequenceSrc, surfaceNoPlayableSource]);
 
   // 新增：核心组合播放跳转函数，可被timeline和播放器UI调用
   const handleCompositionSeek = useCallback(async (
@@ -1758,17 +2134,19 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             source
           });
           const tid = ++transitionIdRef.current;
-          videoRef.current.src = targetPreviewSrc;
-
-          // 如果需要切换视频源，等待视频加载完成再设置时间和播放状态
-          const handleVideoLoaded = () => {
-            if (transitionIdRef.current !== tid) return; // 已被更新的过渡取代，忽略
-            if (videoRef.current) {
+          const fallbackTimer = setTimeout(() => {
+            if (transitionIdRef.current !== tid) return;
+            releaseSeekLock();
+            hideCanvasBuffer();
+          }, 5000);
+          assignSequenceSrc(videoRef.current, targetSequence, tid)
+            .then(() => {
+              clearTimeout(fallbackTimer);
+              if (transitionIdRef.current !== tid) return;
+              if (!videoRef.current) return;
               lockSeekUntilSeeked(videoRef.current, pendingSeek);
               videoRef.current.currentTime = mappedVideoTime;
               hideCanvasBuffer();
-
-              // 如果之前是播放状态，恢复播放
               if (wasPlayingBefore) {
                 videoRef.current.play().then(() => {
                   logger.info('视频切换后恢复播放', {
@@ -1791,21 +2169,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   }
                 });
               }
-            }
-          };
-
-          // 监听视频加载完成事件
-          videoRef.current.addEventListener('loadeddata', handleVideoLoaded, { once: true });
-
-          // 设置超时清理，防止事件监听器泄漏
-          setTimeout(() => {
-            if (transitionIdRef.current !== tid) return; // 过期超时，忽略
-            if (videoRef.current) {
-              videoRef.current.removeEventListener('loadeddata', handleVideoLoaded);
-            }
-            releaseSeekLock();
-            hideCanvasBuffer();
-          }, 5000);
+            })
+            .catch((err: unknown) => {
+              clearTimeout(fallbackTimer);
+              if (transitionIdRef.current !== tid) return;
+              releaseSeekLock();
+              hideCanvasBuffer();
+              if (err instanceof NoPlayableSourceError) {
+                surfaceNoPlayableSource(err.attempted, {
+                  sequenceName: targetSequence.name,
+                  compositionTime: compositionTime.toFixed(2),
+                });
+              } else {
+                logger.error('handleCompositionSeek 切换 src 失败', err as Error, {
+                  sequenceName: targetSequence.name,
+                });
+              }
+            });
 
         } else {
           // 不需要切换视频源 — 但可能有上一次切换遗留的 canvas/opacity 状态需要清理
@@ -1875,7 +2255,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     // `compositionCurrentTimeRef`, so callback identity no longer thrashes on
     // every play/pause or 4 Hz timeupdate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compositionPlayback, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, onSequenceIndexUpdate, logger, lockSeekUntilSeeked, releaseSeekLock, updateCompositionCurrentTime]);
+  }, [compositionPlayback, normalizeVideoUrl, getSequencePreviewSrc, captureFrameToCanvas, hideCanvasBuffer, syncAudioPlayback, onCompositionSeek, onSequenceIndexUpdate, logger, lockSeekUntilSeeked, releaseSeekLock, updateCompositionCurrentTime, assignSequenceSrc, surfaceNoPlayableSource]);
 
   // 处理时间跳转
   const handleTimeSeekClick = useCallback(async (newTime: number) => {
@@ -2061,44 +2441,30 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       if (needsSourceChange) {
         captureFrameToCanvas();
         const tid = ++transitionIdRef.current;
-        currentVideo.src = targetPreviewSrc;
-
-        // 修复 R4：等到 canplay 再 commitSeekThenPlay，把 seek+play 放在 load 完成之后。
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const settle = () => {
-            if (settled) return;
-            settled = true;
-            currentVideo.removeEventListener('canplay', onCanPlay);
-            resolve();
-          };
-          const onCanPlay = async () => {
-            if (transitionIdRef.current !== tid) {
-              settle();
-              return;
-            }
-            const v = videoRef.current;
-            if (!v) {
-              settle();
-              return;
-            }
-            lockSeekUntilSeeked(v, pendingSeek);
-            await commitSeekThenPlay(v, mappedVideoTime);
-            hideCanvasBuffer();
-            settle();
-          };
-          currentVideo.addEventListener('canplay', onCanPlay, { once: true });
-          setTimeout(() => {
-            if (transitionIdRef.current !== tid) {
-              settle();
-              return;
-            }
-            currentVideo.removeEventListener('canplay', onCanPlay);
+        // 修复 R4：等到 loadedmetadata/canplay 再 commitSeekThenPlay，把 seek+play 放在 load 完成之后。
+        try {
+          await assignSequenceSrc(currentVideo, targetSequence, tid);
+          if (transitionIdRef.current === tid && videoRef.current) {
+            lockSeekUntilSeeked(videoRef.current, pendingSeek);
+            await commitSeekThenPlay(videoRef.current, mappedVideoTime);
+          }
+          hideCanvasBuffer();
+        } catch (err: unknown) {
+          if (transitionIdRef.current === tid) {
             releaseSeekLock();
             hideCanvasBuffer();
-            settle();
-          }, 5000);
-        });
+            if (err instanceof NoPlayableSourceError) {
+              surfaceNoPlayableSource(err.attempted, {
+                sequenceName: targetSequence.name,
+                timelineTime: timelineTime.toFixed(2),
+              });
+            } else {
+              logger.error('seekAndPlayFromTimeline 切换 src 失败', err as Error, {
+                sequenceName: targetSequence.name,
+              });
+            }
+          }
+        }
       } else {
         ++transitionIdRef.current;
         hideCanvasBuffer();
@@ -2156,6 +2522,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     handlePlayPauseClick,
     isPlaying,
     logger,
+    assignSequenceSrc,
+    surfaceNoPlayableSource,
   ]);
 
   // 同步 isPlaying() 读取所用的 ref：mirror 当前播放态，避免 closure 内拿到旧 render 的值。
@@ -2315,14 +2683,56 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   }}
                   onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
                 >
+                  {/* Playback v2 — real canvas + hidden video managed by PlaybackEngine.
+                      Spec docs/plans/video-editor-playback-v2-phase2/spec.md §4.1. */}
+                  {playbackV2Enabled && playbackEngineRef.current && (
+                    <PreviewSurface
+                      variant="v2"
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        zIndex: 2,
+                      }}
+                      v2={{
+                        engine: playbackEngineRef.current,
+                        timeline: v2Timeline,
+                        resolver: v2Resolver,
+                        overlaysProvider: v2OverlaysProvider,
+                        onKillSwitch: handleV2KillSwitch,
+                        killSwitchMonitor: killSwitchMonitorRef.current,
+                        proxyHitMeter: proxyHitMeterRef.current,
+                      }}
+                    />
+                  )}
+                  {/* Phase 4 §3.2.6 / F3 — dev-only variant switcher. Renders
+                      null in production via the component's first statement,
+                      so it cannot ship to end users even if this branch is
+                      mounted. */}
+                  {playbackV2Enabled && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 6,
+                        right: 6,
+                        zIndex: 5,
+                        pointerEvents: 'auto',
+                      }}
+                    >
+                      <PlaybackVariantSwitcher />
+                    </div>
+                  )}
                   {/* 视频元素 - 完全填充容器，保持宽高比稳定 */}
                   <video
                     ref={videoRef}
                     className="w-full h-full object-contain"
-                    style={{ 
-                      width: '100%', 
+                    style={{
+                      width: '100%',
                       height: '100%',
-                      display: 'block', // 确保video元素正确显示
+                      // v2 hides the legacy element so it never competes with
+                      // the canvas surface for playback / audio resources.
+                      display: playbackV2Enabled ? 'none' : 'block',
                       backgroundColor: 'transparent' // 避免背景色影响
                     }}
                     preload="metadata"

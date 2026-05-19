@@ -34,6 +34,45 @@ import type {
   RemoteMaterialKey,
   RemoteMaterialResult,
 } from '../timeline/domain/ports';
+import { MediaProxyClient } from '../timeline/infrastructure/MediaProxyClient';
+import type { PreviewProxyStatus } from '../timeline/infrastructure/MediaProxyClient';
+import type { VideoCacheAdapter } from '../timeline/infrastructure/VideoCacheAdapter';
+import { isPlaybackV2Enabled } from '@/lib/playbackFlags';
+
+// ---------------------------------------------------------------------------
+// Phase-3 heuristics (spec §3.2.1 H1/H2/H3)
+// ---------------------------------------------------------------------------
+
+const PREVIEW_PROXY_BYTES_THRESHOLD = 50 * 1024 * 1024; // 50 MB
+const PREVIEW_PROXY_BITRATE_THRESHOLD_BPS = 8 * 1024 * 1024; // 8 Mbps
+const PREVIEW_PROXY_SOURCES = new Set(['ark', 'pexels']);
+
+function _matchesPreviewProxyHeuristic(material: MaterialItem): boolean {
+  // H1 — large byte size
+  if (typeof material.bytes === 'number' && material.bytes > PREVIEW_PROXY_BYTES_THRESHOLD) {
+    return true;
+  }
+  // H2 — high bitrate
+  if (
+    typeof material.bitrate === 'number' &&
+    material.bitrate > PREVIEW_PROXY_BITRATE_THRESHOLD_BPS
+  ) {
+    return true;
+  }
+  // H3 — source is in heavy-asset set
+  const meta = (material.metadata ?? {}) as Record<string, unknown>;
+  const source = typeof meta.source === 'string' ? meta.source.toLowerCase() : '';
+  if (PREVIEW_PROXY_SOURCES.has(source)) return true;
+  return false;
+}
+
+function _previewProxyEligible(material: MaterialItem): boolean {
+  if (material.type !== 'video') return false;
+  const status = material.previewProxyStatus;
+  if (status === 'cached' || status === 'queued' || status === 'running') return false;
+  // 'absent' / 'failed' / undefined — proceed to heuristic check.
+  return _matchesPreviewProxyHeuristic(material);
+}
 
 // ---------------------------------------------------------------------------
 // Singleton adapter
@@ -62,6 +101,28 @@ export interface UseRemoteMaterialPrefetchOptions {
    * differs from `window.location.origin` (or always remote during SSR).
    */
   isRemoteUrl?: (url: string) => boolean;
+  // Phase-3 (spec §3.2.1) — opt-in preview-proxy + cache window prefetch.
+  // Untouched when omitted so the legacy hook surface stays binary-stable.
+  /**
+   * Set of materialIds currently referenced by any timeline item. The hook
+   * computes a diff against the previous tick to detect "newly added" and
+   * triggers preview-proxy enqueue when heuristics match. When unset the
+   * preview-proxy branch is dormant.
+   */
+  timelineReferencedMaterialIds?: Set<string> | string[];
+  /** Material patch sink for preview-proxy field updates. */
+  onPatchPreviewProxy?: (id: string, patch: Partial<MaterialItem>) => void;
+  /** Inject the MediaProxyClient (test seam). Defaults to a module singleton. */
+  mediaProxyClient?: MediaProxyClient;
+  /** When provided, drives `videoCache.preloadSequenceWindow` on window changes. */
+  videoCache?: VideoCacheAdapter;
+  /**
+   * The current playback window — list of (materialId, url) pairs the
+   * playback engine expects to consume soon. Re-evaluated on change.
+   */
+  playbackWindow?: Array<{ materialId: string; url: string }>;
+  /** Force-disable phase-3 paths regardless of feature flag (tests / SSR). */
+  disablePhase3?: boolean;
 }
 
 export type RemoteMaterialPatch = Partial<
@@ -279,4 +340,124 @@ export function useRemoteMaterialPrefetch(
       inflight.clear();
     };
   }, []);
+
+  // ------------------------------------------------------------------
+  // Phase-3 — preview-proxy on first timeline addition (spec §3.2.1)
+  // ------------------------------------------------------------------
+
+  // Memoise default client so concurrent hooks share dedup state.
+  const defaultClient = useMemo(() => new MediaProxyClient(), []);
+  const phase3Disabled = options.disablePhase3 ?? false;
+  // Lock the v2-flag check at mount so we don't suddenly start enqueuing
+  // mid-session (CLAUDE.md note: flag is locked at mount, requires reload).
+  const phase3Enabled = useMemo(() => {
+    if (phase3Disabled) return false;
+    try {
+      return isPlaybackV2Enabled();
+    } catch {
+      return false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const ppClient = options.mediaProxyClient ?? defaultClient;
+  const onPatchPP = options.onPatchPreviewProxy;
+  const refIdsInput = options.timelineReferencedMaterialIds;
+  const previousRefIdsRef = useRef<Set<string>>(new Set());
+  const ppInflightRef = useRef<Set<string>>(new Set());
+  const ppUnwatchersRef = useRef<Map<string, () => void>>(new Map());
+
+  // Stable Set view of the timeline-referenced ids — also tolerates an
+  // array input.
+  const currentRefIds = useMemo(() => {
+    if (!refIdsInput) return null;
+    if (refIdsInput instanceof Set) return refIdsInput;
+    return new Set(refIdsInput);
+  }, [refIdsInput]);
+
+  useEffect(() => {
+    if (!phase3Enabled) return;
+    if (!currentRefIds || !onPatchPP) return;
+    const previous = previousRefIdsRef.current;
+    const newlyAdded: string[] = [];
+    currentRefIds.forEach((id) => {
+      if (!previous.has(id)) newlyAdded.push(id);
+    });
+    previousRefIdsRef.current = new Set(currentRefIds);
+    if (newlyAdded.length === 0) return;
+    const byId = new Map(materials.map((m) => [m.id, m] as const));
+    for (const id of newlyAdded) {
+      const material = byId.get(id);
+      if (!material) continue;
+      if (!_previewProxyEligible(material)) continue;
+      if (ppInflightRef.current.has(id)) continue;
+      ppInflightRef.current.add(id);
+      ppClient
+        .requestPreviewProxy(id)
+        .then((task) => {
+          // Hydrate the material with the immediate response.
+          const patch: Partial<MaterialItem> = {
+            previewProxyStatus: task.status as MaterialItem['previewProxyStatus'],
+          };
+          if (task.preview_proxy_url) {
+            patch.previewProxyLocalUrl = task.preview_proxy_url;
+          }
+          onPatchPP(id, patch);
+          if (task.status === 'cached' || task.status === 'failed') {
+            ppInflightRef.current.delete(id);
+            return;
+          }
+          // Watch until terminal.
+          const stop = ppClient.watchPreviewProxy(id, (snap: PreviewProxyStatus) => {
+            const next: Partial<MaterialItem> = {
+              previewProxyStatus: snap.status as MaterialItem['previewProxyStatus'],
+              previewProxyProgress: snap.progress_percent,
+              previewProxyProfile: snap.profile,
+            };
+            if (snap.preview_proxy_url) {
+              next.previewProxyLocalUrl = snap.preview_proxy_url;
+            }
+            onPatchPP(id, next);
+            if (snap.status === 'cached' || snap.status === 'failed') {
+              ppInflightRef.current.delete(id);
+              const unwatch = ppUnwatchersRef.current.get(id);
+              unwatch?.();
+              ppUnwatchersRef.current.delete(id);
+            }
+          });
+          ppUnwatchersRef.current.set(id, stop);
+        })
+        .catch(() => {
+          // Network / 5xx — clear inflight so retry is possible later.
+          ppInflightRef.current.delete(id);
+        });
+    }
+  }, [currentRefIds, materials, ppClient, onPatchPP, phase3Enabled]);
+
+  useEffect(() => {
+    return () => {
+      const unwatchers = ppUnwatchersRef.current;
+      unwatchers.forEach((stop) => {
+        try {
+          stop();
+        } catch {
+          /* ignore */
+        }
+      });
+      unwatchers.clear();
+      ppInflightRef.current.clear();
+    };
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Phase-3 — preloadSequenceWindow (spec §4.3 G7)
+  // ------------------------------------------------------------------
+
+  const videoCache = options.videoCache;
+  const window = options.playbackWindow;
+  useEffect(() => {
+    if (!phase3Enabled) return;
+    if (!videoCache || !window || window.length === 0) return;
+    void videoCache.preloadSequenceWindow(window);
+  }, [phase3Enabled, videoCache, window]);
 }

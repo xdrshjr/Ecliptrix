@@ -1130,8 +1130,11 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   // 同时镜像到 Zustand 全局 store（materialSlice），方便时间轴 TimelineItem
   // 等只读消费方读取 cacheStatus。
   const updateStoreMaterial = useVideoEditingStore(state => state.updateMaterial);
+  // Phase-3 spec §4.1 N4: extended to also accept preview-proxy + media-proxy
+  // mirror fields so useRemoteMaterialPrefetch can write them back via the
+  // same React useState path (no zustand slice exists for materials).
   const patchMaterialCache = useCallback(
-    (id: string, patch: RemoteMaterialPatch) => {
+    (id: string, patch: RemoteMaterialPatch | Partial<MaterialItem>) => {
       if (!isMountedRef.current) return;
       setMaterials(prev =>
         prev.map(m => (m.id === id ? { ...m, ...patch } : m))
@@ -1144,7 +1147,11 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     },
     [updateStoreMaterial],
   );
-  useRemoteMaterialPrefetch(materials, patchMaterialCache);
+  useRemoteMaterialPrefetch(materials, patchMaterialCache, {
+    // Pass the same patch sink as the preview-proxy hydration target so all
+    // mirror fields land in the React useState path consistently.
+    onPatchPreviewProxy: patchMaterialCache,
+  });
 
   return {
     materials: filteredMaterials,
@@ -1167,6 +1174,10 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleAiImageGenerate,
     handleStoryboardGenerate,
     handleClearAllMaterials,
+    // Exposed for the preview pipeline so VideoPlayerPanel can repair stale
+    // cacheUrl entries when assignVideoSrcChecked falls back. See
+    // docs/plans/video-reentry-play-no-source-fix/spec.md §3.2a.
+    patchMaterialCache,
   };
 };
 

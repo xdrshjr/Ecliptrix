@@ -150,6 +150,7 @@ The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; t
 - **Environment files**: Frontend uses `.env.local`, backend uses `.env` in its own directory. Templates are `env.template` in each location.
 - **Auth**: bcrypt password hashing, session token stored in `User.active_session_token` column (single-device login enforcement), no JWT expiry — token validated by DB lookup.
 - **Gitignore is minimal**: The `.gitignore` only covers `/node_modules/`, `static/uploads/`, `venv/`, and `backend-services/basic-service/data/`. Notably missing: `__pycache__/`, `*.pyc`, `.next/`, `.idea/`, `.env*`. When staging files, be careful not to include `__pycache__/`, `.pyc` files, `tsconfig.tsbuildinfo`, `.next/`, or `.idea/` — they frequently show up as modified.
+- **Playback v2 feature flag**: The video editor preview pipeline is being rebuilt under a flag. Resolve via `isPlaybackV2Enabled()` from `@/lib/playbackFlags` (localStorage `ecliptrix-playback-v2` > URL query `?playback_v2=on|off` in dev/staging > sessionStorage-cached `/api/config/playback-flag` > env `NEXT_PUBLIC_PLAYBACK_V2_ENABLED`). The flag is locked at mount with `useMemo(..., [])` — toggling it requires a full editor reload. Spec: `docs/plans/video-editor-playback-optimization/`.
 
 ## Project Index
 

@@ -655,7 +655,7 @@ async function executeVolcanoTTSNode(config: any, input: any, nodeId: string): P
     throw new Error('Volcano TTS node requires text content');
   }
   
-  const voiceType = config?.voiceType || 'zh_male_shaonianzixin_moon_bigtts';
+  const voiceType = config?.voiceType || 'zh_male_shaonianzixin_uranus_bigtts';
   const speedRatio = config?.speedRatio || 1.0;
   
   console.log('[API] Converting text to speech:', {

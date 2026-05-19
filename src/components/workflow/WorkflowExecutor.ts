@@ -812,7 +812,7 @@ export class WorkflowExecutor {
       throw new Error('Volcano TTS node requires text content. Please configure text or provide it as input.');
     }
     
-    const voiceType = config?.voiceType || 'zh_male_shaonianzixin_moon_bigtts';
+    const voiceType = config?.voiceType || 'zh_male_shaonianzixin_uranus_bigtts';
     const speedRatio = config?.speedRatio || 1.0;
     
     this.addLog('info', node.id, `Converting text to speech (${text.length} chars)`, { 

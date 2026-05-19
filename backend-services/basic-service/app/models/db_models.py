@@ -3,7 +3,7 @@ SQLAlchemy ORM models for database tables.
 """
 
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON, Float, Integer, ForeignKey, UniqueConstraint, Index, func
+from sqlalchemy import BigInteger, Column, String, Boolean, DateTime, Text, JSON, Float, Integer, ForeignKey, UniqueConstraint, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -146,6 +146,25 @@ class CachedMaterial(Base):
     ref_count = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Media-proxy hot-cache fields (spec 05). Populated by media_proxy_service
+    # when a remote asset streams through /api/media/proxy.
+    proxy_status = Column(String(16), nullable=False, default="absent")
+    proxy_bytes_cached = Column(BigInteger, nullable=False, default=0)
+    proxy_last_updated = Column(DateTime(timezone=True), nullable=True)
+
+    # Preview-proxy fields (spec 06 / phase-3 spec §6.1). Populated by
+    # preview_proxy_service when FFmpeg transcodes a low-bitrate ladder for
+    # heavy assets (4K / HEVC / >8 Mbps H.264).
+    preview_proxy_status = Column(String(16), nullable=False, default="absent")
+    preview_proxy_profile = Column(String(32), nullable=True)
+    preview_proxy_local_url = Column(String(1024), nullable=True)
+    preview_proxy_oss_url = Column(String(1024), nullable=True)
+    preview_proxy_progress = Column(Integer, nullable=False, default=0)
+    preview_proxy_bytes = Column(BigInteger, nullable=True)
+    preview_proxy_duration_sec = Column(Float, nullable=True)
+    preview_proxy_last_error = Column(Text, nullable=True)
+    preview_proxy_transcoded_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="uq_cached_materials_source_id"),

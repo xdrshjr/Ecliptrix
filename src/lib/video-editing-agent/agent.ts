@@ -18,8 +18,28 @@ import { reconcileOverlapsAfterAgentOp } from './reconcile';
  */
 const PROMPT_DEBUG = process.env.VIDEO_AGENT_PROMPT_DEBUG === '1';
 
-/** Map provider_type from backend to pi-ai api/provider values. */
-function resolveModelFormat(providerType?: string): { api: KnownApi; provider: string } {
+/**
+ * Map provider_type + api_type from backend to pi-ai api/provider values.
+ *
+ * Precedence: explicit `apiType` wins when present. Without it we fall back to
+ * `providerType`, which keeps backward compatibility for legacy providers
+ * (kimi_coding / claude_coding / anthropic) whose protocol was historically
+ * inferred from the brand name. Custom providers MUST send `apiType` —
+ * without it, an Anthropic-compatible custom endpoint silently downgrades to
+ * OpenAI-format requests, the Agent SDK fails to parse the response, and
+ * users see the "model returned an empty response" tool-use error.
+ */
+function resolveModelFormat(
+  providerType?: string,
+  apiType?: 'openai' | 'anthropic',
+): { api: KnownApi; provider: string } {
+  if (apiType === 'anthropic') {
+    const provider = providerType === 'kimi_coding' ? 'kimi-coding' : 'anthropic';
+    return { api: 'anthropic-messages', provider };
+  }
+  if (apiType === 'openai') {
+    return { api: 'openai-completions', provider: providerType || 'openai' };
+  }
   switch (providerType) {
     case 'kimi_coding':
       return { api: 'anthropic-messages', provider: 'kimi-coding' };
@@ -44,8 +64,8 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   toolContext: ToolContext;
   registry: ToolRegistry;
 } {
-  // 1. Construct Model — select API format based on provider type
-  const { api, provider } = resolveModelFormat(config.providerType);
+  // 1. Construct Model — select API format based on provider type + api type
+  const { api, provider } = resolveModelFormat(config.providerType, config.apiType);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const model: Model<any> = {
     id: config.llmModel,

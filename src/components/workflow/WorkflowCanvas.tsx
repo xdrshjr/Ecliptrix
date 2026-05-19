@@ -365,7 +365,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         type: 'volcano-tts',
         config: {
           text: '',
-          voiceType: 'zh_male_shaonianzixin_moon_bigtts',
+          voiceType: 'zh_male_shaonianzixin_uranus_bigtts',
           speedRatio: 1.0,
         },
       },

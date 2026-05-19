@@ -1,0 +1,36 @@
+# Media Proxy configuration
+# Spec: docs/plans/video-editor-playback-optimization/specs/05-backend-media-proxy.md §五
+#
+# Override individual values via env vars:
+#   MEDIA_PROXY_MAX_SIZE_MB
+#   MEDIA_PROXY_CONCURRENT_DOWNLOADS
+
+proxy:
+  # Left-prefix wildcards only ("*.foo.com" / "prefix*.suffix"). Bare "*" is rejected.
+  allowed_domains:
+    - "*.pexels.com"
+    - "*.unsplash.com"
+    - "*.volcengineapi.com"
+    - "ark-content-generation*.tos-cn-*.volces.com"
+    - "*.aliyuncs.com"
+    - "*.amazonaws.com"
+  # Domains where the source URL carries a short-lived signature. The cache
+  # key for these is computed from path + provider-specific id only, ignoring
+  # signature query params.
+  signed_url_domains:
+    - "ark-content-generation*.tos-cn-*.volces.com"
+  fetch_timeout_seconds: 30
+  upstream_connect_timeout_seconds: 5
+  max_size_mb: 1024
+  concurrent_downloads: 16
+  # Sits under STORAGE_ROOT (default `static/uploads`) so the existing
+  # /api/storage/files mount serves it as-is.
+  hot_cache_dir: "static/uploads/cached_materials"
+  enable_http: false
+  per_ip_rate_limit_per_min: 100
+  # Stream chunk size for upstream → client passthrough.
+  stream_chunk_size: 65536
+
+oss:
+  enabled_via: "OSS_ENABLED"
+  bucket_subprefix: "media-proxy-cache/"

@@ -138,6 +138,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to load system settings: {str(e)}", exc_info=True)
 
+    # Playback v2 Phase 4 — flag multi-worker deployments because the
+    # in-memory metrics aggregator is process-local. Spec §3.2.7.
+    if getattr(settings, "playback_v2_aggregator_requires_single_worker", True):
+        raw_workers = (
+            os.environ.get("GUNICORN_WORKERS")
+            or os.environ.get("UVICORN_WORKERS")
+            or os.environ.get("WEB_CONCURRENCY")
+        )
+        try:
+            worker_count = int(raw_workers) if raw_workers else 1
+        except (TypeError, ValueError):
+            worker_count = 1
+        if worker_count > 1:
+            logger.warning(
+                "Playback v2 aggregator is in-memory but detected worker_count=%s; "
+                "/api/admin/playback-metrics will report degraded=true (spec §3.2.7).",
+                worker_count,
+            )
+
     logger.info("Application startup completed")
 
     yield
@@ -497,10 +516,35 @@ from app.routers import video_project_router
 
 app.include_router(video_project_router.router, prefix="/api")
 
+# Import and include Media Proxy router (spec 05 — same-origin remote asset proxy)
+from app.routers import media_proxy_router
+
+app.include_router(media_proxy_router.router, prefix="/api")
+
+# Import and include Preview Proxy router (spec 06 — FFmpeg low-bitrate ladder)
+from app.routers import preview_proxy_router
+
+app.include_router(preview_proxy_router.router, prefix="/api")
+
+# Import and include Telemetry router (spec 08 — playback v2 batch intake)
+from app.routers import telemetry_router
+
+app.include_router(telemetry_router.router, prefix="/api")
+
+# Import and include Config router (spec 08 — runtime feature-flag resolution)
+from app.routers import config_router
+
+app.include_router(config_router.router, prefix="/api")
+
 # Import and include Video Cover router (per-project thumbnail/cover authoring)
 from app.routers import video_cover as video_cover_router
 
 app.include_router(video_cover_router.router, prefix="/api")
+
+# Import and include Admin Playback router (Phase 4 — admin-only ops endpoints)
+from app.routers import admin_playback_router
+
+app.include_router(admin_playback_router.router, prefix="/api")
 
 # Mount static files for generated audio
 audio_static_dir = "static/audio/generated"

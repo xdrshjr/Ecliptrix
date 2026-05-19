@@ -8,7 +8,7 @@ import { toolFetch, parseToolResponse } from './apiHelper';
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_VOICE_TYPE = 'zh_female_shuangkuaisisi_moon_bigtts';
+const DEFAULT_VOICE_TYPE = 'zh_female_qingxinnvsheng_uranus_bigtts';
 const MAX_SEGMENTS = 50;
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@ const MAX_SEGMENTS = 50;
 const segmentSchema = Type.Object({
   text: Type.String({ description: 'Text content for this segment' }),
   voice_type: Type.Optional(
-    Type.String({ description: 'Voice ID override for this segment. Available: zh_female_shuangkuaisisi_moon_bigtts, zh_male_shaonianzixin_moon_bigtts, zh_female_tianmeixiaoyuan_moon_bigtts, en_female_anna_mars_bigtts' }),
+    Type.String({ description: 'Voice ID override for this segment (Volcano TTS 2.0, *_uranus_bigtts). Available: zh_female_qingxinnvsheng_uranus_bigtts, zh_female_shuangkuaisisi_uranus_bigtts, zh_male_shaonianzixin_uranus_bigtts, zh_female_tianmeixiaoyuan_uranus_bigtts, en_female_dacey_uranus_bigtts' }),
   ),
 });
 

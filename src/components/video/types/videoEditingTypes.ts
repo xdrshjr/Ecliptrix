@@ -171,6 +171,16 @@ export interface UseMaterialManagementReturn {
   handleStoryboardGenerate: (params: import('@/types').StoryboardGenerateParams) => Promise<import('@/types').StoryboardPack>;
   // 清除所有素材
   handleClearAllMaterials: (onAfterClear?: () => void | Promise<void>, extraCount?: number) => void;
+  /**
+   * Patch a material's cache fields (e.g. reset to `cacheStatus='pending'`
+   * when the preview pipeline detects a stale `cacheUrl`). Wired through to
+   * VideoPlayerPanel's onCandidateFailed handshake. See
+   * docs/plans/video-reentry-play-no-source-fix/spec.md §3.2a.
+   */
+  patchMaterialCache: (
+    id: string,
+    patch: import('../hooks/useRemoteMaterialPrefetch').RemoteMaterialPatch,
+  ) => void;
 }
 
 // 新增：Youtube视频搜索结果接口

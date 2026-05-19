@@ -40,8 +40,13 @@ export interface UseVideoCacheReturn {
   batchPreload: (items: Array<{ url: string; materialId: string }>) => Promise<void>;
 }
 
-// Singleton adapter instance (replaces old videoCache global)
-const cacheAdapter = new VideoCacheAdapter({ maxCacheSize: 10 });
+// Singleton adapter instance (replaces old videoCache global).
+//
+// Phase-3 spec §4.1 N2: the hardcoded `maxCacheSize: 10` shadowed the new
+// DEFAULT (32) and made the LRU=32 acceptance unreachable. We pass no
+// override so the adapter's DEFAULT_CONFIG.maxCacheSize takes effect.
+const cacheAdapter = new VideoCacheAdapter();
+export const __testGetCacheAdapter = (): VideoCacheAdapter => cacheAdapter;
 
 /**
  * useVideoCache Hook

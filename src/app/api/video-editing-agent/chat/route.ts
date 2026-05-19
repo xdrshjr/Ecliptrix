@@ -465,6 +465,7 @@ export async function POST(request: NextRequest) {
             llmApiKey: config.apiKey,
             llmModel: config.model,
             providerType: config.providerType,
+            apiType: config.apiType,
             timelineState: effectiveTimelineState,
             materials: effectiveMaterials,
             conversationHistory: messages,

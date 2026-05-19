@@ -352,12 +352,35 @@ class Settings(BaseModel):
     )
 
     # Volcano TTS Configuration
-    volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID")
+    #
+    # The synthesis call moved to the V3 大模型语音合成 API on 2026-05-15
+    # (endpoint /api/v3/tts/unidirectional). V3 uses a single X-Api-Key header
+    # + an X-Api-Resource-Id picker — there is no per-call appid/token/cluster
+    # in the request body anymore. The legacy V1 (`appid`/`access_token`/
+    # `secret_key`) fields are preserved because the ASR / voice-clone routers
+    # still chain-fall back to them; do NOT remove without auditing those.
+    volcano_tts_api_key: str = Field(
+        default="",
+        description=(
+            "Volcano TTS V3 API Key (from the new console). Drives "
+            "X-Api-Key on /api/v3/tts/unidirectional. Required for V3."
+        ),
+    )
+    volcano_tts_resource_id: str = Field(
+        default="seed-tts-1.0",
+        description=(
+            "Volcano TTS V3 resource id — picks the product/billing tier. "
+            "Common values: 'seed-tts-1.0' (character-billed 1.0 voices, "
+            "default), 'seed-tts-2.0' (2.0 voices), 'seed-tts-1.0-concurr' "
+            "(concurrency-billed 1.0)."
+        ),
+    )
+    volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID (LEGACY V1 — still used by ASR/voice-clone fallback chains)")
     volcano_tts_access_token: str = Field(
-        default="", description="Volcano TTS Access Token"
+        default="", description="Volcano TTS Access Token (LEGACY V1)"
     )
     volcano_tts_secret_key: str = Field(
-        default="", description="Volcano TTS Secret Key"
+        default="", description="Volcano TTS Secret Key (LEGACY V1)"
     )
 
     # Volcano ASR (Recording File Recognition / vc) Configuration
@@ -365,12 +388,62 @@ class Settings(BaseModel):
     # NOTE: a Volcano APPID's TTS authorization is independent from its ASR
     # authorization — when the same APPID does not have ASR enabled, transcription
     # will fail. In that case set VOLCANO_ASR_* explicitly to an ASR-enabled APPID.
-    volcano_asr_appid: str = Field(default="", description="Volcano ASR App ID")
+    volcano_asr_appid: str = Field(default="", description="Volcano ASR App ID (LEGACY V1, used only by voice-clone or legacy code paths)")
     volcano_asr_access_token: str = Field(
-        default="", description="Volcano ASR Access Token"
+        default="", description="Volcano ASR Access Token (LEGACY V1)"
     )
     volcano_asr_secret_key: str = Field(
-        default="", description="Volcano ASR Secret Key"
+        default="", description="Volcano ASR Secret Key (LEGACY V1)"
+    )
+
+    # ASR streaming (大模型流式语音识别 WebSocket). Migrated 2026-05-15 — the
+    # previous V3 file-submit path required a publicly fetchable audio URL,
+    # which production cannot guarantee. The streaming endpoint authenticates
+    # with the legacy-console headers (X-Api-App-Key + X-Api-Access-Key) we
+    # already provision via VOLCANO_ASR_APPID / ***REMOVED***.
+    # `volcano_asr_api_key` is retained for forward compatibility with the
+    # new-console single-key handshake; it is **not** required for the
+    # WebSocket path.
+    volcano_asr_api_key: str = Field(
+        default="",
+        description=(
+            "Volcano ASR new-console API Key (single X-Api-Key handshake). "
+            "Not required by the WebSocket streaming path — kept for the "
+            "future migration to the new-console UUID key."
+        ),
+    )
+    volcano_asr_resource_id: str = Field(
+        default="volc.bigasr.sauc.duration",
+        description=(
+            "Volcano ASR streaming resource id (X-Api-Resource-Id header). "
+            "Choose the variant that matches the billing tier enabled on the "
+            "Volcano console: "
+            "'volc.bigasr.sauc.duration' (豆包流式语音识别 1.0, 小时版, default), "
+            "'volc.bigasr.sauc.concurrent' (豆包流式语音识别 1.0, 并发版), "
+            "'volc.seedasr.sauc.duration' (2.0 小时版), "
+            "'volc.seedasr.sauc.concurrent' (2.0 并发版)."
+        ),
+    )
+    asr_max_clip_seconds: int = Field(
+        default=300,
+        description=(
+            "Hard cap on per-clip audio duration before the ASR service "
+            "rejects the request with ASR_CLIP_TOO_LONG. The streaming "
+            "nostream endpoint's practical upload budget is ~300 s; longer "
+            "clips should be split client-side."
+        ),
+    )
+
+    # Public-facing base URL for this deployment. Retained for legacy callers
+    # (V3 file-submit, voice-clone audio fetch links). The new ASR WebSocket
+    # path streams bytes directly and does **not** read this value.
+    public_base_url: str = Field(
+        default="",
+        description=(
+            "Public HTTPS base URL of this deployment (no trailing slash). "
+            "Optional — no longer required by the ASR path. "
+            "Example: https://ecliptrix.com"
+        ),
     )
 
     # Volcano Voice Clone Configuration
@@ -430,6 +503,18 @@ class Settings(BaseModel):
     # OSS Configuration
     oss: OSSConfig = Field(default_factory=OSSConfig)
 
+    # Media Proxy Configuration (spec 05)
+    media_proxy: "MediaProxyConfig" = Field(
+        default_factory=lambda: MediaProxyConfig(),
+        description="Same-origin proxy for remote video/image CDNs (spec 05).",
+    )
+
+    # Preview Proxy Configuration (spec 06 / phase-3)
+    preview_proxy: "PreviewProxyConfig" = Field(
+        default_factory=lambda: PreviewProxyConfig(),
+        description="FFmpeg low-bitrate transcode pipeline for hi-bitrate assets (spec 06).",
+    )
+
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
 
@@ -445,7 +530,70 @@ class Settings(BaseModel):
     app_name: str = Field(default="Basic Service API", description="Application name")
     app_version: str = Field(default="1.0.0", description="Application version")
 
+    # Playback v2 (Phase 4) — telemetry aggregation + admin observability.
+    playback_v2_telemetry_agg_window_min: int = Field(
+        default=15,
+        description="Rolling window (minutes) used by PlaybackMetricsAggregator.",
+    )
+    playback_v2_telemetry_agg_retention_hours: int = Field(
+        default=24,
+        description=(
+            "How many hours of 1-minute counter buckets the playback metrics "
+            "aggregator retains in memory."
+        ),
+    )
+    playback_v2_aggregator_requires_single_worker: bool = Field(
+        default=True,
+        description=(
+            "When true, /api/admin/playback-metrics flags responses as "
+            "degraded if more than one gunicorn/uvicorn worker is detected. "
+            "Spec Phase 4 §3.2.7 / R-P1-3."
+        ),
+    )
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False)
+
+
+class MediaProxyConfig(BaseModel):
+    """Same-origin remote-asset proxy (spec 05 §五).
+
+    Field defaults match the values in
+    ``backend-services/basic-service/config/media-proxy-config.yaml``; the
+    YAML loader in :func:`get_settings` overrides them at startup, and a
+    handful of env vars (``MEDIA_PROXY_MAX_SIZE_MB`` etc.) take final
+    precedence per CLAUDE.md "Priority: new env > YAML > default".
+    """
+
+    allowed_domains: List[str] = Field(default_factory=list)
+    signed_url_domains: List[str] = Field(default_factory=list)
+    fetch_timeout_seconds: int = 30
+    upstream_connect_timeout_seconds: int = 5
+    max_size_mb: int = 1024
+    concurrent_downloads: int = 16
+    hot_cache_dir: str = "static/uploads/cached_materials"
+    enable_http: bool = False
+    per_ip_rate_limit_per_min: int = 100
+    stream_chunk_size: int = 65536
+    oss_bucket_subprefix: str = "media-proxy-cache/"
+
+
+class PreviewProxyConfig(BaseModel):
+    """FFmpeg low-bitrate transcode pipeline (spec 06 §五 / phase-3 §3.2.7).
+
+    Field defaults match
+    ``backend-services/basic-service/config/preview-proxy-config.yaml``; the
+    YAML loader in :func:`get_settings` overrides them at startup, and a
+    handful of env vars take final precedence per CLAUDE.md "Priority: new
+    env > YAML > default".
+    """
+
+    enabled: bool = True
+    max_concurrent_transcode: int = 2
+    timeout_seconds: int = 600
+    progress_write_interval_ms: int = 1000
+    retry_attempts: int = 1
+    output_dir: str = "static/uploads/preview-proxies"
+    oss_bucket_subprefix: str = "preview-proxies/"
 
 
 def load_yaml_config(config_path: str) -> Dict[str, Any]:
@@ -476,12 +624,16 @@ def get_settings() -> Settings:
     )
     upload_config_path = os.path.join(config_dir, "upload-config.yaml")
     storyboard_config_path = os.path.join(config_dir, "storyboard-config.yaml")
+    media_proxy_config_path = os.path.join(config_dir, "media-proxy-config.yaml")
+    preview_proxy_config_path = os.path.join(config_dir, "preview-proxy-config.yaml")
 
     batch_tts_yaml_config = load_yaml_config(batch_tts_config_path)
     youtube_yaml_config = load_yaml_config(youtube_config_path)
     watermark_removal_yaml_config = load_yaml_config(watermark_removal_config_path)
     upload_yaml_config = load_yaml_config(upload_config_path)
     storyboard_yaml_config = load_yaml_config(storyboard_config_path)
+    media_proxy_yaml_config = load_yaml_config(media_proxy_config_path)
+    preview_proxy_yaml_config = load_yaml_config(preview_proxy_config_path)
 
     # Create batch TTS config from YAML
     batch_tts_config = BatchTTSConfig()
@@ -630,6 +782,65 @@ def get_settings() -> Settings:
         invite_code=invite_code,
     )
 
+    # Create Media Proxy configuration (spec 05 §五)
+    mp_yaml = (media_proxy_yaml_config.get("proxy", {}) or {})
+    mp_oss_yaml = (media_proxy_yaml_config.get("oss", {}) or {})
+    media_proxy_config = MediaProxyConfig(
+        allowed_domains=list(mp_yaml.get("allowed_domains") or []),
+        signed_url_domains=list(mp_yaml.get("signed_url_domains") or []),
+        fetch_timeout_seconds=int(mp_yaml.get("fetch_timeout_seconds", 30)),
+        upstream_connect_timeout_seconds=int(
+            mp_yaml.get("upstream_connect_timeout_seconds", 5)
+        ),
+        max_size_mb=int(
+            os.getenv("MEDIA_PROXY_MAX_SIZE_MB") or mp_yaml.get("max_size_mb", 1024)
+        ),
+        concurrent_downloads=int(
+            os.getenv("MEDIA_PROXY_CONCURRENT_DOWNLOADS")
+            or mp_yaml.get("concurrent_downloads", 16)
+        ),
+        hot_cache_dir=str(
+            mp_yaml.get("hot_cache_dir", "static/uploads/cached_materials")
+        ),
+        enable_http=bool(mp_yaml.get("enable_http", False)),
+        per_ip_rate_limit_per_min=int(mp_yaml.get("per_ip_rate_limit_per_min", 100)),
+        stream_chunk_size=int(mp_yaml.get("stream_chunk_size", 65536)),
+        oss_bucket_subprefix=str(
+            mp_oss_yaml.get("bucket_subprefix", "media-proxy-cache/")
+        ),
+    )
+
+    # Create Preview Proxy configuration (spec 06 / phase-3 §3.2.7)
+    pp_yaml = (preview_proxy_yaml_config.get("preview_proxy", {}) or {})
+    pp_oss_yaml = (preview_proxy_yaml_config.get("oss", {}) or {})
+    pp_enabled_env = os.getenv("PREVIEW_PROXY_ENABLED")
+    if pp_enabled_env is not None and pp_enabled_env != "":
+        pp_enabled = pp_enabled_env.lower() == "true"
+    else:
+        pp_enabled = bool(pp_yaml.get("enabled", True))
+    preview_proxy_config = PreviewProxyConfig(
+        enabled=pp_enabled,
+        max_concurrent_transcode=int(
+            os.getenv("PREVIEW_PROXY_MAX_CONCURRENT")
+            or pp_yaml.get("max_concurrent_transcode", 2)
+        ),
+        timeout_seconds=int(
+            os.getenv("PREVIEW_PROXY_TIMEOUT_SECONDS")
+            or pp_yaml.get("timeout_seconds", 600)
+        ),
+        progress_write_interval_ms=int(
+            pp_yaml.get("progress_write_interval_ms", 1000)
+        ),
+        retry_attempts=int(pp_yaml.get("retry_attempts", 1)),
+        output_dir=str(
+            os.getenv("PREVIEW_PROXY_OUTPUT_DIR")
+            or pp_yaml.get("output_dir", "static/uploads/preview-proxies")
+        ),
+        oss_bucket_subprefix=str(
+            pp_oss_yaml.get("bucket_subprefix", "preview-proxies/")
+        ),
+    )
+
     # Create OSS configuration
     oss_config = OSSConfig(
         enabled=os.getenv("OSS_ENABLED", "false").lower() == "true",
@@ -639,6 +850,18 @@ def get_settings() -> Settings:
         bucket_name=os.getenv("OSS_BUCKET_NAME", ""),
         cdn_domain=os.getenv("OSS_CDN_DOMAIN", ""),
         key_prefix=os.getenv("OSS_KEY_PREFIX", ""),
+    )
+
+    # Playback v2 Phase 4 settings.
+    pv2_window = int(
+        os.getenv("PLAYBACK_V2_TELEMETRY_AGG_WINDOW_MIN") or 15
+    )
+    pv2_retention = int(
+        os.getenv("PLAYBACK_V2_TELEMETRY_AGG_RETENTION_HOURS") or 24
+    )
+    pv2_single_worker = (
+        os.getenv("PLAYBACK_V2_AGGREGATOR_REQUIRES_SINGLE_WORKER", "true").lower()
+        != "false"
     )
 
     return Settings(
@@ -663,6 +886,8 @@ def get_settings() -> Settings:
         vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),
         vl_llm_api_type=os.getenv("VL_LLM_API_TYPE", "openai"),
         pexels_api_keys=pexels_api_keys,
+        volcano_tts_api_key=os.getenv("VOLCANO_TTS_API_KEY", ""),
+        volcano_tts_resource_id=os.getenv("VOLCANO_TTS_RESOURCE_ID", "seed-tts-1.0"),
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
@@ -675,6 +900,14 @@ def get_settings() -> Settings:
         volcano_asr_secret_key=os.getenv(
             "VOLCANO_ASR_SECRET_KEY", os.getenv("VOLCANO_TTS_SECRET_KEY", "")
         ),
+        volcano_asr_api_key=os.getenv(
+            "VOLCANO_ASR_API_KEY", os.getenv("VOLCANO_TTS_API_KEY", "")
+        ),
+        volcano_asr_resource_id=os.getenv(
+            "VOLCANO_ASR_RESOURCE_ID", "volc.bigasr.sauc.duration"
+        ),
+        asr_max_clip_seconds=int(os.getenv("ASR_MAX_CLIP_SECONDS", "300")),
+        public_base_url=os.getenv("PUBLIC_BASE_URL", ""),
         volcano_voice_clone_app_key=os.getenv(
             "VOLCANO_VOICE_CLONE_APP_KEY", os.getenv("VOLCANO_TTS_APPID", "")
         ),
@@ -698,11 +931,16 @@ def get_settings() -> Settings:
         storage=storage_config,
         storyboard=storyboard_config,
         oss=oss_config,
+        media_proxy=media_proxy_config,
+        preview_proxy=preview_proxy_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
         debug=os.getenv("DEBUG", "false").lower() == "true",
         temp_dir=os.getenv("TEMP_DIR", "temp"),
+        playback_v2_telemetry_agg_window_min=pv2_window,
+        playback_v2_telemetry_agg_retention_hours=pv2_retention,
+        playback_v2_aggregator_requires_single_worker=pv2_single_worker,
     )
 
 
