@@ -367,12 +367,13 @@ class Settings(BaseModel):
         ),
     )
     volcano_tts_resource_id: str = Field(
-        default="seed-tts-1.0",
+        default="seed-tts-2.0",
         description=(
             "Volcano TTS V3 resource id — picks the product/billing tier. "
-            "Common values: 'seed-tts-1.0' (character-billed 1.0 voices, "
-            "default), 'seed-tts-2.0' (2.0 voices), 'seed-tts-1.0-concurr' "
-            "(concurrency-billed 1.0)."
+            "Common values: 'seed-tts-2.0' (character-billed 2.0 voices, "
+            "*_uranus_bigtts / saturn_*_tob, default), 'seed-tts-1.0' "
+            "(character-billed 1.0 voices, *_moon_bigtts / *_streaming), "
+            "'seed-tts-1.0-concurr' (concurrency-billed 1.0)."
         ),
     )
     volcano_tts_appid: str = Field(default="", description="Volcano TTS App ID (LEGACY V1 — still used by ASR/voice-clone fallback chains)")
@@ -940,7 +941,7 @@ def get_settings() -> Settings:
         vl_llm_api_type=os.getenv("VL_LLM_API_TYPE", "openai"),
         pexels_api_keys=pexels_api_keys,
         volcano_tts_api_key=os.getenv("VOLCANO_TTS_API_KEY", ""),
-        volcano_tts_resource_id=os.getenv("VOLCANO_TTS_RESOURCE_ID", "seed-tts-1.0"),
+        volcano_tts_resource_id=os.getenv("VOLCANO_TTS_RESOURCE_ID", "seed-tts-2.0"),
         volcano_tts_appid=os.getenv("VOLCANO_TTS_APPID", ""),
         volcano_tts_access_token=os.getenv("VOLCANO_TTS_ACCESS_TOKEN", ""),
         volcano_tts_secret_key=os.getenv("VOLCANO_TTS_SECRET_KEY", ""),
