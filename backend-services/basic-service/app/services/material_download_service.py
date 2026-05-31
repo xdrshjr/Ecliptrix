@@ -235,14 +235,18 @@ class MaterialDownloadService:
             return None
         assert self._session_factory is not None
         async with self._session_factory() as session:
-            stmt = select(CachedMaterial).where(
-                CachedMaterial.source_url == url,
-                CachedMaterial.status == "ready",
+            stmt = (
+                select(CachedMaterial)
+                .where(
+                    CachedMaterial.source_url == url,
+                    CachedMaterial.status == "ready",
+                )
+                .order_by(CachedMaterial.created_at.desc())
             )
             result = await session.execute(stmt)
-            row = result.scalar_one_or_none()
-            if row and row.local_path and os.path.exists(row.local_path):
-                return row.local_path
+            for row in result.scalars():
+                if row.local_path and os.path.exists(row.local_path):
+                    return row.local_path
         return None
 
     async def lookup_async(
@@ -280,11 +284,13 @@ class MaterialDownloadService:
                 result = await session.execute(stmt)
                 row = result.scalar_one_or_none()
             if row is None and url:
-                stmt = select(CachedMaterial).where(
-                    CachedMaterial.source_url == url,
+                stmt = (
+                    select(CachedMaterial)
+                    .where(CachedMaterial.source_url == url)
+                    .order_by(CachedMaterial.created_at.desc())
                 )
                 result = await session.execute(stmt)
-                row = result.scalar_one_or_none()
+                row = result.scalars().first()
             return row
 
     def local_url_for(self, row: Optional[CachedMaterial]) -> Optional[str]:
@@ -377,6 +383,19 @@ class MaterialDownloadService:
             )
             result = await session.execute(stmt)
             row = result.scalar_one_or_none()
+            if row is None:
+                # Fall back to source_url lookup: another path (e.g.
+                # enqueue with source="pexels") may have already registered
+                # the same physical asset under a different (source, source_id).
+                # Reusing that row prevents the cached_materials table from
+                # accumulating duplicate entries for the same URL.
+                stmt = (
+                    select(CachedMaterial)
+                    .where(CachedMaterial.source_url == url)
+                    .order_by(CachedMaterial.created_at.desc())
+                )
+                result = await session.execute(stmt)
+                row = result.scalars().first()
             if row is None:
                 row = CachedMaterial(
                     source=source,
