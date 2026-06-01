@@ -108,6 +108,30 @@ export class TimeoutError extends Error {
   }
 }
 
+/**
+ * Thrown on HTTP 429 (rate limited). Carries the parsed `Retry-After` seconds
+ * so callers (and the global toast listener) can show a countdown. NEVER
+ * auto-retried — the caller decides whether/when to retry.
+ */
+export class RateLimitError extends ApiError {
+  /**
+   * The error-code string this class always carries on its instances
+   * (`instance.code === RateLimitError.CODE`). Named `CODE` (not `code`) to
+   * avoid clashing with `ApiError`'s narrowed `static readonly code`.
+   */
+  static readonly CODE = 'RATE_LIMITED';
+  readonly retryAfter: number;
+  constructor(
+    retryAfter: number,
+    message: string,
+    details?: Record<string, unknown>,
+  ) {
+    super(429, RateLimitError.CODE, message, details);
+    this.name = 'RateLimitError';
+    this.retryAfter = retryAfter;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
@@ -158,6 +182,73 @@ function handleSessionExpired(): void {
   if (!NO_REDIRECT_PATHS.has(currentPath)) {
     window.location.href = '/login?reason=session-expired';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rate-limit (429) handler
+// ---------------------------------------------------------------------------
+
+/** Fallback retry-after (seconds) when the backend omits a parseable header. */
+const DEFAULT_RETRY_AFTER_SECONDS = 5;
+
+/**
+ * Parse a `Retry-After` header value. Per RFC 7231 it may be a delta-seconds
+ * integer (our backend sends this) or an HTTP-date; we support both and fall
+ * back to a sane default on anything unparseable / non-positive.
+ */
+function parseRetryAfter(headerValue: string | null): number {
+  if (!headerValue) return DEFAULT_RETRY_AFTER_SECONDS;
+  const asInt = Number.parseInt(headerValue, 10);
+  if (Number.isFinite(asInt) && asInt > 0) return asInt;
+  const asDate = Date.parse(headerValue);
+  if (!Number.isNaN(asDate)) {
+    const deltaMs = asDate - Date.now();
+    if (deltaMs > 0) return Math.ceil(deltaMs / 1000);
+  }
+  return DEFAULT_RETRY_AFTER_SECONDS;
+}
+
+/**
+ * Build a `RateLimitError` from a 429 response and broadcast a global
+ * `ecliptrix:rate-limited` event so a single app-level listener can show ONE
+ * friendly toast. NOTE: we dispatch on EVERY 429 — debouncing the toast is the
+ * listener's job (time-window throttle), NOT a permanent latch here (a latch
+ * would mute every future 429 for the session). Returns the error to throw.
+ */
+function makeRateLimitError(
+  response: Response,
+  parsed: ParsedErrorBody,
+): RateLimitError {
+  // Prefer the `Retry-After` header (RFC 7231). The backend sends it, but the
+  // Next.js backend-proxy buffers JSON 4xx responses and forwards only
+  // `Content-Type`, dropping `Retry-After`. So when the header is absent we
+  // fall back to the body's `error_details.retry_after` (which the proxy DOES
+  // preserve) before the hard-coded default — otherwise every proxied 429
+  // would show the 5s default countdown instead of the real value.
+  const headerRetryAfter = response.headers.get('Retry-After');
+  let retryAfter = parseRetryAfter(headerRetryAfter);
+  if (headerRetryAfter === null) {
+    const bodyRetryAfter = (parsed.details as { retry_after?: unknown } | undefined)
+      ?.retry_after;
+    if (typeof bodyRetryAfter === 'number' && Number.isFinite(bodyRetryAfter) && bodyRetryAfter > 0) {
+      retryAfter = Math.ceil(bodyRetryAfter);
+    }
+  }
+  const message = parsed.message ?? 'Too many requests';
+  const details: Record<string, unknown> = {
+    ...(parsed.details ?? {}),
+    retryAfter,
+  };
+  try {
+    window.dispatchEvent(
+      new CustomEvent('ecliptrix:rate-limited', {
+        detail: { retryAfter, message },
+      }),
+    );
+  } catch {
+    // CustomEvent unavailable — extremely rare. Swallow.
+  }
+  return new RateLimitError(retryAfter, message, details);
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +525,13 @@ async function request<T>(
       throw new ForbiddenError(parsed.message ?? 'Forbidden', parsed.details);
     }
 
+    if (status === 429) {
+      // Rate limited — 4xx, NEVER retried. Dispatch the global event (for the
+      // friendly toast) and throw a typed RateLimitError carrying retryAfter.
+      const parsed = await parseErrorBody(response);
+      throw makeRateLimitError(response, parsed);
+    }
+
     if (status >= 400 && status < 500) {
       // Other 4xx — never retried.
       const parsed = await parseErrorBody(response);
@@ -622,6 +720,12 @@ async function streamRequest(
   if (status === 403) {
     const parsed = await parseErrorBody(response);
     throw new ForbiddenError(parsed.message ?? 'Forbidden', parsed.details);
+  }
+
+  if (status === 429) {
+    // Rate limited — dispatch the global event + throw RateLimitError. No retry.
+    const parsed = await parseErrorBody(response);
+    throw makeRateLimitError(response, parsed);
   }
 
   if (status >= 400) {

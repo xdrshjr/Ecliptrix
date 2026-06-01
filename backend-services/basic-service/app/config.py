@@ -12,6 +12,81 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# ---------------------------------------------------------------------------
+# Rate-limiting fallback defaults (spec/03 §2.1)
+# ---------------------------------------------------------------------------
+# Factory defaults for the `rate_limiting` SystemSetting category. They serve
+# three purposes:
+#   1. DB-missing / DB-error fallback for ``RateLimitConfigProvider`` so a
+#      config-layer fault never takes the whole API down (spec/03 §4).
+#   2. The values the admin ``POST /api/rate-limit/reset`` endpoint resets to.
+#   3. The single source of truth for the per-key validation ranges used by the
+#      ``PUT /api/rate-limit/config`` endpoint and the ``GET /config`` meta.
+#
+# Mirrors the existing ``MediaProxyConfig.per_ip_rate_limit_per_min`` style of a
+# plain int knob. These intentionally duplicate the constants in
+# ``app/services/rate_limit_config.py`` (Phase-1 seam) — the two MUST stay in
+# sync; the provider prefers these config.py values as its degrade fallback.
+RATE_LIMIT_DEFAULTS: Dict[str, Any] = {
+    "enabled": True,
+    "window_seconds": 60,
+    "default_per_user_per_min": 300,
+    "default_per_ip_per_min": 300,
+    "ai_generation_per_min": 30,
+    "auth_per_ip_per_min": 10,
+    "media_serving_per_min": 6000,
+}
+
+# Per-key value type + validation range + human description. Drives both the
+# PUT range-check (422 on out-of-range) and the GET /config ``meta`` block the
+# frontend (TODO 04) renders its form from. ``min``/``max`` are inclusive.
+# ``enabled`` is a boolean and therefore has no numeric range.
+RATE_LIMIT_META: Dict[str, Dict[str, Any]] = {
+    "enabled": {
+        "type": "boolean",
+        "min": None,
+        "max": None,
+        "description": "全局限流开关。关闭后中间件直通,不计数不拦截。",
+    },
+    "window_seconds": {
+        "type": "number",
+        "min": 10,
+        "max": 3600,
+        "description": "滑动窗口长度(秒),所有类别共用。",
+    },
+    "default_per_user_per_min": {
+        "type": "number",
+        "min": 1,
+        "max": 100000,
+        "description": "普通(normal)类别:已登录用户的每窗口请求上限。",
+    },
+    "default_per_ip_per_min": {
+        "type": "number",
+        "min": 1,
+        "max": 100000,
+        "description": "普通(normal)类别:匿名请求按 IP 的每窗口请求上限。",
+    },
+    "ai_generation_per_min": {
+        "type": "number",
+        "min": 1,
+        "max": 100000,
+        "description": "AI/生成类(ai_generation)的每窗口请求上限,耗算力故偏严格。",
+    },
+    "auth_per_ip_per_min": {
+        "type": "number",
+        "min": 1,
+        "max": 100000,
+        "description": "登录/注册(auth)按 IP 的每窗口上限,用于防爆破。",
+    },
+    "media_serving_per_min": {
+        "type": "number",
+        "min": 1,
+        "max": 1000000,
+        "description": "媒体服务(media_serving)高额度,避免视频/音频分块播放被误伤。",
+    },
+}
+
+
 class BatchTTSRetryConfig(BaseModel):
     """Batch TTS retry configuration."""
 
@@ -584,6 +659,32 @@ class Settings(BaseModel):
         ),
     )
 
+    # Default-deny enforcement switch (api-authz-rate-limiting spec/01 §5, R1).
+    #
+    # SessionAuthMiddleware always RESOLVES the session token and injects
+    # ``request.state.user`` when a valid token is present. This flag controls
+    # only the *enforcement* of default-deny for NON-allowlisted requests that
+    # arrive without a valid session:
+    #   - False (default): such requests pass through unauthenticated
+    #     (``request.state.user`` stays unset) — behaviour is unchanged from
+    #     before this flag existed, so the frontend cannot regress before the
+    #     TODO 05 token-carry audit completes.
+    #   - True: such requests are rejected with 401 UNAUTHORIZED.
+    # ``HARD_PROTECT_PATHS`` (ai-video-generate / video-export /
+    # intent-detection) are ALWAYS enforced regardless of this flag — they were
+    # locked down in the prior security hardening and MUST NOT be weakened.
+    auth_enforce_default_deny: bool = Field(
+        default=False,
+        description=(
+            "When True, SessionAuthMiddleware rejects any non-allowlisted "
+            "request that lacks a valid session token with 401 (full "
+            "default-deny). When False (default), such requests pass through "
+            "so behaviour is unchanged until the frontend token audit (TODO "
+            "05) completes. HARD_PROTECT_PATHS are always enforced. Set "
+            "AUTH_ENFORCE_DEFAULT_DENY=1 in .env to enable."
+        ),
+    )
+
     # Playback v2 (Phase 4) — telemetry aggregation + admin observability.
     playback_v2_telemetry_agg_window_min: int = Field(
         default=15,
@@ -1011,6 +1112,10 @@ def get_settings() -> Settings:
         ),
         cors_legacy_wildcard=(
             os.getenv("CORS_LEGACY_WILDCARD", "false").lower()
+            in {"1", "true", "yes", "on"}
+        ),
+        auth_enforce_default_deny=(
+            os.getenv("AUTH_ENFORCE_DEFAULT_DENY", "false").lower()
             in {"1", "true", "yes", "on"}
         ),
     )

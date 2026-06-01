@@ -10,6 +10,7 @@ import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
 import WatermarkSettingsPanel from './WatermarkSettingsPanel';
 import VideoAnalysisSettingsPanel from './VideoAnalysisSettingsPanel';
+import RateLimitSettings from './RateLimitSettings';
 
 interface AdminSettingsPageProps {
   onClose: () => void;
@@ -60,6 +61,8 @@ const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
         return <WatermarkSettingsPanel />;
       case 'videoAnalysisSettings':
         return <VideoAnalysisSettingsPanel />;
+      case 'apiSecurity':
+        return <RateLimitSettings />;
       case 'systemSettings':
         return (
           <div className="flex items-center justify-center h-full bg-background">

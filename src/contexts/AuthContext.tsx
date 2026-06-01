@@ -18,6 +18,14 @@ import {
 let lastNetworkWarnAt = 0;
 const NETWORK_WARN_THROTTLE_MS = 30_000;
 
+// 429 toast throttle. A TIME-WINDOW throttle (NOT a permanent latch like the
+// 401 `sessionExpiryHandled` flag) so repeated bursts of 429s show at most one
+// toast per window, yet a 429 minutes later still surfaces. The window adapts
+// to the server's Retry-After (so we don't re-toast within the cooldown the
+// server already asked for), clamped to a small minimum.
+let lastRateLimitWarnAt = 0;
+const RATE_LIMIT_WARN_MIN_WINDOW_MS = 3_000;
+
 function isNetworkUnreachable(err: unknown): boolean {
   return (
     (err instanceof ApiError && err.code === 'NETWORK_ERROR') ||
@@ -261,6 +269,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       window.removeEventListener('ecliptrix:session-expired', handleSessionExpired);
     };
   }, []);
+
+  // Listen for the global `ecliptrix:rate-limited` event dispatched by
+  // `src/lib/api/http-client.ts` when any browser->backend call returns 429.
+  // Show ONE friendly warning toast with the Retry-After countdown. We throttle
+  // by TIME WINDOW (not a permanent latch): a burst of 429s shows a single
+  // toast, but a later 429 still surfaces. The window adapts to Retry-After so
+  // we don't re-toast inside the cooldown the server already requested.
+  useEffect(() => {
+    const handleRateLimited = (event: Event) => {
+      const detail = (event as CustomEvent<{ retryAfter?: number; message?: string }>).detail;
+      const retryAfter =
+        typeof detail?.retryAfter === 'number' && detail.retryAfter > 0
+          ? detail.retryAfter
+          : 5;
+
+      const now = Date.now();
+      const windowMs = Math.max(retryAfter * 1000, RATE_LIMIT_WARN_MIN_WINDOW_MS);
+      if (now - lastRateLimitWarnAt < windowMs) {
+        return; // within the cooldown — suppress duplicate toast
+      }
+      lastRateLimitWarnAt = now;
+
+      const msg = t.adminSettings.rateLimited.replace('{seconds}', String(retryAfter));
+      // Show for at least the retry window so the countdown copy stays visible.
+      notification.showWarning(msg, Math.max(retryAfter * 1000, 4000));
+    };
+
+    window.addEventListener('ecliptrix:rate-limited', handleRateLimited);
+    return () => {
+      window.removeEventListener('ecliptrix:rate-limited', handleRateLimited);
+    };
+  }, [notification, t]);
 
   const login = async (credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> => {
     try {

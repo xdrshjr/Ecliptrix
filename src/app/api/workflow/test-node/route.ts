@@ -7,7 +7,28 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionFromRequest } from '@/lib/auth/sessionGuard';
+import { verifySessionFromRequest, extractSessionToken } from '@/lib/auth/sessionGuard';
+
+/**
+ * Build an `Authorization: Bearer <token>` header from the caller's request so
+ * the internal same-origin fan-out fetches below (`/api/video-search`,
+ * `/api/workflow/tavily-search`, `/api/tts/convert-sentences`) carry the user's
+ * session. Those targets proxy to the FastAPI backend via `backend-proxy`, and
+ * once `AUTH_ENFORCE_DEFAULT_DENY=true` the backend SessionAuthMiddleware will
+ * 401 any un-tokened call — which would silently break Pexels / Tavily / TTS
+ * node tests (R1 regression, TODO 05 audit). `/api/chat` is a third-party LLM
+ * passthrough that needs no session, but forwarding there is harmless and keeps
+ * every internal call uniform. Returns `{}` when no token is present (the
+ * request would already have been rejected by `verifySessionFromRequest`).
+ */
+function buildInternalAuthHeaders(request: NextRequest): Record<string, string> {
+  const token = extractSessionToken(request);
+  if (!token) return {};
+  return {
+    Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
+    'x-session-token': token.startsWith('Bearer ') ? token.slice(7) : token,
+  };
+}
 
 // Type definitions for data formats
 type DataFormat = 'text/plain' | 'application/json' | 'array';
@@ -116,6 +137,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Forward the caller's session on every internal fan-out fetch so the
+    // backend-proxied targets (video-search / tavily-search / tts) keep working
+    // once AUTH_ENFORCE_DEFAULT_DENY flips on (TODO 05 R1 fix).
+    const internalAuthHeaders = buildInternalAuthHeaders(request);
+
     const body = await request.json();
     const { node_id, node_type, node_label, node_config, input } = body;
 
@@ -166,36 +192,36 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'chat-llm':
-        output = await executeChatLLMNode(node_config, convertedInput);
+        output = await executeChatLLMNode(node_config, convertedInput, internalAuthHeaders);
         break;
 
       case 'pexels-video-search':
-        output = await executePexelsVideoSearchNode(node_config, convertedInput);
+        output = await executePexelsVideoSearchNode(node_config, convertedInput, internalAuthHeaders);
         break;
 
       case 'tavily-search':
-        output = await executeTavilySearchNode(node_config, convertedInput);
+        output = await executeTavilySearchNode(node_config, convertedInput, internalAuthHeaders);
         break;
 
       case 'volcano-tts':
-        output = await executeVolcanoTTSNode(node_config, convertedInput, node_id);
+        output = await executeVolcanoTTSNode(node_config, convertedInput, node_id, internalAuthHeaders);
         break;
 
       case 'to-array':
-        const toArrayResult = await executeToArrayNode(node_config, convertedInput);
+        const toArrayResult = await executeToArrayNode(node_config, convertedInput, internalAuthHeaders);
         output = toArrayResult.output;
         llmDetails = toArrayResult.llmDetails;
         break;
 
       case 'results-combine':
-        const combinedResult = await executeResultsCombineNode(node_config, convertedInput);
+        const combinedResult = await executeResultsCombineNode(node_config, convertedInput, internalAuthHeaders);
         output = combinedResult.output;
         llmDetails = combinedResult.llmDetails;
         break;
 
       case 'results-combine-item':
         // Special case: transform a single item from Results Combine node
-        const itemResult = await executeResultsCombineItemTransformation(node_config, convertedInput);
+        const itemResult = await executeResultsCombineItemTransformation(node_config, convertedInput, internalAuthHeaders);
         output = itemResult.output;
         llmDetails = itemResult.llmDetails;
         break;
@@ -300,7 +326,7 @@ async function executeTextInputNode(config: any, input: any): Promise<any> {
 /**
  * Execute Chat LLM node
  */
-async function executeChatLLMNode(config: any, input: any): Promise<any> {
+async function executeChatLLMNode(config: any, input: any, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing Chat LLM node');
   
   if (!config?.model || !config?.systemPrompt) {
@@ -330,6 +356,7 @@ async function executeChatLLMNode(config: any, input: any): Promise<any> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
     },
     body: JSON.stringify({
       messages: [
@@ -401,7 +428,7 @@ async function executeChatLLMNode(config: any, input: any): Promise<any> {
  * Execute Pexels Video Search node
  * Supports both single string input and string array input
  */
-async function executePexelsVideoSearchNode(config: any, input: any): Promise<any> {
+async function executePexelsVideoSearchNode(config: any, input: any, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing Pexels Video Search node', {
     input,
     inputType: typeof input,
@@ -501,6 +528,7 @@ async function executePexelsVideoSearchNode(config: any, input: any): Promise<an
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders,
       },
       body: JSON.stringify({
         query: keyword,
@@ -583,7 +611,7 @@ async function executePexelsVideoSearchNode(config: any, input: any): Promise<an
 /**
  * Execute Tavily Search node
  */
-async function executeTavilySearchNode(config: any, input: any): Promise<any> {
+async function executeTavilySearchNode(config: any, input: any, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing Tavily Search node');
   
   // Get keywords from config or input
@@ -617,6 +645,7 @@ async function executeTavilySearchNode(config: any, input: any): Promise<any> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
     },
     body: JSON.stringify({
       keywords: keywords.trim(),
@@ -652,7 +681,7 @@ async function executeTavilySearchNode(config: any, input: any): Promise<any> {
 /**
  * Execute Volcano TTS node
  */
-async function executeVolcanoTTSNode(config: any, input: any, nodeId: string): Promise<any> {
+async function executeVolcanoTTSNode(config: any, input: any, nodeId: string, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing Volcano TTS node');
   
   // Get text from config or input
@@ -688,6 +717,7 @@ async function executeVolcanoTTSNode(config: any, input: any, nodeId: string): P
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
     },
     body: JSON.stringify({
       segment_id: nodeId,
@@ -855,7 +885,7 @@ function validateObjectFields(obj: any, schema: any[], path: string): void {
  * Execute To Array node
  * Converts any input data to array format using LLM with schema support
  */
-async function executeToArrayNode(config: any, input: any): Promise<any> {
+async function executeToArrayNode(config: any, input: any, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing To Array node with schema configuration:', {
     elementType: config?.elementType || 'string',
     hasObjectSchema: !!(config?.objectSchema && config.objectSchema.length > 0)
@@ -893,6 +923,7 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
     },
     body: JSON.stringify({
       messages: [
@@ -1022,7 +1053,7 @@ async function executeToArrayNode(config: any, input: any): Promise<any> {
  * Execute Results Combine Item Transformation (single item)
  * Called internally by Results Combine node to transform each item
  */
-async function executeResultsCombineItemTransformation(config: any, input: any): Promise<any> {
+async function executeResultsCombineItemTransformation(config: any, input: any, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing Results Combine item transformation');
   
   if (!config?.model || !config?.systemPrompt) {
@@ -1065,6 +1096,7 @@ async function executeResultsCombineItemTransformation(config: any, input: any):
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
     },
     body: JSON.stringify({
       messages: [
@@ -1164,7 +1196,7 @@ async function executeResultsCombineItemTransformation(config: any, input: any):
  * Execute Results Combine node
  * Processes an array of inputs, transforms each via LLM, and combines results
  */
-async function executeResultsCombineNode(config: any, input: any): Promise<any> {
+async function executeResultsCombineNode(config: any, input: any, authHeaders: Record<string, string> = {}): Promise<any> {
   console.log('[API] Executing Results Combine node:', {
     hasConfig: !!config,
     inputType: typeof input,
@@ -1215,7 +1247,7 @@ async function executeResultsCombineNode(config: any, input: any): Promise<any> 
     console.log(`[API] Transforming item ${i + 1}/${inputArray.length}`);
 
     try {
-      const transformed = await executeResultsCombineItemTransformation(config, item);
+      const transformed = await executeResultsCombineItemTransformation(config, item, authHeaders);
       transformedResults.push(transformed.output);
       allLlmDetails.push({
         itemIndex: i,

@@ -27,7 +27,7 @@ from typing import AsyncGenerator, Tuple
 
 import pytest
 import pytest_asyncio
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import (
@@ -72,6 +72,25 @@ async def session_factory_and_engine() -> AsyncGenerator[Tuple[async_sessionmake
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
         await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def enforce_default_deny(monkeypatch):
+    """Enable full default-deny enforcement for the middleware-behaviour tests.
+
+    The ``AUTH_ENFORCE_DEFAULT_DENY`` flag (api-authz-rate-limiting spec/01 §5)
+    defaults to False in production so the frontend cannot regress before the
+    TODO 05 token-carry audit. The classic T3/T4/T6/T15/T18 cases here assert
+    the middleware's REJECTION behaviour, which only fires when enforcement is
+    on, so we flip the flag to True for the whole module. Flag-OFF passthrough
+    is covered separately by the ``test_flag_off_*`` cases at the bottom.
+    """
+    monkeypatch.setattr(
+        auth_middleware_module.settings,
+        "auth_enforce_default_deny",
+        True,
+        raising=False,
+    )
 
 
 @pytest_asyncio.fixture
@@ -145,6 +164,25 @@ def _build_app(session_factory: async_sessionmaker) -> FastAPI:
     async def files_other(current_user: User = Depends(get_current_user)):
         return {"success": True, "data": "needs auth"}
 
+    # An ordinary protected endpoint WITHOUT a get_current_user dependency, so
+    # we can observe the middleware's own passthrough/reject decision in
+    # isolation (no dependency-layer 401 to confuse the result).
+    @app.get("/api/workflow/list")
+    async def workflow_list(request: Request):
+        cached = getattr(request.state, "user", None)
+        return {"success": True, "has_user": cached is not None}
+
+    # A HARD_PROTECT_PATHS endpoint — must be enforced regardless of the flag.
+    @app.post("/api/workflow/ai-video-generate")
+    async def ai_video_generate(request: Request):
+        cached = getattr(request.state, "user", None)
+        return {"success": True, "has_user": cached is not None}
+
+    # Allowlisted runtime-config endpoint (spec/01 §3.2 — /api/config/ prefix).
+    @app.get("/api/config/playback-flag")
+    async def playback_flag():
+        return {"success": True, "data": {"enabled": False}}
+
     return app
 
 
@@ -181,7 +219,8 @@ async def _create_user(
 
 
 def test_allowlist_constants_match_spec():
-    """Spec §4 lists 8 exact paths and 2 prefix paths — verify exactness."""
+    """Verify the allowlist constants match the api-authz-rate-limiting
+    spec/01 §3.2 target (8 exact paths, 5 prefix paths)."""
     assert ALLOWLIST_EXACT == frozenset({
         "/api/auth/login",
         "/api/auth/register",
@@ -191,13 +230,17 @@ def test_allowlist_constants_match_spec():
         "/docs",
         "/redoc",
         "/openapi.json",
-    }), "ALLOWLIST_EXACT drifted from spec §4"
+    }), "ALLOWLIST_EXACT drifted from spec/01 §3.2"
     assert ALLOWLIST_PREFIX == (
         "/static/",
         "/api/storage/files/",
         "/api/audio/generated/",
         "/api/audio/subtitles/",
-    ), "ALLOWLIST_PREFIX drifted from spec §4 (Phase 3.7 added the 2 audio mounts)"
+        "/api/config/",
+    ), (
+        "ALLOWLIST_PREFIX drifted from spec/01 §3.2 (Phase 3.7 added the 2 "
+        "audio mounts; api-authz-rate-limiting T01 added /api/config/)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -594,3 +637,100 @@ async def test_get_current_user_fast_path_avoids_db_query(
         "Expected exactly one DB session open per request (by the middleware); "
         "get_current_user fast-path must not open another."
     )
+
+
+# ---------------------------------------------------------------------------
+# AUTH_ENFORCE_DEFAULT_DENY flag behaviour (api-authz-rate-limiting spec/01 §5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_flag_off_ordinary_path_passes_through_without_token(
+    patched_middleware_factory, monkeypatch
+):
+    """Flag OFF: a non-allowlisted, non-hard-protected path with NO token must
+    pass through (no middleware 401) so the FE cannot regress pre-TODO-05."""
+    monkeypatch.setattr(
+        auth_middleware_module.settings, "auth_enforce_default_deny", False, raising=False
+    )
+    app = _build_app(patched_middleware_factory)
+    client = TestClient(app)
+    response = client.get("/api/workflow/list")
+    assert response.status_code == 200
+    assert response.json()["has_user"] is False, (
+        "no token present, so request.state.user must stay unset"
+    )
+
+
+@pytest.mark.asyncio
+async def test_flag_off_invalid_token_passes_through(
+    patched_middleware_factory, monkeypatch
+):
+    """Flag OFF: an invalid token on an ordinary path passes through with no
+    user injected (the middleware does not reject, downstream may)."""
+    monkeypatch.setattr(
+        auth_middleware_module.settings, "auth_enforce_default_deny", False, raising=False
+    )
+    app = _build_app(patched_middleware_factory)
+    client = TestClient(app)
+    response = client.get(
+        "/api/workflow/list", headers={"Authorization": "Bearer bogus-token"}
+    )
+    assert response.status_code == 200
+    assert response.json()["has_user"] is False
+
+
+@pytest.mark.asyncio
+async def test_flag_off_valid_token_still_injects_user(
+    patched_middleware_factory, monkeypatch
+):
+    """Flag OFF: a VALID token is still resolved and injected, so authenticated
+    requests behave identically whether the flag is on or off (no regression)."""
+    monkeypatch.setattr(
+        auth_middleware_module.settings, "auth_enforce_default_deny", False, raising=False
+    )
+    _user, token = await _create_user(
+        patched_middleware_factory, username="ivy", is_active=True
+    )
+    app = _build_app(patched_middleware_factory)
+    client = TestClient(app)
+    response = client.get(
+        "/api/workflow/list", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["has_user"] is True, (
+        "valid token must populate request.state.user even with the flag off"
+    )
+
+
+@pytest.mark.asyncio
+async def test_flag_off_hard_protected_path_still_enforced(
+    patched_middleware_factory, monkeypatch
+):
+    """Flag OFF: HARD_PROTECT_PATHS must STILL reject anonymous requests — the
+    spec mandates these are never weakened (defence in depth)."""
+    monkeypatch.setattr(
+        auth_middleware_module.settings, "auth_enforce_default_deny", False, raising=False
+    )
+    app = _build_app(patched_middleware_factory)
+    client = TestClient(app)
+    response = client.post("/api/workflow/ai-video-generate")
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error_code"] == "UNAUTHORIZED"
+
+
+@pytest.mark.asyncio
+async def test_config_prefix_allowlisted_passthrough(
+    patched_middleware_factory, monkeypatch
+):
+    """/api/config/ prefix is allowlisted (spec/01 §3.2): anonymous GET on
+    /api/config/playback-flag must pass through regardless of the flag."""
+    monkeypatch.setattr(
+        auth_middleware_module.settings, "auth_enforce_default_deny", True, raising=False
+    )
+    app = _build_app(patched_middleware_factory)
+    client = TestClient(app)
+    response = client.get("/api/config/playback-flag")
+    assert response.status_code == 200
+    assert response.json()["data"]["enabled"] is False

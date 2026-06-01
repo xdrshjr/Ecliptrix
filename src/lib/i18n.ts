@@ -522,6 +522,38 @@ export interface Translations {
     vaCleanupTimeout: string;
     vaLogAnalysisContent: string;
     vaLogFrameProcessingTime: string;
+    // API Security / Rate Limiting
+    apiSecurity: string;
+    apiSecurityDesc: string;
+    rlPageTitle: string;
+    rlPageDesc: string;
+    rlGlobalSection: string;
+    rlGlobalSectionDesc: string;
+    rlEnabled: string;
+    rlDisabledHint: string;
+    rlWindowSeconds: string;
+    rlLimitsSection: string;
+    rlLimitsSectionDesc: string;
+    rlDefaultPerUser: string;
+    rlDefaultPerIp: string;
+    rlAiGeneration: string;
+    rlAuthPerIp: string;
+    rlMediaServing: string;
+    rlStatusSection: string;
+    rlStatusSectionDesc: string;
+    rlStatusEnabled: string;
+    rlStatusActiveKeys: string;
+    rlStatusTotalChecked: string;
+    rlStatusTotalBlocked: string;
+    rlStatusOn: string;
+    rlStatusOff: string;
+    rlRefreshStatus: string;
+    rlSaveSuccess: string;
+    rlSaveError: string;
+    rlResetSuccess: string;
+    rlResetError: string;
+    rlLoadError: string;
+    rateLimited: string;
   };
   tasks: {
     workflow: string;
@@ -3330,6 +3362,38 @@ export const translations: Record<string, Translations> = {
       vaCleanupTimeout: 'Cleanup timeout (s)',
       vaLogAnalysisContent: 'Log analysis content',
       vaLogFrameProcessingTime: 'Log frame processing time',
+      // API Security / Rate Limiting
+      apiSecurity: 'API Security / Rate Limiting',
+      apiSecurityDesc: 'Configure request rate limits and the global switch',
+      rlPageTitle: 'API Security / Rate Limiting',
+      rlPageDesc: 'Control per-category request rate limits. Changes take effect within a few seconds.',
+      rlGlobalSection: 'Global',
+      rlGlobalSectionDesc: 'Master switch and the sliding-window size shared by all categories',
+      rlEnabled: 'Rate limiting enabled',
+      rlDisabledHint: 'Rate limiting is disabled — no requests are counted or blocked.',
+      rlWindowSeconds: 'Window (seconds)',
+      rlLimitsSection: 'Per-category limits (requests / window)',
+      rlLimitsSectionDesc: 'Maximum requests allowed within each window, by category',
+      rlDefaultPerUser: 'Normal — per logged-in user',
+      rlDefaultPerIp: 'Normal — per anonymous IP',
+      rlAiGeneration: 'AI generation',
+      rlAuthPerIp: 'Login / register — per IP',
+      rlMediaServing: 'Media serving',
+      rlStatusSection: 'Live status',
+      rlStatusSectionDesc: 'Read-only counters from the current process',
+      rlStatusEnabled: 'Enabled',
+      rlStatusActiveKeys: 'Active keys',
+      rlStatusTotalChecked: 'Total checked',
+      rlStatusTotalBlocked: 'Total blocked',
+      rlStatusOn: 'On',
+      rlStatusOff: 'Off',
+      rlRefreshStatus: 'Refresh',
+      rlSaveSuccess: 'Saved. Takes effect within a few seconds.',
+      rlSaveError: 'Failed to save rate-limit settings',
+      rlResetSuccess: 'Reset to defaults. Takes effect within a few seconds.',
+      rlResetError: 'Failed to reset rate-limit settings',
+      rlLoadError: 'Failed to load rate-limit settings',
+      rateLimited: 'Too many requests. Please retry in {seconds}s.',
     },
     tasks: {
       workflow: 'WorkFlow',
@@ -6160,6 +6224,38 @@ export const translations: Record<string, Translations> = {
       vaCleanupTimeout: '清理超时（秒）',
       vaLogAnalysisContent: '记录分析内容',
       vaLogFrameProcessingTime: '记录帧处理时间',
+      // API Security / Rate Limiting
+      apiSecurity: '接口安全 / 限流',
+      apiSecurityDesc: '配置请求频率限制与全局开关',
+      rlPageTitle: '接口安全 / 限流',
+      rlPageDesc: '按类别控制请求频率限制。改动数秒内生效。',
+      rlGlobalSection: '全局',
+      rlGlobalSectionDesc: '总开关与所有类别共用的滑动窗口大小',
+      rlEnabled: '启用限流',
+      rlDisabledHint: '限流已停用 —— 不计数、不拦截任何请求。',
+      rlWindowSeconds: '窗口（秒）',
+      rlLimitsSection: '各类别额度（请求数 / 窗口）',
+      rlLimitsSectionDesc: '每个窗口内各类别允许的最大请求数',
+      rlDefaultPerUser: '普通 —— 每登录用户',
+      rlDefaultPerIp: '普通 —— 每匿名 IP',
+      rlAiGeneration: 'AI 生成',
+      rlAuthPerIp: '登录 / 注册 —— 每 IP',
+      rlMediaServing: '媒体服务',
+      rlStatusSection: '实时状态',
+      rlStatusSectionDesc: '当前进程内的只读计数',
+      rlStatusEnabled: '已启用',
+      rlStatusActiveKeys: '活跃 key 数',
+      rlStatusTotalChecked: '累计检查',
+      rlStatusTotalBlocked: '累计拦截',
+      rlStatusOn: '开启',
+      rlStatusOff: '关闭',
+      rlRefreshStatus: '刷新',
+      rlSaveSuccess: '已保存，数秒内生效。',
+      rlSaveError: '保存限流设置失败',
+      rlResetSuccess: '已重置为默认，数秒内生效。',
+      rlResetError: '重置限流设置失败',
+      rlLoadError: '加载限流设置失败',
+      rateLimited: '请求过于频繁，请 {seconds} 秒后重试。',
     },
     tasks: {
       workflow: '工作流',

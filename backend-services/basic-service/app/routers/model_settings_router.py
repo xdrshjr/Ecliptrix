@@ -7,7 +7,7 @@ Two-layer architecture:
   - Config resolution: get effective config (DB or env fallback)
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.model_settings_models import (
     ModelFunctionType,
@@ -24,9 +24,20 @@ from app.models.model_settings_models import (
     FetchModelsResponse,
 )
 from app.services.model_settings_service import model_settings_service
+from app.dependencies.auth import require_admin
 from app.logger import get_logger
 
-router = APIRouter(prefix="/model-settings", tags=["Model Settings"])
+# api-authz-rate-limiting T01 (spec/01 §3.3, R8): this router configures
+# provider API keys and model assignments — among the highest-risk surfaces in
+# the service. It previously shipped with NO authentication. We attach
+# ``require_admin`` at the ROUTER level so every current and future endpoint is
+# admin-gated by default; no per-endpoint dependency can be forgotten. Root
+# users satisfy ``require_admin`` (is_admin is True for root).
+router = APIRouter(
+    prefix="/model-settings",
+    tags=["Model Settings"],
+    dependencies=[Depends(require_admin)],
+)
 logger = get_logger(__name__)
 
 

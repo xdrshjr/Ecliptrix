@@ -40,6 +40,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from app.config import settings
 from app.database import async_session_factory
 from app.logger import get_logger
 from app.models.base_models import ErrorResponse
@@ -82,11 +83,20 @@ ALLOWLIST_EXACT: frozenset[str] = frozenset({
 # T01 spec only enumerated /api/storage/files/, missing the two audio mounts
 # documented in CLAUDE.md. /static/timeline_exports/ is covered by the
 # /static/ prefix.
+#
+# **api-authz-rate-limiting T01 (spec/01 §3.2)** — added /api/config/ so the
+# frontend can resolve runtime feature flags (e.g. GET /api/config/playback-flag,
+# served by config_router) before a session exists. Note: the BARE /api/config
+# endpoint (api_router's non-sensitive config dump) is deliberately NOT public —
+# src/lib/api/config.ts documents that every caller must be authenticated, and
+# the trailing slash here means "/api/config" (no slash) does NOT match this
+# prefix, so it still requires auth.
 ALLOWLIST_PREFIX: Tuple[str, ...] = (
     "/static/",
     "/api/storage/files/",
     "/api/audio/generated/",
     "/api/audio/subtitles/",
+    "/api/config/",
 )
 
 # ---------------------------------------------------------------------------
@@ -214,9 +224,31 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         if _is_allowlisted(path):
             return await call_next(request)
 
+        # 2b. Enforcement gate (api-authz-rate-limiting spec/01 §5, R1).
+        #
+        # ``AUTH_ENFORCE_DEFAULT_DENY`` controls whether a missing / invalid
+        # session causes a hard 401/403 for ordinary (non-allowlisted) paths.
+        # It defaults to False so that behaviour is unchanged until the
+        # frontend token-carry audit (TODO 05) completes — otherwise any FE
+        # call that has not yet been migrated to send Authorization would
+        # regress to 401.
+        #
+        # ``HARD_PROTECT_PATHS`` are the exception: they are ALWAYS enforced
+        # (defence in depth — these were locked down by the prior security
+        # hardening and the spec mandates "保留不弱化 / do not weaken"). So a
+        # rejection happens when EITHER the flag is on OR the path is
+        # hard-protected.
+        enforce = bool(getattr(settings, "auth_enforce_default_deny", False)) \
+            or _is_hard_protected(path)
+
         # 3. Token extraction
         token = _extract_token(request)
         if not token:
+            if not enforce:
+                # Pass through unauthenticated. ``request.state.user`` is left
+                # unset; downstream ``get_current_user`` dependencies (if any)
+                # will perform their own 401 via the slow path.
+                return await call_next(request)
             logger.warning(
                 "SessionAuthMiddleware: rejecting request without token",
                 {"path": path, "method": method},
@@ -231,6 +263,12 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         # 4. Async DB lookup. We open a fresh session per request rather than
         # piggy-backing on FastAPI's ``Depends(get_db_session)`` because
         # middlewares run before the dependency injection system.
+        #
+        # A token IS present, so we resolve it and inject ``request.state.user``
+        # whenever it is valid — even when ``enforce`` is False — so that
+        # authenticated requests behave identically with the flag on or off
+        # (no regression for the normal logged-in case). Only the REJECTION of
+        # invalid/missing credentials is gated by ``enforce``.
         try:
             async with async_session_factory() as session:
                 stmt = select(User).where(User.active_session_token == token)
@@ -249,6 +287,8 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
             )
 
         if user is None:
+            if not enforce:
+                return await call_next(request)
             logger.warning(
                 "SessionAuthMiddleware: token did not match any user",
                 {"path": path},
@@ -264,6 +304,8 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         if user.active_session_token is None or not hmac.compare_digest(
             user.active_session_token, token
         ):
+            if not enforce:
+                return await call_next(request)
             logger.warning(
                 "SessionAuthMiddleware: token mismatch after DB lookup",
                 {"user_id": str(user.id)},
@@ -276,6 +318,12 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
             )
 
         if not user.is_active:
+            # A disabled account is rejected whenever enforcement applies. When
+            # ``enforce`` is False we do NOT inject the user (the account is
+            # disabled) and simply pass through so behaviour matches the
+            # pre-flag state for unenforced paths.
+            if not enforce:
+                return await call_next(request)
             logger.warning(
                 "SessionAuthMiddleware: rejecting disabled account",
                 {"user_id": str(user.id), "username": user.username},

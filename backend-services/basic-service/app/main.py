@@ -22,6 +22,7 @@ from app.routers import api_router
 from app.models import ErrorResponse
 from app.database import init_db, close_db
 from app.middleware.auth_middleware import SessionAuthMiddleware
+from app.middleware.rate_limit_middleware import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.security.log_redact import redact_headers
 
@@ -144,6 +145,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to load system settings: {str(e)}", exc_info=True)
 
+    # Pre-warm the rate-limit config cache (spec/03 §2.3) so the first request
+    # after startup does not pay a cold DB read inside the limiter middleware.
+    try:
+        from app.services.rate_limit_config import rate_limit_config_provider
+
+        await rate_limit_config_provider.prewarm()
+        logger.info("Rate-limit config pre-warmed")
+    except Exception as e:
+        logger.error(f"Failed to pre-warm rate-limit config: {str(e)}", exc_info=True)
+
     # Playback v2 Phase 4 — flag multi-worker deployments because the
     # in-memory metrics aggregator is process-local. Spec §3.2.7.
     if getattr(settings, "playback_v2_aggregator_requires_single_worker", True):
@@ -205,6 +216,20 @@ app = FastAPI(
 # load time, AFTER both add_middleware calls, so it ends up as the outermost
 # wrapper of all. That is acceptable because the logger does not block
 # requests.)
+#
+# Rate limiting (spec/02 §2.5, R5 — CRITICAL ORDERING). We register
+# ``RateLimitMiddleware`` FIRST and ``SessionAuthMiddleware`` SECOND so that,
+# under Starlette LIFO, the per-request EXECUTION order is:
+#
+#     CORS (outermost) -> SessionAuth -> RateLimit -> router (innermost)
+#
+# i.e. SessionAuth runs BEFORE RateLimit and populates ``request.state.user``,
+# which RateLimitMiddleware then reads to pick the per-user vs per-IP limit.
+# Both sit INSIDE the FastAPI exception handlers and the logging wrapper, so a
+# 429 still serialises through the standard ``ErrorResponse`` shape. DO NOT
+# swap these two registration lines — doing so would run rate limiting before
+# auth and lose the user identity (R5).
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SessionAuthMiddleware)
 
 # Add CORS middleware (spec 02 §3 V02-A — env-driven allowlist).
@@ -545,6 +570,13 @@ app.include_router(model_settings_router.router, prefix="/api")
 from app.routers import system_settings_router
 
 app.include_router(system_settings_router.router, prefix="/api")
+
+# Import and include Rate Limit Settings router (spec/03 — admin-only rate-limit
+# config read/write/reset/status). The router defines prefix="/rate-limit" and
+# is router-level require_admin gated; mounted under /api -> /api/rate-limit/*.
+from app.routers import rate_limit_settings_router
+
+app.include_router(rate_limit_settings_router.router, prefix="/api")
 
 # Import and include Storyboard router
 from app.routers import storyboard_router
