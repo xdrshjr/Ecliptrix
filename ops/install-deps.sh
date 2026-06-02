@@ -102,6 +102,7 @@ if [[ "$SKIP_SYSTEM" == false ]]; then
     postgresql-client
     libpq-dev
     ffmpeg
+    fonts-noto-cjk
     nginx
     curl
     git

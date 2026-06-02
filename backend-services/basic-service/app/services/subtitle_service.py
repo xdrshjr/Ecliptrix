@@ -353,6 +353,26 @@ class SubtitleService:
                     return True
         return False
 
+    @staticmethod
+    def _is_cjk_capable_font(font_path: str) -> bool:
+        """
+        Heuristic check: does this font file contain CJK glyphs?
+
+        Based on the well-known CJK font filenames used across Windows/macOS/Linux
+        (see the candidate lists in `_get_font_path`). Used to detect the degraded
+        state where Chinese text is present but only a Latin-only font (e.g.
+        DejaVuSans) is available, so we can warn loudly instead of silently
+        rendering missing-glyph boxes.
+        """
+        name = os.path.basename(font_path).lower()
+        cjk_markers = (
+            "cjk", "wqy", "sourcehan", "source-han", "uming", "ukai",
+            "droidsansfallback",          # Linux
+            "msyh", "simhei", "simsun",    # Windows (微软雅黑/黑体/宋体)
+            "pingfang", "songti", "stheiti",  # macOS
+        )
+        return any(marker in name for marker in cjk_markers)
+
     def _get_font_path(self, font_family: str = "default", text_content: str = "") -> Optional[str]:
         """
         Get available font path for the specified font family with cross-platform support.
@@ -518,7 +538,22 @@ class SubtitleService:
         for i, font_path in enumerate(font_paths):
             if os.path.exists(font_path):
                 logger.info(f"✓ Found suitable font (#{i+1}/{len(font_paths)}): {font_path}")
-                logger.info(f"Font selection result: Using '{os.path.basename(font_path)}' for {'Chinese' if has_chinese else 'English'} subtitle rendering")
+                if has_chinese and not self._is_cjk_capable_font(font_path):
+                    # Degraded state: Chinese text present but no CJK font is installed,
+                    # so the search fell through to a Latin-only font. We STILL return it
+                    # (returning None would drop fontfile= and let ffmpeg fall back to
+                    # fontconfig's default Sans — which on a CJK-less host is still Latin,
+                    # producing the same boxes, or breaking the whole export pass). Make
+                    # the failure LOUD instead of silently emitting tofu (□□□).
+                    logger.error(
+                        f"❌ Chinese characters detected but no CJK font is installed; "
+                        f"falling back to non-CJK font '{os.path.basename(font_path)}'. "
+                        f"Chinese subtitles WILL render as missing-glyph boxes (□□□). "
+                        f"Install a CJK font on the host, e.g. "
+                        f"`apt-get install -y fonts-noto-cjk && fc-cache -f`."
+                    )
+                else:
+                    logger.info(f"Font selection result: Using '{os.path.basename(font_path)}' for {'Chinese' if has_chinese else 'English'} subtitle rendering")
                 return font_path
             else:
                 logger.debug(f"✗ Font not found (#{i+1}/{len(font_paths)}): {font_path}")
