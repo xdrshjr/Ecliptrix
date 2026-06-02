@@ -44,14 +44,13 @@ from app.models.db_models import User
 
 
 def _build_root_router_app() -> FastAPI:
-    """Build a minimal app that mounts the three root-level routers.
+    """Build a minimal app that mounts the root-level routers.
 
     We mount them WITHOUT ``prefix="/api"`` to exactly mirror the production
     ``main.py`` lines:
 
         app.include_router(ai_video_generate_router.router)
         app.include_router(video_export_router.router)
-        app.include_router(intent_detection_router.router)
     """
     app = FastAPI()
     app.add_middleware(SessionAuthMiddleware)
@@ -66,12 +65,10 @@ def _build_root_router_app() -> FastAPI:
     from app.routers import (
         ai_video_generate_router,
         video_export_router,
-        intent_detection_router,
     )
 
     app.include_router(ai_video_generate_router.router)
     app.include_router(video_export_router.router)
-    app.include_router(intent_detection_router.router)
     return app
 
 
@@ -114,7 +111,6 @@ async def test_V01A_hard_protect_paths_constant_matches_spec():
     assert HARD_PROTECT_PATHS == (
         "/api/workflow/ai-video-generate",
         "/api/workflow/video-export",
-        "/api/intent-detection",
     ), "HARD_PROTECT_PATHS drifted from spec/01 §V01-A"
 
 
@@ -153,22 +149,6 @@ async def test_V01A_video_export_anonymous_returns_401(patched_auth_factories):
 
 
 @pytest.mark.asyncio
-async def test_V01A_intent_detection_anonymous_returns_401(
-    patched_auth_factories,
-):
-    """Anonymous POST /api/intent-detection/detect → 401."""
-    app = _build_root_router_app()
-    client = TestClient(app)
-    resp = client.post(
-        "/api/intent-detection/detect",
-        json={"user_message": "hi", "enabled_workflows": []},
-    )
-    assert resp.status_code == 401, resp.text
-    body = resp.json()
-    assert body.get("error_code") == "UNAUTHORIZED"
-
-
-@pytest.mark.asyncio
 async def test_V01A_authenticated_request_reaches_router(
     patched_auth_factories, create_user
 ):
@@ -182,9 +162,9 @@ async def test_V01A_authenticated_request_reaches_router(
     app = _build_root_router_app()
     client = TestClient(app)
     resp = client.post(
-        "/api/intent-detection/detect",
+        "/api/workflow/ai-video-generate",
         headers={"Authorization": f"Bearer {token}"},
-        json={"user_message": "hi", "enabled_workflows": []},
+        json={"nodeId": "n1", "taskId": "t1", "inputs": {}},
     )
     assert resp.status_code != 401, (
         f"Authenticated request should pass auth gate, got 401: {resp.text}"

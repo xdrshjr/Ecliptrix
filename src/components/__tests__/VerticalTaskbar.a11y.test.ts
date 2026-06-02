@@ -12,10 +12,6 @@ const SRC = readFileSync(
   resolve(__dirname, '..', 'VerticalTaskbar.tsx'),
   'utf-8',
 );
-const TASKBAR_SRC = readFileSync(
-  resolve(__dirname, '..', 'Taskbar.tsx'),
-  'utf-8',
-);
 const I18N_SRC = readFileSync(
   resolve(__dirname, '../..', 'lib', 'i18n.ts'),
   'utf-8',
@@ -25,11 +21,6 @@ describe('VerticalTaskbar — Bug #4 hardcoded toast removed', () => {
   it('VerticalTaskbar uses the new i18n key', () => {
     expect(SRC).toMatch(/showWarning\(t\.auth\.loginRequiredForTasks, 4000\)/);
     expect(SRC).not.toMatch(/showWarning\('请先登录后再使用任务功能'/);
-  });
-
-  it('Taskbar.tsx also switched to the i18n key', () => {
-    expect(TASKBAR_SRC).toMatch(/showWarning\(t\.auth\.loginRequiredForTasks, 4000\)/);
-    expect(TASKBAR_SRC).not.toMatch(/showWarning\('请先登录后再使用任务功能'/);
   });
 
   it('i18n dictionary defines loginRequiredForTasks in EN + zh-CN + interface', () => {

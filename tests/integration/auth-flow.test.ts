@@ -88,19 +88,6 @@ describe('integration: auth flow (I1-I15)', () => {
   })
 
   // -------------------------------------------------------------------------
-  // I3: POST /api/intent-detection/detect without auth should return 401
-  // -------------------------------------------------------------------------
-  it('I3: anonymous POST /api/intent-detection/detect returns 401', async (ctx) => {
-    const s = ensureStack(ctx)
-    const res = await fetch(targetUrl(s, '/api/intent-detection/detect'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'hello' }),
-    })
-    expect(res.status).toBe(401)
-  })
-
-  // -------------------------------------------------------------------------
   // I4: POST /api/auth/register returns 200 + user object
   // -------------------------------------------------------------------------
   it('I4: POST /api/auth/register returns 200 with user object', async (ctx) => {
@@ -336,13 +323,12 @@ describe('integration: auth flow (I1-I15)', () => {
     expect(configRes.status).not.toBe(401)
     expect(configRes.status).not.toBe(404)
 
-    // /api/workflow-preferences/load (was PYTHON_BACKEND_URL)
-    const wfpRes = await fetch(targetUrl(s, '/api/workflow-preferences/load'), {
-      method: 'POST',
-      headers: { ...u.authHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: u.userId ?? 'test' }),
+    // /api/storage/user-materials (was PYTHON_BACKEND_URL)
+    const umRes = await fetch(targetUrl(s, '/api/storage/user-materials'), {
+      method: 'GET',
+      headers: u.authHeaders,
     })
-    expect(wfpRes.status).not.toBe(401)
+    expect(umRes.status).not.toBe(401)
 
     await u.cleanup()
   })

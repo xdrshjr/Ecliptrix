@@ -22,7 +22,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('@/contexts/LocaleContext', () => {
   const en = {
     tasks: {
-      types: { workflow: 'WorkFlow', video: 'Video Editing', brainstorm: 'Brainstorming', chat: 'AI Chat' },
+      types: { video: 'Video Editing', chat: 'AI Chat' },
       defaultPageTitle: 'Ecliptrix - Where light and shadow collide',
     },
   };
@@ -248,7 +248,7 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
       const { result } = renderHook(() => useTasks());
       expect(() => {
         act(() => {
-          result.current.createTask('workflow');
+          result.current.createTask('video');
         });
       }).not.toThrow();
       expect(result.current.tasks.length).toBeGreaterThan(0);

@@ -159,7 +159,6 @@ PROTECTED_ENDPOINTS=(
   "POST|/api/video-search|{}"
   "POST|/api/video-compose|{}"
   "GET|/api/llm/models|"
-  "POST|/api/intent-detection/detect|{}"
   "GET|/api/admin/users/list|"
   "GET|/api/system-settings/categories|"
   "GET|/api/system-settings/audit-log|"
@@ -167,8 +166,6 @@ PROTECTED_ENDPOINTS=(
   "GET|/api/model-settings/providers/saved|"
   "GET|/api/model-settings/assignments|"
   "POST|/api/workflow/ai-video-generate|{}"
-  "POST|/api/workflow-preferences/save|{}"
-  "POST|/api/workflow-preferences/load|{}"
   "POST|/api/audio/transcribe-local|{}"
   "POST|/api/storyboard/generate|{}"
   "POST|/api/tts/convert|{}"
@@ -179,7 +176,7 @@ PROTECTED_ENDPOINTS=(
   "POST|/api/ark-image/generate|{}"
   "POST|/api/video-understanding-script|{}"
   "GET|/api/storage/user-materials|"
-  "POST|/api/workflow/agent/save|{}"
+  "POST|/api/workflow/video-export|{}"
 )
 
 # Phase 3: authenticated calls. We expect anything except 401 / 403, since

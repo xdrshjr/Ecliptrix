@@ -1,7 +1,7 @@
 export interface Task {
   id: string;
   title: string;
-  type: 'workflow' | 'video' | 'brainstorm' | 'chat';
+  type: 'video' | 'chat';
   status: 'active' | 'completed' | 'draft';
   createdAt: Date;
   updatedAt: Date;
@@ -66,11 +66,6 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
-  workflowExecution?: {
-    workflowId: string;
-    workflowName: string;
-    executionState?: WorkflowExecutionState;
-  };
   metadata?: {
     type?: 'intent_detection' | 'intent_result';
     status?: string;
@@ -131,11 +126,7 @@ export interface Conversation {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
-  chatType?: 'chatbot' | 'workflow' | 'agent'; // Chat type: chatbot (basic), workflow (workflow-based), or agent (AI agent)
-  workflowId?: string; // Associated workflow ID for workflow-based conversations
-  workflowName?: string; // Associated workflow name for display
-  workflowNodes?: WorkflowNode[]; // Workflow nodes data (for workflow-based conversations)
-  workflowConnections?: WorkflowConnection[]; // Workflow connections data (for workflow-based conversations)
+  chatType?: 'chatbot' | 'agent'; // Chat type: chatbot (basic) or agent (AI agent)
 }
 
 export interface ChatTaskContent {
@@ -147,12 +138,6 @@ export interface ChatTaskContent {
     isChatTypeModalOpen?: boolean;
     hasAutoInitialized?: boolean; // Track if auto-initialization has occurred
   };
-}
-
-// Workflow related types
-export interface WorkflowNodePosition {
-  x: number;
-  y: number;
 }
 
 // LLM Model related types
@@ -170,239 +155,6 @@ export interface LLMModelsResponse {
   message: string;
   models: LLMModel[];
   total_count: number;
-}
-
-// Data format types for workflow nodes
-export type DataFormat = 'text/plain' | 'application/json' | 'array';
-
-// Chat LLM Node Configuration
-export interface ChatLLMNodeConfig {
-  systemPrompt?: string;
-  model?: string;
-  modelId?: string;
-  temperature?: number;
-  maxTokens?: number;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat;
-}
-
-// Text Input Node Configuration
-export interface TextInputNodeConfig {
-  content?: string;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat;
-}
-
-// Start Node Configuration
-export interface StartNodeConfig {
-  input?: string;
-  outputFormat?: DataFormat; // Start node only has output
-}
-
-// Pexels Video Search Node Configuration
-export interface PexelsVideoSearchNodeConfig {
-  keywords?: string;
-  count?: number;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat;
-}
-
-// Tavily Search Node Configuration
-export interface TavilySearchNodeConfig {
-  keywords?: string;
-  count?: number;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat;
-}
-
-// Volcano TTS Node Configuration
-export interface VolcanoTTSNodeConfig {
-  text?: string;
-  voiceType?: string;
-  speedRatio?: number;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat;
-}
-
-// End Node Configuration
-export interface EndNodeConfig {
-  inputFormat?: DataFormat; // End node only has input
-}
-
-// Array element type for To Array node
-export type ArrayElementType = 'string' | 'number' | 'boolean' | 'object';
-
-// Object schema field definition for To Array node
-export interface ObjectSchemaField {
-  name: string;
-  type: ArrayElementType;
-  required?: boolean;
-  description?: string;
-  // For nested objects
-  objectSchema?: ObjectSchemaField[];
-}
-
-// To Array Node Configuration
-export interface ToArrayNodeConfig {
-  systemPrompt?: string;
-  model?: string;
-  modelId?: string;
-  temperature?: number;
-  maxTokens?: number;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat; // Always outputs array format
-  // New properties for schema definition
-  elementType?: ArrayElementType;
-  objectSchema?: ObjectSchemaField[];
-}
-
-// Results Combine Node Configuration
-export interface ResultsCombineNodeConfig {
-  systemPrompt?: string;
-  model?: string;
-  modelId?: string;
-  temperature?: number;
-  maxTokens?: number;
-  inputFormat?: DataFormat;
-  outputFormat?: DataFormat;
-  // Output schema definition (JSON string or object)
-  outputSchema?: string; // JSON schema for the standardized output format
-}
-
-// AI Video Generate Node Configuration
-export interface AIVideoGenerateNodeConfig {
-  // Input data from different sources (all optional)
-  textInput?: string;      // Text/script input
-  videoInput?: string;     // Video input (URL or JSON)
-  audioInput?: string;     // Audio input (URL or JSON)
-  imageInput?: string;     // Image input (URL or JSON)
-  
-  // Input formats for each type
-  textInputFormat?: DataFormat;
-  videoInputFormat?: DataFormat;
-  audioInputFormat?: DataFormat;
-  imageInputFormat?: DataFormat;
-  
-  // LLM configuration (uses VIDEO_CUT_LLM_* from backend)
-  systemPrompt?: string;
-  temperature?: number;
-  maxTokens?: number;
-  
-  // Output configuration
-  outputFormat?: DataFormat; // Always outputs timeline JSON format
-  
-  // Execution result
-  lastExecutionResult?: any; // Stores the last execution result for debugging
-  lastExecutionTime?: string; // Timestamp of last execution
-  lastExecutionSuccess?: boolean; // Whether last execution was successful
-  lastExecutionError?: string; // Error message if execution failed
-}
-
-// Video Export Node Configuration
-export interface VideoExportNodeConfig {
-  // Input: video URLs (can be string or array)
-  videoUrls?: string | string[];
-  
-  // Input format
-  inputFormat?: DataFormat;
-  
-  // Output format - always outputs materials data for Video Editing
-  outputFormat?: DataFormat;
-  
-  // Execution result
-  lastExecutionResult?: any; // Stores the materials data after conversion
-  lastExecutionTime?: string; // Timestamp of last execution
-  lastExecutionSuccess?: boolean; // Whether last execution was successful
-  lastExecutionError?: string; // Error message if execution failed
-}
-
-export interface WorkflowNodeData {
-  label: string;
-  type: string;
-  inputs?: Record<string, any>;
-  outputs?: Record<string, any>;
-  config?: ChatLLMNodeConfig | TextInputNodeConfig | StartNodeConfig | PexelsVideoSearchNodeConfig | TavilySearchNodeConfig | VolcanoTTSNodeConfig | EndNodeConfig | ToArrayNodeConfig | ResultsCombineNodeConfig | AIVideoGenerateNodeConfig | VideoExportNodeConfig | Record<string, any>;
-}
-
-export interface WorkflowNode {
-  id: string;
-  type: string;
-  position: WorkflowNodePosition;
-  data: WorkflowNodeData;
-}
-
-export interface WorkflowConnection {
-  id: string;
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-}
-
-export interface WorkflowData {
-  nodes: WorkflowNode[];
-  connections: WorkflowConnection[];
-  name: string;
-  description?: string;
-}
-
-// Workflow execution related types
-export type WorkflowNodeExecutionStatus = 'pending' | 'executing' | 'completed' | 'error';
-
-export interface WorkflowExecutionLog {
-  id: string;
-  timestamp: Date;
-  level: 'info' | 'success' | 'warning' | 'error';
-  nodeId?: string;
-  nodeName?: string;
-  message: string;
-  details?: any;
-}
-
-export interface WorkflowNodeExecutionState {
-  nodeId: string;
-  status: WorkflowNodeExecutionStatus;
-  input?: any;
-  output?: any;
-  error?: string;
-  startTime?: Date;
-  endTime?: Date;
-  // LLM-specific execution details (for Chat LLM, To Array, Results Combine nodes)
-  llmSystemPrompt?: string; // System prompt sent to LLM
-  llmUserPrompt?: string;   // User prompt sent to LLM
-  llmResponse?: string;     // Model response from LLM
-  llmModel?: string;        // Model name used
-  llmTemperature?: number;  // Temperature parameter
-  llmMaxTokens?: number;    // Max tokens parameter
-}
-
-export interface WorkflowExecutionState {
-  isRunning: boolean;
-  currentNodeId: string | null;
-  nodeStates: Record<string, WorkflowNodeExecutionState>;
-  logs: WorkflowExecutionLog[];
-  startTime?: Date;
-  endTime?: Date;
-}
-
-export interface WorkflowTaskContent {
-  activeWorkflowId: string | null;
-  workflows: {
-    id: string;
-    name: string;
-    data: WorkflowData;
-  }[];
-  executionState?: WorkflowExecutionState;
-  // UI state preservation
-  uiState?: {
-    activeRightTab?: 'chat' | 'workflow'; // Current active tab (chat or workflow)
-    workflowChatStates?: Record<string, {
-      messages: any[];
-      contextCleared: boolean;
-    }>; // Chat state for each workflow
-    isSaving?: boolean;
-    hasAutoLoaded?: boolean; // Track if auto-load from database has occurred
-  };
 }
 
 // Video Editing related types
@@ -480,8 +232,8 @@ export interface VideoEditingTaskContent {
   storyboardScriptSegments?: StoryboardScriptSegment[]; // 分镜脚本片段数据
   selectedStoryboardPackId?: string; // 当前选中的分镜包ID
   materials?: MaterialItem[]; // 素材数据
-  pendingTimelineData?: any; // 待导入的时间轴数据（从Workflow AI Video Generate节点）
-  pendingMaterials?: MaterialItem[]; // 待导入的素材数据（从Workflow Video Export节点）
+  pendingTimelineData?: any; // 待导入的时间轴数据
+  pendingMaterials?: MaterialItem[]; // 待导入的素材数据
   // Chat conversations for AI assistant
   conversations?: Conversation[];
   activeConversationId?: string | null;
@@ -497,7 +249,6 @@ export interface VideoEditingTaskContent {
     aiMixingProgress?: number;
     isAIMixingModeModalOpen?: boolean;
     isBatchAnalysisModalOpen?: boolean;
-    isWorkflowConfigModalOpen?: boolean;
     videoCutModal?: {
       isOpen: boolean;
       material: any | null; // MaterialItem
@@ -506,15 +257,6 @@ export interface VideoEditingTaskContent {
     isChatLoading?: boolean;
     agentMode?: boolean;
     hasAutoChatInitialized?: boolean;
-    // Workflow configurations
-    workflowConfigs?: Record<string, {
-      workflowId: string;
-      workflowName: string;
-      enabled: boolean;
-      toolDescription: string;
-      nodes?: WorkflowNode[];
-      connections?: WorkflowConnection[];
-    }>;
   };
 }
 

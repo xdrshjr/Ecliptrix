@@ -41,19 +41,6 @@ class User(Base):
     preferences = Column(JSON, nullable=False, default=dict, server_default='{}')
 
 
-class AgentWorkflow(Base):
-    __tablename__ = "agent_workflows"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(String(36), index=True)
-    workflow_name = Column(String(200), nullable=False)
-    workflow_data = Column(JSON, nullable=False)
-    description = Column(Text, nullable=True)
-    is_template = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-
 class LoginHistory(Base):
     """Login history table for tracking authentication attempts."""
     __tablename__ = "login_history"

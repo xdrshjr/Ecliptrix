@@ -88,16 +88,6 @@ const ConversationList: React.FC<ConversationListProps> = ({
                           </span>
                         </>
                       )}
-                      {conversation.chatType === 'workflow' && conversation.workflowName && (
-                        <>
-                          <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
-                          </svg>
-                          <span className="text-xs text-primary font-medium truncate">
-                            {conversation.workflowName}
-                          </span>
-                        </>
-                      )}
                       {conversation.chatType === 'agent' && (
                         <>
                           <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,17 +95,6 @@ const ConversationList: React.FC<ConversationListProps> = ({
                           </svg>
                           <span className="text-xs text-green-500 font-medium">
                             {t.aiChat.conversationList.aiAgent}
-                          </span>
-                        </>
-                      )}
-                      {/* Fallback for old conversations without chatType */}
-                      {!conversation.chatType && conversation.workflowName && (
-                        <>
-                          <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          <span className="text-xs text-primary font-medium truncate">
-                            {conversation.workflowName}
                           </span>
                         </>
                       )}

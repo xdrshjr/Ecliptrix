@@ -59,19 +59,18 @@ const serializeState = (state: AppState): PersistedState => ({
 const LEGACY_TITLE_TO_TYPE: Record<string, TaskType> = {
   'Video Editing': 'video',
   'AI Chat': 'chat',
-  'Brainstorming': 'brainstorm',
-  'WorkFlow': 'workflow',
-  'Workflow': 'workflow',
 };
+
+// Task types still supported after the workflow/brainstorm feature removal.
+// Used to scrub any historical persisted tasks/tabs during hydration.
+const ALLOWED_TASK_TYPES = new Set<TaskType>(['chat', 'video']);
 
 export const useTasks = () => {
   const { t } = useLocale();
 
   const buildTaskTypeLabel = useCallback((type: TaskType): string => {
     switch (type) {
-      case 'workflow':   return t.tasks.types.workflow;
       case 'video':      return t.tasks.types.video;
-      case 'brainstorm': return t.tasks.types.brainstorm;
       case 'chat':       return t.tasks.types.chat;
     }
   }, [t.tasks.types]);
@@ -98,6 +97,25 @@ export const useTasks = () => {
     }
 
     if (nextState) {
+      // Hydration scrub: drop any persisted tasks/tabs whose type was removed
+      // (workflow / brainstorm). Without this, the taskbar and Container would
+      // try to render an unknown task type after the feature removal, yielding
+      // a blank tab or a runtime error.
+      const keptTasks = nextState.tasks.filter(task => ALLOWED_TASK_TYPES.has(task.type));
+      const keptTaskIds = new Set(keptTasks.map(task => task.id));
+      const keptTabs = nextState.tabs.filter(
+        tab => ALLOWED_TASK_TYPES.has(tab.type) && keptTaskIds.has(tab.taskId)
+      );
+      let scrubbedActiveTabId = nextState.activeTabId;
+      if (!keptTabs.some(tab => tab.id === scrubbedActiveTabId)) {
+        scrubbedActiveTabId = keptTabs.length > 0 ? keptTabs[0].id : null;
+      }
+      nextState = {
+        tasks: keptTasks,
+        tabs: keptTabs.map(tab => ({ ...tab, isActive: tab.id === scrubbedActiveTabId })),
+        activeTabId: scrubbedActiveTabId,
+      };
+
       // Legacy LS migration: rewrite canonical English task titles to current locale.
       // Idempotent: after rewrite, titles no longer match the legacy clinic, so the
       // mapping is a one-shot. User-customized names are left untouched.
@@ -190,7 +208,7 @@ export const useTasks = () => {
     const isFirstTaskFromLanding = appState.tasks.length === 0;
 
     if (isFirstTaskFromLanding) {
-      const allTaskTypes: TaskType[] = ['chat', 'video', 'workflow', 'brainstorm'];
+      const allTaskTypes: TaskType[] = ['chat', 'video'];
       const newTasks: Task[] = [];
       const newTabs: Tab[] = [];
       let activeTabId = '';

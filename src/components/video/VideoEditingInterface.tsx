@@ -53,10 +53,8 @@ import ConvertToScriptModal from './components/ConvertToScriptModal';
 import { createAIVideoSegment } from './components/AIVideoScriptTab';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { AsyncTaskPoller } from './components/AsyncTaskPoller';
-import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { VideoChatWindow } from './components/VideoChatWindow';
-import { Conversation, ChatMessage, WorkflowExecutionState, WorkflowNode, WorkflowConnection } from '@/types';
-import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
+import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
 
@@ -181,21 +179,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     content?.uiState?.isBatchAnalysisModalOpen ?? false
   );
   
-  // 工作流配置弹窗状态
-  const [isWorkflowConfigModalOpen, setIsWorkflowConfigModalOpen] = useState<boolean>(
-    content?.uiState?.isWorkflowConfigModalOpen ?? false
-  );
-  
-  // 工作流配置状态 - 从 WorkflowConfigModal 保存的配置
-  const [workflowConfigs, setWorkflowConfigs] = useState<Map<string, {
-    workflowId: string;
-    workflowName: string;
-    enabled: boolean;
-    toolDescription: string;
-    nodes?: WorkflowNode[];
-    connections?: WorkflowConnection[];
-  }>>(content?.uiState?.workflowConfigs ? new Map(Object.entries(content.uiState.workflowConfigs)) : new Map());
-  
   // 新增：程序化添加素材到时间轴的状态 (not persisted - transient operation state)
   const [materialsToAddToTimeline, setMaterialsToAddToTimeline] = useState<{ 
     materials: MaterialItem[], 
@@ -253,9 +236,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     aiMixingProgress,
     isAIMixingModeModalOpen,
     isBatchAnalysisModalOpen,
-    isWorkflowConfigModalOpen,
     videoCutModalIsOpen: videoCutModal.isOpen,
-    workflowConfigsCount: workflowConfigs.size,
   });
 
   // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
@@ -278,12 +259,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         aiMixingProgress,
         isAIMixingModeModalOpen,
         isBatchAnalysisModalOpen,
-        isWorkflowConfigModalOpen,
         videoCutModal,
         isChatLoading: false, // 始终持久化为 false —— 这是瞬态状态，不应被恢复
         agentMode,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
-        workflowConfigs: Object.fromEntries(workflowConfigs),
       },
     };
 
@@ -298,12 +277,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.aiMixingProgress !== aiMixingProgress ||
       content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
       content.uiState?.isBatchAnalysisModalOpen !== isBatchAnalysisModalOpen ||
-      content.uiState?.isWorkflowConfigModalOpen !== isWorkflowConfigModalOpen ||
       content.uiState?.agentMode !== agentMode ||
       content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
       JSON.stringify(content.uiState?.currentTimelineState) !== JSON.stringify(currentTimelineState) ||
-      JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal) ||
-      JSON.stringify(Object.fromEntries(workflowConfigs)) !== JSON.stringify(content.uiState?.workflowConfigs);
+      JSON.stringify(content.uiState?.videoCutModal) !== JSON.stringify(videoCutModal);
 
     if (hasStateChanged) {
       logger.debug('Persisting UI state', {
@@ -316,7 +293,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isAIMixing,
         aiMixingProgress,
         isAIMixingModeModalOpen,
-        isWorkflowConfigModalOpen,
         videoCutModalIsOpen: videoCutModal.isOpen,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
       });
@@ -332,7 +308,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isAIMixing,
     aiMixingProgress,
     isAIMixingModeModalOpen,
-    isWorkflowConfigModalOpen,
     agentMode,
     videoCutModal,
     taskId,
@@ -1749,10 +1724,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [taskId, materialManagement, timelineComposition, currentTimelineState]);
 
-  // 检测并导入来自Workflow的待处理时间轴数据
+  // 检测并导入待处理的时间轴数据
   useEffect(() => {
     if (content?.pendingTimelineData) {
-      console.log('[VideoEditingInterface] Detected pending timeline data from Workflow, importing...', {
+      console.log('[VideoEditingInterface] Detected pending timeline data, importing...', {
         taskId,
         hasTimelineData: !!content.pendingTimelineData,
         tracksCount: content.pendingTimelineData?.tracks?.length || 0,
@@ -1799,10 +1774,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [content?.pendingTimelineData, taskId, onUpdateContent, handleImportComplete]);
 
-  // 检测并导入来自Workflow Video Export的待处理素材数据
+  // 检测并导入待处理的素材数据
   useEffect(() => {
     if (content?.pendingMaterials && content.pendingMaterials.length > 0) {
-      console.log('[VideoEditingInterface] Detected pending materials from Video Export, importing...', {
+      console.log('[VideoEditingInterface] Detected pending materials, importing...', {
         taskId,
         materialsCount: content.pendingMaterials.length,
         timestamp: new Date().toISOString()
@@ -2287,43 +2262,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsAIMixingModeModalOpen(false);
   }, [taskId]);
 
-  // 处理工作流配置弹窗的打开
-  const handleViewWorkflowsClick = useCallback(() => {
-    console.log(`[VideoEditingInterface] 用户点击查看工作流按钮`, {
-      taskId,
-      timestamp: new Date().toISOString()
-    });
-    setIsWorkflowConfigModalOpen(true);
-  }, [taskId]);
-
-  // 处理工作流配置弹窗的关闭
-  const handleWorkflowConfigClose = useCallback(() => {
-    console.log(`[VideoEditingInterface] 关闭工作流配置弹窗`, {
-      taskId,
-      timestamp: new Date().toISOString()
-    });
-    setIsWorkflowConfigModalOpen(false);
-  }, [taskId]);
-  
-  // 处理工作流配置保存
-  const handleWorkflowConfigSave = useCallback((configs: Map<string, {
-    workflowId: string;
-    workflowName: string;
-    enabled: boolean;
-    toolDescription: string;
-    nodes?: WorkflowNode[];
-    connections?: WorkflowConnection[];
-  }>) => {
-    console.log(`[VideoEditingInterface] 保存工作流配置`, {
-      taskId,
-      configsCount: configs.size,
-      enabledCount: Array.from(configs.values()).filter(c => c.enabled).length,
-      configsWithNodes: Array.from(configs.values()).filter(c => c.nodes && c.nodes.length > 0).length,
-      timestamp: new Date().toISOString()
-    });
-    setWorkflowConfigs(configs);
-  }, [taskId]);
-
   // 清除添加素材请求状态，避免重复处理
   React.useEffect(() => {
     if (materialsToAddToTimeline) {
@@ -2375,128 +2313,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       });
     }
   }, []); // 只在组件挂载时运行一次
-
-  // 工作流配置自动加载 - 从后端加载已保存的工作流配置
-  useEffect(() => {
-    const loadWorkflowPreferences = async () => {
-      if (!user?.id) {
-        logger.debug('等待用户认证信息，跳过工作流配置加载', {
-          taskId,
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-
-      // 如果已经有配置了（例如从其他地方设置的），不需要重新加载
-      if (workflowConfigs.size > 0) {
-        logger.debug('工作流配置已存在，跳过自动加载', {
-          taskId,
-          configsCount: workflowConfigs.size,
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-
-      try {
-        logger.debug('开始从后端加载工作流配置', {
-          taskId,
-          userId: user.id,
-          timestamp: new Date().toISOString()
-        });
-
-        // 首先加载所有工作流，以获取节点和连接信息
-        const { loadAgentWorkflows } = await import('@/lib/api/workflow');
-        const workflowsResponse = await loadAgentWorkflows(user.id);
-        
-        if (!workflowsResponse.success || !workflowsResponse.data) {
-          logger.warn('加载工作流列表失败，使用空配置', {
-            taskId,
-            timestamp: new Date().toISOString()
-          });
-          return;
-        }
-
-        const workflows = workflowsResponse.data;
-        logger.debug('成功加载工作流列表', {
-          taskId,
-          workflowsCount: workflows.length,
-          timestamp: new Date().toISOString()
-        });
-
-        // 加载工作流配置偏好设置
-        const { load: loadWorkflowPrefs } = await import('@/lib/api/workflowPreferences');
-        let preferencesResult: Awaited<ReturnType<typeof loadWorkflowPrefs>> | null = null;
-        try {
-          preferencesResult = await loadWorkflowPrefs(user.id);
-        } catch (err) {
-          logger.warn('加载工作流配置偏好失败，使用空配置', {
-            taskId,
-            error: err instanceof Error ? err.message : String(err),
-            timestamp: new Date().toISOString()
-          });
-          return;
-        }
-
-        if (preferencesResult.success && preferencesResult.preferences) {
-          // 转换偏好设置对象为 Map
-          const preferencesMap = new Map<string, {
-            workflowId: string;
-            workflowName: string;
-            enabled: boolean;
-            toolDescription: string;
-            nodes?: WorkflowNode[];
-            connections?: WorkflowConnection[];
-          }>();
-
-          Object.entries(preferencesResult.preferences).forEach(([key, value]: [string, any]) => {
-            // 查找对应的工作流以获取节点和连接信息
-            const workflow = workflows.find(w => w.workflow_id === value.workflow_id);
-            preferencesMap.set(key, {
-              workflowId: value.workflow_id,
-              workflowName: value.workflow_name,
-              enabled: value.is_expanded, // 将 is_expanded 映射为 enabled
-              toolDescription: value.tool_description || '',
-              nodes: workflow?.nodes,
-              connections: workflow?.connections
-            });
-          });
-          
-          setWorkflowConfigs(preferencesMap);
-          
-          logger.debug('工作流配置加载成功', {
-            taskId,
-            configsCount: preferencesMap.size,
-            enabledCount: Array.from(preferencesMap.values()).filter(c => c.enabled).length,
-            configsWithNodes: Array.from(preferencesMap.values()).filter(c => c.nodes && c.nodes.length > 0).length,
-            configs: Array.from(preferencesMap.entries()).map(([id, config]) => ({
-              id,
-              name: config.workflowName,
-              enabled: config.enabled,
-              hasDescription: !!config.toolDescription,
-              hasNodes: !!(config.nodes && config.nodes.length > 0)
-            })),
-            timestamp: new Date().toISOString()
-          });
-        } else {
-          console.log('[VideoEditingInterface] 未找到已保存的工作流配置，使用空配置', {
-            taskId,
-            timestamp: new Date().toISOString()
-          });
-        }
-      } catch (error) {
-        console.error('[VideoEditingInterface] 加载工作流配置失败', {
-          taskId,
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          timestamp: new Date().toISOString()
-        });
-        // 不显示错误给用户 - 工作流配置加载失败不是致命错误
-        // 用户仍然可以手动配置工作流
-      }
-    };
-
-    loadWorkflowPreferences();
-  }, [user?.id, taskId]); // 当用户ID或任务ID变化时重新加载
 
   // 聊天消息处理
   const updateConversationMessages = useCallback((conversationId: string, messages: ChatMessage[]) => {
@@ -2613,42 +2429,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       const messagesWithUser = [...activeConversation.messages, userMessage];
       updateConversationMessages(activeConversationId, messagesWithUser);
       
-      // 准备工作流配置（仅启用的工作流）
-      const enabledWorkflowConfigs = Array.from(workflowConfigs.values())
-        .filter(config => config.enabled)
-        .map(config => ({
-          workflowId: config.workflowId,
-          workflowName: config.workflowName,
-          enabled: config.enabled,
-          toolDescription: config.toolDescription
-        }));
-      
-      // 如果有启用的工作流，创建意图检测状态消息
-      let intentDetectionMessageId: string | null = null;
-      if (enabledWorkflowConfigs.length > 0) {
-        intentDetectionMessageId = `msg-${Date.now()}-intent-detection`;
-        const intentDetectionMessage: ChatMessage = {
-          id: intentDetectionMessageId,
-          role: 'assistant',
-          content: '',
-          timestamp: new Date(),
-          isStreaming: true,
-          metadata: {
-            type: 'intent_detection',
-            status: 'analyzing'
-          }
-        };
-        
-        const messagesWithIntent = [...messagesWithUser, intentDetectionMessage];
-        updateConversationMessages(activeConversationId, messagesWithIntent);
-        
-        console.log('[VideoEditingInterface] 显示意图检测状态', {
-          enabledWorkflowsCount: enabledWorkflowConfigs.length,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // 创建助手消息占位符（只在可能有普通回复时创建）
+      // 创建助手消息占位符
       const assistantMessageId = `msg-${Date.now()}-assistant`;
       const assistantMessage: ChatMessage = {
         id: assistantMessageId,
@@ -2660,16 +2441,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       console.log('[VideoEditingInterface] 发送聊天消息到 API', {
         messageLength: message.length,
-        enabledWorkflowsCount: enabledWorkflowConfigs.length,
         timestamp: new Date().toISOString()
       });
-      
+
       let response: Response;
       try {
         response = await http.stream('/api/video-editing-chat', {
           taskId: taskId,
           messages: messagesWithUser,
-          workflowConfigs: enabledWorkflowConfigs,
         }, { timeoutMs: 600_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
@@ -2684,390 +2463,45 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       }
 
       let accumulatedContent = '';
-      let workflowIntention: any = null;
-      let shouldCallWorkflow = false;
-      let streamComplete = false; // 标记流是否完成
-      
-      console.log('[VideoEditingInterface] 开始处理流式响应', {
-        taskId,
-        timestamp: new Date().toISOString()
-      });
-      
+
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          console.log('[VideoEditingInterface] 流读取完成（reader.done）', {
-            taskId,
-            streamComplete,
-            timestamp: new Date().toISOString()
-          });
-          break;
-        }
+        if (done) break;
 
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split('\n').filter(line => line.trim());
-        
-        console.log('[VideoEditingInterface] 收到数据块', {
-          taskId,
-          linesCount: lines.length,
-          timestamp: new Date().toISOString()
-        });
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              console.log('[VideoEditingInterface] 收到[DONE]信号，准备结束流处理', {
-                taskId,
-                workflowIntention: workflowIntention ? {
-                  shouldCallWorkflow: workflowIntention.should_call_workflow,
-                  workflowName: workflowIntention.workflow_name
-                } : null,
-                timestamp: new Date().toISOString()
-              });
-              streamComplete = true;
-              break; // 跳出for循环
-            }
-            
-            try {
-              const parsed = JSON.parse(data);
-              
-              // 处理工作流意图信息
-              if (parsed.type === 'workflow_intention' && parsed.intention) {
-                workflowIntention = parsed.intention;
-                shouldCallWorkflow = workflowIntention.should_call_workflow;
-                console.log('[VideoEditingInterface] 收到工作流意图', {
-                  taskId,
-                  intention: workflowIntention,
-                  shouldCallWorkflow,
-                  timestamp: new Date().toISOString()
-                });
-                
-                // 移除意图检测消息，添加意图结果消息
-                if (intentDetectionMessageId) {
-                  const intentResultMessage: ChatMessage = {
-                    id: `msg-${Date.now()}-intent-result`,
-                    role: 'assistant',
-                    content: '',
-                    timestamp: new Date(),
-                    isStreaming: false,
-                    metadata: {
-                      type: 'intent_result',
-                      intention: workflowIntention
-                    }
-                  };
-                  
-                  // 如果需要调用工作流，不添加助手消息占位符
-                  const updatedMessages = shouldCallWorkflow
-                    ? [...messagesWithUser, intentResultMessage]
-                    : [...messagesWithUser, intentResultMessage, { ...assistantMessage, content: '', isStreaming: true }];
-                  
-                  updateConversationMessages(activeConversationId, updatedMessages);
-                  
-                  console.log('[VideoEditingInterface] 已更新消息列表（添加意图结果）', {
-                    taskId,
-                    messagesCount: updatedMessages.length,
-                    shouldCallWorkflow,
-                    timestamp: new Date().toISOString()
-                  });
-                }
-              }
-              // 处理普通聊天内容（只在不调用工作流时处理）
-              else if (parsed.content && !shouldCallWorkflow) {
-                accumulatedContent += parsed.content;
-                
-                // 更新助手消息
-                const currentMessages = intentDetectionMessageId && workflowIntention
-                  ? [
-                      ...messagesWithUser,
-                      {
-                        id: `msg-${Date.now()}-intent-result`,
-                        role: 'assistant' as const,
-                        content: '',
-                        timestamp: new Date(),
-                        isStreaming: false,
-                        metadata: { type: 'intent_result' as const, intention: workflowIntention }
-                      }
-                    ]
-                  : messagesWithUser;
-                
-                const updatedMessages = [
-                  ...currentMessages,
-                  {
-                    ...assistantMessage,
-                    content: accumulatedContent,
-                    isStreaming: true
-                  }
-                ];
-                
-                updateConversationMessages(activeConversationId, updatedMessages);
-              }
-            } catch (e) {
-              console.error('[VideoEditingInterface] 解析SSE数据错误:', {
-                taskId,
-                error: e,
-                data,
-                timestamp: new Date().toISOString()
-              });
-            }
-          }
-        }
-        
-        // 如果收到[DONE]信号，跳出while循环
-        if (streamComplete) {
-          console.log('[VideoEditingInterface] 流处理完成，退出while循环', {
-            taskId,
-            timestamp: new Date().toISOString()
-          });
-          break;
-        }
-      }
-      
-      console.log('[VideoEditingInterface] 流处理结束，准备后续操作', {
-        taskId,
-        hasWorkflowIntention: !!workflowIntention,
-        shouldCallWorkflow,
-        accumulatedContentLength: accumulatedContent.length,
-        timestamp: new Date().toISOString()
-      });
 
-      // 检查是否需要执行工作流
-      if (workflowIntention && workflowIntention.should_call_workflow) {
-        console.log('[VideoEditingInterface] 需要执行工作流:', {
-          workflowName: workflowIntention.workflow_name,
-          confidence: workflowIntention.confidence,
-          reasoning: workflowIntention.reasoning
-        });
-        
-        // 查找对应的工作流配置
-        const targetWorkflow = Array.from(workflowConfigs.values()).find(
-          config => config.workflowName === workflowIntention.workflow_name && config.enabled
-        );
-        
-        if (targetWorkflow && targetWorkflow.nodes && targetWorkflow.connections) {
-          console.log('[VideoEditingInterface] 找到工作流配置，开始执行', {
-            workflowId: targetWorkflow.workflowId,
-            nodesCount: targetWorkflow.nodes.length,
-            connectionsCount: targetWorkflow.connections.length
-          });
-          
-          // 创建工作流执行状态
-          let workflowExecutionState: WorkflowExecutionState = {
-            isRunning: true,
-            currentNodeId: null,
-            nodeStates: {},
-            logs: [],
-            startTime: new Date()
-          };
-          
-          // 移除普通助手消息，创建工作流执行消息
-          const workflowExecutionMessageId = `msg-${Date.now()}-workflow-execution`;
-          const workflowExecutionMessage: ChatMessage = {
-            id: workflowExecutionMessageId,
-            role: 'assistant',
-            content: '',
-            timestamp: new Date(),
-            isStreaming: true,
-            workflowExecution: {
-              workflowId: targetWorkflow.workflowId,
-              workflowName: targetWorkflow.workflowName,
-              executionState: workflowExecutionState
-            }
-          };
-          
-          // 更新消息列表，显示工作流执行状态
-          const messagesWithWorkflowExecution = [
-            ...messagesWithUser,
-            {
-              id: `msg-${Date.now()}-intent-result`,
-              role: 'assistant' as const,
-              content: '',
-              timestamp: new Date(),
-              isStreaming: false,
-              metadata: { type: 'intent_result' as const, intention: workflowIntention }
-            },
-            workflowExecutionMessage
-          ];
-          updateConversationMessages(activeConversationId, messagesWithWorkflowExecution);
-          
-          // 创建工作流执行器并执行
-          let finalResult = '';
-          const executor = new WorkflowExecutor(
-            targetWorkflow.nodes,
-            targetWorkflow.connections,
-            (newState: WorkflowExecutionState) => {
-              console.log('[VideoEditingInterface] 工作流执行状态更新:', {
-                isRunning: newState.isRunning,
-                currentNodeId: newState.currentNodeId,
-                logsCount: newState.logs.length
-              });
-              
-              // 更新工作流执行状态
-              workflowExecutionState = { ...newState };
-              
-              // 提取最终结果
-              if (!newState.isRunning && newState.endTime) {
-                const finalResultLog = newState.logs.find(
-                  log => log.level === 'success' && log.message.includes('Workflow execution completed')
-                );
-                
-                const finalOutput = finalResultLog?.details?.output;
-                
-                if (finalOutput) {
-                  if (typeof finalOutput === 'string') {
-                    finalResult = finalOutput;
-                  } else if (finalOutput.finalResult) {
-                    const result = finalOutput.finalResult;
-                    if (typeof result === 'string') {
-                      finalResult = result;
-                    } else if (result?.text) {
-                      finalResult = result.text;
-                    } else if (result?.llmResponse) {
-                      finalResult = result.llmResponse;
-                    } else {
-                      finalResult = JSON.stringify(result, null, 2);
-                    }
-                  } else if (finalOutput.text) {
-                    finalResult = finalOutput.text;
-                  } else if (finalOutput.llmResponse) {
-                    finalResult = finalOutput.llmResponse;
-                  } else {
-                    finalResult = JSON.stringify(finalOutput, null, 2);
-                  }
-                }
-              }
-              
-              // 更新消息以显示最新的执行状态
-              const updatedWorkflowMessage: ChatMessage = {
-                ...workflowExecutionMessage,
-                content: finalResult,
-                isStreaming: newState.isRunning,
-                workflowExecution: {
-                  workflowId: targetWorkflow.workflowId,
-                  workflowName: targetWorkflow.workflowName,
-                  executionState: { ...newState }
-                }
-              };
-              
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') break;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.content) {
+              accumulatedContent += parsed.content;
               const updatedMessages = [
                 ...messagesWithUser,
-                {
-                  id: `msg-${Date.now()}-intent-result`,
-                  role: 'assistant' as const,
-                  content: '',
-                  timestamp: new Date(),
-                  isStreaming: false,
-                  metadata: { type: 'intent_result' as const, intention: workflowIntention }
-                },
-                updatedWorkflowMessage
+                { ...assistantMessage, content: accumulatedContent, isStreaming: true }
               ];
-              
               updateConversationMessages(activeConversationId, updatedMessages);
-            },
-            message // 传递用户输入
-          );
-          
-          // 执行工作流
-          try {
-            console.log('[VideoEditingInterface] 开始执行工作流');
-            await executor.execute();
-            console.log('[VideoEditingInterface] 工作流执行完成', {
-              finalResultLength: finalResult.length
-            });
-          } catch (error) {
-            console.error('[VideoEditingInterface] 工作流执行失败:', error);
-            finalResult = `Error: ${error instanceof Error ? error.message : '未知错误'}`;
-            
-            // 更新消息以显示错误
-            const errorMessage: ChatMessage = {
-              ...workflowExecutionMessage,
-              content: finalResult,
-              isStreaming: false,
-              workflowExecution: {
-                workflowId: targetWorkflow.workflowId,
-                workflowName: targetWorkflow.workflowName,
-                executionState: {
-                  ...workflowExecutionState,
-                  isRunning: false,
-                  endTime: new Date()
-                }
-              }
-            };
-            
-            const errorMessages = [
-              ...messagesWithUser,
-              {
-                id: `msg-${Date.now()}-intent-result`,
-                role: 'assistant' as const,
-                content: '',
-                timestamp: new Date(),
-                isStreaming: false,
-                metadata: { type: 'intent_result' as const, intention: workflowIntention }
-              },
-              errorMessage
-            ];
-            
-            updateConversationMessages(activeConversationId, errorMessages);
-          }
-        } else {
-          console.warn('[VideoEditingInterface] 未找到工作流配置或缺少节点/连接信息:', {
-            workflowName: workflowIntention.workflow_name,
-            hasWorkflow: !!targetWorkflow,
-            hasNodes: targetWorkflow?.nodes ? true : false,
-            hasConnections: targetWorkflow?.connections ? true : false
-          });
-          
-          // 如果找不到工作流，仍然使用普通LLM响应
-          const finalMessages = [
-            ...messagesWithUser,
-            {
-              id: `msg-${Date.now()}-intent-result`,
-              role: 'assistant' as const,
-              content: '',
-              timestamp: new Date(),
-              isStreaming: false,
-              metadata: { type: 'intent_result' as const, intention: workflowIntention }
-            },
-            {
-              ...assistantMessage,
-              content: accumulatedContent,
-              isStreaming: false
             }
-          ];
-          updateConversationMessages(activeConversationId, finalMessages);
-        }
-      } else {
-        // 不需要执行工作流，使用普通LLM响应
-        const finalCurrentMessages = workflowIntention
-          ? [
-              ...messagesWithUser,
-              {
-                id: `msg-${Date.now()}-intent-result`,
-                role: 'assistant' as const,
-                content: '',
-                timestamp: new Date(),
-                isStreaming: false,
-                metadata: { type: 'intent_result' as const, intention: workflowIntention }
-              }
-            ]
-          : messagesWithUser;
-        
-        const finalMessages = [
-          ...finalCurrentMessages,
-          {
-            ...assistantMessage,
-            content: accumulatedContent,
-            isStreaming: false
+          } catch (e) {
+            console.error('[VideoEditingInterface] 解析SSE数据错误:', e);
           }
-        ];
-        
-        console.log(`[VideoEditingInterface] 聊天消息接收完成（无需工作流）`, {
-          finalContentLength: accumulatedContent.length,
-          hasWorkflowIntention: !!workflowIntention
-        });
-        updateConversationMessages(activeConversationId, finalMessages);
+        }
       }
-      
+
+      // 标记流式传输完成
+      const finalMessages = [
+        ...messagesWithUser,
+        { ...assistantMessage, content: accumulatedContent, isStreaming: false }
+      ];
+      console.log(`[VideoEditingInterface] 聊天消息接收完成`, {
+        finalContentLength: accumulatedContent.length
+      });
+      updateConversationMessages(activeConversationId, finalMessages);
+
     } catch (error) {
       console.error('[VideoEditingInterface] 聊天消息发送失败:', error);
       showError(`聊天失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -3085,7 +2519,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     } finally {
       setIsChatLoading(false);
     }
-  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, workflowConfigs, agent.agentMode, agent.sendAgentMessage]);
+  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, agent.agentMode, agent.sendAgentMessage]);
 
   // 获取当前活动的聊天对话
   const activeConversation = content?.conversations?.find(
@@ -3103,7 +2537,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           isLoading={isChatLoading}
           onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
           onPolishClick={handlePolishClick}
-          onViewWorkflowsClick={handleViewWorkflowsClick}
           onConvertMessageToScript={handleConvertMessageToScript}
           agentMode={agent.agentMode}
           onAgentModeChange={agent.setAgentMode}
@@ -3335,14 +2768,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onClose={handleCloseCutModal}
         onExportClips={handleExportClips}
         taskId={taskId}
-      />
-
-      {/* 工作流配置弹窗 */}
-      <WorkflowConfigModal
-        isOpen={isWorkflowConfigModalOpen}
-        onClose={handleWorkflowConfigClose}
-        taskId={taskId}
-        onSave={handleWorkflowConfigSave}
       />
 
       {/* Mobile Warning Dialog - Backup Safety Check (Legacy) */}

@@ -116,7 +116,6 @@ ALLOWLIST_PREFIX: Tuple[str, ...] = (
 HARD_PROTECT_PATHS: Tuple[str, ...] = (
     "/api/workflow/ai-video-generate",
     "/api/workflow/video-export",
-    "/api/intent-detection",
 )
 
 

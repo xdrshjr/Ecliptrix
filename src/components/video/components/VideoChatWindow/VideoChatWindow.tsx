@@ -31,7 +31,6 @@ interface VideoChatWindowProps {
   isLoading: boolean;
   onCreativeBrainstormingClick?: () => void;
   onPolishClick?: () => void;
-  onViewWorkflowsClick?: () => void;
   onConvertMessageToScript?: (content: string) => void;
   // Agent mode props
   agentMode: boolean;
@@ -55,7 +54,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   isLoading,
   onCreativeBrainstormingClick,
   onPolishClick,
-  onViewWorkflowsClick,
   onConvertMessageToScript,
   agentMode,
   onAgentModeChange,
@@ -274,21 +272,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       <div className="flex-shrink-0 px-6 py-3 border-t border-border bg-muted dark:bg-zinc-900">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            {/* View Workflows button */}
-            {onViewWorkflowsClick && (
-              <button
-                onClick={() => onViewWorkflowsClick?.()}
-                disabled={isLoading}
-                className="flex items-center justify-center w-9 h-9 bg-card dark:bg-zinc-800 hover:bg-accent dark:hover:bg-zinc-700 border border-border dark:border-zinc-700 hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-                title={t.videoChatWindow.viewWorkflowsTooltip}
-                aria-label={t.videoChatWindow.viewWorkflowsTooltip}
-              >
-                <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </button>
-            )}
-
             {/* Creative Brainstorming button */}
             {onCreativeBrainstormingClick && (
               <button

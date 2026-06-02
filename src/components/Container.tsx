@@ -1,8 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Task, VideoEditingTaskContent, WorkflowTaskContent, ChatTaskContent, MaterialItem } from '@/types';
-import WorkflowInterface from './workflow/WorkflowInterface';
+import { Task, VideoEditingTaskContent, ChatTaskContent, MaterialItem } from '@/types';
 import ChatInterface from './chat/ChatInterface';
 import { VideoProjectListView, VideoEditorContainer } from './video/projects';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -20,16 +19,6 @@ interface ContainerProps {
 const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, tasks, tabs, onSelectTab }) => {
   const { t } = useLocale();
 
-  const handleUpdateWorkflowContent = (content: WorkflowTaskContent) => {
-    if (activeTask && onUpdateTask) {
-      onUpdateTask(activeTask.id, { 
-        content,
-        updatedAt: new Date(),
-        status: 'active' as const,
-      });
-    }
-  };
-
   const handleUpdateChatContent = (content: ChatTaskContent) => {
     if (activeTask && onUpdateTask) {
       onUpdateTask(activeTask.id, { 
@@ -40,49 +29,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     }
   };
 
-  // 处理从Workflow导航到Video Editing (timeline data)
-  const handleNavigateToVideoEditing = (timelineData: any) => {
-    if (!tasks || !tabs || !onSelectTab || !onUpdateTask) {
-      console.warn('[Container] Missing required props for navigation:', {
-        hasTasks: !!tasks,
-        hasTabs: !!tabs,
-        hasOnSelectTab: !!onSelectTab,
-        hasOnUpdateTask: !!onUpdateTask
-      });
-      return;
-    }
-
-    // 1. 查找Video Editing任务
-    const videoTask = tasks.find(t => t.type === 'video');
-    
-    if (!videoTask) {
-      console.error('[Container] No Video Editing task found');
-      return;
-    }
-
-    // 2. 更新Video Editing任务的content，添加待导入的时间轴数据
-    const currentContent = videoTask.content as VideoEditingTaskContent | null;
-    const updatedContent: VideoEditingTaskContent = {
-      ...currentContent,
-      markdownContent: currentContent?.markdownContent || '',
-      lastModified: new Date(),
-      pendingTimelineData: timelineData
-    };
-
-    onUpdateTask(videoTask.id, {
-      content: updatedContent
-    });
-
-    // 3. 切换到Video Editing标签页
-    const videoTab = tabs.find(t => t.taskId === videoTask.id);
-    if (videoTab) {
-      onSelectTab(videoTab.id);
-    } else {
-      console.error('[Container] No tab found for Video Editing task');
-    }
-  };
-
-  // 处理从Chat/Workflow导航到Video Editing (materials from Video Export node)
+  // 处理从Chat导航到Video Editing (materials)
   const handleNavigateToVideoEditingWithMaterials = (materials: any[]) => {
     if (!tasks || !tabs || !onSelectTab || !onUpdateTask) {
       console.warn('[Container] Missing required props for navigation:', {
@@ -158,24 +105,6 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
               <h3 className="font-medium text-foreground mb-1">{t.tasks.videoEditing}</h3>
               <p className="text-muted-foreground">{t.welcome.videoEditingDesc}</p>
             </div>
-            <div className="bg-muted rounded-md p-4">
-              <div className="w-8 h-8 bg-accent rounded-md flex items-center justify-center mb-3">
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
-                </svg>
-              </div>
-              <h3 className="font-medium text-foreground mb-1">{t.tasks.workflow}</h3>
-              <p className="text-muted-foreground">{t.welcome.workflowDesc}</p>
-            </div>
-            <div className="bg-muted rounded-md p-4">
-              <div className="w-8 h-8 bg-accent rounded-md flex items-center justify-center mb-3">
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </div>
-              <h3 className="font-medium text-foreground mb-1">{t.tasks.brainstorming}</h3>
-              <p className="text-muted-foreground">{t.welcome.brainstormingDesc}</p>
-            </div>
           </div>
         </div>
       </div>
@@ -235,21 +164,6 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     );
   }
 
-  // Handle workflow task type
-  if (activeTask.type === 'workflow') {    
-    return (
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <WorkflowInterface
-          key={activeTask.id}
-          taskId={activeTask.id}
-          content={activeTask.content as WorkflowTaskContent | null}
-          onUpdateContent={handleUpdateWorkflowContent}
-          onNavigateToVideoEditing={handleNavigateToVideoEditing}
-        />
-      </div>
-    );
-  }
-
   // Handle chat task type
   if (activeTask.type === 'chat') {    
     return (
@@ -262,29 +176,6 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
           onModalStateChange={onChatModalStateChange}
           onNavigateToVideoEditing={handleNavigateToVideoEditingWithMaterials}
         />
-      </div>
-    );
-  }
-
-  // Handle brainstorming task type
-  if (activeTask.type === 'brainstorm') {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 bg-primary/10 rounded-full mx-auto mb-6 flex items-center justify-center">
-            <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-          </div>
-          <div className="inline-flex items-center gap-2 mb-2">
-            <h2 className="text-2xl font-semibold text-foreground">{t.tasks.brainstorming}</h2>
-            <span className="text-xs px-2 py-0.5 border border-primary/30 text-primary/80 rounded-full">
-              {t.landing.comingSoonBadge}
-            </span>
-          </div>
-          <p className="text-muted-foreground mb-1">{t.common.underDevelopment}</p>
-          <p className="text-sm text-muted-foreground/80">{t.landing.comingSoonHint}</p>
-        </div>
       </div>
     );
   }

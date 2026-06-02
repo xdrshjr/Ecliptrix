@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Conversation, ChatMessage, ChatTaskContent, WorkflowExecutionState } from '@/types';
+import { Conversation, ChatMessage, ChatTaskContent } from '@/types';
 import ConversationList from './ConversationList';
 import ChatWindow from './ChatWindow';
 import ChatTypeSelectionModal from './ChatTypeSelectionModal';
-import { WorkflowExecutor } from '@/components/workflow/WorkflowExecutor';
 import { http, ApiError } from '@/lib/api/http-client';
 import { useLocale } from '@/contexts/LocaleContext';
 import { dlog } from '@/lib/utils/debugLog';
@@ -95,37 +94,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [onModalStateChange]);
 
   const handleCreateConversation = useCallback((
-    chatType: 'chatbot' | 'workflow' | 'agent',
-    workflowId?: string,
-    workflowName?: string,
-    workflowNodes?: any[],
-    workflowConnections?: any[]
+    chatType: 'chatbot' | 'agent',
   ) => {
     const now = new Date();
     const conversationId = `conv-${Date.now()}`;
-    
+
     dlog('[ChatInterface] Creating new conversation:', {
       conversationId,
       chatType,
-      workflowId,
-      workflowName,
-      hasNodes: !!workflowNodes,
-      hasConnections: !!workflowConnections,
-      nodesCount: workflowNodes?.length || 0,
-      connectionsCount: workflowConnections?.length || 0,
       timestamp: now.toISOString()
     });
-    
+
     // Determine conversation title based on chat type
     let title = t.aiChat.conversationList.newChat;
-    if (chatType === 'workflow' && workflowName) {
-      title = `${workflowName} Chat`;
-    } else if (chatType === 'chatbot') {
+    if (chatType === 'chatbot') {
       title = t.aiChat.conversationList.chatbot;
     } else if (chatType === 'agent') {
       title = t.aiChat.conversationList.aiAgent;
     }
-    
+
     const newConversation: Conversation = {
       id: conversationId,
       title,
@@ -133,10 +120,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       createdAt: now,
       updatedAt: now,
       chatType,
-      workflowId,
-      workflowName,
-      workflowNodes,
-      workflowConnections,
     };
 
     const updatedContent: ChatTaskContent = {
@@ -148,10 +131,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     dlog(`[ChatInterface] Created new conversation:`, {
       conversationId,
       chatType,
-      workflowId,
-      workflowName,
-      nodesCount: workflowNodes?.length || 0,
-      connectionsCount: workflowConnections?.length || 0
     });
   }, [chatContent, onUpdateContent]);
 
@@ -164,17 +143,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleChatbotSelect = useCallback(() => {
     dlog('[ChatInterface] Chatbot type selected for new conversation');
     handleCreateConversation('chatbot');
-    handleCloseModal();
-  }, [handleCreateConversation, handleCloseModal]);
-
-  const handleWorkflowSelect = useCallback((workflowId: string, workflowName: string, nodes: any[], connections: any[]) => {
-    dlog('[ChatInterface] Workflow selected for new conversation:', {
-      workflowId,
-      workflowName,
-      nodesCount: nodes?.length || 0,
-      connectionsCount: connections?.length || 0
-    });
-    handleCreateConversation('workflow', workflowId, workflowName, nodes, connections);
     handleCloseModal();
   }, [handleCreateConversation, handleCloseModal]);
 
@@ -369,130 +337,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const messagesWithAssistant = [...messagesWithUser, assistantMessage];
       updateConversationMessages(chatContent.activeConversationId, messagesWithAssistant);
 
-      // Determine chat type and execution method
-      const chatType = activeConversation.chatType || 'chatbot';
-      const useWorkflow = chatType === 'workflow' && !!activeConversation.workflowId;
-      
       dlog('[ChatInterface] Sending message:', {
-        chatType,
-        useWorkflow,
-        workflowId: activeConversation.workflowId,
-        workflowName: activeConversation.workflowName,
-        hasNodes: !!activeConversation.workflowNodes,
-        hasConnections: !!activeConversation.workflowConnections,
-        nodesCount: activeConversation.workflowNodes?.length || 0,
-        connectionsCount: activeConversation.workflowConnections?.length || 0,
+        chatType: activeConversation.chatType || 'chatbot',
         messageLength: message.length
       });
-
-      // Handle workflow execution with client-side executor (like Workflows task)
-      if (useWorkflow && activeConversation.workflowNodes && activeConversation.workflowConnections) {
-        dlog('[ChatInterface] Executing workflow with client-side WorkflowExecutor');
-        
-        let accumulatedContent = '';
-        let workflowExecutionState: WorkflowExecutionState = {
-          isRunning: true,
-          currentNodeId: null,
-          nodeStates: {},
-          logs: [],
-          startTime: new Date()
-        };
-
-        // Create workflow executor with real-time callback
-        const executor = new WorkflowExecutor(
-          activeConversation.workflowNodes,
-          activeConversation.workflowConnections,
-          (newState: WorkflowExecutionState) => {
-            dlog('[ChatInterface] Workflow execution state updated:', {
-              isRunning: newState.isRunning,
-              currentNodeId: newState.currentNodeId,
-              logsCount: newState.logs.length,
-              timestamp: new Date().toISOString()
-            });
-            
-            // Update workflow execution state
-            workflowExecutionState = { ...newState };
-            
-            // Extract final result from logs when execution completes
-            if (!newState.isRunning && newState.endTime) {
-              const finalResultLog = newState.logs.find(
-                log => log.level === 'success' && log.message.includes('Workflow execution completed')
-              );
-              
-              const finalOutput = finalResultLog?.details?.output;
-              
-              if (finalOutput) {
-                // Format the output
-                if (typeof finalOutput === 'string') {
-                  accumulatedContent = finalOutput;
-                } else if (finalOutput.finalResult) {
-                  const result = finalOutput.finalResult;
-                  if (typeof result === 'string') {
-                    accumulatedContent = result;
-                  } else if (result?.text) {
-                    accumulatedContent = result.text;
-                  } else if (result?.llmResponse) {
-                    accumulatedContent = result.llmResponse;
-                  } else {
-                    accumulatedContent = JSON.stringify(result, null, 2);
-                  }
-                } else if (finalOutput.text) {
-                  accumulatedContent = finalOutput.text;
-                } else if (finalOutput.llmResponse) {
-                  accumulatedContent = finalOutput.llmResponse;
-                } else {
-                  accumulatedContent = JSON.stringify(finalOutput, null, 2);
-                }
-              }
-            }
-            
-            // Update the assistant message with workflow execution state
-            const updatedMessages = [...messagesWithUser, {
-              ...assistantMessage,
-              content: accumulatedContent,
-              isStreaming: newState.isRunning,
-              workflowExecution: {
-                workflowId: activeConversation.workflowId!,
-                workflowName: activeConversation.workflowName!,
-                executionState: { ...newState }
-              }
-            }];
-            
-            updateConversationMessages(chatContent.activeConversationId!, updatedMessages);
-          },
-          message // Pass user input to executor
-        );
-
-        // Execute the workflow
-        try {
-          dlog('[ChatInterface] Starting workflow execution');
-          await executor.execute();
-          dlog('[ChatInterface] Workflow execution completed successfully');
-        } catch (error) {
-          console.error('[ChatInterface] Workflow execution error:', error);
-          accumulatedContent = `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
-          
-          // Update with error message
-          const errorMessages = [...messagesWithUser, {
-            ...assistantMessage,
-            content: accumulatedContent,
-            isStreaming: false,
-            workflowExecution: {
-              workflowId: activeConversation.workflowId!,
-              workflowName: activeConversation.workflowName!,
-              executionState: {
-                ...workflowExecutionState,
-                isRunning: false,
-                endTime: new Date()
-              }
-            }
-          }];
-          
-          updateConversationMessages(chatContent.activeConversationId!, errorMessages);
-        }
-        
-        return; // Exit early for workflow execution
-      }
 
       // Handle regular chatbot conversation with API
       dlog('[ChatInterface] Using regular chat API for chatbot conversation');
@@ -628,7 +476,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         isOpen={isChatTypeModalOpen}
         onClose={handleCloseModal}
         onSelectChatbot={handleChatbotSelect}
-        onSelectWorkflow={handleWorkflowSelect}
         onSelectAgent={handleAgentSelect}
       />
     </div>

@@ -26,12 +26,12 @@ describe('LandingPage feature cards — Bug #3 keyboard a11y', () => {
     expect(SRC).not.toMatch(/role=\{isComingSoon \? 'button' : undefined\}/);
   });
 
-  it('tabIndex toggles between 0 and -1 based on comingSoon', () => {
-    expect(SRC).toMatch(/tabIndex=\{isComingSoon \? -1 : 0\}/);
+  it('cards are unconditionally keyboard-focusable (tabIndex=0)', () => {
+    expect(SRC).toMatch(/tabIndex=\{0\}/);
   });
 
-  it('aria-disabled covers comingSoon AND loading-disabled state', () => {
-    expect(SRC).toMatch(/aria-disabled=\{isComingSoon \|\| isLoadingDisabled \|\| undefined\}/);
+  it('aria-disabled covers the loading-disabled state', () => {
+    expect(SRC).toMatch(/aria-disabled=\{isLoadingDisabled \|\| undefined\}/);
   });
 
   it('cards expose an aria-label combining title + description', () => {

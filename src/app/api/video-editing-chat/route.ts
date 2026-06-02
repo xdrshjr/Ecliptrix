@@ -1,81 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
-import { backendConfig } from '@/lib/config/backend';
 import { buildEditingChatSystemPrompt } from '@/lib/video-editing-chat/buildEditingChatSystemPrompt';
-
-/**
- * Server-side intent-detection helper.
- *
- * Replaces the previous in-process import of `detectIntent` from
- * `@/lib/intent-detection-service`. After S06, that module is browser-only
- * (it consumes `http-client.ts` which throws when `window` is undefined),
- * so this server route calls the backend directly via `backendConfig.baseUrl`
- * and forwards the incoming request's `Authorization` header so the backend
- * `SessionAuthMiddleware` (S01) accepts the call.
- *
- * Spec: docs/plans/unified-api-auth-refactor/specs/06-direct-browser-call-migration.md §4.1
- */
-interface IntentDetectionBackendResponse {
-  success: boolean;
-  data?: {
-    should_call_workflow: boolean;
-    workflow_name: string | null;
-    workflow_id: string | null;
-    confidence: number;
-    reasoning: string;
-    parameters?: Record<string, any>;
-  };
-  error?: string;
-  details?: string;
-}
-
-async function callIntentDetectionBackend(
-  payload: {
-    user_message: string;
-    enabled_workflows: Array<{
-      workflow_id: string;
-      workflow_name: string;
-      tool_description: string;
-      enabled: boolean;
-    }>;
-    conversation_history: Array<{ role: string; content: string }> | null;
-  },
-  authHeader: string | null,
-): Promise<IntentDetectionBackendResponse> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (authHeader) {
-    headers['Authorization'] = authHeader;
-  }
-
-  const targetUrl = backendConfig.joinPath('/api/intent-detection/detect');
-  const response = await fetch(targetUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    return {
-      success: false,
-      error: `Backend intent-detection error: ${response.status}`,
-      details: errorText,
-    };
-  }
-
-  return (await response.json()) as IntentDetectionBackendResponse;
-}
-
-// 工作流配置接口
-interface WorkflowConfig {
-  workflowId: string;
-  workflowName: string;
-  enabled: boolean;
-  toolDescription: string;
-}
 
 // 获取环境变量配置
 const getConfig = () => {
@@ -134,17 +59,15 @@ const logResponse = (taskId: string, success: boolean, error?: string) => {
 
 export async function POST(request: NextRequest) {
   let taskId = 'unknown';
-  
+
   try {
     const body = await request.json();
-    const { 
-      taskId: reqTaskId, 
-      messages, 
-      workflowConfigs 
-    } = body as { 
-      taskId: string; 
-      messages: ChatMessage[]; 
-      workflowConfigs?: WorkflowConfig[];
+    const {
+      taskId: reqTaskId,
+      messages,
+    } = body as {
+      taskId: string;
+      messages: ChatMessage[];
     };
     taskId = reqTaskId || 'unknown';
 
@@ -159,127 +82,8 @@ export async function POST(request: NextRequest) {
 
     const config = getConfig();
     logRequest(taskId, messages, config);
-    
-    // 步骤1: 如果有启用的工作流，先进行意图检测（使用Fast LLM）
-    let workflowIntention: any = null;
-    if (workflowConfigs && workflowConfigs.length > 0) {
-      const enabledWorkflows = workflowConfigs.filter(wf => wf.enabled);
-      
-      if (enabledWorkflows.length > 0) {
-        console.log(`[Video Editing Chat API] Task ${taskId} - 检测到 ${enabledWorkflows.length} 个启用的工作流，准备调用Fast LLM进行意图检测`);
-        console.log(`[Video Editing Chat API] Task ${taskId} - 启用的工作流:`, enabledWorkflows.map(wf => wf.workflowName).join(', '));
-        
-        try {
-          // 获取最后一条用户消息
-          const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-          if (lastUserMessage) {
-            console.log(`[Video Editing Chat API] Task ${taskId} - 开始调用意图检测服务，用户消息: ${lastUserMessage.content.substring(0, 100)}...`);
 
-            // Server-to-server call to the FastAPI backend (S06 §4.1).
-            // We forward the caller's Authorization header so the backend
-            // SessionAuthMiddleware (S01) sees the same identity.
-            const intentData = await callIntentDetectionBackend(
-              {
-                user_message: lastUserMessage.content,
-                enabled_workflows: enabledWorkflows.map(wf => ({
-                  workflow_id: wf.workflowId,
-                  workflow_name: wf.workflowName,
-                  tool_description: wf.toolDescription,
-                  enabled: wf.enabled,
-                })),
-                conversation_history: messages
-                  .slice(-5)
-                  .map(m => ({ role: m.role, content: m.content })),
-              },
-              request.headers.get('authorization'),
-            );
-            
-            console.log(`[Video Editing Chat API] Task ${taskId} - 意图检测服务返回数据:`, {
-              success: intentData.success,
-              hasData: !!intentData.data,
-              error: intentData.error
-            });
-            
-            if (intentData.success && intentData.data) {
-              workflowIntention = intentData.data;
-              console.log(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测成功:`, {
-                shouldCallWorkflow: workflowIntention.should_call_workflow,
-                workflowName: workflowIntention.workflow_name,
-                confidence: workflowIntention.confidence,
-                reasoning: workflowIntention.reasoning
-              });
-            } else if (!intentData.success) {
-              console.error(`[Video Editing Chat API] Task ${taskId} - Fast LLM意图检测失败: ${intentData.error || 'Unknown error'}`);
-            }
-          } else {
-            console.warn(`[Video Editing Chat API] Task ${taskId} - 未找到用户消息，跳过意图检测`);
-          }
-        } catch (intentError) {
-          console.error(`[Video Editing Chat API] Task ${taskId} - 意图检测异常:`, intentError);
-          console.error(`[Video Editing Chat API] Task ${taskId} - 意图检测错误详情:`, {
-            message: intentError instanceof Error ? intentError.message : String(intentError),
-            stack: intentError instanceof Error ? intentError.stack : undefined
-          });
-          // 继续正常聊天流程
-        }
-      } else {
-        console.log(`[Video Editing Chat API] Task ${taskId} - 没有启用的工作流，跳过意图检测`);
-      }
-    } else {
-      console.log(`[Video Editing Chat API] Task ${taskId} - 未提供工作流配置，跳过意图检测`);
-    }
-
-    // 创建流式响应
-    const encoder = new TextEncoder();
-    
-    // 如果检测到需要调用工作流，直接返回意图信息，不调用LLM
-    if (workflowIntention && workflowIntention.should_call_workflow) {
-      console.log(`[Video Editing Chat API] Task ${taskId} - 检测到需要调用工作流，跳过普通LLM回复`);
-      
-      const stream = new ReadableStream({
-        start(controller) {
-          try {
-            console.log(`[Video Editing Chat API] Task ${taskId} - 发送工作流意图信息并结束`);
-            
-            // 发送流建立信号
-            controller.enqueue(encoder.encode(`: stream-start\n\n`));
-            
-            // 发送工作流意图信息
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ 
-                type: 'workflow_intention',
-                intention: workflowIntention 
-              })}\n\n`)
-            );
-            
-            // 发送完成信号
-            controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-            
-            logResponse(taskId, true);
-            controller.close();
-          } catch (error) {
-            console.error(`[Video Editing Chat API] Task ${taskId} - 发送工作流意图错误:`, error);
-            logResponse(taskId, false, String(error));
-            controller.error(error);
-          }
-        }
-      });
-      
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache, no-transform',
-          'Connection': 'keep-alive',
-          'X-Accel-Buffering': 'no',
-          'X-Content-Type-Options': 'nosniff',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
-    }
-
-    // 准备请求数据（只在不需要调用工作流时执行）
+    // 准备请求数据
     const requestData = {
       model: config.model,
       messages: formatMessages(messages),
@@ -304,7 +108,7 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error(`[Video Editing Chat API] Task ${taskId} - LLM API 错误: ${response.status} - ${errorText}`);
       logResponse(taskId, false, `LLM API error: ${response.status}`);
-      
+
       return NextResponse.json(
         { error: `LLM API error: ${response.status}`, details: errorText },
         { status: response.status }
@@ -312,27 +116,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 创建流式响应（普通对话模式）
+    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
           console.log(`[Video Editing Chat API] Task ${taskId} - 开始初始化流式传输连接`);
-          
+
           // 立即发送一个初始注释以建立流连接，防止代理服务器缓冲
           // 这对于生产环境中的 nginx/Apache 等反向代理至关重要
           controller.enqueue(encoder.encode(`: stream-start\n\n`));
           console.log(`[Video Editing Chat API] Task ${taskId} - 已发送流建立信号`);
-          
-          // 如果有工作流意图但不需要调用（普通对话），也发送意图信息
-          if (workflowIntention && !workflowIntention.should_call_workflow) {
-            console.log(`[Video Editing Chat API] Task ${taskId} - 发送普通对话意图信息`);
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ 
-                type: 'workflow_intention',
-                intention: workflowIntention 
-              })}\n\n`)
-            );
-          }
-          
+
           const reader = response.body?.getReader();
           if (!reader) {
             throw new Error('No reader available from LLM API');
@@ -342,7 +136,7 @@ export async function POST(request: NextRequest) {
           let totalChunks = 0;
           let lastChunkTime = Date.now();
           const startTime = Date.now();
-          
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
@@ -369,18 +163,18 @@ export async function POST(request: NextRequest) {
               try {
                 const parsed = JSON.parse(data);
                 const content = parsed.choices?.[0]?.delta?.content;
-                
+
                 if (content) {
                   totalChunks++;
                   const currentTime = Date.now();
                   const timeSinceLastChunk = currentTime - lastChunkTime;
                   lastChunkTime = currentTime;
-                  
+
                   const responseData = { content };
                   controller.enqueue(
                     encoder.encode(`data: ${JSON.stringify(responseData)}\n\n`)
                   );
-                  
+
                   // 每10个数据块记录一次详细日志，避免日志过多
                   if (totalChunks % 10 === 0 || totalChunks <= 3) {
                     console.log(`[Video Editing Chat API] Task ${taskId} - 已发送第 ${totalChunks} 个数据块 (间隔 ${timeSinceLastChunk}ms, 内容长度: ${content.length})`);
@@ -408,13 +202,13 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-        
+
         // 防止反向代理（如 nginx）缓冲响应 - 这是生产环境流式传输的关键
         'X-Accel-Buffering': 'no',
-        
+
         // 安全头
         'X-Content-Type-Options': 'nosniff',
-        
+
         // CORS 头
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST',
@@ -425,9 +219,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error(`[Video Editing Chat API] Task ${taskId} - 意外错误:`, error);
     logResponse(taskId, false, String(error));
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         details: error instanceof Error ? error.message : String(error)
       },

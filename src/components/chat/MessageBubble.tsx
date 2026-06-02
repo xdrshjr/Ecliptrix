@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { ChatMessage } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import MarkdownRenderer from './MarkdownRenderer';
-import WorkflowExecutionMessage from './WorkflowExecutionMessage';
 import { copyToClipboard, showCopyFeedback } from '@/lib/clipboard';
 import { dlog } from '@/lib/utils/debugLog';
 import { formatTime } from '@/lib/utils/dateFormat';
@@ -46,24 +45,19 @@ const ThinkingPanel: React.FC<{ content: string; isStreaming: boolean }> = ({ co
   );
 };
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVideoEditing, onConvertToScript }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onConvertToScript }) => {
   const { t } = useLocale();
   const [isHovered, setIsHovered] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [showCopySuccess, setShowCopySuccess] = useState(false);
   const isUser = message.role === 'user';
-  const isWorkflowExecution = !!message.workflowExecution;
-  const isIntentDetection = message.metadata?.type === 'intent_detection';
-  const isIntentResult = message.metadata?.type === 'intent_result';
-  
+
   // Streaming-update log — gated by debugLog so it stays silent in prod
   // unless the user opts in via window.__ECLIPTRIX_DEBUG__.
   if (message.isStreaming) {
     dlog('[MessageBubble] streaming message update', {
       messageId: message.id,
       contentLength: message.content.length,
-      isIntentDetection,
-      isIntentResult,
     });
   }
 
@@ -98,85 +92,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onNavigateToVide
       onConvertToScript(message.content);
     }
   };
-  
-  // 意图检测状态消息 - 显示正在分析
-  if (isIntentDetection) {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[95%] animate-fadeIn">
-          <div className="bg-primary/10 rounded-md px-5 py-4 border border-primary/30">
-            <div className="flex items-center space-x-2.5 mb-2">
-              <div className="flex space-x-1.5">
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1s' }}></span>
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1s' }}></span>
-              </div>
-              <span className="text-sm font-semibold text-foreground">{t.chatMessageBubble.analyzingIntent}</span>
-            </div>
-            <p className="text-xs text-primary leading-relaxed">{t.chatMessageBubble.detectingWorkflow}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
-  // 意图检测结果消息 - 显示是否需要调用工作流
-  if (isIntentResult && message.metadata?.intention) {
-    const intention = message.metadata.intention;
-    const shouldCallWorkflow = intention.should_call_workflow;
-    
-    if (shouldCallWorkflow) {
-      return (
-        <div className="flex justify-start">
-          <div className="max-w-[95%] animate-fadeIn">
-            <div className="bg-green-500/10 rounded-md px-5 py-4 border border-green-500/30">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span className="text-sm font-semibold text-foreground">
-                    {t.chatMessageBubble.willCallWorkflow.replace('{name}', intention.workflow_name)}
-                  </span>
-                </div>
-                <span className="text-xs text-green-500 bg-green-500/20 px-2.5 py-1 rounded-full font-medium">
-                  {Math.round((intention.confidence || 0) * 100)}%
-                </span>
-              </div>
-              <p className="text-xs text-green-500 leading-relaxed">{intention.reasoning}</p>
-            </div>
-          </div>
-        </div>
-      );
-    } else {
-      // 不需要调用工作流 - 使用更低调的样式
-      return (
-        <div className="flex justify-start">
-          <div className="max-w-[95%] animate-fadeIn opacity-75">
-            <div className="bg-muted rounded-md px-5 py-3 border border-border">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                <span className="font-medium">{t.chatMessageBubble.normalChat}</span> · {intention.reasoning}
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-  }
-  
-  // If this is a workflow execution message, use the special component
-  if (isWorkflowExecution && message.workflowExecution) {
-    return (
-      <WorkflowExecutionMessage
-        workflowName={message.workflowExecution.workflowName}
-        executionState={message.workflowExecution.executionState}
-        finalResult={message.content}
-        isComplete={!message.isStreaming}
-        onNavigateToVideoEditing={onNavigateToVideoEditing}
-        onConvertToScript={onConvertToScript}
-      />
-    );
-  }
   
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>

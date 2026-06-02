@@ -268,14 +268,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-lg font-semibold text-foreground">{conversation.title}</h2>
-                {conversation.workflowName && (
-                  <span className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-medium rounded-lg flex items-center space-x-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    <span>{conversation.workflowName}</span>
-                  </span>
-                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 {conversation.messages.length} {t.aiChat.messagesLabel} • {formatTime(conversation.updatedAt)}

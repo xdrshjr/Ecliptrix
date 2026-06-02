@@ -32,16 +32,11 @@ export interface Translations {
     heroDescription: string;
     startCreating: string;
     loading: string;
-    exploreWorkflows: string;
     videoEditingDesc: string;
-    workflowDesc: string;
     aiChatDesc: string;
-    brainstormingDesc: string;
-    brainstormingDescPreview: string;
     comingSoonBadge: string;
     comingSoonHint: string;
     aiModels: string;
-    workflowTemplates: string;
     creativePossibilities: string;
   };
   auth: {
@@ -556,12 +551,10 @@ export interface Translations {
     rateLimited: string;
   };
   tasks: {
-    workflow: string;
     videoEditing: string;
-    brainstorming: string;
     brainstormingComingSoon: string;
     aiChat: string;
-    types: { workflow: string; video: string; brainstorm: string; chat: string };
+    types: { video: string; chat: string };
     defaultPageTitle: string;
   };
   videoProjects: {
@@ -613,126 +606,11 @@ export interface Translations {
     loadError: string;
     cover: string;
   };
-  workflowInterface: {
-    chatInterfaceTab: string;
-    workflowInterfaceTab: string;
-    sidebar: {
-      heading: string;
-      addNew: string;
-      subtitle: string;
-      emptyState: string;
-      editDetails: string;
-      confirmDelete: string;
-      deleteWorkflow: string;
-      workflowCount: string;
-      active: string;
-    };
-    canvas: {
-      contextMenu: {
-        menuAriaLabel: string;
-        addStartNode: string;
-        addEndNode: string;
-        addChatLLM: string;
-        addTextInput: string;
-        addPexelsVideoSearch: string;
-        addTavilySearch: string;
-        addVolcanoTTS: string;
-        addToArray: string;
-        addResultsCombine: string;
-        addAIVideoGenerate: string;
-        addVideoExport: string;
-      };
-      nodeDefaults: {
-        start: string;
-        end: string;
-        chatLLM: string;
-        textInput: string;
-        pexelsSearch: string;
-        tavilySearch: string;
-        volcanoTTS: string;
-        toArray: string;
-        resultsCombine: string;
-        aiVideoGenerate: string;
-        videoExport: string;
-      };
-      emptyState: {
-        title: string;
-        description: string;
-      };
-      toolbar: {
-        zoomOut: string;
-        zoomIn: string;
-        panMode: string;
-        exitPanMode: string;
-        resetView: string;
-      };
-      infoBar: {
-        nodes: string;
-        connections: string;
-        nodeSelected: string;
-        connectionSelected: string;
-      };
-    };
-    editor: {
-      save: string;
-      saving: string;
-      run: string;
-      stop: string;
-      loading: string;
-      noWorkflowSelected: string;
-      selectWorkflowPrompt: string;
-      description: string;
-      viewDescription: string;
-      runHintNoWorkflow: string;
-      runHintMissingStart: string;
-    };
-    notifications: {
-      loadedWorkflows: string;
-      failedToLoad: string;
-      pleaseLoginToCreate: string;
-      newWorkflowDefaultName: string;
-      workflowCreated: string;
-      workflowCreatedSaveFailed: string;
-      pleaseLoginToRename: string;
-      workflowRenamed: string;
-      workflowRenamedSaveFailed: string;
-      pleaseLoginToSaveChanges: string;
-      workflowNotFound: string;
-      workflowUpdated: string;
-      workflowUpdatedSaveFailed: string;
-      pleaseLoginToDelete: string;
-      cannotDeleteLast: string;
-      workflowDeleted: string;
-      failedToDelete: string;
-      pleaseLoginToSave: string;
-      noActiveWorkflow: string;
-      workflowSaved: string;
-      workflowSaveFailed: string;
-    };
-    logPanel: {
-      title: string;
-      collapse: string;
-      expand: string;
-      running: string;
-      current: string;
-      noLogs: string;
-      clickRunToStart: string;
-      input: string;
-      output: string;
-      viewDetails: string;
-      totalLogs: string;
-      errors: string;
-      warnings: string;
-      success: string;
-    };
-  };
   welcome: {
     title: string;
     subtitle: string;
     description: string;
-    workflowDesc: string;
     videoEditingDesc: string;
-    brainstormingDesc: string;
     aiChatDesc: string;
   };
   taskContent: {
@@ -1957,7 +1835,6 @@ export interface Translations {
     editingSuggestionsDesc: string;
     startChatTitle: string;
     startChatDesc: string;
-    viewWorkflowsTooltip: string;
     agentToggleLabel: string;
     agentInputPlaceholder: string;
     inputAriaLabel: string;
@@ -1980,50 +1857,6 @@ export interface Translations {
     agentBusyWorking: string;
     /** Label for tool calls that ended in the `cancelled` status. */
     agentToolCancelled: string;
-  };
-  workflowChat: {
-    title: string;
-    subtitle: string;
-    inputPlaceholder: string;
-    send: string;
-    stop: string;
-    clearChat: string;
-    clearChatConfirm: string;
-    clearContext: string;
-    clearContextConfirm: string;
-    clearContextTooltip: string;
-    startConversation: string;
-    startConversationDesc: string;
-    running: string;
-    finalResult: string;
-    exportMaterials: string;
-    exportMaterialsHint: string;
-    goToVideoResult: string;
-    workflowExecuting: string;
-    inputHint: string;
-  };
-  workflowConfigModal: {
-    title: string;
-    subtitle: string;
-    workflowListTitle: string;
-    workflowConfigTitle: string;
-    enabledLabel: string;
-    disabledLabel: string;
-    toolDescriptionLabel: string;
-    toolDescriptionPlaceholder: string;
-    modelSelectionLabel: string;
-    modelPlaceholder: string;
-    noWorkflowSelected: string;
-    selectWorkflowPrompt: string;
-    noWorkflowsAvailable: string;
-    createWorkflowPrompt: string;
-    saveButton: string;
-    cancelButton: string;
-    loadingWorkflows: string;
-    workflowCount: string;
-    successSave: string;
-    errorLoad: string;
-    errorSave: string;
   };
   aiChat: {
     welcomePage: {
@@ -2210,231 +2043,6 @@ export interface Translations {
       payloadTooLarge: string;
       seekHint: string;
       loadingDuration: string;
-    };
-  };
-  workflowEditModal: {
-    title: string;
-    subtitle: string;
-    closeAriaLabel: string;
-    nameLabel: string;
-    namePlaceholder: string;
-    nameRequired: string;
-    descriptionLabel: string;
-    descriptionPlaceholder: string;
-    nodesLabel: string;
-    nodeCount: string;
-    nodeCountSingular: string;
-    emptyTitle: string;
-    emptyHint: string;
-    unsavedChanges: string;
-    noChanges: string;
-    cancel: string;
-    saving: string;
-    saveChanges: string;
-  };
-  workflowConfig: {
-    common: {
-      cancel: string;
-      saveConfiguration: string;
-      inputFormat: string;
-      outputFormat: string;
-      inputFormatHelp: string;
-      outputFormatHelp: string;
-      dataFormat: string;
-      plainText: string;
-      jsonObject: string;
-      arrayLabel: string;
-      plainTextDesc: string;
-      jsonObjectDesc: string;
-      arrayDesc: string;
-      loadFailed: string;
-      retry: string;
-      noModelsAvailable: string;
-      nodeIdLabel: string;
-    };
-    chatLLM: {
-      title: string;
-      systemPrompt: string;
-      systemPromptPlaceholder: string;
-      systemPromptHelp: string;
-      model: string;
-      modelHelp: string;
-      temperature: string;
-      temperatureLow: string;
-      temperatureHigh: string;
-      temperatureHelp: string;
-      maxTokens: string;
-      maxTokensHelp: string;
-      selectModelHint: string;
-    };
-  };
-  workflowNodes: {
-    ports: {
-      input: string;
-      output: string;
-      keywords: string;
-      results: string;
-      arrayInput: string;
-      combined: string;
-      array: string;
-      videos: string;
-      materials: string;
-      textInput: string;
-      audioOutput: string;
-      timeline: string;
-      copy: string;
-      video: string;
-      audio: string;
-      image: string;
-    };
-    tooltips: {
-      configured: string;
-      deleteNode: string;
-      inputPort: string;
-      outputPort: string;
-    };
-    status: {
-      configured: string;
-      notSet: string;
-      notSelected: string;
-      ready: string;
-      success: string;
-      failed: string;
-      notConfigured: string;
-      noContent: string;
-      doubleClickToConfigure: string;
-      doubleClickForFullContent: string;
-      model: string;
-      temperature: string;
-      systemPrompt: string;
-      keywords: string;
-      count: string;
-      voice: string;
-      text: string;
-      content: string;
-      format: string;
-      statusLabel: string;
-      videoUrls: string;
-      moreCount: string;
-      exportToMaterials: string;
-      exportVideos: string;
-      inputType: string;
-      arrayBadge: string;
-      schema: string;
-      schemaDefined: string;
-      combinesStandardizes: string;
-      combinesResults: string;
-      transformPrompt: string;
-      conversionPrompt: string;
-      fields: string;
-      fieldsCount: string;
-      outputsArray: string;
-      typeLabel: string;
-      workflowStartPoint: string;
-      workflowEndPoint: string;
-    };
-    aiVideo: {
-      inputs: string;
-      status: string;
-      lastRun: string;
-      error: string;
-      prompt: string;
-      notConfigured: string;
-      doubleClickConfigure: string;
-    };
-    execution: {
-      title: string;
-      progress: string;
-      noNodes: string;
-      waiting: string;
-      executing: string;
-      completed: string;
-      failed: string;
-      executionTime: string;
-      systemPrompt: string;
-      userInput: string;
-      modelReply: string;
-      input: string;
-      output: string;
-      error: string;
-    };
-    editor: {
-      noWorkflowSelected: string;
-      selectWorkflowPrompt: string;
-      newWorkflowDefaultName: string;
-      newWorkflowDescription: string;
-    };
-    configPanels: {
-      volcanoTTS: {
-        title: string;
-        nodeId: string;
-        dataFormat: string;
-        inputFormat: string;
-        outputFormat: string;
-        inputFormatHelp: string;
-        outputFormatHelp: string;
-        language: string;
-        chinese: string;
-        english: string;
-        voiceType: string;
-        loadingVoices: string;
-        speedRatio: string;
-        slower: string;
-        normal: string;
-        faster: string;
-        textContent: string;
-        clear: string;
-        placeholder: string;
-        characters: string;
-        words: string;
-        hasContent: string;
-        empty: string;
-        audioPreview: string;
-        pause: string;
-        playAudio: string;
-        download: string;
-        downloadAudio: string;
-        howToUse: string;
-        howToUseSteps: string[];
-        cancel: string;
-        save: string;
-        saving: string;
-      };
-      aiVideoGenerate: {
-        title: string;
-        subtitle: string;
-        inputConfiguration: string;
-        llmSettings: string;
-        executionResults: string;
-        inputConfigDesc: string;
-        textInput: string;
-        videoInput: string;
-        audioInput: string;
-        imageInput: string;
-        enterTextPlaceholder: string;
-        enterVideoPlaceholder: string;
-        enterAudioPlaceholder: string;
-        enterImagePlaceholder: string;
-        stringFormat: string;
-        jsonFormat: string;
-        arrayFormat: string;
-        llmConfigDesc: string;
-        systemPrompt: string;
-        systemPromptPlaceholder: string;
-        temperature: string;
-        temperatureHint: string;
-        maxTokens: string;
-        llmInfoTitle: string;
-        llmInfoDesc: string;
-        executionSuccessful: string;
-        executionFailed: string;
-        lastExecuted: string;
-        errorMessage: string;
-        executionResult: string;
-        noResultsYet: string;
-        cancel: string;
-        saveConfiguration: string;
-      };
     };
   };
   mediaPreview: {
@@ -2717,36 +2325,12 @@ export interface Translations {
     thinking: string;
     thoughtProcess: string;
     analyzingIntent: string;
-    detectingWorkflow: string;
-    willCallWorkflow: string;
     normalChat: string;
     copiedTitle: string;
     copyMessageTitle: string;
     convertToScriptTitle: string;
     generating: string;
     copied: string;
-  };
-  chatWorkflowExecution: {
-    finalResult: string;
-    copiedTitle: string;
-    copyTitle: string;
-    convertToScriptTitle: string;
-    exportClip: string;
-    exportClipHint: string;
-    executing: string;
-  };
-  chatWorkflowSelection: {
-    title: string;
-    subtitle: string;
-    loading: string;
-    errorTitle: string;
-    retryButton: string;
-    emptyTitle: string;
-    emptyHint: string;
-    activeBadge: string;
-    nodesLabel: string;
-    totalWorkflows: string;
-    cancelButton: string;
   };
   videoCut: {
     title: string;
@@ -2872,16 +2456,11 @@ export const translations: Record<string, Translations> = {
       heroDescription: 'Where creativity meets AI. Create stunning videos, build intelligent workflows, and unleash your creative potential with our powerful suite of tools.',
       startCreating: 'Start Creating',
       loading: 'Loading...',
-      exploreWorkflows: 'Explore Workflows',
       videoEditingDesc: 'Professional video editing with AI-powered tools and intuitive timeline interface',
-      workflowDesc: 'Build powerful AI workflows with visual node-based editor',
       aiChatDesc: 'Intelligent AI conversations for content creation and assistance',
-      brainstormingDesc: 'Generate creative ideas and concepts for your projects',
-      brainstormingDescPreview: 'Coming soon — a creative ideation workshop for sparking new project concepts',
       comingSoonBadge: 'Coming Soon',
       comingSoonHint: 'This feature is in development. Stay tuned!',
       aiModels: 'AI Models',
-      workflowTemplates: 'Workflow Templates',
       creativePossibilities: 'Creative Possibilities',
     },
     auth: {
@@ -3396,12 +2975,10 @@ export const translations: Record<string, Translations> = {
       rateLimited: 'Too many requests. Please retry in {seconds}s.',
     },
     tasks: {
-      workflow: 'WorkFlow',
       videoEditing: 'Video Editing',
-      brainstorming: 'Brainstorming',
       brainstormingComingSoon: 'Brainstorming is coming soon.',
       aiChat: 'AI Chat',
-      types: { workflow: 'Workflow', video: 'Video Editing', brainstorm: 'Brainstorming', chat: 'AI Chat' },
+      types: { video: 'Video Editing', chat: 'AI Chat' },
       defaultPageTitle: 'Ecliptrix — Where light and shadow collide',
     },
     videoProjects: {
@@ -3453,126 +3030,11 @@ export const translations: Record<string, Translations> = {
       loadError: 'Failed to load projects',
       cover: 'Cover',
     },
-    workflowInterface: {
-      chatInterfaceTab: 'Chat Interface',
-      workflowInterfaceTab: 'Workflow Interface',
-      sidebar: {
-        heading: 'Workflows',
-        addNew: 'Add New Workflow',
-        subtitle: 'Select or create a workflow',
-        emptyState: 'No workflows yet',
-        editDetails: 'Edit Workflow Details',
-        confirmDelete: 'Confirm Delete',
-        deleteWorkflow: 'Delete Workflow',
-        workflowCount: '{count} workflow(s)',
-        active: 'Active',
-      },
-      canvas: {
-        contextMenu: {
-          menuAriaLabel: 'Add node menu',
-          addStartNode: 'Add Start Node',
-          addEndNode: 'Add End Node',
-          addChatLLM: 'Add Chat LLM',
-          addTextInput: 'Add Text Input',
-          addPexelsVideoSearch: 'Add Pexels Video Search',
-          addTavilySearch: 'Add Tavily Search',
-          addVolcanoTTS: 'Add Volcano TTS',
-          addToArray: 'Add To Array',
-          addResultsCombine: 'Add Results Combine',
-          addAIVideoGenerate: 'Add AI Video Generate',
-          addVideoExport: 'Add Video Export',
-        },
-        nodeDefaults: {
-          start: 'Start',
-          end: 'End',
-          chatLLM: 'Chat LLM',
-          textInput: 'Text Input',
-          pexelsSearch: 'Pexels Video Search',
-          tavilySearch: 'Tavily Search',
-          volcanoTTS: 'Volcano TTS',
-          toArray: 'To Array',
-          resultsCombine: 'Results Combine',
-          aiVideoGenerate: 'AI Video Generate',
-          videoExport: 'Video Export',
-        },
-        emptyState: {
-          title: 'Start Building Your Workflow',
-          description: 'Right-click anywhere on the canvas to add your first node',
-        },
-        toolbar: {
-          zoomOut: 'Zoom Out',
-          zoomIn: 'Zoom In',
-          panMode: 'Enter Pan Mode (Drag Canvas)',
-          exitPanMode: 'Exit Pan Mode (Switch to Node Drag Mode)',
-          resetView: 'Reset View',
-        },
-        infoBar: {
-          nodes: 'Nodes',
-          connections: 'Connections',
-          nodeSelected: 'Node Selected',
-          connectionSelected: 'Connection Selected',
-        },
-      },
-      editor: {
-        save: 'Save',
-        saving: 'Saving...',
-        run: 'Run',
-        stop: 'Stop',
-        loading: 'Loading workflow...',
-        noWorkflowSelected: 'No Workflow Selected',
-        selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
-        description: 'Description',
-        viewDescription: 'View description',
-        runHintNoWorkflow: 'Select a workflow first.',
-        runHintMissingStart: 'Add a Start node before running.',
-      },
-      notifications: {
-        loadedWorkflows: 'Loaded {count} workflow(s)',
-        failedToLoad: 'Failed to load workflows',
-        pleaseLoginToCreate: 'Please login to create workflows',
-        newWorkflowDefaultName: 'New Workflow',
-        workflowCreated: 'Workflow "{name}" created successfully',
-        workflowCreatedSaveFailed: 'Workflow created but failed to save. Please save it manually.',
-        pleaseLoginToRename: 'Please login to rename workflows',
-        workflowRenamed: 'Workflow renamed to "{name}"',
-        workflowRenamedSaveFailed: 'Workflow renamed but failed to save. Please save it manually.',
-        pleaseLoginToSaveChanges: 'Please login to save workflow changes',
-        workflowNotFound: 'Workflow not found',
-        workflowUpdated: 'Workflow "{name}" updated successfully',
-        workflowUpdatedSaveFailed: 'Workflow updated locally but failed to save to database. Please save it manually.',
-        pleaseLoginToDelete: 'Please login to delete workflows',
-        cannotDeleteLast: 'Cannot delete the last workflow',
-        workflowDeleted: 'Workflow "{name}" deleted successfully',
-        failedToDelete: 'Failed to delete workflow',
-        pleaseLoginToSave: 'Please login to save workflows',
-        noActiveWorkflow: 'No active workflow to save',
-        workflowSaved: 'Workflow "{name}" saved successfully (v{version})',
-        workflowSaveFailed: 'Failed to save workflow',
-      },
-      logPanel: {
-        title: 'Execution Logs',
-        collapse: 'Collapse',
-        expand: 'Expand',
-        running: 'Running',
-        current: 'Current',
-        noLogs: 'No logs yet',
-        clickRunToStart: 'Click Run to start workflow execution',
-        input: 'Input',
-        output: 'Output',
-        viewDetails: 'View details',
-        totalLogs: 'Total logs: {count}',
-        errors: '{count} errors',
-        warnings: '{count} warnings',
-        success: '{count} success',
-      },
-    },
     welcome: {
       title: 'Welcome to Ecliptrix',
       subtitle: 'Where light and shadow collide',
       description: 'Where light and shadow collide to create extraordinary content. Start by creating a new task to begin your creative journey.',
-      workflowDesc: 'Build AI-powered workflow agents',
       videoEditingDesc: 'Automatic video mixing and editing',
-      brainstormingDesc: 'Creative ideation and inspiration',
       aiChatDesc: 'Intelligent conversation and assistance',
     },
     taskContent: {
@@ -4820,7 +4282,6 @@ export const translations: Record<string, Translations> = {
       editingSuggestionsDesc: 'Get professional video editing and material usage suggestions',
       startChatTitle: 'Start chatting with AI',
       startChatDesc: 'Enter your question or requirement, AI will help you',
-      viewWorkflowsTooltip: 'View Workflows',
       agentToggleLabel: 'Agent',
       agentInputPlaceholder: 'Tell the agent what to edit...',
       inputAriaLabel: 'Video editing chat input',
@@ -4837,50 +4298,6 @@ export const translations: Record<string, Translations> = {
       agentBusyTool: 'Agent is running {tool}…',
       agentBusyWorking: 'Agent is working…',
       agentToolCancelled: 'Cancelled',
-    },
-    workflowChat: {
-      title: 'Workflow Assistant',
-      subtitle: 'Interact with workflows in real-time',
-      inputPlaceholder: 'Enter a message to start a workflow... (Shift+Enter for new line)',
-      send: 'Send',
-      stop: 'Stop',
-      clearChat: 'Clear Chat History',
-      clearChatConfirm: 'Are you sure you want to clear all chat history? This cannot be undone.',
-      clearContext: 'Clear Context',
-      clearContextConfirm: 'Are you sure you want to clear the workflow context? Chat history will be preserved.',
-      clearContextTooltip: 'Clear context, keep chat history',
-      startConversation: 'Start Conversation',
-      startConversationDesc: 'Send a message to start a workflow. Execution progress and results will be displayed in real-time.',
-      running: 'Running',
-      finalResult: 'Final Result',
-      exportMaterials: 'Export Clips ({count} video materials)',
-      exportMaterialsHint: 'Click to import video materials into the Video Editing task materials panel',
-      goToVideoResult: 'Go to Video Editing to view results',
-      workflowExecuting: 'Workflow is executing...',
-      inputHint: 'Press Enter to send, Shift + Enter for new line',
-    },
-    workflowConfigModal: {
-      title: 'Workflow Configuration',
-      subtitle: 'Select and configure workflows for video editing tasks',
-      workflowListTitle: 'Available Workflows',
-      workflowConfigTitle: 'Workflow Settings',
-      enabledLabel: 'Enabled',
-      disabledLabel: 'Disabled',
-      toolDescriptionLabel: 'Tool Description',
-      toolDescriptionPlaceholder: 'Describe what this workflow tool does for the AI assistant...',
-      modelSelectionLabel: 'Model Selection',
-      modelPlaceholder: 'Select a model...',
-      noWorkflowSelected: 'No Workflow Selected',
-      selectWorkflowPrompt: 'Please select a workflow from the left panel to configure',
-      noWorkflowsAvailable: 'No Workflows Available',
-      createWorkflowPrompt: 'Create workflows in the Workflows task first',
-      saveButton: 'Save Configuration',
-      cancelButton: 'Cancel',
-      loadingWorkflows: 'Loading workflows...',
-      workflowCount: '{count} workflow(s)',
-      successSave: 'Workflow configuration saved successfully',
-      errorLoad: 'Failed to load workflows',
-      errorSave: 'Failed to save configuration',
     },
     aiChat: {
       welcomePage: {
@@ -5067,237 +4484,6 @@ export const translations: Record<string, Translations> = {
         payloadTooLarge: 'Total upload size exceeds the limit. Remove some frames or lower JPEG quality.',
         seekHint: 'Space: play/pause · ←/→: ±1 frame · C: capture',
         loadingDuration: 'Loading…',
-      },
-    },
-    workflowEditModal: {
-      title: 'Edit Workflow',
-      subtitle: 'Modify workflow details and view nodes',
-      closeAriaLabel: 'Close modal',
-      nameLabel: 'Workflow Name',
-      namePlaceholder: 'Enter workflow name',
-      nameRequired: 'Workflow name is required',
-      descriptionLabel: 'Description',
-      descriptionPlaceholder: 'Enter workflow description (optional)',
-      nodesLabel: 'Workflow Nodes',
-      nodeCount: '{count} nodes',
-      nodeCountSingular: '1 node',
-      emptyTitle: 'No nodes in this workflow yet',
-      emptyHint: 'Add nodes in the workflow canvas',
-      unsavedChanges: 'Unsaved changes',
-      noChanges: 'No changes',
-      cancel: 'Cancel',
-      saving: 'Saving…',
-      saveChanges: 'Save Changes',
-    },
-    workflowConfig: {
-      common: {
-        cancel: 'Cancel',
-        saveConfiguration: 'Save Configuration',
-        inputFormat: 'Input Format',
-        outputFormat: 'Output Format',
-        inputFormatHelp: 'Format of data received from the previous node.',
-        outputFormatHelp: 'Format of data sent to the next node.',
-        dataFormat: 'Data Format',
-        plainText: 'Plain Text',
-        jsonObject: 'JSON Object',
-        arrayLabel: 'Array',
-        plainTextDesc: 'Simple text string',
-        jsonObjectDesc: 'JSON object with key-value pairs',
-        arrayDesc: 'Array of items',
-        loadFailed: 'Failed to load models. Please try again.',
-        retry: 'Retry',
-        noModelsAvailable: 'No models available',
-        nodeIdLabel: 'Node ID:',
-      },
-      chatLLM: {
-        title: 'Chat LLM Configuration',
-        systemPrompt: 'System Prompt',
-        systemPromptPlaceholder: 'Enter system prompt for the Chat LLM…',
-        systemPromptHelp: 'Define the behavior and context for the LLM conversation',
-        model: 'Model',
-        modelHelp: 'Select the LLM model to use for this node',
-        temperature: 'Temperature',
-        temperatureLow: '0.0 (Precise)',
-        temperatureHigh: '2.0 (Creative)',
-        temperatureHelp: 'Controls randomness: lower values make output more focused and deterministic',
-        maxTokens: 'Max Tokens',
-        maxTokensHelp: 'Maximum length of the generated response',
-        selectModelHint: 'Please select a model to enable this node.',
-      },
-    },
-    workflowNodes: {
-      ports: {
-        input: 'Input',
-        output: 'Output',
-        keywords: 'Keywords',
-        results: 'Results',
-        arrayInput: 'Array Input',
-        combined: 'Combined',
-        array: 'Array',
-        videos: 'Videos',
-        materials: 'Materials',
-        textInput: 'Text Input',
-        audioOutput: 'Audio Output',
-        timeline: 'Timeline',
-        copy: 'Copy',
-        video: 'Video',
-        audio: 'Audio',
-        image: 'Image',
-      },
-      tooltips: {
-        configured: 'Configured',
-        deleteNode: 'Delete node',
-        inputPort: 'Input Port',
-        outputPort: 'Output Port',
-      },
-      status: {
-        configured: 'Configured',
-        notSet: 'Not set',
-        notSelected: 'Not selected',
-        ready: 'Ready',
-        success: 'Success',
-        failed: 'Failed',
-        notConfigured: 'Not configured',
-        noContent: 'No content',
-        doubleClickToConfigure: 'Double click to configure',
-        doubleClickForFullContent: 'Double click for full content',
-        model: 'Model',
-        temperature: 'Temp',
-        systemPrompt: 'System Prompt',
-        keywords: 'Keywords',
-        count: 'Count',
-        voice: 'Voice',
-        text: 'Text',
-        content: 'Content',
-        format: 'Format',
-        statusLabel: 'Status',
-        videoUrls: 'Video URLs',
-        moreCount: 'more...',
-        exportToMaterials: 'Export to Materials',
-        exportVideos: 'Export Videos',
-        inputType: 'Input Type',
-        arrayBadge: 'Array[]',
-        schema: 'Schema',
-        schemaDefined: 'Defined',
-        combinesStandardizes: 'Combines & Standardizes',
-        combinesResults: 'Combines Results',
-        transformPrompt: 'Transform Prompt',
-        conversionPrompt: 'Conversion Prompt',
-        fields: 'Fields',
-        fieldsCount: '{count} field(s)',
-        outputsArray: 'Outputs Array',
-        typeLabel: 'Type',
-        workflowStartPoint: 'Workflow Start Point',
-        workflowEndPoint: 'Workflow End Point',
-      },
-      aiVideo: {
-        inputs: 'Inputs',
-        status: 'Status',
-        lastRun: 'Last Run',
-        error: 'Error',
-        prompt: 'Prompt',
-        notConfigured: 'Not configured',
-        doubleClickConfigure: 'Double click to configure',
-      },
-      execution: {
-        title: 'Execution Process',
-        progress: 'Progress',
-        noNodes: 'No execution nodes',
-        waiting: 'Waiting',
-        executing: 'Executing',
-        completed: 'Completed',
-        failed: 'Failed',
-        executionTime: 'Execution Time',
-        systemPrompt: 'System Prompt',
-        userInput: 'Prompt (User Input)',
-        modelReply: 'Model Reply',
-        input: 'Input',
-        output: 'Output',
-        error: 'Error',
-      },
-      editor: {
-        noWorkflowSelected: 'No Workflow Selected',
-        selectWorkflowPrompt: 'Select a workflow from the sidebar to start editing',
-        newWorkflowDefaultName: 'Search Chat Agent',
-        newWorkflowDescription: 'AI agent for searching and chatting',
-      },
-      configPanels: {
-        volcanoTTS: {
-          title: 'Volcano TTS Configuration',
-          nodeId: 'Node ID',
-          dataFormat: 'Data Format',
-          inputFormat: 'Input Format',
-          outputFormat: 'Output Format',
-          inputFormatHelp: 'Format of data received from the previous node.',
-          outputFormatHelp: 'Format of data sent to the next node.',
-          language: 'Language',
-          chinese: 'Chinese',
-          english: 'English',
-          voiceType: 'Voice Type',
-          loadingVoices: 'Loading voices...',
-          speedRatio: 'Speed Ratio',
-          slower: '0.5x (Slower)',
-          normal: '1.0x (Normal)',
-          faster: '2.0x (Faster)',
-          textContent: 'Text Content',
-          clear: 'Clear',
-          placeholder: 'Enter the text you want to convert to speech...',
-          characters: 'characters',
-          words: 'words',
-          hasContent: 'Has content',
-          empty: 'Empty',
-          audioPreview: 'Audio Preview',
-          pause: 'Pause',
-          playAudio: 'Play Audio',
-          download: 'Download',
-          downloadAudio: 'Download Audio',
-          howToUse: 'How to use',
-          howToUseSteps: [
-            'Select your preferred voice type from the list',
-            'Enter the text you want to convert to speech',
-            'Adjust the speed ratio if needed (0.5x - 2.0x)',
-            'Use the Test & Debug panel to preview the audio',
-            'Connect the output to other nodes to use the generated audio',
-          ],
-          cancel: 'Cancel',
-          save: 'Save Configuration',
-          saving: 'Saving...',
-        },
-        aiVideoGenerate: {
-          title: 'AI Video Generate Configuration',
-          subtitle: 'Configure inputs and parameters',
-          inputConfiguration: 'Input Configuration',
-          llmSettings: 'LLM Settings',
-          executionResults: 'Execution Results',
-          inputConfigDesc: 'Configure optional inputs. Each input supports string, JSON, or array format.',
-          textInput: 'Text Input',
-          videoInput: 'Video Input',
-          audioInput: 'Audio Input',
-          imageInput: 'Image Input',
-          enterTextPlaceholder: 'Enter text content, JSON object, or array...',
-          enterVideoPlaceholder: 'Enter video URL, JSON object, or array...',
-          enterAudioPlaceholder: 'Enter audio URL, JSON object, or array...',
-          enterImagePlaceholder: 'Enter image URL, JSON object, or array...',
-          stringFormat: 'String',
-          jsonFormat: 'JSON',
-          arrayFormat: 'Array',
-          llmConfigDesc: 'Configure LLM parameters. Uses VIDEO_CUT_LLM from backend environment.',
-          systemPrompt: 'System Prompt (Optional)',
-          systemPromptPlaceholder: 'Override default system prompt for video timeline generation...',
-          temperature: 'Temperature',
-          temperatureHint: 'Lower values make output more focused and deterministic',
-          maxTokens: 'Max Tokens',
-          llmInfoTitle: 'LLM Configuration',
-          llmInfoDesc: 'This node uses the VIDEO_CUT_LLM configured in the backend environment. The LLM will merge all inputs and generate a timeline JSON in the Video Editing format.',
-          executionSuccessful: 'Execution Successful',
-          executionFailed: 'Execution Failed',
-          lastExecuted: 'Last executed',
-          errorMessage: 'Error Message',
-          executionResult: 'Execution Result (Timeline JSON)',
-          noResultsYet: 'No execution results yet. Run the workflow to see results.',
-          cancel: 'Cancel',
-          saveConfiguration: 'Save Configuration',
-        },
       },
     },
     mediaPreview: {
@@ -5581,36 +4767,12 @@ export const translations: Record<string, Translations> = {
       thinking: 'Thinking...',
       thoughtProcess: 'Thought Process',
       analyzingIntent: 'Analyzing Intent',
-      detectingWorkflow: 'Detecting if your question requires workflow...',
-      willCallWorkflow: 'Will call workflow: {name}',
       normalChat: 'Normal Chat',
       copiedTitle: 'Copied!',
       copyMessageTitle: 'Copy Message',
       convertToScriptTitle: 'Convert to Video Script',
       generating: 'Generating',
       copied: 'Copied',
-    },
-    chatWorkflowExecution: {
-      finalResult: 'Final Result',
-      copiedTitle: 'Copied!',
-      copyTitle: 'Copy Final Result',
-      convertToScriptTitle: 'Convert to Video Script',
-      exportClip: 'Export Clips ({count} video materials)',
-      exportClipHint: 'Click to import video materials into the Video Editing materials panel',
-      executing: 'Workflow executing...',
-    },
-    chatWorkflowSelection: {
-      title: 'Select Workflow',
-      subtitle: 'Select a workflow to start a new conversation',
-      loading: 'Loading workflows...',
-      errorTitle: 'Loading Failed',
-      retryButton: 'Retry',
-      emptyTitle: 'No Workflows',
-      emptyHint: 'Please create a workflow in the "Workflows" task first, then start a new conversation',
-      activeBadge: 'Active',
-      nodesLabel: '{count} nodes',
-      totalWorkflows: '{count} workflows available',
-      cancelButton: 'Cancel',
     },
     videoCut: {
       title: 'Cut Material',
@@ -5734,16 +4896,11 @@ export const translations: Record<string, Translations> = {
       heroDescription: '创意与AI的交汇。创作精彩视频，构建智能工作流，用我们强大的工具套件释放您的创造潜力。',
       startCreating: '开始创作',
       loading: '加载中...',
-      exploreWorkflows: '探索工作流',
       videoEditingDesc: 'AI驱动的专业视频编辑工具与直观时间线界面',
-      workflowDesc: '可视化节点编辑器构建强大AI工作流',
       aiChatDesc: '智能AI对话助力内容创作与辅助',
-      brainstormingDesc: '为您的项目生成创意想法和概念',
-      brainstormingDescPreview: '即将推出 · 创意构思灵感工坊，为项目激发全新概念',
       comingSoonBadge: '即将推出',
       comingSoonHint: '该功能正在开发中，敬请期待。',
       aiModels: 'AI模型',
-      workflowTemplates: '工作流模板',
       creativePossibilities: '创意无限可能',
     },
     auth: {
@@ -6258,12 +5415,10 @@ export const translations: Record<string, Translations> = {
       rateLimited: '请求过于频繁，请 {seconds} 秒后重试。',
     },
     tasks: {
-      workflow: '工作流',
       videoEditing: '视频编辑',
-      brainstorming: '头脑风暴',
       brainstormingComingSoon: '头脑风暴功能即将推出',
       aiChat: 'AI对话',
-      types: { workflow: '工作流', video: '视频编辑', brainstorm: '头脑风暴', chat: 'AI 对话' },
+      types: { video: '视频编辑', chat: 'AI 对话' },
       defaultPageTitle: 'Ecliptrix — 光影交汇之处',
     },
     videoProjects: {
@@ -6315,126 +5470,11 @@ export const translations: Record<string, Translations> = {
       loadError: '加载项目失败',
       cover: '封面',
     },
-    workflowInterface: {
-      chatInterfaceTab: '聊天界面',
-      workflowInterfaceTab: '工作流界面',
-      sidebar: {
-        heading: '工作流',
-        addNew: '添加新工作流',
-        subtitle: '选择或创建一个工作流',
-        emptyState: '暂无工作流',
-        editDetails: '编辑工作流详情',
-        confirmDelete: '确认删除',
-        deleteWorkflow: '删除工作流',
-        workflowCount: '{count} 个工作流',
-        active: '活跃',
-      },
-      canvas: {
-        contextMenu: {
-          menuAriaLabel: '添加节点菜单',
-          addStartNode: '添加开始节点',
-          addEndNode: '添加结束节点',
-          addChatLLM: '添加聊天 LLM',
-          addTextInput: '添加文本输入',
-          addPexelsVideoSearch: '添加 Pexels 视频搜索',
-          addTavilySearch: '添加 Tavily 搜索',
-          addVolcanoTTS: '添加火山 TTS',
-          addToArray: '添加转换为数组',
-          addResultsCombine: '添加结果合并',
-          addAIVideoGenerate: '添加 AI 视频生成',
-          addVideoExport: '添加视频导出',
-        },
-        nodeDefaults: {
-          start: '开始',
-          end: '结束',
-          chatLLM: '聊天 LLM',
-          textInput: '文本输入',
-          pexelsSearch: 'Pexels 视频搜索',
-          tavilySearch: 'Tavily 搜索',
-          volcanoTTS: '火山 TTS',
-          toArray: '转换为数组',
-          resultsCombine: '结果合并',
-          aiVideoGenerate: 'AI 视频生成',
-          videoExport: '视频导出',
-        },
-        emptyState: {
-          title: '开始构建您的工作流',
-          description: '右键点击画布任意位置添加您的第一个节点',
-        },
-        toolbar: {
-          zoomOut: '缩小',
-          zoomIn: '放大',
-          panMode: '平移模式（拖拽画布）',
-          exitPanMode: '退出平移模式（切换到节点拖拽）',
-          resetView: '重置视图',
-        },
-        infoBar: {
-          nodes: '节点',
-          connections: '连接',
-          nodeSelected: '已选中节点',
-          connectionSelected: '已选中连接',
-        },
-      },
-      editor: {
-        save: '保存',
-        saving: '保存中...',
-        run: '运行',
-        stop: '停止',
-        loading: '加载工作流...',
-        noWorkflowSelected: '未选择工作流',
-        selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
-        description: '描述',
-        viewDescription: '查看描述',
-        runHintNoWorkflow: '请先选择一个工作流',
-        runHintMissingStart: '请先添加 Start 节点再运行',
-      },
-      notifications: {
-        loadedWorkflows: '已加载 {count} 个工作流',
-        failedToLoad: '加载工作流失败',
-        pleaseLoginToCreate: '请先登录以创建工作流',
-        newWorkflowDefaultName: '新工作流',
-        workflowCreated: '工作流 "{name}" 创建成功',
-        workflowCreatedSaveFailed: '工作流已创建但保存失败，请手动保存。',
-        pleaseLoginToRename: '请先登录以重命名工作流',
-        workflowRenamed: '工作流已重命名为 "{name}"',
-        workflowRenamedSaveFailed: '工作流已重命名但保存失败，请手动保存。',
-        pleaseLoginToSaveChanges: '请先登录以保存工作流更改',
-        workflowNotFound: '未找到工作流',
-        workflowUpdated: '工作流 "{name}" 更新成功',
-        workflowUpdatedSaveFailed: '工作流已在本地更新但保存到数据库失败，请手动保存。',
-        pleaseLoginToDelete: '请先登录以删除工作流',
-        cannotDeleteLast: '无法删除最后一个工作流',
-        workflowDeleted: '工作流 "{name}" 已成功删除',
-        failedToDelete: '删除工作流失败',
-        pleaseLoginToSave: '请先登录以保存工作流',
-        noActiveWorkflow: '没有活跃的工作流可保存',
-        workflowSaved: '工作流 "{name}" 已成功保存 (v{version})',
-        workflowSaveFailed: '保存工作流失败',
-      },
-      logPanel: {
-        title: '执行日志',
-        collapse: '收起',
-        expand: '展开',
-        running: '运行中',
-        current: '当前',
-        noLogs: '暂无日志',
-        clickRunToStart: '点击运行按钮开始执行工作流',
-        input: '输入',
-        output: '输出',
-        viewDetails: '查看详情',
-        totalLogs: '总计日志: {count}',
-        errors: '{count} 个错误',
-        warnings: '{count} 个警告',
-        success: '{count} 个成功',
-      },
-    },
     welcome: {
       title: '欢迎使用 Ecliptrix',
       subtitle: '光与影之交汇',
       description: '光与影之交汇，创造非凡内容。创建新任务开始您的创意之旅。',
-      workflowDesc: '构建AI驱动的工作流代理',
       videoEditingDesc: '自动视频混剪和编辑',
-      brainstormingDesc: '创意构思和灵感',
       aiChatDesc: '智能对话和协助',
     },
     taskContent: {
@@ -7682,7 +6722,6 @@ export const translations: Record<string, Translations> = {
       editingSuggestionsDesc: '获取专业的视频剪辑和素材使用建议',
       startChatTitle: '开始与 AI 对话',
       startChatDesc: '输入你的问题或需求，AI 将为你提供帮助',
-      viewWorkflowsTooltip: '查看工作流',
       agentToggleLabel: 'Agent',
       agentInputPlaceholder: '告诉 Agent 你要编辑什么...',
       inputAriaLabel: '视频编辑对话输入框',
@@ -7699,50 +6738,6 @@ export const translations: Record<string, Translations> = {
       agentBusyTool: 'Agent 正在执行 {tool}…',
       agentBusyWorking: 'Agent 执行中…',
       agentToolCancelled: '已取消',
-    },
-    workflowChat: {
-      title: '工作流助手',
-      subtitle: '与工作流实时交互',
-      inputPlaceholder: '输入消息以启动工作流... (Shift+Enter 换行)',
-      send: '发送',
-      stop: '停止',
-      clearChat: '清空聊天记录',
-      clearChatConfirm: '确定要清空所有聊天记录吗？此操作不可撤销。',
-      clearContext: '清空上下文',
-      clearContextConfirm: '确定要清空当前工作流的上下文吗？聊天记录将保留。',
-      clearContextTooltip: '清空上下文，保留聊天记录',
-      startConversation: '开始对话',
-      startConversationDesc: '发送消息以启动工作流，我会实时显示执行过程和结果',
-      running: '执行中',
-      finalResult: '最终结果',
-      exportMaterials: '导出剪辑 ({count} 个视频素材)',
-      exportMaterialsHint: '点击将视频素材导入到 Video Editing 任务的素材管理面板',
-      goToVideoResult: '前往Video Editing查看结果',
-      workflowExecuting: '工作流正在执行中...',
-      inputHint: '按 Enter 发送，Shift + Enter 换行',
-    },
-    workflowConfigModal: {
-      title: '工作流配置',
-      subtitle: '选择并配置用于视频编辑任务的工作流',
-      workflowListTitle: '可用工作流',
-      workflowConfigTitle: '工作流设置',
-      enabledLabel: '已启用',
-      disabledLabel: '未启用',
-      toolDescriptionLabel: '工具描述',
-      toolDescriptionPlaceholder: '描述此工作流工具为 AI 助手提供什么功能...',
-      modelSelectionLabel: '模型选择',
-      modelPlaceholder: '选择模型...',
-      noWorkflowSelected: '未选择工作流',
-      selectWorkflowPrompt: '请从左侧面板选择一个工作流进行配置',
-      noWorkflowsAvailable: '暂无可用工作流',
-      createWorkflowPrompt: '请先在工作流任务中创建工作流',
-      saveButton: '保存配置',
-      cancelButton: '取消',
-      loadingWorkflows: '加载工作流中...',
-      workflowCount: '{count} 个工作流',
-      successSave: '工作流配置已成功保存',
-      errorLoad: '加载工作流失败',
-      errorSave: '保存配置失败',
     },
     aiChat: {
       welcomePage: {
@@ -7929,237 +6924,6 @@ export const translations: Record<string, Translations> = {
         payloadTooLarge: '上传总大小超出限制，请减少帧数或降低 JPEG 质量。',
         seekHint: '空格：播放 / 暂停 · ←/→：上下一帧 · C：抓取',
         loadingDuration: '加载中…',
-      },
-    },
-    workflowEditModal: {
-      title: '编辑工作流',
-      subtitle: '修改工作流详情并查看节点',
-      closeAriaLabel: '关闭弹窗',
-      nameLabel: '工作流名称',
-      namePlaceholder: '请输入工作流名称',
-      nameRequired: '工作流名称不能为空',
-      descriptionLabel: '描述',
-      descriptionPlaceholder: '请输入工作流描述（可选）',
-      nodesLabel: '工作流节点',
-      nodeCount: '{count} 个节点',
-      nodeCountSingular: '{count} 个节点',
-      emptyTitle: '此工作流暂无节点',
-      emptyHint: '请在画布上添加节点',
-      unsavedChanges: '存在未保存的修改',
-      noChanges: '无变更',
-      cancel: '取消',
-      saving: '保存中…',
-      saveChanges: '保存修改',
-    },
-    workflowConfig: {
-      common: {
-        cancel: '取消',
-        saveConfiguration: '保存配置',
-        inputFormat: '输入格式',
-        outputFormat: '输出格式',
-        inputFormatHelp: '从上一个节点接收的数据格式。',
-        outputFormatHelp: '发送到下一个节点的数据格式。',
-        dataFormat: '数据格式',
-        plainText: '纯文本',
-        jsonObject: 'JSON 对象',
-        arrayLabel: '数组',
-        plainTextDesc: '简单文本字符串',
-        jsonObjectDesc: '包含键值对的 JSON 对象',
-        arrayDesc: '元素列表',
-        loadFailed: '模型加载失败，请重试。',
-        retry: '重试',
-        noModelsAvailable: '暂无可用模型',
-        nodeIdLabel: '节点 ID：',
-      },
-      chatLLM: {
-        title: 'Chat LLM 配置',
-        systemPrompt: '系统提示',
-        systemPromptPlaceholder: '请输入 Chat LLM 的系统提示…',
-        systemPromptHelp: '为 LLM 对话定义行为与上下文',
-        model: '模型',
-        modelHelp: '选择此节点使用的 LLM 模型',
-        temperature: '温度',
-        temperatureLow: '0.0（精确）',
-        temperatureHigh: '2.0（创意）',
-        temperatureHelp: '控制随机性：较低的值使输出更聚焦、更确定',
-        maxTokens: '最大 Token',
-        maxTokensHelp: '生成响应的最大长度',
-        selectModelHint: '请先选择一个模型以启用此节点。',
-      },
-    },
-    workflowNodes: {
-      ports: {
-        input: '输入',
-        output: '输出',
-        keywords: '关键词',
-        results: '结果',
-        arrayInput: '数组输入',
-        combined: '合并结果',
-        array: '数组',
-        videos: '视频',
-        materials: '素材',
-        textInput: '文本输入',
-        audioOutput: '音频输出',
-        timeline: '时间线',
-        copy: '文案',
-        video: '视频',
-        audio: '音频',
-        image: '图片',
-      },
-      tooltips: {
-        configured: '已配置',
-        deleteNode: '删除节点',
-        inputPort: '输入端口',
-        outputPort: '输出端口',
-      },
-      status: {
-        configured: '已配置',
-        notSet: '未设置',
-        notSelected: '未选择',
-        ready: '就绪',
-        success: '成功',
-        failed: '失败',
-        notConfigured: '未配置',
-        noContent: '暂无内容',
-        doubleClickToConfigure: '双击以配置',
-        doubleClickForFullContent: '双击查看完整内容',
-        model: '模型',
-        temperature: '温度',
-        systemPrompt: '系统提示词',
-        keywords: '关键词',
-        count: '数量',
-        voice: '音色',
-        text: '文本',
-        content: '内容',
-        format: '格式',
-        statusLabel: '状态',
-        videoUrls: '视频链接',
-        moreCount: '更多...',
-        exportToMaterials: '导出到素材',
-        exportVideos: '导出视频',
-        inputType: '输入类型',
-        arrayBadge: '数组[]',
-        schema: '结构',
-        schemaDefined: '已定义',
-        combinesStandardizes: '合并与标准化',
-        combinesResults: '合并结果',
-        transformPrompt: '转换提示词',
-        conversionPrompt: '转换提示词',
-        fields: '字段',
-        fieldsCount: '{count} 个字段',
-        outputsArray: '输出数组',
-        typeLabel: '类型',
-        workflowStartPoint: '工作流起点',
-        workflowEndPoint: '工作流终点',
-      },
-      aiVideo: {
-        inputs: '输入',
-        status: '状态',
-        lastRun: '上次运行',
-        error: '错误',
-        prompt: '提示词',
-        notConfigured: '未配置',
-        doubleClickConfigure: '双击进行配置',
-      },
-      execution: {
-        title: '执行过程',
-        progress: '进度',
-        noNodes: '暂无执行节点',
-        waiting: '等待中',
-        executing: '执行中',
-        completed: '已完成',
-        failed: '失败',
-        executionTime: '执行时间',
-        systemPrompt: '系统提示词',
-        userInput: 'Prompt（用户输入）',
-        modelReply: '模型回复',
-        input: '输入',
-        output: '输出',
-        error: '错误',
-      },
-      editor: {
-        noWorkflowSelected: '未选择工作流',
-        selectWorkflowPrompt: '从侧边栏选择一个工作流开始编辑',
-        newWorkflowDefaultName: '搜索聊天代理',
-        newWorkflowDescription: '用于搜索和聊天的AI代理',
-      },
-      configPanels: {
-        volcanoTTS: {
-          title: '火山TTS配置',
-          nodeId: '节点ID',
-          dataFormat: '数据格式',
-          inputFormat: '输入格式',
-          outputFormat: '输出格式',
-          inputFormatHelp: '从前一个节点接收的数据格式。',
-          outputFormatHelp: '发送到下一个节点的数据格式。',
-          language: '语言',
-          chinese: '中文',
-          english: '英文',
-          voiceType: '音色类型',
-          loadingVoices: '正在加载音色...',
-          speedRatio: '语速',
-          slower: '0.5x (较慢)',
-          normal: '1.0x (正常)',
-          faster: '2.0x (较快)',
-          textContent: '文本内容',
-          clear: '清空',
-          placeholder: '输入要转换为语音的文本...',
-          characters: '字符',
-          words: '词',
-          hasContent: '已有内容',
-          empty: '空',
-          audioPreview: '音频预览',
-          pause: '暂停',
-          playAudio: '播放音频',
-          download: '下载',
-          downloadAudio: '下载音频',
-          howToUse: '使用说明',
-          howToUseSteps: [
-            '从列表中选择您喜欢的音色',
-            '输入要转换为语音的文本',
-            '如需调整语速 (0.5x - 2.0x)',
-            '使用测试面板预览音频',
-            '将输出连接到其他节点以使用生成的音频',
-          ],
-          cancel: '取消',
-          save: '保存配置',
-          saving: '保存中...',
-        },
-        aiVideoGenerate: {
-          title: 'AI视频生成配置',
-          subtitle: '配置输入和参数',
-          inputConfiguration: '输入配置',
-          llmSettings: 'LLM设置',
-          executionResults: '执行结果',
-          inputConfigDesc: '配置可选输入。每个输入支持字符串、JSON或数组格式。',
-          textInput: '文案输入',
-          videoInput: '视频输入',
-          audioInput: '音频输入',
-          imageInput: '图片输入',
-          enterTextPlaceholder: '输入文本内容、JSON对象或数组...',
-          enterVideoPlaceholder: '输入视频URL、JSON对象或数组...',
-          enterAudioPlaceholder: '输入音频URL、JSON对象或数组...',
-          enterImagePlaceholder: '输入图片URL、JSON对象或数组...',
-          stringFormat: '字符串',
-          jsonFormat: 'JSON',
-          arrayFormat: '数组',
-          llmConfigDesc: '配置LLM参数。使用后端环境的VIDEO_CUT_LLM。',
-          systemPrompt: '系统提示词（可选）',
-          systemPromptPlaceholder: '覆盖默认的视频时间轴生成系统提示词...',
-          temperature: '温度',
-          temperatureHint: '较低的值使输出更加集中和确定',
-          maxTokens: '最大令牌数',
-          llmInfoTitle: 'LLM配置',
-          llmInfoDesc: '此节点使用后端环境配置的VIDEO_CUT_LLM（与AI混剪相同）。LLM将合并所有输入并生成视频编辑格式的时间轴JSON。',
-          executionSuccessful: '执行成功',
-          executionFailed: '执行失败',
-          lastExecuted: '上次执行',
-          errorMessage: '错误信息',
-          executionResult: '执行结果（时间轴JSON）',
-          noResultsYet: '暂无执行结果。运行工作流以查看结果。',
-          cancel: '取消',
-          saveConfiguration: '保存配置',
-        },
       },
     },
     mediaPreview: {
@@ -8442,36 +7206,12 @@ export const translations: Record<string, Translations> = {
       thinking: '思考中...',
       thoughtProcess: '思考过程',
       analyzingIntent: '正在分析意图',
-      detectingWorkflow: '检测您的问题是否需要调用工作流...',
-      willCallWorkflow: '将调用工作流: {name}',
       normalChat: '普通对话',
       copiedTitle: '已复制!',
       copyMessageTitle: '复制消息',
       convertToScriptTitle: '转换视频脚本',
       generating: '生成中',
       copied: '已复制',
-    },
-    chatWorkflowExecution: {
-      finalResult: '最终结果',
-      copiedTitle: '已复制!',
-      copyTitle: '复制最终结果',
-      convertToScriptTitle: '转换视频脚本',
-      exportClip: '导出剪辑 ({count} 个视频素材)',
-      exportClipHint: '点击将视频素材导入到 Video Editing 任务的素材管理面板',
-      executing: '工作流执行中...',
-    },
-    chatWorkflowSelection: {
-      title: '选择工作流',
-      subtitle: '选择一个工作流来开始新的对话',
-      loading: '加载工作流中...',
-      errorTitle: '加载失败',
-      retryButton: '重试',
-      emptyTitle: '暂无工作流',
-      emptyHint: '请先在"工作流"任务中创建工作流，然后再开始新的对话',
-      activeBadge: '活跃',
-      nodesLabel: '{count} 节点',
-      totalWorkflows: '共 {count} 个工作流可用',
-      cancelButton: '取消',
     },
     videoCut: {
       title: '剪切素材',
