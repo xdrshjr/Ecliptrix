@@ -16,7 +16,7 @@
  */
 
 import type { MaterialItem } from '@/types';
-import { toAbsolutePlaybackUrl } from './selectPlaybackUrl';
+import { toAbsolutePlaybackUrl, effectivePreviewUrl } from './selectPlaybackUrl';
 
 /**
  * Structural shape of a sequence — accepts both
@@ -32,10 +32,27 @@ export interface SequenceLike {
 }
 
 export type ResolvedPlaybackUrlSource =
+  | 'previewProxy'
   | 'cacheUrl'
   | 'serverUrl'
   | 'url'
   | 'sequence-url-fallback';
+
+export interface ResolveSequencePlaybackUrlOptions {
+  /**
+   * When true AND the resolved material's `previewProxyStatus === 'cached'`,
+   * the 480p preview-proxy URL is pushed to the FRONT of the candidate chain
+   * (becomes `url`), with the original `cacheUrl → serverUrl → url` ladder
+   * demoted to `fallbacks`. When false / omitted, behaviour is byte-for-byte
+   * identical to the pre-proxy resolver (spec §3.2.3 C1 invariant).
+   *
+   * The flag value is injected by the caller (VideoPlayerPanel locks
+   * `isPreviewProxyEnabled()` at mount) so this stays a pure function — no
+   * `localStorage` reads inside, which keeps it `useMemo`-safe and unit
+   * testable.
+   */
+  preferPreviewProxy?: boolean;
+}
 
 export interface ResolvedPlaybackUrl {
   /** Primary URL the player should try first. Never an empty string. */
@@ -55,6 +72,7 @@ function pushIfNew(list: string[], value: string | null | undefined): void {
 export function resolveSequencePlaybackUrl(
   seq: SequenceLike | null | undefined,
   materials: MaterialItem[] | null | undefined,
+  opts?: ResolveSequencePlaybackUrlOptions,
 ): ResolvedPlaybackUrl | null {
   if (!seq) return null;
 
@@ -65,6 +83,32 @@ export function resolveSequencePlaybackUrl(
 
   if (material) {
     const candidates: string[] = [];
+
+    // 0. preview-proxy (480p ladder) — only when the caller opted in AND the
+    //    proxy is `cached`. This is the C1 fix: the resolver is the single
+    //    proxy-aware source-of-truth so the value <video>.src is assigned
+    //    (assignSequenceSrc) stays byte-identical to the value the
+    //    needs-source-change comparison reads (getSequencePreviewSrc). When
+    //    not cached / not opted in, `proxyPrimary` stays undefined and the
+    //    chain below is unchanged.
+    let proxyPrimary: string | undefined;
+    if (
+      opts?.preferPreviewProxy === true &&
+      (material.previewProxyStatus ?? '') === 'cached'
+    ) {
+      const pp = effectivePreviewUrl(material, {
+        preferPreviewProxy: true,
+        fallback: 'origin',
+      });
+      const proxyLocal = toAbsolutePlaybackUrl(material.previewProxyLocalUrl);
+      // effectivePreviewUrl(fallback:'origin') only returns a non-proxy URL
+      // when both proxy fields are empty; guard so a half-populated row can't
+      // mislabel the original chain as a proxy tier.
+      if (pp && (pp === proxyLocal || pp === material.previewProxyOssUrl)) {
+        proxyPrimary = pp;
+      }
+    }
+    pushIfNew(candidates, proxyPrimary);
     // 1. cacheUrl (absolutised; SSR returns undefined and we skip).
     pushIfNew(candidates, toAbsolutePlaybackUrl(material.cacheUrl));
     // 2. serverUrl (cross-session durable URL).
@@ -87,7 +131,9 @@ export function resolveSequencePlaybackUrl(
 
     const [primary, ...rest] = candidates;
     let primarySource: ResolvedPlaybackUrlSource;
-    if (
+    if (proxyPrimary && primary === proxyPrimary) {
+      primarySource = 'previewProxy';
+    } else if (
       material.cacheUrl &&
       toAbsolutePlaybackUrl(material.cacheUrl) === primary
     ) {

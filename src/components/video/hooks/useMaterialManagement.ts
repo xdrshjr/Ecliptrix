@@ -1147,7 +1147,27 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     },
     [updateStoreMaterial],
   );
+  // Preview-proxy trigger接线 (spec §3.2.2(b)): derive the set of materialIds
+  // currently referenced by a *video* timeline item from the global store, so
+  // useRemoteMaterialPrefetch can diff "newly added to the timeline" and
+  // request a 480p proxy. Triggering on timeline membership (not material-
+  // library入库) satisfies master-plan condition 2 (addItem path, not
+  // addMaterials).
+  const timelineState = useVideoEditingStore(state => state.timelineState);
+  const timelineVideoMaterialIds = useMemo(() => {
+    const ids = new Set<string>();
+    timelineState?.tracks?.forEach(track =>
+      track.items?.forEach(item => {
+        if (item.type === 'video' && item.materialId) {
+          ids.add(item.materialId);
+        }
+      }),
+    );
+    return ids;
+  }, [timelineState]);
   useRemoteMaterialPrefetch(materials, patchMaterialCache, {
+    // Necessary input that actually arms the preview-proxy trigger block.
+    timelineReferencedMaterialIds: timelineVideoMaterialIds,
     // Pass the same patch sink as the preview-proxy hydration target so all
     // mirror fields land in the React useState path consistently.
     onPatchPreviewProxy: patchMaterialCache,

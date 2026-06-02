@@ -57,10 +57,51 @@ from app.security.url_guard import (
 from app.services import oss_client as oss_module
 from app.services.material_download_service import get_material_download_service
 from app.services.preview_proxy_queue import preview_proxy_queue
+from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
 
 DEFAULT_PROFILE = "preview-480p"
+
+# Same-origin static mount that serves files under STORAGE_ROOT. A source_url
+# carrying this prefix is a LOCAL on-disk reference, not an external network
+# target (see is_same_origin_storage_url / _seed_local_row, spec §3.2.5 / C2).
+STORAGE_FILES_MOUNT = "/api/storage/files/"
+
+
+def is_same_origin_storage_url(source_url: Optional[str]) -> bool:
+    """True when ``source_url`` references the same-origin storage mount.
+
+    Matches both relative (``/api/storage/files/...``) and absolute
+    (``https://host/api/storage/files/...``) forms. Such URLs map to a file
+    under STORAGE_ROOT, so the preview-proxy path validates them as a local
+    path (``validate_local_path_for_ffmpeg``) instead of running them through
+    ``validate_external_url`` — the SSRF guard would reject the relative /
+    localhost forms outright. Imported by the router to gate that decision.
+    """
+    return bool(source_url) and STORAGE_FILES_MOUNT in source_url
+
+
+def _storage_relpath_from_url(source_url: str) -> Optional[str]:
+    """Extract the STORAGE_ROOT-relative path from a same-origin storage URL.
+
+    Returns the substring after ``/api/storage/files/`` with any query string
+    / fragment stripped and percent-escapes decoded, or ``None`` when the mount
+    prefix is absent. The caller passes the result through
+    ``storage_service._validate_path`` which re-rejects ``..`` traversal.
+    """
+    idx = source_url.find(STORAGE_FILES_MOUNT)
+    if idx < 0:
+        return None
+    rel = source_url[idx + len(STORAGE_FILES_MOUNT):]
+    for sep in ("?", "#"):
+        cut = rel.find(sep)
+        if cut >= 0:
+            rel = rel[:cut]
+    from urllib.parse import unquote
+
+    rel = unquote(rel)
+    return rel or None
 
 
 def _ffmpeg_args(input_path: str, output_path: str, profile: str) -> list[str]:
@@ -204,7 +245,16 @@ class PreviewProxyService:
         async with self._session_factory() as session:
             row = await self._get_row(session, material_id)
             if row is None:
-                raise PreviewProxyNotFoundError(material_id)
+                # C2 (§3.2.5) — the requested material has no cached_materials
+                # row (local upload, or a non-UUID front-end id). When a
+                # same-origin storage source_url was supplied, seed a row from
+                # the on-disk file it points at so the transcoder has an input;
+                # otherwise the input is genuinely unresolvable → 404.
+                row = await self._seed_local_row(session, source_url)
+                if row is None:
+                    raise PreviewProxyNotFoundError(material_id)
+                # Track everything downstream by the canonical row UUID.
+                material_id = str(row.id)
 
             status = row.preview_proxy_status or "absent"
             if status == "cached" and row.preview_proxy_local_url:
@@ -564,6 +614,83 @@ class PreviewProxyService:
         stmt = select(CachedMaterial).where(CachedMaterial.id == mid)
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def _seed_local_row(
+        self,
+        session: AsyncSession,
+        source_url: Optional[str],
+    ) -> Optional[CachedMaterial]:
+        """Seed (or reuse) a cached_materials row for a same-origin local file.
+
+        C2 / §3.2.5. When the requested material has no row but a same-origin
+        ``source_url`` (``/api/storage/files/...``) was supplied — the local
+        4K-upload case — map it to a disk path, validate it against the ffmpeg
+        allow-list (path-traversal guard), and INSERT a ``status='ready'`` row
+        so :meth:`_run_one` can read ``row.local_path``. Returns the row, or
+        ``None`` when the URL is not a resolvable same-origin storage path (the
+        caller then raises :class:`PreviewProxyNotFoundError`).
+
+        NOTE (spec "实施过程发现的方案缺陷" #1): the row is keyed by a fresh
+        UUID (``CachedMaterial.id`` is a UUID PK; front-end upload ids like
+        ``video_<ts>_<rand>`` cannot be PKs). The router returns this resolved
+        UUID so the front-end polls status by it.
+        """
+        if not is_same_origin_storage_url(source_url):
+            return None
+        rel = _storage_relpath_from_url(source_url)  # type: ignore[arg-type]
+        if not rel:
+            return None
+        # Map relative path → disk via storage_service (rejects ../ traversal
+        # and absolute paths), then re-validate against the ffmpeg allow-list
+        # for defense in depth (also confirms the file exists).
+        try:
+            disk_path = storage_service._validate_path(rel)
+        except ValueError:
+            return None
+        try:
+            allowed_roots = self._ffmpeg_allowed_roots()
+            validated = validate_local_path_for_ffmpeg(str(disk_path), allowed_roots)
+        except URLGuardError as guard_exc:
+            logger.info(f"preview_proxy seed rejected for {rel}: {guard_exc}")
+            return None
+        local_path = str(validated)
+
+        # Reuse an existing row already pointing at this file (e.g. a Pexels /
+        # ARK download row) so we don't duplicate or re-transcode.
+        stmt = (
+            select(CachedMaterial)
+            .where(CachedMaterial.local_path == local_path)
+            .order_by(CachedMaterial.created_at.desc())
+        )
+        existing = (await session.execute(stmt)).scalars().first()
+        if existing is not None:
+            return existing
+
+        # Dedup the synthetic 'upload' row on (source, source_id) in case two
+        # triggers race for the same file.
+        source_id = uuid.uuid5(uuid.NAMESPACE_URL, local_path).hex
+        stmt = select(CachedMaterial).where(
+            CachedMaterial.source == "upload",
+            CachedMaterial.source_id == source_id,
+        )
+        existing = (await session.execute(stmt)).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
+        row = CachedMaterial(
+            source="upload",
+            source_id=source_id,
+            source_url=source_url,
+            local_path=local_path,
+            status="ready",
+            ref_count=1,
+            preview_proxy_status="absent",
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        logger.info(f"preview_proxy seeded cached_materials row {row.id} for {rel}")
+        return row
 
 
 # ---------------------------------------------------------------------------

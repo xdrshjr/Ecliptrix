@@ -130,6 +130,15 @@ export interface RemoteMaterialResult {
   /** Same-origin URL the browser can play directly. */
   local_url?: string | null;
   error_message?: string | null;
+  // Preview-proxy mirror fields, serialised by `material_router.py`
+  // (`_proxy_fields_from_row`). Hydrating these on ingest/lookup lets a page
+  // refresh restore `previewProxyStatus`/`previewProxyLocalUrl` directly
+  // instead of waiting for an idempotent re-POST (spec C4 / R6).
+  preview_proxy_status?: string | null;
+  preview_proxy_profile?: string | null;
+  preview_proxy_local_url?: string | null;
+  preview_proxy_oss_url?: string | null;
+  preview_proxy_progress?: number | null;
 }
 
 /** Progress callback contract — invoked between transitions. */

@@ -1,9 +1,11 @@
 /**
- * useRemoteMaterialPrefetch — phase-3 preview-proxy branch (spec §3.2.1 / G8 / INV4).
+ * useRemoteMaterialPrefetch — preview-proxy branch
+ * (spec docs/plans/video-editor-preview-proxy-playback/spec.md §3.2.2).
  *
- * Smoke coverage for the diff-detection + heuristic + watch path. The
- * legacy cache-status flow remains covered by the sibling test file;
- * these cases focus on the new preview-proxy branch.
+ * Covers the v2-decoupled trigger gate (`isPreviewProxyEnabled`), the
+ * `timelineReferencedMaterialIds` diff trigger, the C3 "input resolvable"
+ * eligibility convergence (+ unknown-size default-enqueue / small-file
+ * exemption), and the mandatory `sourceUrl` pass-through.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -12,8 +14,11 @@ import { useRemoteMaterialPrefetch } from '../useRemoteMaterialPrefetch';
 import type { MaterialItem } from '@/types';
 import { MediaProxyClient } from '../../timeline/infrastructure/MediaProxyClient';
 
+// Both flags on: v2 drives the (unused here) window prefetch, preview-proxy
+// drives the trigger. The two are deliberately independent (spec §3.2.1).
 vi.mock('@/lib/playbackFlags', () => ({
   isPlaybackV2Enabled: () => true,
+  isPreviewProxyEnabled: () => true,
 }));
 
 function makeMaterial(over: Partial<MaterialItem> = {}): MaterialItem {
@@ -23,7 +28,10 @@ function makeMaterial(over: Partial<MaterialItem> = {}): MaterialItem {
     type: 'video',
     format: 'mp4',
     size: 1024,
+    // Same-origin storage URL → input is resolvable (C3) by default so most
+    // cases exercise the heuristic/exemption logic, not the resolvability gate.
     url: 'https://cdn/v.mp4',
+    serverUrl: '/api/storage/files/video/v.mp4',
     createdAt: new Date(),
     ...over,
   } as MaterialItem;
@@ -53,7 +61,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('useRemoteMaterialPrefetch — phase-3 preview-proxy branch', () => {
+describe('useRemoteMaterialPrefetch — preview-proxy branch', () => {
   it('does not call requestPreviewProxy when timelineReferencedMaterialIds is unset', async () => {
     const onPatchPP = vi.fn();
     const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
@@ -68,7 +76,7 @@ describe('useRemoteMaterialPrefetch — phase-3 preview-proxy branch', () => {
     expect(requestSpy).not.toHaveBeenCalled();
   });
 
-  it('triggers preview-proxy when material newly enters timeline AND H1 (bytes>50MB) matches', async () => {
+  it('triggers preview-proxy with sourceUrl when material newly enters timeline AND H1 (bytes>50MB) matches', async () => {
     const onPatchPP = vi.fn();
     const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
     const { rerender } = renderHook(
@@ -86,16 +94,118 @@ describe('useRemoteMaterialPrefetch — phase-3 preview-proxy branch', () => {
     );
     rerender({ refs: new Set<string>(['mid-1']) });
     await new Promise((r) => setTimeout(r, 0));
-    expect(requestSpy).toHaveBeenCalledWith('mid-1');
+    expect(requestSpy).toHaveBeenCalledWith('mid-1', {
+      sourceUrl: '/api/storage/files/video/v.mp4',
+    });
   });
 
-  it('skips preview-proxy when bytes/bitrate/source heuristics all miss', async () => {
+  it('prefers cacheUrl as the sourceUrl when present', async () => {
     const onPatchPP = vi.fn();
     const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
     const { rerender } = renderHook(
       ({ refs }: { refs: Set<string> }) =>
         useRemoteMaterialPrefetch(
-          [makeMaterial({ bytes: 1024 * 1024, metadata: { source: 'upload' } })],
+          [
+            makeMaterial({
+              bytes: 100 * 1024 * 1024,
+              cacheUrl: '/api/storage/files/cached_materials/pexels/9.mp4',
+            }),
+          ],
+          () => {},
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>(['mid-1']) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).toHaveBeenCalledWith('mid-1', {
+      sourceUrl: '/api/storage/files/cached_materials/pexels/9.mp4',
+    });
+  });
+
+  it('skips when input is NOT resolvable (pure remote CDN, no local copy)', async () => {
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          [
+            makeMaterial({
+              bytes: 100 * 1024 * 1024,
+              url: 'https://cdn/v.mp4',
+              serverUrl: 'https://cdn/v.mp4', // no same-origin reference
+              cacheUrl: undefined,
+            }),
+          ],
+          () => {},
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>(['mid-1']) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).not.toHaveBeenCalled();
+  });
+
+  it('enqueues a resolvable upload with unknown size/dims (correctness-first default)', async () => {
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          // No bytes, no width/height, size unknown (0) — heuristics miss but
+          // input resolvable → default enqueue.
+          [makeMaterial({ size: 0 })],
+          () => {},
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>(['mid-1']) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).toHaveBeenCalled();
+  });
+
+  it('exempts a known-small file (< 8MB) even when resolvable', async () => {
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          [makeMaterial({ size: 2 * 1024 * 1024 })], // 2 MB, no heuristic hit
+          () => {},
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>(['mid-1']) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).not.toHaveBeenCalled();
+  });
+
+  it('exempts a known low-resolution (≤480p) clip', async () => {
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          [makeMaterial({ size: 50 * 1024 * 1024, width: 640, height: 360 })],
           () => {},
           {
             mediaProxyClient: client,

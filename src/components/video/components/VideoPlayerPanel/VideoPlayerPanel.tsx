@@ -25,7 +25,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
-import { isPlaybackV2Enabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
+import { isPlaybackV2Enabled, isPreviewProxyEnabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
 import {
   KillSwitchMonitor,
   PlaybackEngine,
@@ -170,6 +170,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // Spec 01 §5.1 requires flag changes to take effect only on full reload to
   // avoid mid-session state divergence.
   const playbackV2Enabled = useMemo(() => isPlaybackV2Enabled(), []);
+  // Preview-proxy flag — locked at mount (same invariant as playbackV2Enabled),
+  // decoupled from v2 and default-on. Drives the legacy preview path to select
+  // the 480p ladder when a material's proxy is `cached`. Spec §3.2.3.
+  const previewProxyEnabled = useMemo(() => isPreviewProxyEnabled(), []);
   // Engine instance is allocated for the v2 branch; the legacy path ignores
   // it. Spec 02 will wire real intent fan-out into VideoPlayerPanel's
   // ImperativeHandle methods; for now keeping the reference here ensures
@@ -375,10 +379,19 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // 凡 src 比对/赋值都必须走这里，避免 cacheUrl(同源) 与 url(远端) 混用导致
   // normalizeVideoUrl 永不相等 → handleTimeUpdate 兜底刷屏 + seek/启动反复
   // 重置 src 触发 play()/pause() AbortError。详见 da056df 回归。
+  // C1 (P0): delegate to the SAME proxy-aware resolver that assignSequenceSrc
+  // writes into <video>.src, so this comparison key is byte-identical to the
+  // value actually assigned. Without this, a `cached` proxy makes the assigned
+  // src (480p) differ from the comparison key (origin) → needsSourceChange goes
+  // permanently true → da056df-style re-source thrash / play() AbortError.
   const getSequencePreviewSrc = useCallback(
     (seq: VideoSequenceItem): string =>
-      selectPlaybackUrl(seq, { purpose: 'preview' }) || seq.url,
-    []
+      resolveSequencePlaybackUrl(seq, materials || [], {
+        preferPreviewProxy: previewProxyEnabled,
+      })?.url ||
+      selectPlaybackUrl(seq, { purpose: 'preview' }) ||
+      seq.url,
+    [materials, previewProxyEnabled]
   );
 
   // 保留 onPatchMaterialCache 的 ref，避免把它塞进每个 useCallback 的 deps。
@@ -398,7 +411,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       seq: VideoSequenceItem,
       transitionId: number,
     ): Promise<{ assigned: string; source: 'primary' | 'fallback' }> => {
-      const resolved = resolveSequencePlaybackUrl(seq, materials || []);
+      const resolved = resolveSequencePlaybackUrl(seq, materials || [], {
+        preferPreviewProxy: previewProxyEnabled,
+      });
       const primary = resolved?.url || getSequencePreviewSrc(seq);
       const fallbacks = resolved ? resolved.fallbacks : [];
       return assignVideoSrcChecked(video, primary, {
@@ -421,7 +436,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         },
       });
     },
-    [materials, getSequencePreviewSrc, logger],
+    [materials, getSequencePreviewSrc, previewProxyEnabled, logger],
   );
 
   // ----------------------------------------------------------------------
@@ -1700,9 +1715,26 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         accumulatedTime += compositionPlayback.videoSequences[i].duration;
       }
       accumulatedTime += timelineRelativeTime;
-      
+
+      // G3 / C8 — 合成时间非递减守卫。正常播放（非 seek；isSeekingRef 时函数
+      // 顶部已 return）若新合成时间较上一次回退（跨片段重定位误差 / 解码抖动 /
+      // 换源后短暂的旧 timeupdate），丢弃本次写回，避免进度条"前进→回跳→再前
+      // 进"。守卫键必须是合成时间（compositionCurrentTimeRef，跨 sequence 单
+      // 调），绝不可用 video.currentTime（每次切片段/换源归零，见 :1377/:1917
+      // 处显式重置）。显式 seek / 拖动 ruler / 热替换 src / 切换 sequence 已把
+      // compositionCurrentTimeRef 重置到目标值，故回退判定从新基准重新生效。
+      const previousCompositionTime = compositionCurrentTimeRef.current;
+      if (accumulatedTime + TIME_EPSILON < previousCompositionTime) {
+        logger.info('丢弃回跳的合成时间写回（非递减守卫）', {
+          accumulatedTime: accumulatedTime.toFixed(3),
+          previousCompositionTime: previousCompositionTime.toFixed(3),
+          actualSequenceIndex,
+        });
+        return;
+      }
+
       updateCompositionCurrentTime(accumulatedTime);
-      
+
       logger.info('组合播放时间更新（裁剪模式）', {
         videoCurrentTime: videoCurrentTime.toFixed(2),
         timelineRelativeTime: timelineRelativeTime.toFixed(2),
@@ -2544,6 +2576,114 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       await seekAndPlayFromTimeline(timelineTime);
     }
   }, [pauseFromTimeline, seekAndPlayFromTimeline]);
+
+  // §3.2.3(b) — 代理就绪热替换。当"当前正在播放/已绑定"的 sequence 对应素材的
+  // previewProxyStatus 由非 cached 跃迁为 cached 时，在 seek-lock 内把
+  // <video>.src 原地换成 480p 代理并 re-seek 回当前合成时间，使预览即时降清而
+  // 不打断播放头（播放中允许一次 <1 帧的轻微 hitch，暂停时静默替换）。仅处理
+  // 当前 sequence；其它 sequence 下次被切到时自然用新 URL。复用既有
+  // transitionIdRef 代际守卫 + lockSeekUntilSeeked，避免 play()/pause()
+  // AbortError（R4）。
+  const ppHotSwapStatusRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!previewProxyEnabled) return;
+    if (playbackMode !== 'composition' || !compositionPlayback) return;
+    const sequences = compositionPlayback.videoSequences;
+    if (!sequences || sequences.length === 0) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const located = findSequenceAtCompositionTime(
+      sequences,
+      compositionCurrentTimeRef.current,
+    );
+    if (!located || !located.sequence.materialId) return;
+    const seq = located.sequence;
+    const material = (materials || []).find(m => m.id === seq.materialId);
+    if (!material) return;
+
+    const status = material.previewProxyStatus ?? 'absent';
+    const prev = ppHotSwapStatusRef.current.get(seq.materialId!);
+    // 先登记当前状态（即便后续 early-return 也不丢失跃迁记录）。
+    ppHotSwapStatusRef.current.set(seq.materialId!, status);
+
+    // 仅在"非 cached → cached"跃迁时热替换。
+    if (status !== 'cached' || prev === 'cached') return;
+    // 引导态（src 尚未绑定）交给 bootstrap/assignSequenceSrc——它们已是
+    // proxy-aware，会直接选中 480p，无需热替换。
+    if (!video.src) return;
+
+    const targetSrc = resolveSequencePlaybackUrl(seq, materials || [], {
+      preferPreviewProxy: previewProxyEnabled,
+    })?.url;
+    if (!targetSrc) return;
+    // 已经在播 480p（赋值源≡比对键）→ 无需替换，避免 needsSourceChange 抖动。
+    if (normalizeVideoUrl(video.src) === normalizeVideoUrl(targetSrc)) return;
+    // seek 进行中不打断；状态已登记为 cached，下次 materials 变化会再评估，
+    // 但因 prev 已是 cached 不会重复触发（届时若仍需替换由切片段路径处理）。
+    if (isSeekingRef.current) return;
+
+    const wasPlaying = !video.paused;
+    const targetVideoTime = mapTimelineTimeToVideoTime(seq, located.offset);
+    const compositionTime = compositionCurrentTimeRef.current;
+    const pendingSeek = {
+      compositionTime,
+      sequenceIndex: located.index,
+      sequenceId: seq.id,
+    };
+
+    captureFrameToCanvas();
+    const tid = ++transitionIdRef.current;
+    isSeekingRef.current = true;
+    pendingCompositionSeekRef.current = pendingSeek;
+    compositionCurrentTimeRef.current = compositionTime;
+    const fallbackTimer = setTimeout(() => {
+      if (transitionIdRef.current !== tid) return;
+      releaseSeekLock();
+      hideCanvasBuffer();
+    }, 5000);
+    assignSequenceSrc(video, seq, tid)
+      .then(() => {
+        clearTimeout(fallbackTimer);
+        if (transitionIdRef.current !== tid) return;
+        if (!videoRef.current) return;
+        lockSeekUntilSeeked(videoRef.current, pendingSeek);
+        videoRef.current.currentTime = targetVideoTime;
+        if (wasPlaying) {
+          videoRef.current.play().catch(error => {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            if (!errMsg.includes('interrupted')) {
+              logger.warn('代理热替换后续播失败（可忽略短暂中断）', {
+                materialId: seq.materialId,
+              });
+            }
+          });
+        }
+        hideCanvasBuffer();
+      })
+      .catch((err: unknown) => {
+        clearTimeout(fallbackTimer);
+        if (transitionIdRef.current !== tid) return;
+        releaseSeekLock();
+        hideCanvasBuffer();
+        logger.warn('代理热替换失败，保持原片', {
+          materialId: seq.materialId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }, [
+    previewProxyEnabled,
+    playbackMode,
+    compositionPlayback,
+    materials,
+    assignSequenceSrc,
+    lockSeekUntilSeeked,
+    releaseSeekLock,
+    captureFrameToCanvas,
+    hideCanvasBuffer,
+    normalizeVideoUrl,
+    logger,
+  ]);
 
   // 新增：通过ref暴露方法给父组件
   useImperativeHandle(ref, () => ({

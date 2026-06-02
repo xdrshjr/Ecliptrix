@@ -35,6 +35,14 @@ const KILL_SWITCH_KEY = 'ecliptrix-playback-v2-killswitch';
  * "no override"; the dev switcher removes the key in that case).
  */
 const VARIANT_OVERRIDE_KEY = 'ecliptrix-playback-v2-variant-override';
+/**
+ * Preview-proxy flag (docs/plans/video-editor-preview-proxy-playback/spec.md
+ * §3.2.1). **Intentionally decoupled** from the playback-v2 stack: it has its
+ * own storage key, its own env var, and — unlike v2 — defaults to ON so the
+ * 480p low-bitrate preview ladder is available to every user without opting
+ * into the canvas engine. The v2 kill-switch does NOT affect this flag.
+ */
+const PREVIEW_PROXY_FLAG_KEY = 'ecliptrix-preview-proxy';
 
 export type PlaybackFlagSource =
   | 'kill-switch'
@@ -58,6 +66,37 @@ export interface PlaybackFlagResolution {
  */
 export function isPlaybackV2Enabled(): boolean {
   return resolvePlaybackFlag().enabled;
+}
+
+/**
+ * Resolve the preview-proxy flag (spec §3.2.1 / §3.2.4 G4).
+ *
+ * Resolution order:
+ *   1. localStorage['ecliptrix-preview-proxy'] === 'true' → true
+ *   2. localStorage['ecliptrix-preview-proxy'] === 'false' → false
+ *   3. process.env.NEXT_PUBLIC_PREVIEW_PROXY_ENABLED === 'true'/'false'
+ *   4. otherwise → **true** (default ON, decoupled from playback-v2)
+ *
+ * Returns false in any non-browser environment (SSR / Node tests without
+ * jsdom) because the proxy trigger + consumption only runs client-side, same
+ * as {@link isPlaybackV2Enabled}. The playback-v2 kill-switch is deliberately
+ * NOT consulted here — disabling v2 must not silently disable low-bitrate
+ * previews. Use `localStorage['ecliptrix-preview-proxy']='false'` (or the env
+ * var) to fall back to original-quality preview.
+ */
+export function isPreviewProxyEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.localStorage.getItem(PREVIEW_PROXY_FLAG_KEY);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  } catch {
+    // localStorage may be unavailable (incognito quota, embedded webviews).
+  }
+  const env = process.env.NEXT_PUBLIC_PREVIEW_PROXY_ENABLED;
+  if (env === 'true') return true;
+  if (env === 'false') return false;
+  return true;
 }
 
 /** Full resolution result; exposed for telemetry / debug overlay. */
@@ -168,6 +207,7 @@ export const PLAYBACK_FLAG_KEYS = {
   urlQuery: URL_QUERY_KEY,
   killSwitch: KILL_SWITCH_KEY,
   variantOverride: VARIANT_OVERRIDE_KEY,
+  previewProxy: PREVIEW_PROXY_FLAG_KEY,
 } as const;
 
 export type PlaybackVariantOverride = 'force-v2' | 'force-legacy' | 'auto';

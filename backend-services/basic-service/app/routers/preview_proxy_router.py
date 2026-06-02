@@ -29,6 +29,7 @@ from app.services.preview_proxy_service import (
     DEFAULT_PROFILE,
     PreviewProxyError,
     get_preview_proxy_service,
+    is_same_origin_storage_url,
 )
 
 router = APIRouter(prefix="/media", tags=["Preview Proxy"])
@@ -108,9 +109,14 @@ async def request_preview_proxy(req: PreviewProxyRequest) -> PreviewProxyEnvelop
                 "message": "material_id or source_url required",
             },
         )
-    # Spec 03 §3.3 (V03-C) — when only a source_url was provided, gate it
-    # through url_guard before material_download_service ingests it.
-    if req.source_url:
+    # Spec 03 §3.3 (V03-C) — gate genuine external source_urls through the SSRF
+    # guard before material_download_service ingests them. Same-origin storage
+    # URLs (/api/storage/files/...) are NOT external targets: they map to a file
+    # under STORAGE_ROOT that the service validates via
+    # validate_local_path_for_ffmpeg. Running validate_external_url on them
+    # would reject the relative / localhost forms and break the C2 local-upload
+    # seed path (see spec "实施过程发现的方案缺陷" #2).
+    if req.source_url and not is_same_origin_storage_url(req.source_url):
         try:
             req.source_url = validate_external_url(req.source_url)
         except URLGuardError as guard_exc:

@@ -37,15 +37,21 @@ import type {
 import { MediaProxyClient } from '../timeline/infrastructure/MediaProxyClient';
 import type { PreviewProxyStatus } from '../timeline/infrastructure/MediaProxyClient';
 import type { VideoCacheAdapter } from '../timeline/infrastructure/VideoCacheAdapter';
-import { isPlaybackV2Enabled } from '@/lib/playbackFlags';
+import { isPlaybackV2Enabled, isPreviewProxyEnabled } from '@/lib/playbackFlags';
 
 // ---------------------------------------------------------------------------
-// Phase-3 heuristics (spec §3.2.1 H1/H2/H3)
+// Phase-3 heuristics (spec §3.2.1 H1/H2/H3) + v2 eligibility convergence
 // ---------------------------------------------------------------------------
 
 const PREVIEW_PROXY_BYTES_THRESHOLD = 50 * 1024 * 1024; // 50 MB
 const PREVIEW_PROXY_BITRATE_THRESHOLD_BPS = 8 * 1024 * 1024; // 8 Mbps
 const PREVIEW_PROXY_SOURCES = new Set(['ark', 'pexels']);
+// Small-file exemption (spec §3.2.2 C3): assets known to be smaller than this
+// (or already ≤480p) decode cheaply enough that a 480p proxy is not worth the
+// transcode. Unknown size/dims fall through to "enqueue" (correctness-first).
+const PREVIEW_PROXY_SMALL_BYTES = 8 * 1024 * 1024; // 8 MB
+const PREVIEW_PROXY_LOW_WIDTH = 854;
+const PREVIEW_PROXY_LOW_HEIGHT = 480;
 
 function _matchesPreviewProxyHeuristic(material: MaterialItem): boolean {
   // H1 — large byte size
@@ -66,12 +72,84 @@ function _matchesPreviewProxyHeuristic(material: MaterialItem): boolean {
   return false;
 }
 
+/**
+ * Spec §3.2.2 C3 — only enqueue when the backend can actually resolve a
+ * transcode INPUT for this material, so we never spray it with POSTs that are
+ * destined to 404. Resolvable means one of:
+ *   - a same-origin cache file exists (`cacheUrl`), OR
+ *   - serverUrl/url is a same-origin storage path (`/api/storage/files/...`)
+ *     or a bare relative path — these map to a real on-disk file the backend
+ *     seeds a `cached_materials` row from (see backend §3.2.5).
+ * A pure remote CDN asset with no local copy yet is NOT resolvable; it first
+ * lands via the existing ingest/cache flow and is re-evaluated next tick once
+ * `cacheUrl` is populated.
+ */
+function _previewProxyInputResolvable(material: MaterialItem): boolean {
+  if (material.cacheUrl) return true;
+  const u = material.serverUrl || material.url || '';
+  if (!u) return false;
+  if (u.startsWith('/')) return true; // same-origin relative path
+  if (u.includes('/api/storage/files/')) return true; // same-origin storage URL
+  return false;
+}
+
+/** Source URL the backend should resolve the transcode input from. Prefer the
+ * same-origin cache file when present so the backend's seed branch maps it to
+ * disk directly. */
+function _previewProxySourceUrl(material: MaterialItem): string | undefined {
+  return material.cacheUrl || material.serverUrl || material.url || undefined;
+}
+
 function _previewProxyEligible(material: MaterialItem): boolean {
   if (material.type !== 'video') return false;
   const status = material.previewProxyStatus;
   if (status === 'cached' || status === 'queued' || status === 'running') return false;
-  // 'absent' / 'failed' / undefined — proceed to heuristic check.
-  return _matchesPreviewProxyHeuristic(material);
+  // Must have a resolvable transcode input (C3) — otherwise POST is doomed.
+  if (!_previewProxyInputResolvable(material)) return false;
+  // H1/H2/H3 forced hits — always proxy heavy assets regardless of exemptions.
+  if (_matchesPreviewProxyHeuristic(material)) return true;
+  // Small-file exemption — known-small byte size (fall back to `size` which
+  // local uploads populate even when the phase-3 `bytes` field is empty).
+  const knownBytes =
+    typeof material.bytes === 'number' && material.bytes > 0
+      ? material.bytes
+      : typeof material.size === 'number' && material.size > 0
+        ? material.size
+        : undefined;
+  if (knownBytes !== undefined && knownBytes < PREVIEW_PROXY_SMALL_BYTES) return false;
+  // Low-resolution exemption — known dims already ≤ 480p equivalent.
+  if (
+    typeof material.width === 'number' && material.width > 0 &&
+    material.width <= PREVIEW_PROXY_LOW_WIDTH &&
+    typeof material.height === 'number' && material.height > 0 &&
+    material.height <= PREVIEW_PROXY_LOW_HEIGHT
+  ) {
+    return false;
+  }
+  // Unknown size/dims → enqueue (correctness-first: the backend is idempotent
+  // and the 480p output is reused, so over-transcoding once beats leaving a 4K
+  // upload playing at full bitrate).
+  return true;
+}
+
+/** Map serialised `preview_proxy_*` ingest/lookup fields onto MaterialItem
+ * mirror fields so a refresh hydrates state directly (spec C4 / R6). Returns
+ * null when the row carried no preview-proxy projection. */
+function _previewProxyPatchFromResult(
+  r: RemoteMaterialResult,
+): Partial<MaterialItem> | null {
+  const status = r.preview_proxy_status;
+  if (!status) return null;
+  const patch: Partial<MaterialItem> = {
+    previewProxyStatus: status as MaterialItem['previewProxyStatus'],
+  };
+  if (r.preview_proxy_profile) patch.previewProxyProfile = r.preview_proxy_profile;
+  if (r.preview_proxy_local_url) patch.previewProxyLocalUrl = r.preview_proxy_local_url;
+  if (r.preview_proxy_oss_url) patch.previewProxyOssUrl = r.preview_proxy_oss_url;
+  if (typeof r.preview_proxy_progress === 'number') {
+    patch.previewProxyProgress = r.preview_proxy_progress;
+  }
+  return patch;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +334,11 @@ export function useRemoteMaterialPrefetch(
   // every time the parent re-creates the closure.
   const patchRef = useRef(onPatchMaterial);
   patchRef.current = onPatchMaterial;
+  // Keep the preview-proxy patch sink in a ref so the cache-flow effect can
+  // hydrate `previewProxy*` mirror fields off ingest/lookup responses (C4)
+  // without restarting on every parent re-render.
+  const ppHydrateRef = useRef(options.onPatchPreviewProxy);
+  ppHydrateRef.current = options.onPatchPreviewProxy;
 
   useEffect(() => {
     for (const material of materials) {
@@ -294,6 +377,12 @@ export function useRemoteMaterialPrefetch(
           patch.cacheError = r.error_message ?? 'cache failed';
         }
         patchRef.current(targetId, patch);
+        // C4 hydrate — if the ingest/lookup row already carries a
+        // preview-proxy projection (e.g. after a page refresh), mirror it onto
+        // the MaterialItem so the 480p ladder is selectable immediately
+        // instead of waiting for a fresh POST + watch round-trip.
+        const ppPatch = _previewProxyPatchFromResult(r);
+        if (ppPatch) ppHydrateRef.current?.(targetId, ppPatch);
       };
 
       adapter
@@ -350,10 +439,24 @@ export function useRemoteMaterialPrefetch(
   const phase3Disabled = options.disablePhase3 ?? false;
   // Lock the v2-flag check at mount so we don't suddenly start enqueuing
   // mid-session (CLAUDE.md note: flag is locked at mount, requires reload).
+  // `phase3Enabled` still gates the canvas-engine window prefetch below.
   const phase3Enabled = useMemo(() => {
     if (phase3Disabled) return false;
     try {
       return isPlaybackV2Enabled();
+    } catch {
+      return false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Spec §3.2.2(a) — the preview-proxy TRIGGER is decoupled from playback-v2
+  // and gated by its own default-on flag, so the 480p ladder is generated for
+  // every user. (`preloadSequenceWindow` stays on `phase3Enabled` — it is a
+  // canvas-engine enhancement, out of this scope.) Locked at mount like v2.
+  const previewProxyEnabled = useMemo(() => {
+    if (phase3Disabled) return false;
+    try {
+      return isPreviewProxyEnabled();
     } catch {
       return false;
     }
@@ -376,7 +479,7 @@ export function useRemoteMaterialPrefetch(
   }, [refIdsInput]);
 
   useEffect(() => {
-    if (!phase3Enabled) return;
+    if (!previewProxyEnabled) return;
     if (!currentRefIds || !onPatchPP) return;
     const previous = previousRefIdsRef.current;
     const newlyAdded: string[] = [];
@@ -392,9 +495,20 @@ export function useRemoteMaterialPrefetch(
       if (!_previewProxyEligible(material)) continue;
       if (ppInflightRef.current.has(id)) continue;
       ppInflightRef.current.add(id);
+      // §3.2.2(a) — MUST pass sourceUrl so the backend can seed a
+      // cached_materials row for local uploads / same-origin assets that
+      // have no row yet (backend §3.2.5). Prefer the same-origin cache file.
+      const sourceUrl = _previewProxySourceUrl(material);
       ppClient
-        .requestPreviewProxy(id)
+        .requestPreviewProxy(id, sourceUrl ? { sourceUrl } : {})
         .then((task) => {
+          // The backend resolves/creates the canonical cached_materials row
+          // and returns its UUID (which differs from the front-end MaterialItem
+          // id for local uploads / remote search results). Patches target the
+          // front-end id (so consumption reads previewProxy* off this item),
+          // but STATUS POLLING must use the backend-resolved id. See spec
+          // "实施过程发现的方案缺陷" #1 (identity normalization).
+          const resolvedId = task.material_id || id;
           // Hydrate the material with the immediate response.
           const patch: Partial<MaterialItem> = {
             previewProxyStatus: task.status as MaterialItem['previewProxyStatus'],
@@ -407,8 +521,8 @@ export function useRemoteMaterialPrefetch(
             ppInflightRef.current.delete(id);
             return;
           }
-          // Watch until terminal.
-          const stop = ppClient.watchPreviewProxy(id, (snap: PreviewProxyStatus) => {
+          // Watch until terminal — poll by the backend-resolved id.
+          const stop = ppClient.watchPreviewProxy(resolvedId, (snap: PreviewProxyStatus) => {
             const next: Partial<MaterialItem> = {
               previewProxyStatus: snap.status as MaterialItem['previewProxyStatus'],
               previewProxyProgress: snap.progress_percent,
@@ -428,11 +542,13 @@ export function useRemoteMaterialPrefetch(
           ppUnwatchersRef.current.set(id, stop);
         })
         .catch(() => {
-          // Network / 5xx — clear inflight so retry is possible later.
+          // Network / 5xx / NotFound (unresolvable input) — clear inflight so a
+          // later tick (e.g. once cacheUrl lands) can retry; meanwhile preview
+          // silently falls back to the original source.
           ppInflightRef.current.delete(id);
         });
     }
-  }, [currentRefIds, materials, ppClient, onPatchPP, phase3Enabled]);
+  }, [currentRefIds, materials, ppClient, onPatchPP, previewProxyEnabled]);
 
   useEffect(() => {
     return () => {

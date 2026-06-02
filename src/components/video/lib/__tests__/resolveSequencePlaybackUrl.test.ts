@@ -112,4 +112,79 @@ describe('resolveSequencePlaybackUrl', () => {
     expect(result!.url).toBe('https://x/v.mp4');
     expect(result!.source).toBe('sequence-url-fallback');
   });
+
+  // -- preview-proxy tier (C1) ------------------------------------------
+
+  it('(pp1) cached + preferPreviewProxy → 480p primary, original chain demoted to fallbacks', () => {
+    const material = makeMaterial({
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+      serverUrl: 'https://cdn.example.com/v.mp4',
+      url: 'https://x.example.com/v.mp4',
+    });
+    const seq = makeSeq({});
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      preferPreviewProxy: true,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('previewProxy');
+    expect(result!.url).toBe(
+      window.location.origin +
+        '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+    );
+    // Original ladder is preserved as ordered fallbacks.
+    expect(result!.fallbacks).toEqual([
+      window.location.origin + '/api/storage/files/cached_materials/pexels/1.mp4',
+      'https://cdn.example.com/v.mp4',
+      'https://x.example.com/v.mp4',
+    ]);
+  });
+
+  it('(pp2) cached but preferPreviewProxy=false → byte-identical to legacy (cacheUrl primary)', () => {
+    const material = makeMaterial({
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+      serverUrl: 'https://cdn.example.com/v.mp4',
+    });
+    const seq = makeSeq({});
+    const withFlagOff = resolveSequencePlaybackUrl(seq, [material], {
+      preferPreviewProxy: false,
+    });
+    const noOpts = resolveSequencePlaybackUrl(seq, [material]);
+    expect(withFlagOff).toEqual(noOpts);
+    expect(withFlagOff!.source).toBe('cacheUrl');
+    expect(withFlagOff!.url).toContain('cached_materials');
+  });
+
+  it('(pp3) not-yet-cached (queued) + preferPreviewProxy → unchanged legacy chain', () => {
+    const material = makeMaterial({
+      previewProxyStatus: 'queued',
+      previewProxyLocalUrl: undefined,
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+      serverUrl: 'https://cdn.example.com/v.mp4',
+    });
+    const seq = makeSeq({});
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      preferPreviewProxy: true,
+    });
+    expect(result!.source).toBe('cacheUrl');
+    expect(result!.url).toContain('cached_materials');
+  });
+
+  it('(pp4) cached with only OSS proxy url → OSS primary', () => {
+    const material = makeMaterial({
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: undefined,
+      previewProxyOssUrl: 'https://oss.example.com/preview/480p.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+    });
+    const seq = makeSeq({});
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      preferPreviewProxy: true,
+    });
+    expect(result!.source).toBe('previewProxy');
+    expect(result!.url).toBe('https://oss.example.com/preview/480p.mp4');
+  });
 });
