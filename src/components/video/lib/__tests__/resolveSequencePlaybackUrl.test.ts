@@ -187,4 +187,88 @@ describe('resolveSequencePlaybackUrl', () => {
     expect(result!.source).toBe('previewProxy');
     expect(result!.url).toBe('https://oss.example.com/preview/480p.mp4');
   });
+
+  // -- local blob tier (round-2, C2/C3/R6) ------------------------------
+
+  it('(lp1) ready + preferLocalProxy → blob primary (P0), original chain demoted', () => {
+    const material = makeMaterial({
+      localProxyStatus: 'ready',
+      localProxyUrl: 'blob:http://localhost/abc-123',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+      serverUrl: 'https://cdn.example.com/v.mp4',
+      url: 'https://x.example.com/v.mp4',
+    });
+    const seq = makeSeq({});
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      preferLocalProxy: true,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('localProxy');
+    expect(result!.url).toBe('blob:http://localhost/abc-123');
+    expect(result!.fallbacks).toEqual([
+      window.location.origin + '/api/storage/files/cached_materials/pexels/1.mp4',
+      'https://cdn.example.com/v.mp4',
+      'https://x.example.com/v.mp4',
+    ]);
+  });
+
+  it('(lp2) ready but preferLocalProxy=false → byte-identical to legacy (no blob)', () => {
+    const material = makeMaterial({
+      localProxyStatus: 'ready',
+      localProxyUrl: 'blob:http://localhost/abc-123',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+      serverUrl: 'https://cdn.example.com/v.mp4',
+    });
+    const seq = makeSeq({});
+    const withFlagOff = resolveSequencePlaybackUrl(seq, [material], {
+      preferLocalProxy: false,
+    });
+    const noOpts = resolveSequencePlaybackUrl(seq, [material]);
+    expect(withFlagOff).toEqual(noOpts);
+    expect(withFlagOff!.source).toBe('cacheUrl');
+  });
+
+  it('(lp3) not-yet-ready (downloading/degraded) + preferLocalProxy → unchanged legacy chain', () => {
+    const downloading = makeMaterial({
+      localProxyStatus: 'downloading',
+      localProxyUrl: undefined,
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+    });
+    const degraded = makeMaterial({
+      localProxyStatus: 'degraded',
+      localProxyUrl: undefined,
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+    });
+    const seq = makeSeq({});
+    expect(
+      resolveSequencePlaybackUrl(seq, [downloading], { preferLocalProxy: true })!.source,
+    ).toBe('cacheUrl');
+    expect(
+      resolveSequencePlaybackUrl(seq, [degraded], { preferLocalProxy: true })!.source,
+    ).toBe('cacheUrl');
+  });
+
+  it('(lp4) blob ranks ABOVE preview-proxy: ready + cached proxy → blob primary, proxy demoted', () => {
+    const material = makeMaterial({
+      localProxyStatus: 'ready',
+      localProxyUrl: 'blob:http://localhost/local-blob',
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
+    });
+    const seq = makeSeq({});
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      preferLocalProxy: true,
+      preferPreviewProxy: true,
+    });
+    expect(result!.source).toBe('localProxy');
+    expect(result!.url).toBe('blob:http://localhost/local-blob');
+    // The 480p proxy is the first fallback, then the original cache.
+    expect(result!.fallbacks[0]).toBe(
+      window.location.origin + '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+    );
+    expect(result!.fallbacks).toContain(
+      window.location.origin + '/api/storage/files/cached_materials/pexels/1.mp4',
+    );
+  });
 });

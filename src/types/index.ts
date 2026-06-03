@@ -502,6 +502,20 @@ export type MaterialUploadStatus = 'waiting' | 'uploading' | 'completed';
 // cacheStatus 表示后端 cached_materials 表里的预下载流水线状态。
 export type MaterialCacheStatus = 'idle' | 'pending' | 'downloading' | 'ready' | 'failed';
 
+// 客户端「本地代理」整文件下载状态（纯前端内存态，不持久化到后端 DB）。
+// 见 docs/plans/video-editor-client-preview-download/spec.md §3.1。
+// 与 previewProxyStatus（服务端转码）、cacheStatus（服务端缓存）正交：
+//   transcoding=仅视频，等待服务端 480p 代理就绪；downloading=fetch 整文件中；
+//   ready=blob: object URL 就绪；error=可恢复下载失败；degraded=终态（无法本地化，
+//   该片段走第 1 轮流式且不阻塞门控，v2 修复 C3）。
+export type LocalProxyStatus =
+  | 'idle'
+  | 'transcoding'
+  | 'downloading'
+  | 'ready'
+  | 'error'
+  | 'degraded';
+
 export interface MaterialItem {
   id: string;
   name: string;
@@ -538,6 +552,13 @@ export interface MaterialItem {
   proxyStatus?: 'absent' | 'partial' | 'cached' | 'error';
   bytes?: number;
   bitrate?: number;
+  // 客户端「下载优先、本地播放」预览（第 2 轮，纯前端内存态，不入库）。
+  // 见 docs/plans/video-editor-client-preview-download/spec.md §6.1。
+  localProxyStatus?: LocalProxyStatus; // 本地下载状态机（§3.1）
+  localProxyUrl?: string;              // URL.createObjectURL(blob) 结果（blob: 形态），播放时为 P0 源
+  localProxyProgress?: number;         // 字节下载进度 (0-100)，驱动轨道「下载中 NN%」
+  localProxyError?: string;            // 失败原因（轨道块「重试」用）
+  localProxyBytes?: number;            // blob 字节数，供 LRU 预算统计
   // 新增：上传状态相关字段
   uploadStatus?: MaterialUploadStatus; // 上传状态
   uploadProgress?: number; // 上传进度 (0-100)

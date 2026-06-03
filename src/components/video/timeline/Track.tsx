@@ -11,7 +11,7 @@ import {
 import { TrackTypeUtils } from './domain';
 import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
-import TimelineItem from './TimelineItem';
+import TimelineItem, { type LocalProxyMaskState } from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
 import { useNotification } from '@/contexts/NotificationContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
@@ -27,6 +27,10 @@ interface TrackProps {
   trackHeight?: number;
   /** External edit-subtitles callback (still owned by parent) */
   onEditSubtitles?: (trackId: string) => void;
+  /** Round-2 local-download status by materialId (passed down to items). */
+  localProxyStatusMap?: Map<string, LocalProxyMaskState>;
+  localPreviewEnabled?: boolean;
+  onRetryLocalDownload?: (materialId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,6 +43,9 @@ const Track: React.FC<TrackProps> = ({
   locale = defaultLocale,
   trackHeight = 32,
   onEditSubtitles,
+  localProxyStatusMap,
+  localPreviewEnabled,
+  onRetryLocalDownload,
 }) => {
   const volumeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -581,6 +588,9 @@ const Track: React.FC<TrackProps> = ({
             item={item}
             pixelsPerSecond={pixelsPerSecond}
             trackHeight={trackHeight}
+            localProxyStatusMap={localProxyStatusMap}
+            localPreviewEnabled={localPreviewEnabled}
+            onRetryLocalDownload={onRetryLocalDownload}
           />
         ))}
 

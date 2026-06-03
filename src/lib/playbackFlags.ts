@@ -43,6 +43,16 @@ const VARIANT_OVERRIDE_KEY = 'ecliptrix-playback-v2-variant-override';
  * into the canvas engine. The v2 kill-switch does NOT affect this flag.
  */
 const PREVIEW_PROXY_FLAG_KEY = 'ecliptrix-preview-proxy';
+/**
+ * Local-preview flag (docs/plans/video-editor-client-preview-download/spec.md
+ * §3.3.1). **Intentionally decoupled** from both the playback-v2 stack and the
+ * preview-proxy flag: it has its own storage key, its own env var, and — like
+ * the preview-proxy flag — defaults to ON so the "download-first, play-from-
+ * local" preview is available to every user. Turning it OFF only falls back to
+ * the round-1 streaming 480p preview (it does NOT disable proxy generation).
+ * The v2 kill-switch does NOT affect this flag.
+ */
+const LOCAL_PREVIEW_FLAG_KEY = 'ecliptrix-local-preview';
 
 export type PlaybackFlagSource =
   | 'kill-switch'
@@ -94,6 +104,37 @@ export function isPreviewProxyEnabled(): boolean {
     // localStorage may be unavailable (incognito quota, embedded webviews).
   }
   const env = process.env.NEXT_PUBLIC_PREVIEW_PROXY_ENABLED;
+  if (env === 'true') return true;
+  if (env === 'false') return false;
+  return true;
+}
+
+/**
+ * Resolve the local-preview flag
+ * (docs/plans/video-editor-client-preview-download/spec.md §3.3.1 / G6).
+ *
+ * Resolution order (deliberately kept isomorphic to {@link isPreviewProxyEnabled}
+ * — see review note C7):
+ *   1. localStorage['ecliptrix-local-preview'] === 'true' → true
+ *   2. localStorage['ecliptrix-local-preview'] === 'false' → false
+ *   3. process.env.NEXT_PUBLIC_LOCAL_PREVIEW_ENABLED === 'true'/'false'
+ *   4. otherwise → **true** (default ON, decoupled from playback-v2 + preview-proxy)
+ *
+ * Returns false in any non-browser environment (SSR / Node tests without
+ * jsdom) because the download-first preview only runs client-side. Disabling
+ * this flag falls back to the round-1 streaming 480p proxy preview without
+ * touching proxy generation or the v2 kill-switch.
+ */
+export function isLocalPreviewEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PREVIEW_FLAG_KEY);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  } catch {
+    // localStorage may be unavailable (incognito quota, embedded webviews).
+  }
+  const env = process.env.NEXT_PUBLIC_LOCAL_PREVIEW_ENABLED;
   if (env === 'true') return true;
   if (env === 'false') return false;
   return true;
@@ -208,6 +249,7 @@ export const PLAYBACK_FLAG_KEYS = {
   killSwitch: KILL_SWITCH_KEY,
   variantOverride: VARIANT_OVERRIDE_KEY,
   previewProxy: PREVIEW_PROXY_FLAG_KEY,
+  localPreview: LOCAL_PREVIEW_FLAG_KEY,
 } as const;
 
 export type PlaybackVariantOverride = 'force-v2' | 'force-legacy' | 'auto';

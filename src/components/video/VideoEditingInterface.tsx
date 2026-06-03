@@ -2643,6 +2643,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onImportComplete={handleImportComplete}
             externalTimelineState={currentTimelineState || undefined}
             externalTimelineUpdateId={externalTimelineUpdateId || undefined}
+            onRetryLocalDownload={materialManagement.retryLocalDownload}
           />
         </div>
       </div>

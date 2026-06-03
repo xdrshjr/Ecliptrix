@@ -698,6 +698,11 @@ export interface Translations {
       copyOf: string;
       noTracks: string;
       noTracksDescription: string;
+      // Round-2 client-preview local-download mask (spec §3.3.7)
+      localTranscoding: string;
+      localDownloading: string;
+      localDownloadFailed: string;
+      localWillStream: string;
     };
     messages: {
       noAudioItems: string;
@@ -1027,6 +1032,10 @@ export interface Translations {
       play: string;
       pause: string;
       compositionPlay: string;
+      // Round-2 client-preview readiness gate (spec §3.3.6)
+      materialsDownloading: string;
+      materialsStreamingNotice: string;
+      localMediaOverBudget: string;
     };
     controls: {
       volume: string;
@@ -3329,6 +3338,10 @@ export const translations: Record<string, Translations> = {
         copyOf: '{name} (Copy)',
         noTracks: 'No tracks yet',
         noTracksDescription: 'Start creating your first track by adding video, audio, or subtitle materials',
+        localTranscoding: 'Transcoding',
+        localDownloading: 'Downloading',
+        localDownloadFailed: 'Download failed · Retry',
+        localWillStream: 'Will stream',
       },
       messages: {
         noAudioItems: 'No audio items found, please add audio to the timeline first.',
@@ -3459,6 +3472,9 @@ export const translations: Record<string, Translations> = {
         play: 'Play',
         pause: 'Pause',
         compositionPlay: 'Composition Play',
+        materialsDownloading: 'Materials downloading, please wait ({ready}/{total} ready)',
+        materialsStreamingNotice: '{count} clip(s) will stream',
+        localMediaOverBudget: 'Preview media exceeds the memory budget; playback stability may be affected',
       },
       controls: {
         volume: 'Volume',
@@ -5769,6 +5785,10 @@ export const translations: Record<string, Translations> = {
         copyOf: '{name} (副本)',
         noTracks: '暂无轨道',
         noTracksDescription: '开始创建您的第一个轨道，添加视频、音频或字幕素材',
+        localTranscoding: '转码中',
+        localDownloading: '下载中',
+        localDownloadFailed: '下载失败 · 点击重试',
+        localWillStream: '将以流式预览',
       },
               messages: {
           noAudioItems: '没有找到音频项目，请先添加音频到时间轴。',
@@ -5899,6 +5919,9 @@ export const translations: Record<string, Translations> = {
         play: '播放',
         pause: '暂停',
         compositionPlay: '组合播放',
+        materialsDownloading: '素材下载中，请稍候（已就绪 {ready}/{total}）',
+        materialsStreamingNotice: '{count} 个片段将以流式预览',
+        localMediaOverBudget: '预览素材已超出内存预算，可能影响播放稳定性',
       },
       controls: {
         volume: '音量',

@@ -5,6 +5,7 @@ import { VideoEditingLogger } from '../utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { extractVideoThumbnail } from '../utils/extractVideoThumbnail';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { generateArkImages, generateArkImagesWithPack, ArkImageGenerateParams } from '@/lib/api/arkImage';
 import { generateStoryboard } from '@/lib/api/storyboard';
@@ -14,6 +15,7 @@ import {
   useRemoteMaterialPrefetch,
   type RemoteMaterialPatch,
 } from './useRemoteMaterialPrefetch';
+import { useLocalMaterialDownload } from './useLocalMaterialDownload';
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -55,6 +57,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   // 获取当前用户信息
   const { user } = useAuth();
   const { t } = useLocale();
+  const { showWarning } = useNotification();
   const clearMaterials = useVideoEditingStore(state => state.clearMaterials);
 
   // 初始化日志器
@@ -1173,6 +1176,38 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     onPatchPreviewProxy: patchMaterialCache,
   });
 
+  // Round-2 client-side preview download (spec §3.3.3): derive the set of
+  // timeline-referenced *video + audio* materialIds (C2: image excluded — it
+  // has no CompositionPlayback channel and must not block the readiness gate).
+  // Kept separate from `timelineVideoMaterialIds` (video-only) so the round-1
+  // preview-proxy trigger口径 above stays untouched.
+  const timelineMediaMaterialIds = useMemo(() => {
+    const ids = new Set<string>();
+    timelineState?.tracks?.forEach(track =>
+      track.items?.forEach(item => {
+        if ((item.type === 'video' || item.type === 'audio') && item.materialId) {
+          ids.add(item.materialId);
+        }
+      }),
+    );
+    return ids;
+  }, [timelineState]);
+  const { retryLocalDownload } = useLocalMaterialDownload(materials, {
+    timelineReferencedMaterialIds: timelineMediaMaterialIds,
+    // Reuse the same patch sink so localProxy* fields share the authoritative
+    // React-state list the readiness gate + track masks read (C4 same-source).
+    onPatch: patchMaterialCache,
+    // C6 — surface a user-visible warning (not just console) when timeline
+    // media exceeds the in-memory budget.
+    onBudgetWarning: () => {
+      try {
+        showWarning(t.videoPlayerPanel.playback.localMediaOverBudget);
+      } catch {
+        // notification provider may be unavailable in tests — ignore.
+      }
+    },
+  });
+
   return {
     materials: filteredMaterials,
     allMaterials: materials,
@@ -1198,6 +1233,10 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     // cacheUrl entries when assignVideoSrcChecked falls back. See
     // docs/plans/video-reentry-play-no-source-fix/spec.md §3.2a.
     patchMaterialCache,
+    // Round-2 client-preview: manual retry for a failed/degraded local download
+    // (wired to the timeline track mask). See
+    // docs/plans/video-editor-client-preview-download/spec.md §3.3.7 / #9.
+    retryLocalDownload,
   };
 };
 

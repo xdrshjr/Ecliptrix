@@ -181,6 +181,13 @@ export interface UseMaterialManagementReturn {
     id: string,
     patch: import('../hooks/useRemoteMaterialPrefetch').RemoteMaterialPatch,
   ) => void;
+  /**
+   * Round-2 client-preview: manually retry a failed / degraded local download
+   * by clearing its localProxy* state, which re-arms the download state
+   * machine. Wired to the timeline track "下载失败 · 重试" mask. See
+   * docs/plans/video-editor-client-preview-download/spec.md §3.3.7 / #9.
+   */
+  retryLocalDownload: (materialId: string) => void;
 }
 
 // 新增：Youtube视频搜索结果接口

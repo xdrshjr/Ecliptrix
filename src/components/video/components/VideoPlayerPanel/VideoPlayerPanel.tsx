@@ -25,7 +25,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
-import { isPlaybackV2Enabled, isPreviewProxyEnabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
+import { isPlaybackV2Enabled, isPreviewProxyEnabled, isLocalPreviewEnabled, tripPlaybackV2KillSwitch } from '@/lib/playbackFlags';
 import {
   KillSwitchMonitor,
   PlaybackEngine,
@@ -157,7 +157,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   projectName,
 }, ref) => {
   const { t } = useLocale();
-  const { showError } = useNotification();
+  const { showError, showWarning } = useNotification();
   const logger = new VideoEditingLogger({
     taskId,
     component: 'VideoPlayerPanel'
@@ -174,6 +174,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // decoupled from v2 and default-on. Drives the legacy preview path to select
   // the 480p ladder when a material's proxy is `cached`. Spec §3.2.3.
   const previewProxyEnabled = useMemo(() => isPreviewProxyEnabled(), []);
+  // Local-preview flag (round-2) — locked at mount, decoupled + default-on.
+  // When on, playback prefers the in-memory `blob:` of each material (P0) and
+  // the readiness gate blocks play until every timeline video/audio material is
+  // locally `ready` (or terminally `degraded`). Off → falls back to round-1
+  // streaming preview (no gating). Spec §3.3.1 / §3.3.5.
+  const localPreviewEnabled = useMemo(() => isLocalPreviewEnabled(), []);
   // Engine instance is allocated for the v2 branch; the legacy path ignores
   // it. Spec 02 will wire real intent fan-out into VideoPlayerPanel's
   // ImperativeHandle methods; for now keeping the reference here ensures
@@ -388,10 +394,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     (seq: VideoSequenceItem): string =>
       resolveSequencePlaybackUrl(seq, materials || [], {
         preferPreviewProxy: previewProxyEnabled,
+        preferLocalProxy: localPreviewEnabled,
       })?.url ||
       selectPlaybackUrl(seq, { purpose: 'preview' }) ||
       seq.url,
-    [materials, previewProxyEnabled]
+    [materials, previewProxyEnabled, localPreviewEnabled]
   );
 
   // 保留 onPatchMaterialCache 的 ref，避免把它塞进每个 useCallback 的 deps。
@@ -413,6 +420,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     ): Promise<{ assigned: string; source: 'primary' | 'fallback' }> => {
       const resolved = resolveSequencePlaybackUrl(seq, materials || [], {
         preferPreviewProxy: previewProxyEnabled,
+        preferLocalProxy: localPreviewEnabled,
       });
       const primary = resolved?.url || getSequencePreviewSrc(seq);
       const fallbacks = resolved ? resolved.fallbacks : [];
@@ -436,7 +444,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         },
       });
     },
-    [materials, getSequencePreviewSrc, previewProxyEnabled, logger],
+    [materials, getSequencePreviewSrc, previewProxyEnabled, localPreviewEnabled, logger],
   );
 
   // ----------------------------------------------------------------------
@@ -494,14 +502,17 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           if (ep) return ep;
         }
         return (
-          resolveSequencePlaybackUrl(seq, materials || [])?.url ??
+          resolveSequencePlaybackUrl(seq, materials || [], {
+            preferPreviewProxy: previewProxyEnabled,
+            preferLocalProxy: localPreviewEnabled,
+          })?.url ??
           getSequencePreviewSrc(seq)
         );
       },
       mapToMediaTime: (seq, sequenceOffset) =>
         mapTimelineTimeToVideoTime(seq, sequenceOffset),
     }),
-    [materials, getSequencePreviewSrc],
+    [materials, getSequencePreviewSrc, previewProxyEnabled, localPreviewEnabled],
   );
   // Phase 2 ships without compositor overlays; Phase 3 will project the
   // ImageOverlay / Subtitle React tree into OverlayPayload shapes here.
@@ -638,6 +649,57 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     [timelineState],
   );
 
+  // Round-2 readiness gate (spec §3.3.6). Walk the timeline's video/audio items
+  // (C2: image/subtitle excluded) and check each referenced material's
+  // localProxyStatus. The gate is satisfied when every such material is `ready`
+  // (locally downloaded) OR terminally `degraded` (C3: will stream — must NOT
+  // block). Materials still `idle/transcoding/downloading/error` are真正的阻塞项。
+  // When the flag is off the gate is always open (round-1 streaming preview).
+  const mediaReadiness = useMemo(() => {
+    if (!localPreviewEnabled) {
+      return { allReady: true, readyCount: 0, gatingCount: 0, degradedCount: 0, totalCount: 0 };
+    }
+    const byId = new Map((materials || []).map((m) => [m.id, m] as const));
+    let total = 0;
+    let ready = 0;
+    let gating = 0;
+    let degraded = 0;
+    (timelineState?.tracks ?? []).forEach((track) => {
+      (track.items ?? []).forEach((item) => {
+        if (!item.materialId) return;
+        const m = byId.get(item.materialId);
+        if (!m) return; // material not loaded — cannot be gated on
+        // C2 — gate on the MATERIAL type, not the timeline item type: an image
+        // dropped on a video track has item.type==='video' but is never
+        // downloaded/blob-played, so it must not block playback.
+        if (m.type !== 'video' && m.type !== 'audio') return;
+        total += 1;
+        const status = m.localProxyStatus;
+        if (status === 'ready') {
+          ready += 1;
+        } else if (status === 'degraded') {
+          degraded += 1; // resolved — streams, does not block (C3)
+        } else {
+          gating += 1; // idle / transcoding / downloading / error → blocks
+        }
+      });
+    });
+    return {
+      allReady: gating === 0,
+      readyCount: ready,
+      gatingCount: gating,
+      degradedCount: degraded,
+      totalCount: total,
+    };
+  }, [localPreviewEnabled, materials, timelineState]);
+  const allTimelineMediaReady = mediaReadiness.allReady;
+  // Mirror into refs so the (heavily-memoised) play handler can read the latest
+  // readiness without being added to its large dependency array.
+  const allTimelineMediaReadyRef = useRef(allTimelineMediaReady);
+  allTimelineMediaReadyRef.current = allTimelineMediaReady;
+  const mediaReadinessRef = useRef(mediaReadiness);
+  mediaReadinessRef.current = mediaReadiness;
+
   // 新增：音频管理函数 - 创建或获取音频元素
   const getOrCreateAudioElement = useCallback((audioSequence: any) => {
     const audioId = audioSequence.id;
@@ -646,9 +708,22 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     if (!audioElement) {
       audioElement = new Audio();
       audioElement.crossOrigin = 'anonymous';
-      
+
+      // C1 (round-2): play audio from the local `blob:` when its material has
+      // finished downloading, so playback is zero-network for audio too (G4).
+      // Otherwise fall back to the network/original url (round-1 behaviour, also
+      // covers `degraded` audio which streams its original source). Resolved by
+      // `audioSequence.materialId` against the same authoritative `materials`
+      // list the readiness gate reads. See spec §3.3.5b / #7b.
+      const audioMaterial = audioSequence.materialId
+        ? (materials || []).find((m) => m.id === audioSequence.materialId)
+        : undefined;
+      const audioLocalBlob =
+        localPreviewEnabled && audioMaterial?.localProxyStatus === 'ready'
+          ? audioMaterial.localProxyUrl
+          : undefined;
       // 设置音频属性
-      audioElement.src = audioSequence.url;
+      audioElement.src = audioLocalBlob ?? audioSequence.url;
       // 限制音量在[0, 1]范围内，HTML Audio API要求
       const clampedVolume = Math.max(0, Math.min(audioSequence.volume ?? 1, 1));
       audioElement.volume = clampedVolume;
@@ -688,14 +763,15 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       logger.info('创建新的音频元素', {
         audioId: audioSequence.id,
         audioName: audioSequence.name,
-        audioUrl: audioSequence.url,
+        audioUrl: audioElement.src,
+        usingLocalBlob: !!audioLocalBlob,
         volume: audioSequence.volume?.toFixed(2) || '1.00',
         totalAudioElements: audioElementsRef.current.size
       });
     }
-    
+
     return audioElement;
-  }, [logger]);
+  }, [logger, materials, localPreviewEnabled]);
 
   // 新增：计算当前时间应该播放的音频序列
   const getActiveAudioSequencesAtTime = useCallback((currentTime: number) => {
@@ -1820,6 +1896,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 处理播放/暂停点击
   const handlePlayPauseClick = useCallback(async () => {
+    // Round-2 readiness gate (spec §3.3.6): block STARTING playback until every
+    // timeline video/audio material is locally ready (degraded excluded — it
+    // streams). Pausing is always allowed. Read via ref to avoid stale closure.
+    const wantsToPlay = !(playbackMode === 'composition' ? isCompositionPlaying : isPlaying);
+    if (wantsToPlay && !allTimelineMediaReadyRef.current) {
+      const r = mediaReadinessRef.current;
+      try {
+        showWarning(
+          t.videoPlayerPanel.playback.materialsDownloading
+            .replace('{ready}', String(r.readyCount))
+            .replace('{total}', String(r.totalCount)),
+        );
+      } catch {
+        // notification provider may be unavailable in tests — ignore.
+      }
+      return;
+    }
     // Playback v2 intercept — when the flag is on, dispatch to the engine
     // and skip the legacy bootstrap path entirely (spec §3.1).
     if (playbackV2Enabled && playbackEngineRef.current) {
@@ -2615,6 +2708,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
     const targetSrc = resolveSequencePlaybackUrl(seq, materials || [], {
       preferPreviewProxy: previewProxyEnabled,
+      preferLocalProxy: localPreviewEnabled,
     })?.url;
     if (!targetSrc) return;
     // 已经在播 480p（赋值源≡比对键）→ 无需替换，避免 needsSourceChange 抖动。
@@ -2673,6 +2767,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       });
   }, [
     previewProxyEnabled,
+    localPreviewEnabled,
     playbackMode,
     compositionPlayback,
     materials,
@@ -3033,7 +3128,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   <button
                     onClick={handlePlayPauseClick}
                     className="control-btn play-pause-btn"
-                    disabled={getTotalDuration() === 0}
+                    disabled={getTotalDuration() === 0 || !allTimelineMediaReady}
                     title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
                   >
                     {getCurrentlyPlaying() ? (
@@ -3052,6 +3147,23 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     <span className="time-separator">/</span>
                     <span className="total-time">{formatTime(getTotalDuration())}</span>
                   </div>
+
+                  {/* Round-2 readiness notice (spec §3.3.6): show download
+                      progress count while gating, then a streaming-fallback
+                      warning when some clips degraded to streaming. */}
+                  {localPreviewEnabled && mediaReadiness.totalCount > 0 && mediaReadiness.gatingCount > 0 && (
+                    <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap" role="status">
+                      {t.videoPlayerPanel.playback.materialsDownloading
+                        .replace('{ready}', String(mediaReadiness.readyCount))
+                        .replace('{total}', String(mediaReadiness.totalCount))}
+                    </span>
+                  )}
+                  {localPreviewEnabled && mediaReadiness.gatingCount === 0 && mediaReadiness.degradedCount > 0 && (
+                    <span className="text-xs text-amber-500 ml-2 whitespace-nowrap" role="status">
+                      {t.videoPlayerPanel.playback.materialsStreamingNotice
+                        .replace('{count}', String(mediaReadiness.degradedCount))}
+                    </span>
+                  )}
                 </div>
 
                 <div className="center-controls">

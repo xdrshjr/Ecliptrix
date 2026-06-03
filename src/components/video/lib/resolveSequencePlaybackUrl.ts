@@ -32,6 +32,7 @@ export interface SequenceLike {
 }
 
 export type ResolvedPlaybackUrlSource =
+  | 'localProxy'
   | 'previewProxy'
   | 'cacheUrl'
   | 'serverUrl'
@@ -52,6 +53,19 @@ export interface ResolveSequencePlaybackUrlOptions {
    * testable.
    */
   preferPreviewProxy?: boolean;
+  /**
+   * Round-2 (docs/plans/video-editor-client-preview-download/spec.md §3.3.4):
+   * when true AND the material's `localProxyStatus === 'ready'` AND a
+   * `localProxyUrl` (a `blob:` object URL of the whole low-bitrate file) is
+   * present, the local blob is pushed to the VERY FRONT of the chain (P0),
+   * above even the preview-proxy tier, so playback runs from local memory with
+   * zero network. Not ready / not opted-in → byte-for-byte identical to before
+   * (the round-1 preview-proxy chain is untouched).
+   *
+   * Locked at mount by the caller (`isLocalPreviewEnabled()`), same purity
+   * contract as {@link preferPreviewProxy}.
+   */
+  preferLocalProxy?: boolean;
 }
 
 export interface ResolvedPlaybackUrl {
@@ -83,6 +97,22 @@ export function resolveSequencePlaybackUrl(
 
   if (material) {
     const candidates: string[] = [];
+
+    // -1. local blob (round-2, P0) — the whole low-bitrate file resident in
+    //     browser memory as a `blob:` URL. Highest priority so playback is
+    //     pure-local (zero network). Only when the caller opted in AND the
+    //     local download finished (`ready`). Sits ABOVE the preview-proxy tier;
+    //     when not ready / not opted in, `localPrimary` stays undefined and the
+    //     existing chain is byte-identical.
+    let localPrimary: string | undefined;
+    if (
+      opts?.preferLocalProxy === true &&
+      material.localProxyStatus === 'ready' &&
+      material.localProxyUrl
+    ) {
+      localPrimary = material.localProxyUrl;
+    }
+    pushIfNew(candidates, localPrimary);
 
     // 0. preview-proxy (480p ladder) — only when the caller opted in AND the
     //    proxy is `cached`. This is the C1 fix: the resolver is the single
@@ -131,7 +161,9 @@ export function resolveSequencePlaybackUrl(
 
     const [primary, ...rest] = candidates;
     let primarySource: ResolvedPlaybackUrlSource;
-    if (proxyPrimary && primary === proxyPrimary) {
+    if (localPrimary && primary === localPrimary) {
+      primarySource = 'localProxy';
+    } else if (proxyPrimary && primary === proxyPrimary) {
       primarySource = 'previewProxy';
     } else if (
       material.cacheUrl &&

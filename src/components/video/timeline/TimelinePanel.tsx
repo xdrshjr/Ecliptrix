@@ -19,6 +19,8 @@ import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
+import type { LocalProxyMaskState } from './TimelineItem';
+import { isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import { clampVolume, VOLUME_DEFAULT, getDefaultTrackHeight, type TrackKind } from './constants';
 import { http, ApiError } from '@/lib/api/http-client';
 import { TimelineRepository } from './infrastructure';
@@ -61,6 +63,8 @@ interface TimelinePanelProps {
   onImportComplete?: (importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => void;
   externalTimelineState?: TimelineState;
   externalTimelineUpdateId?: string;
+  /** Round-2 client-preview: manual retry for a failed/degraded local download. */
+  onRetryLocalDownload?: (materialId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,9 +82,27 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onImportComplete,
   externalTimelineState,
   externalTimelineUpdateId,
+  onRetryLocalDownload,
 }) => {
   const { t, locale } = useLocale();
   const { showSuccess, showError, showInfo } = useNotification();
+
+  // Round-2 client-preview: lock the flag at mount and derive a compact
+  // localProxy status map (keyed by materialId) from the SAME authoritative
+  // `materials` list the readiness gate reads — no dual data source (C4).
+  // Only video/audio carry a mask (C2: image/subtitle excluded). The map
+  // identity changes whenever any localProxy* field changes, re-rendering items.
+  const localPreviewEnabled = useMemo(() => isLocalPreviewEnabled(), []);
+  const localProxyStatusMap = useMemo(() => {
+    const map = new Map<string, LocalProxyMaskState>();
+    if (!localPreviewEnabled) return map;
+    materials.forEach((m) => {
+      if (m.type !== 'video' && m.type !== 'audio') return;
+      if (m.localProxyStatus === undefined && m.localProxyProgress === undefined) return;
+      map.set(m.id, { status: m.localProxyStatus, progress: m.localProxyProgress });
+    });
+    return map;
+  }, [materials, localPreviewEnabled]);
 
   // Hooks for side-effect features
   const videoCache = useVideoCache(taskId);
@@ -982,6 +1004,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onAddTrack={handleAddTrack}
         pendingScrollTrackId={pendingScrollTrackId}
         onScrollConsumed={handleScrollConsumed}
+        localProxyStatusMap={localProxyStatusMap}
+        localPreviewEnabled={localPreviewEnabled}
+        onRetryLocalDownload={onRetryLocalDownload}
       />
 
       {/* 字幕编辑模态框 */}

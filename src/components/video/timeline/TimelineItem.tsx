@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
 import type { TimelineItemData } from './domain/types';
+import type { LocalProxyStatus } from '@/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
 import { formatTimelineTime } from './timeFormat';
 
@@ -11,10 +12,26 @@ import { formatTimelineTime } from './timeFormat';
 // Props — only data that cannot come from the store
 // ---------------------------------------------------------------------------
 
+/**
+ * Round-2 local-download state for a material, fed down from the authoritative
+ * `materials` list (same source as the readiness gate — C4, no dual data
+ * source). See docs/plans/video-editor-client-preview-download/spec.md §3.3.7.
+ */
+export interface LocalProxyMaskState {
+  status?: LocalProxyStatus;
+  progress?: number;
+}
+
 interface TimelineItemProps {
   item: TimelineItemData;
   pixelsPerSecond: number;
   trackHeight: number;
+  /** Local-download status keyed by materialId (authoritative `materials`). */
+  localProxyStatusMap?: Map<string, LocalProxyMaskState>;
+  /** Mount-locked local-preview flag, passed from the parent (avoids per-item read). */
+  localPreviewEnabled?: boolean;
+  /** Retry a failed / degraded local download (clears localProxy* → re-arms). */
+  onRetryLocalDownload?: (materialId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -25,6 +42,9 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   item,
   pixelsPerSecond,
   trackHeight,
+  localProxyStatusMap,
+  localPreviewEnabled,
+  onRetryLocalDownload,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
@@ -434,6 +454,95 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   };
 
   // ---------------------------------------------------------------------------
+  // Round-2 local-download overlay (spec §3.3.7). Only for video/audio clips
+  // (C2: image/subtitle excluded). Status is read from the authoritative
+  // `materials`-derived map passed via props (same source as the readiness
+  // gate — no dual data source, C4).
+  // ---------------------------------------------------------------------------
+
+  const renderLocalDownloadOverlay = () => {
+    if (!localPreviewEnabled) return null;
+    if (item.type !== 'video' && item.type !== 'audio') return null;
+    if (!item.materialId) return null;
+    const local = localProxyStatusMap?.get(item.materialId);
+    const status = local?.status;
+    if (
+      status !== 'transcoding' &&
+      status !== 'downloading' &&
+      status !== 'error' &&
+      status !== 'degraded'
+    ) {
+      return null; // idle / ready / undefined → no mask
+    }
+
+    const stopDrag = (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const retry = (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (item.materialId && onRetryLocalDownload) onRetryLocalDownload(item.materialId);
+    };
+
+    const spinner = (
+      <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin flex-shrink-0" />
+    );
+
+    let content: React.ReactNode;
+    if (status === 'transcoding') {
+      content = (
+        <span className="flex items-center gap-1 text-white pointer-events-none">
+          {spinner}
+          <span className="truncate">{t.timeline.track.localTranscoding}</span>
+        </span>
+      );
+    } else if (status === 'downloading') {
+      const pct = typeof local?.progress === 'number' ? ` ${Math.round(local!.progress!)}%` : '';
+      content = (
+        <span className="flex items-center gap-1 text-white pointer-events-none">
+          {spinner}
+          <span className="truncate">{t.timeline.track.localDownloading}{pct}</span>
+        </span>
+      );
+    } else if (status === 'error') {
+      content = (
+        <button
+          type="button"
+          className="pointer-events-auto px-1.5 py-0.5 rounded bg-red-600/90 text-white hover:bg-red-600 truncate"
+          onPointerDown={stopDrag}
+          onClick={retry}
+          title={t.timeline.track.localDownloadFailed}
+        >
+          {t.timeline.track.localDownloadFailed}
+        </button>
+      );
+    } else {
+      // degraded
+      content = (
+        <button
+          type="button"
+          className="pointer-events-auto px-1.5 py-0.5 rounded bg-amber-500/90 text-white hover:bg-amber-500 truncate"
+          onPointerDown={stopDrag}
+          onClick={retry}
+          title={t.timeline.track.localWillStream}
+        >
+          {t.timeline.track.localWillStream}
+        </button>
+      );
+    }
+
+    return (
+      <div
+        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+        style={{ background: 'rgba(0,0,0,0.55)', borderRadius: '3px', fontSize: '10px', zIndex: 8 }}
+      >
+        {content}
+      </div>
+    );
+  };
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -464,6 +573,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       }
     >
       {renderItemContent()}
+
+      {renderLocalDownloadOverlay()}
 
       {/* Swap-target hint label: shown on the peer item that the drag preview
           center is hovering over. Hidden on subtitle items (subtitle tracks

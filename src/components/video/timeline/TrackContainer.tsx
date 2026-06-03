@@ -6,6 +6,7 @@ import { useTimelineStore } from './store';
 import { TIMELINE_PADDING_SECONDS, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_WHEEL } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import Track from './Track';
+import type { LocalProxyMaskState } from './TimelineItem';
 import { formatTimelineTime } from './timeFormat';
 
 // 拖拽滚动状态接口
@@ -25,6 +26,10 @@ interface TrackContainerProps {
   pendingScrollTrackId?: string | null;
   /** Called once the container has consumed the pending-scroll request. */
   onScrollConsumed?: () => void;
+  /** Round-2 local-download status by materialId (forwarded to tracks/items). */
+  localProxyStatusMap?: Map<string, LocalProxyMaskState>;
+  localPreviewEnabled?: boolean;
+  onRetryLocalDownload?: (materialId: string) => void;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -34,6 +39,9 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onAddTrack,
   pendingScrollTrackId,
   onScrollConsumed,
+  localProxyStatusMap,
+  localPreviewEnabled,
+  onRetryLocalDownload,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -332,6 +340,9 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   locale={contextLocale}
                   trackHeight={trackHeight}
                   onEditSubtitles={onEditSubtitles}
+                  localProxyStatusMap={localProxyStatusMap}
+                  localPreviewEnabled={localPreviewEnabled}
+                  onRetryLocalDownload={onRetryLocalDownload}
                 />
               ))
             ) : (
