@@ -140,84 +140,38 @@ class SubtitleService:
     
     def _calculate_max_line_width(self, video_width: int, font_size: int, margin_horizontal: int, video_height: int = None) -> int:
         """
-        Calculate maximum line width in characters based on video dimensions and aspect ratio.
-        
+        Calculate maximum characters per line, derived purely from the frame width.
+
+        The budget is computed against the CJK full-width worst case (advance ≈ 1.0 em
+        ≈ font_size px). Because CJK glyphs are the widest input we accept, a single line
+        of at most this many characters can never exceed the available width for any
+        script (Latin/half-width glyphs are narrower, so the same character count is only
+        ever shorter). This makes one formula correct for every aspect ratio, instead of
+        the previous Latin-coefficient (0.6/0.8) estimates plus frame-decoupled hard caps
+        (100 / portrait 10/12/18/25/35 / min_chars=20) that let long CJK lines overflow.
+
         Args:
             video_width: Video width in pixels
             font_size: Font size in pixels
             margin_horizontal: Horizontal margin in pixels
-            video_height: Video height in pixels (for aspect ratio calculation)
-            
+            video_height: Video height in pixels (kept for signature compatibility / logging)
+
         Returns:
             Maximum line width in characters
         """
-        # Calculate available width for subtitles
+        # Available width for subtitles after subtracting the left/right margins.
         available_width = video_width - (2 * margin_horizontal)
-        
-        # Apply aspect ratio adjustments for better subtitle display
-        if video_height is not None:
-            aspect_ratio = video_width / video_height
-            logger.info(f"Video aspect ratio: {aspect_ratio:.2f} ({video_width}x{video_height})")
-            
-            if aspect_ratio < 1.0:
-                # Portrait/vertical video - use more accurate character width calculation
-                logger.info("Portrait video detected - applying optimized character limits")
-                
-                # For Chinese characters, use more accurate width estimation
-                # Chinese characters are typically wider than Latin characters
-                char_width_factor = 0.8  # More accurate for Chinese characters
-                char_width = font_size * char_width_factor
-                
-                # Calculate base character count
-                base_max_chars = int(available_width / char_width)
-                
-                # Apply reasonable limits that respect user font size settings
-                # The previous limits were too conservative and made fonts appear much smaller
-                if font_size >= 100:
-                    # Extra large font - allow fewer characters to prevent overflow
-                    # For 100px font: 100 * 0.8 * 10 chars = 800px < 980px available
-                    max_chars = min(base_max_chars, 10)
-                elif font_size >= 72:
-                    # Large font - allow reasonable character count while preventing overflow
-                    # For 72px font: 72 * 0.8 * 12 chars = 691px < 980px available
-                    max_chars = min(base_max_chars, 12)
-                elif font_size >= 50:
-                    # Medium font - allow good readability 
-                    # For 50px font: 50 * 0.8 * 18 chars = 720px < 980px available
-                    max_chars = min(base_max_chars, 18)
-                elif font_size >= 30:
-                    # Standard font - allow sufficient characters for normal text
-                    # For 36px font: 36 * 0.8 * 25 chars = 720px < 980px available
-                    max_chars = min(base_max_chars, 25)
-                else:
-                    # Small font - be more generous to maintain readability
-                    # For 24px font: 24 * 0.8 * 35 chars = 672px < 980px available
-                    max_chars = min(base_max_chars, 35)
-                
-                logger.info(f"Portrait video: base_chars={base_max_chars}, final_chars={max_chars} for font size {font_size}")
-                
-            elif aspect_ratio < 1.5:
-                # Nearly square or slightly wide - moderate adjustment
-                logger.info("Nearly square video detected - applying moderate character limits")
-                char_width = font_size * 0.6
-                max_chars = int(available_width / char_width * 0.8)
-            else:
-                # Landscape/horizontal video - use standard calculation
-                logger.info("Landscape video detected - using standard character limits")
-                char_width = font_size * 0.6
-                max_chars = int(available_width / char_width)
-        
-        # Ensure minimum and maximum reasonable values
-        # For portrait videos, use very conservative minimums to prevent overflow
-        if video_height and video_width / video_height < 1.0:
-            # Portrait video - use calculated value directly, no artificial minimum
-            min_chars = 2  # Allow very small values for large fonts
-        else:
-            # Landscape video - use standard minimum
-            min_chars = 20
-        
-        max_chars = max(min_chars, min(max_chars, 100))
-        
+
+        # CJK full-width step ≈ 1.0 em = font_size px (worst case → guarantees no overflow).
+        char_width = font_size
+
+        # Lower bound is 1: never raise the budget above what the frame can fit. A higher
+        # floor (e.g. the old min_chars=20) would re-overflow on large fonts in narrower
+        # landscape frames (e.g. 1280x720 @ 72px → 20*72=1440px > 1280px). At worst this
+        # degrades to one character per line for absurd font sizes (available < font_size),
+        # which only occurs outside the model's 8..200px range; a wrapped line never bleeds.
+        max_chars = max(1, int(available_width / char_width))
+
         logger.info(f"Calculated max line width: {max_chars} characters for video {video_width}x{video_height}px, font size {font_size}")
         return max_chars
     
