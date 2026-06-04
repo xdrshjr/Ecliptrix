@@ -57,6 +57,17 @@ function asIdString(v: unknown): string {
 export function materialCompositeKey(material: MaterialKeyInput): MaterialCompositeKey {
   const meta = (material.metadata ?? {}) as Record<string, unknown>;
   const url = material.url || material.serverUrl || '';
+  // Derived materials (VideoCutModal clips) inherit the parent's source/sourceId
+  // but are DIFFERENT content with their own per-clip file/URL. Keying them by
+  // the shared (source, source_id) collapses every sibling clip onto the same
+  // `cached_materials` row + on-disk file (the row is UNIQUE on (source,
+  // source_id)), so export resolves them all to one overwritten file — the
+  // "deleted clip still shows / latest track material ignored" bug. Force these
+  // onto a content-unique url key so each clip stays its own cache entry.
+  const isDerived = meta.isClip === true || meta.originalMaterialId != null;
+  if (isDerived) {
+    return { source: 'url', source_id: hashUrl(url) };
+  }
   const metaSource = typeof meta.source === 'string' ? (meta.source as string) : '';
   const metaSourceId =
     asIdString(meta.sourceId) || asIdString(meta.id) || asIdString(meta.video_id);
