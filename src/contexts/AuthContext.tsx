@@ -4,7 +4,12 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import { AuthContextType, User, LoginCredentials, AuthState } from '@/types/auth';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
-import { SESSION_TOKEN_KEY, SESSION_USER_KEY } from '@/lib/auth/storage-keys';
+import {
+  SESSION_TOKEN_KEY,
+  SESSION_USER_KEY,
+  setSessionToken,
+  clearSessionToken,
+} from '@/lib/auth/storage-keys';
 import {
   login as authLogin,
   validateSession as authValidateSession,
@@ -134,13 +139,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }));
         }
 
+        // Self-heal the session cookie: users who logged in before the cookie
+        // sync shipped have a token only in localStorage, so media-tag requests
+        // (`/api/storage/files/...`) would still 401. Re-sync on every confirmed
+        // -live session (mount + 5-min poll) so the cookie always exists.
+        setSessionToken(storedToken);
+
         return true;
       } else {
         console.warn('[AuthContext] Session is invalid:', data.reason);
 
         // Clear invalid session
         localStorage.removeItem(SESSION_USER_KEY);
-        localStorage.removeItem(SESSION_TOKEN_KEY);
+        clearSessionToken();
 
         setAuthState({
           user: null,
@@ -216,7 +227,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch (error) {
         console.error('[AuthContext] Error loading auth state:', error);
         localStorage.removeItem(SESSION_USER_KEY);
-        localStorage.removeItem(SESSION_TOKEN_KEY);
+        clearSessionToken();
         setAuthState({
           user: null,
           isAuthenticated: false,
@@ -252,7 +263,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // outside the wrapper's normal path.
       try {
         localStorage.removeItem(SESSION_USER_KEY);
-        localStorage.removeItem(SESSION_TOKEN_KEY);
+        clearSessionToken();
       } catch {
         // ignore
       }
@@ -318,7 +329,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Store user and session token in localStorage
         localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
         if (result.sessionToken) {
-          localStorage.setItem(SESSION_TOKEN_KEY, result.sessionToken);
+          setSessionToken(result.sessionToken);
         }
 
         // Update auth state
@@ -358,7 +369,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     // Clear localStorage
     localStorage.removeItem(SESSION_USER_KEY);
-    localStorage.removeItem(SESSION_TOKEN_KEY);
+    clearSessionToken();
 
     // Update auth state — all permission fields are cleared because user is null
     setAuthState({

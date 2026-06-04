@@ -20,7 +20,11 @@
  * Spec: docs/plans/unified-api-auth-refactor/specs/03-frontend-http-client-wrapper.md
  */
 
-import { SESSION_TOKEN_KEY, SESSION_USER_KEY } from '@/lib/auth/storage-keys';
+import {
+  SESSION_TOKEN_KEY,
+  SESSION_USER_KEY,
+  clearSessionToken,
+} from '@/lib/auth/storage-keys';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -161,7 +165,7 @@ function handleSessionExpired(): void {
   // sync, even if multiple parallel 401s race here. The once-flag only guards
   // the redirect side-effect.
   try {
-    window.localStorage.removeItem(SESSION_TOKEN_KEY);
+    clearSessionToken();
     window.localStorage.removeItem(SESSION_USER_KEY);
   } catch {
     // localStorage may be unavailable in extreme edge cases; swallow.
