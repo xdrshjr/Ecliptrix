@@ -454,10 +454,20 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Round-2 local-download overlay (spec §3.3.7). Only for video/audio clips
-  // (C2: image/subtitle excluded). Status is read from the authoritative
-  // `materials`-derived map passed via props (same source as the readiness
-  // gate — no dual data source, C4).
+  // Round-3 local-download visualization (spec docs/plans/
+  // video-editor-track-download-progress/spec.md §3.3.3, G2). The CLIP BAR ITSELF
+  // acts as the progress bar: while downloading, the already-downloaded portion
+  // (0→progress%) keeps the bar's own colour and the not-yet-downloaded portion
+  // (progress%→100%) is dimmed, with a thin highlight line at the boundary and a
+  // small unobtrusive badge. transcoding → indeterminate pulse; error → red +
+  // retry; degraded → amber + retry; ready/idle/undefined → no overlay.
+  //
+  // Only for video/audio clips (C2: image/subtitle excluded). Status comes from
+  // the authoritative `materials`-derived map (same source as the readiness gate
+  // — no dual data source, C4). NOTE: the guard below reads `item.type`, but the
+  // map is already filtered to video/audio MATERIALS upstream (TimelinePanel
+  // localProxyStatusMap), so an image dropped on a video track has no entry →
+  // status === undefined → returns null (P2-3).
   // ---------------------------------------------------------------------------
 
   const renderLocalDownloadOverlay = () => {
@@ -472,7 +482,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       status !== 'error' &&
       status !== 'degraded'
     ) {
-      return null; // idle / ready / undefined → no mask
+      return null; // idle / ready / undefined → no overlay (plain bar)
     }
 
     const stopDrag = (e: React.PointerEvent) => {
@@ -489,55 +499,85 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin flex-shrink-0" />
     );
 
-    let content: React.ReactNode;
-    if (status === 'transcoding') {
-      content = (
-        <span className="flex items-center gap-1 text-white pointer-events-none">
-          {spinner}
-          <span className="truncate">{t.timeline.track.localTranscoding}</span>
-        </span>
-      );
-    } else if (status === 'downloading') {
-      const pct = typeof local?.progress === 'number' ? ` ${Math.round(local!.progress!)}%` : '';
-      content = (
-        <span className="flex items-center gap-1 text-white pointer-events-none">
-          {spinner}
-          <span className="truncate">{t.timeline.track.localDownloading}{pct}</span>
-        </span>
-      );
-    } else if (status === 'error') {
-      content = (
-        <button
-          type="button"
-          className="pointer-events-auto px-1.5 py-0.5 rounded bg-red-600/90 text-white hover:bg-red-600 truncate"
-          onPointerDown={stopDrag}
-          onClick={retry}
-          title={t.timeline.track.localDownloadFailed}
+    // downloading — the bar itself is the progress bar: dim only the portion to
+    // the RIGHT of pct% (the not-yet-downloaded part), leaving the left "already
+    // downloaded" segment showing the clip's own colour. A thin boundary line
+    // marks the read-out, plus a small badge ("下载中 NN%"). All layers are
+    // pointer-events-none so dragging / resize handles keep working (R2).
+    if (status === 'downloading') {
+      const pct = Math.max(0, Math.min(100, Math.round(local?.progress ?? 0)));
+      return (
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          style={{ borderRadius: '3px', zIndex: 8 }}
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
         >
-          {t.timeline.track.localDownloadFailed}
-        </button>
-      );
-    } else {
-      // degraded
-      content = (
-        <button
-          type="button"
-          className="pointer-events-auto px-1.5 py-0.5 rounded bg-amber-500/90 text-white hover:bg-amber-500 truncate"
-          onPointerDown={stopDrag}
-          onClick={retry}
-          title={t.timeline.track.localWillStream}
-        >
-          {t.timeline.track.localWillStream}
-        </button>
+          {/* not-yet-downloaded region (right of pct%) dimmed */}
+          <div
+            className="absolute top-0 bottom-0"
+            style={{ left: `${pct}%`, right: 0, background: 'rgba(0,0,0,0.45)' }}
+          />
+          {/* progress boundary highlight line */}
+          <div
+            className="absolute top-0 bottom-0"
+            style={{ left: `${pct}%`, width: '2px', background: 'rgba(255,255,255,0.9)' }}
+          />
+          {/* small badge — never tall enough to grow the bar; truncates on narrow clips */}
+          <span
+            className="absolute left-1 bottom-0.5 max-w-[calc(100%-8px)] px-1 rounded bg-black/55 text-white truncate"
+            style={{ fontSize: '9px', lineHeight: '14px' }}
+          >
+            {t.timeline.track.localDownloading} {pct}%
+          </span>
+        </div>
       );
     }
 
+    // transcoding — no byte progress yet: indeterminate pulse + spinner.
+    if (status === 'transcoding') {
+      return (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center animate-pulse"
+          style={{ background: 'rgba(0,0,0,0.45)', borderRadius: '3px', fontSize: '10px', zIndex: 8 }}
+        >
+          <span className="flex items-center gap-1 text-white">
+            {spinner}
+            <span className="truncate">{t.timeline.track.localTranscoding}</span>
+          </span>
+        </div>
+      );
+    }
+
+    // error / degraded — colour the bar + show a clickable retry. Only the button
+    // is pointer-events-auto, and onPointerDown stops propagation so the click is
+    // not mistaken for a drag start (R2).
+    const isError = status === 'error';
     return (
       <div
         className="absolute inset-0 flex items-center justify-center pointer-events-none"
-        style={{ background: 'rgba(0,0,0,0.55)', borderRadius: '3px', fontSize: '10px', zIndex: 8 }}
+        style={{
+          background: isError ? 'rgba(220,38,38,0.35)' : 'rgba(245,158,11,0.30)',
+          borderRadius: '3px',
+          fontSize: '10px',
+          zIndex: 8,
+        }}
       >
-        {content}
+        <button
+          type="button"
+          className={
+            isError
+              ? 'pointer-events-auto px-1.5 py-0.5 rounded bg-red-600/90 text-white hover:bg-red-600 truncate'
+              : 'pointer-events-auto px-1.5 py-0.5 rounded bg-amber-500/90 text-white hover:bg-amber-500 truncate'
+          }
+          onPointerDown={stopDrag}
+          onClick={retry}
+          title={isError ? t.timeline.track.localDownloadFailed : t.timeline.track.localWillStream}
+        >
+          {isError ? t.timeline.track.localDownloadFailed : t.timeline.track.localWillStream}
+        </button>
       </div>
     );
   };

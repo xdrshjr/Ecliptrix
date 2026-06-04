@@ -2522,6 +2522,26 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // 新增：从 timeline 游标位置开始播放（不依赖 wasPlaying 分支）。
   // 单一 seek→play 流水线：始终等待 seeked 后再 play()，避免 currentTime 未提交的竞态。
   const seekAndPlayFromTimeline = useCallback(async (timelineTime: number) => {
+    // G3b / round-3 readiness gate (spec §3.3.2, P1-1): this imperative entry is
+    // reached by the global spacebar handler (VideoEditingInterface) and
+    // timeline-click-to-play, BYPASSING the play button + handlePlayPauseClick.
+    // After round-3 removed the button's `disabled` gate, this must enforce the
+    // same gate or the spacebar becomes a one-keystroke hole. Pausing never
+    // routes here (handlePlayPauseFromTimeline branches to pauseFromTimeline when
+    // already playing), so any call here is a play intent → gate unconditionally.
+    if (!allTimelineMediaReadyRef.current) {
+      const r = mediaReadinessRef.current;
+      try {
+        showWarning(
+          t.videoPlayerPanel.playback.materialsDownloading
+            .replace('{ready}', String(r.readyCount))
+            .replace('{total}', String(r.totalCount)),
+        );
+      } catch {
+        // notification provider may be unavailable in tests — ignore.
+      }
+      return;
+    }
     logger.info('从Timeline游标位置开始播放', {
       timelineTime: timelineTime.toFixed(2),
       currentVideoTime: getCurrentTime().toFixed(2),
@@ -3128,7 +3148,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   <button
                     onClick={handlePlayPauseClick}
                     className="control-btn play-pause-btn"
-                    disabled={getTotalDuration() === 0 || !allTimelineMediaReady}
+                    // G3 (round-3): keep the button clickable while materials are
+                    // still downloading — only disable when there is nothing to play
+                    // (getTotalDuration()===0). Clicking before ready must reach
+                    // handlePlayPauseClick so its readiness guard can surface the
+                    // toast (a `disabled` button would swallow the click entirely).
+                    disabled={getTotalDuration() === 0}
+                    aria-disabled={!allTimelineMediaReady || undefined}
                     title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
                   >
                     {getCurrentlyPlaying() ? (
@@ -3148,22 +3174,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     <span className="total-time">{formatTime(getTotalDuration())}</span>
                   </div>
 
-                  {/* Round-2 readiness notice (spec §3.3.6): show download
-                      progress count while gating, then a streaming-fallback
-                      warning when some clips degraded to streaming. */}
-                  {localPreviewEnabled && mediaReadiness.totalCount > 0 && mediaReadiness.gatingCount > 0 && (
-                    <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap" role="status">
-                      {t.videoPlayerPanel.playback.materialsDownloading
-                        .replace('{ready}', String(mediaReadiness.readyCount))
-                        .replace('{total}', String(mediaReadiness.totalCount))}
-                    </span>
-                  )}
-                  {localPreviewEnabled && mediaReadiness.gatingCount === 0 && mediaReadiness.degradedCount > 0 && (
-                    <span className="text-xs text-amber-500 ml-2 whitespace-nowrap" role="status">
-                      {t.videoPlayerPanel.playback.materialsStreamingNotice
-                        .replace('{count}', String(mediaReadiness.degradedCount))}
-                    </span>
-                  )}
+                  {/* G1 (round-3): the round-2 persistent "素材下载中（已就绪 N/M）"
+                      readiness notice that lived here next to the player has been
+                      removed. Download progress is now shown on each clip's own
+                      timeline bar (TimelineItem, G2), and unreadiness is surfaced
+                      as a transient toast when the user clicks play (handlePlayPauseClick
+                      guard, G3). `mediaReadiness` itself is intentionally kept above —
+                      the play-gate toast still reads readyCount/totalCount from it. */}
                 </div>
 
                 <div className="center-controls">

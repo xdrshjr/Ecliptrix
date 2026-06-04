@@ -8,9 +8,11 @@
  * project's `jsx: "preserve"` tsconfig keeps Vitest from compiling the .tsx).
  * We verify: the flag is locked at mount; `preferLocalProxy` flows through the
  * SAME resolver call for both the assigned src and the comparison key (R6 — 赋值
- * 源 ≡ 比对键, extended to the blob tier); the readiness gate disables the play
- * button + guards `handlePlayPauseClick` (degraded excluded, C3); and audio is
- * played from the local blob (C1).
+ * 源 ≡ 比对键, extended to the blob tier); the readiness gate guards play entry
+ * (`handlePlayPauseClick` + the spacebar-reachable `seekAndPlayFromTimeline`,
+ * degraded excluded, C3) — round-3 keeps the play button clickable while gating
+ * so the click reaches that toast guard (G3, see the round-3 block below); and
+ * audio is played from the local blob (C1).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -62,10 +64,6 @@ describe('VideoPlayerPanel — readiness gate (§3.3.6, C2/C3)', () => {
     expect(src).toMatch(/status\s*===\s*'degraded'/);
   });
 
-  it('disables the play button until media is ready', () => {
-    expect(src).toMatch(/disabled=\{getTotalDuration\(\)\s*===\s*0\s*\|\|\s*!allTimelineMediaReady\}/);
-  });
-
   it('guards handlePlayPauseClick against starting playback while gating', () => {
     const fn = src.slice(
       src.indexOf('const handlePlayPauseClick'),
@@ -73,6 +71,44 @@ describe('VideoPlayerPanel — readiness gate (§3.3.6, C2/C3)', () => {
     );
     expect(fn).toMatch(/allTimelineMediaReadyRef\.current/);
     expect(fn).toMatch(/wantsToPlay/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round-3 (docs/plans/video-editor-track-download-progress/spec.md)
+// G1: remove the persistent "素材下载中（已就绪 N/M）" notice from the player
+//     controls; download progress now lives on each timeline clip bar (G2).
+// G3: keep the play button clickable while gating (only disabled on empty
+//     timeline) so the click reaches handlePlayPauseClick's toast guard.
+// G3b (P1-1): the spacebar-reachable seekAndPlayFromTimeline must enforce the
+//     same readiness gate, otherwise removing the button `disabled` leaves a
+//     one-keystroke bypass.
+// ---------------------------------------------------------------------------
+
+describe('VideoPlayerPanel — round-3 play-gate corrections (G1/G3/G3b)', () => {
+  it('G3: play button is disabled only when there is nothing to play', () => {
+    expect(src).toMatch(/disabled=\{getTotalDuration\(\)\s*===\s*0\}/);
+    // It must NOT be gated by readiness anymore — that would swallow the click.
+    expect(src).not.toMatch(
+      /disabled=\{getTotalDuration\(\)\s*===\s*0\s*\|\|\s*!allTimelineMediaReady\}/,
+    );
+  });
+
+  it('G1: the persistent controls-row readiness notice is removed', () => {
+    // The notice was the only role="status" span and the only consumer of
+    // materialsStreamingNotice; both must be gone after G1.
+    expect(src).not.toMatch(/role="status"/);
+    expect(src).not.toMatch(/materialsStreamingNotice/);
+  });
+
+  it('G3b: seekAndPlayFromTimeline enforces the readiness gate (spacebar bypass)', () => {
+    const start = src.indexOf('const seekAndPlayFromTimeline');
+    expect(start).toBeGreaterThan(-1);
+    const fn = src.slice(start, start + 1400);
+    expect(fn).toMatch(/!allTimelineMediaReadyRef\.current/);
+    expect(fn).toMatch(/showWarning\(/);
+    expect(fn).toMatch(/materialsDownloading/);
+    expect(fn).toMatch(/\breturn;/);
   });
 });
 
