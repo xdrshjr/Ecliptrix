@@ -531,6 +531,23 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [materialManagement.allMaterials]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Mirror the live timeline into the shared store so the material-management
+  // hooks (480p preview-proxy prefetch + local download) can see what the user
+  // actually has on the tracks. currentTimelineState is the single real source
+  // of timeline edits — manual drag/drop, project import, and Agent write-back
+  // all funnel through it (the Agent's setTimelineState is wired to the local
+  // setCurrentTimelineState, never to the store). Without this mirror,
+  // useVideoEditingStore.timelineState stays null forever, so the download
+  // triggers derive empty id sets and the readiness gate reports "0/N ready".
+  // Loop-safe: setTimelineState only set()s timelineState (no triggerUpdate),
+  // and its store readers never write back into currentTimelineState, so this
+  // single-direction mirror cannot form a render cycle. It also leaves the
+  // local externalTimelineUpdateId untouched, so it never re-imports the panel.
+  const setStoreTimelineState = useVideoEditingStore(state => state.setTimelineState);
+  useEffect(() => {
+    setStoreTimelineState(currentTimelineState);
+  }, [currentTimelineState, setStoreTimelineState]);
+
   // Sync: Zustand scriptSegmentsData → content.scriptSegments (structured data with narration)
   // When Agent generates a script with narration via set_script_with_narration operation,
   // it writes structured segments data to the store. Build ScriptSegment[] with narrationText.
