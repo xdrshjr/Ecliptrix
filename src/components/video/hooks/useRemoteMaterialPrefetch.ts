@@ -21,9 +21,12 @@
  *   - Already-cached materials (cacheStatus='ready' && cacheUrl) are
  *     skipped immediately.
  *
- * Key derivation: prefer the explicit `metadata.source` / `metadata.id`
- * triple when present (Pexels search wires these in); otherwise fall back
- * to (`url`, sha1(url)) which still produces a stable composite key.
+ * Key derivation: delegated to the shared `materialCompositeKey` helper
+ * (lib/materialKey.ts) — prefer the explicit `metadata.source` /
+ * `metadata.sourceId` pair when present (Pexels/Unsplash/Freesound search
+ * wire these in); otherwise fall back to (`url`, hash(url)) which still
+ * produces a stable composite key. The export path uses the SAME helper so
+ * the cache key matches across ingest and export.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -38,6 +41,7 @@ import { MediaProxyClient } from '../timeline/infrastructure/MediaProxyClient';
 import type { PreviewProxyStatus } from '../timeline/infrastructure/MediaProxyClient';
 import type { VideoCacheAdapter } from '../timeline/infrastructure/VideoCacheAdapter';
 import { isPlaybackV2Enabled, isPreviewProxyEnabled } from '@/lib/playbackFlags';
+import { materialCompositeKey } from '../lib/materialKey';
 
 // ---------------------------------------------------------------------------
 // Phase-3 heuristics (spec §3.2.1 H1/H2/H3) + v2 eligibility convergence
@@ -229,32 +233,14 @@ function defaultIsRemoteUrl(url: string): boolean {
   }
 }
 
-/** Lightweight 32-bit hash of a URL — only need stable enough for source_id. */
-function hashUrl(url: string): string {
-  let h = 0;
-  for (let i = 0; i < url.length; i++) {
-    h = (Math.imul(31, h) + url.charCodeAt(i)) | 0;
-  }
-  // unsigned hex
-  return (h >>> 0).toString(16).padStart(8, '0');
-}
-
 function keyFor(material: MaterialItem): RemoteMaterialKey {
-  const meta = (material.metadata ?? {}) as Record<string, unknown>;
+  // Derive (source, source_id) from the shared helper so the key this ingest
+  // stores a cached_materials row under is identical to the key the export
+  // path (useVideoExport) later queries with. See lib/materialKey.ts and
+  // analysis §A1 (the previous inline reader missed metadata.sourceId).
   const url = material.url || material.serverUrl || '';
-  const metaSource = typeof meta.source === 'string' ? (meta.source as string) : '';
-  const metaSourceId =
-    typeof meta.id === 'string' || typeof meta.id === 'number'
-      ? String(meta.id)
-      : typeof meta.video_id === 'string' || typeof meta.video_id === 'number'
-        ? String(meta.video_id)
-        : '';
-  const source = metaSource && metaSource !== 'ark-ai-video' ? metaSource : '';
-  if (source && metaSourceId) {
-    return { source, source_id: metaSourceId, url };
-  }
-  // Fall back to url-derived stable identifier.
-  return { source: 'url', source_id: hashUrl(url), url };
+  const { source, source_id } = materialCompositeKey(material);
+  return { source, source_id, url };
 }
 
 function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean): boolean {

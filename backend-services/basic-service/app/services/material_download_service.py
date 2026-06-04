@@ -17,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Dict, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -36,6 +36,19 @@ def _parse_concurrency_limit() -> int:
     return 4
 
 
+def _parse_reuse_wait_timeout() -> float:
+    """Max seconds the export resolver waits for an in-flight background
+    download to reach `ready` before falling back to its own download (F4)."""
+    raw = os.getenv("MATERIAL_REUSE_WAIT_TIMEOUT_SECONDS", "")
+    try:
+        v = float(raw)
+        if v >= 0:
+            return v
+    except (TypeError, ValueError):
+        pass
+    return 120.0
+
+
 class MaterialDownloadService:
     """
     Singleton-style background downloader. enqueue() returns immediately with a
@@ -51,6 +64,7 @@ class MaterialDownloadService:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self._max_concurrent = _parse_concurrency_limit()
+        self._reuse_wait_timeout = _parse_reuse_wait_timeout()
         # Background loop, engine, semaphore are lazily initialised on first use.
         # The engine MUST live on this background loop alone — sharing the global
         # engine with FastAPI's loop pollutes asyncpg's pool with connections
@@ -335,6 +349,117 @@ class MaterialDownloadService:
             return fut.result(timeout=5)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"lookup_by_url failed for {url}: {exc}")
+            return None
+
+    def resolve_cached_path(
+        self,
+        url: str,
+        source: Optional[str] = None,
+        source_id: Optional[str] = None,
+        cache_url: Optional[str] = None,
+        wait_timeout: Optional[float] = None,
+    ) -> Optional[str]:
+        """Resolve an already-downloaded file for the export pipeline to reuse.
+
+        Sync helper for the composition worker thread. Resolution order — each
+        tier returns a real on-disk path on hit, else falls through:
+
+          F2  same-origin ``cache_url`` hint mapped to a file under the cache
+              dir (zero DB, zero network). The hint is NEVER used as a download
+              URL — only as a disk path — so INV3 holds.
+          F1  composite-key ``(source, source_id)`` lookup (URL fallback),
+              aligned with how the editor judged the asset "downloaded";
+              resilient to CDN URL rotation that the exact-URL lookup misses.
+          F4  if the matching row is still ``downloading`` / ``pending``, wait
+              (bounded by ``wait_timeout``) for it to turn ``ready`` and reuse
+              it, instead of starting a duplicate concurrent download.
+
+        Returns ``None`` when nothing is reusable (caller downloads as before),
+        so a miss never changes correctness — only the happy path gets faster.
+        """
+        # F2 — pure path math + stat; no event loop needed.
+        direct = self._resolve_cache_url_to_disk(cache_url)
+        if direct:
+            return direct
+
+        if not (url or (source and source_id)):
+            return None
+
+        timeout = self._reuse_wait_timeout if wait_timeout is None else max(0.0, wait_timeout)
+        try:
+            loop = self._ensure_loop()
+            fut = asyncio.run_coroutine_threadsafe(
+                self._resolve_cached_path_impl(url, source, source_id, timeout),
+                loop,
+            )
+            # Give the bridge a little slack over the in-loop wait budget.
+            return fut.result(timeout=timeout + 15)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"resolve_cached_path failed for {url}: {exc}")
+            return None
+
+    def _resolve_cache_url_to_disk(self, cache_url: Optional[str]) -> Optional[str]:
+        """F2: map a same-origin ``/api/storage/files/cached_materials/<source>/<file>``
+        reference back to a real file under the cache dir, with strict
+        path-traversal containment.
+
+        Returns the disk path iff the resolved file stays inside the cache
+        subtree (rejecting ``..`` and symlink escapes via ``resolve()`` +
+        ``relative_to``) and exists. Otherwise ``None``.
+        """
+        if not cache_url:
+            return None
+        try:
+            parsed_path = urlparse(cache_url).path or cache_url
+        except Exception:
+            return None
+        marker = "/api/storage/files/cached_materials/"
+        idx = parsed_path.find(marker)
+        if idx == -1:
+            return None
+        rel = unquote(parsed_path[idx + len(marker):]).strip().lstrip("/")
+        if not rel or ".." in rel.replace("\\", "/").split("/"):
+            return None
+        try:
+            cache_root = self.cache_dir.resolve()
+            candidate = (self.cache_dir / rel).resolve()
+            candidate.relative_to(cache_root)  # raises ValueError if it escaped
+        except (ValueError, OSError):
+            return None
+        if candidate.is_file():
+            return str(candidate)
+        return None
+
+    async def _resolve_cached_path_impl(
+        self,
+        url: Optional[str],
+        source: Optional[str],
+        source_id: Optional[str],
+        wait_timeout: float,
+    ) -> Optional[str]:
+        """F1 + F4 on the background loop. Looks up the row by composite key
+        (URL fallback); reuses it when ``ready``; waits (bounded) when an
+        in-flight download is still running; gives up (→ caller downloads)
+        on ``failed`` / timeout / missing file."""
+        deadline = time.monotonic() + max(0.0, wait_timeout)
+        poll_interval = 1.0
+        while True:
+            row = await self._lookup_impl(url=url, source=source, source_id=source_id)
+            if row is None:
+                return None
+            status = (row.status or "").lower()
+            if status == "ready":
+                local_path = row.local_path or ""
+                if local_path and os.path.exists(local_path):
+                    return local_path
+                # Row claims ready but the file is gone — let the caller refetch.
+                return None
+            if status in ("downloading", "pending"):
+                if time.monotonic() >= deadline:
+                    return None  # F4 timeout → fall back to the download path
+                await asyncio.sleep(poll_interval)
+                continue
+            # failed / missing / unknown → no reuse
             return None
 
     async def store_external_download_async(

@@ -121,6 +121,18 @@ class VideoCompositionItem(BaseModel):
     opacity: Optional[float] = Field(1.0, ge=0, le=1, description="Opacity level (0.0 to 1.0)")
     image_position: Optional[ImagePosition] = Field(None, description="Position for image overlay (only for image materials)")
 
+    # Cache-reuse identity (optional, backward compatible). Lets the composition
+    # pipeline reuse an already-downloaded cached_materials row via the
+    # (source, source_id) composite key — resilient to CDN URL rotation, unlike
+    # the legacy exact-URL lookup. cache_url is a same-origin hint
+    # (/api/storage/files/cached_materials/<source>/<file>) the backend maps
+    # back to a disk file under STORAGE_ROOT for a zero-DB / zero-network reuse.
+    # All three are advisory: a miss falls back to the original download path,
+    # so requests that omit them behave exactly as before.
+    source: Optional[str] = Field(None, description="Asset origin for cache reuse (e.g. pexels)")
+    source_id: Optional[str] = Field(None, description="Stable per-source id for composite-key cache lookup")
+    cache_url: Optional[str] = Field(None, description="Same-origin cached_materials hint mapped to a disk file")
+
 
 class AudioCompositionItem(BaseModel):
     """

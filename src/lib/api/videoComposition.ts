@@ -23,6 +23,14 @@ export interface VideoCompositionItem {
   track_id: string;
   volume?: number;
   opacity?: number;
+  // Cache-reuse identity (optional, backward compatible). The backend uses
+  // (source, source_id) to find an already-downloaded cached_materials row and
+  // skip re-downloading; cache_url is a same-origin disk hint resolved to a
+  // file under STORAGE_ROOT. All three are advisory — a miss falls back to the
+  // original download path. See video-export-redownloads-cached-materials.
+  source?: string;
+  source_id?: string;
+  cache_url?: string;
 }
 
 export interface AudioCompositionItem {

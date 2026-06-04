@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { http, ApiError } from '@/lib/api/http-client';
 import { VideoEditingLogger } from '../utils/logger';
 import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
+import { materialCompositeKey } from '../lib/materialKey';
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -287,6 +288,17 @@ export const useVideoExport = ({
               // Add clipped duration to actual total
               actualTotalDuration += clippedDuration;
 
+              // Cache-reuse identity: forward the SAME composite key the
+              // background prefetch ingested this material under, so the
+              // backend can reuse the already-downloaded file via the
+              // composite-key lookup instead of re-downloading (bug:
+              // video-export-redownloads-cached-materials). cache_url is an
+              // optional same-origin disk hint the backend maps back to a
+              // file under STORAGE_ROOT — it is NEVER used as a download URL,
+              // so INV3 (url stays serverUrl||url) is preserved.
+              const { source: cacheSource, source_id: cacheSourceId } =
+                materialCompositeKey(material);
+
               videoItems.push({
                 id: item.id,
                 name: item.name,
@@ -300,7 +312,11 @@ export const useVideoExport = ({
                 clip_start: clipStart,
                 clip_end: clipEnd,
                 // Add clipped duration for backend reference
-                clipped_duration: clippedDuration
+                clipped_duration: clippedDuration,
+                // 缓存复用标识（命中则跳过下载，未命中回退原下载逻辑）
+                source: cacheSource,
+                source_id: cacheSourceId,
+                cache_url: material.cacheUrl || undefined,
               });
               
               logger.debug('视频项目添加完成', {

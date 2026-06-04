@@ -897,12 +897,20 @@ class VideoCompositionService:
             # Analyze video URLs to find duplicates
             url_to_indices = {}  # URL -> list of indices that use this URL
             unique_urls = []     # List of unique URLs to download
-            
+            # URL -> (source, source_id, cache_url) carried by the first item
+            # that uses this URL. Drives composite-key cache reuse + write-back.
+            url_to_meta = {}
+
             for i, item in enumerate(request.video_items):
                 url = item.url
                 if url not in url_to_indices:
                     url_to_indices[url] = []
                     unique_urls.append(url)
+                    url_to_meta[url] = (
+                        getattr(item, "source", None),
+                        getattr(item, "source_id", None),
+                        getattr(item, "cache_url", None),
+                    )
                 url_to_indices[url].append(i)
             
             # Log URL analysis results
@@ -926,9 +934,18 @@ class VideoCompositionService:
             material_svc = get_material_download_service()
             urls_to_download: List[str] = []
             for url in unique_urls:
+                src, sid, cache_url = url_to_meta.get(url, (None, None, None))
                 cached_path = None
                 try:
-                    cached_path = material_svc.lookup_by_url(url)
+                    # Three-tier reuse: cache_url disk hint (F2) → composite-key
+                    # lookup (F1) → in-flight wait (F4). Falls back to the legacy
+                    # exact-URL lookup, then to a fresh download. A miss never
+                    # changes correctness — only the happy path gets faster.
+                    cached_path = material_svc.resolve_cached_path(
+                        url=url, source=src, source_id=sid, cache_url=cache_url
+                    )
+                    if not (cached_path and os.path.exists(cached_path)):
+                        cached_path = material_svc.lookup_by_url(url)
                 except Exception as lookup_exc:
                     logger.warning(f"Cache lookup failed for {url}: {lookup_exc}")
                 if cached_path and os.path.exists(cached_path):
@@ -962,15 +979,25 @@ class VideoCompositionService:
                         url_to_downloaded_path[url] = downloaded_path
                         logger.info(f"Downloaded unique URL {len(url_to_downloaded_path)}/{unique_count}: {url}")
                         # Write-through to persistent cache so future exports
-                        # of the same URL can skip the download.
+                        # of the same URL can skip the download. Carry the
+                        # request's (source, source_id) when present so the
+                        # write-back key matches the editor's ingest key —
+                        # otherwise the same asset accumulates duplicate rows
+                        # (analysis §A3) and the editor still can't reuse it.
                         try:
-                            inferred_source = "pexels" if self._is_pexels_url(url) else (
-                                "youtube" if self._is_youtube_url(url) else "url"
+                            req_source, req_source_id, _req_cache_url = url_to_meta.get(
+                                url, (None, None, None)
+                            )
+                            inferred_source = req_source or (
+                                "pexels" if self._is_pexels_url(url) else (
+                                    "youtube" if self._is_youtube_url(url) else "url"
+                                )
                             )
                             material_svc.store_external_download(
                                 url=url,
                                 local_path=downloaded_path,
                                 source=inferred_source,
+                                source_id=req_source_id,
                             )
                         except Exception as cache_exc:
                             logger.warning(f"Cache write-through failed for {url}: {cache_exc}")

@@ -143,6 +143,33 @@ describe('useRemoteMaterialPrefetch', () => {
     );
   });
 
+  it('uses producer metadata.sourceId (real production field name) for the composite key', async () => {
+    // Regression for analysis §A1: the search producers (searchVideo/Image/
+    // Audio) write `metadata.sourceId` (camelCase), but the old keyFor only
+    // read `metadata.id` / `metadata.video_id`, so production Pexels assets
+    // silently degraded to a url-derived key (not rotation-resilient). The
+    // composite key MUST be (pexels, <video_id>) here, not ('url', hash).
+    const adapter = makeAdapter({
+      source: 'pexels',
+      source_id: '98765',
+      material_id: 'mid-1',
+      status: 'ready',
+      local_url: '/api/storage/files/cached_materials/pexels/98765.mp4',
+    });
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [makeMaterial({ metadata: { source: 'pexels', sourceId: '98765' } })],
+        onPatch,
+        { adapter },
+      ),
+    );
+    await waitFor(() => expect(onPatch).toHaveBeenCalled());
+    expect((adapter as any).lastKey).toEqual(
+      expect.objectContaining({ source: 'pexels', source_id: '98765' }),
+    );
+  });
+
   it('falls back to url-derived source_id when no metadata.id', async () => {
     const adapter = makeAdapter({
       source: 'url',
