@@ -670,14 +670,23 @@ class SubtitleService:
         text_files_dir: str
     ) -> List[str]:
         """
-        Build standard drawtext filters for landscape videos.
-        
+        Build standard drawtext filters for landscape/square videos.
+
+        Each wrapped line is emitted as its own horizontally-centered drawtext
+        (x=(w-text_w)/2 per line), exactly like the portrait path. A single
+        multi-line drawtext box would NOT center the wrapped lines: ffmpeg's
+        drawtext left-aligns every line inside the box (text_w is the widest
+        line), so a short wrapped line would sit flush-left under a longer one
+        instead of centered. Per-line filters keep every wrapped line centered
+        for any line count and any aspect ratio. (ffmpeg's text_align=center
+        would also work but only exists in ffmpeg >= 7.0; production ships 6.x.)
+
         Args:
             subtitles: List of subtitle entries
             request: Subtitle request parameters
             video_width: Video width
             video_height: Video height
-            
+
         Returns:
             List of drawtext filter strings
         """
@@ -687,75 +696,87 @@ class SubtitleService:
             max_line_width = self._calculate_max_line_width(
                 video_width, request.font_size, request.margin_horizontal, video_height
             )
-        
-        # Calculate position
-        if request.position == "top":
-            y_position = request.margin_vertical
-            logger.debug(f"Standard subtitle using TOP position: y={y_position}")
-        elif request.position == "upper-3/4":
-            y_position = f"(h*0.25-text_h/2)"
-            logger.debug(f"Standard subtitle using UPPER-3/4 position: y={y_position}")
-        elif request.position == "center":
-            y_position = f"(h-text_h)/2"
-            logger.debug(f"Standard subtitle using CENTER position: y={y_position}")
-        elif request.position == "lower-3/4":
-            y_position = f"(h*0.75-text_h/2)"
-            logger.debug(f"Standard subtitle using LOWER-3/4 position: y={y_position}")
-        else:  # bottom
-            y_position = f"h-text_h-{request.margin_vertical}"
-            logger.debug(f"Standard subtitle using BOTTOM position: y={y_position}")
-        
-        logger.info(f"Standard subtitle positioning: position={request.position}, y_formula='{y_position}', max_line_width={max_line_width}")
-        
+
+        logger.info(f"Standard subtitle max line width: {max_line_width} characters")
+
         # Build drawtext filters for each subtitle
         drawtext_filters = []
-        
+
         for subtitle in subtitles:
-            # Wrap text
+            # Wrap text into multiple lines
             wrapped_lines = self._wrap_text(subtitle.text, max_line_width)
             if not wrapped_lines:
                 continue
-            
+
             # Convert times to seconds
             start_time = self._convert_time_to_seconds(subtitle.start_time)
             end_time = self._convert_time_to_seconds(subtitle.end_time)
-            
-            # Write subtitle text to a temp file so ffmpeg reads it via textfile=.
-            # This bypasses all text escaping issues (apostrophes, colons, etc.) entirely,
-            # since ffmpeg reads the file content directly without filter-graph parsing.
-            text_file_path = os.path.join(text_files_dir, f"sub_{subtitle.index}.txt")
-            with open(text_file_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(wrapped_lines))  # actual newlines — supported by textfile=
 
-            # Escape path separators and colons for ffmpeg filter syntax
-            escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
-            drawtext_filter = f"drawtext=textfile={escaped_path}"
-            
-            # Add font file if available - pass text content for Chinese character detection
+            # Approximate line height (font size + small padding). Needed because
+            # each line is drawn by its own drawtext, so the block must be
+            # positioned numerically — a single ffmpeg text_h would only describe
+            # one line, not the wrapped block.
+            line_height = request.font_size + 5
+            total_text_height = len(wrapped_lines) * line_height
+
+            # Starting Y position for the whole block, mirroring the portrait path.
+            if request.position == "top":
+                start_y = request.margin_vertical
+            elif request.position == "upper-3/4":
+                start_y = int(video_height * 0.25 - total_text_height // 2)
+            elif request.position == "center":
+                start_y = (video_height - total_text_height) // 2
+            elif request.position == "lower-3/4":
+                start_y = int(video_height * 0.75 - total_text_height // 2)
+            else:  # bottom
+                start_y = video_height - total_text_height - request.margin_vertical
+
+            logger.info(f"Standard subtitle positioning: position={request.position}, start_y={start_y}, total_height={total_text_height}, lines={len(wrapped_lines)}, max_line_width={max_line_width}")
+
+            # Resolve font once per subtitle (same text → same font for every line).
             font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
-            if font_path:
-                # Escape backslashes for ffmpeg
-                escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
-                drawtext_filter += f":fontfile='{escaped_font_path}'"
-            
-            drawtext_filter += (
-                f":fontsize={request.font_size}"
-                f":fontcolor={request.font_color}"
-                f":borderw={request.border_width}"
-                f":bordercolor={request.border_color}"
-                f":x=(w-text_w)/2"
-                f":y={y_position}"
-                f":enable='between(t,{start_time},{end_time})'"
-            )
-            
-            # Add background if specified
             if request.background_color:
                 logger.info(f"Adding background color {request.background_color} to subtitle: '{subtitle.text[:20]}...'")
-                drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
-            else:
-                logger.info(f"No background color specified for subtitle: '{subtitle.text[:20]}...'")
 
-            drawtext_filters.append(drawtext_filter)
+            # Emit one individually-centered drawtext per wrapped line.
+            for line_index, line_text in enumerate(wrapped_lines):
+                if not line_text.strip():
+                    continue
+
+                # Y position for this line within the block.
+                line_y = start_y + (line_index * line_height)
+
+                # Write this line to a temp file so ffmpeg reads it via textfile=,
+                # bypassing all filter-graph escaping issues (apostrophes, colons, etc.).
+                text_file_path = os.path.join(text_files_dir, f"sub_{subtitle.index}_line_{line_index}.txt")
+                with open(text_file_path, 'w', encoding='utf-8') as f:
+                    f.write(line_text)  # single line, no newline needed
+
+                # Escape path separators and colons for ffmpeg filter syntax
+                escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
+                drawtext_filter = f"drawtext=textfile={escaped_path}"
+
+                # Add font file if available
+                if font_path:
+                    # Escape backslashes for ffmpeg
+                    escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
+                    drawtext_filter += f":fontfile='{escaped_font_path}'"
+
+                drawtext_filter += (
+                    f":fontsize={request.font_size}"
+                    f":fontcolor={request.font_color}"
+                    f":borderw={request.border_width}"
+                    f":bordercolor={request.border_color}"
+                    f":x=(w-text_w)/2"  # Center each line individually
+                    f":y={line_y}"
+                    f":enable='between(t,{start_time},{end_time})'"
+                )
+
+                # Add background if specified
+                if request.background_color:
+                    drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
+
+                drawtext_filters.append(drawtext_filter)
 
         return drawtext_filters
 
