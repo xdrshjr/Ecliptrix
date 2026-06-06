@@ -30,6 +30,10 @@ if (_foundLegacy.length > 0) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Desktop (Electron) packaging needs the self-contained `standalone` server
+  // bundle (docs/plans/desktop-electron-packaging spec §2.1). Web builds are
+  // unaffected: without DESKTOP_BUILD=1 the output mode stays the default.
+  output: process.env.DESKTOP_BUILD === '1' ? 'standalone' : undefined,
   images: {
     domains: [],
   },

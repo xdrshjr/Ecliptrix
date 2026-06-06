@@ -1,0 +1,57 @@
+# electron-builder configuration for the Ecliptrix desktop shell.
+# Spec: docs/plans/desktop-electron-packaging/spec.md §2.3 / §3.1
+#
+# The asar archive only contains the Electron shell (main/preload/assets +
+# the first-run .env template). The heavyweight runtime pieces — Next.js
+# standalone frontend, FastAPI backend sources, the embeddable CPython
+# runtime and FFmpeg — are assembled into build/ by scripts/build.js and
+# enter the package as extraResources (kept OUTSIDE asar so python.exe,
+# ffmpeg.exe and Node can read them as plain files).
+appId: com.ecliptrix.desktop
+productName: Ecliptrix
+electronLanguages:
+  - zh-CN
+  - en-US
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - main/**
+  - preload/**
+  - assets/**
+  - scripts/env.template.desktop
+  - package.json
+
+asar: true
+
+extraResources:
+  - from: build/frontend
+    to: frontend
+  - from: build/backend
+    to: backend
+  - from: build/python
+    to: python
+  - from: build/ffmpeg
+    to: ffmpeg
+
+# The package embeds a full Python runtime + node server; nothing to rebuild.
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icons/icon.ico
+  # v1 ships unsigned (spec §7 risk 7) — SmartScreen warning documented in README.
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  artifactName: ${productName}-Setup-${version}.${ext}
+  shortcutName: Ecliptrix

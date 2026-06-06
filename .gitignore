@@ -64,3 +64,10 @@ backend-services/basic-service/static/cached_materials/
 
 # === Transitional safety net for spec/05 V05-A recovery (.env*.local.backup) ===
 *.local.backup
+
+# === Desktop (Electron) packaging (docs/plans/desktop-electron-packaging) ===
+# Root /node_modules/ rule above is anchored, so desktop/ needs its own.
+desktop/node_modules/
+desktop/build/
+desktop/release/
+desktop/cache/

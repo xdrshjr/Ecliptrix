@@ -1,0 +1,5 @@
+# Desktop packaging workspace — everything here is reproducible from scripts/.
+node_modules/
+build/
+release/
+cache/

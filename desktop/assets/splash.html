@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Ecliptrix</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      background: linear-gradient(135deg, #0b1020 0%, #1a1033 60%, #0b1020 100%);
+      color: #e7e9ee;
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    .logo {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #8ab4ff, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid rgba(138, 180, 255, 0.25);
+      border-top-color: #8ab4ff;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #status {
+      font-size: 13px;
+      color: #9aa3b5;
+      min-height: 18px;
+    }
+    .hint { font-size: 11px; color: #5b6478; }
+  </style>
+</head>
+<body>
+  <div class="logo">Ecliptrix</div>
+  <div class="spinner"></div>
+  <p id="status">正在启动…</p>
+  <p class="hint">首次启动需要初始化本地数据,可能稍慢</p>
+  <script>
+    window.setStatus = function (text) {
+      document.getElementById('status').textContent = text
+    }
+  </script>
+</body>
+</html>
