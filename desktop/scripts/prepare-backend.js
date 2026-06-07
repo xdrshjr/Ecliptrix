@@ -60,6 +60,16 @@ function copyBackendSources() {
       filter: (source) => path.basename(source) !== '__pycache__' && !source.endsWith('.pyc'),
     })
   }
+  // Sentinel: config.py's load_dotenv() walks UP from app/ until it finds a
+  // .env — without this stub it can swallow a stray up-tree .env (the repo
+  // root's on the build machine, or any folder the user unpacks into),
+  // silently overriding the zero-config contract. Desktop config must flow
+  // exclusively through the spawn env Electron injects from userData/.env.
+  fs.writeFileSync(
+    path.join(destDir, '.env'),
+    '# Intentionally empty. Desktop backend config is injected by Electron\n' +
+      '# from %APPDATA%/ecliptrix-desktop/.env — do not put keys here.\n'
+  )
   return destDir
 }
 
@@ -79,11 +89,17 @@ async function preparePython(urls, backendDir) {
 
   // The stock ._pth ships with `import site` commented out, which hides
   // pip-installed packages from the embeddable runtime (spec §7 risk 2).
+  // A ._pth also forces isolated mode: sys.path holds ONLY these entries —
+  // the script's own directory is NOT auto-added and PYTHONPATH is ignored —
+  // so ../backend must be listed here or `import app` fails at runtime.
+  // Relative entries resolve against this file's directory; python/ and
+  // backend/ are siblings in both the build/ and resources/ trees, and the
+  // entry sits after Lib/site-packages so it cannot shadow dependencies.
   const pthName = fs.readdirSync(pythonDir).find((name) => name.endsWith('._pth'))
   if (!pthName) throw new Error('python embeddable: ._pth file not found after extract')
   fs.writeFileSync(
     path.join(pythonDir, pthName),
-    [pthName.replace('._pth', '.zip'), '.', 'Lib/site-packages', 'import site', ''].join('\n')
+    [pthName.replace('._pth', '.zip'), '.', 'Lib/site-packages', '../backend', 'import site', ''].join('\n')
   )
 
   const pythonExe = path.join(pythonDir, 'python.exe')
@@ -112,6 +128,17 @@ async function preparePython(urls, backendDir) {
     ['-c', 'import fastapi, cv2, sqlalchemy, aiosqlite, uvicorn; print("backend imports ok")'],
     { env: ISOLATED_PYTHON_ENV }
   )
+
+  // Regression guard for the ._pth sys.path fix: the backend package must be
+  // importable by the bundled runtime. Deliberately `import app`, NOT
+  // `import app.main` — app/__init__.py is side-effect-free, while app.main
+  // would run every service initializer and litter build/backend with
+  // logs/static dirs that then ship in the package. -B keeps the assertion
+  // itself from shipping an app/__pycache__ the same way.
+  run(pythonExe, ['-B', '-c', 'import app; print("backend package import ok")'], {
+    env: ISOLATED_PYTHON_ENV,
+    cwd: backendDir,
+  })
 
   // __pycache__ regenerates at runtime; dropping it trims the payload (risk 4).
   removePycacheDirs(pythonDir)

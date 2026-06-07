@@ -37,10 +37,16 @@ function createBackendDescriptor({ resourcesPath, userDataPath, backendPort, fro
     CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${frontendPort}`,
     DEBUG: 'false',
     // Chinese-locale Windows defaults to GBK; backend logs/paths are UTF-8.
+    // NOTE: the bundled runtime's ._pth forces ignore_environment=1, so these
+    // two are ignored there — the effective UTF-8 switch is the `-X utf8`
+    // spawn arg below. Kept for non-isolated interpreters (dev runs).
     PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
     // A user's own Python 3.11 user site-packages (%APPDATA%\Python) would
     // otherwise shadow the bundled runtime's packages (spec §7 risk 2).
+    // MUST stay: ._pth isolated mode does NOT set no_user_site (measured
+    // flags: isolated=1/ignore_env=1/no_user_site=0), and site.py reads this
+    // var from os.environ at runtime, bypassing ignore_environment.
     PYTHONNOUSERSITE: '1',
   }
   // Bundled FFmpeg first on PATH so the backend's ffmpeg/ffprobe subprocess
@@ -50,7 +56,9 @@ function createBackendDescriptor({ resourcesPath, userDataPath, backendPort, fro
   return {
     name: 'backend',
     command: pythonExe,
-    args: ['run.py'],
+    // -X utf8 (not env vars) because isolated mode ignores PYTHONUTF8 —
+    // without it, child stdout falls back to GBK and Chinese logs garble.
+    args: ['-X', 'utf8', 'run.py'],
     cwd: backendCwd,
     env,
     healthUrl: `http://127.0.0.1:${backendPort}/api/health`,

@@ -4,8 +4,9 @@
 
 .DESCRIPTION
     自包含的打包入口:环境检查 → 根项目与 desktop/ 依赖安装(缺失时)→
-    调用既有 scripts/build.js 打包 →(可选)冒烟测试。脚本只做编排与兜底,
-    所有 prepare / 断言 / 产物输出仍由 scripts/build.js 单点负责。
+    调用既有 scripts/build.js 打包 → 冒烟测试(默认执行,-SkipSmokeTest
+    跳过)。脚本只做编排与兜底,所有 prepare / 断言 / 产物输出仍由
+    scripts/build.js 单点负责。
 
     脚本以 $PSScriptRoot 自我定位,与调用方当前目录无关;可在资源管理器
     右键「使用 PowerShell 运行」,或在任意终端中执行。
@@ -42,7 +43,8 @@ param(
     [switch]$CnMirror,      # npm registry + Electron 镜像,并透传 --cn-mirror
     [switch]$Clean,         # 只清理 build/ 与 release/ 后退出(透传 --clean)
     [switch]$SkipInstall,   # 跳过两处 npm install 探测(复用现有 node_modules)
-    [switch]$SmokeTest,     # 打包成功后追加 node scripts/smoke-test.js
+    [switch]$SkipSmokeTest, # 跳过打包后的 node scripts/smoke-test.js(默认执行——
+                            # 它能当场拦下"打包后端起不来"这类坏包,不该是可选项)
     [switch]$NoPause        # 结束时不暂停(CI / 终端用户)
 )
 
@@ -256,8 +258,11 @@ try {
         if ($CnMirror) { $buildArgv += '--cn-mirror' }
         Invoke-Native 'node' $buildArgv $DESKTOP_ROOT
 
-        # 7. 可选冒烟测试。
-        if ($SmokeTest) {
+        # 7. 冒烟测试(默认执行,出厂门禁;-SkipSmokeTest 显式跳过)。
+        if ($SkipSmokeTest) {
+            Write-Host '  -SkipSmokeTest:跳过冒烟测试(产物未经启动验证)'
+        }
+        else {
             $script:phase = 'smoke'
             Write-Section '冒烟测试(scripts/smoke-test.js)'
             $smokeJs = Join-Path (Join-Path $DESKTOP_ROOT 'scripts') 'smoke-test.js'

@@ -51,7 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File desktop/build.ps1 -Dir
 | `-CnMirror` | npm registry + Electron 下载镜像 + 全链路国内镜像 | `--cn-mirror` |
 | `-Clean` | 只清理 build/ 与 release/ 后退出(优先于其余参数) | `--clean` |
 | `-SkipInstall` | 跳过两处 npm install 探测(复用现有 node_modules) | — |
-| `-SmokeTest` | 打包成功后追加 `node scripts/smoke-test.js` | — |
+| `-SkipSmokeTest` | 跳过打包后默认执行的 `node scripts/smoke-test.js` | — |
 | `-NoPause` | 结束时不暂停(CI / 终端用户) | — |
 
 退出码:`0` 成功 / `2` 环境检查失败(node/npm 缺失或 node < 18.18)/

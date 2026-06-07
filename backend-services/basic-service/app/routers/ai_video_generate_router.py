@@ -6,7 +6,7 @@ Handles API endpoints for AI-powered video timeline generation from multiple inp
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
-from app.services.ai_video_generate_service import ai_video_generate_service
+from app.services.ai_video_generate_service import AIVideoGenerateService
 from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 
@@ -128,6 +128,21 @@ async def generate_video_timeline(request: AIVideoGenerateRequest):
                 'maxTokens': request.config.maxTokens,
             }
         
+        # Initialize service lazily (same pattern as ai_mixed_editing_router):
+        # __init__ raises ValueError when VIDEO_CUT_LLM_* is unconfigured, so
+        # a missing key must fail this request only — never backend startup.
+        try:
+            ai_video_generate_service = AIVideoGenerateService()
+        except ValueError as e:
+            logger.error(
+                f"[AI Video Generate] Service initialization failed: {str(e)}",
+                extra={"node_id": request.nodeId, "task_id": request.taskId}
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"AI video generate service not properly configured: {str(e)}"
+            )
+
         # Generate timeline
         logger.info(f"[AI Video Generate] Generating timeline for node: {request.nodeId}")
         timeline_data = await ai_video_generate_service.generate_video_timeline(

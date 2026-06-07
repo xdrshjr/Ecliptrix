@@ -443,6 +443,9 @@ class AIVideoGenerateService:
             raise Exception(error_msg)
 
 
-# Create singleton instance
-ai_video_generate_service = AIVideoGenerateService()
+# NOTE: no module-level singleton here on purpose. __init__ raises ValueError
+# when VIDEO_CUT_LLM_* is unconfigured, and this module sits on the startup
+# import chain (routers/__init__ -> router -> here) — instantiating at import
+# time killed the whole backend on zero-config desktop installs. The router
+# instantiates per request instead, mirroring ai_mixed_editing_router.
 

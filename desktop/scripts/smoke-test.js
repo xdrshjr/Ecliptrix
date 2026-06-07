@@ -9,7 +9,10 @@ const { spawn, spawnSync } = require('child_process')
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
 
-const STARTUP_TIMEOUT_MS = 90 * 1000
+// Must stay >= backendService.js healthTimeoutMs (120s): cold start is a
+// measured 60-70s, and a smoke deadline below the app's own would fail the
+// build before the app even times out on slow disks.
+const STARTUP_TIMEOUT_MS = 120 * 1000
 const SHUTDOWN_TIMEOUT_MS = 30 * 1000
 const SMOKE_USERNAME = 'smokeadmin'
 const SMOKE_PASSWORD = 'smoke-test-password-1'
@@ -113,9 +116,15 @@ async function main() {
   console.log(`[smoke-test] userData: ${userDataDir}`)
 
   console.log(`[smoke-test] launching ${exePath}`)
+  // Strip ELECTRON_RUN_AS_NODE: agent harnesses / Electron-spawned terminals
+  // set it, which turns Ecliptrix.exe into plain Node — it then rejects
+  // --user-data-dir with "bad option" and the smoke gate false-fails.
+  const childEnv = { ...process.env }
+  delete childEnv.ELECTRON_RUN_AS_NODE
   const child = spawn(exePath, [`--user-data-dir=${userDataDir}`], {
     stdio: 'ignore',
     detached: false,
+    env: childEnv,
   })
   let exited = false
   child.on('exit', () => {
@@ -123,7 +132,7 @@ async function main() {
   })
 
   try {
-    // 1. Both services healthy within 90s.
+    // 1. Both services healthy within STARTUP_TIMEOUT_MS.
     const deadline = Date.now() + STARTUP_TIMEOUT_MS
     let ports = readPorts(userDataDir)
     let healthy = false
