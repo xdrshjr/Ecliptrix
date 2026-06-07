@@ -63,7 +63,9 @@ const getConfig = async (): Promise<ResolvedConfig> => {
   const apiType = normalizeApiType(process.env.LLM_API_TYPE)
 
   if (!apiKey) {
-    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.')
+    // Actionable copy: the chat UI surfaces this message verbatim, so point
+    // the user at the in-app fix instead of an env-var stack trace.
+    throw new Error('尚未配置 AI 模型凭证,请前往 设置 → 模型设置 完成配置 (AI model not configured — open Settings → Model Settings)')
   }
 
   return { apiUrl, apiKey, model, apiType, temperature: 0.7, maxTokens: 2000 }

@@ -91,14 +91,31 @@ node scripts/build.js [--dir] [--skip-frontend] [--skip-backend] [--cn-mirror]
 release-essentials 构建(GPL,许可证文本随包发布);国内网络不通时请用
 `ECLIPTRIX_FFMPEG_URL` 指向可达的 zip 包。
 
+## 首次启动与配置
+
+打包产物双击即开——**不需要预先配置任何 API key**:
+
+1. 启动后进入登录页,用 `.env` 中的 `ROOT_USERNAME` / `ROOT_PASSWORD`
+   (默认 `admin` / `change_me_on_first_run`)登录;
+2. 首次登录会弹出配置引导(管理员可见),点「前往设置」直达
+   设置 → 模型设置:添加服务商 → 测试连接 → 分配给功能(对话/混剪/视觉理解);
+3. 配置保存后引导与设置入口的琥珀色提醒点自动消失,AI 功能即刻可用。
+
+`.env`(`%APPDATA%\Ecliptrix\.env`)仍可作为高级/批量配置通道:填入真实的
+`LLM_API_KEY` 等值后重启即生效(作为环境变量回退,优先级低于应用内设置);
+`your_*_here` 占位值会被启动器自动忽略。从旧版本升级的存量 `.env` 中若有
+不带 `_here` 后缀的火山 TTS 占位行(`your_volcano_tts_*`),请手动删除,
+否则会被当作真实凭证在调用期报鉴权错误。
+
 ## 冒烟测试(对打包产物)
 
 ```bash
 node scripts/smoke-test.js [--unpacked <path>]   # 默认 release/win-unpacked
 ```
 
-流程:临时 userData + 预写 .env → 拉起 exe → 90 秒内两个服务健康 → 登录 API →
-鉴权读取工程列表(SQLite 链路)→ 正常退出 → 断言无残留进程、SQLite 文件已生成。
+流程:临时 userData + 预写仅含 ROOT 账号的 .env(零 LLM 配置)→ 拉起 exe →
+90 秒内两个服务健康 → 登录 API → llm-status 返回未配置 → 鉴权读取工程列表
+(SQLite 链路)→ 正常退出 → 断言无残留进程、SQLite 文件已生成。
 
 ## 开发模式
 
@@ -110,9 +127,10 @@ npm run dev            # Electron 直连 http://localhost:3000,不拉起子进�
 
 ## 用户侧配置
 
-首次启动会把内置模板复制为 `%APPDATA%\Ecliptrix\.env`。`LLM_API_KEY` / `LLM_API_URL`
-为必填项,缺失时应用会弹出「打开配置文件 / 重新检测 / 退出」引导。其余密钥
-(Pexels / ARK / 火山 TTS 等)均可选,缺失时对应功能自动降级。
+首次启动会把内置模板复制为 `%APPDATA%\Ecliptrix\.env`。LLM 凭证推荐在应用内
+「设置 → 模型设置」中配置(见上方「首次启动与配置」);`.env` 中的 LLM 键仅作
+环境变量回退。其余密钥(Pexels / ARK / 火山 TTS 等)均可选,缺失时对应功能
+自动降级;`your_*_here` 占位值会被启动器忽略,不会注入子进程。
 
 以下值由主进程注入,用户在 .env 中配置不生效:`DATABASE_URL`、`STORAGE_ROOT`、
 `HOST/PORT`、`CORS_ALLOWED_ORIGINS`。端口可在 `desktop-config.json` 中固定

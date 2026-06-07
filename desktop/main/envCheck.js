@@ -1,10 +1,11 @@
 'use strict'
 
 const fs = require('fs')
-const { dialog, shell } = require('electron')
 
-// Backend config.py has no defaults for these two keys — without them the
-// FastAPI child refuses to boot (spec §2.2 step 3).
+// Round 3: these keys are no longer a startup gate — the backend only logs a
+// warning when they are empty (app/main.py) and the in-app setup guide walks
+// the user through Settings → Model Settings instead. We still report them
+// via loadUserEnv().missing so index.js can log the first-run state.
 const REQUIRED_KEYS = ['LLM_API_KEY', 'LLM_API_URL']
 // env.template placeholders look like `your_llm_api_key_here`.
 const PLACEHOLDER_PATTERN = /^your_.*_here$/i
@@ -39,31 +40,24 @@ function missingRequiredKeys(env) {
 }
 
 /**
- * Block until userData/.env contains the required keys (spec §2.2 step 3).
- * Returns the parsed env object, or null when the user chooses to quit.
+ * Non-blocking replacement for ensureRequiredEnv (round 3).
+ * Strips placeholder values (your_*_here) for ALL keys so they never reach
+ * child processes as fake credentials, then reports which required keys are
+ * still missing. Never shows a dialog, never blocks startup.
+ * @returns {{ env: Record<string,string>, missing: string[] }}
  */
-function ensureRequiredEnv(envPath) {
-  for (;;) {
-    const env = parseEnvFile(envPath)
-    const missing = missingRequiredKeys(env)
-    if (missing.length === 0) return env
-
-    const choice = dialog.showMessageBoxSync({
-      type: 'warning',
-      title: 'Ecliptrix 配置缺失',
-      message: `以下必填配置缺失或仍为占位值:${missing.join('、')}`,
-      detail: `请在配置文件中填入真实值后点击「我已配置,重新检测」:\n${envPath}`,
-      buttons: ['打开配置文件', '我已配置,重新检测', '退出'],
-      defaultId: 0,
-      cancelId: 2,
-    })
-    if (choice === 0) {
-      shell.openPath(envPath)
-    } else if (choice === 2) {
-      return null
-    }
-    // choice === 1 → loop re-parses the file and re-validates.
+function loadUserEnv(envPath) {
+  const raw = parseEnvFile(envPath)
+  const env = {}
+  for (const [key, value] of Object.entries(raw)) {
+    // Stripping placeholders for every key (not just REQUIRED_KEYS) is
+    // deliberate: a placeholder PEXELS_API_KEY would otherwise be injected as
+    // a real-looking key and turn "not configured → graceful degradation"
+    // into "401 at call time".
+    if (PLACEHOLDER_PATTERN.test(String(value).trim())) continue
+    env[key] = value
   }
+  return { env, missing: missingRequiredKeys(env) }
 }
 
-module.exports = { parseEnvFile, missingRequiredKeys, ensureRequiredEnv, REQUIRED_KEYS }
+module.exports = { parseEnvFile, missingRequiredKeys, loadUserEnv, REQUIRED_KEYS, PLACEHOLDER_PATTERN }

@@ -98,15 +98,13 @@ async function main() {
     fail(`Ecliptrix.exe not found at ${exePath} — run \`npm run build:dir\` first`)
   }
 
-  // Isolated userData with a pre-written .env so the config dialog never
-  // appears (spec §6.2). Placeholder-pattern keys would fail envCheck.
+  // Isolated userData with a ROOT-only .env — deliberately NO LLM keys.
+  // Round 3's core regression: the app must fully start, log in and read the
+  // DB with zero LLM configuration (the in-app setup guide handles the rest).
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-smoke-'))
   fs.writeFileSync(
     path.join(userDataDir, '.env'),
     [
-      `LLM_API_KEY=${process.env.SMOKE_LLM_API_KEY || 'smoke-test-key'}`,
-      `LLM_API_URL=${process.env.SMOKE_LLM_API_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'}`,
-      'LLM_MODEL=qwen3-next-80b-a3b-instruct',
       `ROOT_USERNAME=${SMOKE_USERNAME}`,
       `ROOT_PASSWORD=${SMOKE_PASSWORD}`,
       '',
@@ -152,6 +150,19 @@ async function main() {
     const sessionToken = loginBody.session_token || loginBody.token
     if (!loginBody.success || !sessionToken) fail(`login response missing session token: ${login.body.slice(0, 300)}`)
     console.log('[smoke-test] login ok')
+
+    // 2.5. Zero-config status endpoint: configured must be false (we wrote no
+    //      LLM keys), and success must be true — success:false signals a
+    //      resolution fault (R4) which is a failure here, not "unconfigured".
+    const llmStatus = await httpRequest('GET', `http://127.0.0.1:${ports.backend}/api/config/llm-status`)
+    if (llmStatus.status !== 200) {
+      fail(`GET /api/config/llm-status returned HTTP ${llmStatus.status}: ${llmStatus.body.slice(0, 300)}`)
+    }
+    const llmStatusBody = JSON.parse(llmStatus.body)
+    if (llmStatusBody.success !== true || llmStatusBody.data.configured !== false) {
+      fail(`unexpected llm-status payload (want success=true configured=false): ${llmStatus.body.slice(0, 300)}`)
+    }
+    console.log('[smoke-test] llm-status reports unconfigured ok')
 
     // 3. Authenticated SQLite read through the auth chain.
     const projects = await httpRequest('GET', `http://127.0.0.1:${ports.backend}/api/video-projects`, {

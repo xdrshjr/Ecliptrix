@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { http, ApiError, MissingAuthError, SessionExpiredError } from '@/lib/api/http-client';
+import ModelQuickStartCard from './components/ModelQuickStartCard';
 
 // ── API response envelope types (loose-typed because the backend response
 //    shapes vary across the model-settings endpoints) ──
@@ -419,6 +420,8 @@ const ModelSettingsPanel: React.FC = () => {
       }
       if (data.success) {
         showSuccess(t.adminSettings.modelProviderSaved);
+        // 通知首页引导/徽标实时刷新 LLM 配置状态
+        window.dispatchEvent(new Event('ecliptrix-llm-config-updated'));
         setProviderForm(null);
         await fetchData();
       } else {
@@ -597,6 +600,8 @@ const ModelSettingsPanel: React.FC = () => {
       );
       if (data.success) {
         showSuccess(t.adminSettings.modelAssignmentSaved);
+        // 通知首页引导/徽标实时刷新 LLM 配置状态
+        window.dispatchEvent(new Event('ecliptrix-llm-config-updated'));
         await fetchData();
       } else {
         showError(data.detail || t.adminSettings.modelSaveError);
@@ -902,9 +907,7 @@ const ModelSettingsPanel: React.FC = () => {
         })}
 
         {savedProviders.length === 0 && !providerForm && (
-          <div className="p-6 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
-            {t.adminSettings.modelNoProviders}
-          </div>
+          <ModelQuickStartCard onAddProvider={() => openProviderForm()} />
         )}
       </div>
 
@@ -1206,8 +1209,17 @@ const ModelSettingsPanel: React.FC = () => {
       </p>
 
       {savedProviders.length === 0 ? (
-        <div className="p-6 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
-          {t.adminSettings.modelNoProviders}
+        <div className="rounded-xl border border-primary/20 bg-gradient-to-b from-primary/5 to-transparent p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t.adminSettings.modelAssignmentsNeedProvider}
+          </p>
+          <button
+            type="button"
+            onClick={() => setActiveTab('providers')}
+            className="mt-4 px-3 py-1.5 text-sm font-medium rounded-md border border-border text-foreground hover:bg-accent transition-colors"
+          >
+            {t.adminSettings.modelAssignmentsGoProviders}
+          </button>
         </div>
       ) : (
         <div className="space-y-4">

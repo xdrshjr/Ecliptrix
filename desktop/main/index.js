@@ -4,7 +4,7 @@ const path = require('path')
 const { app, dialog } = require('electron')
 
 const { initUserData, saveConfig } = require('./config')
-const { ensureRequiredEnv } = require('./envCheck')
+const { loadUserEnv } = require('./envCheck')
 const { pickPort } = require('./ports')
 const { ManagedService } = require('./processManager')
 const { createBackendDescriptor } = require('./backendService')
@@ -96,11 +96,10 @@ async function main() {
     return
   }
 
-  const userEnv = ensureRequiredEnv(envPath)
-  if (!userEnv) {
-    state.logger.log('main', 'user declined required env configuration — quitting')
-    app.quit()
-    return
+  const { env: userEnv, missing } = loadUserEnv(envPath)
+  if (missing.length > 0) {
+    // Round 3: do NOT block — the renderer shows an in-app setup guide instead.
+    state.logger.log('main', `config incomplete (${missing.join(', ')}) — starting anyway; in-app setup guide will prompt`)
   }
   state.userEnv = userEnv
 

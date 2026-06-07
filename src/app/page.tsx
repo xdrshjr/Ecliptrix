@@ -8,9 +8,16 @@ import Footer from '@/components/Footer';
 import LoginModal from '@/components/LoginModal';
 import UserProfilePage from '@/components/UserProfile/UserProfilePage';
 import AdminSettingsPage from '@/components/AdminSettings/AdminSettingsPage';
+import { SettingsMenuItem } from '@/components/AdminSettings/SettingsSidebar';
+import SetupGuideDialog from '@/components/Onboarding/SetupGuideDialog';
 import LandingPage from '@/components/HomePage/LandingPage';
 import { useTasks } from '@/hooks/useTasks';
+import { useLlmConfigStatus } from '@/hooks/useLlmConfigStatus';
 import { useAuth } from '@/contexts/AuthContext';
+
+// Session-scoped (not localStorage): re-prompt on next launch if still
+// unconfigured, but never twice in one session.
+const SETUP_GUIDE_DISMISSED_KEY = 'ecliptrix-setup-guide-dismissed';
 
 export default function HomePage() {
   const {
@@ -26,7 +33,7 @@ export default function HomePage() {
   } = useTasks();
 
   // 获取认证状态
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, canManageUsers } = useAuth();
 
   // 登录弹窗状态
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -35,8 +42,40 @@ export default function HomePage() {
   const [profileInitialSection, setProfileInitialSection] = useState<'userInfo' | 'otherSettings'>('userInfo');
   // 管理员设置页面状态
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialItem, setSettingsInitialItem] = useState<SettingsMenuItem>('userManagement');
   // Chat modal状态 - 用于模糊taskbar
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+
+  // LLM 凭证状态与首次配置引导（仅管理员可修复，故仅为其发请求 — R5）
+  const { status: llmStatus, refresh: refreshLlmStatus } =
+    useLlmConfigStatus(isAuthenticated && canManageUsers);
+  const [setupGuideDismissed, setSetupGuideDismissed] = useState<boolean>(() => {
+    // sessionStorage may throw in restricted webviews — degrade to "always
+    // remind" instead of crashing (risk #6, same convention as playbackFlags).
+    try {
+      return typeof window !== 'undefined'
+        && window.sessionStorage.getItem(SETUP_GUIDE_DISMISSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const dismissSetupGuide = () => {
+    try {
+      window.sessionStorage.setItem(SETUP_GUIDE_DISMISSED_KEY, '1');
+    } catch { /* ignore — degrade to per-render reminder */ }
+    setSetupGuideDismissed(true);
+  };
+
+  const openSettingsAt = (item: SettingsMenuItem) => {
+    setSettingsInitialItem(item);
+    setIsProfileOpen(false);
+    setIsSettingsOpen(true);
+  };
+
+  const showSetupGuide =
+    isAuthenticated && canManageUsers && llmStatus === 'unconfigured' &&
+    !setupGuideDismissed && !isSettingsOpen && !isProfileOpen; // R6: 不盖个人资料页
 
   // 检查是否显示着陆页（无任务时显示）
   const showLandingPage = tabs.length === 0 && !isSettingsOpen && !isProfileOpen;
@@ -84,6 +123,7 @@ export default function HomePage() {
           setIsProfileOpen(true);
         }}
         onHomeClick={handleReturnHome}
+        showSettingsAttention={llmStatus === 'unconfigured'}
       />
       
       {/* Main Layout - Header 下方的内容区域 */}
@@ -111,7 +151,15 @@ export default function HomePage() {
             />
           ) : isSettingsOpen ? (
             /* Admin Settings Page - 占据右侧内容区域 */
-            <AdminSettingsPage onClose={() => setIsSettingsOpen(false)} />
+            <AdminSettingsPage
+              initialItem={settingsInitialItem}
+              onClose={() => {
+                setIsSettingsOpen(false);
+                setSettingsInitialItem('userManagement');
+                // 用户可能刚在设置中保存了模型凭证 — 关闭即刷新状态
+                refreshLlmStatus();
+              }}
+            />
           ) : isProfileOpen ? (
             /* User Profile Page - 占据右侧内容区域 */
             <UserProfilePage
@@ -139,10 +187,20 @@ export default function HomePage() {
       </div>
 
       {/* Login Modal - 全屏显示 */}
-      <LoginModal 
-        isOpen={isLoginModalOpen} 
-        onClose={() => setIsLoginModalOpen(false)} 
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+      />
+
+      {/* 首次配置引导 - 管理员且 LLM 凭证未配置时弹出 */}
+      <SetupGuideDialog
+        open={showSetupGuide}
+        onGoToSettings={() => {
+          dismissSetupGuide();
+          openSettingsAt('modelSettings');
+        }}
+        onDismiss={dismissSetupGuide}
       />
     </div>
   );
-} 
+}

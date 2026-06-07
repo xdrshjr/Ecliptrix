@@ -14,11 +14,12 @@ import RateLimitSettings from './RateLimitSettings';
 
 interface AdminSettingsPageProps {
   onClose: () => void;
+  initialItem?: SettingsMenuItem;
 }
 
-const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose }) => {
+const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onClose, initialItem }) => {
   const { t } = useLocale();
-  const [activeItem, setActiveItem] = useState<SettingsMenuItem>('userManagement');
+  const [activeItem, setActiveItem] = useState<SettingsMenuItem>(initialItem ?? 'userManagement');
 
   useEffect(() => {
     const trigger =

@@ -234,6 +234,12 @@ export interface Translations {
     modelProviderInUse: string;
     modelAssignmentSaved: string;
     modelAssignmentDeleted: string;
+    // Model settings quick-start empty states (desktop-config-free-startup)
+    modelQuickStartTitle: string;
+    modelQuickStartDesc: string;
+    modelQuickStartAddProvider: string;
+    modelAssignmentsNeedProvider: string;
+    modelAssignmentsGoProviders: string;
     // Tab layout & provider enhancements
     tabProviders: string;
     tabAssignments: string;
@@ -2428,6 +2434,19 @@ export interface Translations {
     goHome: string;
     goBack: string;
   };
+  setupGuide: {
+    title: string;
+    description: string;
+    stepProviderTitle: string;
+    stepProviderDesc: string;
+    stepTestTitle: string;
+    stepTestDesc: string;
+    stepAssignTitle: string;
+    stepAssignDesc: string;
+    goToSettings: string;
+    later: string;
+    settingsAttentionHint: string;
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -2667,6 +2686,12 @@ export const translations: Record<string, Translations> = {
       modelProviderInUse: 'This provider is used by the following features',
       modelAssignmentSaved: 'Assignment saved',
       modelAssignmentDeleted: 'Assignment deleted',
+      // Model settings quick-start empty states (desktop-config-free-startup)
+      modelQuickStartTitle: 'Quick Start',
+      modelQuickStartDesc: 'Connect an AI model in three steps to unlock chat, mixed editing and visual understanding.',
+      modelQuickStartAddProvider: 'Add Provider',
+      modelAssignmentsNeedProvider: 'Add a provider first, then assign models to each feature.',
+      modelAssignmentsGoProviders: 'Go add a provider',
       // Tab layout & provider enhancements
       tabProviders: 'Provider Management',
       tabAssignments: 'Model Assignment',
@@ -4877,6 +4902,19 @@ export const translations: Record<string, Translations> = {
       goHome: 'Back to home',
       goBack: 'Go back',
     },
+    setupGuide: {
+      title: 'Welcome to Ecliptrix',
+      description: 'AI features need a model API credential before they can run. Browsing and editing your materials works right away — configure a model whenever you are ready.',
+      stepProviderTitle: 'Add a model provider',
+      stepProviderDesc: 'Enter the API URL and key of your AI provider',
+      stepTestTitle: 'Test the connection',
+      stepTestDesc: 'Verify the key works with one click',
+      stepAssignTitle: 'Assign it to features',
+      stepAssignDesc: 'Pick models for chat, mixed editing and vision',
+      goToSettings: 'Go to Settings',
+      later: 'Maybe later',
+      settingsAttentionHint: 'Model credentials need configuration',
+    },
   },
   'zh-CN': {
     common: {
@@ -5114,6 +5152,12 @@ export const translations: Record<string, Translations> = {
       modelProviderInUse: '此供应商正被以下功能使用',
       modelAssignmentSaved: '分配已保存',
       modelAssignmentDeleted: '分配已删除',
+      // Model settings quick-start empty states (desktop-config-free-startup)
+      modelQuickStartTitle: '快速开始',
+      modelQuickStartDesc: '三步接入 AI 模型，解锁对话、混剪与视觉理解能力。',
+      modelQuickStartAddProvider: '添加服务商',
+      modelAssignmentsNeedProvider: '先添加一个服务商，再为各功能分配模型。',
+      modelAssignmentsGoProviders: '去添加服务商',
       // Tab layout & provider enhancements
       tabProviders: '供应商管理',
       tabAssignments: '模型分配',
@@ -7322,6 +7366,19 @@ export const translations: Record<string, Translations> = {
       description: '您访问的页面不存在或已被移除。',
       goHome: '返回首页',
       goBack: '返回上一页',
+    },
+    setupGuide: {
+      title: '欢迎使用 Ecliptrix',
+      description: 'AI 功能需要先配置模型 API 凭证才能使用。素材浏览与剪辑不受影响——您可以随时完成配置。',
+      stepProviderTitle: '添加模型服务商',
+      stepProviderDesc: '填入 AI 服务商的 API 地址与密钥',
+      stepTestTitle: '测试连接',
+      stepTestDesc: '一键验证密钥是否可用',
+      stepAssignTitle: '分配给功能',
+      stepAssignDesc: '为对话、混剪、视觉理解选择模型',
+      goToSettings: '前往设置',
+      later: '稍后再说',
+      settingsAttentionHint: '模型凭证待配置',
     },
   },
 };
