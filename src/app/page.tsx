@@ -132,11 +132,9 @@ export default function HomePage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* 桌面端自绘标题栏 - 浏览器端渲染 null,零影响(spec §2.3e) */}
-      <DesktopTitleBar />
-
-      {/* Header - 固定在顶部 */}
-      <Header
+      {/* 桌面端自绘标题栏 - 浏览器端渲染 null,零影响。动作簇(语言/主题/设置/用户)
+          随同名回调并入标题栏,与 Header 同源(spec §2.3e)。 */}
+      <DesktopTitleBar
         onLoginClick={() => setIsLoginModalOpen(true)}
         onProfileClick={() => setIsProfileOpen(true)}
         onSettingsClick={() => setIsSettingsOpen(true)}
@@ -145,9 +143,25 @@ export default function HomePage() {
           setProfileInitialSection('otherSettings');
           setIsProfileOpen(true);
         }}
-        onHomeClick={handleReturnHome}
         showSettingsAttention={llmStatus === 'unconfigured'}
       />
+
+      {/* Header - 固定在顶部;桌面端不渲染(改由标题栏承载动作),用 ready(=hydrated)
+          闸门确保 isDesktop() 仅在水合后求值,两端首帧一致、无水合不一致(spec §2.2)。 */}
+      {ready && !isDesktop() && (
+        <Header
+          onLoginClick={() => setIsLoginModalOpen(true)}
+          onProfileClick={() => setIsProfileOpen(true)}
+          onSettingsClick={() => setIsSettingsOpen(true)}
+          onAccountSettingsClick={() => {
+            setIsSettingsOpen(false);
+            setProfileInitialSection('otherSettings');
+            setIsProfileOpen(true);
+          }}
+          onHomeClick={handleReturnHome}
+          showSettingsAttention={llmStatus === 'unconfigured'}
+        />
+      )}
 
       {/* Main Layout - Header 下方的内容区域 */}
       <div className="flex-1 flex overflow-hidden">
