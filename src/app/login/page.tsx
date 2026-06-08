@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import LoginModal from '@/components/LoginModal';
+import DesktopTitleBar from '@/components/desktop/DesktopTitleBar';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
@@ -38,16 +39,21 @@ function LoginPageContent() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background">
-      {reason === 'session-expired' && (
-        <div
-          role="alert"
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-md bg-yellow-100 text-yellow-900 text-sm shadow"
-        >
-          会话已过期，请重新登录 / Your session has expired. Please log in again.
-        </div>
-      )}
-      <LoginModal isOpen={open} onClose={handleClose} />
+    // Frameless desktop fallback route — give it the self-drawn title bar so
+    // the window still has drag/minimize/close controls (spec §2.3e).
+    <div className="min-h-screen flex flex-col">
+      <DesktopTitleBar />
+      <div className="flex-1 min-h-0 w-full flex items-center justify-center bg-background">
+        {reason === 'session-expired' && (
+          <div
+            role="alert"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-md bg-yellow-100 text-yellow-900 text-sm shadow"
+          >
+            会话已过期，请重新登录 / Your session has expired. Please log in again.
+          </div>
+        )}
+        <LoginModal isOpen={open} onClose={handleClose} />
+      </div>
     </div>
   );
 }

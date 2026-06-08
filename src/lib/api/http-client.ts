@@ -25,6 +25,7 @@ import {
   SESSION_USER_KEY,
   clearSessionToken,
 } from '@/lib/auth/storage-keys';
+import { isDesktop } from '@/lib/desktop/isDesktop';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -180,6 +181,13 @@ function handleSessionExpired(): void {
     window.dispatchEvent(new CustomEvent('ecliptrix:session-expired'));
   } catch {
     // CustomEvent unavailable — extremely rare. Swallow.
+  }
+
+  // Desktop has no meaningful /login route — AuthContext re-runs silent
+  // auto-login off the `ecliptrix:session-expired` event instead. Redirecting
+  // here would race that and flash the login page (spec §2.2d).
+  if (isDesktop()) {
+    return;
   }
 
   const currentPath = window.location?.pathname ?? '';

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from '@/components/Header';
 import VerticalTaskbar from '@/components/VerticalTaskbar';
 import Container from '@/components/Container';
@@ -11,9 +11,11 @@ import AdminSettingsPage from '@/components/AdminSettings/AdminSettingsPage';
 import { SettingsMenuItem } from '@/components/AdminSettings/SettingsSidebar';
 import SetupGuideDialog from '@/components/Onboarding/SetupGuideDialog';
 import LandingPage from '@/components/HomePage/LandingPage';
+import DesktopTitleBar from '@/components/desktop/DesktopTitleBar';
 import { useTasks } from '@/hooks/useTasks';
 import { useLlmConfigStatus } from '@/hooks/useLlmConfigStatus';
 import { useAuth } from '@/contexts/AuthContext';
+import { isDesktop } from '@/lib/desktop/isDesktop';
 
 // Session-scoped (not localStorage): re-prompt on next launch if still
 // unconfigured, but never twice in one session.
@@ -30,10 +32,23 @@ export default function HomePage() {
     closeTab,
     closeAllTabs,
     updateTask,
+    hydrated,
   } = useTasks();
 
   // 获取认证状态
   const { isAuthenticated, isLoading, canManageUsers } = useAuth();
+
+  // 桌面端:水合 + 静默登录完成后,若无持久化标签则自动打开一个视频剪辑任务,
+  // 直达剪辑工作区(spec §2.2f)。等待 isAuthenticated 才创建,确保工程列表请求
+  // 已携带 token,规避 401。只执行一次。
+  const didAutoOpenRef = useRef(false);
+  useEffect(() => {
+    if (!isDesktop() || didAutoOpenRef.current) return;
+    if (!hydrated || isLoading || !isAuthenticated) return; // 等水合 + 等静默登录
+    if (tabs.length > 0) return;                            // 已有持久化标签则不打扰
+    didAutoOpenRef.current = true;
+    createTask('video');
+  }, [hydrated, isLoading, isAuthenticated, tabs.length, createTask]);
 
   // 登录弹窗状态
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -77,9 +92,14 @@ export default function HomePage() {
     isAuthenticated && canManageUsers && llmStatus === 'unconfigured' &&
     !setupGuideDismissed && !isSettingsOpen && !isProfileOpen; // R6: 不盖个人资料页
 
-  // 检查是否显示着陆页（无任务时显示）
-  const showLandingPage = tabs.length === 0 && !isSettingsOpen && !isProfileOpen;
-  
+  // 跳过着陆页须以 hydrated 为闸门:isDesktop() 在 SSR 期恒为 false,直接写进
+  // 渲染期分支会导致水合不一致 + 桌面端闪现一帧 LandingPage(spec §2.2e / R1)。
+  // 水合前两端都渲染中性占位;水合后桌面端因 !isDesktop() 恒为 false 落到 Container。
+  const ready = hydrated;
+  const showBootPlaceholder = !ready;
+  const showLandingPage =
+    ready && tabs.length === 0 && !isSettingsOpen && !isProfileOpen && !isDesktop();
+
   // 检查当前是否有活跃任务（活跃任务时隐藏Footer以最大化工作区域）
   const hasActiveTask = !!activeTask;
 
@@ -112,6 +132,9 @@ export default function HomePage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      {/* 桌面端自绘标题栏 - 浏览器端渲染 null,零影响(spec §2.3e) */}
+      <DesktopTitleBar />
+
       {/* Header - 固定在顶部 */}
       <Header
         onLoginClick={() => setIsLoginModalOpen(true)}
@@ -125,9 +148,14 @@ export default function HomePage() {
         onHomeClick={handleReturnHome}
         showSettingsAttention={llmStatus === 'unconfigured'}
       />
-      
+
       {/* Main Layout - Header 下方的内容区域 */}
       <div className="flex-1 flex overflow-hidden">
+        {showBootPlaceholder ? (
+          /* 水合前的中性占位:纯背景,既非 LandingPage 亦非编辑器,SSR/客户端首帧一致(R1) */
+          <div className="flex-1 flex items-center justify-center bg-background" />
+        ) : (
+          <>
         {/* Vertical Taskbar - 左侧边栏，仅在有任务时显示 */}
         {!showLandingPage && (
           <VerticalTaskbar
@@ -138,7 +166,7 @@ export default function HomePage() {
             isBlurred={isChatModalOpen}
           />
         )}
-        
+
         {/* Main Content Area - 右侧内容区域 */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {showLandingPage ? (
@@ -184,6 +212,8 @@ export default function HomePage() {
             </>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Login Modal - 全屏显示 */}

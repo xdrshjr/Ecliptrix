@@ -40,6 +40,10 @@ function createMainWindow({ url, bounds, onBoundsChange, version, logsPath }) {
     minHeight: 640,
     show: false,
     autoHideMenuBar: true,
+    // Frameless: drop the native title bar/border so the renderer draws its own
+    // (spec §2.3a). thickFrame defaults to true, so Windows keeps the hidden
+    // WS_THICKFRAME and edge-resize still works.
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -65,6 +69,16 @@ function createMainWindow({ url, bounds, onBoundsChange, version, logsPath }) {
       onBoundsChange(win.getBounds())
     }
   })
+
+  // Push maximize-state changes to the renderer so the self-drawn title bar can
+  // swap its maximize/restore icon (spec §2.3a).
+  const emitMax = () => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('window:maximize-changed', win.isMaximized())
+    }
+  }
+  win.on('maximize', emitMax)
+  win.on('unmaximize', emitMax)
 
   win.once('ready-to-show', () => win.show())
   win.loadURL(url)

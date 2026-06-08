@@ -360,5 +360,8 @@ export const useTasks = () => {
     closeTab,
     closeAllTabs,
     updateTask,
+    // Exposed so the entry point can tell whether localStorage restore finished
+    // before deciding to skip the landing page / auto-open a task (spec §2.2f).
+    hydrated,
   };
 };

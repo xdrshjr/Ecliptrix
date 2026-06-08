@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { isDesktop } from '@/lib/desktop/isDesktop';
 import RoleBadge, { resolveUserRole } from '@/components/ui/RoleBadge';
 
 function useTheme() {
@@ -52,6 +53,15 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Desktop is always silently logged in, so the login/register and logout
+  // entries are hidden there (hiding logout also avoids the odd "log out →
+  // auto re-login" loop — spec §2.2g). The mount gate keeps SSR and the first
+  // client frame identical so the desktop shell never triggers a hydration
+  // mismatch over `isDesktop()`.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isDesktopShell = mounted && isDesktop();
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -254,27 +264,31 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick, onProfileClick, onSetting
                       </svg>
                       <span>{t.auth.accountSettings}</span>
                     </button>
-                    <div className="border-t border-border mt-1 pt-1">
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 transition-colors flex items-center space-x-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        <span>{t.auth.logout}</span>
-                      </button>
-                    </div>
+                    {!isDesktopShell && (
+                      <div className="border-t border-border mt-1 pt-1">
+                        <button
+                          onClick={handleLogout}
+                          className="w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 transition-colors flex items-center space-x-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          <span>{t.auth.logout}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
             ) : (
-              <button
-                onClick={handleUserMenuClick}
-                className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-              >
-                {t.auth.loginRegister}
-              </button>
+              !isDesktopShell && (
+                <button
+                  onClick={handleUserMenuClick}
+                  className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+                >
+                  {t.auth.loginRegister}
+                </button>
+              )
             )}
           </div>
         </div>

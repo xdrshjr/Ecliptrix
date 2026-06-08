@@ -1,7 +1,7 @@
 'use strict'
 
 const path = require('path')
-const { app, dialog } = require('electron')
+const { app, dialog, ipcMain } = require('electron')
 
 const { initUserData, saveConfig } = require('./config')
 const { loadUserEnv } = require('./envCheck')
@@ -10,6 +10,7 @@ const { ManagedService } = require('./processManager')
 const { createBackendDescriptor } = require('./backendService')
 const { createFrontendDescriptor } = require('./frontendService')
 const { Logger } = require('./logger')
+const { registerWindowControlIpc } = require('./windowControls')
 const windows = require('./window')
 
 // `npm run dev` — attach to manually started dev servers instead of spawning
@@ -89,6 +90,17 @@ async function main() {
   state.logsPath = path.join(state.userDataPath, 'logs')
   state.logger = new Logger(state.logsPath)
   state.logger.log('main', `Ecliptrix ${app.getVersion()} starting (userData=${state.userDataPath})`)
+
+  // Register renderer-facing IPC BEFORE the `--dev` early-return (spec §2.3b /
+  // R2). main() runs once via app.whenReady(), so these never double-register.
+  // Window controls need no env; the bootstrap handler reads state.userEnv at
+  // call time (set below in packaged mode) and falls back to the env-template
+  // defaults so dev mode still resolves a usable credential pair.
+  registerWindowControlIpc()
+  ipcMain.handle('auth:bootstrap-credentials', () => ({
+    username: (state.userEnv && state.userEnv.ROOT_USERNAME) || 'admin',
+    password: (state.userEnv && state.userEnv.ROOT_PASSWORD) || 'change_me_on_first_run',
+  }))
 
   if (isDev) {
     state.logger.log('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
