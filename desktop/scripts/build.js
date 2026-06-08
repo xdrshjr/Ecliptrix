@@ -8,6 +8,7 @@ const { parseArgs, resolveUrls, runPreflight } = require('./preflight')
 const { prepareFrontend } = require('./prepare-frontend')
 const { prepareBackend } = require('./prepare-backend')
 const { prepareFfmpeg } = require('./prepare-ffmpeg')
+const { prepareEnv } = require('./prepare-env')
 const { sha256File } = require('./lib/download')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
@@ -26,6 +27,9 @@ const BUILD_ASSERTIONS = [
   'python/Lib/site-packages/fastapi',
   'ffmpeg/ffmpeg.exe',
   'ffmpeg/ffprobe.exe',
+  // First-run env template (bundled default credentials) — mapped into the
+  // asar by electron-builder.yml's files: entry.
+  'env.template.desktop',
 ]
 
 function run(command, args, options = {}) {
@@ -100,6 +104,11 @@ async function main() {
   else await prepareBackend(urls)
 
   await prepareFfmpeg(urls)
+
+  // Independent of the frontend/backend skip flags — reads the source .env
+  // files directly, so it must run on every build to keep the bundled defaults
+  // in sync with the current .env.
+  prepareEnv()
 
   assertBuildOutputs()
 
